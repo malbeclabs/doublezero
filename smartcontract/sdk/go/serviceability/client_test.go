@@ -292,7 +292,34 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						ReferenceCount: 1234,
 						UsersCount:     110,
 						MaxUsers:       128,
-						PubKey:         pubkeys[2],
+						// Legacy fixture has no trailing new_interfaces vec; the rebuild
+						// path projects each legacy Interface into a NewInterface stamped
+						// with the current schema version.
+						NewInterfaces: []Interface{
+							{
+								Version:            CurrentInterfaceVersion,
+								Status:             InterfaceStatusPending,
+								Name:               "switch1/1/1",
+								InterfaceType:      InterfaceTypePhysical,
+								LoopbackType:       LoopbackTypeNone,
+								VlanId:             42,
+								IpNet:              [5]byte{0x0a, 0x01, 0x02, 0x03, 0x1d},
+								NodeSegmentIdx:     123,
+								UserTunnelEndpoint: false,
+							},
+							{
+								Version:            CurrentInterfaceVersion,
+								Status:             InterfaceStatusPending,
+								Name:               "lo0",
+								InterfaceType:      InterfaceTypeLoopback,
+								LoopbackType:       LoopbackTypeVpnv4,
+								VlanId:             15,
+								IpNet:              [5]byte{0x0a, 0x02, 0x03, 0x04, 0x1d},
+								NodeSegmentIdx:     42,
+								UserTunnelEndpoint: true,
+							},
+						},
+						PubKey: pubkeys[2],
 					},
 				},
 				Locations:          []Location{},

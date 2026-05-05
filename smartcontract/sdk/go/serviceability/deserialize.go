@@ -1,6 +1,9 @@
 package serviceability
 
-import "log"
+import (
+	"fmt"
+	"log"
+)
 
 func DeserializeGlobalState(reader *ByteReader, gs *GlobalState) {
 	gs.AccountType = AccountType(reader.ReadU8())
@@ -147,6 +150,53 @@ func DeserializeInterfaceV3(reader *ByteReader, iface *Interface) {
 	}
 }
 
+// DeserializeInterfaceSized reads a single size-prefixed NewInterface element.
+//
+// Wire format: u16 size + u8 version + body, where size includes the 3-byte prefix.
+// Forward-compat readers always advance the cursor to start+size after reading the
+// known body fields, so unknown future versions are skipped in O(1).
+func DeserializeInterfaceSized(reader *ByteReader, iface *Interface) {
+	start := reader.GetOffset()
+	iface.Size = reader.ReadU16()
+	iface.Version = reader.ReadU8()
+
+	// Body fields (current schema, version 4): same order as InterfaceV2 + the
+	// flex_algo_node_segments vec from V3.
+	iface.Status = InterfaceStatus(reader.ReadU8())
+	iface.Name = reader.ReadString()
+	iface.InterfaceType = InterfaceType(reader.ReadU8())
+	iface.InterfaceCYOA = InterfaceCYOA(reader.ReadU8())
+	iface.InterfaceDIA = InterfaceDIA(reader.ReadU8())
+	iface.LoopbackType = LoopbackType(reader.ReadU8())
+	iface.Bandwidth = reader.ReadU64()
+	iface.Cir = reader.ReadU64()
+	iface.Mtu = reader.ReadU16()
+	iface.RoutingMode = RoutingMode(reader.ReadU8())
+	iface.VlanId = reader.ReadU16()
+	iface.IpNet = reader.ReadNetworkV4()
+	iface.NodeSegmentIdx = reader.ReadU16()
+	iface.UserTunnelEndpoint = (reader.ReadU8() != 0)
+	segCount := reader.ReadU32()
+	iface.FlexAlgoNodeSegments = make([]FlexAlgoNodeSegment, 0, segCount)
+	for i := uint32(0); i < segCount; i++ {
+		// Defensive guard against garbage segCount when the body is shorter than
+		// expected (e.g. older size-prefixed encoding without flex segments).
+		if reader.Remaining() < 34 { // 32 (pubkey) + 2 (u16)
+			break
+		}
+		iface.FlexAlgoNodeSegments = append(iface.FlexAlgoNodeSegments, FlexAlgoNodeSegment{
+			Topology:       reader.ReadPubkey(),
+			NodeSegmentIdx: reader.ReadU16(),
+		})
+	}
+
+	// Advance to start+size regardless of how many body bytes we consumed.
+	target := start + int(iface.Size)
+	if cur := reader.GetOffset(); cur < target {
+		reader.Skip(target - cur)
+	}
+}
+
 func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.AccountType = AccountType(reader.ReadU8())
 	dev.Owner = reader.ReadPubkey()
@@ -185,6 +235,31 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.ReservedSeats = reader.ReadU16()
 	dev.MulticastPublishersCount = reader.ReadU16()
 	dev.MaxMulticastPublishers = reader.ReadU16()
+
+	// Trailing new_interfaces vec (size-prefixed). Empty trailing => rebuild from legacy.
+	// Length mismatch => surface via dev.DeserializeError without aborting earlier fields.
+	if reader.Remaining() == 0 {
+		dev.NewInterfaces = make([]Interface, len(dev.Interfaces))
+		for i, legacy := range dev.Interfaces {
+			ni := legacy
+			ni.Version = CurrentInterfaceVersion
+			ni.Size = 0
+			dev.NewInterfaces[i] = ni
+		}
+	} else {
+		newLen := reader.ReadU32()
+		if int(newLen) != len(dev.Interfaces) {
+			dev.DeserializeError = fmt.Errorf(
+				"DeserializeDevice: new_interfaces length %d != interfaces length %d",
+				newLen, len(dev.Interfaces),
+			)
+			return
+		}
+		dev.NewInterfaces = make([]Interface, newLen)
+		for i := uint32(0); i < newLen; i++ {
+			DeserializeInterfaceSized(reader, &dev.NewInterfaces[i])
+		}
+	}
 	// Note: dev.PubKey is set separately in client.go after deserialization
 }
 

@@ -401,7 +401,13 @@ class AccessPassStatus(IntEnum):
 # Account dataclasses
 # ---------------------------------------------------------------------------
 
-CURRENT_INTERFACE_VERSION = 2
+# On-wire schema version for the size-prefixed NewInterface format
+# (matches Rust's CURRENT_INTERFACE_SCHEMA_VERSION). Note: prior to issue #3660
+# this constant gated the legacy enum reader at value 2 (max known disc=1); it
+# is now bumped to 4 to match the size-prefixed schema. Legacy enum reads still
+# only handle version 0 (V1) and 1 (V2); version 3 (V3) accounts fall through
+# to a default Interface (pre-existing gap).
+CURRENT_INTERFACE_VERSION = 4
 
 
 @dataclass
@@ -412,6 +418,10 @@ class FlexAlgoNodeSegment:
 
 @dataclass
 class Interface:
+    # size is the on-disk byte length of the size-prefixed encoding (u16 size +
+    # u8 version + body). Populated only when read via from_reader_sized; zero
+    # for legacy enum reads.
+    size: int = 0
     version: int = 0
     status: InterfaceStatus = InterfaceStatus.INVALID
     name: str = ""
@@ -465,6 +475,53 @@ class Interface:
                 seg.topology = _read_pubkey(r)
                 seg.node_segment_idx = r.read_u16()
                 iface.flex_algo_node_segments.append(seg)
+        return iface
+
+    @classmethod
+    def from_reader_sized(cls, r: DefensiveReader) -> Interface:
+        """Read a single size-prefixed NewInterface element.
+
+        Wire format: u16 size (incl. 3-byte prefix) + u8 version + body. After
+        reading the known body fields, the reader is advanced to start+size so
+        unknown future versions are skipped in O(1).
+        """
+        iface = cls()
+        start = r.offset
+        iface.size = r.read_u16()
+        iface.version = r.read_u8()
+
+        # Body fields (current schema, version 4): same order as InterfaceV2 +
+        # the flex_algo_node_segments vec from V3.
+        iface.status = InterfaceStatus(r.read_u8())
+        iface.name = r.read_string()
+        iface.interface_type = InterfaceType(r.read_u8())
+        iface.interface_cyoa = InterfaceCYOA(r.read_u8())
+        iface.interface_dia = InterfaceDIA(r.read_u8())
+        iface.loopback_type = LoopbackType(r.read_u8())
+        iface.bandwidth = r.read_u64()
+        iface.cir = r.read_u64()
+        iface.mtu = r.read_u16()
+        iface.routing_mode = RoutingMode(r.read_u8())
+        iface.vlan_id = r.read_u16()
+        iface.ip_net = r.read_network_v4()
+        iface.node_segment_idx = r.read_u16()
+        iface.user_tunnel_endpoint = r.read_bool()
+        seg_count = r.read_u32()
+        for _ in range(seg_count):
+            # Defensive guard against garbage seg_count when the body is shorter
+            # than expected (e.g. older size-prefixed encoding).
+            if r.remaining < 34:  # 32 (pubkey) + 2 (u16)
+                break
+            seg = FlexAlgoNodeSegment()
+            seg.topology = _read_pubkey(r)
+            seg.node_segment_idx = r.read_u16()
+            iface.flex_algo_node_segments.append(seg)
+
+        # Advance the reader to start+size regardless of how many body bytes
+        # we consumed.
+        target = start + iface.size
+        if r.offset < target:
+            r.read_bytes(target - r.offset)
         return iface
 
 
@@ -634,6 +691,11 @@ class Device:
     reserved_seats: int = 0
     multicast_publishers_count: int = 0
     max_multicast_publishers: int = 0
+    # new_interfaces is the trailing size-prefixed vec parallel to interfaces. For
+    # legacy accounts (no trailing bytes), this is rebuilt from interfaces by
+    # from_bytes. When populated from the wire, len(new_interfaces) ==
+    # len(interfaces) is enforced.
+    new_interfaces: list[Interface] = field(default_factory=list)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Device:
@@ -667,6 +729,45 @@ class Device:
         dev.reserved_seats = r.read_u16()
         dev.multicast_publishers_count = r.read_u16()
         dev.max_multicast_publishers = r.read_u16()
+
+        # Trailing new_interfaces vec (size-prefixed). Empty trailing => rebuild
+        # from legacy. Non-empty trailing whose declared length differs from the
+        # legacy interfaces length is a corrupt-account condition; raise per
+        # Rust device-reader semantics (length mismatch is fatal).
+        if r.remaining == 0:
+            dev.new_interfaces = []
+            for legacy in dev.interfaces:
+                rebuilt = Interface(
+                    size=0,
+                    version=CURRENT_INTERFACE_VERSION,
+                    status=legacy.status,
+                    name=legacy.name,
+                    interface_type=legacy.interface_type,
+                    interface_cyoa=legacy.interface_cyoa,
+                    interface_dia=legacy.interface_dia,
+                    loopback_type=legacy.loopback_type,
+                    bandwidth=legacy.bandwidth,
+                    cir=legacy.cir,
+                    mtu=legacy.mtu,
+                    routing_mode=legacy.routing_mode,
+                    vlan_id=legacy.vlan_id,
+                    ip_net=legacy.ip_net,
+                    node_segment_idx=legacy.node_segment_idx,
+                    user_tunnel_endpoint=legacy.user_tunnel_endpoint,
+                    flex_algo_node_segments=list(legacy.flex_algo_node_segments),
+                )
+                dev.new_interfaces.append(rebuilt)
+        else:
+            new_len = r.read_u32()
+            if new_len != len(dev.interfaces):
+                raise ValueError(
+                    f"Device new_interfaces length {new_len} != "
+                    f"interfaces length {len(dev.interfaces)}"
+                )
+            dev.new_interfaces = [
+                Interface.from_reader_sized(r) for _ in range(new_len)
+            ]
+
         return dev
 
 

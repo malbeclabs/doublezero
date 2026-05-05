@@ -447,6 +447,7 @@ pub fn process_instruction(
         DoubleZeroInstruction::BackfillTopology(value) => {
             process_topology_backfill(program_id, accounts, &value)?
         }
+        DoubleZeroInstruction::Deprecated111() => (),
     };
     Ok(())
 }

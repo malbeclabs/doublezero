@@ -233,6 +233,8 @@ pub enum DoubleZeroInstruction {
     DeleteTopology(TopologyDeleteArgs),     // variant 108
     ClearTopology(TopologyClearArgs),       // variant 109
     BackfillTopology(TopologyBackfillArgs), // variant 110
+
+    Deprecated111(), // variant 111, (was MigrateDeviceInterfaces)
 }
 
 impl DoubleZeroInstruction {
@@ -373,6 +375,7 @@ impl DoubleZeroInstruction {
             108 => Ok(Self::DeleteTopology(TopologyDeleteArgs::try_from(rest).unwrap())),
             109 => Ok(Self::ClearTopology(TopologyClearArgs::try_from(rest).unwrap())),
             110 => Ok(Self::BackfillTopology(TopologyBackfillArgs::try_from(rest).unwrap())),
+            111 => Ok(Self::Deprecated111()),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -516,6 +519,7 @@ impl DoubleZeroInstruction {
             Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 108
             Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 109
             Self::BackfillTopology(_) => "BackfillTopology".to_string(), // variant 110
+            Self::Deprecated111() => "Deprecated111".to_string(),    // variant 111
         }
     }
 
@@ -651,6 +655,7 @@ impl DoubleZeroInstruction {
             Self::DeleteTopology(args) => format!("{args:?}"), // variant 108
             Self::ClearTopology(args) => format!("{args:?}"),  // variant 109
             Self::BackfillTopology(args) => format!("{args:?}"), // variant 110
+            Self::Deprecated111() => String::new(),            // variant 111
         }
     }
 }

@@ -43,14 +43,13 @@ impl GetDeviceInterfaceCliCommand {
         })?;
 
         let interface = device
-            .interfaces
+            .new_interfaces
             .iter()
-            .map(|i| i.into_current_version())
             .find(|i| i.name.to_lowercase() == self.name.to_lowercase())
             .ok_or_else(|| eyre::eyre!("Interface '{}' not found", self.name))?;
 
         let display = InterfaceDisplay {
-            name: interface.name,
+            name: interface.name.clone(),
             status: interface.status.to_string(),
             loopback_type: interface.loopback_type.to_string(),
             interface_cyoa: interface.interface_cyoa.to_string(),
@@ -121,7 +120,8 @@ mod tests {
             ),
             owner: device1_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![(&CurrentInterfaceVersion {
                 status: InterfaceStatus::Activated,
                 name: "eth0".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -136,9 +136,9 @@ mod tests {
                 ip_net: "10.0.0.1/24".parse().unwrap(),
                 node_segment_idx: 42,
                 user_tunnel_endpoint: true,
-            }
-            .to_interface()],
-            new_interfaces: vec![],
+            })
+                .try_into()
+                .unwrap()],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,

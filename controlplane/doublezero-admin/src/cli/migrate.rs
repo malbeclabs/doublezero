@@ -106,10 +106,9 @@ impl FlexAlgoMigrateCliCommand {
             let mut devices_needing_backfill: Vec<Pubkey> = Vec::new();
 
             for (device_pubkey, device) in &device_entries {
-                let needs_backfill = device.interfaces.iter().any(|iface| {
-                    let current = iface.into_v3();
-                    current.loopback_type == LoopbackType::Vpnv4
-                        && !current
+                let needs_backfill = device.new_interfaces.iter().any(|iface| {
+                    iface.loopback_type == LoopbackType::Vpnv4
+                        && !iface
                             .flex_algo_node_segments
                             .iter()
                             .any(|s| s.topology == *topology_pubkey)

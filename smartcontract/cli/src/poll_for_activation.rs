@@ -3,8 +3,8 @@ use doublezero_sdk::{
         device::get::GetDeviceCommand, link::get::GetLinkCommand,
         multicastgroup::get::GetMulticastGroupCommand, user::get::GetUserCommand,
     },
-    CurrentInterfaceVersion, Device, DeviceStatus, InterfaceStatus, Link, LinkStatus,
-    MulticastGroup, MulticastGroupStatus, User, UserStatus,
+    Device, DeviceStatus, Link, LinkStatus, MulticastGroup, MulticastGroupStatus, NewInterface,
+    User, UserStatus,
 };
 use solana_sdk::pubkey::Pubkey;
 
@@ -61,7 +61,7 @@ pub fn poll_for_device_interface_activated(
     client: &dyn CliCommand,
     device_pubkey: &Pubkey,
     interface_name: &str,
-) -> eyre::Result<CurrentInterfaceVersion> {
+) -> eyre::Result<NewInterface> {
     let start_time = std::time::Instant::now();
     let timeout = std::time::Duration::from_secs(20);
     let poll_interval = std::time::Duration::from_secs(1);
@@ -82,20 +82,12 @@ pub fn poll_for_device_interface_activated(
             pubkey_or_code: device_pubkey.to_string(),
         }) {
             Ok((_, device)) => {
-                if let Some(iface) = device.interfaces.iter().find(|iface| {
-                    iface.into_current_version().name.to_lowercase()
-                        == interface_name.to_lowercase()
-                }) {
-                    let current = iface.into_current_version();
-                    if current.status != InterfaceStatus::Pending {
-                        return Ok(current);
-                    } else {
-                        last_error = Some(eyre::eyre!(
-                            "Interface '{}' found but not activated (status: {:?})",
-                            interface_name,
-                            current.status
-                        ));
-                    }
+                if let Some(iface) = device
+                    .new_interfaces
+                    .iter()
+                    .find(|iface| iface.name.to_lowercase() == interface_name.to_lowercase())
+                {
+                    return Ok(iface.clone());
                 } else {
                     last_error = Some(eyre::eyre!(
                         "Interface '{}' not found on device '{}'",

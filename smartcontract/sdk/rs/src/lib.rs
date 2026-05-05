@@ -22,6 +22,7 @@ pub use doublezero_serviceability::{
         globalstate::GlobalState,
         interface::{
             CurrentInterfaceVersion, Interface, InterfaceStatus, InterfaceType, LoopbackType,
+            NewInterface,
         },
         link::{Link, LinkLinkType, LinkStatus},
         location::{Location, LocationStatus},

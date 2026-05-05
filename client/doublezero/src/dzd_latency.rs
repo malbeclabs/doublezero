@@ -9,8 +9,7 @@ pub(crate) fn get_device_tunnel_endpoints(device: &Device) -> Vec<Ipv4Addr> {
     let mut endpoints = vec![device.public_ip];
 
     // Add all UserTunnelEndpoint interfaces
-    for iface in &device.interfaces {
-        let iface = iface.into_current_version();
+    for iface in &device.new_interfaces {
         if iface.user_tunnel_endpoint && iface.ip_net != Default::default() {
             endpoints.push(iface.ip_net.ip());
         }

@@ -33,7 +33,7 @@ impl DeleteDeviceInterfaceCliCommand {
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
         let (_, iface) = device
-            .find_interface_legacy(&self.name)
+            .find_interface(&self.name)
             .map_err(|err| eyre::eyre!(err))?;
 
         // if a physical interface is Activated, it's part of a link and shouldn't be deleted.
@@ -93,8 +93,9 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![
-                CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![
+                (&CurrentInterfaceVersion {
                     status: InterfaceStatus::Unlinked,
                     name: "Ethernet0".to_string(),
                     interface_type: InterfaceType::Physical,
@@ -109,9 +110,10 @@ mod tests {
                     ip_net: "10.0.0.1/24".parse().unwrap(),
                     node_segment_idx: 12,
                     user_tunnel_endpoint: true,
-                }
-                .to_interface(),
-                CurrentInterfaceVersion {
+                })
+                    .try_into()
+                    .unwrap(),
+                (&CurrentInterfaceVersion {
                     status: InterfaceStatus::Activated,
                     name: "Loopback0".to_string(),
                     interface_type: InterfaceType::Loopback,
@@ -126,10 +128,10 @@ mod tests {
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 13,
                     user_tunnel_endpoint: false,
-                }
-                .to_interface(),
+                })
+                    .try_into()
+                    .unwrap(),
             ],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,

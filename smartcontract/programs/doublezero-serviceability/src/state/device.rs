@@ -334,10 +334,9 @@ impl Device {
     }
 
     /// Temporary helper that returns a `CurrentInterfaceVersion` projection of the
-    /// matched interface. Exists to keep call sites compiling while `find_interface`
-    /// switches to returning `&NewInterface`; the legacy projection is the V2 form
-    /// per #3653. Callers migrate to `find_interface` in subsequent issues, after
-    /// which this helper is removed.
+    /// matched interface. Retained for CLI callers during the staged migration;
+    /// once those callers move to `find_interface` (which returns `&NewInterface`),
+    /// this helper is removed. No `processors/` code calls this any more.
     pub fn find_interface_legacy(
         &self,
         name: &str,
@@ -361,11 +360,10 @@ impl Device {
 
     /// Appends an interface to both `interfaces` and `new_interfaces`. Same
     /// rationale as `replace_interface`.
-    pub fn push_interface(&mut self, iface: CurrentInterfaceVersion) -> Result<(), ProgramError> {
-        let new_iface: NewInterface = (&iface).try_into()?;
-        self.interfaces.push(iface.to_interface());
-        self.new_interfaces.push(new_iface);
-        Ok(())
+    pub fn push_interface(&mut self, iface: NewInterface) {
+        self.interfaces
+            .push(InterfaceV2::from(&iface).to_interface());
+        self.new_interfaces.push(iface);
     }
 
     /// Removes the interface at `idx` from both `interfaces` and `new_interfaces`.
@@ -1863,5 +1861,45 @@ mod test_device_new_interfaces_vec {
             CURRENT_INTERFACE_SCHEMA_VERSION
         );
         assert_eq!(decoded.new_interfaces[1].name, "Switch1/1/1");
+    }
+
+    /// Mirrors what TopologyBackfill produces: a Vpnv4 loopback whose
+    /// `flex_algo_node_segments` is populated only on the new vec. After a full
+    /// borsh round-trip, segments must survive in `new_interfaces`, while the
+    /// V2-projected legacy vec carries no segments (V2 has no such field).
+    #[test]
+    fn test_flex_algo_segments_roundtrip_through_new_interfaces() {
+        use crate::state::topology::FlexAlgoNodeSegment;
+
+        let mut device = sample_device_with_n_interfaces(1);
+        let topology = Pubkey::new_unique();
+        let segment = FlexAlgoNodeSegment {
+            topology,
+            node_segment_idx: 42,
+        };
+        device.new_interfaces[0].loopback_type = LoopbackType::Vpnv4;
+        device.new_interfaces[0]
+            .flex_algo_node_segments
+            .push(segment.clone());
+        // Keep the on-disk size field consistent with the populated body.
+        device.new_interfaces[0].size = device.new_interfaces[0].compute_on_disk_size().unwrap();
+
+        let bytes = borsh::to_vec(&device).unwrap();
+        let decoded = Device::try_from(&bytes[..]).unwrap();
+
+        // Source of truth: segments survive in new_interfaces.
+        assert_eq!(decoded.new_interfaces.len(), 1);
+        assert_eq!(
+            decoded.new_interfaces[0].flex_algo_node_segments,
+            vec![segment]
+        );
+        assert_eq!(decoded.new_interfaces[0].loopback_type, LoopbackType::Vpnv4);
+
+        // V2-projected legacy vec preserves the rest of the interface but cannot
+        // carry segments (V2 has no such field).
+        assert_eq!(decoded.interfaces.len(), 1);
+        let legacy_v2 = decoded.interfaces[0].into_current_version();
+        assert_eq!(legacy_v2.name, decoded.new_interfaces[0].name);
+        assert_eq!(legacy_v2.loopback_type, LoopbackType::Vpnv4);
     }
 }

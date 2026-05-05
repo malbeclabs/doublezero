@@ -67,9 +67,9 @@ impl CreateDeviceInterfaceCliCommand {
             .map_err(|_| eyre::eyre!("Device with pubkey/code '{}' not found", self.device))?;
 
         device
-            .interfaces
+            .new_interfaces
             .iter()
-            .find(|i| i.into_current_version().name == self.name)
+            .find(|i| i.name == self.name)
             .map_or(Ok(()), |_| {
                 Err(eyre::eyre!(
                     "Interface with name '{}' already exists",
@@ -101,8 +101,7 @@ impl CreateDeviceInterfaceCliCommand {
                 if dev.contributor_pk != device.contributor_pk {
                     continue;
                 }
-                for iface in &dev.interfaces {
-                    let iface = iface.into_current_version();
+                for iface in &dev.new_interfaces {
                     if iface.ip_net == *ip_net {
                         eyre::bail!(
                             "IP {} is already assigned to interface {} on device {}",
@@ -209,7 +208,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: device2_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![(&CurrentInterfaceVersion {
                 status: InterfaceStatus::Activated,
                 name: "Loopback100".to_string(),
                 interface_type: InterfaceType::Loopback,
@@ -224,9 +224,9 @@ mod tests {
                 ip_net: "185.189.47.80/32".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: false,
-            }
-            .to_interface()],
-            new_interfaces: vec![],
+            })
+                .try_into()
+                .unwrap()],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,

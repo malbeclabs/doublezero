@@ -78,7 +78,7 @@ impl UpdateDeviceInterfaceCliCommand {
             })?;
 
         let (_, interface) = device
-            .find_interface_legacy(&self.name)
+            .find_interface(&self.name)
             .map_err(|e| eyre::eyre!(e.to_string()))?;
 
         // Prevent setting a loopback type on physical interfaces
@@ -139,17 +139,16 @@ impl UpdateDeviceInterfaceCliCommand {
                 if dev.contributor_pk != device.contributor_pk {
                     continue;
                 }
-                for iface in &dev.interfaces {
-                    let iface_v = iface.into_current_version();
+                for iface in &dev.new_interfaces {
                     // Skip the interface being updated
-                    if *pk == device_pk && iface_v.name.eq_ignore_ascii_case(&self.name) {
+                    if *pk == device_pk && iface.name.eq_ignore_ascii_case(&self.name) {
                         continue;
                     }
-                    if iface_v.ip_net == *ip_net {
+                    if iface.ip_net == *ip_net {
                         eyre::bail!(
                             "IP {} is already assigned to interface {} on device {}",
                             ip_net,
-                            iface_v.name,
+                            iface.name,
                             dev.code
                         );
                     }
@@ -226,8 +225,9 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![
-                CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![
+                (&CurrentInterfaceVersion {
                     status: InterfaceStatus::Activated,
                     name: "Ethernet0".to_string(),
                     interface_type: InterfaceType::Physical,
@@ -242,9 +242,10 @@ mod tests {
                     ip_net: "10.0.0.1/24".parse().unwrap(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: true,
-                }
-                .to_interface(),
-                CurrentInterfaceVersion {
+                })
+                    .try_into()
+                    .unwrap(),
+                (&CurrentInterfaceVersion {
                     status: InterfaceStatus::Activated,
                     name: "Loopback0".to_string(),
                     interface_type: InterfaceType::Loopback,
@@ -259,10 +260,10 @@ mod tests {
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: false,
-                }
-                .to_interface(),
+                })
+                    .try_into()
+                    .unwrap(),
             ],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -362,7 +363,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![(&CurrentInterfaceVersion {
                 status: InterfaceStatus::Activated,
                 name: "Loopback0".to_string(),
                 interface_type: InterfaceType::Loopback,
@@ -377,9 +379,9 @@ mod tests {
                 ip_net: "10.0.0.1/32".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: false,
-            }
-            .to_interface()],
-            new_interfaces: vec![],
+            })
+                .try_into()
+                .unwrap()],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -411,7 +413,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![(&CurrentInterfaceVersion {
                 status: InterfaceStatus::Activated,
                 name: "Loopback100".to_string(),
                 interface_type: InterfaceType::Loopback,
@@ -426,9 +429,9 @@ mod tests {
                 ip_net: "185.189.47.80/32".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: false,
-            }
-            .to_interface()],
-            new_interfaces: vec![],
+            })
+                .try_into()
+                .unwrap()],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -508,7 +511,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![(&CurrentInterfaceVersion {
                 status: InterfaceStatus::Activated,
                 name: "Ethernet0".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -523,9 +527,9 @@ mod tests {
                 ip_net: "10.0.0.1/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-            }
-            .to_interface()],
-            new_interfaces: vec![],
+            })
+                .try_into()
+                .unwrap()],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,

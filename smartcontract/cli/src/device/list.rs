@@ -226,9 +226,8 @@ impl ListDeviceCliCommand {
                     status: device.status,
                     dz_prefixes: device.dz_prefixes.clone(),
                     cyoa_ips: device
-                        .interfaces
+                        .new_interfaces
                         .iter()
-                        .map(|iface| iface.into_current_version())
                         .filter(|iface| iface.user_tunnel_endpoint)
                         .map(|iface| iface.ip_net.to_string())
                         .collect(),

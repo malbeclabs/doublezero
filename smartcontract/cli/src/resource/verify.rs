@@ -903,8 +903,7 @@ fn verify_device_tunnel_block(
 
     // Check device loopback interfaces (only vpnv4/ipv4 loopback types)
     for (device_pk, device) in devices {
-        for interface in &device.interfaces {
-            let iface = interface.into_current_version();
+        for iface in &device.new_interfaces {
             if iface.interface_type == InterfaceType::Loopback
                 && (iface.loopback_type == LoopbackType::Vpnv4
                     || iface.loopback_type == LoopbackType::Ipv4)
@@ -979,8 +978,7 @@ fn verify_segment_routing_ids(
     let mut in_use: HashMap<IdOrIp, (Pubkey, String)> = HashMap::new();
 
     for (device_pk, device) in devices {
-        for interface in &device.interfaces {
-            let iface = interface.into_current_version();
+        for iface in &device.new_interfaces {
             // Only check vpnv4/ipv4 loopbacks, and node_segment_idx == 0 means not allocated
             if iface.interface_type == InterfaceType::Loopback
                 && (iface.loopback_type == LoopbackType::Vpnv4

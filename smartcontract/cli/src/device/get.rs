@@ -6,7 +6,7 @@ use doublezero_sdk::{
         contributor::get::GetContributorCommand, device::get::GetDeviceCommand,
         exchange::get::GetExchangeCommand,
     },
-    GetLocationCommand, Interface,
+    GetLocationCommand, NewInterface,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
@@ -45,11 +45,8 @@ struct InterfaceDisplay {
     pub tunnel_endpoint: bool,
 }
 
-impl From<&Interface> for InterfaceDisplay {
-    fn from(iface: &Interface) -> Self {
-        // Convert to current version to ensure all fields are populated, even if the stored version is older
-        let iface = iface.into_current_version();
-
+impl From<&NewInterface> for InterfaceDisplay {
+    fn from(iface: &NewInterface) -> Self {
         Self {
             name: iface.name.clone(),
             status: iface.status.to_string(),
@@ -145,16 +142,15 @@ impl GetDeviceCliCommand {
             public_ip: device.public_ip.to_string(),
             dz_prefixes: device.dz_prefixes.to_string(),
             cyoa_ips: device
-                .interfaces
+                .new_interfaces
                 .iter()
-                .map(|iface| iface.into_current_version())
                 .filter(|iface| iface.user_tunnel_endpoint)
                 .map(|iface| iface.ip_net.to_string())
                 .collect(),
             metrics_publisher: device.metrics_publisher_pk.to_string(),
             mgmt_vrf: device.mgmt_vrf,
             interfaces: device
-                .interfaces
+                .new_interfaces
                 .iter()
                 .map(InterfaceDisplay::from)
                 .collect(),

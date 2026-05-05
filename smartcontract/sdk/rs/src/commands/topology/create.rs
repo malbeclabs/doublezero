@@ -66,9 +66,9 @@ impl CreateTopologyCommand {
             .into_iter()
             .filter(|(_, device)| {
                 device
-                    .interfaces
+                    .new_interfaces
                     .iter()
-                    .any(|i| i.into_current_version().loopback_type == LoopbackType::Vpnv4)
+                    .any(|i| i.loopback_type == LoopbackType::Vpnv4)
             })
             .map(|(pk, _)| pk)
             .collect();
@@ -105,7 +105,7 @@ mod tests {
             accountdata::AccountData,
             accounttype::AccountType,
             device::Device,
-            interface::{Interface, InterfaceV3, LoopbackType},
+            interface::{LoopbackType, NewInterface},
             topology::TopologyConstraint,
         },
     };
@@ -173,19 +173,19 @@ mod tests {
 
         let vpnv4_device_pk = Pubkey::new_unique();
         let vpnv4_device = Device {
-            interfaces: vec![Interface::V3(InterfaceV3 {
+            new_interfaces: vec![NewInterface {
                 loopback_type: LoopbackType::Vpnv4,
                 ..Default::default()
-            })],
+            }],
             ..Default::default()
         };
 
         let other_device_pk = Pubkey::new_unique();
         let other_device = Device {
-            interfaces: vec![Interface::V3(InterfaceV3 {
+            new_interfaces: vec![NewInterface {
                 loopback_type: LoopbackType::None,
                 ..Default::default()
-            })],
+            }],
             ..Default::default()
         };
 

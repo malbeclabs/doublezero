@@ -47,9 +47,8 @@ impl AcceptLinkCliCommand {
         })?;
 
         let side_z_iface = device_z
-            .interfaces
+            .new_interfaces
             .iter()
-            .map(|i| i.into_current_version())
             .find(|i| i.name.to_lowercase() == self.side_z_interface.to_lowercase())
             .ok_or_else(|| {
                 eyre!(
@@ -144,14 +143,15 @@ mod tests {
             exchange_pk: Pubkey::default(),
             code: "dev01".to_string(),
 
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![(&CurrentInterfaceVersion {
                 name: "Ethernet1/1".to_string(),
                 status: InterfaceStatus::Unlinked,
                 interface_type: InterfaceType::Physical,
                 ..Default::default()
-            }
-            .to_interface()],
-            new_interfaces: vec![],
+            })
+                .try_into()
+                .unwrap()],
             device_type: DeviceType::Hybrid,
             public_ip: "127.0.0.1".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -188,7 +188,8 @@ mod tests {
             index: 2,
             reference_count: 0,
             code: "dev02".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![(&CurrentInterfaceVersion {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -198,9 +199,9 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: false,
                 ..Default::default()
-            }
-            .to_interface()],
-            new_interfaces: vec![],
+            })
+                .try_into()
+                .unwrap()],
             location_pk: Pubkey::default(),
             exchange_pk: Pubkey::default(),
             device_type: doublezero_sdk::DeviceType::Hybrid,

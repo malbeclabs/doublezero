@@ -92,9 +92,8 @@ impl CreateDZXLinkCliCommand {
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
         let side_a_iface = side_a_dev
-            .interfaces
+            .new_interfaces
             .iter()
-            .map(|i| i.into_current_version())
             .find(|i| i.name.to_lowercase() == self.side_a_interface.to_lowercase())
             .ok_or_else(|| {
                 eyre!(
@@ -225,7 +224,8 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![(&CurrentInterfaceVersion {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/1".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -236,9 +236,9 @@ mod tests {
                 user_tunnel_endpoint: true,
                 mtu: 9000,
                 ..Default::default()
-            }
-            .to_interface()],
-            new_interfaces: vec![],
+            })
+                .try_into()
+                .unwrap()],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -271,7 +271,8 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![(&CurrentInterfaceVersion {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -282,9 +283,9 @@ mod tests {
                 user_tunnel_endpoint: true,
                 mtu: 9000,
                 ..Default::default()
-            }
-            .to_interface()],
-            new_interfaces: vec![],
+            })
+                .try_into()
+                .unwrap()],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -317,7 +318,8 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![(&CurrentInterfaceVersion {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/3".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -328,9 +330,9 @@ mod tests {
                 user_tunnel_endpoint: true,
                 mtu: 9000,
                 ..Default::default()
-            }
-            .to_interface()],
-            new_interfaces: vec![],
+            })
+                .try_into()
+                .unwrap()],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -496,7 +498,8 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![(&CurrentInterfaceVersion {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/1".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -507,9 +510,9 @@ mod tests {
                 user_tunnel_endpoint: true,
                 interface_cyoa: InterfaceCYOA::GREOverDIA,
                 ..Default::default()
-            }
-            .to_interface()],
-            new_interfaces: vec![],
+            })
+                .try_into()
+                .unwrap()],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -598,7 +601,8 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![],
+            new_interfaces: vec![(&CurrentInterfaceVersion {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/1".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -609,9 +613,9 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
                 ..Default::default()
-            }
-            .to_interface()],
-            new_interfaces: vec![],
+            })
+                .try_into()
+                .unwrap()],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,

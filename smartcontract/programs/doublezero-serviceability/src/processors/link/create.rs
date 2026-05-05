@@ -294,7 +294,7 @@ pub fn process_create_link(
                     NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix())
                         .unwrap();
             }
-            side_a_dev.replace_interface(idx_a, updated_iface_a)?;
+            side_a_dev.replace_interface(idx_a, (&updated_iface_a).try_into()?);
 
             // Set side Z interface to Activated with IP from tunnel_net
             if let Ok((idx_z, side_z_iface)) =
@@ -310,7 +310,7 @@ pub fn process_create_link(
                         NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix())
                             .unwrap();
                 }
-                side_z_dev.replace_interface(idx_z, updated_iface_z)?;
+                side_z_dev.replace_interface(idx_z, (&updated_iface_z).try_into()?);
             }
 
             link.status = LinkStatus::Activated;

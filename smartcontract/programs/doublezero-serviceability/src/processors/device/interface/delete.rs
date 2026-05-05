@@ -178,7 +178,7 @@ pub fn process_delete_device_interface(
         // Legacy path: just mark as Deleting
         let mut iface = iface;
         iface.status = InterfaceStatus::Deleting;
-        device.replace_interface(idx, iface)?;
+        device.replace_interface(idx, (&iface).try_into()?);
 
         #[cfg(test)]
         msg!("Deleting interface: {} from {:?}", value.name, device);

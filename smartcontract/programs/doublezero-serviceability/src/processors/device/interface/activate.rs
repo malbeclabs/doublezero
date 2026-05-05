@@ -148,7 +148,7 @@ pub fn process_activate_device_interface(
         updated_iface.node_segment_idx = value.node_segment_idx;
     }
 
-    device.replace_interface(idx, updated_iface)?;
+    device.replace_interface(idx, (&updated_iface).try_into()?);
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

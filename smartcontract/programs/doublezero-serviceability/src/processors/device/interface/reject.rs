@@ -67,7 +67,7 @@ pub fn process_reject_device_interface(
     }
 
     iface.status = InterfaceStatus::Rejected;
-    device.replace_interface(idx, iface)?;
+    device.replace_interface(idx, (&iface).try_into()?);
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

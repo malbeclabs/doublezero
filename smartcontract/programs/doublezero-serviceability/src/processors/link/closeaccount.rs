@@ -188,7 +188,7 @@ pub fn process_closeaccount_link(
         if !has_user_ip {
             updated_iface.ip_net = NetworkV4::default();
         }
-        side_a_dev.replace_interface(idx_a, updated_iface)?;
+        side_a_dev.replace_interface(idx_a, (&updated_iface).try_into()?);
     }
 
     if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface_legacy(&link.side_z_iface_name) {
@@ -203,7 +203,7 @@ pub fn process_closeaccount_link(
         if !has_user_ip {
             updated_iface.ip_net = NetworkV4::default();
         }
-        side_z_dev.replace_interface(idx_z, updated_iface)?;
+        side_z_dev.replace_interface(idx_z, (&updated_iface).try_into()?);
     }
 
     contributor.reference_count = contributor.reference_count.saturating_sub(1);

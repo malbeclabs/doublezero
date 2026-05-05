@@ -354,15 +354,9 @@ impl Device {
     /// `new_interfaces`, keeping the two vecs in sync. The custom `BorshSerialize`
     /// projects the on-disk legacy slot from `new_interfaces`, so callers that
     /// only mutated `interfaces[idx]` would lose their change on save.
-    pub fn replace_interface(
-        &mut self,
-        idx: usize,
-        iface: CurrentInterfaceVersion,
-    ) -> Result<(), ProgramError> {
-        let new_iface: NewInterface = (&iface).try_into()?;
-        self.interfaces[idx] = iface.to_interface();
-        self.new_interfaces[idx] = new_iface;
-        Ok(())
+    pub fn replace_interface(&mut self, idx: usize, iface: NewInterface) {
+        self.interfaces[idx] = InterfaceV2::from(&iface).to_interface();
+        self.new_interfaces[idx] = iface;
     }
 
     /// Appends an interface to both `interfaces` and `new_interfaces`. Same

@@ -191,7 +191,7 @@ pub fn process_activate_link(
         updated_iface_a.ip_net =
             NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix()).unwrap();
     }
-    side_a_dev.replace_interface(idx_a, updated_iface_a)?;
+    side_a_dev.replace_interface(idx_a, (&updated_iface_a).try_into()?);
 
     let mut updated_iface_z = side_z_iface.clone();
     updated_iface_z.status = InterfaceStatus::Activated;
@@ -201,7 +201,7 @@ pub fn process_activate_link(
         updated_iface_z.ip_net =
             NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix()).unwrap();
     }
-    side_z_dev.replace_interface(idx_z, updated_iface_z)?;
+    side_z_dev.replace_interface(idx_z, (&updated_iface_z).try_into()?);
 
     //TODO: This should be changed once the Health Oracle is finalized.
     //link.status = LinkStatus::Provisioning;

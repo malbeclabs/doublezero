@@ -609,6 +609,250 @@ impl TryFrom<&[u8]> for Interface {
     }
 }
 
+pub const CURRENT_INTERFACE_SCHEMA_VERSION: u8 = 4;
+
+/// Forward-compatible interface element. Wire format: `size: u16` + `version: u8` + body.
+/// `size` includes the 3-byte prefix so older readers can skip past unknown future versions
+/// in constant time. `size` and `version` are real struct fields; conversions stamp them,
+/// the custom Borsh impls read/write them.
+#[derive(Debug, PartialEq, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct NewInterface {
+    pub size: u16,
+    pub version: u8,
+    pub status: InterfaceStatus,
+    pub name: String,
+    pub interface_type: InterfaceType,
+    pub interface_cyoa: InterfaceCYOA,
+    pub interface_dia: InterfaceDIA,
+    pub loopback_type: LoopbackType,
+    pub bandwidth: u64,
+    pub cir: u64,
+    pub mtu: u16,
+    pub routing_mode: RoutingMode,
+    pub vlan_id: u16,
+    pub ip_net: NetworkV4,
+    pub node_segment_idx: u16,
+    pub user_tunnel_endpoint: bool,
+    pub flex_algo_node_segments: Vec<crate::state::topology::FlexAlgoNodeSegment>,
+}
+
+impl NewInterface {
+    fn serialize_body<W: borsh::io::Write>(&self, w: &mut W) -> borsh::io::Result<()> {
+        self.status.serialize(w)?;
+        self.name.serialize(w)?;
+        self.interface_type.serialize(w)?;
+        self.interface_cyoa.serialize(w)?;
+        self.interface_dia.serialize(w)?;
+        self.loopback_type.serialize(w)?;
+        self.bandwidth.serialize(w)?;
+        self.cir.serialize(w)?;
+        self.mtu.serialize(w)?;
+        self.routing_mode.serialize(w)?;
+        self.vlan_id.serialize(w)?;
+        self.ip_net.serialize(w)?;
+        self.node_segment_idx.serialize(w)?;
+        self.user_tunnel_endpoint.serialize(w)?;
+        self.flex_algo_node_segments.serialize(w)?;
+        Ok(())
+    }
+
+    /// Total on-disk byte length, including the 3-byte size+version prefix.
+    /// Returns `Err` if the body would push the total past `u16::MAX`.
+    pub fn compute_on_disk_size(&self) -> Result<u16, ProgramError> {
+        let mut body: Vec<u8> = Vec::new();
+        self.serialize_body(&mut body)
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        let total = 3usize.saturating_add(body.len());
+        if total > u16::MAX as usize {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        Ok(total as u16)
+    }
+}
+
+impl borsh::BorshSerialize for NewInterface {
+    fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
+        let mut body: Vec<u8> = Vec::new();
+        self.serialize_body(&mut body)?;
+
+        let total = 3usize.saturating_add(body.len());
+        if total > u16::MAX as usize {
+            return Err(borsh::io::Error::new(
+                borsh::io::ErrorKind::InvalidData,
+                "NewInterface exceeds u16 size cap",
+            ));
+        }
+
+        (total as u16).serialize(writer)?;
+        CURRENT_INTERFACE_SCHEMA_VERSION.serialize(writer)?;
+        writer.write_all(&body)?;
+        Ok(())
+    }
+}
+
+impl borsh::BorshDeserialize for NewInterface {
+    fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
+        let size: u16 = BorshDeserialize::deserialize_reader(reader)?;
+        let version: u8 = BorshDeserialize::deserialize_reader(reader)?;
+
+        // size includes the 3-byte prefix; body is everything after.
+        let body_len = (size as usize).saturating_sub(3);
+        let mut body = vec![0u8; body_len];
+        reader.read_exact(&mut body)?;
+
+        let mut s: &[u8] = &body;
+        Ok(NewInterface {
+            size,
+            version,
+            status: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+            name: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+            interface_type: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+            interface_cyoa: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+            interface_dia: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+            loopback_type: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+            bandwidth: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+            cir: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+            mtu: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+            routing_mode: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+            vlan_id: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+            ip_net: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+            node_segment_idx: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+            user_tunnel_endpoint: {
+                let v: u8 = BorshDeserialize::deserialize(&mut s).unwrap_or_default();
+                v != 0
+            },
+            flex_algo_node_segments: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
+        })
+    }
+}
+
+impl Default for NewInterface {
+    fn default() -> Self {
+        let mut iface = Self {
+            size: 0,
+            version: CURRENT_INTERFACE_SCHEMA_VERSION,
+            status: InterfaceStatus::Pending,
+            name: String::default(),
+            interface_type: InterfaceType::Invalid,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            bandwidth: 0,
+            cir: 0,
+            mtu: INTERFACE_MTU,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            ip_net: NetworkV4::default(),
+            node_segment_idx: 0,
+            user_tunnel_endpoint: false,
+            flex_algo_node_segments: vec![],
+        };
+        iface.size = iface.compute_on_disk_size().unwrap_or(0);
+        iface
+    }
+}
+
+impl TryFrom<&InterfaceV1> for NewInterface {
+    type Error = ProgramError;
+
+    fn try_from(v1: &InterfaceV1) -> Result<Self, Self::Error> {
+        let v2: InterfaceV2 = v1.try_into()?;
+        (&v2).try_into()
+    }
+}
+
+impl TryFrom<&InterfaceV2> for NewInterface {
+    type Error = ProgramError;
+
+    fn try_from(v2: &InterfaceV2) -> Result<Self, Self::Error> {
+        let mut iface = NewInterface {
+            size: 0,
+            version: CURRENT_INTERFACE_SCHEMA_VERSION,
+            status: v2.status,
+            name: v2.name.clone(),
+            interface_type: v2.interface_type,
+            interface_cyoa: v2.interface_cyoa,
+            interface_dia: v2.interface_dia,
+            loopback_type: v2.loopback_type,
+            bandwidth: v2.bandwidth,
+            cir: v2.cir,
+            mtu: v2.mtu,
+            routing_mode: v2.routing_mode,
+            vlan_id: v2.vlan_id,
+            ip_net: v2.ip_net,
+            node_segment_idx: v2.node_segment_idx,
+            user_tunnel_endpoint: v2.user_tunnel_endpoint,
+            flex_algo_node_segments: vec![],
+        };
+        iface.size = iface.compute_on_disk_size()?;
+        Ok(iface)
+    }
+}
+
+impl From<&NewInterface> for InterfaceV2 {
+    fn from(n: &NewInterface) -> Self {
+        // V2-on-disk projection drops flex_algo_node_segments per #3653.
+        InterfaceV2 {
+            status: n.status,
+            name: n.name.clone(),
+            interface_type: n.interface_type,
+            interface_cyoa: n.interface_cyoa,
+            interface_dia: n.interface_dia,
+            loopback_type: n.loopback_type,
+            bandwidth: n.bandwidth,
+            cir: n.cir,
+            mtu: n.mtu,
+            routing_mode: n.routing_mode,
+            vlan_id: n.vlan_id,
+            ip_net: n.ip_net,
+            node_segment_idx: n.node_segment_idx,
+            user_tunnel_endpoint: n.user_tunnel_endpoint,
+        }
+    }
+}
+
+impl Validate for NewInterface {
+    fn validate(&self) -> Result<(), DoubleZeroError> {
+        if self.status == InterfaceStatus::Deleting {
+            return Ok(());
+        }
+
+        validate_iface(self.name.as_str()).map_err(|_| DoubleZeroError::InvalidInterfaceName)?;
+
+        if self.vlan_id > 4094 {
+            msg!("Invalid VLAN ID: {}", self.vlan_id);
+            return Err(DoubleZeroError::InvalidVlanId);
+        }
+
+        if self.interface_cyoa != InterfaceCYOA::None
+            && self.interface_type != InterfaceType::Physical
+        {
+            msg!(
+                "CYOA can only be set on physical interfaces, not {:?}",
+                self.interface_type
+            );
+            return Err(DoubleZeroError::CyoaRequiresPhysical);
+        }
+
+        // NOTE: CYOA ip_net check is enforced at the handler level (create.rs/update.rs)
+        // so legacy CYOA interfaces without ip_net don't block other operations.
+
+        if self.ip_net != NetworkV4::default()
+            && self.interface_cyoa == InterfaceCYOA::None
+            && self.interface_dia == InterfaceDIA::None
+            && !self.ip_net.ip().is_private()
+            && !self.ip_net.ip().is_link_local()
+            && !(self.interface_type == InterfaceType::Loopback && self.user_tunnel_endpoint)
+        {
+            msg!("Invalid interface IP: {}", self.ip_net);
+            return Err(DoubleZeroError::InvalidInterfaceIp);
+        }
+
+        Ok(())
+    }
+}
+
 #[test]
 fn test_interface_version() {
     let iface = InterfaceV1 {
@@ -924,5 +1168,313 @@ mod test_interface_validate {
         // Verify the serialization
         assert_eq!(mtu, 9000);
         assert_eq!(bytes[0], 3); // V3 discriminant
+    }
+}
+
+#[cfg(test)]
+mod test_new_interface {
+    use super::*;
+    use crate::state::topology::FlexAlgoNodeSegment;
+    use solana_program::pubkey::Pubkey;
+
+    fn sample_new_interface() -> NewInterface {
+        let mut iface = NewInterface {
+            size: 0,
+            version: CURRENT_INTERFACE_SCHEMA_VERSION,
+            status: InterfaceStatus::Activated,
+            name: "Loopback0".to_string(),
+            interface_type: InterfaceType::Loopback,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::Vpnv4,
+            bandwidth: 1_000_000_000,
+            cir: 500_000_000,
+            mtu: 9000,
+            routing_mode: RoutingMode::BGP,
+            vlan_id: 100,
+            ip_net: "10.0.0.0/24".parse().unwrap(),
+            node_segment_idx: 200,
+            user_tunnel_endpoint: true,
+            flex_algo_node_segments: vec![FlexAlgoNodeSegment {
+                topology: Pubkey::new_unique(),
+                node_segment_idx: 7,
+            }],
+        };
+        iface.size = iface.compute_on_disk_size().unwrap();
+        iface
+    }
+
+    #[test]
+    fn test_new_interface_size_roundtrip() {
+        let iface = sample_new_interface();
+        let bytes = borsh::to_vec(&iface).unwrap();
+        assert_eq!(bytes.len(), iface.size as usize);
+
+        let decoded: NewInterface = borsh::from_slice(&bytes).unwrap();
+        assert_eq!(decoded, iface);
+    }
+
+    #[test]
+    fn test_new_interface_default_size_stamped() {
+        let iface = NewInterface::default();
+        assert_eq!(iface.version, CURRENT_INTERFACE_SCHEMA_VERSION);
+        let bytes = borsh::to_vec(&iface).unwrap();
+        assert_eq!(bytes.len(), iface.size as usize);
+    }
+
+    #[test]
+    fn test_new_interface_forward_compat_skip() {
+        // Forge two consecutive elements: a synthetic future v5 (= v4 body + 7 trailing
+        // junk bytes), followed by a normal v4. The deserializer must read both, advancing
+        // the outer reader past the junk so the second element parses cleanly.
+        let normal = sample_new_interface();
+        let normal_bytes = borsh::to_vec(&normal).unwrap();
+
+        // Build the v5 element by hand: v4 body identical to `normal`, but bumped version
+        // and size, with 7 junk bytes appended.
+        let v4_body = &normal_bytes[3..]; // strip the size+version prefix
+        let extra: [u8; 7] = [0xAA; 7];
+        let total_v5 = 3 + v4_body.len() + extra.len();
+        assert!(total_v5 <= u16::MAX as usize);
+        let mut v5_bytes = Vec::with_capacity(total_v5);
+        v5_bytes.extend_from_slice(&(total_v5 as u16).to_le_bytes());
+        v5_bytes.push(5); // version
+        v5_bytes.extend_from_slice(v4_body);
+        v5_bytes.extend_from_slice(&extra);
+
+        let mut concat = Vec::new();
+        concat.extend_from_slice(&v5_bytes);
+        concat.extend_from_slice(&normal_bytes);
+
+        let mut reader: &[u8] = &concat;
+        let first = <NewInterface as BorshDeserialize>::deserialize_reader(&mut reader).unwrap();
+        let second = <NewInterface as BorshDeserialize>::deserialize_reader(&mut reader).unwrap();
+        assert!(reader.is_empty(), "reader should be fully consumed");
+
+        // First element: known fields decode identically to `normal`; size/version reflect
+        // the wire prefix (v5, larger size).
+        assert_eq!(first.version, 5);
+        assert_eq!(first.size as usize, total_v5);
+        assert_eq!(first.name, normal.name);
+        assert_eq!(
+            first.flex_algo_node_segments,
+            normal.flex_algo_node_segments
+        );
+
+        // Second element: full v4 round-trip.
+        assert_eq!(second, normal);
+    }
+
+    #[test]
+    fn test_new_interface_size_overflow_serialize_errors() {
+        let mut iface = sample_new_interface();
+        iface.name = "x".repeat(70_000);
+        let err = borsh::to_vec(&iface).unwrap_err();
+        assert!(
+            err.to_string().contains("u16 size cap"),
+            "expected size cap error, got: {err}"
+        );
+        assert!(iface.compute_on_disk_size().is_err());
+    }
+
+    #[test]
+    fn test_v1_to_new_interface_conversion() {
+        let v1 = InterfaceV1 {
+            status: InterfaceStatus::Activated,
+            name: "Loopback0".to_string(),
+            interface_type: InterfaceType::Loopback,
+            loopback_type: LoopbackType::Ipv4,
+            vlan_id: 100,
+            ip_net: "10.0.0.0/24".parse().unwrap(),
+            node_segment_idx: 200,
+            user_tunnel_endpoint: true,
+        };
+        let n: NewInterface = (&v1).try_into().unwrap();
+
+        assert_eq!(n.version, CURRENT_INTERFACE_SCHEMA_VERSION);
+        assert_eq!(n.status, v1.status);
+        assert_eq!(n.name, v1.name);
+        assert_eq!(n.interface_type, v1.interface_type);
+        assert_eq!(n.loopback_type, v1.loopback_type);
+        assert_eq!(n.vlan_id, v1.vlan_id);
+        assert_eq!(n.ip_net, v1.ip_net);
+        assert_eq!(n.node_segment_idx, v1.node_segment_idx);
+        assert_eq!(n.user_tunnel_endpoint, v1.user_tunnel_endpoint);
+        // V1->V2 promotion defaults
+        assert_eq!(n.interface_cyoa, InterfaceCYOA::None);
+        assert_eq!(n.interface_dia, InterfaceDIA::None);
+        assert_eq!(n.bandwidth, 0);
+        assert_eq!(n.cir, 0);
+        assert_eq!(n.mtu, INTERFACE_MTU);
+        assert_eq!(n.routing_mode, RoutingMode::Static);
+        assert!(n.flex_algo_node_segments.is_empty());
+        // size is stamped and matches actual on-disk length.
+        let bytes = borsh::to_vec(&n).unwrap();
+        assert_eq!(bytes.len(), n.size as usize);
+    }
+
+    #[test]
+    fn test_v2_to_new_interface_conversion() {
+        let v2 = InterfaceV2 {
+            status: InterfaceStatus::Activated,
+            name: "Ethernet1".to_string(),
+            interface_type: InterfaceType::Physical,
+            interface_cyoa: InterfaceCYOA::GREOverDIA,
+            interface_dia: InterfaceDIA::DIA,
+            loopback_type: LoopbackType::None,
+            bandwidth: 1_000,
+            cir: 500,
+            mtu: 1500,
+            routing_mode: RoutingMode::BGP,
+            vlan_id: 42,
+            ip_net: "38.104.127.117/31".parse().unwrap(),
+            node_segment_idx: 7,
+            user_tunnel_endpoint: false,
+        };
+        let n: NewInterface = (&v2).try_into().unwrap();
+
+        assert_eq!(n.version, CURRENT_INTERFACE_SCHEMA_VERSION);
+        assert_eq!(n.status, v2.status);
+        assert_eq!(n.name, v2.name);
+        assert_eq!(n.interface_type, v2.interface_type);
+        assert_eq!(n.interface_cyoa, v2.interface_cyoa);
+        assert_eq!(n.interface_dia, v2.interface_dia);
+        assert_eq!(n.loopback_type, v2.loopback_type);
+        assert_eq!(n.bandwidth, v2.bandwidth);
+        assert_eq!(n.cir, v2.cir);
+        assert_eq!(n.mtu, v2.mtu);
+        assert_eq!(n.routing_mode, v2.routing_mode);
+        assert_eq!(n.vlan_id, v2.vlan_id);
+        assert_eq!(n.ip_net, v2.ip_net);
+        assert_eq!(n.node_segment_idx, v2.node_segment_idx);
+        assert_eq!(n.user_tunnel_endpoint, v2.user_tunnel_endpoint);
+        assert!(n.flex_algo_node_segments.is_empty());
+        let bytes = borsh::to_vec(&n).unwrap();
+        assert_eq!(bytes.len(), n.size as usize);
+    }
+
+    #[test]
+    fn test_new_interface_to_v2_drops_segments() {
+        let n = sample_new_interface();
+        assert!(!n.flex_algo_node_segments.is_empty());
+        let v2: InterfaceV2 = (&n).into();
+        // V2 has no segments field; round-trip back to NewInterface yields empty segments.
+        let back: NewInterface = (&v2).try_into().unwrap();
+        assert!(back.flex_algo_node_segments.is_empty());
+        assert_eq!(back.name, n.name);
+        assert_eq!(back.bandwidth, n.bandwidth);
+    }
+
+    fn base_validate_interface() -> NewInterface {
+        let mut iface = NewInterface {
+            size: 0,
+            version: CURRENT_INTERFACE_SCHEMA_VERSION,
+            status: InterfaceStatus::Activated,
+            name: "Ethernet1".to_string(),
+            interface_type: InterfaceType::Physical,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            bandwidth: 1000,
+            cir: 1000,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 1,
+            ip_net: NetworkV4::default(),
+            node_segment_idx: 0,
+            user_tunnel_endpoint: false,
+            flex_algo_node_segments: vec![],
+        };
+        iface.size = iface.compute_on_disk_size().unwrap();
+        iface
+    }
+
+    #[test]
+    fn validate_valid() {
+        assert!(base_validate_interface().validate().is_ok());
+    }
+
+    #[test]
+    fn validate_invalid_name() {
+        let mut iface = base_validate_interface();
+        iface.name = "".to_string();
+        assert_eq!(
+            iface.validate().unwrap_err(),
+            DoubleZeroError::InvalidInterfaceName
+        );
+    }
+
+    #[test]
+    fn validate_invalid_vlan() {
+        let mut iface = base_validate_interface();
+        iface.vlan_id = 5000;
+        assert_eq!(
+            iface.validate().unwrap_err(),
+            DoubleZeroError::InvalidVlanId
+        );
+    }
+
+    #[test]
+    fn validate_invalid_ip() {
+        let mut iface = base_validate_interface();
+        iface.ip_net = "8.8.8.8/24".parse().unwrap();
+        assert_eq!(
+            iface.validate().unwrap_err(),
+            DoubleZeroError::InvalidInterfaceIp
+        );
+    }
+
+    #[test]
+    fn validate_cyoa_on_loopback_invalid() {
+        let mut iface = base_validate_interface();
+        iface.name = "Loopback100".to_string();
+        iface.interface_type = InterfaceType::Loopback;
+        iface.interface_cyoa = InterfaceCYOA::GREOverDIA;
+        assert_eq!(
+            iface.validate().unwrap_err(),
+            DoubleZeroError::CyoaRequiresPhysical
+        );
+    }
+
+    #[test]
+    fn validate_deleting_bypasses_other_checks() {
+        let mut iface = base_validate_interface();
+        iface.name = "Loopback100".to_string();
+        iface.interface_type = InterfaceType::Loopback;
+        iface.interface_cyoa = InterfaceCYOA::GREOverDIA; // would fail outside Deleting
+        iface.status = InterfaceStatus::Deleting;
+        assert!(iface.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_cyoa_on_physical_valid() {
+        let mut iface = base_validate_interface();
+        iface.interface_type = InterfaceType::Physical;
+        iface.interface_cyoa = InterfaceCYOA::GREOverDIA;
+        iface.ip_net = "38.104.127.117/31".parse().unwrap();
+        assert!(iface.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_public_ip_on_loopback_with_user_tunnel_endpoint() {
+        let mut iface = base_validate_interface();
+        iface.name = "Loopback100".to_string();
+        iface.interface_type = InterfaceType::Loopback;
+        iface.ip_net = "195.219.138.96/32".parse().unwrap();
+        iface.user_tunnel_endpoint = true;
+        assert!(iface.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_public_ip_on_loopback_without_user_tunnel_endpoint() {
+        let mut iface = base_validate_interface();
+        iface.name = "Loopback100".to_string();
+        iface.interface_type = InterfaceType::Loopback;
+        iface.ip_net = "195.219.138.96/32".parse().unwrap();
+        iface.user_tunnel_endpoint = false;
+        assert_eq!(
+            iface.validate().unwrap_err(),
+            DoubleZeroError::InvalidInterfaceIp
+        );
     }
 }

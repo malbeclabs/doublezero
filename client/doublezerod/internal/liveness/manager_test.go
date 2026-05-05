@@ -2189,7 +2189,7 @@ func TestClient_Liveness_Manager_ReconcileRoutes_ReinstallsMissing(t *testing.T)
 	m, reg, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
 		cfg.Netlinker = mock
 		cfg.PassiveMode = true
-		cfg.RouteReconcileInterval = -1 // disable ticker; we call manually
+		cfg.RouteReconcileInterval = time.Hour // disable ticker; we call manually
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
@@ -2233,7 +2233,7 @@ func TestClient_Liveness_Manager_ReconcileRoutes_SkipsPresent(t *testing.T) {
 	m, _, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
 		cfg.Netlinker = mock
 		cfg.PassiveMode = true
-		cfg.RouteReconcileInterval = -1
+		cfg.RouteReconcileInterval = time.Hour
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
@@ -2271,7 +2271,7 @@ func TestClient_Liveness_Manager_ReconcileRoutes_SkipsUninstalled(t *testing.T) 
 	m, _, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
 		cfg.Netlinker = mock
 		cfg.PassiveMode = false
-		cfg.RouteReconcileInterval = -1
+		cfg.RouteReconcileInterval = time.Hour
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })

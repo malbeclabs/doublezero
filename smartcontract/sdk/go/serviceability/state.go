@@ -412,8 +412,9 @@ type Interface struct {
 	NodeSegmentIdx     uint16
 	UserTunnelEndpoint bool
 	// FlexAlgoNodeSegments holds flex-algo node segment assignments for this interface (RFC-18).
-	// Present in all V2 accounts after MigrateDeviceInterfaces has been run (empty vec for
-	// interfaces not yet assigned to any topology). Nil for V1 interfaces.
+	// Only populated when reading a discriminant-3 (V3) interface; the on-chain Device serializer
+	// now projects the legacy interfaces slot as V2 (per #3653) and surfaces segments through the
+	// trailing new_interfaces vec on Device, which this Go SDK does not yet read. Nil otherwise.
 	FlexAlgoNodeSegments []FlexAlgoNodeSegment `json:",omitempty"`
 }
 

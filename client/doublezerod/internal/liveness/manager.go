@@ -159,6 +159,9 @@ func (c *ManagerConfig) Validate() error {
 	if c.ClientVersion == "" {
 		return errors.New("clientVersion is required")
 	}
+	if c.RouteReconcileInterval < 0 {
+		return errors.New("routeReconcileInterval must be non-negative")
+	}
 	if c.RouteReconcileInterval == 0 {
 		c.RouteReconcileInterval = defaultRouteReconcileInterval
 	}
@@ -305,6 +308,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig, cr *routing.ConfiguredR
 	// Route reconciliation goroutine: periodically scans the kernel routing
 	// table for missing routes and reinstalls them.
 	if cfg.RouteReconcileInterval > 0 {
+		log.Info("liveness: route reconciliation enabled", "interval", cfg.RouteReconcileInterval.String())
 		m.wg.Add(1)
 		go func() {
 			defer m.wg.Done()
@@ -936,27 +940,39 @@ func (m *manager) reconcileRoutes() {
 		return
 	}
 
-	// Build a lookup set keyed by (table, dst, nexthop) for fast matching.
+	// Build a lookup set keyed by (table, dst, nexthop, src) for fast matching.
 	type kernelKey struct {
 		Table   int
 		DstIP   string
 		NextHop string
+		SrcIP   string
 	}
 	kernelSet := make(map[kernelKey]struct{}, len(kernelRoutes))
 	for _, kr := range kernelRoutes {
-		var dstIP, nhIP string
+		var dstIP, nhIP, srcIP string
 		if kr.Dst != nil && kr.Dst.IP != nil && kr.Dst.IP.To4() != nil {
 			dstIP = kr.Dst.IP.To4().String()
 		}
 		if kr.NextHop != nil && kr.NextHop.To4() != nil {
 			nhIP = kr.NextHop.To4().String()
 		}
-		kernelSet[kernelKey{Table: kr.Table, DstIP: dstIP, NextHop: nhIP}] = struct{}{}
+		if kr.Src != nil && kr.Src.To4() != nil {
+			srcIP = kr.Src.To4().String()
+		}
+		kernelSet[kernelKey{Table: kr.Table, DstIP: dstIP, NextHop: nhIP, SrcIP: srcIP}] = struct{}{}
 	}
 
 	for _, ir := range toCheck {
-		kk := kernelKey{Table: ir.route.Table, DstIP: ir.rk.DstPrefix, NextHop: ir.rk.NextHop}
+		kk := kernelKey{Table: ir.route.Table, DstIP: ir.rk.DstPrefix, NextHop: ir.rk.NextHop, SrcIP: ir.rk.SrcIP}
 		if _, present := kernelSet[kk]; present {
+			continue
+		}
+		// Re-check under lock: the route may have been intentionally withdrawn
+		// between our snapshot and now (e.g. by onSessionDown).
+		m.mu.Lock()
+		stillInstalled := m.installed[ir.rk]
+		m.mu.Unlock()
+		if !stillInstalled {
 			continue
 		}
 		m.log.Warn("liveness: reinstalling missing route",

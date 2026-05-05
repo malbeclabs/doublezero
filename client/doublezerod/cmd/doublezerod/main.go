@@ -51,7 +51,7 @@ var (
 	routeLivenessMinTxFloor        = flag.Duration("route-liveness-min-tx-floor", defaultRouteLivenessMinTxFloor, "route liveness min tx floor")
 	routeLivenessMaxTxCeil         = flag.Duration("route-liveness-max-tx-ceil", defaultRouteLivenessMaxTxCeil, "route liveness max tx ceil")
 	routeLivenessBackoffMax        = flag.Duration("route-liveness-backoff-max", defaultRouteLivenessBackoffMax, "route liveness backoff max (cap on Down-state probe interval; must be >= route-liveness-min-tx-floor)")
-	routeLivenessReconcileInterval = flag.Duration("route-liveness-reconcile-interval", 30*time.Second, "interval for periodic kernel route reconciliation; 0 disables")
+	routeLivenessReconcileInterval = flag.Duration("route-liveness-reconcile-interval", defaultRouteLivenessReconcileInterval, "interval for periodic kernel route reconciliation; 0 disables")
 	routeLivenessPeerMetrics       = flag.Bool("route-liveness-peer-metrics", false, "enables per peer metrics for route liveness (high cardinality)")
 	routeLivenessDebug             = flag.Bool("route-liveness-debug", false, "enables debug logging for route liveness")
 
@@ -76,7 +76,8 @@ const (
 	defaultRouteLivenessMaxTxCeil  = 3 * time.Second
 	// Matches liveness.defaultBackoffMax so production behavior is unchanged; the
 	// e2e harness overrides this to a small value to avoid the Down-state probe gap.
-	defaultRouteLivenessBackoffMax = 1 * time.Minute
+	defaultRouteLivenessBackoffMax        = 1 * time.Minute
+	defaultRouteLivenessReconcileInterval = 30 * time.Second
 
 	defaultRouteLivenessBindIP = "0.0.0.0"
 )

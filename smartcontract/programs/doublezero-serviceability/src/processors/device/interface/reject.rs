@@ -58,16 +58,17 @@ pub fn process_reject_device_interface(
 
     let mut device: Device = Device::try_from(device_account)?;
 
-    let (idx, mut iface) = device
-        .find_interface_legacy(&value.name)
+    let (idx, iface) = device
+        .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
 
     if iface.status != InterfaceStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
+    let mut iface = iface.clone();
     iface.status = InterfaceStatus::Rejected;
-    device.replace_interface(idx, (&iface).try_into()?);
+    device.replace_interface(idx, iface);
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

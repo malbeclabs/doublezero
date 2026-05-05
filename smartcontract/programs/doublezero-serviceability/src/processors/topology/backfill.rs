@@ -5,9 +5,7 @@ use crate::{
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
-        device::Device,
-        globalstate::GlobalState,
-        interface::{Interface, LoopbackType},
+        device::Device, globalstate::GlobalState, interface::LoopbackType,
         topology::FlexAlgoNodeSegment,
     },
 };
@@ -125,17 +123,15 @@ pub fn process_topology_backfill(
         msg!("BackfillTopology: processing device {}", device_account.key);
         let mut device = Device::try_from(&device_account.data.borrow()[..])?;
         let mut modified = false;
-        // Iterate by index so we can simultaneously read from `new_interfaces`
-        // (the source of truth for `flex_algo_node_segments` post-#3665) and
-        // mirror the change into the legacy `interfaces` vec.
+        // `new_interfaces` is the source of truth for `flex_algo_node_segments`.
+        // The custom Device serializer projects `new_interfaces` to the legacy
+        // on-disk slot as V2, which intentionally drops segments — so we don't
+        // mirror the change into the legacy in-memory vec here.
         for idx in 0..device.new_interfaces.len() {
             let new_iface = &device.new_interfaces[idx];
             if new_iface.loopback_type != LoopbackType::Vpnv4 {
                 continue;
             }
-            // Idempotency check against `new_interfaces` — the legacy V2-projected
-            // slot does not carry segments, so checking it would mis-fire on the
-            // second call.
             if new_iface
                 .flex_algo_node_segments
                 .iter()
@@ -152,23 +148,9 @@ pub fn process_topology_backfill(
                 topology: *topology_key,
                 node_segment_idx,
             };
-            // Push to `new_interfaces` (forward-compat slot — survives the V2
-            // legacy projection) and also to the in-memory legacy `interfaces`
-            // vec (upgraded to V3) so callers reading the in-memory device
-            // before save observe the change.
             device.new_interfaces[idx]
                 .flex_algo_node_segments
-                .push(segment.clone());
-            match &mut device.interfaces[idx] {
-                Interface::V3(v3) => {
-                    v3.flex_algo_node_segments.push(segment);
-                }
-                other => {
-                    let mut upgraded = other.into_v3();
-                    upgraded.flex_algo_node_segments.push(segment);
-                    *other = Interface::V3(upgraded);
-                }
-            }
+                .push(segment);
             modified = true;
             backfilled_count += 1;
         }

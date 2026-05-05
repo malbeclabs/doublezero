@@ -137,7 +137,7 @@ pub fn process_update_device_interface(
     let (idx, _) = device
         .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
-    let mut iface = device.interfaces[idx].into_current_version();
+    let mut iface = device.new_interfaces[idx].clone();
 
     if let Some(loopback_type) = &value.loopback_type {
         if *loopback_type == LoopbackType::None {
@@ -244,12 +244,9 @@ pub fn process_update_device_interface(
         return Err(DoubleZeroError::InvalidMtu.into());
     }
 
-    // until we have release V2 version for interfaces, always convert to v1
-    let updated_interface = iface.to_interface();
+    iface.validate()?;
 
-    updated_interface.validate()?;
-
-    device.replace_interface(idx, (&iface).try_into()?);
+    device.replace_interface(idx, iface);
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

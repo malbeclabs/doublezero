@@ -114,9 +114,9 @@ pub fn process_accept_link(
     }
 
     if !side_z_dev
-        .interfaces
+        .new_interfaces
         .iter()
-        .any(|iface| iface.into_current_version().name == value.side_z_iface_name)
+        .any(|iface| iface.name == value.side_z_iface_name)
     {
         #[cfg(test)]
         msg!("{:?}", side_z_dev);
@@ -152,23 +152,25 @@ pub fn process_accept_link(
         }
 
         let (idx_a, side_a_iface) = side_a_dev
-            .find_interface_legacy(&link.side_a_iface_name)
+            .find_interface(&link.side_a_iface_name)
             .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
+        let mut updated_iface_a = side_a_iface.clone();
 
         let (idx_z, side_z_iface) = side_z_dev
-            .find_interface_legacy(&link.side_z_iface_name)
+            .find_interface(&link.side_z_iface_name)
             .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
+        let mut updated_iface_z = side_z_iface.clone();
 
-        if side_a_iface.status != InterfaceStatus::Unlinked
-            || side_z_iface.status != InterfaceStatus::Unlinked
+        if updated_iface_a.status != InterfaceStatus::Unlinked
+            || updated_iface_z.status != InterfaceStatus::Unlinked
         {
             return Err(DoubleZeroError::InvalidStatus.into());
         }
 
-        if side_a_iface.interface_cyoa != InterfaceCYOA::None
-            || side_a_iface.interface_dia != InterfaceDIA::None
-            || side_z_iface.interface_cyoa != InterfaceCYOA::None
-            || side_z_iface.interface_dia != InterfaceDIA::None
+        if updated_iface_a.interface_cyoa != InterfaceCYOA::None
+            || updated_iface_a.interface_dia != InterfaceDIA::None
+            || updated_iface_z.interface_cyoa != InterfaceCYOA::None
+            || updated_iface_z.interface_dia != InterfaceDIA::None
         {
             return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
         }
@@ -182,21 +184,19 @@ pub fn process_accept_link(
             &globalstate,
         )?;
 
-        let mut updated_iface_a = side_a_iface.clone();
         updated_iface_a.status = InterfaceStatus::Activated;
         if updated_iface_a.ip_net == NetworkV4::default() {
             updated_iface_a.ip_net =
                 NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix()).unwrap();
         }
-        side_a_dev.replace_interface(idx_a, (&updated_iface_a).try_into()?);
+        side_a_dev.replace_interface(idx_a, updated_iface_a);
 
-        let mut updated_iface_z = side_z_iface.clone();
         updated_iface_z.status = InterfaceStatus::Activated;
         if updated_iface_z.ip_net == NetworkV4::default() {
             updated_iface_z.ip_net =
                 NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix()).unwrap();
         }
-        side_z_dev.replace_interface(idx_z, (&updated_iface_z).try_into()?);
+        side_z_dev.replace_interface(idx_z, updated_iface_z);
 
         link.status = LinkStatus::Activated;
         link.check_status_transition();

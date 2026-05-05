@@ -73,9 +73,10 @@ pub fn process_unlink_device_interface(
 
     let mut device: Device = Device::try_from(device_account)?;
 
-    let (idx, mut iface) = device
-        .find_interface_legacy(&value.name)
+    let (idx, iface) = device
+        .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
+    let mut iface = iface.clone();
 
     if iface.status != InterfaceStatus::Activated && iface.status != InterfaceStatus::Pending {
         return Err(DoubleZeroError::InvalidStatus.into());
@@ -111,7 +112,7 @@ pub fn process_unlink_device_interface(
     if iface.interface_type == InterfaceType::Loopback {
         iface.ip_net = NetworkV4::default();
     }
-    device.replace_interface(idx, (&iface).try_into()?);
+    device.replace_interface(idx, iface);
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

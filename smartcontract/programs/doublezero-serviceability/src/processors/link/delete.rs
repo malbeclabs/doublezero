@@ -172,8 +172,7 @@ pub fn process_delete_link(
         let mut side_a_dev = Device::try_from(side_a_account)?;
         let mut side_z_dev = Device::try_from(side_z_account)?;
 
-        if let Ok((idx_a, side_a_iface)) = side_a_dev.find_interface_legacy(&link.side_a_iface_name)
-        {
+        if let Ok((idx_a, side_a_iface)) = side_a_dev.find_interface(&link.side_a_iface_name) {
             let mut updated_iface = side_a_iface.clone();
             updated_iface.status = InterfaceStatus::Unlinked;
             // Preserve user-provided ip_net for CYOA/DIA physical interfaces.
@@ -183,11 +182,10 @@ pub fn process_delete_link(
             if !has_user_ip {
                 updated_iface.ip_net = NetworkV4::default();
             }
-            side_a_dev.replace_interface(idx_a, (&updated_iface).try_into()?);
+            side_a_dev.replace_interface(idx_a, updated_iface);
         }
 
-        if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface_legacy(&link.side_z_iface_name)
-        {
+        if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
             let mut updated_iface = side_z_iface.clone();
             updated_iface.status = InterfaceStatus::Unlinked;
             let has_user_ip = updated_iface.interface_type == InterfaceType::Physical
@@ -196,7 +194,7 @@ pub fn process_delete_link(
             if !has_user_ip {
                 updated_iface.ip_net = NetworkV4::default();
             }
-            side_z_dev.replace_interface(idx_z, (&updated_iface).try_into()?);
+            side_z_dev.replace_interface(idx_z, updated_iface);
         }
 
         // Decrement reference counts

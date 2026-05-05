@@ -14,8 +14,9 @@ use crate::{
         feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         interface::{
-            CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType,
-            LoopbackType, RoutingMode, CYOA_DIA_INTERFACE_MTU, INTERFACE_MTU,
+            InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType,
+            NewInterface, RoutingMode, CURRENT_INTERFACE_SCHEMA_VERSION, CYOA_DIA_INTERFACE_MTU,
+            INTERFACE_MTU,
         },
     },
 };
@@ -224,7 +225,12 @@ pub fn process_create_device_interface(
         }
     }
 
-    device.push_interface(CurrentInterfaceVersion {
+    // size is intentionally left at 0 — the NewInterface serializer derives the
+    // on-disk size fresh from the body bytes and ignores this field. It only
+    // gets populated on deserialize, from the wire prefix.
+    device.push_interface(NewInterface {
+        size: 0,
+        version: CURRENT_INTERFACE_SCHEMA_VERSION,
         status,
         name,
         interface_type,
@@ -239,7 +245,8 @@ pub fn process_create_device_interface(
         ip_net,
         node_segment_idx,
         user_tunnel_endpoint: value.user_tunnel_endpoint,
-    })?;
+        flex_algo_node_segments: vec![],
+    });
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

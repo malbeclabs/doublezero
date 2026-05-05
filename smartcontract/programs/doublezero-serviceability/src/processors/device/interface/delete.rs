@@ -118,10 +118,10 @@ pub fn process_delete_device_interface(
 
     let mut device: Device = Device::try_from(device_account)?;
 
-    let (idx, _) = device
+    let (idx, iface) = device
         .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
-    let iface = device.interfaces[idx].into_current_version();
+    let iface = iface.clone();
 
     if iface.status != InterfaceStatus::Activated && iface.status != InterfaceStatus::Unlinked {
         return Err(DoubleZeroError::InvalidStatus.into());
@@ -178,7 +178,7 @@ pub fn process_delete_device_interface(
         // Legacy path: just mark as Deleting
         let mut iface = iface;
         iface.status = InterfaceStatus::Deleting;
-        device.replace_interface(idx, (&iface).try_into()?);
+        device.replace_interface(idx, iface);
 
         #[cfg(test)]
         msg!("Deleting interface: {} from {:?}", value.name, device);

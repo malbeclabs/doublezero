@@ -13,6 +13,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -25,6 +26,9 @@ const (
 	defaultBackoffMax = 1 * time.Minute
 
 	defaultMaxEvents = 10240
+
+	// Default interval for periodic kernel route reconciliation.
+	defaultRouteReconcileInterval = 30 * time.Second
 )
 
 // Peer identifies a remote endpoint and the local interface context used to reach it.
@@ -92,6 +96,10 @@ type ManagerConfig struct {
 
 	// Client version to advertise to peers in control packets.
 	ClientVersion string
+
+	// RouteReconcileInterval controls how often the manager scans the kernel
+	// routing table for missing routes and reinstalls them. Zero disables.
+	RouteReconcileInterval time.Duration
 }
 
 // Validate fills defaults and enforces constraints for ManagerConfig.
@@ -150,6 +158,9 @@ func (c *ManagerConfig) Validate() error {
 	}
 	if c.ClientVersion == "" {
 		return errors.New("clientVersion is required")
+	}
+	if c.RouteReconcileInterval == 0 {
+		c.RouteReconcileInterval = defaultRouteReconcileInterval
 	}
 	return nil
 }
@@ -290,6 +301,25 @@ func NewManager(ctx context.Context, cfg *ManagerConfig, cr *routing.ConfiguredR
 			cancel()
 		}
 	}()
+
+	// Route reconciliation goroutine: periodically scans the kernel routing
+	// table for missing routes and reinstalls them.
+	if cfg.RouteReconcileInterval > 0 {
+		m.wg.Add(1)
+		go func() {
+			defer m.wg.Done()
+			ticker := time.NewTicker(cfg.RouteReconcileInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-m.ctx.Done():
+					return
+				case <-ticker.C:
+					m.reconcileRoutes()
+				}
+			}
+		}()
+	}
 
 	// If any routes are configured to be excluded, mark then as AdminDown immediately.
 	if m.cr != nil {
@@ -834,7 +864,7 @@ func (m *manager) onSessionDown(sess *Session) {
 	}
 
 	if m.cfg.PassiveMode {
-		m.log.Debug("liveness: session down (global passive; keeping route)",
+		m.log.Info("liveness: session down (global passive; keeping route)",
 			"peer", peer.String(),
 			"route", snap.Route.String(),
 			"downSince", snap.DownSince.UTC().String(),
@@ -845,7 +875,7 @@ func (m *manager) onSessionDown(sess *Session) {
 	}
 
 	if effectivelyPassive {
-		m.log.Debug("liveness: session down (peer passive; keeping route)",
+		m.log.Info("liveness: session down (peer passive; keeping route)",
 			"peer", peer.String(),
 			"route", snap.Route.String(),
 			"downSince", snap.DownSince.UTC().String(),
@@ -873,6 +903,73 @@ func (m *manager) onSessionDown(sess *Session) {
 		"downReason", snap.LastDownReason.String(),
 		"peerClientVersion", snap.PeerClientVersion.String(),
 	)
+}
+
+// reconcileRoutes scans the kernel routing table for routes that should be
+// installed but are missing, and reinstalls them. This mitigates routes being
+// removed by external processes.
+func (m *manager) reconcileRoutes() {
+	// Snapshot installed and desired under lock.
+	type installedRoute struct {
+		rk    RouteKey
+		route *Route
+	}
+	m.mu.Lock()
+	var toCheck []installedRoute
+	for rk, ok := range m.installed {
+		if !ok {
+			continue
+		}
+		if r, exists := m.desired[rk]; exists {
+			toCheck = append(toCheck, installedRoute{rk: rk, route: r})
+		}
+	}
+	m.mu.Unlock()
+
+	if len(toCheck) == 0 {
+		return
+	}
+
+	kernelRoutes, err := m.cfg.Netlinker.RouteByProtocol(unix.RTPROT_BGP)
+	if err != nil {
+		m.log.Error("liveness: error fetching kernel routes for reconciliation", "error", err)
+		return
+	}
+
+	// Build a lookup set keyed by (table, dst, nexthop) for fast matching.
+	type kernelKey struct {
+		Table   int
+		DstIP   string
+		NextHop string
+	}
+	kernelSet := make(map[kernelKey]struct{}, len(kernelRoutes))
+	for _, kr := range kernelRoutes {
+		var dstIP, nhIP string
+		if kr.Dst != nil && kr.Dst.IP != nil && kr.Dst.IP.To4() != nil {
+			dstIP = kr.Dst.IP.To4().String()
+		}
+		if kr.NextHop != nil && kr.NextHop.To4() != nil {
+			nhIP = kr.NextHop.To4().String()
+		}
+		kernelSet[kernelKey{Table: kr.Table, DstIP: dstIP, NextHop: nhIP}] = struct{}{}
+	}
+
+	for _, ir := range toCheck {
+		kk := kernelKey{Table: ir.route.Table, DstIP: ir.rk.DstPrefix, NextHop: ir.rk.NextHop}
+		if _, present := kernelSet[kk]; present {
+			continue
+		}
+		m.log.Warn("liveness: reinstalling missing route",
+			"route", ir.route.String(),
+			"iface", ir.rk.Interface,
+		)
+		if err := m.cfg.Netlinker.RouteAdd(&ir.route.Route); err != nil {
+			m.log.Error("liveness: error reinstalling route",
+				"error", err, "route", ir.route.String())
+		} else {
+			m.metrics.routeReinstall(ir.rk.Interface, ir.rk.SrcIP)
+		}
+	}
 }
 
 // isPeerEffectivelyPassive returns true when this session should not have its

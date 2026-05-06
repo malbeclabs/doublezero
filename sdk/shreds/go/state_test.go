@@ -89,6 +89,8 @@ func TestClientSeatDeserialization(t *testing.T) {
 	binary.LittleEndian.PutUint64(data[40:], 1)          // Flags = HAS_PRICE_OVERRIDE
 	binary.LittleEndian.PutUint32(data[136:], 3)         // EscrowCount
 	binary.LittleEndian.PutUint16(data[140:], 500)       // OverrideUSDCPriceDollars
+	binary.LittleEndian.PutUint64(data[144:], 432_017)   // SubscriptionStartSlot
+	binary.LittleEndian.PutUint16(data[152:], 250)       // LastUSDCPriceDollars
 
 	var seat ClientSeat
 	if err := binary.Read(bytes.NewReader(data), binary.LittleEndian, &seat); err != nil {
@@ -111,6 +113,12 @@ func TestClientSeatDeserialization(t *testing.T) {
 	}
 	if seat.OverrideUSDCPriceDollars != 500 {
 		t.Errorf("OverrideUSDCPriceDollars = %d, want 500", seat.OverrideUSDCPriceDollars)
+	}
+	if seat.SubscriptionStartSlot != 432_017 {
+		t.Errorf("SubscriptionStartSlot = %d, want 432017", seat.SubscriptionStartSlot)
+	}
+	if seat.LastUSDCPriceDollars != 250 {
+		t.Errorf("LastUSDCPriceDollars = %d, want 250", seat.LastUSDCPriceDollars)
 	}
 }
 

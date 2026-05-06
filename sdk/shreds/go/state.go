@@ -131,8 +131,19 @@ type ClientSeat struct {
 	FundingAuthorityKey      solana.PublicKey
 	EscrowCount              uint32
 	OverrideUSDCPriceDollars uint16
-	Padding1                 [26]byte
-	Gap                      [2][32]byte // StorageGap<2>
+	Padding1                 [2]byte
+	// SubscriptionStartSlot is the slot at which this seat's current subscription
+	// started. For instant-allocated seats this is the clock slot at allocation
+	// time; for batch-allocated seats it is the first slot of the subscription
+	// epoch. Zeroed when the seat is no longer active.
+	SubscriptionStartSlot uint64
+	// LastUSDCPriceDollars is the USDC price in whole dollars that was last
+	// charged for this seat (set during batch or instant allocation). Zeroed
+	// when the seat is deactivated. Used as the basis for prorated refunds so
+	// that later override-price changes do not affect the refund amount.
+	LastUSDCPriceDollars uint16
+	Padding2             [14]byte
+	Gap                  [2][32]byte // StorageGap<2>
 }
 
 // HasPriceOverride returns true if a flat price override is active.

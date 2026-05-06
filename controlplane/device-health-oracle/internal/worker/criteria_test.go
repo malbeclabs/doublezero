@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/assert"
@@ -168,4 +169,116 @@ func TestLinkHealthEvaluator_CriterionFails_BlocksAdvancement(t *testing.T) {
 	link := serviceability.Link{LinkHealth: serviceability.LinkHealthPending}
 	result := eval.Evaluate(context.Background(), link)
 	assert.Equal(t, serviceability.LinkHealthPending, result, "should not advance when criterion fails")
+}
+
+func TestLinkHealthEvaluator_ReadyForService_ImpairmentFails_DemotesToImpaired(t *testing.T) {
+	failing := &mockLinkCriterion{name: "impair", result: false, reason: "isis down"}
+	eval := &LinkHealthEvaluator{
+		ImpairmentCriteria: []LinkCriterion{failing},
+		Log:                testLogger(),
+	}
+
+	link := serviceability.Link{LinkHealth: serviceability.LinkHealthReadyForService}
+	result := eval.Evaluate(context.Background(), link)
+	assert.Equal(t, serviceability.LinkHealthImpaired, result, "RFS link with failing impairment criterion should demote")
+}
+
+func TestLinkHealthEvaluator_ReadyForService_ImpairmentPasses_Stays(t *testing.T) {
+	passing := &mockLinkCriterion{name: "impair", result: true}
+	eval := &LinkHealthEvaluator{
+		ImpairmentCriteria: []LinkCriterion{passing},
+		Log:                testLogger(),
+	}
+
+	link := serviceability.Link{LinkHealth: serviceability.LinkHealthReadyForService}
+	result := eval.Evaluate(context.Background(), link)
+	assert.Equal(t, serviceability.LinkHealthReadyForService, result)
+}
+
+func TestLinkHealthEvaluator_ReadyForService_NoImpairmentCriteria_Stays(t *testing.T) {
+	// Backwards compat: deployments without ClickHouse have no impairment criteria
+	// and must not see any RFS demotion path.
+	eval := &LinkHealthEvaluator{Log: testLogger()}
+
+	link := serviceability.Link{LinkHealth: serviceability.LinkHealthReadyForService}
+	result := eval.Evaluate(context.Background(), link)
+	assert.Equal(t, serviceability.LinkHealthReadyForService, result)
+}
+
+func TestLinkHealthEvaluator_Impaired_RecoveryPasses_PromotesToRFS(t *testing.T) {
+	passing := &mockLinkCriterion{name: "recovery", result: true}
+	eval := &LinkHealthEvaluator{
+		RecoveryCriteria: []LinkCriterion{passing},
+		Log:              testLogger(),
+	}
+
+	link := serviceability.Link{LinkHealth: serviceability.LinkHealthImpaired}
+	result := eval.Evaluate(context.Background(), link)
+	assert.Equal(t, serviceability.LinkHealthReadyForService, result)
+}
+
+func TestLinkHealthEvaluator_Impaired_RecoveryFails_Stays(t *testing.T) {
+	failing := &mockLinkCriterion{name: "recovery", result: false, reason: "still bad"}
+	eval := &LinkHealthEvaluator{
+		RecoveryCriteria: []LinkCriterion{failing},
+		Log:              testLogger(),
+	}
+
+	link := serviceability.Link{LinkHealth: serviceability.LinkHealthImpaired}
+	result := eval.Evaluate(context.Background(), link)
+	assert.Equal(t, serviceability.LinkHealthImpaired, result)
+}
+
+func TestLinkHealthEvaluator_Impaired_NoRecoveryCriteria_Stays(t *testing.T) {
+	eval := &LinkHealthEvaluator{Log: testLogger()}
+
+	link := serviceability.Link{LinkHealth: serviceability.LinkHealthImpaired}
+	result := eval.Evaluate(context.Background(), link)
+	assert.Equal(t, serviceability.LinkHealthImpaired, result)
+}
+
+func TestLinkHealthEvaluator_Impaired_MixedRecovery_AnyFailKeepsImpaired(t *testing.T) {
+	passing := &mockLinkCriterion{name: "recovery_pass", result: true}
+	failing := &mockLinkCriterion{name: "recovery_fail", result: false, reason: "nope"}
+	eval := &LinkHealthEvaluator{
+		RecoveryCriteria: []LinkCriterion{passing, failing},
+		Log:              testLogger(),
+	}
+
+	link := serviceability.Link{LinkHealth: serviceability.LinkHealthImpaired}
+	result := eval.Evaluate(context.Background(), link)
+	assert.Equal(t, serviceability.LinkHealthImpaired, result)
+}
+
+func TestLinkBurnIn_ExtractsDrainedWindow(t *testing.T) {
+	now := time.Now()
+	drainedStart := now.Add(-30 * time.Minute)
+	ctx := ContextWithBurnInTimes(context.Background(), BurnInTimes{
+		ProvisioningStart: now.Add(-20 * time.Hour),
+		DrainedStart:      drainedStart,
+		Now:               now,
+	})
+
+	start, end, expectedMinutes, ok := LinkBurnIn(ctx)
+	assert.True(t, ok)
+	assert.Equal(t, drainedStart, start)
+	assert.Equal(t, now, end)
+	assert.Equal(t, int64(30), expectedMinutes)
+}
+
+func TestLinkBurnIn_NoContextValues(t *testing.T) {
+	_, _, _, ok := LinkBurnIn(context.Background())
+	assert.False(t, ok)
+}
+
+func TestLinkBurnIn_ZeroLengthWindow(t *testing.T) {
+	now := time.Now()
+	ctx := ContextWithBurnInTimes(context.Background(), BurnInTimes{
+		DrainedStart: now,
+		Now:          now,
+	})
+
+	_, _, expectedMinutes, ok := LinkBurnIn(ctx)
+	assert.True(t, ok)
+	assert.Equal(t, int64(0), expectedMinutes)
 }

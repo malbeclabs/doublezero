@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- DeviceHealthOracle
+  - Detect impaired links from the `link_rollup_5m` ClickHouse table (`isis_down=true` or `a_loss_pct`/`z_loss_pct` above a configurable threshold) and write `LinkHealth = Impaired` onchain. Recover to `ReadyForService` only after every bucket in the recovery window (reuses `--drained-slot-count`) is clean — this asymmetry surfaces real impairment quickly while preventing borderline links from flapping. New flag `--link-loss-threshold` (default `5.0`). `LinkHealth` is reported as a signal only — the serviceability program does not gate `link.status` on it ([#2652](https://github.com/malbeclabs/doublezero/issues/2652))
 - Smartcontract
   - Migrate read callers in the CLI, sentinel, client, controlplane admin, and Rust SDK topology helper to read interfaces from `Device::new_interfaces` instead of the legacy `interfaces` enum vec, and adopt the `Device::find_interface` signature that returns `&NewInterface`. The legacy `interfaces` slot is still written on-disk via the per-write V2 projection from #3667; this PR only migrates reads. The temporary `Device::find_interface_legacy` helper is retained for the smartcontract program processors, which migrate in a later issue. Activator is intentionally excluded — it is deprecated ([#3659](https://github.com/malbeclabs/doublezero/issues/3659))
 - Activator

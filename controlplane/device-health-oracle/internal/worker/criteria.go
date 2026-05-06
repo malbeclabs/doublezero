@@ -187,8 +187,10 @@ func (e *LinkHealthEvaluator) checkAllLink(ctx context.Context, link serviceabil
 				"code", link.Code,
 				"criterion", c.Name(),
 				"reason", reason)
+			MetricCriterionResults.WithLabelValues(c.Name(), "fail").Inc()
 			return false
 		}
+		MetricCriterionResults.WithLabelValues(c.Name(), "pass").Inc()
 	}
 	return true
 }

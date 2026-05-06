@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -56,6 +57,14 @@ func main() {
 	if *showVersion {
 		fmt.Printf("version: %s, commit: %s, date: %s\n", version, commit, date)
 		os.Exit(0)
+	}
+
+	// Reject obviously broken thresholds early. A negative or NaN threshold would
+	// silently flag every link as impaired (or never), triggering an onchain
+	// write storm or hiding real failures — better to fail fast at startup.
+	if math.IsNaN(*linkLossThreshold) || math.IsInf(*linkLossThreshold, 0) || *linkLossThreshold < 0 || *linkLossThreshold > 100 {
+		fmt.Fprintf(os.Stderr, "invalid --link-loss-threshold %v: must be in [0, 100]\n", *linkLossThreshold)
+		os.Exit(1)
 	}
 
 	logLevel := slog.LevelInfo

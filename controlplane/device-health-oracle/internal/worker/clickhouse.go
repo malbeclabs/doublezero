@@ -108,27 +108,49 @@ func (c *ClickHouseClient) InterfaceCountersCoverage(ctx context.Context, device
 	return int64(minutesWithRecords), nil
 }
 
+// LinkHealthRecentResult is the most recent rollup bucket's health fields plus
+// the bucket timestamp, returned by LinkHealthChecker.LinkHealthRecent. The
+// bucket timestamp lets callers enforce a recency floor (a stale bucket means
+// the telemetry pipeline is broken — neither demote nor recover on stale data).
+type LinkHealthRecentResult struct {
+	BucketTs time.Time
+	IsisDown bool
+	ALossPct float64
+	ZLossPct float64
+}
+
+// LinkHealthWindowResult summarises a recovery-window check. AllClean is true
+// when every distinct bucket (deduplicated by latest ingested_at) is clean.
+// Bad and Total are exposed for operator diagnostics.
+type LinkHealthWindowResult struct {
+	Bad      uint64
+	Total    uint64
+	AllClean bool
+}
+
 // LinkHealthChecker queries ClickHouse for link health rollup records.
 type LinkHealthChecker interface {
 	// LinkHealthRecent returns the most recent non-provisioning link_rollup_5m
 	// bucket for the given link. Multiple rows for the same bucket are
 	// disambiguated by ingested_at (most recently ingested wins). Returns
 	// found=false when there is no data for the link.
-	LinkHealthRecent(ctx context.Context, linkPubkey string) (isisDown bool, aLossPct, zLossPct float64, found bool, err error)
+	LinkHealthRecent(ctx context.Context, linkPubkey string) (result LinkHealthRecentResult, found bool, err error)
 
-	// LinkHealthWindowAllClean returns true if every non-provisioning bucket in
-	// [start, end] is clean (isis_down=false AND a_loss_pct <= threshold AND
-	// z_loss_pct <= threshold). The threshold filter is pushed into the query
-	// so the result is a single bool and we do not stream rows. Returns
-	// found=false when there are no buckets in the window for this link.
-	LinkHealthWindowAllClean(ctx context.Context, linkPubkey string, start, end time.Time, lossThreshold float64) (allClean bool, found bool, err error)
+	// LinkHealthWindowAllClean returns true if every distinct non-provisioning
+	// bucket in [start, end] is clean (isis_down=false AND a_loss_pct <=
+	// threshold AND z_loss_pct <= threshold). Late-arriving rows for the same
+	// bucket are deduplicated by ingested_at so a corrected re-write doesn't
+	// keep a link Impaired even after every distinct bucket reads as clean.
+	// Returns found=false when there are no buckets in the window for this link.
+	LinkHealthWindowAllClean(ctx context.Context, linkPubkey string, start, end time.Time, lossThreshold float64) (result LinkHealthWindowResult, found bool, err error)
 }
 
-// LinkHealthRecent returns the latest closed bucket's health fields for the
-// given link, ignoring buckets where provisioning=true.
-func (c *ClickHouseClient) LinkHealthRecent(ctx context.Context, linkPubkey string) (bool, float64, float64, bool, error) {
+// LinkHealthRecent returns the latest bucket's health fields for the given
+// link, ignoring buckets where provisioning=true. Multiple rows for the same
+// bucket are disambiguated by selecting the most recently ingested row.
+func (c *ClickHouseClient) LinkHealthRecent(ctx context.Context, linkPubkey string) (LinkHealthRecentResult, bool, error) {
 	query := fmt.Sprintf(
-		`SELECT isis_down, a_loss_pct, z_loss_pct
+		`SELECT bucket_ts, isis_down, a_loss_pct, z_loss_pct
 		 FROM "%s".link_rollup_5m
 		 WHERE link_pk = ?
 		   AND provisioning = false
@@ -137,46 +159,52 @@ func (c *ClickHouseClient) LinkHealthRecent(ctx context.Context, linkPubkey stri
 		c.db,
 	)
 
-	var (
-		isisDown bool
-		aLossPct float64
-		zLossPct float64
-	)
-	err := c.conn.QueryRow(ctx, query, linkPubkey).Scan(&isisDown, &aLossPct, &zLossPct)
+	var r LinkHealthRecentResult
+	err := c.conn.QueryRow(ctx, query, linkPubkey).Scan(&r.BucketTs, &r.IsisDown, &r.ALossPct, &r.ZLossPct)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return false, 0, 0, false, nil
+			return LinkHealthRecentResult{}, false, nil
 		}
-		return false, 0, 0, false, fmt.Errorf("clickhouse query: %w", err)
+		return LinkHealthRecentResult{}, false, fmt.Errorf("clickhouse query: %w", err)
 	}
-	return isisDown, aLossPct, zLossPct, true, nil
+	return r, true, nil
 }
 
-// LinkHealthWindowAllClean returns true when every non-provisioning bucket for
-// the given link in [start, end] is clean. The "any bad row" sentinel pattern
-// keeps the query result a single integer regardless of window length.
-func (c *ClickHouseClient) LinkHealthWindowAllClean(ctx context.Context, linkPubkey string, start, end time.Time, lossThreshold float64) (bool, bool, error) {
+// LinkHealthWindowAllClean returns whether every distinct bucket for the given
+// link in [start, end] is clean. The inner query deduplicates late-arriving
+// rows by selecting the latest ingested_at per bucket; the outer aggregate
+// counts distinct dirty buckets without streaming rows.
+func (c *ClickHouseClient) LinkHealthWindowAllClean(ctx context.Context, linkPubkey string, start, end time.Time, lossThreshold float64) (LinkHealthWindowResult, bool, error) {
 	query := fmt.Sprintf(
 		`SELECT
 		   countIf(isis_down = true OR a_loss_pct > ? OR z_loss_pct > ?) AS bad_buckets,
 		   count() AS total_buckets
-		 FROM "%s".link_rollup_5m
-		 WHERE link_pk = ?
-		   AND bucket_ts >= ?
-		   AND bucket_ts <= ?
-		   AND provisioning = false`,
+		 FROM (
+		   SELECT
+		     bucket_ts,
+		     argMax(isis_down, ingested_at)   AS isis_down,
+		     argMax(a_loss_pct, ingested_at)  AS a_loss_pct,
+		     argMax(z_loss_pct, ingested_at)  AS z_loss_pct
+		   FROM "%s".link_rollup_5m
+		   WHERE link_pk = ?
+		     AND bucket_ts >= ?
+		     AND bucket_ts <= ?
+		     AND provisioning = false
+		   GROUP BY bucket_ts
+		 )`,
 		c.db,
 	)
 
-	var bad, total uint64
-	err := c.conn.QueryRow(ctx, query, lossThreshold, lossThreshold, linkPubkey, start, end).Scan(&bad, &total)
+	var r LinkHealthWindowResult
+	err := c.conn.QueryRow(ctx, query, lossThreshold, lossThreshold, linkPubkey, start, end).Scan(&r.Bad, &r.Total)
 	if err != nil {
-		return false, false, fmt.Errorf("clickhouse query: %w", err)
+		return LinkHealthWindowResult{}, false, fmt.Errorf("clickhouse query: %w", err)
 	}
-	if total == 0 {
-		return false, false, nil
+	if r.Total == 0 {
+		return LinkHealthWindowResult{}, false, nil
 	}
-	return bad == 0, true, nil
+	r.AllClean = r.Bad == 0
+	return r, true, nil
 }
 
 func (c *ClickHouseClient) Close() error {

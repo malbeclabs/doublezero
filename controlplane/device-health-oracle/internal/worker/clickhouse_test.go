@@ -169,19 +169,22 @@ func TestInterfaceCountersCoverage_QuotesDatabaseName(t *testing.T) {
 }
 
 func TestLinkHealthRecent_ReturnsLatestBucket(t *testing.T) {
+	bucketTs := time.Date(2026, 5, 6, 16, 10, 0, 0, time.UTC)
 	conn := &mockConn{
 		queryRowFunc: func(_ context.Context, query string, args ...any) driver.Row {
 			assert.Contains(t, query, `"testdb".link_rollup_5m`)
 			assert.Contains(t, query, "provisioning = false")
+			assert.Contains(t, query, "bucket_ts")
 			assert.Contains(t, query, "ORDER BY bucket_ts DESC, ingested_at DESC")
 			assert.Contains(t, query, "LIMIT 1")
 			assert.Len(t, args, 1)
 			assert.Equal(t, "linkABC", args[0])
 			return &mockRow{
 				scanFunc: func(dest ...any) error {
-					*(dest[0].(*bool)) = true
-					*(dest[1].(*float64)) = 12.5
-					*(dest[2].(*float64)) = 0.0
+					*(dest[0].(*time.Time)) = bucketTs
+					*(dest[1].(*bool)) = true
+					*(dest[2].(*float64)) = 12.5
+					*(dest[3].(*float64)) = 0.0
 					return nil
 				},
 			}
@@ -189,12 +192,13 @@ func TestLinkHealthRecent_ReturnsLatestBucket(t *testing.T) {
 	}
 
 	client := &ClickHouseClient{conn: conn, db: "testdb"}
-	isisDown, aLoss, zLoss, found, err := client.LinkHealthRecent(context.Background(), "linkABC")
+	r, found, err := client.LinkHealthRecent(context.Background(), "linkABC")
 	require.NoError(t, err)
 	assert.True(t, found)
-	assert.True(t, isisDown)
-	assert.Equal(t, 12.5, aLoss)
-	assert.Equal(t, 0.0, zLoss)
+	assert.Equal(t, bucketTs, r.BucketTs)
+	assert.True(t, r.IsisDown)
+	assert.Equal(t, 12.5, r.ALossPct)
+	assert.Equal(t, 0.0, r.ZLossPct)
 }
 
 func TestLinkHealthRecent_NoData_ReturnsFoundFalse(t *testing.T) {
@@ -209,7 +213,7 @@ func TestLinkHealthRecent_NoData_ReturnsFoundFalse(t *testing.T) {
 	}
 
 	client := &ClickHouseClient{conn: conn, db: "testdb"}
-	_, _, _, found, err := client.LinkHealthRecent(context.Background(), "linkABC")
+	_, found, err := client.LinkHealthRecent(context.Background(), "linkABC")
 	require.NoError(t, err)
 	assert.False(t, found)
 }
@@ -226,7 +230,7 @@ func TestLinkHealthRecent_QueryError(t *testing.T) {
 	}
 
 	client := &ClickHouseClient{conn: conn, db: "testdb"}
-	_, _, _, _, err := client.LinkHealthRecent(context.Background(), "linkABC")
+	_, _, err := client.LinkHealthRecent(context.Background(), "linkABC")
 	assert.ErrorContains(t, err, "connection reset")
 }
 
@@ -236,16 +240,17 @@ func TestLinkHealthRecent_QuotesDatabaseName(t *testing.T) {
 			assert.Contains(t, query, `"mainnet-beta".link_rollup_5m`)
 			return &mockRow{
 				scanFunc: func(dest ...any) error {
-					*(dest[0].(*bool)) = false
-					*(dest[1].(*float64)) = 0
+					*(dest[0].(*time.Time)) = time.Now()
+					*(dest[1].(*bool)) = false
 					*(dest[2].(*float64)) = 0
+					*(dest[3].(*float64)) = 0
 					return nil
 				},
 			}
 		},
 	}
 	client := &ClickHouseClient{conn: conn, db: "mainnet-beta"}
-	_, _, _, found, err := client.LinkHealthRecent(context.Background(), "linkABC")
+	_, found, err := client.LinkHealthRecent(context.Background(), "linkABC")
 	require.NoError(t, err)
 	assert.True(t, found)
 }
@@ -256,6 +261,9 @@ func TestLinkHealthWindowAllClean_AllClean(t *testing.T) {
 			assert.Contains(t, query, `"testdb".link_rollup_5m`)
 			assert.Contains(t, query, "provisioning = false")
 			assert.Contains(t, query, "countIf")
+			// Inner subquery dedupes ingested_at duplicates per bucket via argMax.
+			assert.Contains(t, query, "argMax")
+			assert.Contains(t, query, "GROUP BY bucket_ts")
 			// Args order: lossThreshold, lossThreshold, linkPubkey, start, end
 			assert.Len(t, args, 5)
 			assert.Equal(t, 5.0, args[0])
@@ -272,13 +280,15 @@ func TestLinkHealthWindowAllClean_AllClean(t *testing.T) {
 	}
 
 	client := &ClickHouseClient{conn: conn, db: "testdb"}
-	allClean, found, err := client.LinkHealthWindowAllClean(context.Background(), "linkABC",
+	r, found, err := client.LinkHealthWindowAllClean(context.Background(), "linkABC",
 		time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC),
 		5.0)
 	require.NoError(t, err)
 	assert.True(t, found)
-	assert.True(t, allClean)
+	assert.True(t, r.AllClean)
+	assert.Equal(t, uint64(0), r.Bad)
+	assert.Equal(t, uint64(6), r.Total)
 }
 
 func TestLinkHealthWindowAllClean_HasBadBuckets(t *testing.T) {
@@ -294,11 +304,13 @@ func TestLinkHealthWindowAllClean_HasBadBuckets(t *testing.T) {
 		},
 	}
 	client := &ClickHouseClient{conn: conn, db: "testdb"}
-	allClean, found, err := client.LinkHealthWindowAllClean(context.Background(), "linkABC",
+	r, found, err := client.LinkHealthWindowAllClean(context.Background(), "linkABC",
 		time.Now().Add(-1*time.Hour), time.Now(), 5.0)
 	require.NoError(t, err)
 	assert.True(t, found)
-	assert.False(t, allClean)
+	assert.False(t, r.AllClean)
+	assert.Equal(t, uint64(2), r.Bad)
+	assert.Equal(t, uint64(6), r.Total)
 }
 
 func TestLinkHealthWindowAllClean_NoBucketsInWindow(t *testing.T) {

@@ -396,6 +396,9 @@ type FlexAlgoNodeSegment struct {
 }
 
 type Interface struct {
+	// Size is the on-disk byte length of the size-prefixed encoding (u16 size + u8 version + body).
+	// Populated only when read via DeserializeInterfaceSized; zero for legacy enum reads.
+	Size               uint16 `json:",omitempty"`
 	Version            uint8
 	Status             InterfaceStatus
 	Name               string
@@ -440,7 +443,9 @@ func (i Interface) MarshalJSON() ([]byte, error) {
 	return json.Marshal(jsonIface)
 }
 
-const CurrentInterfaceVersion = 3
+// CurrentInterfaceVersion is the on-wire schema version of the size-prefixed
+// NewInterface format (matching Rust's CURRENT_INTERFACE_SCHEMA_VERSION).
+const CurrentInterfaceVersion = 4
 
 type Device struct {
 	AccountType               AccountType
@@ -470,7 +475,16 @@ type Device struct {
 	ReservedSeats             uint16              `influx:"field,reserved_seats"`
 	MulticastPublishersCount  uint16              `influx:"field,multicast_publishers_count"`
 	MaxMulticastPublishers    uint16              `influx:"field,max_multicast_publishers"`
-	PubKey                    [32]byte            `influx:"tag,pubkey,pubkey"`
+	// NewInterfaces is the trailing size-prefixed vec parallel to Interfaces. For legacy
+	// accounts (no trailing bytes), this is rebuilt from Interfaces by DeserializeDevice.
+	// When populated from the wire, len(NewInterfaces) == len(Interfaces) is enforced.
+	NewInterfaces []Interface `influx:"-" json:",omitempty"`
+	// DeserializeError is set when DeserializeDevice encounters a recoverable but
+	// account-malformed condition (e.g. trailing new_interfaces length mismatch with
+	// the legacy interfaces vec). Consumers should check this before trusting the
+	// deserialized fields.
+	DeserializeError error    `influx:"-" json:"-"`
+	PubKey           [32]byte `influx:"tag,pubkey,pubkey"`
 }
 
 func (d Device) MarshalJSON() ([]byte, error) {

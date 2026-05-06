@@ -476,6 +476,10 @@ export interface FlexAlgoNodeSegment {
 }
 
 export interface DeviceInterface {
+  // size is the on-disk byte length of the size-prefixed encoding (u16 size +
+  // u8 version + body). Populated only when read via deserializeInterfaceSized;
+  // zero for legacy enum reads.
+  size: number;
   version: number;
   status: number;
   name: string;
@@ -494,10 +498,15 @@ export interface DeviceInterface {
   flexAlgoNodeSegments?: FlexAlgoNodeSegment[];
 }
 
-const CURRENT_INTERFACE_VERSION = 2;
+// On-wire schema version for the size-prefixed NewInterface format
+// (matches Rust's CURRENT_INTERFACE_SCHEMA_VERSION). Note: prior to issue #3660
+// this constant gated the legacy enum reader at value 2 (max known disc=1); it
+// is now bumped to 4 to match the size-prefixed schema.
+const CURRENT_INTERFACE_VERSION = 4;
 
 function deserializeInterface(r: DefensiveReader): DeviceInterface {
   const iface: DeviceInterface = {
+    size: 0,
     version: 0,
     status: 0,
     name: "",
@@ -521,8 +530,9 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     return iface;
   }
 
+  // Discriminants: 0=V1, 1 or 2=V2 (no flex_algo_node_segments),
+  // 3=V3 (V2 fields + flex_algo_node_segments).
   if (iface.version === 0) {
-    // V1
     iface.status = r.readU8();
     iface.name = r.readString();
     iface.interfaceType = r.readU8();
@@ -531,8 +541,7 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
-  } else if (iface.version === 1) {
-    // V2
+  } else if (iface.version === 1 || iface.version === 2 || iface.version === 3) {
     iface.status = r.readU8();
     iface.name = r.readString();
     iface.interfaceType = r.readU8();
@@ -547,22 +556,84 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
-    const segCount = r.readU32();
-    const flexAlgoNodeSegments: FlexAlgoNodeSegment[] = [];
-    for (let i = 0; i < segCount; i++) {
-      // Break early if there isn't enough data for a full segment. On pre-RFC-18
-      // mainnet accounts, segCount reads garbage bytes from the next field, so
-      // without this guard the loop runs hundreds of thousands of times.
-      if (r.remaining < 34) break; // 32 (pubkey) + 2 (u16)
-      flexAlgoNodeSegments.push({
-        topology: readPubkey(r),
-        nodeSegmentIdx: r.readU16(),
-      });
+    if (iface.version === 3) {
+      const segCount = r.readU32();
+      const flexAlgoNodeSegments: FlexAlgoNodeSegment[] = [];
+      for (let i = 0; i < segCount; i++) {
+        if (r.remaining < 34) break; // 32 (pubkey) + 2 (u16)
+        flexAlgoNodeSegments.push({
+          topology: readPubkey(r),
+          nodeSegmentIdx: r.readU16(),
+        });
+      }
+      iface.flexAlgoNodeSegments = flexAlgoNodeSegments;
     }
-    iface.flexAlgoNodeSegments = flexAlgoNodeSegments;
   }
 
   return iface;
+}
+
+// deserializeInterfaceSized reads a single size-prefixed NewInterface element.
+//
+// Wire format: u16 size + u8 version + body, where size includes the 3-byte
+// prefix. Forward-compat readers always advance the cursor to start+size after
+// reading the known body fields, so unknown future versions are skipped in O(1).
+function deserializeInterfaceSized(r: DefensiveReader): DeviceInterface {
+  const start = r.offset;
+  const size = r.readU16();
+  const version = r.readU8();
+
+  // Body fields (current schema, version 4): same order as InterfaceV2 + the
+  // flex_algo_node_segments vec from V3.
+  const status = r.readU8();
+  const name = r.readString();
+  const interfaceType = r.readU8();
+  const interfaceCyoa = r.readU8();
+  const interfaceDia = r.readU8();
+  const loopbackType = r.readU8();
+  const bandwidth = r.readU64();
+  const cir = r.readU64();
+  const mtu = r.readU16();
+  const routingMode = r.readU8();
+  const vlanId = r.readU16();
+  const ipNet = r.readNetworkV4();
+  const nodeSegmentIdx = r.readU16();
+  const userTunnelEndpoint = r.readBool();
+  const segCount = r.readU32();
+  const flexAlgoNodeSegments: FlexAlgoNodeSegment[] = [];
+  for (let i = 0; i < segCount; i++) {
+    if (r.remaining < 34) break; // 32 (pubkey) + 2 (u16) — defensive guard
+    flexAlgoNodeSegments.push({
+      topology: readPubkey(r),
+      nodeSegmentIdx: r.readU16(),
+    });
+  }
+
+  // Advance to start+size regardless of how many body bytes we consumed.
+  const target = start + size;
+  if (r.offset < target) {
+    r.readBytes(target - r.offset);
+  }
+
+  return {
+    size,
+    version,
+    status,
+    name,
+    interfaceType,
+    interfaceCyoa,
+    interfaceDia,
+    loopbackType,
+    bandwidth,
+    cir,
+    mtu,
+    routingMode,
+    vlanId,
+    ipNet,
+    nodeSegmentIdx,
+    userTunnelEndpoint,
+    flexAlgoNodeSegments,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -597,6 +668,11 @@ export interface Device {
   reservedSeats: number;
   multicastPublishersCount: number;
   maxMulticastPublishers: number;
+  // newInterfaces is the trailing size-prefixed vec parallel to interfaces. For
+  // legacy accounts (no trailing bytes), this is rebuilt from interfaces by
+  // deserializeDevice. When populated from the wire, length parity with
+  // interfaces is enforced.
+  newInterfaces: DeviceInterface[];
 }
 
 export function deserializeDevice(data: Uint8Array): Device {
@@ -635,6 +711,32 @@ export function deserializeDevice(data: Uint8Array): Device {
   const multicastPublishersCount = r.readU16();
   const maxMulticastPublishers = r.readU16();
 
+  // Trailing new_interfaces vec (size-prefixed). Empty trailing => rebuild
+  // from legacy. Non-empty trailing whose declared length differs from the
+  // legacy interfaces length is a corrupt-account condition.
+  let newInterfaces: DeviceInterface[];
+  if (r.remaining === 0) {
+    newInterfaces = interfaces.map((legacy) => ({
+      ...legacy,
+      size: 0,
+      version: CURRENT_INTERFACE_VERSION,
+      flexAlgoNodeSegments: legacy.flexAlgoNodeSegments
+        ? [...legacy.flexAlgoNodeSegments]
+        : [],
+    }));
+  } else {
+    const newLen = r.readU32();
+    if (newLen !== interfaces.length) {
+      throw new Error(
+        `Device new_interfaces length ${newLen} != interfaces length ${interfaces.length}`,
+      );
+    }
+    newInterfaces = [];
+    for (let i = 0; i < newLen; i++) {
+      newInterfaces.push(deserializeInterfaceSized(r));
+    }
+  }
+
   return {
     accountType,
     owner,
@@ -663,6 +765,7 @@ export function deserializeDevice(data: Uint8Array): Device {
     reservedSeats,
     multicastPublishersCount,
     maxMulticastPublishers,
+    newInterfaces,
   };
 }
 

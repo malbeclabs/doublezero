@@ -13,6 +13,8 @@ use std::fs;
 use std::net::Ipv4Addr;
 use std::path::Path;
 
+use borsh::BorshSerialize;
+
 use doublezero_serviceability::id_allocator::IdAllocator;
 use doublezero_serviceability::ip_allocator::IpAllocator;
 use doublezero_serviceability::programversion::ProgramVersion;
@@ -325,11 +327,6 @@ fn generate_device(dir: &Path) {
                 user_tunnel_endpoint: true,
             }),
         ],
-        // Empty for now: regenerating with my custom Device serializer would
-        // V2-project the legacy slot from new_interfaces, dropping the V1 form
-        // and breaking SDK fixtures that pin Interface0 to V1. Existing
-        // device.bin remains in the legacy format and continues to pass SDK
-        // tests via the legacy fallback path in `Device::TryFrom`.
         new_interfaces: vec![],
         reference_count: 12,
         users_count: 5,
@@ -345,7 +342,39 @@ fn generate_device(dir: &Path) {
         max_multicast_publishers: 10,
     };
 
-    let data = borsh::to_vec(&val).unwrap();
+    // Serialize each field manually to bypass `Device`'s custom `BorshSerialize`,
+    // which projects the legacy slot from `new_interfaces` (always V2) and
+    // appends a `new_interfaces` trailing vec. The fixture pins Interface0 to V1
+    // and Interface1 to V2 in the pre-#3667 on-disk format, which the SDK
+    // exercises via the legacy fallback path in `Device::TryFrom`.
+    let mut data = Vec::new();
+    BorshSerialize::serialize(&val.account_type, &mut data).unwrap();
+    BorshSerialize::serialize(&val.owner, &mut data).unwrap();
+    BorshSerialize::serialize(&val.index, &mut data).unwrap();
+    BorshSerialize::serialize(&val.bump_seed, &mut data).unwrap();
+    BorshSerialize::serialize(&val.location_pk, &mut data).unwrap();
+    BorshSerialize::serialize(&val.exchange_pk, &mut data).unwrap();
+    BorshSerialize::serialize(&val.device_type, &mut data).unwrap();
+    BorshSerialize::serialize(&val.public_ip, &mut data).unwrap();
+    BorshSerialize::serialize(&val.status, &mut data).unwrap();
+    BorshSerialize::serialize(&val.code, &mut data).unwrap();
+    BorshSerialize::serialize(&val.dz_prefixes, &mut data).unwrap();
+    BorshSerialize::serialize(&val.metrics_publisher_pk, &mut data).unwrap();
+    BorshSerialize::serialize(&val.contributor_pk, &mut data).unwrap();
+    BorshSerialize::serialize(&val.mgmt_vrf, &mut data).unwrap();
+    BorshSerialize::serialize(&val.interfaces, &mut data).unwrap();
+    BorshSerialize::serialize(&val.reference_count, &mut data).unwrap();
+    BorshSerialize::serialize(&val.users_count, &mut data).unwrap();
+    BorshSerialize::serialize(&val.max_users, &mut data).unwrap();
+    BorshSerialize::serialize(&val.device_health, &mut data).unwrap();
+    BorshSerialize::serialize(&val.desired_status, &mut data).unwrap();
+    BorshSerialize::serialize(&val.unicast_users_count, &mut data).unwrap();
+    BorshSerialize::serialize(&val.multicast_subscribers_count, &mut data).unwrap();
+    BorshSerialize::serialize(&val.max_unicast_users, &mut data).unwrap();
+    BorshSerialize::serialize(&val.max_multicast_subscribers, &mut data).unwrap();
+    BorshSerialize::serialize(&val.reserved_seats, &mut data).unwrap();
+    BorshSerialize::serialize(&val.multicast_publishers_count, &mut data).unwrap();
+    BorshSerialize::serialize(&val.max_multicast_publishers, &mut data).unwrap();
 
     let meta = FixtureMeta {
         name: "Device".into(),

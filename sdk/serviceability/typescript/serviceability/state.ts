@@ -530,8 +530,9 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     return iface;
   }
 
+  // Discriminants: 0=V1, 1 or 2=V2 (no flex_algo_node_segments),
+  // 3=V3 (V2 fields + flex_algo_node_segments).
   if (iface.version === 0) {
-    // V1
     iface.status = r.readU8();
     iface.name = r.readString();
     iface.interfaceType = r.readU8();
@@ -540,8 +541,7 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
-  } else if (iface.version === 1) {
-    // V2
+  } else if (iface.version === 1 || iface.version === 2 || iface.version === 3) {
     iface.status = r.readU8();
     iface.name = r.readString();
     iface.interfaceType = r.readU8();
@@ -556,19 +556,18 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
-    const segCount = r.readU32();
-    const flexAlgoNodeSegments: FlexAlgoNodeSegment[] = [];
-    for (let i = 0; i < segCount; i++) {
-      // Break early if there isn't enough data for a full segment. On pre-RFC-18
-      // mainnet accounts, segCount reads garbage bytes from the next field, so
-      // without this guard the loop runs hundreds of thousands of times.
-      if (r.remaining < 34) break; // 32 (pubkey) + 2 (u16)
-      flexAlgoNodeSegments.push({
-        topology: readPubkey(r),
-        nodeSegmentIdx: r.readU16(),
-      });
+    if (iface.version === 3) {
+      const segCount = r.readU32();
+      const flexAlgoNodeSegments: FlexAlgoNodeSegment[] = [];
+      for (let i = 0; i < segCount; i++) {
+        if (r.remaining < 34) break; // 32 (pubkey) + 2 (u16)
+        flexAlgoNodeSegments.push({
+          topology: readPubkey(r),
+          nodeSegmentIdx: r.readU16(),
+        });
+      }
+      iface.flexAlgoNodeSegments = flexAlgoNodeSegments;
     }
-    iface.flexAlgoNodeSegments = flexAlgoNodeSegments;
   }
 
   return iface;

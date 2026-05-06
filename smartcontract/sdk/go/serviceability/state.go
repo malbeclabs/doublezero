@@ -415,9 +415,9 @@ type Interface struct {
 	NodeSegmentIdx     uint16
 	UserTunnelEndpoint bool
 	// FlexAlgoNodeSegments holds flex-algo node segment assignments for this interface (RFC-18).
-	// Only populated when reading a discriminant-3 (V3) interface; the on-chain Device serializer
-	// now projects the deprecated_interfaces slot as V2 (per #3653) and surfaces segments through
-	// the trailing interfaces vec on Device. Nil otherwise.
+	// Populated only on entries read from the trailing forward-compat interfaces vec on Device
+	// (via DeserializeInterfaceSized). The legacy deprecated_interfaces slot does not carry
+	// segments; nil there.
 	FlexAlgoNodeSegments []FlexAlgoNodeSegment `json:",omitempty"`
 }
 

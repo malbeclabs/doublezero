@@ -404,9 +404,9 @@ class AccessPassStatus(IntEnum):
 # On-wire schema version for the size-prefixed Interface format
 # (matches Rust's CURRENT_INTERFACE_SCHEMA_VERSION). Note: prior to issue #3660
 # this constant gated the legacy enum reader at value 2 (max known disc=1); it
-# is now bumped to 4 to match the size-prefixed schema. Legacy enum reads still
-# only handle version 0 (V1) and 1 (V2); version 3 (V3) accounts fall through
-# to a default Interface (pre-existing gap).
+# is now bumped to 4 to match the size-prefixed schema. Legacy enum reads only
+# handle version 0 (V1) and 1 (V2); discriminant 3 was a transient V3 format
+# that never reached production and is no longer recognized.
 CURRENT_INTERFACE_VERSION = 4
 
 
@@ -445,8 +445,8 @@ class Interface:
         iface.version = r.read_u8()
         if iface.version > CURRENT_INTERFACE_VERSION - 1:
             return iface
-        # Discriminants: 0=V1, 1 or 2=V2 (no flex_algo_node_segments),
-        # 3=V3 (V2 fields + flex_algo_node_segments).
+        # Discriminants: 0=V1, 1 or 2=V2. Discriminant 3 was V3 (transient,
+        # never shipped) and is intentionally unhandled.
         if iface.version == 0:
             iface.status = InterfaceStatus(r.read_u8())
             iface.name = r.read_string()
@@ -456,7 +456,7 @@ class Interface:
             iface.ip_net = r.read_network_v4()
             iface.node_segment_idx = r.read_u16()
             iface.user_tunnel_endpoint = r.read_bool()
-        elif iface.version in (1, 2, 3):
+        elif iface.version in (1, 2):
             iface.status = InterfaceStatus(r.read_u8())
             iface.name = r.read_string()
             iface.interface_type = InterfaceType(r.read_u8())
@@ -471,13 +471,6 @@ class Interface:
             iface.ip_net = r.read_network_v4()
             iface.node_segment_idx = r.read_u16()
             iface.user_tunnel_endpoint = r.read_bool()
-            if iface.version == 3:
-                count = r.read_u32()
-                for _ in range(count):
-                    seg = FlexAlgoNodeSegment()
-                    seg.topology = _read_pubkey(r)
-                    seg.node_segment_idx = r.read_u16()
-                    iface.flex_algo_node_segments.append(seg)
         return iface
 
     @classmethod
@@ -493,8 +486,8 @@ class Interface:
         iface.size = r.read_u16()
         iface.version = r.read_u8()
 
-        # Body fields (current schema, version 4): same order as InterfaceV2 +
-        # the flex_algo_node_segments vec from V3.
+        # Body fields (current schema, version 4): same order as InterfaceV2,
+        # plus a trailing flex_algo_node_segments vec.
         iface.status = InterfaceStatus(r.read_u8())
         iface.name = r.read_string()
         iface.interface_type = InterfaceType(r.read_u8())

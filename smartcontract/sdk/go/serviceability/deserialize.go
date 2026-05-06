@@ -88,24 +88,20 @@ func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
 // Interface version history (discriminant byte):
 //
 //	0 — V1: original format (no CYOA/DIA/Bandwidth fields)
-//	1 — V2: adds CYOA, DIA, Bandwidth, Cir, Mtu, RoutingMode (no flex_algo_node_segments)
+//	1 — V2: adds CYOA, DIA, Bandwidth, Cir, Mtu, RoutingMode
 //	2 — reserved, never written
-//	3 — V3: V2 fields + flex_algo_node_segments (RFC-18)
 //
 // The on-chain Device serializer projects the legacy deprecated_interfaces slot as V2
-// (per #3653); discriminant-3 entries seen here are residual from older
-// accounts. Newer flex_algo_node_segments data lives in the trailing
-// interfaces vec on Device, not in this slot.
+// (per #3653). flex_algo_node_segments lives only in the trailing forward-compat
+// interfaces vec on Device (read via DeserializeInterfaceSized), not in this slot.
 func DeserializeInterface(reader *ByteReader, iface *Interface) {
 	iface.Version = reader.ReadU8()
 
 	switch iface.Version {
 	case 0: // V1
 		DeserializeInterfaceV1(reader, iface)
-	case 1, 2: // V2: no flex_algo_node_segments
+	case 1, 2: // V2
 		DeserializeInterfaceV2(reader, iface)
-	case 3: // V3: includes flex_algo_node_segments (RFC-18)
-		DeserializeInterfaceV3(reader, iface)
 	default:
 		log.Println("DeserializeInterface: Unsupported interface version", iface.Version)
 	}
@@ -139,17 +135,6 @@ func DeserializeInterfaceV2(reader *ByteReader, iface *Interface) {
 	iface.UserTunnelEndpoint = (reader.ReadU8() != 0)
 }
 
-func DeserializeInterfaceV3(reader *ByteReader, iface *Interface) {
-	DeserializeInterfaceV2(reader, iface)
-	// flex_algo_node_segments (RFC-18): present in all V3 accounts.
-	length := reader.ReadU32()
-	iface.FlexAlgoNodeSegments = make([]FlexAlgoNodeSegment, length)
-	for i := uint32(0); i < length; i++ {
-		iface.FlexAlgoNodeSegments[i].Topology = reader.ReadPubkey()
-		iface.FlexAlgoNodeSegments[i].NodeSegmentIdx = reader.ReadU16()
-	}
-}
-
 // DeserializeInterfaceSized reads a single size-prefixed Interface element.
 //
 // Wire format: u16 size + u8 version + body, where size includes the 3-byte prefix.
@@ -160,8 +145,8 @@ func DeserializeInterfaceSized(reader *ByteReader, iface *Interface) {
 	iface.Size = reader.ReadU16()
 	iface.Version = reader.ReadU8()
 
-	// Body fields (current schema, version 4): same order as InterfaceV2 + the
-	// flex_algo_node_segments vec from V3.
+	// Body fields (current schema, version 4): same order as InterfaceV2, plus a
+	// trailing flex_algo_node_segments vec.
 	iface.Status = InterfaceStatus(reader.ReadU8())
 	iface.Name = reader.ReadString()
 	iface.InterfaceType = InterfaceType(reader.ReadU8())

@@ -10,6 +10,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Smartcontract
+  - Delete `InterfaceV3` and the `InterfaceDeprecated::V3` variant from the serviceability program. V3 was added by an earlier change, never written to production accounts, and reverted in #3653 / no longer produced after #3667; this removes the dead type. Discriminant 3 is now an unused reserved slot in `InterfaceDeprecated`'s encoding space — unknown discriminants fall through to `InterfaceV2::default()`. Removes the V3 struct, its helper impls (`From<InterfaceV2>`, `TryFrom<&InterfaceV1>`, `Default`, `TryFrom<&InterfaceV3> for InterfaceV2`), V3 match arms in `InterfaceDeprecated::to_v2`/`size`/`Device::TryFrom`, and the V3 cross-language byte-layout debug test. On-disk write format is unchanged ([#3664](https://github.com/malbeclabs/doublezero/issues/3664))
+- SDK
+  - Drop V3 handling from the Go, Python, and TypeScript serviceability readers: remove `DeserializeInterfaceV3` (Go) and the `version === 3` / `version == 3` legacy-slot branches (Python/TS); remove the `TestDeserializeInterfaceV3CrossLanguage` Go test. The forward-compat trailing `interfaces` vec continues to carry `flex_algo_node_segments` via the size-prefixed body — that path is unchanged ([#3664](https://github.com/malbeclabs/doublezero/issues/3664))
+
 ## [v0.22.0](https://github.com/malbeclabs/doublezero/compare/client/v0.21.0...client/v0.22.0) - 2026-05-08
 
 ### Breaking

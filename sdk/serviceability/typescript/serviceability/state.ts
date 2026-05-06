@@ -530,8 +530,8 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     return iface;
   }
 
-  // Discriminants: 0=V1, 1 or 2=V2 (no flex_algo_node_segments),
-  // 3=V3 (V2 fields + flex_algo_node_segments).
+  // Discriminants: 0=V1, 1 or 2=V2. Discriminant 3 was V3 (transient,
+  // never shipped) and is intentionally unhandled.
   if (iface.version === 0) {
     iface.status = r.readU8();
     iface.name = r.readString();
@@ -541,7 +541,7 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
-  } else if (iface.version === 1 || iface.version === 2 || iface.version === 3) {
+  } else if (iface.version === 1 || iface.version === 2) {
     iface.status = r.readU8();
     iface.name = r.readString();
     iface.interfaceType = r.readU8();
@@ -556,18 +556,6 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
-    if (iface.version === 3) {
-      const segCount = r.readU32();
-      const flexAlgoNodeSegments: FlexAlgoNodeSegment[] = [];
-      for (let i = 0; i < segCount; i++) {
-        if (r.remaining < 34) break; // 32 (pubkey) + 2 (u16)
-        flexAlgoNodeSegments.push({
-          topology: readPubkey(r),
-          nodeSegmentIdx: r.readU16(),
-        });
-      }
-      iface.flexAlgoNodeSegments = flexAlgoNodeSegments;
-    }
   }
 
   return iface;
@@ -583,8 +571,8 @@ function deserializeInterfaceSized(r: DefensiveReader): DeviceInterface {
   const size = r.readU16();
   const version = r.readU8();
 
-  // Body fields (current schema, version 4): same order as InterfaceV2 + the
-  // flex_algo_node_segments vec from V3.
+  // Body fields (current schema, version 4): same order as InterfaceV2, plus
+  // a trailing flex_algo_node_segments vec.
   const status = r.readU8();
   const name = r.readString();
   const interfaceType = r.readU8();

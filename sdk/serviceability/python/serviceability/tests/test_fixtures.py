@@ -6,6 +6,7 @@ from pathlib import Path
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 
 from serviceability.state import (
+    CURRENT_INTERFACE_VERSION,
     AccessPass,
     BGPStatus,
     Contributor,
@@ -167,10 +168,29 @@ class TestFixtureDevice:
                 "ContributorPk": dev.contributor_pub_key,
             },
         )
-        # Verify interfaces
+        # Legacy slot is the V2 projection of new_interfaces (always V2 per #3653);
+        # both entries carry version 1 and no FlexAlgoNodeSegments.
         assert len(dev.interfaces) == 2
+        assert dev.interfaces[0].version == 1
         assert dev.interfaces[0].name == "Loopback0"
+        assert dev.interfaces[0].flex_algo_node_segments == []
+        assert dev.interfaces[1].version == 1
         assert dev.interfaces[1].name == "Ethernet1"
+        # Trailing new_interfaces vec carries the full V4 NewInterface bodies.
+        assert len(dev.new_interfaces) == 2
+        ni0 = dev.new_interfaces[0]
+        assert ni0.version == CURRENT_INTERFACE_VERSION
+        assert ni0.name == "Loopback0"
+        assert ni0.loopback_type.value == 1  # Vpnv4
+        assert len(ni0.flex_algo_node_segments) == 1
+        assert ni0.flex_algo_node_segments[0].node_segment_idx == 300
+        assert ni0.size == _expected_new_interface_size(ni0)
+        ni1 = dev.new_interfaces[1]
+        assert ni1.version == CURRENT_INTERFACE_VERSION
+        assert ni1.name == "Ethernet1"
+        assert ni1.user_tunnel_endpoint is True
+        assert ni1.flex_algo_node_segments == []
+        assert ni1.size == _expected_new_interface_size(ni1)
         # Verify dz_prefixes
         import ipaddress
 
@@ -183,6 +203,80 @@ class TestFixtureDevice:
         assert dev.mgmt_vrf == "mgmt"
         assert dev.public_ip == ipaddress.IPv4Address("203.0.113.1").packed
         assert dev.index == 7
+
+
+def _expected_new_interface_size(ni) -> int:
+    """Recompute the on-disk size for a NewInterface element so tests don't bake
+    body byte counts as magic numbers.
+
+    Layout (matches Rust NewInterface::serialize_body, interface.rs:641-658):
+        u16 size + u8 version (3 bytes prefix) +
+        u8 status + (u32+len) name + u8 interface_type + u8 cyoa + u8 dia +
+        u8 loopback_type + u64 bandwidth + u64 cir + u16 mtu + u8 routing_mode +
+        u16 vlan_id + 5-byte ip_net + u16 node_segment_idx + u8 user_tunnel_endpoint +
+        (u32+34*N) flex_algo_node_segments
+    """
+    body_len = (
+        1 + (4 + len(ni.name)) + 1 + 1 + 1 + 1 + 8 + 8 + 2 + 1 + 2 + 5 + 2 + 1
+        + (4 + 34 * len(ni.flex_algo_node_segments))
+    )
+    return 3 + body_len
+
+
+class TestFixtureDeviceLegacy:
+    """Pre-#3667 on-disk format: legacy `interfaces` vec only, no trailing
+    `new_interfaces`. The SDK rebuilds new_interfaces from the legacy vec,
+    stamping each entry with version=CURRENT_INTERFACE_VERSION and size=0.
+    """
+
+    def test_deserialize(self):
+        data, meta = _load_fixture("device_legacy")
+        dev = Device.from_bytes(data)
+        assert meta["name"] == "DeviceLegacy"
+        # Legacy slot mirrors the original V1+V2 hand-serialized shape.
+        assert len(dev.interfaces) == 2
+        assert dev.interfaces[0].version == 0  # V1
+        assert dev.interfaces[0].name == "Loopback0"
+        assert dev.interfaces[1].version == 1  # V2
+        assert dev.interfaces[1].name == "Ethernet1"
+        # Rebuilt new_interfaces: same field values as the legacy entries, but
+        # stamped with the current schema version and zero on-disk size.
+        assert len(dev.new_interfaces) == 2
+        for ni in dev.new_interfaces:
+            assert ni.version == CURRENT_INTERFACE_VERSION
+            assert ni.size == 0
+            assert ni.flex_algo_node_segments == []
+        assert dev.new_interfaces[0].name == "Loopback0"
+        assert dev.new_interfaces[0].loopback_type.value == 1  # Vpnv4
+        assert dev.new_interfaces[1].name == "Ethernet1"
+        assert dev.new_interfaces[1].user_tunnel_endpoint is True
+
+
+class TestFixtureDeviceFutureVersion:
+    """Same on-disk shape as device.bin, but the last trailing-vec element is
+    doctored with version=5 (a hypothetical future schema) and 8 trailing junk
+    bytes after the known body. The SDK reads the known fields then advances
+    to start+size, skipping the junk.
+    """
+
+    def test_deserialize(self):
+        data, meta = _load_fixture("device_future_version")
+        dev = Device.from_bytes(data)
+        assert meta["name"] == "DeviceFutureVersion"
+        assert len(dev.new_interfaces) == 2
+        # First element parses normally at the current schema version.
+        ni0 = dev.new_interfaces[0]
+        assert ni0.version == CURRENT_INTERFACE_VERSION
+        assert ni0.name == "Loopback0"
+        assert len(ni0.flex_algo_node_segments) == 1
+        # Second element has the future-version stamp + extra trailing bytes;
+        # known body fields still parse correctly because the reader advances
+        # to start+size.
+        ni1 = dev.new_interfaces[1]
+        assert ni1.version == 5
+        assert ni1.size == _expected_new_interface_size(ni1) + 8
+        assert ni1.name == "Ethernet1"
+        assert ni1.user_tunnel_endpoint is True
 
 
 class TestFixtureLink:

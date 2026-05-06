@@ -1,5 +1,5 @@
 {
-  "name": "Device",
+  "name": "DeviceFutureVersion",
   "account_type": 5,
   "fields": [
     {
@@ -394,12 +394,12 @@
     },
     {
       "name": "NewInterface1Size",
-      "value": "54",
+      "value": "62",
       "typ": "u16"
     },
     {
       "name": "NewInterface1Version",
-      "value": "4",
+      "value": "5",
       "typ": "u8"
     },
     {

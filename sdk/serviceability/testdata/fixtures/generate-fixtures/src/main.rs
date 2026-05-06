@@ -28,13 +28,14 @@ use doublezero_serviceability::state::{
     globalstate::GlobalState,
     interface::{
         Interface, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, InterfaceV1,
-        InterfaceV2, LoopbackType, RoutingMode,
+        InterfaceV2, LoopbackType, NewInterface, RoutingMode, CURRENT_INTERFACE_SCHEMA_VERSION,
     },
     link::{Link, LinkDesiredStatus, LinkHealth, LinkLinkType, LinkStatus},
     location::{Location, LocationStatus},
     multicastgroup::{MulticastGroup, MulticastGroupStatus},
     programconfig::ProgramConfig,
     tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
+    topology::FlexAlgoNodeSegment,
     user::{BGPStatus, User, UserCYOA, UserStatus, UserType},
 };
 use serde::Serialize;
@@ -81,6 +82,8 @@ fn main() {
     generate_location(&fixtures_dir);
     generate_exchange(&fixtures_dir);
     generate_device(&fixtures_dir);
+    generate_device_legacy(&fixtures_dir);
+    generate_device_future_version(&fixtures_dir);
     generate_link(&fixtures_dir);
     generate_user(&fixtures_dir);
     generate_multicast_group(&fixtures_dir);
@@ -277,7 +280,259 @@ fn generate_exchange(dir: &Path) {
     write_fixture(dir, "exchange", &data, &meta);
 }
 
+/// Build a canonical `Device` value used by `device.bin` and `device_future_version.bin`.
+/// The trailing `new_interfaces` vec carries one Vpnv4 loopback with a `FlexAlgoNodeSegment`
+/// and one physical user-tunnel-endpoint. `interfaces: vec![]` because the custom Device
+/// serializer projects the legacy on-disk slot from `new_interfaces` (always V2 per #3653).
+fn canonical_device() -> (
+    Device,
+    solana_program::pubkey::Pubkey, // owner
+    solana_program::pubkey::Pubkey, // location_pk
+    solana_program::pubkey::Pubkey, // exchange_pk
+    solana_program::pubkey::Pubkey, // metrics_publisher_pk
+    solana_program::pubkey::Pubkey, // contributor_pk
+    solana_program::pubkey::Pubkey, // flex_algo topology pk
+) {
+    let owner = pubkey_from_byte(0x40);
+    let location_pk = pubkey_from_byte(0x41);
+    let exchange_pk = pubkey_from_byte(0x42);
+    let metrics_publisher_pk = pubkey_from_byte(0x43);
+    let contributor_pk = pubkey_from_byte(0x44);
+    let topology_pk = pubkey_from_byte(0x45);
+
+    // size/version on the in-memory NewInterface are recomputed by the BorshSerialize
+    // impl (interface.rs:687-688) — leave them at 0 here.
+    let new_interfaces = vec![
+        NewInterface {
+            size: 0,
+            version: 0,
+            status: InterfaceStatus::Activated,
+            name: "Loopback0".into(),
+            interface_type: InterfaceType::Loopback,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::Vpnv4,
+            bandwidth: 0,
+            cir: 0,
+            mtu: 9000,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            ip_net: "10.0.0.1/32".parse().unwrap(),
+            node_segment_idx: 100,
+            user_tunnel_endpoint: false,
+            flex_algo_node_segments: vec![FlexAlgoNodeSegment {
+                topology: topology_pk,
+                node_segment_idx: 300,
+            }],
+        },
+        NewInterface {
+            size: 0,
+            version: 0,
+            status: InterfaceStatus::Activated,
+            name: "Ethernet1".into(),
+            interface_type: InterfaceType::Physical,
+            interface_cyoa: InterfaceCYOA::GREOverDIA,
+            interface_dia: InterfaceDIA::DIA,
+            loopback_type: LoopbackType::None,
+            bandwidth: 10_000_000_000,
+            cir: 5_000_000_000,
+            mtu: 9000,
+            routing_mode: RoutingMode::BGP,
+            vlan_id: 100,
+            ip_net: "172.16.0.1/30".parse().unwrap(),
+            node_segment_idx: 200,
+            user_tunnel_endpoint: true,
+            flex_algo_node_segments: vec![],
+        },
+    ];
+
+    let val = Device {
+        account_type: AccountType::Device,
+        owner,
+        index: 7,
+        bump_seed: 250,
+        location_pk,
+        exchange_pk,
+        device_type: DeviceType::Edge,
+        public_ip: Ipv4Addr::new(203, 0, 113, 1),
+        status: DeviceStatus::Activated,
+        code: "dz1".into(),
+        dz_prefixes: vec!["10.10.0.0/24".parse().unwrap()].into(),
+        metrics_publisher_pk,
+        contributor_pk,
+        mgmt_vrf: "mgmt".into(),
+        interfaces: vec![],
+        new_interfaces,
+        reference_count: 12,
+        users_count: 5,
+        max_users: 100,
+        device_health: DeviceHealth::ReadyForUsers,
+        desired_status: DeviceDesiredStatus::Activated,
+        unicast_users_count: 3,
+        multicast_subscribers_count: 2,
+        max_unicast_users: 50,
+        max_multicast_subscribers: 50,
+        reserved_seats: 3,
+        multicast_publishers_count: 1,
+        max_multicast_publishers: 10,
+    };
+
+    (val, owner, location_pk, exchange_pk, metrics_publisher_pk, contributor_pk, topology_pk)
+}
+
+/// Common `meta.fields` describing the canonical Device: legacy slot is the V2 projection
+/// of `new_interfaces` (both elements have `Version = 1`, no FlexAlgoNodeSegments per
+/// device.rs:527-534 / interface.rs:793-813); the trailing vec carries the full V4
+/// NewInterface bodies including `flex_algo_node_segments`.
+#[allow(clippy::too_many_arguments)]
+fn canonical_device_fields(
+    owner: &solana_program::pubkey::Pubkey,
+    location_pk: &solana_program::pubkey::Pubkey,
+    exchange_pk: &solana_program::pubkey::Pubkey,
+    metrics_publisher_pk: &solana_program::pubkey::Pubkey,
+    contributor_pk: &solana_program::pubkey::Pubkey,
+    topology_pk: &solana_program::pubkey::Pubkey,
+    new_interface0_size: u16,
+    new_interface0_version: u8,
+    new_interface1_size: u16,
+    new_interface1_version: u8,
+) -> Vec<FieldValue> {
+    assert_eq!(CURRENT_INTERFACE_SCHEMA_VERSION, 4, "fixture assumes CURRENT_INTERFACE_SCHEMA_VERSION = 4");
+    vec![
+        FieldValue { name: "AccountType".into(), value: "5".into(), typ: "u8".into() },
+        FieldValue { name: "Owner".into(), value: pubkey_bs58(owner), typ: "pubkey".into() },
+        FieldValue { name: "Index".into(), value: "7".into(), typ: "u128".into() },
+        FieldValue { name: "BumpSeed".into(), value: "250".into(), typ: "u8".into() },
+        FieldValue { name: "LocationPk".into(), value: pubkey_bs58(location_pk), typ: "pubkey".into() },
+        FieldValue { name: "ExchangePk".into(), value: pubkey_bs58(exchange_pk), typ: "pubkey".into() },
+        FieldValue { name: "DeviceType".into(), value: "2".into(), typ: "u8".into() },
+        FieldValue { name: "PublicIp".into(), value: "203.0.113.1".into(), typ: "ipv4".into() },
+        FieldValue { name: "Status".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "Code".into(), value: "dz1".into(), typ: "string".into() },
+        FieldValue { name: "DzPrefixesLen".into(), value: "1".into(), typ: "u32".into() },
+        FieldValue { name: "DzPrefixes0".into(), value: "10.10.0.0/24".into(), typ: "networkv4".into() },
+        FieldValue { name: "MetricsPublisherPk".into(), value: pubkey_bs58(metrics_publisher_pk), typ: "pubkey".into() },
+        FieldValue { name: "ContributorPk".into(), value: pubkey_bs58(contributor_pk), typ: "pubkey".into() },
+        FieldValue { name: "MgmtVrf".into(), value: "mgmt".into(), typ: "string".into() },
+        FieldValue { name: "InterfacesLen".into(), value: "2".into(), typ: "u32".into() },
+        // Interface 0 - V2 projection of NewInterface[0] (Loopback Vpnv4).
+        FieldValue { name: "Interface0Version".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "Interface0Status".into(), value: "3".into(), typ: "u8".into() },
+        FieldValue { name: "Interface0Name".into(), value: "Loopback0".into(), typ: "string".into() },
+        FieldValue { name: "Interface0InterfaceType".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "Interface0InterfaceCYOA".into(), value: "0".into(), typ: "u8".into() },
+        FieldValue { name: "Interface0InterfaceDIA".into(), value: "0".into(), typ: "u8".into() },
+        FieldValue { name: "Interface0LoopbackType".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "Interface0Bandwidth".into(), value: "0".into(), typ: "u64".into() },
+        FieldValue { name: "Interface0Cir".into(), value: "0".into(), typ: "u64".into() },
+        FieldValue { name: "Interface0Mtu".into(), value: "9000".into(), typ: "u16".into() },
+        FieldValue { name: "Interface0RoutingMode".into(), value: "0".into(), typ: "u8".into() },
+        FieldValue { name: "Interface0VlanId".into(), value: "0".into(), typ: "u16".into() },
+        FieldValue { name: "Interface0IpNet".into(), value: "10.0.0.1/32".into(), typ: "networkv4".into() },
+        FieldValue { name: "Interface0NodeSegmentIdx".into(), value: "100".into(), typ: "u16".into() },
+        FieldValue { name: "Interface0UserTunnelEndpoint".into(), value: "false".into(), typ: "bool".into() },
+        // Interface 1 - V2 projection of NewInterface[1] (Physical user-tunnel-endpoint).
+        FieldValue { name: "Interface1Version".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "Interface1Status".into(), value: "3".into(), typ: "u8".into() },
+        FieldValue { name: "Interface1Name".into(), value: "Ethernet1".into(), typ: "string".into() },
+        FieldValue { name: "Interface1InterfaceType".into(), value: "2".into(), typ: "u8".into() },
+        FieldValue { name: "Interface1InterfaceCYOA".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "Interface1InterfaceDIA".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "Interface1LoopbackType".into(), value: "0".into(), typ: "u8".into() },
+        FieldValue { name: "Interface1Bandwidth".into(), value: "10000000000".into(), typ: "u64".into() },
+        FieldValue { name: "Interface1Cir".into(), value: "5000000000".into(), typ: "u64".into() },
+        FieldValue { name: "Interface1Mtu".into(), value: "9000".into(), typ: "u16".into() },
+        FieldValue { name: "Interface1RoutingMode".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "Interface1VlanId".into(), value: "100".into(), typ: "u16".into() },
+        FieldValue { name: "Interface1IpNet".into(), value: "172.16.0.1/30".into(), typ: "networkv4".into() },
+        FieldValue { name: "Interface1NodeSegmentIdx".into(), value: "200".into(), typ: "u16".into() },
+        FieldValue { name: "Interface1UserTunnelEndpoint".into(), value: "true".into(), typ: "bool".into() },
+        FieldValue { name: "ReferenceCount".into(), value: "12".into(), typ: "u32".into() },
+        FieldValue { name: "UsersCount".into(), value: "5".into(), typ: "u16".into() },
+        FieldValue { name: "MaxUsers".into(), value: "100".into(), typ: "u16".into() },
+        FieldValue { name: "DeviceHealth".into(), value: "3".into(), typ: "u8".into() },
+        FieldValue { name: "DesiredStatus".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "UnicastUsersCount".into(), value: "3".into(), typ: "u16".into() },
+        FieldValue { name: "MulticastSubscribersCount".into(), value: "2".into(), typ: "u16".into() },
+        FieldValue { name: "MaxUnicastUsers".into(), value: "50".into(), typ: "u16".into() },
+        FieldValue { name: "MaxMulticastSubscribers".into(), value: "50".into(), typ: "u16".into() },
+        FieldValue { name: "ReservedSeats".into(), value: "3".into(), typ: "u16".into() },
+        FieldValue { name: "MulticastPublishersCount".into(), value: "1".into(), typ: "u16".into() },
+        FieldValue { name: "MaxMulticastPublishers".into(), value: "10".into(), typ: "u16".into() },
+        // Trailing new_interfaces vec.
+        FieldValue { name: "NewInterfacesLen".into(), value: "2".into(), typ: "u32".into() },
+        // NewInterface 0 - Loopback Vpnv4 with one FlexAlgoNodeSegment.
+        FieldValue { name: "NewInterface0Size".into(), value: new_interface0_size.to_string(), typ: "u16".into() },
+        FieldValue { name: "NewInterface0Version".into(), value: new_interface0_version.to_string(), typ: "u8".into() },
+        FieldValue { name: "NewInterface0Status".into(), value: "3".into(), typ: "u8".into() },
+        FieldValue { name: "NewInterface0Name".into(), value: "Loopback0".into(), typ: "string".into() },
+        FieldValue { name: "NewInterface0InterfaceType".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "NewInterface0InterfaceCYOA".into(), value: "0".into(), typ: "u8".into() },
+        FieldValue { name: "NewInterface0InterfaceDIA".into(), value: "0".into(), typ: "u8".into() },
+        FieldValue { name: "NewInterface0LoopbackType".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "NewInterface0Bandwidth".into(), value: "0".into(), typ: "u64".into() },
+        FieldValue { name: "NewInterface0Cir".into(), value: "0".into(), typ: "u64".into() },
+        FieldValue { name: "NewInterface0Mtu".into(), value: "9000".into(), typ: "u16".into() },
+        FieldValue { name: "NewInterface0RoutingMode".into(), value: "0".into(), typ: "u8".into() },
+        FieldValue { name: "NewInterface0VlanId".into(), value: "0".into(), typ: "u16".into() },
+        FieldValue { name: "NewInterface0IpNet".into(), value: "10.0.0.1/32".into(), typ: "networkv4".into() },
+        FieldValue { name: "NewInterface0NodeSegmentIdx".into(), value: "100".into(), typ: "u16".into() },
+        FieldValue { name: "NewInterface0UserTunnelEndpoint".into(), value: "false".into(), typ: "bool".into() },
+        FieldValue { name: "NewInterface0FlexAlgoNodeSegmentsLen".into(), value: "1".into(), typ: "u32".into() },
+        FieldValue { name: "NewInterface0FlexAlgoNodeSegments0Topology".into(), value: pubkey_bs58(topology_pk), typ: "pubkey".into() },
+        FieldValue { name: "NewInterface0FlexAlgoNodeSegments0NodeSegmentIdx".into(), value: "300".into(), typ: "u16".into() },
+        // NewInterface 1 - Physical user-tunnel-endpoint, no flex segments.
+        FieldValue { name: "NewInterface1Size".into(), value: new_interface1_size.to_string(), typ: "u16".into() },
+        FieldValue { name: "NewInterface1Version".into(), value: new_interface1_version.to_string(), typ: "u8".into() },
+        FieldValue { name: "NewInterface1Status".into(), value: "3".into(), typ: "u8".into() },
+        FieldValue { name: "NewInterface1Name".into(), value: "Ethernet1".into(), typ: "string".into() },
+        FieldValue { name: "NewInterface1InterfaceType".into(), value: "2".into(), typ: "u8".into() },
+        FieldValue { name: "NewInterface1InterfaceCYOA".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "NewInterface1InterfaceDIA".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "NewInterface1LoopbackType".into(), value: "0".into(), typ: "u8".into() },
+        FieldValue { name: "NewInterface1Bandwidth".into(), value: "10000000000".into(), typ: "u64".into() },
+        FieldValue { name: "NewInterface1Cir".into(), value: "5000000000".into(), typ: "u64".into() },
+        FieldValue { name: "NewInterface1Mtu".into(), value: "9000".into(), typ: "u16".into() },
+        FieldValue { name: "NewInterface1RoutingMode".into(), value: "1".into(), typ: "u8".into() },
+        FieldValue { name: "NewInterface1VlanId".into(), value: "100".into(), typ: "u16".into() },
+        FieldValue { name: "NewInterface1IpNet".into(), value: "172.16.0.1/30".into(), typ: "networkv4".into() },
+        FieldValue { name: "NewInterface1NodeSegmentIdx".into(), value: "200".into(), typ: "u16".into() },
+        FieldValue { name: "NewInterface1UserTunnelEndpoint".into(), value: "true".into(), typ: "bool".into() },
+        FieldValue { name: "NewInterface1FlexAlgoNodeSegmentsLen".into(), value: "0".into(), typ: "u32".into() },
+    ]
+}
+
 fn generate_device(dir: &Path) {
+    let (val, owner, location_pk, exchange_pk, metrics_publisher_pk, contributor_pk, topology_pk) =
+        canonical_device();
+
+    // Use Device's custom BorshSerialize: projects the on-disk legacy `interfaces`
+    // slot from `new_interfaces` (always V2 per #3653/#3667) and appends the
+    // size-prefixed `new_interfaces` vec. SDKs read both, with the trailing vec
+    // taking precedence over the rebuilt-from-legacy fallback.
+    let data = borsh::to_vec(&val).unwrap();
+
+    let size0 = val.new_interfaces[0].compute_on_disk_size().unwrap();
+    let size1 = val.new_interfaces[1].compute_on_disk_size().unwrap();
+
+    let meta = FixtureMeta {
+        name: "Device".into(),
+        account_type: 5,
+        fields: canonical_device_fields(
+            &owner, &location_pk, &exchange_pk, &metrics_publisher_pk, &contributor_pk, &topology_pk,
+            size0, CURRENT_INTERFACE_SCHEMA_VERSION,
+            size1, CURRENT_INTERFACE_SCHEMA_VERSION,
+        ),
+    };
+
+    write_fixture(dir, "device", &data, &meta);
+}
+
+/// Hand-serialized device with the legacy `interfaces` vec populated and **no** trailing
+/// `new_interfaces` vec — the pre-#3667 on-disk format. SDKs detect the absent trailing
+/// bytes and rebuild `new_interfaces` from the legacy enum vec, stamping each entry with
+/// `Version = CURRENT_INTERFACE_VERSION` and `Size = 0`.
+fn generate_device_legacy(dir: &Path) {
     let owner = pubkey_from_byte(0x40);
     let location_pk = pubkey_from_byte(0x41);
     let exchange_pk = pubkey_from_byte(0x42);
@@ -342,11 +597,8 @@ fn generate_device(dir: &Path) {
         max_multicast_publishers: 10,
     };
 
-    // Serialize each field manually to bypass `Device`'s custom `BorshSerialize`,
-    // which projects the legacy slot from `new_interfaces` (always V2) and
-    // appends a `new_interfaces` trailing vec. The fixture pins Interface0 to V1
-    // and Interface1 to V2 in the pre-#3667 on-disk format, which the SDK
-    // exercises via the legacy fallback path in `Device::TryFrom`.
+    // Bypass Device::serialize so we don't write the trailing new_interfaces vec —
+    // this is exactly the pre-#3667 byte shape the SDK legacy-fallback path consumes.
     let mut data = Vec::new();
     BorshSerialize::serialize(&val.account_type, &mut data).unwrap();
     BorshSerialize::serialize(&val.owner, &mut data).unwrap();
@@ -376,8 +628,9 @@ fn generate_device(dir: &Path) {
     BorshSerialize::serialize(&val.multicast_publishers_count, &mut data).unwrap();
     BorshSerialize::serialize(&val.max_multicast_publishers, &mut data).unwrap();
 
+    let v = CURRENT_INTERFACE_SCHEMA_VERSION.to_string();
     let meta = FixtureMeta {
-        name: "Device".into(),
+        name: "DeviceLegacy".into(),
         account_type: 5,
         fields: vec![
             FieldValue { name: "AccountType".into(), value: "5".into(), typ: "u8".into() },
@@ -396,7 +649,7 @@ fn generate_device(dir: &Path) {
             FieldValue { name: "ContributorPk".into(), value: pubkey_bs58(&contributor_pk), typ: "pubkey".into() },
             FieldValue { name: "MgmtVrf".into(), value: "mgmt".into(), typ: "string".into() },
             FieldValue { name: "InterfacesLen".into(), value: "2".into(), typ: "u32".into() },
-            // Interface 0 - V1
+            // Interface 0 - V1 (legacy on-disk).
             FieldValue { name: "Interface0Version".into(), value: "0".into(), typ: "u8".into() },
             FieldValue { name: "Interface0Status".into(), value: "3".into(), typ: "u8".into() },
             FieldValue { name: "Interface0Name".into(), value: "Loopback0".into(), typ: "string".into() },
@@ -406,7 +659,7 @@ fn generate_device(dir: &Path) {
             FieldValue { name: "Interface0IpNet".into(), value: "10.0.0.1/32".into(), typ: "networkv4".into() },
             FieldValue { name: "Interface0NodeSegmentIdx".into(), value: "100".into(), typ: "u16".into() },
             FieldValue { name: "Interface0UserTunnelEndpoint".into(), value: "false".into(), typ: "bool".into() },
-            // Interface 1 - V2
+            // Interface 1 - V2 (legacy on-disk).
             FieldValue { name: "Interface1Version".into(), value: "1".into(), typ: "u8".into() },
             FieldValue { name: "Interface1Status".into(), value: "3".into(), typ: "u8".into() },
             FieldValue { name: "Interface1Name".into(), value: "Ethernet1".into(), typ: "string".into() },
@@ -434,10 +687,87 @@ fn generate_device(dir: &Path) {
             FieldValue { name: "ReservedSeats".into(), value: "3".into(), typ: "u16".into() },
             FieldValue { name: "MulticastPublishersCount".into(), value: "1".into(), typ: "u16".into() },
             FieldValue { name: "MaxMulticastPublishers".into(), value: "10".into(), typ: "u16".into() },
+            // Rebuilt new_interfaces (size=0, version=current); both bodies mirror
+            // the V2 projection of the legacy entries — V1's missing fields default per
+            // `InterfaceV2::try_from(&InterfaceV1)` (interface.rs:353-374).
+            FieldValue { name: "NewInterfacesLen".into(), value: "2".into(), typ: "u32".into() },
+            FieldValue { name: "NewInterface0Size".into(), value: "0".into(), typ: "u16".into() },
+            FieldValue { name: "NewInterface0Version".into(), value: v.clone(), typ: "u8".into() },
+            FieldValue { name: "NewInterface0Status".into(), value: "3".into(), typ: "u8".into() },
+            FieldValue { name: "NewInterface0Name".into(), value: "Loopback0".into(), typ: "string".into() },
+            FieldValue { name: "NewInterface0InterfaceType".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "NewInterface0InterfaceCYOA".into(), value: "0".into(), typ: "u8".into() },
+            FieldValue { name: "NewInterface0InterfaceDIA".into(), value: "0".into(), typ: "u8".into() },
+            FieldValue { name: "NewInterface0LoopbackType".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "NewInterface0Mtu".into(), value: "9000".into(), typ: "u16".into() },
+            FieldValue { name: "NewInterface0RoutingMode".into(), value: "0".into(), typ: "u8".into() },
+            FieldValue { name: "NewInterface0VlanId".into(), value: "0".into(), typ: "u16".into() },
+            FieldValue { name: "NewInterface0IpNet".into(), value: "10.0.0.1/32".into(), typ: "networkv4".into() },
+            FieldValue { name: "NewInterface0NodeSegmentIdx".into(), value: "100".into(), typ: "u16".into() },
+            FieldValue { name: "NewInterface0UserTunnelEndpoint".into(), value: "false".into(), typ: "bool".into() },
+            FieldValue { name: "NewInterface0FlexAlgoNodeSegmentsLen".into(), value: "0".into(), typ: "u32".into() },
+            FieldValue { name: "NewInterface1Size".into(), value: "0".into(), typ: "u16".into() },
+            FieldValue { name: "NewInterface1Version".into(), value: v, typ: "u8".into() },
+            FieldValue { name: "NewInterface1Status".into(), value: "3".into(), typ: "u8".into() },
+            FieldValue { name: "NewInterface1Name".into(), value: "Ethernet1".into(), typ: "string".into() },
+            FieldValue { name: "NewInterface1InterfaceType".into(), value: "2".into(), typ: "u8".into() },
+            FieldValue { name: "NewInterface1InterfaceCYOA".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "NewInterface1InterfaceDIA".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "NewInterface1LoopbackType".into(), value: "0".into(), typ: "u8".into() },
+            FieldValue { name: "NewInterface1Bandwidth".into(), value: "10000000000".into(), typ: "u64".into() },
+            FieldValue { name: "NewInterface1Cir".into(), value: "5000000000".into(), typ: "u64".into() },
+            FieldValue { name: "NewInterface1Mtu".into(), value: "9000".into(), typ: "u16".into() },
+            FieldValue { name: "NewInterface1RoutingMode".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "NewInterface1VlanId".into(), value: "100".into(), typ: "u16".into() },
+            FieldValue { name: "NewInterface1IpNet".into(), value: "172.16.0.1/30".into(), typ: "networkv4".into() },
+            FieldValue { name: "NewInterface1NodeSegmentIdx".into(), value: "200".into(), typ: "u16".into() },
+            FieldValue { name: "NewInterface1UserTunnelEndpoint".into(), value: "true".into(), typ: "bool".into() },
+            FieldValue { name: "NewInterface1FlexAlgoNodeSegmentsLen".into(), value: "0".into(), typ: "u32".into() },
         ],
     };
 
-    write_fixture(dir, "device", &data, &meta);
+    write_fixture(dir, "device_legacy", &data, &meta);
+}
+
+/// Same on-disk shape as `device.bin`, but the **last** trailing-vec element is doctored
+/// with `version = 5` (a hypothetical future version) and `size += 8`, with 8 trailing
+/// `0xAB` filler bytes appended at end-of-file. SDK readers consume the known body fields
+/// then `seek(start + size)` over the junk — exercising the constant-time skip path.
+const FUTURE_VERSION: u8 = 5;
+const FUTURE_VERSION_JUNK: usize = 8;
+
+fn generate_device_future_version(dir: &Path) {
+    let (val, owner, location_pk, exchange_pk, metrics_publisher_pk, contributor_pk, topology_pk) =
+        canonical_device();
+
+    let mut data = borsh::to_vec(&val).unwrap();
+
+    // The trailing vec elements are written contiguously at end-of-buffer; the last
+    // element ends exactly at buf.len(). Locate its size+version header by subtracting
+    // the precomputed on-disk size.
+    let last = val.new_interfaces.last().expect("non-empty");
+    let last_size = last.compute_on_disk_size().unwrap();
+    let new_last_size = last_size + FUTURE_VERSION_JUNK as u16;
+    let last_start = data.len() - last_size as usize;
+
+    // Bump size and version in place, then append junk bytes after the body.
+    data[last_start..last_start + 2].copy_from_slice(&new_last_size.to_le_bytes());
+    data[last_start + 2] = FUTURE_VERSION;
+    data.extend(std::iter::repeat_n(0xAB, FUTURE_VERSION_JUNK));
+
+    let size0 = val.new_interfaces[0].compute_on_disk_size().unwrap();
+
+    let meta = FixtureMeta {
+        name: "DeviceFutureVersion".into(),
+        account_type: 5,
+        fields: canonical_device_fields(
+            &owner, &location_pk, &exchange_pk, &metrics_publisher_pk, &contributor_pk, &topology_pk,
+            size0, CURRENT_INTERFACE_SCHEMA_VERSION,
+            new_last_size, FUTURE_VERSION,
+        ),
+    };
+
+    write_fixture(dir, "device_future_version", &data, &meta);
 }
 
 fn generate_link(dir: &Path) {

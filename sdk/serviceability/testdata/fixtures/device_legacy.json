@@ -1,5 +1,5 @@
 {
-  "name": "Device",
+  "name": "DeviceLegacy",
   "account_type": 5,
   "fields": [
     {
@@ -84,7 +84,7 @@
     },
     {
       "name": "Interface0Version",
-      "value": "1",
+      "value": "0",
       "typ": "u8"
     },
     {
@@ -103,38 +103,8 @@
       "typ": "u8"
     },
     {
-      "name": "Interface0InterfaceCYOA",
-      "value": "0",
-      "typ": "u8"
-    },
-    {
-      "name": "Interface0InterfaceDIA",
-      "value": "0",
-      "typ": "u8"
-    },
-    {
       "name": "Interface0LoopbackType",
       "value": "1",
-      "typ": "u8"
-    },
-    {
-      "name": "Interface0Bandwidth",
-      "value": "0",
-      "typ": "u64"
-    },
-    {
-      "name": "Interface0Cir",
-      "value": "0",
-      "typ": "u64"
-    },
-    {
-      "name": "Interface0Mtu",
-      "value": "9000",
-      "typ": "u16"
-    },
-    {
-      "name": "Interface0RoutingMode",
-      "value": "0",
       "typ": "u8"
     },
     {
@@ -299,7 +269,7 @@
     },
     {
       "name": "NewInterface0Size",
-      "value": "88",
+      "value": "0",
       "typ": "u16"
     },
     {
@@ -338,16 +308,6 @@
       "typ": "u8"
     },
     {
-      "name": "NewInterface0Bandwidth",
-      "value": "0",
-      "typ": "u64"
-    },
-    {
-      "name": "NewInterface0Cir",
-      "value": "0",
-      "typ": "u64"
-    },
-    {
       "name": "NewInterface0Mtu",
       "value": "9000",
       "typ": "u16"
@@ -379,22 +339,12 @@
     },
     {
       "name": "NewInterface0FlexAlgoNodeSegmentsLen",
-      "value": "1",
+      "value": "0",
       "typ": "u32"
     },
     {
-      "name": "NewInterface0FlexAlgoNodeSegments0Topology",
-      "value": "5eM8cB4pfhAGBjJE6pNomwRmrfzBiZ2ZHrHGjTQfjWco",
-      "typ": "pubkey"
-    },
-    {
-      "name": "NewInterface0FlexAlgoNodeSegments0NodeSegmentIdx",
-      "value": "300",
-      "typ": "u16"
-    },
-    {
       "name": "NewInterface1Size",
-      "value": "54",
+      "value": "0",
       "typ": "u16"
     },
     {

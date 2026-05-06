@@ -95,7 +95,7 @@ impl CreateWANLinkCliCommand {
             .map_err(|_| eyre::eyre!("Device not found"))?;
 
         let side_a_iface = side_a_dev
-            .new_interfaces
+            .interfaces
             .iter()
             .find(|i| i.name.to_lowercase() == self.side_a_interface.to_lowercase())
             .ok_or_else(|| {
@@ -136,7 +136,7 @@ impl CreateWANLinkCliCommand {
         }
 
         let side_z_iface = side_z_dev
-            .new_interfaces
+            .interfaces
             .iter()
             .find(|i| i.name.to_lowercase() == self.side_z_interface.to_lowercase())
             .ok_or_else(|| {
@@ -229,8 +229,8 @@ mod tests {
             device::get::GetDeviceCommand,
             link::{create::CreateLinkCommand, get::GetLinkCommand},
         },
-        get_device_pda, AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType,
-        Link, LinkLinkType, LinkStatus,
+        get_device_pda, AccountType, Device, DeviceStatus, DeviceType, Interface, Link,
+        LinkLinkType, LinkStatus,
     };
     use doublezero_serviceability::state::interface::{
         InterfaceCYOA, InterfaceStatus, InterfaceType, LoopbackType,
@@ -270,8 +270,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/1".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -282,9 +281,7 @@ mod tests {
                 user_tunnel_endpoint: true,
                 mtu: 9000,
                 ..Default::default()
-            })
-                .try_into()
-                .unwrap()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -297,6 +294,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let location2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkce");
@@ -317,8 +315,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -329,9 +326,7 @@ mod tests {
                 user_tunnel_endpoint: true,
                 mtu: 9000,
                 ..Default::default()
-            })
-                .try_into()
-                .unwrap()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -344,6 +339,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let location3_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquCkcx");
         let exchange3_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquCkce");
@@ -364,8 +360,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/3".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -376,9 +371,7 @@ mod tests {
                 user_tunnel_endpoint: true,
                 mtu: 9000,
                 ..Default::default()
-            })
-                .try_into()
-                .unwrap()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -391,6 +384,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let link = Link {
             account_type: AccountType::Link,
@@ -546,8 +540,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/1".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -558,9 +551,7 @@ mod tests {
                 user_tunnel_endpoint: true,
                 interface_cyoa: InterfaceCYOA::GREOverDIA,
                 ..Default::default()
-            })
-                .try_into()
-                .unwrap()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -573,6 +564,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let location2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkce");
@@ -593,8 +585,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -604,9 +595,7 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
                 ..Default::default()
-            })
-                .try_into()
-                .unwrap()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -619,6 +608,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client
@@ -686,8 +676,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/1".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -698,9 +687,7 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
                 ..Default::default()
-            })
-                .try_into()
-                .unwrap()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -713,6 +700,7 @@ mod tests {
             max_multicast_subscribers: 0,
             max_multicast_publishers: 0,
             reserved_seats: 0,
+            ..Default::default()
         };
         let device2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf");
         let device2 = Device {
@@ -731,8 +719,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -743,9 +730,7 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
                 ..Default::default()
-            })
-                .try_into()
-                .unwrap()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -758,6 +743,7 @@ mod tests {
             max_multicast_subscribers: 0,
             max_multicast_publishers: 0,
             reserved_seats: 0,
+            ..Default::default()
         };
 
         client

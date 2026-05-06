@@ -1,7 +1,7 @@
-"""Hand-built byte-vector tests for the size-prefixed NewInterface reader.
+"""Hand-built byte-vector tests for the size-prefixed Interface reader.
 
 The wire format mirrors smartcontract/programs/doublezero-serviceability::state::device:
-each NewInterface element is (u16 size, u8 version, body), where size includes
+each Interface element is (u16 size, u8 version, body), where size includes
 the 3-byte prefix. The Device account stores this vec immediately after
 max_multicast_publishers.
 """
@@ -36,7 +36,7 @@ def _string(s: str) -> bytes:
 
 
 def _new_interface_body(name: str) -> bytes:
-    """Body bytes for a minimal V4 NewInterface with caller-provided name."""
+    """Body bytes for a minimal V4 Interface with caller-provided name."""
     parts: list[bytes] = []
     parts.append(b"\x00")  # status
     parts.append(_string(name))
@@ -128,29 +128,29 @@ def test_populated_trailing_vec():
     raw = _device(2, ["Eth1", "Lo0"], trailing)
 
     dev = Device.from_bytes(raw)
+    assert len(dev.deprecated_interfaces) == 2
     assert len(dev.interfaces) == 2
-    assert len(dev.new_interfaces) == 2
-    assert dev.new_interfaces[0].name == "Eth1"
-    assert dev.new_interfaces[1].name == "Lo0"
-    assert dev.new_interfaces[0].version == CURRENT_INTERFACE_VERSION
-    for i, ni in enumerate(dev.new_interfaces):
+    assert dev.interfaces[0].name == "Eth1"
+    assert dev.interfaces[1].name == "Lo0"
+    assert dev.interfaces[0].version == CURRENT_INTERFACE_VERSION
+    for i, ni in enumerate(dev.interfaces):
         expected_size = 3 + len(_new_interface_body(ni.name))
         assert ni.size == expected_size, (
             f"size mismatch on element {i}: expected {expected_size}, got {ni.size}"
         )
 
 
-def test_legacy_account_rebuilds_new_interfaces():
+def test_legacy_account_rebuilds_interfaces():
     raw = _device(2, ["Eth1", "Lo0"], trailing=None)
 
     dev = Device.from_bytes(raw)
+    assert len(dev.deprecated_interfaces) == 2
     assert len(dev.interfaces) == 2
-    assert len(dev.new_interfaces) == 2
-    assert dev.new_interfaces[0].name == "Eth1"
-    assert dev.new_interfaces[1].name == "Lo0"
+    assert dev.interfaces[0].name == "Eth1"
+    assert dev.interfaces[1].name == "Lo0"
     # Rebuilt entries are stamped with the current schema version and zero size
     # (callers don't need on-disk size for a rebuild).
-    for ni in dev.new_interfaces:
+    for ni in dev.interfaces:
         assert ni.version == CURRENT_INTERFACE_VERSION
         assert ni.size == 0
 
@@ -159,7 +159,7 @@ def test_trailing_length_mismatch_raises():
     trailing = _u32(1) + _new_interface_sized("Eth1")  # only 1, but legacy has 2
     raw = _device(2, ["Eth1", "Lo0"], trailing)
 
-    with pytest.raises(ValueError, match="length 1 != interfaces length 2"):
+    with pytest.raises(ValueError, match="interfaces length 1 != deprecated_interfaces length 2"):
         Device.from_bytes(raw)
 
 
@@ -173,8 +173,8 @@ def test_future_version_skips_trailing_bytes():
     raw = _device(1, ["Future1"], trailing)
 
     dev = Device.from_bytes(raw)
-    assert len(dev.new_interfaces) == 1
-    assert dev.new_interfaces[0].version == 5
-    assert dev.new_interfaces[0].size == 3 + len(body)
+    assert len(dev.interfaces) == 1
+    assert dev.interfaces[0].version == 5
+    assert dev.interfaces[0].size == 3 + len(body)
     # Body fields up to known shape are still parsed.
-    assert dev.new_interfaces[0].name == "Future1"
+    assert dev.interfaces[0].name == "Future1"

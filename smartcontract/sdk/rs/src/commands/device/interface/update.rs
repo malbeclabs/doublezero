@@ -117,7 +117,6 @@ mod tests {
             dz_prefixes: "10.0.0.1/24".parse().unwrap(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: DeviceHealth::ReadyForUsers,
@@ -129,6 +128,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         }
     }
 

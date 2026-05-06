@@ -3,7 +3,7 @@ use crate::{
     helper::is_global,
     state::{
         accounttype::AccountType,
-        interface::{CurrentInterfaceVersion, Interface, InterfaceV2, NewInterface},
+        interface::{Interface, InterfaceDeprecated, InterfaceV2},
         user::UserType,
     },
 };
@@ -269,7 +269,7 @@ pub struct Device {
     )]
     pub contributor_pk: Pubkey, // 32
     pub mgmt_vrf: String,          // 4 + len
-    pub interfaces: Vec<Interface>, // 4 + (14 + len(name)) * len
+    pub deprecated_interfaces: Vec<InterfaceDeprecated>, // 4 + (14 + len(name)) * len
     pub reference_count: u32,      // 4
     pub users_count: u16,          // 2
     pub max_users: u16,            // 2
@@ -284,9 +284,9 @@ pub struct Device {
     pub max_multicast_publishers: u16, // 2
     /// Forward-compatible interface vec written at the end of the on-disk layout.
     /// Legacy `interfaces` stays at its existing offset and is projected from
-    /// `new_interfaces` (always as `Interface::V2`) by the custom `BorshSerialize`
+    /// `interfaces` (always as `InterfaceDeprecated::V2`) by the custom `BorshSerialize`
     /// impl, keeping older readers byte-compatible.
-    pub new_interfaces: Vec<NewInterface>,
+    pub interfaces: Vec<Interface>,
 }
 
 impl Default for Device {
@@ -306,7 +306,7 @@ impl Default for Device {
             metrics_publisher_pk: Pubkey::default(),
             contributor_pk: Pubkey::default(),
             mgmt_vrf: String::new(),
-            interfaces: Vec::new(),
+            deprecated_interfaces: Vec::new(),
             reference_count: 0,
             users_count: 0,
             max_users: 0,
@@ -319,57 +319,41 @@ impl Default for Device {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
-            new_interfaces: Vec::new(),
+            interfaces: Vec::new(),
         }
     }
 }
 
 impl Device {
-    pub fn find_interface(&self, name: &str) -> Result<(usize, &NewInterface), String> {
-        self.new_interfaces
-            .iter()
-            .enumerate()
-            .find(|(_, iface)| iface.name.eq_ignore_ascii_case(name))
-            .ok_or_else(|| format!("Interface with name '{name}' not found"))
-    }
-
-    /// Temporary helper that returns a `CurrentInterfaceVersion` projection of the
-    /// matched interface. Retained for CLI callers during the staged migration;
-    /// once those callers move to `find_interface` (which returns `&NewInterface`),
-    /// this helper is removed. No `processors/` code calls this any more.
-    pub fn find_interface_legacy(
-        &self,
-        name: &str,
-    ) -> Result<(usize, CurrentInterfaceVersion), String> {
+    pub fn find_interface(&self, name: &str) -> Result<(usize, &Interface), String> {
         self.interfaces
             .iter()
-            .map(|iface| iface.into_current_version())
             .enumerate()
             .find(|(_, iface)| iface.name.eq_ignore_ascii_case(name))
             .ok_or_else(|| format!("Interface with name '{name}' not found"))
     }
 
     /// Replaces the interface at `idx` in both legacy `interfaces` and
-    /// `new_interfaces`, keeping the two vecs in sync. The custom `BorshSerialize`
-    /// projects the on-disk legacy slot from `new_interfaces`, so callers that
+    /// `interfaces`, keeping the two vecs in sync. The custom `BorshSerialize`
+    /// projects the on-disk legacy slot from `interfaces`, so callers that
     /// only mutated `interfaces[idx]` would lose their change on save.
-    pub fn replace_interface(&mut self, idx: usize, iface: NewInterface) {
-        self.interfaces[idx] = InterfaceV2::from(&iface).to_interface();
-        self.new_interfaces[idx] = iface;
+    pub fn replace_interface(&mut self, idx: usize, iface: Interface) {
+        self.deprecated_interfaces[idx] = InterfaceV2::from(&iface).to_interface();
+        self.interfaces[idx] = iface;
     }
 
-    /// Appends an interface to both `interfaces` and `new_interfaces`. Same
+    /// Appends an interface to both `interfaces` and `interfaces`. Same
     /// rationale as `replace_interface`.
-    pub fn push_interface(&mut self, iface: NewInterface) {
-        self.interfaces
+    pub fn push_interface(&mut self, iface: Interface) {
+        self.deprecated_interfaces
             .push(InterfaceV2::from(&iface).to_interface());
-        self.new_interfaces.push(iface);
+        self.interfaces.push(iface);
     }
 
-    /// Removes the interface at `idx` from both `interfaces` and `new_interfaces`.
+    /// Removes the interface at `idx` from both `interfaces` and `interfaces`.
     pub fn remove_interface(&mut self, idx: usize) {
+        self.deprecated_interfaces.remove(idx);
         self.interfaces.remove(idx);
-        self.new_interfaces.remove(idx);
     }
 
     pub fn is_device_eligible_for_provisioning(&self) -> bool {
@@ -524,18 +508,18 @@ impl fmt::Display for Device {
 
 impl borsh::BorshSerialize for Device {
     fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
-        // Project the legacy on-disk vec from `new_interfaces`. Always V2 to match the
-        // post-#3653 default; older readers see a normal `Vec<Interface>` at the
-        // existing offset and don't observe the trailing `new_interfaces` vec.
-        let legacy: Vec<Interface> = self
-            .new_interfaces
+        // Project the legacy on-disk vec from `interfaces`. Always V2 to match the
+        // post-#3653 default; older readers see a normal `Vec<InterfaceDeprecated>` at the
+        // existing offset and don't observe the trailing `interfaces` vec.
+        let legacy: Vec<InterfaceDeprecated> = self
+            .interfaces
             .iter()
-            .map(|n| Interface::V2(InterfaceV2::from(n)))
+            .map(|n| InterfaceDeprecated::V2(InterfaceV2::from(n)))
             .collect();
         assert_eq!(
             legacy.len(),
-            self.new_interfaces.len(),
-            "legacy projection length must match new_interfaces length"
+            self.interfaces.len(),
+            "legacy projection length must match interfaces length"
         );
 
         self.account_type.serialize(writer)?;
@@ -565,7 +549,7 @@ impl borsh::BorshSerialize for Device {
         self.reserved_seats.serialize(writer)?;
         self.multicast_publishers_count.serialize(writer)?;
         self.max_multicast_publishers.serialize(writer)?;
-        self.new_interfaces.serialize(writer)?;
+        self.interfaces.serialize(writer)?;
         Ok(())
     }
 }
@@ -592,7 +576,7 @@ impl TryFrom<&[u8]> for Device {
             BorshDeserialize::deserialize(&mut data).unwrap_or_default();
         let contributor_pk: Pubkey = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
         let mgmt_vrf: String = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
-        let interfaces: Vec<Interface> =
+        let deprecated_interfaces: Vec<InterfaceDeprecated> =
             BorshDeserialize::deserialize(&mut data).unwrap_or_default();
         let reference_count: u32 = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
         let users_count: u16 = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
@@ -615,20 +599,19 @@ impl TryFrom<&[u8]> for Device {
 
         // Trailing forward-compat vec: present on accounts written by the current
         // serializer, absent on legacy accounts.
-        let trailing: Vec<NewInterface> =
-            BorshDeserialize::deserialize(&mut data).unwrap_or_default();
+        let trailing: Vec<Interface> = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
 
-        let new_interfaces = if trailing.is_empty() {
+        let interfaces = if trailing.is_empty() {
             // Legacy account: rebuild from the legacy enum vec via per-variant
             // `TryFrom`. V3 is projected through V2, dropping `flex_algo_node_segments`
             // (V3 only exists from migrate/backfill paths post-#3653).
-            interfaces
+            deprecated_interfaces
                 .iter()
-                .map(|iface| -> Result<NewInterface, ProgramError> {
+                .map(|iface| -> Result<Interface, ProgramError> {
                     match iface {
-                        Interface::V1(v1) => v1.try_into(),
-                        Interface::V2(v2) => v2.try_into(),
-                        Interface::V3(v3) => {
+                        InterfaceDeprecated::V1(v1) => v1.try_into(),
+                        InterfaceDeprecated::V2(v2) => v2.try_into(),
+                        InterfaceDeprecated::V3(v3) => {
                             let v2: InterfaceV2 = v3.try_into()?;
                             (&v2).try_into()
                         }
@@ -638,8 +621,8 @@ impl TryFrom<&[u8]> for Device {
         } else {
             assert_eq!(
                 trailing.len(),
-                interfaces.len(),
-                "trailing new_interfaces vec length must match legacy interfaces vec length"
+                deprecated_interfaces.len(),
+                "trailing interfaces vec length must match legacy interfaces vec length"
             );
             trailing
         };
@@ -659,7 +642,7 @@ impl TryFrom<&[u8]> for Device {
             metrics_publisher_pk,
             contributor_pk,
             mgmt_vrf,
-            interfaces,
+            deprecated_interfaces,
             reference_count,
             users_count,
             max_users,
@@ -672,7 +655,7 @@ impl TryFrom<&[u8]> for Device {
             reserved_seats,
             multicast_publishers_count,
             max_multicast_publishers,
-            new_interfaces,
+            interfaces,
         };
 
         if out.account_type != AccountType::Device {
@@ -832,7 +815,7 @@ mod tests {
         assert_eq!(val.metrics_publisher_pk, Pubkey::default());
         assert_eq!(val.contributor_pk, Pubkey::default());
         assert_eq!(val.mgmt_vrf, "");
-        assert_eq!(val.interfaces.len(), 0);
+        assert_eq!(val.deprecated_interfaces.len(), 0);
         assert_eq!(val.reference_count, 0);
         assert_eq!(val.users_count, 0);
         assert_eq!(val.max_users, 0);
@@ -856,8 +839,8 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
+            deprecated_interfaces: vec![],
             interfaces: vec![],
-            new_interfaces: vec![],
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
@@ -892,8 +875,8 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
+            deprecated_interfaces: vec![],
             interfaces: vec![],
-            new_interfaces: vec![],
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
@@ -928,8 +911,8 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
+            deprecated_interfaces: vec![],
             interfaces: vec![],
-            new_interfaces: vec![],
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
@@ -964,8 +947,8 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
+            deprecated_interfaces: vec![],
             interfaces: vec![],
-            new_interfaces: vec![],
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
@@ -1001,8 +984,8 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
+            deprecated_interfaces: vec![],
             interfaces: vec![],
-            new_interfaces: vec![],
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
@@ -1037,8 +1020,8 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
+            deprecated_interfaces: vec![],
             interfaces: vec![],
-            new_interfaces: vec![],
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
@@ -1073,8 +1056,8 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
+            deprecated_interfaces: vec![],
             interfaces: vec![],
-            new_interfaces: vec![],
             users_count: 0,
             max_users: 0,
             device_health: DeviceHealth::ReadyForUsers,
@@ -1111,8 +1094,8 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
+            deprecated_interfaces: vec![],
             interfaces: vec![],
-            new_interfaces: vec![],
             users_count: 6,
             max_users: 5,
             device_health: DeviceHealth::ReadyForUsers,
@@ -1147,8 +1130,8 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
+            deprecated_interfaces: vec![],
             interfaces: vec![],
-            new_interfaces: vec![],
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
@@ -1168,7 +1151,7 @@ mod tests {
 
     #[test]
     fn test_state_device_validate_error_invalid_interface() {
-        let invalid_iface = CurrentInterfaceVersion {
+        let invalid_iface = Interface {
             status: InterfaceStatus::Activated,
             name: "".to_string(), // Invalid Name
             interface_type: InterfaceType::Physical,
@@ -1183,8 +1166,8 @@ mod tests {
             ip_net: "10.0.0.1/24".parse().unwrap(),
             node_segment_idx: 42,
             user_tunnel_endpoint: true,
-        }
-        .to_interface();
+            ..Default::default()
+        };
         let val = Device {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
@@ -1201,19 +1184,12 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
-            new_interfaces: vec![(&invalid_iface.into_current_version()).try_into().unwrap()],
             interfaces: vec![invalid_iface],
             users_count: 1,
             max_users: 2,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
-            unicast_users_count: 0,
-            multicast_subscribers_count: 0,
-            max_unicast_users: 0,
-            max_multicast_subscribers: 0,
-            reserved_seats: 0,
-            multicast_publishers_count: 0,
-            max_multicast_publishers: 0,
+            ..Default::default()
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -1222,7 +1198,7 @@ mod tests {
 
     #[test]
     fn test_state_device_serialization() {
-        let iface_a = CurrentInterfaceVersion {
+        let mut iface_a = Interface {
             status: InterfaceStatus::Activated,
             name: "Switch1/1/1".to_string(),
             interface_type: InterfaceType::Physical,
@@ -1237,8 +1213,10 @@ mod tests {
             ip_net: "10.0.0.1/24".parse().unwrap(),
             node_segment_idx: 42,
             user_tunnel_endpoint: true,
+            ..Default::default()
         };
-        let iface_b = CurrentInterfaceVersion {
+        iface_a.size = iface_a.compute_on_disk_size().unwrap();
+        let mut iface_b = Interface {
             status: InterfaceStatus::Deleting,
             name: "Switch1/1/2".to_string(),
             interface_type: InterfaceType::Physical,
@@ -1253,7 +1231,9 @@ mod tests {
             ip_net: "10.0.1.1/24".parse().unwrap(),
             node_segment_idx: 24,
             user_tunnel_endpoint: false,
+            ..Default::default()
         };
+        iface_b.size = iface_b.compute_on_disk_size().unwrap();
 
         let val = Device {
             account_type: AccountType::Device,
@@ -1271,22 +1251,12 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![iface_a.to_interface(), iface_b.to_interface()],
-            new_interfaces: vec![
-                (&iface_a).try_into().unwrap(),
-                (&iface_b).try_into().unwrap(),
-            ],
+            interfaces: vec![iface_a, iface_b],
             users_count: 111,
             max_users: 222,
             device_health: DeviceHealth::ReadyForUsers,
             desired_status: DeviceDesiredStatus::Pending,
-            unicast_users_count: 0,
-            multicast_subscribers_count: 0,
-            max_unicast_users: 0,
-            max_multicast_subscribers: 0,
-            reserved_seats: 0,
-            multicast_publishers_count: 0,
-            max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -1345,8 +1315,8 @@ mod tests {
             status: DeviceStatus::Activated,
             metrics_publisher_pk: Pubkey::new_unique(),
             mgmt_vrf: "".to_string(),
+            deprecated_interfaces: vec![],
             interfaces: vec![],
-            new_interfaces: vec![],
             users_count: 0,
             max_users: 0,
             device_health: DeviceHealth::Pending,
@@ -1395,8 +1365,8 @@ mod test_device_validate {
             metrics_publisher_pk: Pubkey::new_unique(),
             contributor_pk: Pubkey::new_unique(),
             mgmt_vrf: "vrf1".to_string(),
+            deprecated_interfaces: vec![],
             interfaces: vec![],
-            new_interfaces: vec![],
             reference_count: 0,
             users_count: 0,
             max_users: 10,
@@ -1434,8 +1404,8 @@ mod test_device_validate_errors {
             metrics_publisher_pk: Pubkey::new_unique(),
             contributor_pk: Pubkey::new_unique(),
             mgmt_vrf: "vrf1".to_string(),
+            deprecated_interfaces: vec![],
             interfaces: vec![],
-            new_interfaces: vec![],
             reference_count: 0,
             users_count: 0,
             max_users: 10,
@@ -1660,7 +1630,7 @@ mod test_device_validate_errors {
 }
 
 #[cfg(test)]
-mod test_device_new_interfaces_vec {
+mod test_device_interfaces_vec {
     use super::*;
     use crate::state::interface::{
         InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
@@ -1668,8 +1638,8 @@ mod test_device_new_interfaces_vec {
     };
     use borsh::BorshSerialize;
 
-    fn sample_iface(name: &str, vlan_id: u16) -> CurrentInterfaceVersion {
-        CurrentInterfaceVersion {
+    fn sample_iface(name: &str, vlan_id: u16) -> Interface {
+        let mut iface = Interface {
             status: InterfaceStatus::Activated,
             name: name.to_string(),
             interface_type: InterfaceType::Physical,
@@ -1684,18 +1654,16 @@ mod test_device_new_interfaces_vec {
             ip_net: "10.0.0.1/24".parse().unwrap(),
             node_segment_idx: 0,
             user_tunnel_endpoint: false,
-        }
+            ..Default::default()
+        };
+        iface.size = iface.compute_on_disk_size().unwrap();
+        iface
     }
 
     fn sample_device_with_n_interfaces(n: usize) -> Device {
-        let v2s: Vec<CurrentInterfaceVersion> = (0..n)
+        let interfaces: Vec<Interface> = (0..n)
             .map(|i| sample_iface(&format!("Switch1/1/{i}"), 100 + i as u16))
             .collect();
-        let interfaces = v2s.iter().map(|v| v.to_interface()).collect();
-        let new_interfaces = v2s
-            .iter()
-            .map(|v| (v).try_into().unwrap())
-            .collect::<Vec<NewInterface>>();
         Device {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
@@ -1712,19 +1680,7 @@ mod test_device_new_interfaces_vec {
             contributor_pk: Pubkey::new_unique(),
             mgmt_vrf: "default".to_string(),
             interfaces,
-            reference_count: 0,
-            users_count: 0,
-            max_users: 0,
-            device_health: DeviceHealth::ReadyForUsers,
-            desired_status: DeviceDesiredStatus::Activated,
-            unicast_users_count: 0,
-            multicast_subscribers_count: 0,
-            max_unicast_users: 0,
-            max_multicast_subscribers: 0,
-            reserved_seats: 0,
-            multicast_publishers_count: 0,
-            max_multicast_publishers: 0,
-            new_interfaces,
+            ..Default::default()
         }
     }
 
@@ -1736,30 +1692,30 @@ mod test_device_new_interfaces_vec {
         let bytes = borsh::to_vec(&device).unwrap();
         let decoded = Device::try_from(&bytes[..]).unwrap();
 
+        assert_eq!(decoded.deprecated_interfaces.len(), n);
         assert_eq!(decoded.interfaces.len(), n);
-        assert_eq!(decoded.new_interfaces.len(), n);
         for (i, (legacy, new)) in decoded
-            .interfaces
+            .deprecated_interfaces
             .iter()
-            .zip(decoded.new_interfaces.iter())
+            .zip(decoded.interfaces.iter())
             .enumerate()
         {
-            // Legacy is always the V2 projection of new_interfaces.
-            let legacy_v2 = legacy.into_current_version();
+            // Legacy is always the V2 projection of interfaces.
+            let legacy_v2 = legacy.to_v2();
             assert_eq!(legacy_v2.name, format!("Switch1/1/{i}"));
             assert_eq!(new.name, format!("Switch1/1/{i}"));
             assert_eq!(legacy_v2.name, new.name);
         }
     }
 
-    /// Hand-serializes a Device omitting the trailing `new_interfaces` vec, then
-    /// asserts `Device::try_from` populates `new_interfaces` from the legacy
+    /// Hand-serializes a Device omitting the trailing `interfaces` vec, then
+    /// asserts `Device::try_from` populates `interfaces` from the legacy
     /// `interfaces` vec via the per-variant TryFrom rebuild path.
     #[test]
     fn test_device_legacy_account_rebuilds_new_vec() {
         let device = sample_device_with_n_interfaces(2);
 
-        // Hand-serialize all fields except the trailing new_interfaces vec.
+        // Hand-serialize all fields except the trailing interfaces vec.
         let mut bytes: Vec<u8> = Vec::new();
         device.account_type.serialize(&mut bytes).unwrap();
         device.owner.serialize(&mut bytes).unwrap();
@@ -1775,7 +1731,14 @@ mod test_device_new_interfaces_vec {
         device.metrics_publisher_pk.serialize(&mut bytes).unwrap();
         device.contributor_pk.serialize(&mut bytes).unwrap();
         device.mgmt_vrf.serialize(&mut bytes).unwrap();
-        device.interfaces.serialize(&mut bytes).unwrap();
+        // Project the legacy slot from `interfaces` (always V2, matching the
+        // post-#3653 default) so the rebuild path has data to walk.
+        let legacy: Vec<InterfaceDeprecated> = device
+            .interfaces
+            .iter()
+            .map(|n| InterfaceDeprecated::V2(InterfaceV2::from(n)))
+            .collect();
+        legacy.serialize(&mut bytes).unwrap();
         device.reference_count.serialize(&mut bytes).unwrap();
         device.users_count.serialize(&mut bytes).unwrap();
         device.max_users.serialize(&mut bytes).unwrap();
@@ -1800,18 +1763,18 @@ mod test_device_new_interfaces_vec {
             .max_multicast_publishers
             .serialize(&mut bytes)
             .unwrap();
-        // Trailing new_interfaces vec intentionally omitted.
+        // Trailing interfaces vec intentionally omitted.
 
         let decoded = Device::try_from(&bytes[..]).unwrap();
+        assert_eq!(decoded.deprecated_interfaces.len(), 2);
         assert_eq!(decoded.interfaces.len(), 2);
-        assert_eq!(decoded.new_interfaces.len(), 2);
-        for (i, new) in decoded.new_interfaces.iter().enumerate() {
+        for (i, new) in decoded.interfaces.iter().enumerate() {
             assert_eq!(new.name, format!("Switch1/1/{i}"));
             assert_eq!(new.version, CURRENT_INTERFACE_SCHEMA_VERSION);
         }
     }
 
-    /// Forges a `version=5` element at the head of the trailing `new_interfaces`
+    /// Forges a `version=5` element at the head of the trailing `interfaces`
     /// slot with junk bytes inside its size envelope. The forward-compat reader
     /// should advance past the unknown trailing bytes via the size prefix and
     /// surface both elements.
@@ -1820,14 +1783,14 @@ mod test_device_new_interfaces_vec {
         let device = sample_device_with_n_interfaces(2);
 
         // Serialize via the custom serializer, which writes the trailing
-        // new_interfaces vec at the end.
+        // interfaces vec at the end.
         let bytes = borsh::to_vec(&device).unwrap();
 
-        // Re-encode the trailing new_interfaces vec by hand: replace the first
+        // Re-encode the trailing interfaces vec by hand: replace the first
         // element with a forged future-version (v5) variant whose body is the
         // existing v4 body + 7 junk bytes inside the size envelope.
-        let normal_first_bytes = borsh::to_vec(&device.new_interfaces[0]).unwrap();
-        let normal_second_bytes = borsh::to_vec(&device.new_interfaces[1]).unwrap();
+        let normal_first_bytes = borsh::to_vec(&device.interfaces[0]).unwrap();
+        let normal_second_bytes = borsh::to_vec(&device.interfaces[1]).unwrap();
         let v4_body = &normal_first_bytes[3..]; // strip 3-byte size+version prefix
         let extra: [u8; 7] = [0xAA; 7];
         let total_v5 = 3 + v4_body.len() + extra.len();
@@ -1853,22 +1816,22 @@ mod test_device_new_interfaces_vec {
         forged_bytes.extend_from_slice(&new_trailing);
 
         let decoded = Device::try_from(&forged_bytes[..]).unwrap();
-        assert_eq!(decoded.new_interfaces.len(), 2);
-        assert_eq!(decoded.new_interfaces[0].version, 5);
-        assert_eq!(decoded.new_interfaces[0].name, "Switch1/1/0");
+        assert_eq!(decoded.interfaces.len(), 2);
+        assert_eq!(decoded.interfaces[0].version, 5);
+        assert_eq!(decoded.interfaces[0].name, "Switch1/1/0");
         assert_eq!(
-            decoded.new_interfaces[1].version,
+            decoded.interfaces[1].version,
             CURRENT_INTERFACE_SCHEMA_VERSION
         );
-        assert_eq!(decoded.new_interfaces[1].name, "Switch1/1/1");
+        assert_eq!(decoded.interfaces[1].name, "Switch1/1/1");
     }
 
     /// Mirrors what TopologyBackfill produces: a Vpnv4 loopback whose
     /// `flex_algo_node_segments` is populated only on the new vec. After a full
-    /// borsh round-trip, segments must survive in `new_interfaces`, while the
+    /// borsh round-trip, segments must survive in `interfaces`, while the
     /// V2-projected legacy vec carries no segments (V2 has no such field).
     #[test]
-    fn test_flex_algo_segments_roundtrip_through_new_interfaces() {
+    fn test_flex_algo_segments_roundtrip_through_interfaces() {
         use crate::state::topology::FlexAlgoNodeSegment;
 
         let mut device = sample_device_with_n_interfaces(1);
@@ -1877,27 +1840,24 @@ mod test_device_new_interfaces_vec {
             topology,
             node_segment_idx: 42,
         };
-        device.new_interfaces[0].loopback_type = LoopbackType::Vpnv4;
-        device.new_interfaces[0]
+        device.interfaces[0].loopback_type = LoopbackType::Vpnv4;
+        device.interfaces[0]
             .flex_algo_node_segments
             .push(segment.clone());
 
         let bytes = borsh::to_vec(&device).unwrap();
         let decoded = Device::try_from(&bytes[..]).unwrap();
 
-        // Source of truth: segments survive in new_interfaces.
-        assert_eq!(decoded.new_interfaces.len(), 1);
-        assert_eq!(
-            decoded.new_interfaces[0].flex_algo_node_segments,
-            vec![segment]
-        );
-        assert_eq!(decoded.new_interfaces[0].loopback_type, LoopbackType::Vpnv4);
+        // Source of truth: segments survive in interfaces.
+        assert_eq!(decoded.interfaces.len(), 1);
+        assert_eq!(decoded.interfaces[0].flex_algo_node_segments, vec![segment]);
+        assert_eq!(decoded.interfaces[0].loopback_type, LoopbackType::Vpnv4);
 
         // V2-projected legacy vec preserves the rest of the interface but cannot
         // carry segments (V2 has no such field).
-        assert_eq!(decoded.interfaces.len(), 1);
-        let legacy_v2 = decoded.interfaces[0].into_current_version();
-        assert_eq!(legacy_v2.name, decoded.new_interfaces[0].name);
+        assert_eq!(decoded.deprecated_interfaces.len(), 1);
+        let legacy_v2 = decoded.deprecated_interfaces[0].to_v2();
+        assert_eq!(legacy_v2.name, decoded.interfaces[0].name);
         assert_eq!(legacy_v2.loopback_type, LoopbackType::Vpnv4);
     }
 }

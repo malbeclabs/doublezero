@@ -43,7 +43,7 @@ impl GetDeviceInterfaceCliCommand {
         })?;
 
         let interface = device
-            .new_interfaces
+            .interfaces
             .iter()
             .find(|i| i.name.to_lowercase() == self.name.to_lowercase())
             .ok_or_else(|| eyre::eyre!("Interface '{}' not found", self.name))?;
@@ -86,8 +86,8 @@ mod tests {
         device::interface::get::GetDeviceInterfaceCliCommand, tests::utils::create_test_client,
     };
     use doublezero_sdk::{
-        commands::device::get::GetDeviceCommand, AccountType, CurrentInterfaceVersion, Device,
-        DeviceStatus, DeviceType,
+        commands::device::get::GetDeviceCommand, AccountType, Device, DeviceStatus, DeviceType,
+        Interface,
     };
     use doublezero_serviceability::state::interface::{
         InterfaceStatus, InterfaceType, LoopbackType,
@@ -120,8 +120,7 @@ mod tests {
             ),
             owner: device1_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Activated,
                 name: "eth0".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -136,9 +135,8 @@ mod tests {
                 ip_net: "10.0.0.1/24".parse().unwrap(),
                 node_segment_idx: 42,
                 user_tunnel_endpoint: true,
-            })
-                .try_into()
-                .unwrap()],
+                ..Default::default()
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -151,6 +149,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client

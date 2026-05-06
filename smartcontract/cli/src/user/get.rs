@@ -217,7 +217,6 @@ mod tests {
             contributor_pk: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             reference_count: 0,
             users_count: 0,
             max_users: 1000,
@@ -230,6 +229,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let mgroup_pubkey = Pubkey::new_unique();
@@ -411,7 +411,6 @@ mod tests {
             contributor_pk: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             reference_count: 0,
             users_count: 0,
             max_users: 1000,
@@ -424,6 +423,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let user = User {

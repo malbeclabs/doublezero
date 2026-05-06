@@ -6,7 +6,7 @@ use doublezero_sdk::{
         contributor::get::GetContributorCommand, device::get::GetDeviceCommand,
         exchange::get::GetExchangeCommand,
     },
-    GetLocationCommand, NewInterface,
+    GetLocationCommand, Interface,
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
@@ -45,8 +45,8 @@ struct InterfaceDisplay {
     pub tunnel_endpoint: bool,
 }
 
-impl From<&NewInterface> for InterfaceDisplay {
-    fn from(iface: &NewInterface) -> Self {
+impl From<&Interface> for InterfaceDisplay {
+    fn from(iface: &Interface) -> Self {
         Self {
             name: iface.name.clone(),
             status: iface.status.to_string(),
@@ -142,7 +142,7 @@ impl GetDeviceCliCommand {
             public_ip: device.public_ip.to_string(),
             dz_prefixes: device.dz_prefixes.to_string(),
             cyoa_ips: device
-                .new_interfaces
+                .interfaces
                 .iter()
                 .filter(|iface| iface.user_tunnel_endpoint)
                 .map(|iface| iface.ip_net.to_string())
@@ -150,7 +150,7 @@ impl GetDeviceCliCommand {
             metrics_publisher: device.metrics_publisher_pk.to_string(),
             mgmt_vrf: device.mgmt_vrf,
             interfaces: device
-                .new_interfaces
+                .interfaces
                 .iter()
                 .map(InterfaceDisplay::from)
                 .collect(),
@@ -236,7 +236,6 @@ mod tests {
             owner: device1_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -249,6 +248,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let contributor = Contributor {

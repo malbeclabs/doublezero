@@ -265,7 +265,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						MetricsPublisherPubKey: getPubKeyOffset(devicePayload, 141, 173),
 						ContributorPubKey:      getPubKeyOffset(devicePayload, 173, 205),
 						MgmtVrf:                "default",
-						Interfaces: []Interface{
+						DeprecatedInterfaces: []Interface{
 							{
 								Version:            0,
 								Status:             InterfaceStatusPending,
@@ -292,10 +292,10 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						ReferenceCount: 1234,
 						UsersCount:     110,
 						MaxUsers:       128,
-						// Legacy fixture has no trailing new_interfaces vec; the rebuild
-						// path projects each legacy Interface into a NewInterface stamped
+						// Legacy fixture has no trailing interfaces vec; the rebuild
+						// path projects each legacy enum entry into an Interface stamped
 						// with the current schema version.
-						NewInterfaces: []Interface{
+						Interfaces: []Interface{
 							{
 								Version:            CurrentInterfaceVersion,
 								Status:             InterfaceStatusPending,

@@ -517,7 +517,6 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
         dz_prefixes: NetworkV4List::default(),
         mgmt_vrf: "default".to_string(),
         interfaces: vec![],
-        new_interfaces: vec![],
         users_count: 0,
         max_users: 0,
         device_health: DeviceHealth::Pending,
@@ -529,6 +528,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
         reserved_seats: 0,
         multicast_publishers_count: 0,
         max_multicast_publishers: 0,
+        ..Default::default()
     };
 
     let mut device_data = Vec::new();
@@ -613,7 +613,6 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         code: "invalid".to_string(),
         mgmt_vrf: "default".to_string(),
         interfaces: vec![],
-        new_interfaces: vec![],
         users_count: 0,
         max_users: 0,
         device_health: DeviceHealth::Pending,
@@ -625,6 +624,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         reserved_seats: 0,
         multicast_publishers_count: 0,
         max_multicast_publishers: 0,
+        ..Default::default()
     };
 
     let mut data = Vec::new();

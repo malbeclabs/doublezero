@@ -20,10 +20,7 @@ pub use doublezero_serviceability::{
         exchange::{Exchange, ExchangeStatus, BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN},
         globalconfig::GlobalConfig,
         globalstate::GlobalState,
-        interface::{
-            CurrentInterfaceVersion, Interface, InterfaceStatus, InterfaceType, LoopbackType,
-            NewInterface,
-        },
+        interface::{Interface, InterfaceDeprecated, InterfaceStatus, InterfaceType, LoopbackType},
         link::{Link, LinkLinkType, LinkStatus},
         location::{Location, LocationStatus},
         multicastgroup::{MulticastGroup, MulticastGroupStatus},

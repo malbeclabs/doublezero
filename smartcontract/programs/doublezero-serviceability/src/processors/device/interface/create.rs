@@ -14,9 +14,8 @@ use crate::{
         feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         interface::{
-            InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType,
-            NewInterface, RoutingMode, CURRENT_INTERFACE_SCHEMA_VERSION, CYOA_DIA_INTERFACE_MTU,
-            INTERFACE_MTU,
+            Interface, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType,
+            RoutingMode, CURRENT_INTERFACE_SCHEMA_VERSION, CYOA_DIA_INTERFACE_MTU, INTERFACE_MTU,
         },
     },
 };
@@ -225,10 +224,10 @@ pub fn process_create_device_interface(
         }
     }
 
-    // size is intentionally left at 0 — the NewInterface serializer derives the
+    // size is intentionally left at 0 — the Interface serializer derives the
     // on-disk size fresh from the body bytes and ignores this field. It only
     // gets populated on deserialize, from the wire prefix.
-    device.push_interface(NewInterface {
+    device.push_interface(Interface {
         size: 0,
         version: CURRENT_INTERFACE_SCHEMA_VERSION,
         status,

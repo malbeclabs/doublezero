@@ -151,8 +151,8 @@ impl InterfaceV1 {
         Self::size_given_name_len(self.name.len())
     }
 
-    pub fn to_interface(&self) -> Interface {
-        Interface::V1(self.clone())
+    pub fn to_interface(&self) -> InterfaceDeprecated {
+        InterfaceDeprecated::V1(self.clone())
     }
 
     pub fn size_given_name_len(name_len: usize) -> usize {
@@ -315,8 +315,8 @@ impl InterfaceV2 {
         Self::size_given_name_len(self.name.len())
     }
 
-    pub fn to_interface(&self) -> Interface {
-        Interface::V2(self.clone())
+    pub fn to_interface(&self) -> InterfaceDeprecated {
+        InterfaceDeprecated::V2(self.clone())
     }
 
     pub fn size_given_name_len(name_len: usize) -> usize {
@@ -442,8 +442,8 @@ impl InterfaceV3 {
         Self::size_given_name_len(self.name.len())
     }
 
-    pub fn to_interface(&self) -> Interface {
-        Interface::V3(self.clone())
+    pub fn to_interface(&self) -> InterfaceDeprecated {
+        InterfaceDeprecated::V3(self.clone())
     }
 
     pub fn size_given_name_len(name_len: usize) -> usize {
@@ -492,7 +492,7 @@ impl Default for InterfaceV3 {
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[borsh(use_discriminant = true)]
-pub enum Interface {
+pub enum InterfaceDeprecated {
     V1(InterfaceV1) = 0,
     /// Discriminant 1: V2 format. Does NOT include flex_algo_node_segments.
     V2(InterfaceV2) = 1,
@@ -501,57 +501,50 @@ pub enum Interface {
     V3(InterfaceV3) = 3,
 }
 
-impl borsh::BorshDeserialize for Interface {
+impl borsh::BorshDeserialize for InterfaceDeprecated {
     fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
         let discriminant: u8 = borsh::BorshDeserialize::deserialize_reader(reader)?;
         match discriminant {
-            0 => Ok(Interface::V1(borsh::BorshDeserialize::deserialize_reader(
-                reader,
-            )?)),
-            1 | 2 => Ok(Interface::V2(borsh::BorshDeserialize::deserialize_reader(
-                reader,
-            )?)),
-            3 => Ok(Interface::V3(borsh::BorshDeserialize::deserialize_reader(
-                reader,
-            )?)),
-            _ => Ok(Interface::V3(InterfaceV3::default())),
+            0 => Ok(InterfaceDeprecated::V1(
+                borsh::BorshDeserialize::deserialize_reader(reader)?,
+            )),
+            1 | 2 => Ok(InterfaceDeprecated::V2(
+                borsh::BorshDeserialize::deserialize_reader(reader)?,
+            )),
+            3 => Ok(InterfaceDeprecated::V3(
+                borsh::BorshDeserialize::deserialize_reader(reader)?,
+            )),
+            _ => Ok(InterfaceDeprecated::V3(InterfaceV3::default())),
         }
     }
 }
 
-pub type CurrentInterfaceVersion = InterfaceV2;
-
-impl Interface {
-    pub fn into_current_version(&self) -> CurrentInterfaceVersion {
+impl InterfaceDeprecated {
+    /// Convert any legacy variant to its V2 projection. V1 and V3 fan in via
+    /// `TryFrom<&InterfaceVN>` for `InterfaceV2`; conversion failures fall back
+    /// to `InterfaceV2::default()`.
+    pub fn to_v2(&self) -> InterfaceV2 {
         match self {
-            Interface::V1(v1) => v1.try_into().unwrap_or_default(),
-            Interface::V2(v2) => v2.clone(),
-            Interface::V3(v3) => v3.try_into().unwrap_or_default(),
-        }
-    }
-
-    pub fn into_v3(&self) -> InterfaceV3 {
-        match self {
-            Interface::V1(v1) => v1.try_into().unwrap_or_default(),
-            Interface::V2(v2) => v2.clone().into(),
-            Interface::V3(v3) => v3.clone(),
+            InterfaceDeprecated::V1(v1) => v1.try_into().unwrap_or_default(),
+            InterfaceDeprecated::V2(v2) => v2.clone(),
+            InterfaceDeprecated::V3(v3) => v3.try_into().unwrap_or_default(),
         }
     }
 
     pub fn size(&self) -> usize {
         let base_size = match self {
-            Interface::V1(v1) => v1.size(),
-            Interface::V2(v2) => v2.size(),
-            Interface::V3(v3) => v3.size(),
+            InterfaceDeprecated::V1(v1) => v1.size(),
+            InterfaceDeprecated::V2(v2) => v2.size(),
+            InterfaceDeprecated::V3(v3) => v3.size(),
         };
         base_size + 1 // +1 for the enum discriminant
     }
 }
 
-impl Validate for Interface {
+impl Validate for InterfaceDeprecated {
     fn validate(&self) -> Result<(), DoubleZeroError> {
         // Validate each interface
-        let interface = self.into_current_version();
+        let interface = self.to_v2();
 
         if interface.status == InterfaceStatus::Deleting {
             return Ok(());
@@ -601,7 +594,7 @@ impl Validate for Interface {
     }
 }
 
-impl TryFrom<&[u8]> for Interface {
+impl TryFrom<&[u8]> for InterfaceDeprecated {
     type Error = ProgramError;
 
     fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
@@ -617,7 +610,7 @@ pub const CURRENT_INTERFACE_SCHEMA_VERSION: u8 = 4;
 /// the custom Borsh impls read/write them.
 #[derive(Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct NewInterface {
+pub struct Interface {
     pub size: u16,
     pub version: u8,
     pub status: InterfaceStatus,
@@ -637,7 +630,7 @@ pub struct NewInterface {
     pub flex_algo_node_segments: Vec<crate::state::topology::FlexAlgoNodeSegment>,
 }
 
-impl NewInterface {
+impl Interface {
     fn serialize_body<W: borsh::io::Write>(&self, w: &mut W) -> borsh::io::Result<()> {
         self.status.serialize(w)?;
         self.name.serialize(w)?;
@@ -671,7 +664,7 @@ impl NewInterface {
     }
 }
 
-impl borsh::BorshSerialize for NewInterface {
+impl borsh::BorshSerialize for Interface {
     fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
         let mut body: Vec<u8> = Vec::new();
         self.serialize_body(&mut body)?;
@@ -680,7 +673,7 @@ impl borsh::BorshSerialize for NewInterface {
         if total > u16::MAX as usize {
             return Err(borsh::io::Error::new(
                 borsh::io::ErrorKind::InvalidData,
-                "NewInterface exceeds u16 size cap",
+                "Interface exceeds u16 size cap",
             ));
         }
 
@@ -691,7 +684,7 @@ impl borsh::BorshSerialize for NewInterface {
     }
 }
 
-impl borsh::BorshDeserialize for NewInterface {
+impl borsh::BorshDeserialize for Interface {
     fn deserialize_reader<R: borsh::io::Read>(reader: &mut R) -> borsh::io::Result<Self> {
         let size: u16 = BorshDeserialize::deserialize_reader(reader)?;
         let version: u8 = BorshDeserialize::deserialize_reader(reader)?;
@@ -702,7 +695,7 @@ impl borsh::BorshDeserialize for NewInterface {
         reader.read_exact(&mut body)?;
 
         let mut s: &[u8] = &body;
-        Ok(NewInterface {
+        Ok(Interface {
             size,
             version,
             status: BorshDeserialize::deserialize(&mut s).unwrap_or_default(),
@@ -727,7 +720,7 @@ impl borsh::BorshDeserialize for NewInterface {
     }
 }
 
-impl Default for NewInterface {
+impl Default for Interface {
     fn default() -> Self {
         let mut iface = Self {
             size: 0,
@@ -753,7 +746,7 @@ impl Default for NewInterface {
     }
 }
 
-impl TryFrom<&InterfaceV1> for NewInterface {
+impl TryFrom<&InterfaceV1> for Interface {
     type Error = ProgramError;
 
     fn try_from(v1: &InterfaceV1) -> Result<Self, Self::Error> {
@@ -762,11 +755,11 @@ impl TryFrom<&InterfaceV1> for NewInterface {
     }
 }
 
-impl TryFrom<&InterfaceV2> for NewInterface {
+impl TryFrom<&InterfaceV2> for Interface {
     type Error = ProgramError;
 
     fn try_from(v2: &InterfaceV2) -> Result<Self, Self::Error> {
-        let mut iface = NewInterface {
+        let mut iface = Interface {
             size: 0,
             version: CURRENT_INTERFACE_SCHEMA_VERSION,
             status: v2.status,
@@ -790,8 +783,8 @@ impl TryFrom<&InterfaceV2> for NewInterface {
     }
 }
 
-impl From<&NewInterface> for InterfaceV2 {
-    fn from(n: &NewInterface) -> Self {
+impl From<&Interface> for InterfaceV2 {
+    fn from(n: &Interface) -> Self {
         // V2-on-disk projection drops flex_algo_node_segments per #3653.
         InterfaceV2 {
             status: n.status,
@@ -812,7 +805,7 @@ impl From<&NewInterface> for InterfaceV2 {
     }
 }
 
-impl Validate for NewInterface {
+impl Validate for Interface {
     fn validate(&self) -> Result<(), DoubleZeroError> {
         if self.status == InterfaceStatus::Deleting {
             return Ok(());
@@ -868,10 +861,10 @@ fn test_interface_version() {
     .to_interface();
 
     assert!(
-        matches!(iface, Interface::V1(_)),
-        "iface is not Interface::V1"
+        matches!(iface, InterfaceDeprecated::V1(_)),
+        "iface is not InterfaceDeprecated::V1"
     );
-    let iface_v2: CurrentInterfaceVersion = iface.into_current_version();
+    let iface_v2 = iface.to_v2();
     assert_eq!(iface_v2.name, "Loopback0");
     assert_eq!(iface_v2.interface_type, InterfaceType::Loopback);
     assert_eq!(iface_v2.loopback_type, LoopbackType::Ipv4);
@@ -900,10 +893,10 @@ fn test_interface_version() {
     .to_interface();
 
     assert!(
-        matches!(iface, Interface::V3(_)),
-        "iface is not Interface::V3"
+        matches!(iface, InterfaceDeprecated::V3(_)),
+        "iface is not InterfaceDeprecated::V3"
     );
-    let iface_v3: CurrentInterfaceVersion = iface.into_current_version();
+    let iface_v3 = iface.to_v2();
     assert_eq!(iface_v3.name, "Loopback0");
     assert_eq!(iface_v3.interface_type, InterfaceType::Loopback);
     assert_eq!(iface_v3.loopback_type, LoopbackType::Ipv4);
@@ -940,14 +933,14 @@ mod test_interface_validate {
     #[test]
     fn test_valid_interface() {
         let iface = base_interface();
-        assert!(Interface::V2(iface).validate().is_ok());
+        assert!(InterfaceDeprecated::V2(iface).validate().is_ok());
     }
 
     #[test]
     fn test_invalid_name() {
         let mut iface = base_interface();
         iface.name = "".to_string();
-        let err = Interface::V2(iface).validate();
+        let err = InterfaceDeprecated::V2(iface).validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidInterfaceName);
     }
 
@@ -955,7 +948,7 @@ mod test_interface_validate {
     fn test_invalid_vlan_id() {
         let mut iface = base_interface();
         iface.vlan_id = 5000;
-        let err = Interface::V2(iface).validate();
+        let err = InterfaceDeprecated::V2(iface).validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidVlanId);
     }
 
@@ -963,7 +956,7 @@ mod test_interface_validate {
     fn test_invalid_ip() {
         let mut iface = base_interface();
         iface.ip_net = "8.8.8.8/24".parse().unwrap();
-        let err = Interface::V2(iface).validate();
+        let err = InterfaceDeprecated::V2(iface).validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidInterfaceIp);
     }
 
@@ -973,7 +966,7 @@ mod test_interface_validate {
         iface.name = "Loopback100".to_string();
         iface.interface_type = InterfaceType::Loopback;
         iface.interface_cyoa = InterfaceCYOA::GREOverDIA;
-        let err = Interface::V2(iface).validate();
+        let err = InterfaceDeprecated::V2(iface).validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::CyoaRequiresPhysical);
     }
 
@@ -984,7 +977,7 @@ mod test_interface_validate {
         iface.interface_type = InterfaceType::Loopback;
         iface.interface_cyoa = InterfaceCYOA::GREOverDIA; // this can't happen through validation but should be delete-able
         iface.status = InterfaceStatus::Deleting;
-        assert!(Interface::V2(iface).validate().is_ok());
+        assert!(InterfaceDeprecated::V2(iface).validate().is_ok());
     }
 
     #[test]
@@ -993,7 +986,7 @@ mod test_interface_validate {
         iface.interface_type = InterfaceType::Physical;
         iface.interface_cyoa = InterfaceCYOA::GREOverDIA;
         iface.ip_net = "38.104.127.117/31".parse().unwrap();
-        assert!(Interface::V2(iface).validate().is_ok());
+        assert!(InterfaceDeprecated::V2(iface).validate().is_ok());
     }
 
     #[test]
@@ -1004,7 +997,7 @@ mod test_interface_validate {
         iface.ip_net = "195.219.138.96/32".parse().unwrap();
         iface.user_tunnel_endpoint = true;
 
-        assert!(Interface::V2(iface).validate().is_ok());
+        assert!(InterfaceDeprecated::V2(iface).validate().is_ok());
     }
 
     #[test]
@@ -1015,7 +1008,7 @@ mod test_interface_validate {
         iface.ip_net = "195.219.138.96/32".parse().unwrap();
         iface.user_tunnel_endpoint = false;
 
-        let err = Interface::V2(iface).validate();
+        let err = InterfaceDeprecated::V2(iface).validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidInterfaceIp);
     }
 
@@ -1042,8 +1035,8 @@ mod test_interface_validate {
             flex_algo_node_segments: vec![],
         };
 
-        // Serialize as Interface::V3 (with enum discriminant)
-        let interface_enum = Interface::V3(iface.clone());
+        // Serialize as InterfaceDeprecated::V3 (with enum discriminant)
+        let interface_enum = InterfaceDeprecated::V3(iface.clone());
         let bytes = borsh::to_vec(&interface_enum).unwrap();
 
         println!("\n=== InterfaceV3 Serialization Debug ===");
@@ -1177,8 +1170,8 @@ mod test_new_interface {
     use crate::state::topology::FlexAlgoNodeSegment;
     use solana_program::pubkey::Pubkey;
 
-    fn sample_new_interface() -> NewInterface {
-        let mut iface = NewInterface {
+    fn sample_new_interface() -> Interface {
+        let mut iface = Interface {
             size: 0,
             version: CURRENT_INTERFACE_SCHEMA_VERSION,
             status: InterfaceStatus::Activated,
@@ -1210,13 +1203,13 @@ mod test_new_interface {
         let bytes = borsh::to_vec(&iface).unwrap();
         assert_eq!(bytes.len(), iface.size as usize);
 
-        let decoded: NewInterface = borsh::from_slice(&bytes).unwrap();
+        let decoded: Interface = borsh::from_slice(&bytes).unwrap();
         assert_eq!(decoded, iface);
     }
 
     #[test]
     fn test_new_interface_default_size_stamped() {
-        let iface = NewInterface::default();
+        let iface = Interface::default();
         assert_eq!(iface.version, CURRENT_INTERFACE_SCHEMA_VERSION);
         let bytes = borsh::to_vec(&iface).unwrap();
         assert_eq!(bytes.len(), iface.size as usize);
@@ -1247,8 +1240,8 @@ mod test_new_interface {
         concat.extend_from_slice(&normal_bytes);
 
         let mut reader: &[u8] = &concat;
-        let first = <NewInterface as BorshDeserialize>::deserialize_reader(&mut reader).unwrap();
-        let second = <NewInterface as BorshDeserialize>::deserialize_reader(&mut reader).unwrap();
+        let first = <Interface as BorshDeserialize>::deserialize_reader(&mut reader).unwrap();
+        let second = <Interface as BorshDeserialize>::deserialize_reader(&mut reader).unwrap();
         assert!(reader.is_empty(), "reader should be fully consumed");
 
         // First element: known fields decode identically to `normal`; size/version reflect
@@ -1289,7 +1282,7 @@ mod test_new_interface {
             node_segment_idx: 200,
             user_tunnel_endpoint: true,
         };
-        let n: NewInterface = (&v1).try_into().unwrap();
+        let n: Interface = (&v1).try_into().unwrap();
 
         assert_eq!(n.version, CURRENT_INTERFACE_SCHEMA_VERSION);
         assert_eq!(n.status, v1.status);
@@ -1331,7 +1324,7 @@ mod test_new_interface {
             node_segment_idx: 7,
             user_tunnel_endpoint: false,
         };
-        let n: NewInterface = (&v2).try_into().unwrap();
+        let n: Interface = (&v2).try_into().unwrap();
 
         assert_eq!(n.version, CURRENT_INTERFACE_SCHEMA_VERSION);
         assert_eq!(n.status, v2.status);
@@ -1358,15 +1351,15 @@ mod test_new_interface {
         let n = sample_new_interface();
         assert!(!n.flex_algo_node_segments.is_empty());
         let v2: InterfaceV2 = (&n).into();
-        // V2 has no segments field; round-trip back to NewInterface yields empty segments.
-        let back: NewInterface = (&v2).try_into().unwrap();
+        // V2 has no segments field; round-trip back to Interface yields empty segments.
+        let back: Interface = (&v2).try_into().unwrap();
         assert!(back.flex_algo_node_segments.is_empty());
         assert_eq!(back.name, n.name);
         assert_eq!(back.bandwidth, n.bandwidth);
     }
 
-    fn base_validate_interface() -> NewInterface {
-        let mut iface = NewInterface {
+    fn base_validate_interface() -> Interface {
+        let mut iface = Interface {
             size: 0,
             version: CURRENT_INTERFACE_SCHEMA_VERSION,
             status: InterfaceStatus::Activated,

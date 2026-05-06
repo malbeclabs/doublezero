@@ -226,7 +226,7 @@ impl ListDeviceCliCommand {
                     status: device.status,
                     dz_prefixes: device.dz_prefixes.clone(),
                     cyoa_ips: device
-                        .new_interfaces
+                        .interfaces
                         .iter()
                         .filter(|iface| iface.user_tunnel_endpoint)
                         .map(|iface| iface.ip_net.to_string())
@@ -368,7 +368,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -381,6 +380,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -512,7 +512,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -525,6 +524,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -545,7 +545,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -558,6 +557,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -674,7 +674,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -687,6 +686,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -707,7 +707,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -720,6 +719,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -836,7 +836,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -849,6 +848,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -869,7 +869,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::Pending,
@@ -881,6 +880,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1014,7 +1014,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -1027,6 +1026,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1047,7 +1047,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -1060,6 +1059,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1199,7 +1199,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -1212,6 +1211,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1232,7 +1232,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -1245,6 +1244,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1380,7 +1380,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -1393,6 +1392,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1413,7 +1413,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -1426,6 +1425,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1559,7 +1559,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -1572,6 +1571,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1592,7 +1592,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -1605,6 +1604,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1721,7 +1721,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -1734,6 +1733,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1754,7 +1754,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::Impaired,
@@ -1767,6 +1766,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1883,7 +1883,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -1896,6 +1895,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1916,7 +1916,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -1928,6 +1927,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -2044,7 +2044,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -2057,6 +2056,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -2496,7 +2496,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -2509,6 +2508,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -2529,7 +2529,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -2542,6 +2541,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device3_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPF");
@@ -2562,7 +2562,6 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPF"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -2575,6 +2574,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {

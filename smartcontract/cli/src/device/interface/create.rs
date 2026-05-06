@@ -67,7 +67,7 @@ impl CreateDeviceInterfaceCliCommand {
             .map_err(|_| eyre::eyre!("Device with pubkey/code '{}' not found", self.device))?;
 
         device
-            .new_interfaces
+            .interfaces
             .iter()
             .find(|i| i.name == self.name)
             .map_or(Ok(()), |_| {
@@ -101,7 +101,7 @@ impl CreateDeviceInterfaceCliCommand {
                 if dev.contributor_pk != device.contributor_pk {
                     continue;
                 }
-                for iface in &dev.new_interfaces {
+                for iface in &dev.interfaces {
                     if iface.ip_net == *ip_net {
                         eyre::bail!(
                             "IP {} is already assigned to interface {} on device {}",
@@ -144,8 +144,8 @@ mod tests {
     use super::*;
     use crate::tests::utils::create_test_client;
     use doublezero_sdk::{
-        AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType, InterfaceStatus,
-        InterfaceType, LoopbackType,
+        AccountType, Device, DeviceStatus, DeviceType, Interface, InterfaceStatus, InterfaceType,
+        LoopbackType,
     };
     use doublezero_serviceability::state::interface::{InterfaceCYOA, InterfaceDIA, RoutingMode};
     use mockall::predicate;
@@ -176,7 +176,6 @@ mod tests {
             owner: device1_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -189,6 +188,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::new_unique();
@@ -208,8 +208,7 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: device2_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Activated,
                 name: "Loopback100".to_string(),
                 interface_type: InterfaceType::Loopback,
@@ -224,9 +223,8 @@ mod tests {
                 ip_net: "185.189.47.80/32".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: false,
-            })
-                .try_into()
-                .unwrap()],
+                ..Default::default()
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -239,6 +237,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let mut devices = HashMap::new();
@@ -308,7 +307,7 @@ mod tests {
             ),
             owner: device1_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Pending,
                 name: "Ethernet0".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -323,9 +322,8 @@ mod tests {
                 ip_net: "10.0.0.1/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-            }
-            .to_interface()],
-            new_interfaces: vec![],
+                ..Default::default()
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -338,6 +336,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client
@@ -414,7 +413,6 @@ mod tests {
             owner: device1_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -427,6 +425,7 @@ mod tests {
             max_multicast_subscribers: 0,
             max_multicast_publishers: 0,
             reserved_seats: 0,
+            ..Default::default()
         };
 
         client
@@ -486,7 +485,6 @@ mod tests {
             owner: device1_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -499,6 +497,7 @@ mod tests {
             max_multicast_subscribers: 0,
             max_multicast_publishers: 0,
             reserved_seats: 0,
+            ..Default::default()
         };
 
         client

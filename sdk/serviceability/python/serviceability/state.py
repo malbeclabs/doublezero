@@ -401,7 +401,7 @@ class AccessPassStatus(IntEnum):
 # Account dataclasses
 # ---------------------------------------------------------------------------
 
-# On-wire schema version for the size-prefixed NewInterface format
+# On-wire schema version for the size-prefixed Interface format
 # (matches Rust's CURRENT_INTERFACE_SCHEMA_VERSION). Note: prior to issue #3660
 # this constant gated the legacy enum reader at value 2 (max known disc=1); it
 # is now bumped to 4 to match the size-prefixed schema. Legacy enum reads still
@@ -482,7 +482,7 @@ class Interface:
 
     @classmethod
     def from_reader_sized(cls, r: DefensiveReader) -> Interface:
-        """Read a single size-prefixed NewInterface element.
+        """Read a single size-prefixed Interface element.
 
         Wire format: u16 size (incl. 3-byte prefix) + u8 version + body. After
         reading the known body fields, the reader is advanced to start+size so
@@ -681,7 +681,7 @@ class Device:
     metrics_publisher_pub_key: Pubkey = Pubkey.default()
     contributor_pub_key: Pubkey = Pubkey.default()
     mgmt_vrf: str = ""
-    interfaces: list[Interface] = field(default_factory=list)
+    deprecated_interfaces: list[Interface] = field(default_factory=list)
     reference_count: int = 0
     users_count: int = 0
     max_users: int = 0
@@ -694,11 +694,11 @@ class Device:
     reserved_seats: int = 0
     multicast_publishers_count: int = 0
     max_multicast_publishers: int = 0
-    # new_interfaces is the trailing size-prefixed vec parallel to interfaces. For
-    # legacy accounts (no trailing bytes), this is rebuilt from interfaces by
-    # from_bytes. When populated from the wire, len(new_interfaces) ==
-    # len(interfaces) is enforced.
-    new_interfaces: list[Interface] = field(default_factory=list)
+    # interfaces is the trailing size-prefixed vec parallel to deprecated_interfaces.
+    # For legacy accounts (no trailing bytes), this is rebuilt from deprecated_interfaces
+    # by from_bytes. When populated from the wire, len(interfaces) ==
+    # len(deprecated_interfaces) is enforced.
+    interfaces: list[Interface] = field(default_factory=list)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Device:
@@ -719,7 +719,7 @@ class Device:
         dev.contributor_pub_key = _read_pubkey(r)
         dev.mgmt_vrf = r.read_string()
         iface_len = r.read_u32()
-        dev.interfaces = [Interface.from_reader(r) for _ in range(iface_len)]
+        dev.deprecated_interfaces = [Interface.from_reader(r) for _ in range(iface_len)]
         dev.reference_count = r.read_u32()
         dev.users_count = r.read_u16()
         dev.max_users = r.read_u16()
@@ -733,13 +733,13 @@ class Device:
         dev.multicast_publishers_count = r.read_u16()
         dev.max_multicast_publishers = r.read_u16()
 
-        # Trailing new_interfaces vec (size-prefixed). Empty trailing => rebuild
-        # from legacy. Non-empty trailing whose declared length differs from the
-        # legacy interfaces length is a corrupt-account condition; raise per
-        # Rust device-reader semantics (length mismatch is fatal).
+        # Trailing interfaces vec (size-prefixed). Empty trailing => rebuild
+        # from deprecated_interfaces. Non-empty trailing whose declared length
+        # differs from the deprecated_interfaces length is a corrupt-account
+        # condition; raise per Rust device-reader semantics (length mismatch is fatal).
         if r.remaining == 0:
-            dev.new_interfaces = []
-            for legacy in dev.interfaces:
+            dev.interfaces = []
+            for legacy in dev.deprecated_interfaces:
                 rebuilt = Interface(
                     size=0,
                     version=CURRENT_INTERFACE_VERSION,
@@ -759,15 +759,15 @@ class Device:
                     user_tunnel_endpoint=legacy.user_tunnel_endpoint,
                     flex_algo_node_segments=list(legacy.flex_algo_node_segments),
                 )
-                dev.new_interfaces.append(rebuilt)
+                dev.interfaces.append(rebuilt)
         else:
             new_len = r.read_u32()
-            if new_len != len(dev.interfaces):
+            if new_len != len(dev.deprecated_interfaces):
                 raise ValueError(
-                    f"Device new_interfaces length {new_len} != "
-                    f"interfaces length {len(dev.interfaces)}"
+                    f"Device interfaces length {new_len} != "
+                    f"deprecated_interfaces length {len(dev.deprecated_interfaces)}"
                 )
-            dev.new_interfaces = [
+            dev.interfaces = [
                 Interface.from_reader_sized(r) for _ in range(new_len)
             ]
 

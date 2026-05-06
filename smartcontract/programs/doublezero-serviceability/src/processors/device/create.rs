@@ -186,7 +186,6 @@ pub fn process_create_device(
         status: DeviceStatus::Pending,
         mgmt_vrf: value.mgmt_vrf.clone(),
         interfaces: vec![],
-        new_interfaces: vec![],
         users_count: 0,
         max_users: 0, // Initially, the Device is locked and must be activated by modifying the maximum number of users.
         // TODO: This line show be change when the health oracle is implemented
@@ -202,6 +201,7 @@ pub fn process_create_device(
         reserved_seats: 0,
         multicast_publishers_count: 0,
         max_multicast_publishers: 0, // Initially locked, must be set via device update
+        ..Default::default()
     };
 
     // Atomic create+activate with onchain resource allocation

@@ -27,8 +27,9 @@ use doublezero_serviceability::state::{
     globalconfig::GlobalConfig,
     globalstate::GlobalState,
     interface::{
-        Interface, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, InterfaceV1,
-        InterfaceV2, LoopbackType, NewInterface, RoutingMode, CURRENT_INTERFACE_SCHEMA_VERSION,
+        Interface, InterfaceCYOA, InterfaceDIA, InterfaceDeprecated, InterfaceStatus,
+        InterfaceType, InterfaceV1, InterfaceV2, LoopbackType, RoutingMode,
+        CURRENT_INTERFACE_SCHEMA_VERSION,
     },
     link::{Link, LinkDesiredStatus, LinkHealth, LinkLinkType, LinkStatus},
     location::{Location, LocationStatus},
@@ -281,9 +282,9 @@ fn generate_exchange(dir: &Path) {
 }
 
 /// Build a canonical `Device` value used by `device.bin` and `device_future_version.bin`.
-/// The trailing `new_interfaces` vec carries one Vpnv4 loopback with a `FlexAlgoNodeSegment`
-/// and one physical user-tunnel-endpoint. `interfaces: vec![]` because the custom Device
-/// serializer projects the legacy on-disk slot from `new_interfaces` (always V2 per #3653).
+/// The trailing `interfaces` vec carries one Vpnv4 loopback with a `FlexAlgoNodeSegment`
+/// and one physical user-tunnel-endpoint. `deprecated_interfaces: vec![]` because the custom Device
+/// serializer projects the legacy on-disk slot from `interfaces` (always V2 per #3653).
 fn canonical_device() -> (
     Device,
     solana_program::pubkey::Pubkey, // owner
@@ -300,10 +301,10 @@ fn canonical_device() -> (
     let contributor_pk = pubkey_from_byte(0x44);
     let topology_pk = pubkey_from_byte(0x45);
 
-    // size/version on the in-memory NewInterface are recomputed by the BorshSerialize
+    // size/version on the in-memory Interface are recomputed by the BorshSerialize
     // impl (interface.rs:687-688) — leave them at 0 here.
-    let new_interfaces = vec![
-        NewInterface {
+    let interfaces = vec![
+        Interface {
             size: 0,
             version: 0,
             status: InterfaceStatus::Activated,
@@ -325,7 +326,7 @@ fn canonical_device() -> (
                 node_segment_idx: 300,
             }],
         },
-        NewInterface {
+        Interface {
             size: 0,
             version: 0,
             status: InterfaceStatus::Activated,
@@ -361,8 +362,8 @@ fn canonical_device() -> (
         metrics_publisher_pk,
         contributor_pk,
         mgmt_vrf: "mgmt".into(),
-        interfaces: vec![],
-        new_interfaces,
+        deprecated_interfaces: vec![],
+        interfaces,
         reference_count: 12,
         users_count: 5,
         max_users: 100,
@@ -381,9 +382,9 @@ fn canonical_device() -> (
 }
 
 /// Common `meta.fields` describing the canonical Device: legacy slot is the V2 projection
-/// of `new_interfaces` (both elements have `Version = 1`, no FlexAlgoNodeSegments per
+/// of `interfaces` (both elements have `Version = 1`, no FlexAlgoNodeSegments per
 /// device.rs:527-534 / interface.rs:793-813); the trailing vec carries the full V4
-/// NewInterface bodies including `flex_algo_node_segments`.
+/// Interface bodies including `flex_algo_node_segments`.
 #[allow(clippy::too_many_arguments)]
 fn canonical_device_fields(
     owner: &solana_program::pubkey::Pubkey,
@@ -415,7 +416,7 @@ fn canonical_device_fields(
         FieldValue { name: "ContributorPk".into(), value: pubkey_bs58(contributor_pk), typ: "pubkey".into() },
         FieldValue { name: "MgmtVrf".into(), value: "mgmt".into(), typ: "string".into() },
         FieldValue { name: "InterfacesLen".into(), value: "2".into(), typ: "u32".into() },
-        // Interface 0 - V2 projection of NewInterface[0] (Loopback Vpnv4).
+        // Interface 0 - V2 projection of Interface[0] (Loopback Vpnv4).
         FieldValue { name: "Interface0Version".into(), value: "1".into(), typ: "u8".into() },
         FieldValue { name: "Interface0Status".into(), value: "3".into(), typ: "u8".into() },
         FieldValue { name: "Interface0Name".into(), value: "Loopback0".into(), typ: "string".into() },
@@ -431,7 +432,7 @@ fn canonical_device_fields(
         FieldValue { name: "Interface0IpNet".into(), value: "10.0.0.1/32".into(), typ: "networkv4".into() },
         FieldValue { name: "Interface0NodeSegmentIdx".into(), value: "100".into(), typ: "u16".into() },
         FieldValue { name: "Interface0UserTunnelEndpoint".into(), value: "false".into(), typ: "bool".into() },
-        // Interface 1 - V2 projection of NewInterface[1] (Physical user-tunnel-endpoint).
+        // Interface 1 - V2 projection of Interface[1] (Physical user-tunnel-endpoint).
         FieldValue { name: "Interface1Version".into(), value: "1".into(), typ: "u8".into() },
         FieldValue { name: "Interface1Status".into(), value: "3".into(), typ: "u8".into() },
         FieldValue { name: "Interface1Name".into(), value: "Ethernet1".into(), typ: "string".into() },
@@ -459,9 +460,9 @@ fn canonical_device_fields(
         FieldValue { name: "ReservedSeats".into(), value: "3".into(), typ: "u16".into() },
         FieldValue { name: "MulticastPublishersCount".into(), value: "1".into(), typ: "u16".into() },
         FieldValue { name: "MaxMulticastPublishers".into(), value: "10".into(), typ: "u16".into() },
-        // Trailing new_interfaces vec.
+        // Trailing interfaces vec.
         FieldValue { name: "NewInterfacesLen".into(), value: "2".into(), typ: "u32".into() },
-        // NewInterface 0 - Loopback Vpnv4 with one FlexAlgoNodeSegment.
+        // Interface 0 - Loopback Vpnv4 with one FlexAlgoNodeSegment.
         FieldValue { name: "NewInterface0Size".into(), value: new_interface0_size.to_string(), typ: "u16".into() },
         FieldValue { name: "NewInterface0Version".into(), value: new_interface0_version.to_string(), typ: "u8".into() },
         FieldValue { name: "NewInterface0Status".into(), value: "3".into(), typ: "u8".into() },
@@ -481,7 +482,7 @@ fn canonical_device_fields(
         FieldValue { name: "NewInterface0FlexAlgoNodeSegmentsLen".into(), value: "1".into(), typ: "u32".into() },
         FieldValue { name: "NewInterface0FlexAlgoNodeSegments0Topology".into(), value: pubkey_bs58(topology_pk), typ: "pubkey".into() },
         FieldValue { name: "NewInterface0FlexAlgoNodeSegments0NodeSegmentIdx".into(), value: "300".into(), typ: "u16".into() },
-        // NewInterface 1 - Physical user-tunnel-endpoint, no flex segments.
+        // Interface 1 - Physical user-tunnel-endpoint, no flex segments.
         FieldValue { name: "NewInterface1Size".into(), value: new_interface1_size.to_string(), typ: "u16".into() },
         FieldValue { name: "NewInterface1Version".into(), value: new_interface1_version.to_string(), typ: "u8".into() },
         FieldValue { name: "NewInterface1Status".into(), value: "3".into(), typ: "u8".into() },
@@ -507,13 +508,13 @@ fn generate_device(dir: &Path) {
         canonical_device();
 
     // Use Device's custom BorshSerialize: projects the on-disk legacy `interfaces`
-    // slot from `new_interfaces` (always V2 per #3653/#3667) and appends the
-    // size-prefixed `new_interfaces` vec. SDKs read both, with the trailing vec
+    // slot from `interfaces` (always V2 per #3653/#3667) and appends the
+    // size-prefixed `interfaces` vec. SDKs read both, with the trailing vec
     // taking precedence over the rebuilt-from-legacy fallback.
     let data = borsh::to_vec(&val).unwrap();
 
-    let size0 = val.new_interfaces[0].compute_on_disk_size().unwrap();
-    let size1 = val.new_interfaces[1].compute_on_disk_size().unwrap();
+    let size0 = val.interfaces[0].compute_on_disk_size().unwrap();
+    let size1 = val.interfaces[1].compute_on_disk_size().unwrap();
 
     let meta = FixtureMeta {
         name: "Device".into(),
@@ -529,8 +530,8 @@ fn generate_device(dir: &Path) {
 }
 
 /// Hand-serialized device with the legacy `interfaces` vec populated and **no** trailing
-/// `new_interfaces` vec — the pre-#3667 on-disk format. SDKs detect the absent trailing
-/// bytes and rebuild `new_interfaces` from the legacy enum vec, stamping each entry with
+/// `interfaces` vec — the pre-#3667 on-disk format. SDKs detect the absent trailing
+/// bytes and rebuild `interfaces` from the legacy enum vec, stamping each entry with
 /// `Version = CURRENT_INTERFACE_VERSION` and `Size = 0`.
 fn generate_device_legacy(dir: &Path) {
     let owner = pubkey_from_byte(0x40);
@@ -554,8 +555,8 @@ fn generate_device_legacy(dir: &Path) {
         metrics_publisher_pk,
         contributor_pk,
         mgmt_vrf: "mgmt".into(),
-        interfaces: vec![
-            Interface::V1(InterfaceV1 {
+        deprecated_interfaces: vec![
+            InterfaceDeprecated::V1(InterfaceV1 {
                 status: InterfaceStatus::Activated,
                 name: "Loopback0".into(),
                 interface_type: InterfaceType::Loopback,
@@ -565,7 +566,7 @@ fn generate_device_legacy(dir: &Path) {
                 node_segment_idx: 100,
                 user_tunnel_endpoint: false,
             }),
-            Interface::V2(InterfaceV2 {
+            InterfaceDeprecated::V2(InterfaceV2 {
                 status: InterfaceStatus::Activated,
                 name: "Ethernet1".into(),
                 interface_type: InterfaceType::Physical,
@@ -582,7 +583,7 @@ fn generate_device_legacy(dir: &Path) {
                 user_tunnel_endpoint: true,
             }),
         ],
-        new_interfaces: vec![],
+        interfaces: vec![],
         reference_count: 12,
         users_count: 5,
         max_users: 100,
@@ -597,7 +598,7 @@ fn generate_device_legacy(dir: &Path) {
         max_multicast_publishers: 10,
     };
 
-    // Bypass Device::serialize so we don't write the trailing new_interfaces vec —
+    // Bypass Device::serialize so we don't write the trailing interfaces vec —
     // this is exactly the pre-#3667 byte shape the SDK legacy-fallback path consumes.
     let mut data = Vec::new();
     BorshSerialize::serialize(&val.account_type, &mut data).unwrap();
@@ -614,7 +615,7 @@ fn generate_device_legacy(dir: &Path) {
     BorshSerialize::serialize(&val.metrics_publisher_pk, &mut data).unwrap();
     BorshSerialize::serialize(&val.contributor_pk, &mut data).unwrap();
     BorshSerialize::serialize(&val.mgmt_vrf, &mut data).unwrap();
-    BorshSerialize::serialize(&val.interfaces, &mut data).unwrap();
+    BorshSerialize::serialize(&val.deprecated_interfaces, &mut data).unwrap();
     BorshSerialize::serialize(&val.reference_count, &mut data).unwrap();
     BorshSerialize::serialize(&val.users_count, &mut data).unwrap();
     BorshSerialize::serialize(&val.max_users, &mut data).unwrap();
@@ -687,7 +688,7 @@ fn generate_device_legacy(dir: &Path) {
             FieldValue { name: "ReservedSeats".into(), value: "3".into(), typ: "u16".into() },
             FieldValue { name: "MulticastPublishersCount".into(), value: "1".into(), typ: "u16".into() },
             FieldValue { name: "MaxMulticastPublishers".into(), value: "10".into(), typ: "u16".into() },
-            // Rebuilt new_interfaces (size=0, version=current); both bodies mirror
+            // Rebuilt interfaces (size=0, version=current); both bodies mirror
             // the V2 projection of the legacy entries — V1's missing fields default per
             // `InterfaceV2::try_from(&InterfaceV1)` (interface.rs:353-374).
             FieldValue { name: "NewInterfacesLen".into(), value: "2".into(), typ: "u32".into() },
@@ -745,7 +746,7 @@ fn generate_device_future_version(dir: &Path) {
     // The trailing vec elements are written contiguously at end-of-buffer; the last
     // element ends exactly at buf.len(). Locate its size+version header by subtracting
     // the precomputed on-disk size.
-    let last = val.new_interfaces.last().expect("non-empty");
+    let last = val.interfaces.last().expect("non-empty");
     let last_size = last.compute_on_disk_size().unwrap();
     let new_last_size = last_size + FUTURE_VERSION_JUNK as u16;
     let last_start = data.len() - last_size as usize;
@@ -755,7 +756,7 @@ fn generate_device_future_version(dir: &Path) {
     data[last_start + 2] = FUTURE_VERSION;
     data.extend(std::iter::repeat_n(0xAB, FUTURE_VERSION_JUNK));
 
-    let size0 = val.new_interfaces[0].compute_on_disk_size().unwrap();
+    let size0 = val.interfaces[0].compute_on_disk_size().unwrap();
 
     let meta = FixtureMeta {
         name: "DeviceFutureVersion".into(),

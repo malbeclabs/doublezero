@@ -1690,7 +1690,7 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    let iface = device.interfaces[0].into_v3();
+    let iface = device.interfaces[0].clone();
     assert_eq!(
         iface.flex_algo_node_segments.len(),
         0,
@@ -1719,11 +1719,11 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
     banks_client.process_transaction(tx).await.unwrap();
 
     // Verify: loopback now has 1 segment pointing to the topology.
-    // Post-#3665, segments live in `new_interfaces`.
+    // Post-#3665, segments live in `interfaces`.
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found after backfill");
-    let new_iface = &device.new_interfaces[0];
+    let new_iface = &device.interfaces[0];
     assert_eq!(
         new_iface.flex_algo_node_segments.len(),
         1,
@@ -1750,7 +1750,7 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found after second backfill");
-    let new_iface = &device.new_interfaces[0];
+    let new_iface = &device.interfaces[0];
     assert_eq!(
         new_iface.flex_algo_node_segments.len(),
         1,
@@ -2053,7 +2053,7 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    let iface = device.interfaces[0].into_v3();
+    let iface = device.interfaces[0].clone();
     assert_eq!(
         iface.node_segment_idx, 1,
         "Base node_segment_idx should be 1 (first ID from SegmentRoutingIds)"
@@ -2098,12 +2098,12 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     banks_client.process_transaction(tx).await.unwrap();
 
     // Verify: backfill stored a flex-algo segment with the next SR ID (2).
-    // Post-#3665, segments live in `new_interfaces` (the legacy `interfaces` slot
+    // Post-#3665, segments live in `interfaces` (the legacy `interfaces` slot
     // is always V2-projected on save and so does not carry segments).
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found after backfill");
-    let new_iface = &device.new_interfaces[0];
+    let new_iface = &device.interfaces[0];
     assert_eq!(
         new_iface.node_segment_idx, 1,
         "Base node_segment_idx must remain 1"

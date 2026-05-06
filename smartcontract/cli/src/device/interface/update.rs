@@ -139,7 +139,7 @@ impl UpdateDeviceInterfaceCliCommand {
                 if dev.contributor_pk != device.contributor_pk {
                     continue;
                 }
-                for iface in &dev.new_interfaces {
+                for iface in &dev.interfaces {
                     // Skip the interface being updated
                     if *pk == device_pk && iface.name.eq_ignore_ascii_case(&self.name) {
                         continue;
@@ -194,7 +194,7 @@ impl UpdateDeviceInterfaceCliCommand {
 mod tests {
     use super::*;
     use crate::tests::utils::create_test_client;
-    use doublezero_sdk::{AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType};
+    use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType, Interface};
     use doublezero_serviceability::state::interface::{
         InterfaceCYOA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
     };
@@ -225,9 +225,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![
-                (&CurrentInterfaceVersion {
+            interfaces: vec![
+                Interface {
                     status: InterfaceStatus::Activated,
                     name: "Ethernet0".to_string(),
                     interface_type: InterfaceType::Physical,
@@ -242,10 +241,9 @@ mod tests {
                     ip_net: "10.0.0.1/24".parse().unwrap(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: true,
-                })
-                    .try_into()
-                    .unwrap(),
-                (&CurrentInterfaceVersion {
+                    ..Default::default()
+                },
+                Interface {
                     status: InterfaceStatus::Activated,
                     name: "Loopback0".to_string(),
                     interface_type: InterfaceType::Loopback,
@@ -260,9 +258,8 @@ mod tests {
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: false,
-                })
-                    .try_into()
-                    .unwrap(),
+                    ..Default::default()
+                },
             ],
             max_users: 255,
             users_count: 0,
@@ -276,6 +273,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client
@@ -363,8 +361,7 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Activated,
                 name: "Loopback0".to_string(),
                 interface_type: InterfaceType::Loopback,
@@ -379,9 +376,8 @@ mod tests {
                 ip_net: "10.0.0.1/32".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: false,
-            })
-                .try_into()
-                .unwrap()],
+                ..Default::default()
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -394,6 +390,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::new_unique();
@@ -413,8 +410,7 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Activated,
                 name: "Loopback100".to_string(),
                 interface_type: InterfaceType::Loopback,
@@ -429,9 +425,8 @@ mod tests {
                 ip_net: "185.189.47.80/32".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: false,
-            })
-                .try_into()
-                .unwrap()],
+                ..Default::default()
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -444,6 +439,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let mut devices = HashMap::new();
@@ -511,8 +507,7 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Activated,
                 name: "Ethernet0".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -527,9 +522,8 @@ mod tests {
                 ip_net: "10.0.0.1/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-            })
-                .try_into()
-                .unwrap()],
+                ..Default::default()
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -542,6 +536,7 @@ mod tests {
             max_multicast_subscribers: 0,
             max_multicast_publishers: 0,
             reserved_seats: 0,
+            ..Default::default()
         };
 
         client

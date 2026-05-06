@@ -123,12 +123,12 @@ pub fn process_topology_backfill(
         msg!("BackfillTopology: processing device {}", device_account.key);
         let mut device = Device::try_from(&device_account.data.borrow()[..])?;
         let mut modified = false;
-        // `new_interfaces` is the source of truth for `flex_algo_node_segments`.
-        // The custom Device serializer projects `new_interfaces` to the legacy
+        // `interfaces` is the source of truth for `flex_algo_node_segments`.
+        // The custom Device serializer projects `interfaces` to the legacy
         // on-disk slot as V2, which intentionally drops segments — so we don't
         // mirror the change into the legacy in-memory vec here.
-        for idx in 0..device.new_interfaces.len() {
-            let new_iface = &device.new_interfaces[idx];
+        for idx in 0..device.interfaces.len() {
+            let new_iface = &device.interfaces[idx];
             if new_iface.loopback_type != LoopbackType::Vpnv4 {
                 continue;
             }
@@ -148,9 +148,7 @@ pub fn process_topology_backfill(
                 topology: *topology_key,
                 node_segment_idx,
             };
-            device.new_interfaces[idx]
-                .flex_algo_node_segments
-                .push(segment);
+            device.interfaces[idx].flex_algo_node_segments.push(segment);
             modified = true;
             backfilled_count += 1;
         }

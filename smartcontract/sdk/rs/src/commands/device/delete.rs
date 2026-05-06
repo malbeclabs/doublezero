@@ -128,7 +128,6 @@ mod tests {
             desired_status: DeviceDesiredStatus::Drained,
             device_health: DeviceHealth::Unknown,
             interfaces: vec![],
-            new_interfaces: vec![],
             unicast_users_count: 0,
             multicast_subscribers_count: 0,
             max_unicast_users: 0,
@@ -136,6 +135,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         }
     }
 

@@ -382,7 +382,7 @@ async fn test_create_loopback_vpnv4_with_onchain_allocation() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].clone();
 
     assert_eq!(iface.status, InterfaceStatus::Activated);
     assert_eq!(iface.interface_type, InterfaceType::Loopback);
@@ -460,7 +460,7 @@ async fn test_create_loopback_non_vpnv4_with_onchain_allocation() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].clone();
 
     assert_eq!(iface.status, InterfaceStatus::Activated);
     assert_ne!(
@@ -542,7 +542,7 @@ async fn test_create_loopback_with_onchain_allocation_honors_supplied_ip_net() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].clone();
 
     assert_eq!(iface.status, InterfaceStatus::Activated);
     assert_eq!(iface.interface_type, InterfaceType::Loopback);
@@ -626,7 +626,7 @@ async fn test_create_physical_with_onchain_allocation() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].clone();
 
     assert_eq!(iface.status, InterfaceStatus::Unlinked);
     assert_eq!(iface.interface_type, InterfaceType::Physical);
@@ -684,7 +684,7 @@ async fn test_create_interface_backward_compat() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].clone();
 
     assert_eq!(iface.status, InterfaceStatus::Pending);
     assert_eq!(iface.ip_net, NetworkV4::default());
@@ -816,10 +816,7 @@ async fn test_delete_loopback_with_onchain_deallocation() {
         .await
         .expect("Device not found");
     assert_eq!(device.interfaces.len(), 1);
-    assert_eq!(
-        device.interfaces[0].into_current_version().status,
-        InterfaceStatus::Activated
-    );
+    assert_eq!(device.interfaces[0].status, InterfaceStatus::Activated);
 
     // Atomic delete+deallocate
     execute_transaction(
@@ -916,10 +913,7 @@ async fn test_delete_physical_with_onchain_deallocation() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    assert_eq!(
-        device.interfaces[0].into_current_version().status,
-        InterfaceStatus::Unlinked
-    );
+    assert_eq!(device.interfaces[0].status, InterfaceStatus::Unlinked);
 
     // Atomic delete
     execute_transaction(
@@ -1035,10 +1029,7 @@ async fn test_delete_interface_backward_compat() {
         .await
         .expect("Device not found");
     assert_eq!(device.interfaces.len(), 1);
-    assert_eq!(
-        device.interfaces[0].into_current_version().status,
-        InterfaceStatus::Deleting
-    );
+    assert_eq!(device.interfaces[0].status, InterfaceStatus::Deleting);
 
     println!("test_delete_interface_backward_compat PASSED");
 }
@@ -1101,7 +1092,7 @@ async fn test_update_interface_node_segment_idx_onchain_alloc() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].clone();
     assert_eq!(iface.node_segment_idx, 42);
 
     // Verify ID 42 is allocated in the resource extension
@@ -1190,7 +1181,7 @@ async fn test_update_interface_node_segment_idx_change_value() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].clone();
     assert_eq!(iface.node_segment_idx, 200);
 
     // Verify old ID 100 is deallocated and new ID 200 is allocated
@@ -1283,7 +1274,7 @@ async fn test_update_interface_node_segment_idx_clear() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].clone();
     assert_eq!(iface.node_segment_idx, 0);
 
     // Verify ID 50 is deallocated
@@ -1340,7 +1331,7 @@ async fn test_update_interface_node_segment_idx_legacy() {
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found");
-    let iface = device.interfaces[0].into_current_version();
+    let iface = device.interfaces[0].clone();
     assert_eq!(iface.node_segment_idx, 42);
 }
 

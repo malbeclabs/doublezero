@@ -468,7 +468,7 @@ impl MulticastDzLedgerClient for RpcMulticastDzLedgerClient {
                 continue;
             }
             let user_tunnel_endpoints = device
-                .new_interfaces
+                .interfaces
                 .iter()
                 .filter_map(|iface| {
                     if iface.user_tunnel_endpoint && iface.ip_net != Default::default() {

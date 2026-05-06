@@ -170,22 +170,22 @@ class TestFixtureDevice:
         )
         # Legacy slot is the V2 projection of new_interfaces (always V2 per #3653);
         # both entries carry version 1 and no FlexAlgoNodeSegments.
+        assert len(dev.deprecated_interfaces) == 2
+        assert dev.deprecated_interfaces[0].version == 1
+        assert dev.deprecated_interfaces[0].name == "Loopback0"
+        assert dev.deprecated_interfaces[0].flex_algo_node_segments == []
+        assert dev.deprecated_interfaces[1].version == 1
+        assert dev.deprecated_interfaces[1].name == "Ethernet1"
+        # Trailing new_interfaces vec carries the full V4 Interface bodies.
         assert len(dev.interfaces) == 2
-        assert dev.interfaces[0].version == 1
-        assert dev.interfaces[0].name == "Loopback0"
-        assert dev.interfaces[0].flex_algo_node_segments == []
-        assert dev.interfaces[1].version == 1
-        assert dev.interfaces[1].name == "Ethernet1"
-        # Trailing new_interfaces vec carries the full V4 NewInterface bodies.
-        assert len(dev.new_interfaces) == 2
-        ni0 = dev.new_interfaces[0]
+        ni0 = dev.interfaces[0]
         assert ni0.version == CURRENT_INTERFACE_VERSION
         assert ni0.name == "Loopback0"
         assert ni0.loopback_type.value == 1  # Vpnv4
         assert len(ni0.flex_algo_node_segments) == 1
         assert ni0.flex_algo_node_segments[0].node_segment_idx == 300
         assert ni0.size == _expected_new_interface_size(ni0)
-        ni1 = dev.new_interfaces[1]
+        ni1 = dev.interfaces[1]
         assert ni1.version == CURRENT_INTERFACE_VERSION
         assert ni1.name == "Ethernet1"
         assert ni1.user_tunnel_endpoint is True
@@ -206,10 +206,10 @@ class TestFixtureDevice:
 
 
 def _expected_new_interface_size(ni) -> int:
-    """Recompute the on-disk size for a NewInterface element so tests don't bake
+    """Recompute the on-disk size for a Interface element so tests don't bake
     body byte counts as magic numbers.
 
-    Layout (matches Rust NewInterface::serialize_body, interface.rs:641-658):
+    Layout (matches Rust Interface::serialize_body, interface.rs:641-658):
         u16 size + u8 version (3 bytes prefix) +
         u8 status + (u32+len) name + u8 interface_type + u8 cyoa + u8 dia +
         u8 loopback_type + u64 bandwidth + u64 cir + u16 mtu + u8 routing_mode +
@@ -234,22 +234,22 @@ class TestFixtureDeviceLegacy:
         dev = Device.from_bytes(data)
         assert meta["name"] == "DeviceLegacy"
         # Legacy slot mirrors the original V1+V2 hand-serialized shape.
-        assert len(dev.interfaces) == 2
-        assert dev.interfaces[0].version == 0  # V1
-        assert dev.interfaces[0].name == "Loopback0"
-        assert dev.interfaces[1].version == 1  # V2
-        assert dev.interfaces[1].name == "Ethernet1"
+        assert len(dev.deprecated_interfaces) == 2
+        assert dev.deprecated_interfaces[0].version == 0  # V1
+        assert dev.deprecated_interfaces[0].name == "Loopback0"
+        assert dev.deprecated_interfaces[1].version == 1  # V2
+        assert dev.deprecated_interfaces[1].name == "Ethernet1"
         # Rebuilt new_interfaces: same field values as the legacy entries, but
         # stamped with the current schema version and zero on-disk size.
-        assert len(dev.new_interfaces) == 2
-        for ni in dev.new_interfaces:
+        assert len(dev.interfaces) == 2
+        for ni in dev.interfaces:
             assert ni.version == CURRENT_INTERFACE_VERSION
             assert ni.size == 0
             assert ni.flex_algo_node_segments == []
-        assert dev.new_interfaces[0].name == "Loopback0"
-        assert dev.new_interfaces[0].loopback_type.value == 1  # Vpnv4
-        assert dev.new_interfaces[1].name == "Ethernet1"
-        assert dev.new_interfaces[1].user_tunnel_endpoint is True
+        assert dev.interfaces[0].name == "Loopback0"
+        assert dev.interfaces[0].loopback_type.value == 1  # Vpnv4
+        assert dev.interfaces[1].name == "Ethernet1"
+        assert dev.interfaces[1].user_tunnel_endpoint is True
 
 
 class TestFixtureDeviceFutureVersion:
@@ -263,16 +263,16 @@ class TestFixtureDeviceFutureVersion:
         data, meta = _load_fixture("device_future_version")
         dev = Device.from_bytes(data)
         assert meta["name"] == "DeviceFutureVersion"
-        assert len(dev.new_interfaces) == 2
+        assert len(dev.interfaces) == 2
         # First element parses normally at the current schema version.
-        ni0 = dev.new_interfaces[0]
+        ni0 = dev.interfaces[0]
         assert ni0.version == CURRENT_INTERFACE_VERSION
         assert ni0.name == "Loopback0"
         assert len(ni0.flex_algo_node_segments) == 1
         # Second element has the future-version stamp + extra trailing bytes;
         # known body fields still parse correctly because the reader advances
         # to start+size.
-        ni1 = dev.new_interfaces[1]
+        ni1 = dev.interfaces[1]
         assert ni1.version == 5
         assert ni1.size == _expected_new_interface_size(ni1) + 8
         assert ni1.name == "Ethernet1"

@@ -530,8 +530,10 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     return iface;
   }
 
-  // Discriminants: 0=V1, 1 or 2=V2. Discriminant 3 was V3 (transient,
-  // never shipped) and is intentionally unhandled.
+  // Discriminants: 0=V1, 1 or 2=V2. Discriminant 3 was a transient V3 format
+  // (V2 body + flex_algo_node_segments vec); the type is gone but pre-existing
+  // on-chain accounts still contain V3 entries, so we consume the bytes and
+  // project to V2 (segments dropped).
   if (iface.version === 0) {
     iface.status = r.readU8();
     iface.name = r.readString();
@@ -541,7 +543,7 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
-  } else if (iface.version === 1 || iface.version === 2) {
+  } else if (iface.version === 1 || iface.version === 2 || iface.version === 3) {
     iface.status = r.readU8();
     iface.name = r.readString();
     iface.interfaceType = r.readU8();
@@ -556,6 +558,14 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
+    if (iface.version === 3) {
+      const segCount = r.readU32();
+      for (let i = 0; i < segCount; i++) {
+        if (r.remaining < 34) break;
+        readPubkey(r);
+        r.readU16();
+      }
+    }
   }
 
   return iface;

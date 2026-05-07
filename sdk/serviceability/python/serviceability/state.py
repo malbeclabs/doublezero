@@ -445,8 +445,10 @@ class Interface:
         iface.version = r.read_u8()
         if iface.version > CURRENT_INTERFACE_VERSION - 1:
             return iface
-        # Discriminants: 0=V1, 1 or 2=V2. Discriminant 3 was V3 (transient,
-        # never shipped) and is intentionally unhandled.
+        # Discriminants: 0=V1, 1 or 2=V2. Discriminant 3 was a transient V3
+        # format (V2 body + flex_algo_node_segments vec); the type is gone but
+        # pre-existing on-chain accounts still contain V3 entries, so we consume
+        # the bytes and project to V2 (segments dropped).
         if iface.version == 0:
             iface.status = InterfaceStatus(r.read_u8())
             iface.name = r.read_string()
@@ -456,7 +458,7 @@ class Interface:
             iface.ip_net = r.read_network_v4()
             iface.node_segment_idx = r.read_u16()
             iface.user_tunnel_endpoint = r.read_bool()
-        elif iface.version in (1, 2):
+        elif iface.version in (1, 2, 3):
             iface.status = InterfaceStatus(r.read_u8())
             iface.name = r.read_string()
             iface.interface_type = InterfaceType(r.read_u8())
@@ -471,6 +473,11 @@ class Interface:
             iface.ip_net = r.read_network_v4()
             iface.node_segment_idx = r.read_u16()
             iface.user_tunnel_endpoint = r.read_bool()
+            if iface.version == 3:
+                seg_count = r.read_u32()
+                for _ in range(seg_count):
+                    _read_pubkey(r)
+                    r.read_u16()
         return iface
 
     @classmethod

@@ -402,8 +402,10 @@ pub enum InterfaceDeprecated {
     V1(InterfaceV1) = 0,
     /// Discriminant 1: V2 format. Does NOT include flex_algo_node_segments.
     /// Discriminant 2 is reserved (never written). Discriminant 3 was a transient
-    /// V3 format that never reached production and has been removed; the slot is
-    /// reserved and unused.
+    /// V3 format (V2 body + a `flex_algo_node_segments` vec) that no longer has
+    /// a corresponding type — the deserializer still consumes V3 bytes from
+    /// pre-existing on-chain accounts and projects them to V2 (segments dropped),
+    /// but nothing writes V3 going forward.
     V2(InterfaceV2) = 1,
 }
 
@@ -417,6 +419,16 @@ impl borsh::BorshDeserialize for InterfaceDeprecated {
             1 | 2 => Ok(InterfaceDeprecated::V2(
                 borsh::BorshDeserialize::deserialize_reader(reader)?,
             )),
+            // Discriminant 3 (legacy V3): consume V2 body + the trailing
+            // flex_algo_node_segments vec, then surface as V2. The segments are
+            // dropped — they live in the trailing forward-compat `interfaces` vec
+            // on Device post-#3667.
+            3 => {
+                let v2: InterfaceV2 = borsh::BorshDeserialize::deserialize_reader(reader)?;
+                let _segments: Vec<crate::state::topology::FlexAlgoNodeSegment> =
+                    borsh::BorshDeserialize::deserialize_reader(reader)?;
+                Ok(InterfaceDeprecated::V2(v2))
+            }
             _ => Ok(InterfaceDeprecated::V2(InterfaceV2::default())),
         }
     }
@@ -773,6 +785,68 @@ fn test_interface_version() {
     assert_eq!(iface_v2.ip_net, "10.0.0.0/24".parse().unwrap());
     assert_eq!(iface_v2.node_segment_idx, 200);
     assert!(iface_v2.user_tunnel_endpoint);
+}
+
+/// Hand-craft a `Vec<InterfaceDeprecated>` whose first element is a legacy V3
+/// byte stream (discriminant 3 + V2 body + flex_algo_node_segments vec) and a
+/// trailing V2 element. Asserts that the V3 bytes are fully consumed (segments
+/// included) so the V2 element after them deserializes correctly — guards
+/// against the byte-misalignment that broke `sdk-compat-test` on mainnet-beta
+/// device `la2r-dz01` (discriminant 3 entry `Ethernet20/1`).
+#[test]
+fn test_interface_deprecated_consumes_legacy_v3_bytes() {
+    use crate::state::topology::FlexAlgoNodeSegment;
+    use solana_program::pubkey::Pubkey;
+
+    // Build a V2 body and append the V3-only flex_algo_node_segments vec by hand.
+    let v2 = InterfaceV2 {
+        status: InterfaceStatus::Activated,
+        name: "Ethernet20/1".to_string(),
+        interface_type: InterfaceType::Physical,
+        interface_cyoa: InterfaceCYOA::None,
+        interface_dia: InterfaceDIA::None,
+        loopback_type: LoopbackType::None,
+        bandwidth: 1_000_000_000,
+        cir: 0,
+        mtu: 9000,
+        routing_mode: RoutingMode::BGP,
+        vlan_id: 0,
+        ip_net: "10.0.0.1/30".parse().unwrap(),
+        node_segment_idx: 0,
+        user_tunnel_endpoint: false,
+    };
+    let segments = vec![FlexAlgoNodeSegment {
+        topology: Pubkey::new_unique(),
+        node_segment_idx: 7,
+    }];
+    let trailing = InterfaceV2 {
+        name: "Ethernet1".to_string(),
+        ..InterfaceV2::default()
+    };
+
+    // Wire bytes: u32 vec_len=2, then [disc=3, V2 body, segments vec] + [disc=1, V2 body].
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&2u32.to_le_bytes());
+    bytes.push(3); // legacy V3 discriminant
+    bytes.extend_from_slice(&borsh::to_vec(&v2).unwrap());
+    bytes.extend_from_slice(&borsh::to_vec(&segments).unwrap());
+    bytes.push(1); // V2 discriminant
+    bytes.extend_from_slice(&borsh::to_vec(&trailing).unwrap());
+
+    let decoded: Vec<InterfaceDeprecated> = borsh::BorshDeserialize::try_from_slice(&bytes)
+        .expect("legacy V3 bytes should be consumed without misalignment");
+    assert_eq!(decoded.len(), 2);
+    match &decoded[0] {
+        InterfaceDeprecated::V2(d) => {
+            assert_eq!(d.name, "Ethernet20/1");
+            assert_eq!(d.mtu, 9000);
+        }
+        other => panic!("expected V3 to project to V2, got {:?}", other),
+    }
+    match &decoded[1] {
+        InterfaceDeprecated::V2(d) => assert_eq!(d.name, "Ethernet1"),
+        other => panic!("expected trailing V2, got {:?}", other),
+    }
 }
 
 #[cfg(test)]

@@ -90,6 +90,10 @@ func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
 //	0 — V1: original format (no CYOA/DIA/Bandwidth fields)
 //	1 — V2: adds CYOA, DIA, Bandwidth, Cir, Mtu, RoutingMode
 //	2 — reserved, never written
+//	3 — V3 (legacy): V2 body + a flex_algo_node_segments vec. No longer
+//	    written, but pre-existing on-chain accounts still contain V3 entries
+//	    in the legacy slot. We consume the bytes and surface as V2 — segments
+//	    live in the trailing forward-compat interfaces vec on Device.
 //
 // The on-chain Device serializer projects the legacy deprecated_interfaces slot as V2
 // (per #3653). flex_algo_node_segments lives only in the trailing forward-compat
@@ -102,6 +106,13 @@ func DeserializeInterface(reader *ByteReader, iface *Interface) {
 		DeserializeInterfaceV1(reader, iface)
 	case 1, 2: // V2
 		DeserializeInterfaceV2(reader, iface)
+	case 3: // legacy V3 — consume V2 body + drop segments
+		DeserializeInterfaceV2(reader, iface)
+		segCount := reader.ReadU32()
+		for i := uint32(0); i < segCount; i++ {
+			_ = reader.ReadPubkey()
+			_ = reader.ReadU16()
+		}
 	default:
 		log.Println("DeserializeInterface: Unsupported interface version", iface.Version)
 	}

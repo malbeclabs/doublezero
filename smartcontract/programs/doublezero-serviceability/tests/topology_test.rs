@@ -2098,8 +2098,8 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     banks_client.process_transaction(tx).await.unwrap();
 
     // Verify: backfill stored a flex-algo segment with the next SR ID (2).
-    // Post-#3665, segments live in `interfaces` (the legacy `interfaces` slot
-    // is always V2-projected on save and so does not carry segments).
+    // Post-#3665, segments live in `interfaces` (the `deprecated_interfaces`
+    // slot is always V2-projected on save and so does not carry segments).
     let device = get_device(&mut banks_client, device_pubkey)
         .await
         .expect("Device not found after backfill");

@@ -160,7 +160,6 @@ impl MigrateMulticastCountsCommand {
                 contributor_pk: None,
                 location_pk: None,
                 mgmt_vrf: None,
-                interfaces: None,
                 max_users: None,
                 users_count: None,
                 status: None,
@@ -257,7 +256,6 @@ impl MigrateUnicastCountsCommand {
                 contributor_pk: None,
                 location_pk: None,
                 mgmt_vrf: None,
-                interfaces: None,
                 max_users: None,
                 users_count: None,
                 status: None,
@@ -312,7 +310,6 @@ mod tests {
             dz_prefixes: "10.0.0.1/32".parse().unwrap(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 255,
             users_count: 0,
             device_health: DeviceHealth::ReadyForUsers,
@@ -324,6 +321,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: pub_count,
             max_multicast_publishers: 0,
+            ..Default::default()
         }
     }
 

@@ -102,7 +102,6 @@ mod tests {
             device_type: DeviceType::Hybrid,
             dz_prefixes: "10.0.0.1/31".parse().unwrap(),
             interfaces: Vec::new(),
-            new_interfaces: Vec::new(),
             mgmt_vrf: "".to_string(),
             public_ip: "100.0.0.1".parse().unwrap(),
             reference_count: 0,
@@ -118,6 +117,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let exchange = Exchange {

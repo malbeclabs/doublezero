@@ -14,11 +14,11 @@ import (
 //
 // Wire format mirrors smartcontract/programs/doublezero-serviceability::state::device.
 // Field order through max_multicast_publishers, then optionally a trailing
-// new_interfaces vec where each element is laid out as:
+// interfaces vec where each element is laid out as:
 //
 //	u16 size (incl. 3-byte prefix) | u8 version | body
 //
-// Body layout matches Rust NewInterface::serialize_body — see that function for
+// Body layout matches Rust Interface::serialize_body — see that function for
 // the canonical ordering.
 type deviceBuilder struct {
 	buf bytes.Buffer
@@ -111,7 +111,7 @@ func writeLegacyInterfaceV2(b *deviceBuilder, name string) {
 }
 
 // newInterfaceBody returns the body bytes (no size/version prefix) for a
-// minimal V4 NewInterface element with caller-provided name.
+// minimal V4 Interface element with caller-provided name.
 func newInterfaceBody(name string) []byte {
 	var body bytes.Buffer
 	body.WriteByte(0) // status
@@ -133,7 +133,7 @@ func newInterfaceBody(name string) []byte {
 	return body.Bytes()
 }
 
-// writeNewInterfaceSized appends a single size-prefixed NewInterface (version 4)
+// writeNewInterfaceSized appends a single size-prefixed Interface (version 4)
 // to the builder. size = 3 + len(body); the size header is included in size.
 func writeNewInterfaceSized(b *deviceBuilder, name string) {
 	body := newInterfaceBody(name)
@@ -144,7 +144,7 @@ func writeNewInterfaceSized(b *deviceBuilder, name string) {
 }
 
 func TestDeserializeInterfaceSized_PopulatedTrailingVec(t *testing.T) {
-	// Cross-language framing assertion: a NewInterface with empty name has body
+	// Cross-language framing assertion: an Interface with empty name has body
 	// length = 1+4+1+1+1+1+8+8+2+1+2+5+2+1+4 = 42, so size = 3+42 = 45.
 	const expectedSizeEmptyName = 45
 
@@ -155,7 +155,7 @@ func TestDeserializeInterfaceSized_PopulatedTrailingVec(t *testing.T) {
 			writeLegacyInterfaceV2(bb, "Lo0")
 		},
 		func(bb *deviceBuilder) {
-			bb.writeU32(2) // new_interfaces vec length
+			bb.writeU32(2) // interfaces vec length
 			writeNewInterfaceSized(bb, "Eth1")
 			writeNewInterfaceSized(bb, "Lo0")
 		},
@@ -166,24 +166,24 @@ func TestDeserializeInterfaceSized_PopulatedTrailingVec(t *testing.T) {
 	serviceability.DeserializeDevice(r, &dev)
 	require.NoError(t, dev.DeserializeError)
 
+	require.Len(t, dev.DeprecatedInterfaces, 2)
 	require.Len(t, dev.Interfaces, 2)
-	require.Len(t, dev.NewInterfaces, 2)
-	assert.Equal(t, "Eth1", dev.NewInterfaces[0].Name)
-	assert.Equal(t, "Lo0", dev.NewInterfaces[1].Name)
-	assert.Equal(t, uint8(serviceability.CurrentInterfaceVersion), dev.NewInterfaces[0].Version)
+	assert.Equal(t, "Eth1", dev.Interfaces[0].Name)
+	assert.Equal(t, "Lo0", dev.Interfaces[1].Name)
+	assert.Equal(t, uint8(serviceability.CurrentInterfaceVersion), dev.Interfaces[0].Version)
 
-	// The size field on NewInterface includes the 2-byte size + 1-byte version
+	// The size field on Interface includes the 2-byte size + 1-byte version
 	// + body. For an empty-flex-segs body with name "Eth1": 4+4+...; verified
 	// against the expected-empty-name baseline below.
 	emptyBody := newInterfaceBody("")
 	assert.Equal(t, expectedSizeEmptyName, 3+len(emptyBody))
-	for i := range dev.NewInterfaces {
-		expected := uint16(3 + len(newInterfaceBody(dev.NewInterfaces[i].Name)))
-		assert.Equal(t, expected, dev.NewInterfaces[i].Size, "size mismatch on element %d", i)
+	for i := range dev.Interfaces {
+		expected := uint16(3 + len(newInterfaceBody(dev.Interfaces[i].Name)))
+		assert.Equal(t, expected, dev.Interfaces[i].Size, "size mismatch on element %d", i)
 	}
 }
 
-func TestDeserializeDevice_LegacyAccountRebuildsNewInterfaces(t *testing.T) {
+func TestDeserializeDevice_LegacyAccountRebuildsInterfaces(t *testing.T) {
 	var b deviceBuilder
 	b.writeDevice(2,
 		func(bb *deviceBuilder) {
@@ -198,13 +198,13 @@ func TestDeserializeDevice_LegacyAccountRebuildsNewInterfaces(t *testing.T) {
 	serviceability.DeserializeDevice(r, &dev)
 	require.NoError(t, dev.DeserializeError)
 
+	require.Len(t, dev.DeprecatedInterfaces, 2)
 	require.Len(t, dev.Interfaces, 2)
-	require.Len(t, dev.NewInterfaces, 2)
-	assert.Equal(t, "Eth1", dev.NewInterfaces[0].Name)
-	assert.Equal(t, "Lo0", dev.NewInterfaces[1].Name)
+	assert.Equal(t, "Eth1", dev.Interfaces[0].Name)
+	assert.Equal(t, "Lo0", dev.Interfaces[1].Name)
 	// Rebuilt entries are stamped with the current schema version and zero
 	// size (callers don't need on-disk size for a rebuild).
-	for _, ni := range dev.NewInterfaces {
+	for _, ni := range dev.Interfaces {
 		assert.Equal(t, uint8(serviceability.CurrentInterfaceVersion), ni.Version)
 		assert.Equal(t, uint16(0), ni.Size)
 	}
@@ -227,7 +227,7 @@ func TestDeserializeDevice_TrailingLengthMismatchSetsError(t *testing.T) {
 	var dev serviceability.Device
 	serviceability.DeserializeDevice(r, &dev)
 	require.Error(t, dev.DeserializeError)
-	assert.Contains(t, dev.DeserializeError.Error(), "length 1 != interfaces length 2")
+	assert.Contains(t, dev.DeserializeError.Error(), "interfaces length 1 != deprecated_interfaces length 2")
 }
 
 func TestDeserializeInterfaceSized_FutureVersionSkipsTrailingBytes(t *testing.T) {
@@ -256,9 +256,9 @@ func TestDeserializeInterfaceSized_FutureVersionSkipsTrailingBytes(t *testing.T)
 	var dev serviceability.Device
 	serviceability.DeserializeDevice(r, &dev)
 	require.NoError(t, dev.DeserializeError)
-	require.Len(t, dev.NewInterfaces, 1)
-	assert.Equal(t, uint8(5), dev.NewInterfaces[0].Version)
-	assert.Equal(t, size, dev.NewInterfaces[0].Size)
+	require.Len(t, dev.Interfaces, 1)
+	assert.Equal(t, uint8(5), dev.Interfaces[0].Version)
+	assert.Equal(t, size, dev.Interfaces[0].Size)
 	// Body fields up to known shape are still parsed.
-	assert.Equal(t, "Future1", dev.NewInterfaces[0].Name)
+	assert.Equal(t, "Future1", dev.Interfaces[0].Name)
 }

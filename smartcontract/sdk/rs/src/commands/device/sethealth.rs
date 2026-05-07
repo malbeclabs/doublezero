@@ -73,7 +73,6 @@ mod tests {
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 250,
             users_count: 0,
             device_health: DeviceHealth::ReadyForUsers,
@@ -85,6 +84,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client
@@ -150,7 +150,6 @@ mod tests {
             metrics_publisher: None,
             mgmt_vrf: Some("mgmt".to_string()),
             location_pk: None,
-            interfaces: None,
             max_users: None,
             users_count: None,
             status: None,

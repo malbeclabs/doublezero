@@ -1,7 +1,7 @@
 /**
- * Hand-built byte-vector tests for the size-prefixed NewInterface reader.
+ * Hand-built byte-vector tests for the size-prefixed Interface reader.
  *
- * Each NewInterface element on the wire is (u16 size, u8 version, body), where
+ * Each Interface element on the wire is (u16 size, u8 version, body), where
  * size includes the 3-byte prefix. The Device account stores this vec
  * immediately after max_multicast_publishers.
  */
@@ -135,7 +135,7 @@ function buildDevice(
   return concat(...parts);
 }
 
-describe("size-prefixed NewInterface", () => {
+describe("size-prefixed Interface", () => {
   test("populated trailing vec", () => {
     // Cross-language framing assertion: empty-name body length is
     // 1+4+1+1+1+1+8+8+2+1+2+5+2+1+4 = 42, so size = 3 + 42 = 45.
@@ -149,27 +149,27 @@ describe("size-prefixed NewInterface", () => {
     const raw = buildDevice(2, ["Eth1", "Lo0"], trailing);
 
     const dev = deserializeDevice(raw);
+    expect(dev.deprecatedInterfaces.length).toBe(2);
     expect(dev.interfaces.length).toBe(2);
-    expect(dev.newInterfaces.length).toBe(2);
-    expect(dev.newInterfaces[0]!.name).toBe("Eth1");
-    expect(dev.newInterfaces[1]!.name).toBe("Lo0");
-    expect(dev.newInterfaces[0]!.version).toBe(CURRENT_INTERFACE_VERSION);
-    for (const ni of dev.newInterfaces) {
+    expect(dev.interfaces[0]!.name).toBe("Eth1");
+    expect(dev.interfaces[1]!.name).toBe("Lo0");
+    expect(dev.interfaces[0]!.version).toBe(CURRENT_INTERFACE_VERSION);
+    for (const ni of dev.interfaces) {
       const expected = 3 + newInterfaceBody(ni.name).length;
       expect(ni.size).toBe(expected);
     }
   });
 
-  test("legacy account rebuilds new_interfaces", () => {
+  test("legacy account rebuilds interfaces", () => {
     const raw = buildDevice(2, ["Eth1", "Lo0"], null);
 
     const dev = deserializeDevice(raw);
+    expect(dev.deprecatedInterfaces.length).toBe(2);
     expect(dev.interfaces.length).toBe(2);
-    expect(dev.newInterfaces.length).toBe(2);
-    expect(dev.newInterfaces[0]!.name).toBe("Eth1");
-    expect(dev.newInterfaces[1]!.name).toBe("Lo0");
+    expect(dev.interfaces[0]!.name).toBe("Eth1");
+    expect(dev.interfaces[1]!.name).toBe("Lo0");
     // Rebuilt entries are stamped with the current schema version and zero size.
-    for (const ni of dev.newInterfaces) {
+    for (const ni of dev.interfaces) {
       expect(ni.version).toBe(CURRENT_INTERFACE_VERSION);
       expect(ni.size).toBe(0);
     }
@@ -180,7 +180,7 @@ describe("size-prefixed NewInterface", () => {
     const raw = buildDevice(2, ["Eth1", "Lo0"], trailing);
 
     expect(() => deserializeDevice(raw)).toThrow(
-      /length 1 != interfaces length 2/,
+      /interfaces length 1 != deprecatedInterfaces length 2/,
     );
   });
 
@@ -196,9 +196,9 @@ describe("size-prefixed NewInterface", () => {
     const raw = buildDevice(1, ["Future1"], trailing);
 
     const dev = deserializeDevice(raw);
-    expect(dev.newInterfaces.length).toBe(1);
-    expect(dev.newInterfaces[0]!.version).toBe(5);
-    expect(dev.newInterfaces[0]!.size).toBe(3 + body.length);
-    expect(dev.newInterfaces[0]!.name).toBe("Future1");
+    expect(dev.interfaces.length).toBe(1);
+    expect(dev.interfaces[0]!.version).toBe(5);
+    expect(dev.interfaces[0]!.size).toBe(3 + body.length);
+    expect(dev.interfaces[0]!.name).toBe("Future1");
   });
 });

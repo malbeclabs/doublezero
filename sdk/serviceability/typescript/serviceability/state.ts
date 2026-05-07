@@ -498,7 +498,7 @@ export interface DeviceInterface {
   flexAlgoNodeSegments?: FlexAlgoNodeSegment[];
 }
 
-// On-wire schema version for the size-prefixed NewInterface format
+// On-wire schema version for the size-prefixed Interface format
 // (matches Rust's CURRENT_INTERFACE_SCHEMA_VERSION). Note: prior to issue #3660
 // this constant gated the legacy enum reader at value 2 (max known disc=1); it
 // is now bumped to 4 to match the size-prefixed schema.
@@ -573,7 +573,7 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
   return iface;
 }
 
-// deserializeInterfaceSized reads a single size-prefixed NewInterface element.
+// deserializeInterfaceSized reads a single size-prefixed Interface element.
 //
 // Wire format: u16 size + u8 version + body, where size includes the 3-byte
 // prefix. Forward-compat readers always advance the cursor to start+size after
@@ -655,7 +655,7 @@ export interface Device {
   metricsPublisherPubKey: PublicKey;
   contributorPubKey: PublicKey;
   mgmtVrf: string;
-  interfaces: DeviceInterface[];
+  deprecatedInterfaces: DeviceInterface[];
   referenceCount: number;
   usersCount: number;
   maxUsers: number;
@@ -668,11 +668,11 @@ export interface Device {
   reservedSeats: number;
   multicastPublishersCount: number;
   maxMulticastPublishers: number;
-  // newInterfaces is the trailing size-prefixed vec parallel to interfaces. For
-  // legacy accounts (no trailing bytes), this is rebuilt from interfaces by
-  // deserializeDevice. When populated from the wire, length parity with
-  // interfaces is enforced.
-  newInterfaces: DeviceInterface[];
+  // interfaces is the trailing size-prefixed vec parallel to deprecatedInterfaces.
+  // For legacy accounts (no trailing bytes), this is rebuilt from
+  // deprecatedInterfaces by deserializeDevice. When populated from the wire,
+  // length parity with deprecatedInterfaces is enforced.
+  interfaces: DeviceInterface[];
 }
 
 export function deserializeDevice(data: Uint8Array): Device {
@@ -693,9 +693,9 @@ export function deserializeDevice(data: Uint8Array): Device {
   const mgmtVrf = r.readString();
 
   const ifaceLen = r.readU32();
-  const interfaces: DeviceInterface[] = [];
+  const deprecatedInterfaces: DeviceInterface[] = [];
   for (let i = 0; i < ifaceLen; i++) {
-    interfaces.push(deserializeInterface(r));
+    deprecatedInterfaces.push(deserializeInterface(r));
   }
 
   const referenceCount = r.readU32();
@@ -711,12 +711,12 @@ export function deserializeDevice(data: Uint8Array): Device {
   const multicastPublishersCount = r.readU16();
   const maxMulticastPublishers = r.readU16();
 
-  // Trailing new_interfaces vec (size-prefixed). Empty trailing => rebuild
-  // from legacy. Non-empty trailing whose declared length differs from the
-  // legacy interfaces length is a corrupt-account condition.
-  let newInterfaces: DeviceInterface[];
+  // Trailing interfaces vec (size-prefixed). Empty trailing => rebuild from
+  // deprecatedInterfaces. Non-empty trailing whose declared length differs from
+  // deprecatedInterfaces length is a corrupt-account condition.
+  let interfaces: DeviceInterface[];
   if (r.remaining === 0) {
-    newInterfaces = interfaces.map((legacy) => ({
+    interfaces = deprecatedInterfaces.map((legacy) => ({
       ...legacy,
       size: 0,
       version: CURRENT_INTERFACE_VERSION,
@@ -726,14 +726,14 @@ export function deserializeDevice(data: Uint8Array): Device {
     }));
   } else {
     const newLen = r.readU32();
-    if (newLen !== interfaces.length) {
+    if (newLen !== deprecatedInterfaces.length) {
       throw new Error(
-        `Device new_interfaces length ${newLen} != interfaces length ${interfaces.length}`,
+        `Device interfaces length ${newLen} != deprecatedInterfaces length ${deprecatedInterfaces.length}`,
       );
     }
-    newInterfaces = [];
+    interfaces = [];
     for (let i = 0; i < newLen; i++) {
-      newInterfaces.push(deserializeInterfaceSized(r));
+      interfaces.push(deserializeInterfaceSized(r));
     }
   }
 
@@ -752,7 +752,7 @@ export function deserializeDevice(data: Uint8Array): Device {
     metricsPublisherPubKey,
     contributorPubKey,
     mgmtVrf,
-    interfaces,
+    deprecatedInterfaces,
     referenceCount,
     usersCount,
     maxUsers,
@@ -765,7 +765,7 @@ export function deserializeDevice(data: Uint8Array): Device {
     reservedSeats,
     multicastPublishersCount,
     maxMulticastPublishers,
-    newInterfaces,
+    interfaces,
   };
 }
 

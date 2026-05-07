@@ -114,7 +114,7 @@ pub fn process_accept_link(
     }
 
     if !side_z_dev
-        .new_interfaces
+        .interfaces
         .iter()
         .any(|iface| iface.name == value.side_z_iface_name)
     {

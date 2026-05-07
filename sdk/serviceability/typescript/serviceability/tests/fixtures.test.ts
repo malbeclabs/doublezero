@@ -148,12 +148,12 @@ describe("Exchange fixture", () => {
 // Matches Rust CURRENT_INTERFACE_SCHEMA_VERSION; private in state.ts so re-stated here.
 const CURRENT_INTERFACE_VERSION = 4;
 
-// Recompute on-disk byte size for a NewInterface element so tests don't bake
-// magic body byte counts. Layout matches Rust NewInterface::serialize_body
+// Recompute on-disk byte size for a Interface element so tests don't bake
+// magic body byte counts. Layout matches Rust Interface::serialize_body
 // (interface.rs:641-658): u16 size + u8 version (3-byte prefix) +
 // u8 status + (u32+len) name + 4*u8 + u64*2 + u16 + u8 + u16 + 5-byte ip_net +
 // u16 + u8 + (u32+34*N) flex_algo_node_segments.
-function expectedNewInterfaceSize(ni: {
+function expectedInterfaceSize(ni: {
   name: string;
   flexAlgoNodeSegments?: Array<unknown>;
 }): number {
@@ -207,10 +207,10 @@ describe("Device fixture", () => {
     expect(dev.dzPrefixes).toHaveLength(1);
     expect(formatNetworkV4(dev.dzPrefixes[0])).toBe("10.10.0.0/24");
 
-    // Legacy slot is the V2 projection of new_interfaces (always V2 per #3653);
+    // Legacy slot is the V2 projection of interfaces (always V2 per #3653);
     // both entries carry version 1 and no FlexAlgoNodeSegments.
-    expect(dev.interfaces).toHaveLength(2);
-    const iface0 = dev.interfaces[0];
+    expect(dev.deprecatedInterfaces).toHaveLength(2);
+    const iface0 = dev.deprecatedInterfaces[0];
     expect(iface0.version).toBe(1);
     expect(iface0.status).toBe(3);
     expect(iface0.name).toBe("Loopback0");
@@ -224,7 +224,7 @@ describe("Device fixture", () => {
     expect(iface0.nodeSegmentIdx).toBe(100);
     expect(iface0.userTunnelEndpoint).toBe(false);
 
-    const iface1 = dev.interfaces[1];
+    const iface1 = dev.deprecatedInterfaces[1];
     expect(iface1.version).toBe(1);
     expect(iface1.status).toBe(3);
     expect(iface1.name).toBe("Ethernet1");
@@ -241,27 +241,27 @@ describe("Device fixture", () => {
     expect(iface1.nodeSegmentIdx).toBe(200);
     expect(iface1.userTunnelEndpoint).toBe(true);
 
-    // Trailing new_interfaces vec carries the full V4 NewInterface bodies.
-    expect(dev.newInterfaces).toHaveLength(2);
-    const ni0 = dev.newInterfaces[0];
+    // Trailing interfaces vec carries the full V4 Interface bodies.
+    expect(dev.interfaces).toHaveLength(2);
+    const ni0 = dev.interfaces[0];
     expect(ni0.version).toBe(CURRENT_INTERFACE_VERSION);
     expect(ni0.name).toBe("Loopback0");
     expect(ni0.loopbackType).toBe(1); // Vpnv4
     expect(ni0.flexAlgoNodeSegments).toHaveLength(1);
     expect(ni0.flexAlgoNodeSegments![0].nodeSegmentIdx).toBe(300);
-    expect(ni0.size).toBe(expectedNewInterfaceSize(ni0));
+    expect(ni0.size).toBe(expectedInterfaceSize(ni0));
 
-    const ni1 = dev.newInterfaces[1];
+    const ni1 = dev.interfaces[1];
     expect(ni1.version).toBe(CURRENT_INTERFACE_VERSION);
     expect(ni1.name).toBe("Ethernet1");
     expect(ni1.userTunnelEndpoint).toBe(true);
     expect(ni1.flexAlgoNodeSegments).toEqual([]);
-    expect(ni1.size).toBe(expectedNewInterfaceSize(ni1));
+    expect(ni1.size).toBe(expectedInterfaceSize(ni1));
   });
 });
 
 // Pre-#3667 on-disk format: legacy `interfaces` vec only, no trailing
-// `new_interfaces`. SDK rebuilds new_interfaces from the legacy vec, stamping
+// `interfaces`. SDK rebuilds interfaces from the legacy vec, stamping
 // each entry with version=CURRENT_INTERFACE_VERSION and size=0.
 describe("Device legacy fixture", () => {
   test("deserialize", () => {
@@ -270,24 +270,24 @@ describe("Device legacy fixture", () => {
     expect(meta.name).toBe("DeviceLegacy");
 
     // Legacy slot mirrors the original V1+V2 hand-serialized shape.
-    expect(dev.interfaces).toHaveLength(2);
-    expect(dev.interfaces[0].version).toBe(0); // V1
-    expect(dev.interfaces[0].name).toBe("Loopback0");
-    expect(dev.interfaces[1].version).toBe(1); // V2
-    expect(dev.interfaces[1].name).toBe("Ethernet1");
+    expect(dev.deprecatedInterfaces).toHaveLength(2);
+    expect(dev.deprecatedInterfaces[0].version).toBe(0); // V1
+    expect(dev.deprecatedInterfaces[0].name).toBe("Loopback0");
+    expect(dev.deprecatedInterfaces[1].version).toBe(1); // V2
+    expect(dev.deprecatedInterfaces[1].name).toBe("Ethernet1");
 
-    // Rebuilt new_interfaces: same field values as the legacy entries, but
+    // Rebuilt interfaces: same field values as the legacy entries, but
     // stamped with the current schema version and zero on-disk size.
-    expect(dev.newInterfaces).toHaveLength(2);
-    for (const ni of dev.newInterfaces) {
+    expect(dev.interfaces).toHaveLength(2);
+    for (const ni of dev.interfaces) {
       expect(ni.version).toBe(CURRENT_INTERFACE_VERSION);
       expect(ni.size).toBe(0);
       expect(ni.flexAlgoNodeSegments).toEqual([]);
     }
-    expect(dev.newInterfaces[0].name).toBe("Loopback0");
-    expect(dev.newInterfaces[0].loopbackType).toBe(1); // Vpnv4
-    expect(dev.newInterfaces[1].name).toBe("Ethernet1");
-    expect(dev.newInterfaces[1].userTunnelEndpoint).toBe(true);
+    expect(dev.interfaces[0].name).toBe("Loopback0");
+    expect(dev.interfaces[0].loopbackType).toBe(1); // Vpnv4
+    expect(dev.interfaces[1].name).toBe("Ethernet1");
+    expect(dev.interfaces[1].userTunnelEndpoint).toBe(true);
   });
 });
 
@@ -300,17 +300,17 @@ describe("Device future-version fixture", () => {
     const dev = deserializeDevice(data);
     expect(meta.name).toBe("DeviceFutureVersion");
 
-    expect(dev.newInterfaces).toHaveLength(2);
-    const ni0 = dev.newInterfaces[0];
+    expect(dev.interfaces).toHaveLength(2);
+    const ni0 = dev.interfaces[0];
     expect(ni0.version).toBe(CURRENT_INTERFACE_VERSION);
     expect(ni0.name).toBe("Loopback0");
     expect(ni0.flexAlgoNodeSegments).toHaveLength(1);
 
     // Doctored element: future version stamp + 8 trailing junk bytes the reader
     // skips via seek(start+size).
-    const ni1 = dev.newInterfaces[1];
+    const ni1 = dev.interfaces[1];
     expect(ni1.version).toBe(5);
-    expect(ni1.size).toBe(expectedNewInterfaceSize(ni1) + 8);
+    expect(ni1.size).toBe(expectedInterfaceSize(ni1) + 8);
     expect(ni1.name).toBe("Ethernet1");
     expect(ni1.userTunnelEndpoint).toBe(true);
   });

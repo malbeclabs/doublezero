@@ -47,7 +47,7 @@ impl AcceptLinkCliCommand {
         })?;
 
         let side_z_iface = device_z
-            .new_interfaces
+            .interfaces
             .iter()
             .find(|i| i.name.to_lowercase() == self.side_z_interface.to_lowercase())
             .ok_or_else(|| {
@@ -101,11 +101,9 @@ mod tests {
             link::{accept::AcceptLinkCommand, get::GetLinkCommand},
         },
         get_link_pda, AccountType, Contributor, ContributorStatus, Device, DeviceStatus,
-        DeviceType, InterfaceStatus, Link, LinkLinkType, LinkStatus,
+        DeviceType, Interface, InterfaceStatus, Link, LinkLinkType, LinkStatus,
     };
-    use doublezero_serviceability::state::interface::{
-        CurrentInterfaceVersion, InterfaceType, LoopbackType,
-    };
+    use doublezero_serviceability::state::interface::{InterfaceType, LoopbackType};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -143,15 +141,12 @@ mod tests {
             exchange_pk: Pubkey::default(),
             code: "dev01".to_string(),
 
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 name: "Ethernet1/1".to_string(),
                 status: InterfaceStatus::Unlinked,
                 interface_type: InterfaceType::Physical,
                 ..Default::default()
-            })
-                .try_into()
-                .unwrap()],
+            }],
             device_type: DeviceType::Hybrid,
             public_ip: "127.0.0.1".parse().unwrap(),
             status: DeviceStatus::Activated,
@@ -171,6 +166,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client
@@ -188,8 +184,7 @@ mod tests {
             index: 2,
             reference_count: 0,
             code: "dev02".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![(&CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -199,9 +194,7 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: false,
                 ..Default::default()
-            })
-                .try_into()
-                .unwrap()],
+            }],
             location_pk: Pubkey::default(),
             exchange_pk: Pubkey::default(),
             device_type: doublezero_sdk::DeviceType::Hybrid,
@@ -223,6 +216,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client

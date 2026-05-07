@@ -11,10 +11,7 @@ use doublezero_serviceability::{
     pda::get_resource_extension_pda,
     processors::device::update::DeviceUpdateArgs,
     resource::ResourceType,
-    state::{
-        device::{DeviceDesiredStatus, DeviceStatus, DeviceType},
-        interface::Interface,
-    },
+    state::device::{DeviceDesiredStatus, DeviceStatus, DeviceType},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
@@ -30,7 +27,6 @@ pub struct UpdateDeviceCommand {
     pub contributor_pk: Option<Pubkey>,
     pub location_pk: Option<Pubkey>,
     pub mgmt_vrf: Option<String>,
-    pub interfaces: Option<Vec<Interface>>,
     pub max_users: Option<u16>,
     pub users_count: Option<u16>,
     pub status: Option<DeviceStatus>,
@@ -173,7 +169,6 @@ mod tests {
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
             interfaces: vec![],
-            new_interfaces: vec![],
             max_users: 250,
             users_count: 0,
             device_health: DeviceHealth::ReadyForUsers,
@@ -185,6 +180,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client
@@ -250,7 +246,6 @@ mod tests {
             metrics_publisher: None,
             mgmt_vrf: Some("mgmt".to_string()),
             location_pk: None,
-            interfaces: None,
             max_users: None,
             users_count: None,
             status: None,

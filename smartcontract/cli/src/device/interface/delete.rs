@@ -63,7 +63,7 @@ mod tests {
     use super::*;
     use crate::tests::utils::create_test_client;
     use doublezero_program_common::types::NetworkV4List;
-    use doublezero_sdk::{AccountType, CurrentInterfaceVersion, Device, DeviceStatus};
+    use doublezero_sdk::{AccountType, Device, DeviceStatus, Interface};
     use doublezero_serviceability::state::interface::{
         InterfaceCYOA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
     };
@@ -93,9 +93,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![
-                (&CurrentInterfaceVersion {
+            interfaces: vec![
+                Interface {
                     status: InterfaceStatus::Unlinked,
                     name: "Ethernet0".to_string(),
                     interface_type: InterfaceType::Physical,
@@ -110,10 +109,9 @@ mod tests {
                     ip_net: "10.0.0.1/24".parse().unwrap(),
                     node_segment_idx: 12,
                     user_tunnel_endpoint: true,
-                })
-                    .try_into()
-                    .unwrap(),
-                (&CurrentInterfaceVersion {
+                    ..Default::default()
+                },
+                Interface {
                     status: InterfaceStatus::Activated,
                     name: "Loopback0".to_string(),
                     interface_type: InterfaceType::Loopback,
@@ -128,9 +126,8 @@ mod tests {
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 13,
                     user_tunnel_endpoint: false,
-                })
-                    .try_into()
-                    .unwrap(),
+                    ..Default::default()
+                },
             ],
             max_users: 255,
             users_count: 0,
@@ -144,6 +141,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client

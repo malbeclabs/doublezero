@@ -344,7 +344,6 @@ mod tests {
             status: DeviceStatus::Activated,
             mgmt_vrf: String::default(),
             interfaces: vec![],
-            new_interfaces: vec![],
             users_count: 0,
             max_users: 100,
             owner: Pubkey::default(),
@@ -358,6 +357,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let mut devices = HashMap::new();

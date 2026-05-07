@@ -9,7 +9,7 @@ pub(crate) fn get_device_tunnel_endpoints(device: &Device) -> Vec<Ipv4Addr> {
     let mut endpoints = vec![device.public_ip];
 
     // Add all UserTunnelEndpoint interfaces
-    for iface in &device.new_interfaces {
+    for iface in &device.interfaces {
         if iface.user_tunnel_endpoint && iface.ip_net != Default::default() {
             endpoints.push(iface.ip_net.ip());
         }
@@ -236,8 +236,8 @@ mod tests {
     use crate::servicecontroller::{LatencyRecord, LatencyResponse, MockServiceController};
     use doublezero_program_common::types::{NetworkV4, NetworkV4List};
     use doublezero_sdk::{
-        AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType, Interface,
-        InterfaceStatus, InterfaceType, LoopbackType,
+        AccountType, Device, DeviceStatus, DeviceType, Interface, InterfaceStatus, InterfaceType,
+        LoopbackType,
     };
     use doublezero_serviceability::state::interface::{InterfaceCYOA, InterfaceDIA, RoutingMode};
     use solana_sdk::pubkey::Pubkey;
@@ -254,10 +254,10 @@ mod tests {
         tunnel_endpoint_ips: Vec<Ipv4Addr>,
     ) -> (Pubkey, Device) {
         let pubkey = Pubkey::new_unique();
-        let v2_ifaces: Vec<CurrentInterfaceVersion> = tunnel_endpoint_ips
+        let interfaces: Vec<Interface> = tunnel_endpoint_ips
             .into_iter()
             .enumerate()
-            .map(|(i, ip)| CurrentInterfaceVersion {
+            .map(|(i, ip)| Interface {
                 status: InterfaceStatus::Activated,
                 name: format!("Loopback{}", i),
                 interface_type: InterfaceType::Loopback,
@@ -272,11 +272,9 @@ mod tests {
                 ip_net: NetworkV4::new(ip, 32).unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
+                ..Default::default()
             })
             .collect();
-        let interfaces: Vec<Interface> =
-            v2_ifaces.iter().map(|v| Interface::V2(v.clone())).collect();
-        let new_interfaces = v2_ifaces.iter().map(|v| v.try_into().unwrap()).collect();
         (
             pubkey,
             Device {
@@ -295,7 +293,6 @@ mod tests {
                 contributor_pk: Pubkey::default(),
                 mgmt_vrf: "default".to_string(),
                 interfaces,
-                new_interfaces,
                 reference_count: 0,
                 users_count,
                 max_users: 1,
@@ -310,6 +307,7 @@ mod tests {
                 reserved_seats: 0,
                 multicast_publishers_count: 0,
                 max_multicast_publishers: 0,
+                ..Default::default()
             },
         )
     }

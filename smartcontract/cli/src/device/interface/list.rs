@@ -3,7 +3,7 @@ use clap::Args;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::device::{get::GetDeviceCommand, list::ListDeviceCommand},
-    InterfaceType, NewInterface,
+    Interface, InterfaceType,
 };
 use doublezero_serviceability::state::interface::{
     InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode,
@@ -56,7 +56,7 @@ impl ListDeviceInterfaceCliCommand {
                 .map_err(|_| eyre::eyre!("Device not found"))?;
 
             device
-                .new_interfaces
+                .interfaces
                 .iter()
                 .map(|iface| build_display(iface, &device.code))
                 .collect()
@@ -67,7 +67,7 @@ impl ListDeviceInterfaceCliCommand {
                 .iter()
                 .flat_map(|(_, device)| {
                     device
-                        .new_interfaces
+                        .interfaces
                         .iter()
                         .map(|iface| build_display(iface, &device.code))
                 })
@@ -90,7 +90,7 @@ impl ListDeviceInterfaceCliCommand {
     }
 }
 
-fn build_display(iface: &NewInterface, device_code: &str) -> DeviceInterfaceDisplay {
+fn build_display(iface: &Interface, device_code: &str) -> DeviceInterfaceDisplay {
     DeviceInterfaceDisplay {
         device: device_code.to_string(),
         name: iface.name.clone(),
@@ -117,8 +117,8 @@ mod tests {
     };
 
     use doublezero_sdk::{
-        commands::device::get::GetDeviceCommand, AccountType, CurrentInterfaceVersion, Device,
-        DeviceStatus, DeviceType,
+        commands::device::get::GetDeviceCommand, AccountType, Device, DeviceStatus, DeviceType,
+        Interface,
     };
     use doublezero_serviceability::state::interface::{
         InterfaceStatus, InterfaceType, LoopbackType,
@@ -147,9 +147,8 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![],
-            new_interfaces: vec![
-                (&CurrentInterfaceVersion {
+            interfaces: vec![
+                Interface {
                     status: InterfaceStatus::Activated,
                     name: "eth0".to_string(),
                     interface_type: InterfaceType::Physical,
@@ -165,10 +164,9 @@ mod tests {
                     ip_net: "10.0.0.1/24".parse().unwrap(),
                     node_segment_idx: 12,
                     user_tunnel_endpoint: true,
-                })
-                    .try_into()
-                    .unwrap(),
-                (&CurrentInterfaceVersion {
+                    ..Default::default()
+                },
+                Interface {
                     status: InterfaceStatus::Activated,
                     name: "lo0".to_string(),
                     interface_type: InterfaceType::Loopback,
@@ -184,9 +182,8 @@ mod tests {
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 13,
                     user_tunnel_endpoint: false,
-                })
-                    .try_into()
-                    .unwrap(),
+                    ..Default::default()
+                },
             ],
             max_users: 255,
             users_count: 0,
@@ -200,6 +197,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client

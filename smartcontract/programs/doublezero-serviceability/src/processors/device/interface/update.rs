@@ -137,7 +137,7 @@ pub fn process_update_device_interface(
     let (idx, _) = device
         .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
-    let mut iface = device.new_interfaces[idx].clone();
+    let mut iface = device.interfaces[idx].clone();
 
     if let Some(loopback_type) = &value.loopback_type {
         if *loopback_type == LoopbackType::None {

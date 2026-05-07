@@ -286,7 +286,7 @@ pub fn fetch_device_infos(
             .copied()
             .unwrap_or((0.0, 0.0));
         let user_tunnel_endpoints = device
-            .new_interfaces
+            .interfaces
             .iter()
             .filter_map(|iface| {
                 if iface.user_tunnel_endpoint && iface.ip_net != Default::default() {

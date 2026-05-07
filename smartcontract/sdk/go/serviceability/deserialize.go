@@ -92,10 +92,10 @@ func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
 //	2 — reserved, never written
 //	3 — V3: V2 fields + flex_algo_node_segments (RFC-18)
 //
-// The on-chain Device serializer projects the legacy interfaces slot as V2
+// The on-chain Device serializer projects the legacy deprecated_interfaces slot as V2
 // (per #3653); discriminant-3 entries seen here are residual from older
 // accounts. Newer flex_algo_node_segments data lives in the trailing
-// new_interfaces vec on Device, not in this slot.
+// interfaces vec on Device, not in this slot.
 func DeserializeInterface(reader *ByteReader, iface *Interface) {
 	iface.Version = reader.ReadU8()
 
@@ -150,7 +150,7 @@ func DeserializeInterfaceV3(reader *ByteReader, iface *Interface) {
 	}
 }
 
-// DeserializeInterfaceSized reads a single size-prefixed NewInterface element.
+// DeserializeInterfaceSized reads a single size-prefixed Interface element.
 //
 // Wire format: u16 size + u8 version + body, where size includes the 3-byte prefix.
 // Forward-compat readers always advance the cursor to start+size after reading the
@@ -212,7 +212,7 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.MetricsPublisherPubKey = reader.ReadPubkey()
 	dev.ContributorPubKey = reader.ReadPubkey()
 	dev.MgmtVrf = reader.ReadString()
-	dev.Interfaces = make([]Interface, 0)
+	dev.DeprecatedInterfaces = make([]Interface, 0)
 	length := reader.ReadU32()
 	if length > 0 && (length*18) > reader.Remaining() {
 		log.Println("DeserializeDevice: Not enough data for interfaces (# of interfaces = ", length, ")")
@@ -221,7 +221,7 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	for i := uint32(0); i < length; i++ {
 		var iface Interface
 		DeserializeInterface(reader, &iface)
-		dev.Interfaces = append(dev.Interfaces, iface)
+		dev.DeprecatedInterfaces = append(dev.DeprecatedInterfaces, iface)
 	}
 	dev.ReferenceCount = reader.ReadU32()
 	dev.UsersCount = reader.ReadU16()
@@ -236,28 +236,28 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.MulticastPublishersCount = reader.ReadU16()
 	dev.MaxMulticastPublishers = reader.ReadU16()
 
-	// Trailing new_interfaces vec (size-prefixed). Empty trailing => rebuild from legacy.
+	// Trailing interfaces vec (size-prefixed). Empty trailing => rebuild from deprecated_interfaces.
 	// Length mismatch => surface via dev.DeserializeError without aborting earlier fields.
 	if reader.Remaining() == 0 {
-		dev.NewInterfaces = make([]Interface, len(dev.Interfaces))
-		for i, legacy := range dev.Interfaces {
+		dev.Interfaces = make([]Interface, len(dev.DeprecatedInterfaces))
+		for i, legacy := range dev.DeprecatedInterfaces {
 			ni := legacy
 			ni.Version = CurrentInterfaceVersion
 			ni.Size = 0
-			dev.NewInterfaces[i] = ni
+			dev.Interfaces[i] = ni
 		}
 	} else {
 		newLen := reader.ReadU32()
-		if int(newLen) != len(dev.Interfaces) {
+		if int(newLen) != len(dev.DeprecatedInterfaces) {
 			dev.DeserializeError = fmt.Errorf(
-				"DeserializeDevice: new_interfaces length %d != interfaces length %d",
-				newLen, len(dev.Interfaces),
+				"DeserializeDevice: interfaces length %d != deprecated_interfaces length %d",
+				newLen, len(dev.DeprecatedInterfaces),
 			)
 			return
 		}
-		dev.NewInterfaces = make([]Interface, newLen)
+		dev.Interfaces = make([]Interface, newLen)
 		for i := uint32(0); i < newLen; i++ {
-			DeserializeInterfaceSized(reader, &dev.NewInterfaces[i])
+			DeserializeInterfaceSized(reader, &dev.Interfaces[i])
 		}
 	}
 	// Note: dev.PubKey is set separately in client.go after deserialization

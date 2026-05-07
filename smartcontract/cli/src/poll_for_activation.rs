@@ -3,8 +3,8 @@ use doublezero_sdk::{
         device::get::GetDeviceCommand, link::get::GetLinkCommand,
         multicastgroup::get::GetMulticastGroupCommand, user::get::GetUserCommand,
     },
-    Device, DeviceStatus, Link, LinkStatus, MulticastGroup, MulticastGroupStatus, NewInterface,
-    User, UserStatus,
+    Device, DeviceStatus, Interface, Link, LinkStatus, MulticastGroup, MulticastGroupStatus, User,
+    UserStatus,
 };
 use solana_sdk::pubkey::Pubkey;
 
@@ -61,7 +61,7 @@ pub fn poll_for_device_interface_activated(
     client: &dyn CliCommand,
     device_pubkey: &Pubkey,
     interface_name: &str,
-) -> eyre::Result<NewInterface> {
+) -> eyre::Result<Interface> {
     let start_time = std::time::Instant::now();
     let timeout = std::time::Duration::from_secs(20);
     let poll_interval = std::time::Duration::from_secs(1);
@@ -83,7 +83,7 @@ pub fn poll_for_device_interface_activated(
         }) {
             Ok((_, device)) => {
                 if let Some(iface) = device
-                    .new_interfaces
+                    .interfaces
                     .iter()
                     .find(|iface| iface.name.to_lowercase() == interface_name.to_lowercase())
                 {

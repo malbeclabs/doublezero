@@ -416,8 +416,8 @@ type Interface struct {
 	UserTunnelEndpoint bool
 	// FlexAlgoNodeSegments holds flex-algo node segment assignments for this interface (RFC-18).
 	// Only populated when reading a discriminant-3 (V3) interface; the on-chain Device serializer
-	// now projects the legacy interfaces slot as V2 (per #3653) and surfaces segments through the
-	// trailing new_interfaces vec on Device, which this Go SDK does not yet read. Nil otherwise.
+	// now projects the deprecated_interfaces slot as V2 (per #3653) and surfaces segments through
+	// the trailing interfaces vec on Device. Nil otherwise.
 	FlexAlgoNodeSegments []FlexAlgoNodeSegment `json:",omitempty"`
 }
 
@@ -444,7 +444,7 @@ func (i Interface) MarshalJSON() ([]byte, error) {
 }
 
 // CurrentInterfaceVersion is the on-wire schema version of the size-prefixed
-// NewInterface format (matching Rust's CURRENT_INTERFACE_SCHEMA_VERSION).
+// Interface format (matching Rust's CURRENT_INTERFACE_SCHEMA_VERSION).
 const CurrentInterfaceVersion = 4
 
 type Device struct {
@@ -462,7 +462,7 @@ type Device struct {
 	MetricsPublisherPubKey    [32]uint8           `influx:"tag,metrics_publisher_pubkey,pubkey"`
 	ContributorPubKey         [32]byte            `influx:"tag,contributor_pubkey,pubkey"`
 	MgmtVrf                   string              `influx:"field,mgmt_vrf"`
-	Interfaces                []Interface         `influx:"-"`
+	DeprecatedInterfaces      []Interface         `influx:"-" json:",omitempty"`
 	ReferenceCount            uint32              `influx:"field,reference_count"`
 	UsersCount                uint16              `influx:"field,users_count"`
 	MaxUsers                  uint16              `influx:"field,max_users"`
@@ -475,13 +475,13 @@ type Device struct {
 	ReservedSeats             uint16              `influx:"field,reserved_seats"`
 	MulticastPublishersCount  uint16              `influx:"field,multicast_publishers_count"`
 	MaxMulticastPublishers    uint16              `influx:"field,max_multicast_publishers"`
-	// NewInterfaces is the trailing size-prefixed vec parallel to Interfaces. For legacy
-	// accounts (no trailing bytes), this is rebuilt from Interfaces by DeserializeDevice.
-	// When populated from the wire, len(NewInterfaces) == len(Interfaces) is enforced.
-	NewInterfaces []Interface `influx:"-" json:",omitempty"`
+	// Interfaces is the trailing size-prefixed vec parallel to DeprecatedInterfaces. For legacy
+	// accounts (no trailing bytes), this is rebuilt from DeprecatedInterfaces by DeserializeDevice.
+	// When populated from the wire, len(Interfaces) == len(DeprecatedInterfaces) is enforced.
+	Interfaces []Interface `influx:"-" json:",omitempty"`
 	// DeserializeError is set when DeserializeDevice encounters a recoverable but
-	// account-malformed condition (e.g. trailing new_interfaces length mismatch with
-	// the legacy interfaces vec). Consumers should check this before trusting the
+	// account-malformed condition (e.g. trailing interfaces length mismatch with
+	// the deprecated_interfaces vec). Consumers should check this before trusting the
 	// deserialized fields.
 	DeserializeError error    `influx:"-" json:"-"`
 	PubKey           [32]byte `influx:"tag,pubkey,pubkey"`

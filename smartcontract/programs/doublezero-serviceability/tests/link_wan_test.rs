@@ -258,7 +258,7 @@ async fn test_wan_link() {
     assert_eq!(device_a.code, "a".to_string());
     assert_eq!(device_a.status, DeviceStatus::Pending);
 
-    let iface = device_a.interfaces.first().unwrap().into_current_version();
+    let iface = device_a.interfaces.first().unwrap();
     assert_eq!(iface.name, "Ethernet0".to_string());
     assert_eq!(iface.interface_type, InterfaceType::Physical);
     assert_eq!(iface.loopback_type, LoopbackType::None);
@@ -291,7 +291,7 @@ async fn test_wan_link() {
         .get_device()
         .unwrap();
 
-    let iface = device_a.interfaces.first().unwrap().into_current_version();
+    let iface = device_a.interfaces.first().unwrap();
     assert_eq!(iface.name, "Ethernet0".to_string());
     assert_eq!(iface.ip_net, "10.0.0.0/31".parse().unwrap());
     assert_eq!(iface.status, InterfaceStatus::Activated);
@@ -389,7 +389,7 @@ async fn test_wan_link() {
     assert_eq!(device_z.code, "z".to_string());
     assert_eq!(device_z.status, DeviceStatus::Pending);
 
-    let iface = device_z.interfaces.first().unwrap().into_current_version();
+    let iface = device_z.interfaces.first().unwrap();
     assert_eq!(iface.name, "Ethernet1".to_string());
     assert_eq!(iface.interface_type, InterfaceType::Physical);
     assert_eq!(iface.loopback_type, LoopbackType::None);
@@ -422,7 +422,7 @@ async fn test_wan_link() {
         .get_device()
         .unwrap();
 
-    let iface = device_z.interfaces.first().unwrap().into_current_version();
+    let iface = device_z.interfaces.first().unwrap();
     assert_eq!(iface.name, "Ethernet1".to_string());
     assert_eq!(iface.ip_net, "10.0.0.1/31".parse().unwrap());
     assert_eq!(iface.status, InterfaceStatus::Activated);

@@ -283,7 +283,7 @@ pub struct Device {
     pub multicast_publishers_count: u16, // 2
     pub max_multicast_publishers: u16, // 2
     /// Forward-compatible interface vec written at the end of the on-disk layout.
-    /// Legacy `interfaces` stays at its existing offset and is projected from
+    /// `deprecated_interfaces` stays at its existing offset and is projected from
     /// `interfaces` (always as `InterfaceDeprecated::V2`) by the custom `BorshSerialize`
     /// impl, keeping older readers byte-compatible.
     pub interfaces: Vec<Interface>,
@@ -333,24 +333,24 @@ impl Device {
             .ok_or_else(|| format!("Interface with name '{name}' not found"))
     }
 
-    /// Replaces the interface at `idx` in both legacy `interfaces` and
+    /// Replaces the interface at `idx` in both `deprecated_interfaces` and
     /// `interfaces`, keeping the two vecs in sync. The custom `BorshSerialize`
     /// projects the on-disk legacy slot from `interfaces`, so callers that
-    /// only mutated `interfaces[idx]` would lose their change on save.
+    /// only mutated `deprecated_interfaces[idx]` would lose their change on save.
     pub fn replace_interface(&mut self, idx: usize, iface: Interface) {
         self.deprecated_interfaces[idx] = InterfaceV2::from(&iface).to_interface();
         self.interfaces[idx] = iface;
     }
 
-    /// Appends an interface to both `interfaces` and `interfaces`. Same
-    /// rationale as `replace_interface`.
+    /// Appends an interface to both `deprecated_interfaces` and `interfaces`.
+    /// Same rationale as `replace_interface`.
     pub fn push_interface(&mut self, iface: Interface) {
         self.deprecated_interfaces
             .push(InterfaceV2::from(&iface).to_interface());
         self.interfaces.push(iface);
     }
 
-    /// Removes the interface at `idx` from both `interfaces` and `interfaces`.
+    /// Removes the interface at `idx` from both `deprecated_interfaces` and `interfaces`.
     pub fn remove_interface(&mut self, idx: usize) {
         self.deprecated_interfaces.remove(idx);
         self.interfaces.remove(idx);
@@ -508,9 +508,10 @@ impl fmt::Display for Device {
 
 impl borsh::BorshSerialize for Device {
     fn serialize<W: borsh::io::Write>(&self, writer: &mut W) -> borsh::io::Result<()> {
-        // Project the legacy on-disk vec from `interfaces`. Always V2 to match the
-        // post-#3653 default; older readers see a normal `Vec<InterfaceDeprecated>` at the
-        // existing offset and don't observe the trailing `interfaces` vec.
+        // Project the on-disk `deprecated_interfaces` slot from the canonical
+        // `interfaces` vec. Always V2 to match the post-#3653 default; older readers
+        // see a normal `Vec<InterfaceDeprecated>` at the existing offset and don't
+        // observe the trailing `interfaces` vec.
         let legacy: Vec<InterfaceDeprecated> = self
             .interfaces
             .iter()
@@ -519,7 +520,7 @@ impl borsh::BorshSerialize for Device {
         assert_eq!(
             legacy.len(),
             self.interfaces.len(),
-            "legacy projection length must match interfaces length"
+            "deprecated_interfaces projection length must match interfaces length"
         );
 
         self.account_type.serialize(writer)?;
@@ -622,7 +623,7 @@ impl TryFrom<&[u8]> for Device {
             assert_eq!(
                 trailing.len(),
                 deprecated_interfaces.len(),
-                "trailing interfaces vec length must match legacy interfaces vec length"
+                "trailing interfaces length must match deprecated_interfaces length"
             );
             trailing
         };

@@ -406,7 +406,14 @@ pub fn build_private_links(fetch_data: &FetchData, device_ids: &DeviceIdMap) -> 
         // Compute P95 from combined samples using R type 7 quantile (linear interpolation)
         // Matches R line 40: quantile(samples, 0.95) which defaults to type=7
         combined_samples.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let latency_us = quantile_r_type7(&combined_samples, 0.95);
+        // Enforce delay_override_ns as a P95 latency floor: convert the configured
+        // nanosecond RTT override to microseconds and apply 95% of it when it exceeds
+        // the telemetry-derived P95.
+        let mut latency_us = quantile_r_type7(&combined_samples, 0.95);
+        let override_us = 0.95 * (link.delay_override_ns as f64) / 1000.0;
+        if override_us > latency_us {
+            latency_us = override_us;
+        }
 
         // Convert latency from microseconds to milliseconds (R divides by 1e3 on line 40)
         let latency_ms = latency_us / 1000.0;

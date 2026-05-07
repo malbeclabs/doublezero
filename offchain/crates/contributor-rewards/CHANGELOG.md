@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(contributor-rewards): update shapley input defaults ([#359](https://github.com/doublezerofoundation/doublezero-offchain/pull/359))
+
+## [0.5.2](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.5.2) - 2026-05-05
+
 - feat(contributor-rewards): make demand parameters configurable ([#358](https://github.com/doublezerofoundation/doublezero-offchain/pull/358))
 
 ## [0.5.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.5.1) - 2026-05-04

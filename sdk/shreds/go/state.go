@@ -131,7 +131,10 @@ type ClientSeat struct {
 	FundingAuthorityKey      solana.PublicKey
 	EscrowCount              uint32
 	OverrideUSDCPriceDollars uint16
-	Padding1                 [26]byte
+	Padding1                 [2]byte
+	SubscriptionStartSlot    uint64
+	LastUSDCPriceDollars     uint16
+	Padding2                 [14]byte
 	Gap                      [2][32]byte // StorageGap<2>
 }
 

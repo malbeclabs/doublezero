@@ -102,7 +102,7 @@ use doublezero_sdk::{
             update_payment_status::UpdatePaymentStatusCommand,
         },
         topology::{
-            backfill::BackfillTopologyCommand,
+            assign_node_segments::AssignTopologyNodeSegmentsCommand,
             clear::ClearTopologyCommand,
             create::{CreateTopologyCommand, CreateTopologyResult},
             delete::DeleteTopologyCommand,
@@ -355,7 +355,10 @@ pub trait CliCommand {
     fn create_topology(&self, cmd: CreateTopologyCommand) -> eyre::Result<CreateTopologyResult>;
     fn delete_topology(&self, cmd: DeleteTopologyCommand) -> eyre::Result<Signature>;
     fn clear_topology(&self, cmd: ClearTopologyCommand) -> eyre::Result<Vec<Signature>>;
-    fn backfill_topology(&self, cmd: BackfillTopologyCommand) -> eyre::Result<Vec<Signature>>;
+    fn assign_topology_node_segments(
+        &self,
+        cmd: AssignTopologyNodeSegmentsCommand,
+    ) -> eyre::Result<Vec<Signature>>;
     fn list_topology(
         &self,
         cmd: ListTopologyCommand,
@@ -841,7 +844,10 @@ impl CliCommand for CliCommandImpl<'_> {
     fn clear_topology(&self, cmd: ClearTopologyCommand) -> eyre::Result<Vec<Signature>> {
         cmd.execute(self.client)
     }
-    fn backfill_topology(&self, cmd: BackfillTopologyCommand) -> eyre::Result<Vec<Signature>> {
+    fn assign_topology_node_segments(
+        &self,
+        cmd: AssignTopologyNodeSegmentsCommand,
+    ) -> eyre::Result<Vec<Signature>> {
         cmd.execute(self.client)
     }
     fn list_topology(

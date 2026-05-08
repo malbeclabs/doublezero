@@ -275,6 +275,7 @@ async fn test_dzx_link() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -367,6 +368,7 @@ async fn test_dzx_link() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![

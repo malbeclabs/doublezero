@@ -56,6 +56,14 @@ pub struct UpdateDeviceInterfaceCliCommand {
     /// Node segment index
     #[arg(long)]
     pub node_segment_idx: Option<u16>,
+    /// Reconcile flex-algo topologies on a Vpnv4 loopback. Omit to leave the
+    /// existing set untouched. Pass an empty value (`--topologies ""`) to
+    /// clear all flex-algo segments. Pass a comma-separated list of topology
+    /// names (or repeat the flag) to set the desired set; entries that aren't
+    /// in the new set have their segment routing IDs deallocated, additions
+    /// get freshly allocated IDs, and unchanged entries keep their IDs.
+    #[arg(long, value_delimiter = ',', num_args = 0..)]
+    pub topologies: Option<Vec<String>>,
     /// Wait for the device interface to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -163,6 +171,16 @@ impl UpdateDeviceInterfaceCliCommand {
             .transpose()
             .map_err(|e| eyre::eyre!("Invalid status: {}", e))?;
 
+        // clap's `num_args = 0..` produces Some(vec!["", ...]) for `--topologies ""`,
+        // so strip empty/whitespace-only entries.
+        let topology_names = self.topologies.as_ref().map(|names| {
+            names
+                .iter()
+                .filter(|n| !n.trim().is_empty())
+                .map(|n| n.trim().to_string())
+                .collect::<Vec<_>>()
+        });
+
         let signature = client.update_device_interface(UpdateDeviceInterfaceCommand {
             pubkey: device_pk,
             name: self.name.clone(),
@@ -178,6 +196,7 @@ impl UpdateDeviceInterfaceCliCommand {
             status: parsed_status,
             ip_net: parsed_ip_net,
             node_segment_idx: self.node_segment_idx,
+            topology_names,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -310,6 +329,7 @@ mod tests {
                 status: Some(InterfaceStatus::Activated),
                 ip_net: Some("10.0.1.1/24".parse().unwrap()),
                 node_segment_idx: None,
+                topology_names: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -331,6 +351,7 @@ mod tests {
             status: Some(InterfaceStatus::Activated.to_string()),
             ip_net: Some("10.0.1.1/24".to_string()),
             node_segment_idx: None,
+            topologies: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -470,6 +491,7 @@ mod tests {
             status: None,
             ip_net: Some("185.189.47.80/32".to_string()),
             node_segment_idx: None,
+            topologies: None,
             wait: false,
         }
         .execute(&client, &mut output);
@@ -566,6 +588,7 @@ mod tests {
             status: None,
             ip_net: None,
             node_segment_idx: None,
+            topologies: None,
             wait: false,
         }
         .execute(&client, &mut output);

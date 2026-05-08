@@ -81,8 +81,8 @@ use crate::processors::{
         update::TenantUpdateArgs, update_payment_status::UpdatePaymentStatusArgs,
     },
     topology::{
-        backfill::TopologyBackfillArgs, clear::TopologyClearArgs, create::TopologyCreateArgs,
-        delete::TopologyDeleteArgs,
+        assign_node_segments::AssignTopologyNodeSegmentsArgs, clear::TopologyClearArgs,
+        create::TopologyCreateArgs, delete::TopologyDeleteArgs,
     },
     user::{
         activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
@@ -229,10 +229,10 @@ pub enum DoubleZeroInstruction {
     DeleteIndex(IndexDeleteArgs),           // variant 105
     SetUserBGPStatus(SetUserBGPStatusArgs), // variant 106
 
-    CreateTopology(TopologyCreateArgs),     // variant 107
-    DeleteTopology(TopologyDeleteArgs),     // variant 108
-    ClearTopology(TopologyClearArgs),       // variant 109
-    BackfillTopology(TopologyBackfillArgs), // variant 110
+    CreateTopology(TopologyCreateArgs), // variant 107
+    DeleteTopology(TopologyDeleteArgs), // variant 108
+    ClearTopology(TopologyClearArgs),   // variant 109
+    AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs), // variant 110
 
     Deprecated111(), // variant 111, (was MigrateDeviceInterfaces)
 }
@@ -374,7 +374,7 @@ impl DoubleZeroInstruction {
             107 => Ok(Self::CreateTopology(TopologyCreateArgs::try_from(rest).unwrap())),
             108 => Ok(Self::DeleteTopology(TopologyDeleteArgs::try_from(rest).unwrap())),
             109 => Ok(Self::ClearTopology(TopologyClearArgs::try_from(rest).unwrap())),
-            110 => Ok(Self::BackfillTopology(TopologyBackfillArgs::try_from(rest).unwrap())),
+            110 => Ok(Self::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs::try_from(rest).unwrap())),
             111 => Ok(Self::Deprecated111()),
 
             _ => Err(ProgramError::InvalidInstructionData),
@@ -518,8 +518,8 @@ impl DoubleZeroInstruction {
             Self::CreateTopology(_) => "CreateTopology".to_string(), // variant 107
             Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 108
             Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 109
-            Self::BackfillTopology(_) => "BackfillTopology".to_string(), // variant 110
-            Self::Deprecated111() => "Deprecated111".to_string(),    // variant 111
+            Self::AssignTopologyNodeSegments(_) => "AssignTopologyNodeSegments".to_string(), // variant 110
+            Self::Deprecated111() => "Deprecated111".to_string(), // variant 111
         }
     }
 
@@ -654,7 +654,7 @@ impl DoubleZeroInstruction {
             Self::CreateTopology(args) => format!("{args:?}"), // variant 107
             Self::DeleteTopology(args) => format!("{args:?}"), // variant 108
             Self::ClearTopology(args) => format!("{args:?}"),  // variant 109
-            Self::BackfillTopology(args) => format!("{args:?}"), // variant 110
+            Self::AssignTopologyNodeSegments(args) => format!("{args:?}"), // variant 110
             Self::Deprecated111() => String::new(),            // variant 111
         }
     }
@@ -1204,6 +1204,7 @@ mod tests {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             }),
             "CreateDeviceInterface",
         );
@@ -1235,6 +1236,8 @@ mod tests {
                 ip_net: Some("10.0.0.0/3".parse().unwrap()),
                 node_segment_idx: Some(1),
                 status: None,
+                topology_count: 0,
+                update_topologies: false,
             }),
             "UpdateDeviceInterface",
         );
@@ -1376,10 +1379,10 @@ mod tests {
             "ClearTopology",
         );
         test_instruction(
-            DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
+            DoubleZeroInstruction::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs {
                 name: "unicast-default".to_string(),
             }),
-            "BackfillTopology",
+            "AssignTopologyNodeSegments",
         );
     }
 }

@@ -238,6 +238,7 @@ async fn test_wan_link() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -369,6 +370,7 @@ async fn test_wan_link() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -1064,6 +1066,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -1157,6 +1160,7 @@ async fn test_wan_link_rejects_cyoa_interface() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -1261,6 +1265,8 @@ async fn test_wan_link_rejects_cyoa_interface() {
             status: None,
             ip_net: None,
             node_segment_idx: None,
+            topology_count: 0,
+            update_topologies: false,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -1289,6 +1295,8 @@ async fn test_wan_link_rejects_cyoa_interface() {
             status: None,
             ip_net: None,
             node_segment_idx: None,
+            topology_count: 0,
+            update_topologies: false,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
@@ -1354,6 +1362,8 @@ async fn test_wan_link_rejects_cyoa_interface() {
             status: None,
             ip_net: None,
             node_segment_idx: None,
+            topology_count: 0,
+            update_topologies: false,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
@@ -1412,6 +1422,8 @@ async fn test_wan_link_rejects_cyoa_interface() {
             status: None,
             ip_net: None,
             node_segment_idx: None,
+            topology_count: 0,
+            update_topologies: false,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -1625,6 +1637,7 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -1716,6 +1729,7 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -1849,6 +1863,8 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
             status: None,
             ip_net: None,
             node_segment_idx: None,
+            topology_count: 0,
+            update_topologies: false,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -1885,6 +1901,8 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
             status: None,
             ip_net: None,
             node_segment_idx: None,
+            topology_count: 0,
+            update_topologies: false,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
@@ -2090,6 +2108,7 @@ async fn setup_link_env() -> (
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -2178,6 +2197,7 @@ async fn setup_link_env() -> (
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -2826,6 +2846,7 @@ async fn test_link_activation_succeeds_without_unicast_default() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![
@@ -2914,6 +2935,7 @@ async fn test_link_activation_succeeds_without_unicast_default() {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             },
         ),
         vec![

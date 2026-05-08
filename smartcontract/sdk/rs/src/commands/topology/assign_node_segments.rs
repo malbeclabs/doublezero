@@ -2,7 +2,7 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{get_resource_extension_pda, get_topology_pda},
-    processors::topology::backfill::TopologyBackfillArgs,
+    processors::topology::assign_node_segments::AssignTopologyNodeSegmentsArgs,
     resource::ResourceType,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -13,12 +13,12 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub const BACKFILL_BATCH_SIZE: usize = 16;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct BackfillTopologyCommand {
+pub struct AssignTopologyNodeSegmentsCommand {
     pub name: String,
     pub device_pubkeys: Vec<Pubkey>,
 }
 
-impl BackfillTopologyCommand {
+impl AssignTopologyNodeSegmentsCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Vec<Signature>> {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
@@ -42,7 +42,7 @@ impl BackfillTopologyCommand {
             }
 
             let sig = client.execute_transaction(
-                DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
+                DoubleZeroInstruction::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs {
                     name: self.name.clone(),
                 }),
                 accounts,
@@ -57,14 +57,16 @@ impl BackfillTopologyCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::topology::backfill::{BackfillTopologyCommand, BACKFILL_BATCH_SIZE},
+        commands::topology::assign_node_segments::{
+            AssignTopologyNodeSegmentsCommand, BACKFILL_BATCH_SIZE,
+        },
         tests::utils::create_test_client,
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::{get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
-        processors::topology::backfill::TopologyBackfillArgs,
+        processors::topology::assign_node_segments::AssignTopologyNodeSegmentsArgs,
         resource::ResourceType,
     };
     use mockall::{predicate, Sequence};
@@ -74,7 +76,7 @@ mod tests {
     fn test_commands_topology_backfill_no_devices_sends_no_tx() {
         let client = create_test_client();
 
-        let res = BackfillTopologyCommand {
+        let res = AssignTopologyNodeSegmentsCommand {
             name: "unicast-default".to_string(),
             device_pubkeys: vec![],
         }
@@ -97,8 +99,8 @@ mod tests {
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::BackfillTopology(
-                    TopologyBackfillArgs {
+                predicate::eq(DoubleZeroInstruction::AssignTopologyNodeSegments(
+                    AssignTopologyNodeSegmentsArgs {
                         name: "algo128".to_string(),
                     },
                 )),
@@ -112,7 +114,7 @@ mod tests {
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        let res = BackfillTopologyCommand {
+        let res = AssignTopologyNodeSegmentsCommand {
             name: "algo128".to_string(),
             device_pubkeys: vec![device1, device2],
         }
@@ -138,9 +140,10 @@ mod tests {
             AccountMeta::new_readonly(globalstate_pubkey, false),
         ];
 
-        let expected_args = DoubleZeroInstruction::BackfillTopology(TopologyBackfillArgs {
-            name: "algo128".to_string(),
-        });
+        let expected_args =
+            DoubleZeroInstruction::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs {
+                name: "algo128".to_string(),
+            });
 
         let mut seq = Sequence::new();
         for chunk in devices.chunks(BACKFILL_BATCH_SIZE) {
@@ -159,7 +162,7 @@ mod tests {
                 .returning(|_, _| Ok(Signature::new_unique()));
         }
 
-        let res = BackfillTopologyCommand {
+        let res = AssignTopologyNodeSegmentsCommand {
             name: "algo128".to_string(),
             device_pubkeys: devices,
         }

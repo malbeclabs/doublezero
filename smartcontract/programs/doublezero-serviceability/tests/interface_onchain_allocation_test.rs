@@ -11,7 +11,7 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::{
-        contributor::create::ContributorCreateArgs,
+        contributor::{create::ContributorCreateArgs, update::ContributorUpdateArgs},
         device::{
             activate::DeviceActivateArgs,
             create::DeviceCreateArgs,
@@ -23,6 +23,7 @@ use doublezero_serviceability::{
         exchange::create::ExchangeCreateArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         location::create::LocationCreateArgs,
+        topology::create::TopologyCreateArgs,
     },
     resource::{IdOrIp, ResourceType},
     state::{
@@ -31,12 +32,14 @@ use doublezero_serviceability::{
         interface::{
             InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
         },
+        topology::TopologyConstraint,
     },
 };
 use solana_program::instruction::InstructionError;
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::AccountMeta, pubkey::Pubkey, signer::Signer, transaction::TransactionError,
+    instruction::AccountMeta, pubkey::Pubkey, signature::Keypair, signer::Signer,
+    transaction::TransactionError,
 };
 
 mod test_helpers;
@@ -301,6 +304,7 @@ async fn setup_device_with_interface(
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -367,6 +371,7 @@ async fn test_create_loopback_vpnv4_with_onchain_allocation() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -445,6 +450,7 @@ async fn test_create_loopback_non_vpnv4_with_onchain_allocation() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -527,6 +533,7 @@ async fn test_create_loopback_with_onchain_allocation_honors_supplied_ip_net() {
             vlan_id: 0,
             user_tunnel_endpoint: true,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -611,6 +618,7 @@ async fn test_create_physical_with_onchain_allocation() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -671,6 +679,7 @@ async fn test_create_interface_backward_compat() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -727,6 +736,7 @@ async fn test_create_interface_feature_flag_disabled() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -799,6 +809,7 @@ async fn test_delete_loopback_with_onchain_deallocation() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -897,6 +908,7 @@ async fn test_delete_physical_with_onchain_deallocation() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -994,6 +1006,7 @@ async fn test_delete_interface_backward_compat() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: true,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1445,6 +1458,7 @@ async fn test_update_interface_node_segment_idx_duplicate_allocation() {
             vlan_id: 0,
             user_tunnel_endpoint: false,
             use_onchain_allocation: false,
+            topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1507,4 +1521,862 @@ async fn test_update_interface_node_segment_idx_duplicate_allocation() {
         }
         _ => panic!("Unexpected error type: {:?}", err),
     }
+}
+
+// =============================================================================
+// Flex-algo node segment tests (create + delete + update reconciliation)
+// =============================================================================
+
+/// Helper: create a topology with the given name and return its PDA.
+async fn create_topology(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    name: &str,
+    payer: &Keypair,
+) -> Pubkey {
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+    let (topology_pda, _) = get_topology_pda(&program_id, name);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+            name: name.to_string(),
+            constraint: TopologyConstraint::IncludeAny,
+        }),
+        vec![
+            AccountMeta::new(topology_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+    topology_pda
+}
+
+/// Test: deleting a Vpnv4 loopback that has flex-algo node segments
+/// deallocates each segment's SR ID alongside the primary node_segment_idx.
+#[tokio::test]
+async fn test_delete_loopback_deallocates_flex_algo_segments() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    let (device_pubkey, contributor_pubkey) =
+        setup_device(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
+    let topo_a = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        &payer,
+    )
+    .await;
+    let topo_b = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-b",
+        &payer,
+    )
+    .await;
+
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    // Atomic create with 2 topologies: allocates primary + 2 flex-algo SR IDs.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Loopback0".to_string(),
+            loopback_type: LoopbackType::Vpnv4,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            bandwidth: 0,
+            cir: 0,
+            ip_net: None,
+            mtu: 9000,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+            use_onchain_allocation: true,
+            topology_count: 2,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new_readonly(topo_a, false),
+            AccountMeta::new_readonly(topo_b, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device not found");
+    let iface = device.interfaces[0].clone();
+    assert_eq!(iface.flex_algo_node_segments.len(), 2);
+    let primary = iface.node_segment_idx;
+    let flex_a = iface.flex_algo_node_segments[0].node_segment_idx;
+    let flex_b = iface.flex_algo_node_segments[1].node_segment_idx;
+    let resource = get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
+        .await
+        .expect("SegmentRoutingIds resource not found");
+    let allocated = resource.iter_allocated();
+    assert!(allocated.contains(&IdOrIp::Id(primary)));
+    assert!(allocated.contains(&IdOrIp::Id(flex_a)));
+    assert!(allocated.contains(&IdOrIp::Id(flex_b)));
+
+    // Atomic delete should deallocate primary AND each flex-algo segment.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
+            name: "Loopback0".to_string(),
+            use_onchain_deallocation: true,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device not found");
+    assert_eq!(device.interfaces.len(), 0);
+
+    let resource = get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
+        .await
+        .expect("SegmentRoutingIds resource not found");
+    let allocated = resource.iter_allocated();
+    for id in [primary, flex_a, flex_b] {
+        assert!(
+            !allocated.contains(&IdOrIp::Id(id)),
+            "SR id {id} should be deallocated after delete"
+        );
+    }
+}
+
+/// Helper: create a Vpnv4 loopback with `initial_topologies` and return
+/// (device_pubkey, contributor_pubkey, segment_routing_ids_pda, device_tunnel_block_pda).
+async fn setup_vpnv4_loopback_with_topologies(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    payer: &Keypair,
+    initial_topologies: &[Pubkey],
+) -> (Pubkey, Pubkey, Pubkey, Pubkey) {
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let (device_pubkey, contributor_pubkey) =
+        setup_device(banks_client, payer, program_id, globalstate_pubkey).await;
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    let mut accounts = vec![
+        AccountMeta::new(device_pubkey, false),
+        AccountMeta::new(contributor_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+        AccountMeta::new(device_tunnel_block_pda, false),
+        AccountMeta::new(segment_routing_ids_pda, false),
+    ];
+    for t in initial_topologies {
+        accounts.push(AccountMeta::new_readonly(*t, false));
+    }
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Loopback0".to_string(),
+            loopback_type: LoopbackType::Vpnv4,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            bandwidth: 0,
+            cir: 0,
+            ip_net: None,
+            mtu: 9000,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+            use_onchain_allocation: true,
+            topology_count: initial_topologies.len() as u8,
+        }),
+        accounts,
+        payer,
+    )
+    .await;
+
+    (
+        device_pubkey,
+        contributor_pubkey,
+        segment_routing_ids_pda,
+        device_tunnel_block_pda,
+    )
+}
+
+async fn enable_onchain_allocation(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    payer: &Keypair,
+) {
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        payer,
+    )
+    .await;
+}
+
+fn update_topologies_args(name: &str, count: u8) -> DeviceInterfaceUpdateArgs {
+    DeviceInterfaceUpdateArgs {
+        name: name.to_string(),
+        topology_count: count,
+        update_topologies: true,
+        ..Default::default()
+    }
+}
+
+fn topology_set(iface: &doublezero_serviceability::state::interface::Interface) -> Vec<Pubkey> {
+    let mut s: Vec<Pubkey> = iface
+        .flex_algo_node_segments
+        .iter()
+        .map(|e| e.topology)
+        .collect();
+    s.sort();
+    s
+}
+
+/// Test: update_topologies adds a new topology while preserving the existing one's SR ID.
+#[tokio::test]
+async fn test_update_topologies_adds_segment() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    enable_onchain_allocation(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    let topo_a = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        &payer,
+    )
+    .await;
+    let topo_b = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-b",
+        &payer,
+    )
+    .await;
+
+    let (device_pubkey, contributor_pubkey, seg_routing_pda, _dtb_pda) =
+        setup_vpnv4_loopback_with_topologies(
+            &mut banks_client,
+            program_id,
+            globalstate_pubkey,
+            &payer,
+            &[topo_a],
+        )
+        .await;
+
+    let device = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    let iface_before = device.interfaces[0].clone();
+    let topo_a_idx = iface_before.flex_algo_node_segments[0].node_segment_idx;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(update_topologies_args("Loopback0", 2)),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(seg_routing_pda, false),
+            AccountMeta::new_readonly(topo_a, false),
+            AccountMeta::new_readonly(topo_b, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    let iface = &device.interfaces[0];
+    let mut expected = vec![topo_a, topo_b];
+    expected.sort();
+    assert_eq!(topology_set(iface), expected);
+    let entry_a = iface
+        .flex_algo_node_segments
+        .iter()
+        .find(|e| e.topology == topo_a)
+        .unwrap();
+    assert_eq!(
+        entry_a.node_segment_idx, topo_a_idx,
+        "topo-a SR ID should be unchanged"
+    );
+}
+
+/// Test: update_topologies removes a topology and deallocates its SR ID.
+#[tokio::test]
+async fn test_update_topologies_removes_segment() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    enable_onchain_allocation(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    let topo_a = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        &payer,
+    )
+    .await;
+    let topo_b = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-b",
+        &payer,
+    )
+    .await;
+
+    let (device_pubkey, contributor_pubkey, seg_routing_pda, _dtb_pda) =
+        setup_vpnv4_loopback_with_topologies(
+            &mut banks_client,
+            program_id,
+            globalstate_pubkey,
+            &payer,
+            &[topo_a, topo_b],
+        )
+        .await;
+
+    let device = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    let removed_idx = device.interfaces[0]
+        .flex_algo_node_segments
+        .iter()
+        .find(|e| e.topology == topo_b)
+        .unwrap()
+        .node_segment_idx;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(update_topologies_args("Loopback0", 1)),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(seg_routing_pda, false),
+            AccountMeta::new_readonly(topo_a, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    assert_eq!(topology_set(&device.interfaces[0]), vec![topo_a]);
+
+    let resource = get_resource_extension_data(&mut banks_client, seg_routing_pda)
+        .await
+        .unwrap();
+    assert!(
+        !resource.iter_allocated().contains(&IdOrIp::Id(removed_idx)),
+        "removed topology's SR id {removed_idx} should be deallocated"
+    );
+}
+
+/// Test: update_topologies clears all flex-algo segments when an empty set is passed.
+#[tokio::test]
+async fn test_update_topologies_clear() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    enable_onchain_allocation(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    let topo_a = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        &payer,
+    )
+    .await;
+    let topo_b = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-b",
+        &payer,
+    )
+    .await;
+
+    let (device_pubkey, contributor_pubkey, seg_routing_pda, _dtb_pda) =
+        setup_vpnv4_loopback_with_topologies(
+            &mut banks_client,
+            program_id,
+            globalstate_pubkey,
+            &payer,
+            &[topo_a, topo_b],
+        )
+        .await;
+
+    let device = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    let initial_ids: Vec<u16> = device.interfaces[0]
+        .flex_algo_node_segments
+        .iter()
+        .map(|e| e.node_segment_idx)
+        .collect();
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(update_topologies_args("Loopback0", 0)),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(seg_routing_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    assert!(device.interfaces[0].flex_algo_node_segments.is_empty());
+
+    let resource = get_resource_extension_data(&mut banks_client, seg_routing_pda)
+        .await
+        .unwrap();
+    let allocated = resource.iter_allocated();
+    for id in initial_ids {
+        assert!(
+            !allocated.contains(&IdOrIp::Id(id)),
+            "all flex-algo SR ids should be deallocated after clear"
+        );
+    }
+}
+
+/// Test: update_topologies with the same set is a no-op (no SR id churn).
+#[tokio::test]
+async fn test_update_topologies_no_op() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    enable_onchain_allocation(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    let topo_a = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        &payer,
+    )
+    .await;
+    let topo_b = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-b",
+        &payer,
+    )
+    .await;
+
+    let (device_pubkey, contributor_pubkey, seg_routing_pda, _dtb_pda) =
+        setup_vpnv4_loopback_with_topologies(
+            &mut banks_client,
+            program_id,
+            globalstate_pubkey,
+            &payer,
+            &[topo_a, topo_b],
+        )
+        .await;
+
+    let before = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    let before_segs = before.interfaces[0].flex_algo_node_segments.clone();
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(update_topologies_args("Loopback0", 2)),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(seg_routing_pda, false),
+            AccountMeta::new_readonly(topo_a, false),
+            AccountMeta::new_readonly(topo_b, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let after = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    let after_segs = after.interfaces[0].flex_algo_node_segments.clone();
+    let mut before_sorted = before_segs;
+    before_sorted.sort_by_key(|e| e.topology);
+    let mut after_sorted = after_segs;
+    after_sorted.sort_by_key(|e| e.topology);
+    assert_eq!(before_sorted, after_sorted, "no SR id churn expected");
+}
+
+/// Test: update_topologies replaces the full set (swap A → B).
+#[tokio::test]
+async fn test_update_topologies_full_swap() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    enable_onchain_allocation(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    let topo_a = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        &payer,
+    )
+    .await;
+    let topo_b = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-b",
+        &payer,
+    )
+    .await;
+
+    let (device_pubkey, contributor_pubkey, seg_routing_pda, _dtb_pda) =
+        setup_vpnv4_loopback_with_topologies(
+            &mut banks_client,
+            program_id,
+            globalstate_pubkey,
+            &payer,
+            &[topo_a],
+        )
+        .await;
+
+    let device = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    let primary_idx = device.interfaces[0].node_segment_idx;
+    let allocated_before = get_resource_extension_data(&mut banks_client, seg_routing_pda)
+        .await
+        .unwrap()
+        .iter_allocated()
+        .len();
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(update_topologies_args("Loopback0", 1)),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(seg_routing_pda, false),
+            AccountMeta::new_readonly(topo_b, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    let iface = &device.interfaces[0];
+    assert_eq!(topology_set(iface), vec![topo_b]);
+    // Primary SR id should be untouched.
+    assert_eq!(iface.node_segment_idx, primary_idx);
+    // The total number of allocated SR ids should be unchanged: one removed
+    // (topo-a), one added (topo-b). Whether the new allocation reuses the just-
+    // freed slot is an implementation detail we don't pin down here.
+    let allocated_after = get_resource_extension_data(&mut banks_client, seg_routing_pda)
+        .await
+        .unwrap()
+        .iter_allocated()
+        .len();
+    assert_eq!(allocated_before, allocated_after);
+}
+
+/// Test: update_topologies on a non-Vpnv4 interface is rejected.
+#[tokio::test]
+async fn test_update_topologies_rejects_non_vpnv4() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    enable_onchain_allocation(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    let (device_pubkey, contributor_pubkey) =
+        setup_device(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    // Create an Ipv4 (non-Vpnv4) loopback.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Loopback0".to_string(),
+            loopback_type: LoopbackType::Ipv4,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            bandwidth: 0,
+            cir: 0,
+            ip_net: None,
+            mtu: 9000,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+            use_onchain_allocation: true,
+            topology_count: 0,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let topo_a = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(update_topologies_args("Loopback0", 1)),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new_readonly(topo_a, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let err = result.expect_err("expected non-Vpnv4 update_topologies to fail");
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code),
+        )) => {
+            assert_eq!(DoubleZeroError::InvalidArgument, code.into());
+        }
+        _ => panic!("Unexpected error: {err:?}"),
+    }
+}
+
+/// Test: passing the same topology twice is rejected as InvalidArgument.
+#[tokio::test]
+async fn test_update_topologies_rejects_duplicates() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    enable_onchain_allocation(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    let topo_a = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        &payer,
+    )
+    .await;
+
+    let (device_pubkey, contributor_pubkey, seg_routing_pda, _dtb_pda) =
+        setup_vpnv4_loopback_with_topologies(
+            &mut banks_client,
+            program_id,
+            globalstate_pubkey,
+            &payer,
+            &[],
+        )
+        .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(update_topologies_args("Loopback0", 2)),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(seg_routing_pda, false),
+            AccountMeta::new_readonly(topo_a, false),
+            AccountMeta::new_readonly(topo_a, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let err = result.expect_err("expected duplicate topology rejection");
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code),
+        )) => {
+            assert_eq!(DoubleZeroError::InvalidArgument, code.into());
+        }
+        _ => panic!("Unexpected error: {err:?}"),
+    }
+}
+
+/// Test: update_topologies is authorized by the contributor's owner key, not just
+/// the foundation allowlist. Reassigns contributor.owner to a new keypair (foundation
+/// is required for that update), funds the new keypair, then signs UpdateDeviceInterface
+/// with it. The new key is NOT in the foundation allowlist, so success here exercises
+/// the contributor-owner authorization branch added by the review.
+#[tokio::test]
+async fn test_update_topologies_allowed_for_contributor() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    enable_onchain_allocation(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    let topo_a = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        &payer,
+    )
+    .await;
+    let topo_b = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-b",
+        &payer,
+    )
+    .await;
+
+    let (device_pubkey, contributor_pubkey, seg_routing_pda, _dtb_pda) =
+        setup_vpnv4_loopback_with_topologies(
+            &mut banks_client,
+            program_id,
+            globalstate_pubkey,
+            &payer,
+            &[topo_a],
+        )
+        .await;
+
+    // Hand the contributor over to a new keypair so contributor.owner is no longer
+    // on the foundation allowlist (only foundation can do this update).
+    let contributor_owner = Keypair::new();
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
+            code: None,
+            owner: Some(contributor_owner.pubkey()),
+            ops_manager_pk: None,
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Fund the new owner so it can pay tx fees.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let transfer_ix = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &contributor_owner.pubkey(),
+        1_000_000_000,
+    );
+    let transfer_tx = solana_sdk::transaction::Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    banks_client.process_transaction(transfer_tx).await.unwrap();
+
+    // Sign update_topologies with the contributor.owner key (not foundation) — should succeed.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(update_topologies_args("Loopback0", 2)),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(seg_routing_pda, false),
+            AccountMeta::new_readonly(topo_a, false),
+            AccountMeta::new_readonly(topo_b, false),
+        ],
+        &contributor_owner,
+    )
+    .await;
+
+    let device = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    let mut expected = vec![topo_a, topo_b];
+    expected.sort();
+    assert_eq!(topology_set(&device.interfaces[0]), expected);
 }

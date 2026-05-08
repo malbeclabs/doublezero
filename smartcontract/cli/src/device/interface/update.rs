@@ -172,12 +172,13 @@ impl UpdateDeviceInterfaceCliCommand {
             .map_err(|e| eyre::eyre!("Invalid status: {}", e))?;
 
         // clap's `num_args = 0..` produces Some(vec!["", ...]) for `--topologies ""`,
-        // so strip empty/whitespace-only entries.
+        // so strip empty/whitespace-only entries. Topology PDAs are derived from
+        // the canonical uppercase name, so normalize here too.
         let topology_names = self.topologies.as_ref().map(|names| {
             names
                 .iter()
                 .filter(|n| !n.trim().is_empty())
-                .map(|n| n.trim().to_string())
+                .map(|n| n.trim().to_ascii_uppercase())
                 .collect::<Vec<_>>()
         });
 

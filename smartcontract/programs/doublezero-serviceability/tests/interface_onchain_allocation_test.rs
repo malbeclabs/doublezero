@@ -2380,3 +2380,72 @@ async fn test_update_topologies_allowed_for_contributor() {
     expected.sort();
     assert_eq!(topology_set(&device.interfaces[0]), expected);
 }
+
+/// Test: passing the same topology twice on CreateDeviceInterface is rejected
+/// as InvalidArgument before any SR ID is allocated for the duplicate.
+#[tokio::test]
+async fn test_create_device_interface_rejects_duplicate_topology_accounts() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    enable_onchain_allocation(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    let topo_a = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        &payer,
+    )
+    .await;
+
+    let (device_pubkey, contributor_pubkey) =
+        setup_device(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: "Loopback0".to_string(),
+            loopback_type: LoopbackType::Vpnv4,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            bandwidth: 0,
+            cir: 0,
+            ip_net: None,
+            mtu: 9000,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+            use_onchain_allocation: true,
+            topology_count: 2,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new_readonly(topo_a, false),
+            AccountMeta::new_readonly(topo_a, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let err = result.expect_err("expected duplicate topology rejection");
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code),
+        )) => {
+            assert_eq!(DoubleZeroError::InvalidArgument, code.into());
+        }
+        _ => panic!("Unexpected error: {err:?}"),
+    }
+}

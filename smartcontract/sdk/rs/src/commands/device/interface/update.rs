@@ -56,7 +56,12 @@ impl UpdateDeviceInterfaceCommand {
 
         let onchain_allocation_enabled =
             is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation);
-        let update_topologies = self.topology_names.is_some() && onchain_allocation_enabled;
+        if self.topology_names.is_some() && !onchain_allocation_enabled {
+            return Err(eyre::eyre!(
+                "OnChainAllocation feature must be enabled to update topology assignments"
+            ));
+        }
+        let update_topologies = self.topology_names.is_some();
         let needs_seg_ext =
             (self.node_segment_idx.is_some() && onchain_allocation_enabled) || update_topologies;
 
@@ -68,12 +73,18 @@ impl UpdateDeviceInterfaceCommand {
             accounts.push(AccountMeta::new(seg_routing_pda, false));
         }
 
-        let mut topology_count: u8 = 0;
+        let topology_count: u8 = if let Some(names) = self.topology_names.as_ref() {
+            let n = names.len();
+            u8::try_from(n).map_err(|_| {
+                eyre::eyre!("too many topologies for one UpdateDeviceInterface call: {n} > 255")
+            })?
+        } else {
+            0
+        };
         if update_topologies {
             for name in self.topology_names.as_ref().unwrap() {
                 let (topology_pda, _) = get_topology_pda(&client.get_program_id(), name);
                 accounts.push(AccountMeta::new_readonly(topology_pda, false));
-                topology_count += 1;
             }
         }
 

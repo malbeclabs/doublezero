@@ -51,25 +51,26 @@ impl GetDeviceInterfaceCliCommand {
             .find(|i| i.name.to_lowercase() == self.name.to_lowercase())
             .ok_or_else(|| eyre::eyre!("Interface '{}' not found", self.name))?;
 
-        // Resolve flex-algo topology PDAs to names. If the lookup fails (e.g. the
-        // topology was deleted), fall back to a truncated pubkey.
-        let topology_name_for = |pk: &solana_sdk::pubkey::Pubkey| -> Option<String> {
-            client
-                .list_topology(ListTopologyCommand)
-                .ok()
-                .and_then(|m| m.get(pk).map(|t| t.name.clone()))
-        };
+        // Resolve flex-algo topology PDAs to names. Cache the topology map up
+        // front so we don't run `list_topology` once per segment; on lookup
+        // miss (e.g. the topology was deleted), fall back to a truncated pubkey.
         let flex_algo_node_segments = if interface.flex_algo_node_segments.is_empty() {
             String::new()
         } else {
+            let topology_map = client
+                .list_topology(ListTopologyCommand)
+                .unwrap_or_default();
             interface
                 .flex_algo_node_segments
                 .iter()
                 .map(|seg| {
-                    let label = topology_name_for(&seg.topology).unwrap_or_else(|| {
-                        let s = seg.topology.to_string();
-                        format!("{}…", &s[..8.min(s.len())])
-                    });
+                    let label = topology_map
+                        .get(&seg.topology)
+                        .map(|t| t.name.clone())
+                        .unwrap_or_else(|| {
+                            let s = seg.topology.to_string();
+                            format!("{}…", &s[..8.min(s.len())])
+                        });
                     format!("{}:{}", label, seg.node_segment_idx)
                 })
                 .collect::<Vec<_>>()

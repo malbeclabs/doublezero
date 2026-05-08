@@ -258,7 +258,9 @@ pub fn process_update_device_interface(
     // for removed topologies have their SR ID deallocated; new topologies get a
     // freshly allocated SR ID.
     if value.update_topologies {
-        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+        if contributor.owner != *payer_account.key
+            && !globalstate.foundation_allowlist.contains(payer_account.key)
+        {
             return Err(DoubleZeroError::NotAllowed.into());
         }
 
@@ -289,13 +291,19 @@ pub fn process_update_device_interface(
                 "Invalid Topology Account Owner"
             );
             assert!(!topo_account.data_is_empty(), "Topology account is empty");
+            let topo_type = AccountType::from(topo_account.try_borrow_data()?[0]);
+            assert_eq!(
+                topo_type,
+                AccountType::Topology,
+                "Invalid Topology Account Type"
+            );
             if !desired.insert(*topo_account.key) {
                 return Err(DoubleZeroError::InvalidArgument.into());
             }
         }
 
         let mut kept: Vec<FlexAlgoNodeSegment> =
-            Vec::with_capacity(iface.flex_algo_node_segments.len());
+            Vec::with_capacity(iface.flex_algo_node_segments.len().max(desired.len()));
         for entry in iface.flex_algo_node_segments.drain(..) {
             if desired.contains(&entry.topology) {
                 kept.push(entry);

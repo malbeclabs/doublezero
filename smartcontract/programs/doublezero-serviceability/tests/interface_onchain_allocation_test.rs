@@ -11,7 +11,7 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::{
-        contributor::create::ContributorCreateArgs,
+        contributor::{create::ContributorCreateArgs, update::ContributorUpdateArgs},
         device::{
             activate::DeviceActivateArgs,
             create::DeviceCreateArgs,
@@ -2280,4 +2280,103 @@ async fn test_update_topologies_rejects_duplicates() {
         }
         _ => panic!("Unexpected error: {err:?}"),
     }
+}
+
+/// Test: update_topologies is authorized by the contributor's owner key, not just
+/// the foundation allowlist. Reassigns contributor.owner to a new keypair (foundation
+/// is required for that update), funds the new keypair, then signs UpdateDeviceInterface
+/// with it. The new key is NOT in the foundation allowlist, so success here exercises
+/// the contributor-owner authorization branch added by the review.
+#[tokio::test]
+async fn test_update_topologies_allowed_for_contributor() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    enable_onchain_allocation(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    let topo_a = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        &payer,
+    )
+    .await;
+    let topo_b = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-b",
+        &payer,
+    )
+    .await;
+
+    let (device_pubkey, contributor_pubkey, seg_routing_pda, _dtb_pda) =
+        setup_vpnv4_loopback_with_topologies(
+            &mut banks_client,
+            program_id,
+            globalstate_pubkey,
+            &payer,
+            &[topo_a],
+        )
+        .await;
+
+    // Hand the contributor over to a new keypair so contributor.owner is no longer
+    // on the foundation allowlist (only foundation can do this update).
+    let contributor_owner = Keypair::new();
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
+            code: None,
+            owner: Some(contributor_owner.pubkey()),
+            ops_manager_pk: None,
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Fund the new owner so it can pay tx fees.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let transfer_ix = solana_sdk::system_instruction::transfer(
+        &payer.pubkey(),
+        &contributor_owner.pubkey(),
+        1_000_000_000,
+    );
+    let transfer_tx = solana_sdk::transaction::Transaction::new_signed_with_payer(
+        &[transfer_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    banks_client.process_transaction(transfer_tx).await.unwrap();
+
+    // Sign update_topologies with the contributor.owner key (not foundation) — should succeed.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(update_topologies_args("Loopback0", 2)),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(seg_routing_pda, false),
+            AccountMeta::new_readonly(topo_a, false),
+            AccountMeta::new_readonly(topo_b, false),
+        ],
+        &contributor_owner,
+    )
+    .await;
+
+    let device = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    let mut expected = vec![topo_a, topo_b];
+    expected.sort();
+    assert_eq!(topology_set(&device.interfaces[0]), expected);
 }

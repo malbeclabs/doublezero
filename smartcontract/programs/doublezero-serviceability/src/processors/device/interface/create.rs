@@ -237,6 +237,12 @@ pub fn process_create_device_interface(
                         "Invalid Topology Account Owner"
                     );
                     assert!(!topo_account.data_is_empty(), "Topology account is empty");
+                    let topo_type = AccountType::from(topo_account.try_borrow_data()?[0]);
+                    assert_eq!(
+                        topo_type,
+                        AccountType::Topology,
+                        "Invalid Topology Account Type"
+                    );
                     let topo_segment_idx = allocate_id(segment_routing_ids_ext)?;
                     flex_algo_node_segments.push(FlexAlgoNodeSegment {
                         topology: *topo_account.key,

@@ -1,19 +1,105 @@
-//go:build linux
-
 package bgpstatus
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/state"
+	gpb "github.com/openconfig/gnmi/proto/gnmi"
+	"google.golang.org/grpc"
+
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
+
+// GNMIClient is a minimal interface satisfied by gpb.GNMIClient (the generated
+// gNMI gRPC client). Using the interface keeps GNMICollector testable without a
+// live gRPC server.
+type GNMIClient interface {
+	Get(ctx context.Context, req *gpb.GetRequest, opts ...grpc.CallOption) (*gpb.GetResponse, error)
+}
+
+// bgpNeighborsGetRequest fetches all BGP neighbor state across all network instances.
+var bgpNeighborsGetRequest = &gpb.GetRequest{
+	Path: []*gpb.Path{
+		{
+			Elem: []*gpb.PathElem{
+				{Name: "network-instances"},
+				{Name: "network-instance", Key: map[string]string{"name": "*"}},
+				{Name: "protocols"},
+				{Name: "protocol", Key: map[string]string{"identifier": "BGP", "name": "BGP"}},
+				{Name: "bgp"},
+				{Name: "neighbors"},
+				{Name: "neighbor", Key: map[string]string{"neighbor-address": "*"}},
+				{Name: "state"},
+			},
+		},
+	},
+	Type:     gpb.GetRequest_STATE,
+	Encoding: gpb.Encoding_JSON_IETF,
+}
+
+// GNMICollector returns a BGPCollector that reads BGP neighbor session state via
+// a gNMI Get to the Arista device's local gNMI server. It reports all neighbors
+// whose session-state is ESTABLISHED across every network instance.
+func GNMICollector(client GNMIClient) BGPCollector {
+	return func(ctx context.Context) (map[string]struct{}, error) {
+		resp, err := client.Get(ctx, bgpNeighborsGetRequest)
+		if err != nil {
+			return nil, fmt.Errorf("gNMI Get BGP neighbors: %w", err)
+		}
+		return parseEstablished(resp), nil
+	}
+}
+
+// bgpStateJSON extracts session-state from a gNMI JSON IETF update value.
+type bgpStateJSON struct {
+	SessionState string `json:"openconfig-network-instance:session-state"`
+}
+
+// parseEstablished returns the set of neighbor-address strings whose
+// session-state is ESTABLISHED in the gNMI GetResponse.
+func parseEstablished(resp *gpb.GetResponse) map[string]struct{} {
+	established := make(map[string]struct{})
+	for _, notif := range resp.GetNotification() {
+		prefix := notif.GetPrefix()
+		for _, update := range notif.GetUpdate() {
+			addr := neighborAddress(prefix, update.GetPath())
+			if addr == "" {
+				continue
+			}
+			jsonVal := update.GetVal().GetJsonIetfVal()
+			if len(jsonVal) == 0 {
+				continue
+			}
+			var state bgpStateJSON
+			if err := json.Unmarshal(jsonVal, &state); err != nil {
+				continue
+			}
+			if state.SessionState == "ESTABLISHED" {
+				established[addr] = struct{}{}
+			}
+		}
+	}
+	return established
+}
+
+// neighborAddress extracts the neighbor-address key from the gNMI path elements,
+// checking both the notification prefix and the update path.
+func neighborAddress(prefix, path *gpb.Path) string {
+	for _, elem := range prefix.GetElem() {
+		if elem.GetName() == "neighbor" {
+			return elem.GetKey()["neighbor-address"]
+		}
+	}
+	for _, elem := range path.GetElem() {
+		if elem.GetName() == "neighbor" {
+			return elem.GetKey()["neighbor-address"]
+		}
+	}
+	return ""
+}
 
 // run starts the background worker goroutine, then drives the tick loop,
 // running an immediate first tick before waiting for the ticker.
@@ -35,34 +121,9 @@ func (s *Submitter) run(ctx context.Context) error {
 	}
 }
 
-// DefaultCollector returns a NamespaceCollector that collects BGP socket stats
-// via netlink and local interfaces via Linux namespace switching.
-func DefaultCollector(localNet netutil.LocalNet) NamespaceCollector {
-	return func(ctx context.Context, namespace string) (map[string]struct{}, []netutil.Interface, error) {
-		rawSockets, err := state.GetBGPSocketStatsInNamespace(ctx, namespace)
-		if err != nil {
-			return nil, nil, fmt.Errorf("bgp sockets in %s: %w", namespace, err)
-		}
-		socks := make([]bgpSocket, len(rawSockets))
-		for i, rs := range rawSockets {
-			socks[i] = bgpSocket{RemoteIP: rs.RemoteIP, State: rs.State}
-		}
-		established := buildEstablishedIPSet(socks)
-
-		ifaces, err := netns.RunInNamespace(namespace, func() ([]netutil.Interface, error) {
-			return localNet.Interfaces()
-		})
-		if err != nil {
-			return nil, nil, fmt.Errorf("interfaces in %s: %w", namespace, err)
-		}
-		return established, ifaces, nil
-	}
-}
-
-// tick collects BGP socket state, fetches activated users for this device,
-// maps each user to their tunnel peer IP, determines Up/Down status (with
-// grace period), and enqueues submission tasks for users whose status needs
-// updating.
+// tick fetches activated users for this device, calls the BGPCollector once to
+// get all ESTABLISHED sessions, maps each user's /31 tunnel net to their peer
+// IP, and enqueues submission tasks for users whose status needs updating.
 func (s *Submitter) tick(ctx context.Context) {
 	programData, err := s.cfg.ServiceabilityClient.GetProgramData(ctx)
 	if err != nil {
@@ -70,9 +131,6 @@ func (s *Submitter) tick(ctx context.Context) {
 		return
 	}
 
-	// Pre-collect activated users for this device. This is needed both to
-	// derive the full namespace set (multicast users require the root namespace) and to
-	// drive the per-user status loop below.
 	var deviceUsers []serviceability.User
 	for _, u := range programData.Users {
 		if u.Status == serviceability.UserStatusActivated &&
@@ -81,32 +139,9 @@ func (s *Submitter) tick(ctx context.Context) {
 		}
 	}
 
-	// User tunnel interfaces live in a per-tenant VRF namespace (e.g. ns-vrf1,
-	// ns-vrf2). Multicast users are an exception: their tunnels live in the
-	// global VRF (root network namespace). Collect state from all relevant namespaces so that
-	// all user types are handled correctly.
-	// Tunnel IPs are globally unique (onchain-allocated), so merging is safe.
-	namespaces := vrfNamespaces(s.cfg.BGPNamespace, programData.Tenants, deviceUsers)
-
-	establishedIPs := make(map[string]struct{})
-	var interfaces []netutil.Interface
-	successCount := 0
-
-	for _, ns := range namespaces {
-		established, ifaces, err := s.cfg.Collector(ctx, ns)
-		if err != nil {
-			s.log.Warn("bgpstatus: failed to collect namespace state", "namespace", ns, "error", err)
-			continue
-		}
-		for ip := range established {
-			establishedIPs[ip] = struct{}{}
-		}
-		interfaces = append(interfaces, ifaces...)
-		successCount++
-	}
-
-	if successCount == 0 {
-		s.log.Error("bgpstatus: failed to collect state from all namespaces", "namespaces", namespaces)
+	establishedIPs, err := s.cfg.Collector(ctx)
+	if err != nil {
+		s.log.Error("bgpstatus: failed to collect BGP state", "error", err)
 		return
 	}
 
@@ -122,33 +157,21 @@ func (s *Submitter) tick(ctx context.Context) {
 		activeUserKeys[userPK] = struct{}{}
 
 		// Seed lastOnchainStatus from the ledger on first observation (e.g. after
-		// a daemon restart) so a disappeared tunnel correctly transitions to Down
+		// a daemon restart) so a disappeared session correctly transitions to Down
 		// rather than being skipped because Unknown != Up.
 		us := s.userStateFor(userPK, serviceability.BGPStatus(user.BgpStatus))
 
-		// Resolve the BGP peer IP for this user's /31 tunnel net.
+		// A /31 tunnel net has two host IPs: the device-side and the peer-side.
+		// We check both because we don't know which end the device holds; only
+		// one can appear as a BGP neighbor on this device.
 		tunnelNet := tunnelNetToIPNet(user.TunnelNet)
-		var observedUp bool
-		tunnel, err := netutil.FindLocalTunnel(interfaces, tunnelNet)
-		if err != nil {
-			if !errors.Is(err, netutil.ErrLocalTunnelNotFound) {
-				s.log.Warn("bgpstatus: unexpected error finding tunnel", "user", userPK, "error", err)
-				continue
-			}
-			s.log.Debug("bgpstatus: tunnel not found for user", "user", userPK)
-			// Without a tunnel, the BGP session cannot be established.
-			// If the last known onchain status was already Down (or never written),
-			// there is nothing to update — skip this user.
-			if us.lastOnchainStatus != serviceability.BGPStatusUp {
-				continue
-			}
-			// The tunnel is gone but the last known onchain status is Up.
-			// Fall through with observedUp=false so we submit Down.
-		} else {
-			_, observedUp = establishedIPs[tunnel.TargetIP.String()]
-			if observedUp {
-				us.lastUpObservedAt = now
-			}
+		ip0, ip1 := peerIPsFor31(tunnelNet)
+		_, up0 := establishedIPs[ip0.String()]
+		_, up1 := establishedIPs[ip1.String()]
+		observedUp := up0 || up1
+
+		if observedUp {
+			us.lastUpObservedAt = now
 		}
 
 		effectiveStatus := computeEffectiveStatus(observedUp, us, now, s.cfg.DownGracePeriod)
@@ -157,7 +180,6 @@ func (s *Submitter) tick(ctx context.Context) {
 			continue
 		}
 
-		// Skip if a submission for this user is already in-flight.
 		if s.pending[userPK] {
 			s.log.Debug("bgpstatus: submission already in-flight, skipping", "user", userPK)
 			continue
@@ -174,7 +196,6 @@ func (s *Submitter) tick(ctx context.Context) {
 
 	// Prune userState entries for users no longer activated on this device to
 	// prevent unbounded memory growth as users come and go.
-	// Also clear pending flags so a reactivated user is not permanently blocked.
 	for pk := range s.userState {
 		if _, active := activeUserKeys[pk]; !active {
 			delete(s.userState, pk)
@@ -217,7 +238,7 @@ func (s *Submitter) worker(ctx context.Context) {
 }
 
 // submitWithRetry attempts the onchain write up to submitMaxRetries times with
-// exponential backoff.  It returns early if the context is cancelled.
+// exponential backoff. It returns early if the context is cancelled.
 func (s *Submitter) submitWithRetry(ctx context.Context, task submitTask) (solana.Signature, error) {
 	update := serviceability.UserBGPStatusUpdate{
 		UserPubkey:   solana.PublicKeyFromBytes(task.user.PubKey[:]),

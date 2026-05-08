@@ -2,8 +2,10 @@ package bgpstatus
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -11,8 +13,8 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/jonboulle/clockwork"
-	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	gpb "github.com/openconfig/gnmi/proto/gnmi"
 )
 
 // --- mock executor ---
@@ -64,11 +66,11 @@ func makeUser(pubkey solana.PublicKey, devicePK solana.PublicKey, tunnelNet [5]b
 	return u
 }
 
-// noopCollector returns a NamespaceCollector that always succeeds with empty results.
+// noopCollector returns a BGPCollector that always succeeds with empty results.
 // Used by tests that never call tick() and only exercise the worker.
-func noopCollector() NamespaceCollector {
-	return func(_ context.Context, _ string) (map[string]struct{}, []netutil.Interface, error) {
-		return nil, nil, nil
+func noopCollector() BGPCollector {
+	return func(_ context.Context) (map[string]struct{}, error) {
+		return nil, nil
 	}
 }
 
@@ -78,7 +80,7 @@ func newTestSubmitter(
 	clk clockwork.Clock,
 	exec BGPStatusExecutor,
 	svcClient ServiceabilityClient,
-	collector NamespaceCollector,
+	collector BGPCollector,
 	devicePK solana.PublicKey,
 	gracePeriod time.Duration,
 	refreshInterval time.Duration,
@@ -93,7 +95,6 @@ func newTestSubmitter(
 		ServiceabilityClient:    svcClient,
 		Collector:               collector,
 		LocalDevicePK:           devicePK,
-		BGPNamespace:            "ns-vrf1",
 		Interval:                time.Hour, // irrelevant; tests call tick() directly
 		PeriodicRefreshInterval: refreshInterval,
 		DownGracePeriod:         gracePeriod,
@@ -116,35 +117,6 @@ type testWriter struct{ t *testing.T }
 func (tw testWriter) Write(p []byte) (int, error) {
 	tw.t.Logf("%s", p)
 	return len(p), nil
-}
-
-// ============================================================
-// buildEstablishedIPSet
-// ============================================================
-
-func TestBuildEstablishedIPSet_OnlyEstablished(t *testing.T) {
-	sockets := []bgpSocket{
-		{RemoteIP: "10.0.0.1", State: "ESTABLISHED"},
-		{RemoteIP: "10.0.0.2", State: "TIME_WAIT"},
-		{RemoteIP: "10.0.0.3", State: "ESTABLISHED"},
-	}
-	got := buildEstablishedIPSet(sockets)
-	if _, ok := got["10.0.0.1"]; !ok {
-		t.Error("expected 10.0.0.1 in set")
-	}
-	if _, ok := got["10.0.0.3"]; !ok {
-		t.Error("expected 10.0.0.3 in set")
-	}
-	if _, ok := got["10.0.0.2"]; ok {
-		t.Error("did not expect 10.0.0.2 (TIME_WAIT) in set")
-	}
-}
-
-func TestBuildEstablishedIPSet_Empty(t *testing.T) {
-	got := buildEstablishedIPSet(nil /* []bgpSocket */)
-	if len(got) != 0 {
-		t.Errorf("expected empty set, got %d entries", len(got))
-	}
 }
 
 // ============================================================
@@ -258,75 +230,37 @@ func TestShouldSubmit_PeriodicRefresh(t *testing.T) {
 }
 
 // ============================================================
-// vrfNamespaces
+// peerIPsFor31
 // ============================================================
 
-func TestVrfNamespaces_NoTenants(t *testing.T) {
-	nss := vrfNamespaces("ns-vrf1", nil, nil)
-	if len(nss) != 1 || nss[0] != "ns-vrf1" {
-		t.Errorf("expected [ns-vrf1], got %v", nss)
+func TestPeerIPsFor31(t *testing.T) {
+	cases := []struct {
+		cidr string
+		ip0  string
+		ip1  string
+	}{
+		{"10.0.0.0/31", "10.0.0.0", "10.0.0.1"},
+		{"10.0.0.1/31", "10.0.0.1", "10.0.0.0"},
+		{"192.168.1.10/31", "192.168.1.10", "192.168.1.11"},
 	}
-}
-
-func TestVrfNamespaces_SameVrf(t *testing.T) {
-	tenants := []serviceability.Tenant{{VrfId: 1}}
-	nss := vrfNamespaces("ns-vrf1", tenants, nil)
-	if len(nss) != 1 || nss[0] != "ns-vrf1" {
-		t.Errorf("expected [ns-vrf1], got %v", nss)
-	}
-}
-
-func TestVrfNamespaces_AdditionalVrf(t *testing.T) {
-	tenants := []serviceability.Tenant{{VrfId: 1}, {VrfId: 2}}
-	nss := vrfNamespaces("ns-vrf1", tenants, nil)
-	if len(nss) != 2 || nss[0] != "ns-vrf1" || nss[1] != "ns-vrf2" {
-		t.Errorf("expected [ns-vrf1 ns-vrf2], got %v", nss)
-	}
-}
-
-func TestVrfNamespaces_Deduplication(t *testing.T) {
-	tenants := []serviceability.Tenant{{VrfId: 2}, {VrfId: 2}, {VrfId: 2}}
-	nss := vrfNamespaces("ns-vrf1", tenants, nil)
-	if len(nss) != 2 {
-		t.Errorf("expected 2 unique namespaces, got %v", nss)
-	}
-}
-
-func TestVrfNamespaces_SkipsZeroVrfId(t *testing.T) {
-	tenants := []serviceability.Tenant{{VrfId: 0}, {VrfId: 3}}
-	nss := vrfNamespaces("ns-vrf1", tenants, nil)
-	if len(nss) != 2 || nss[0] != "ns-vrf1" || nss[1] != "ns-vrf3" {
-		t.Errorf("expected [ns-vrf1 ns-vrf3], got %v", nss)
-	}
-}
-
-func TestVrfNamespaces_MulticastUserAddsRootNamespace(t *testing.T) {
-	users := []serviceability.User{{UserType: serviceability.UserTypeMulticast}}
-	nss := vrfNamespaces("ns-vrf1", nil, users)
-	if len(nss) != 2 || nss[0] != "ns-vrf1" || nss[1] != rootNamespace {
-		t.Errorf("expected [ns-vrf1 %q], got %v", rootNamespace, nss)
-	}
-}
-
-func TestVrfNamespaces_NonMulticastUserNoRootNamespace(t *testing.T) {
-	users := []serviceability.User{{UserType: serviceability.UserTypeIBRL}}
-	nss := vrfNamespaces("ns-vrf1", nil, users)
-	if len(nss) != 1 || nss[0] != "ns-vrf1" {
-		t.Errorf("expected [ns-vrf1], got %v", nss)
-	}
-}
-
-func TestVrfNamespaces_MulticastAndTenantVrfs(t *testing.T) {
-	tenants := []serviceability.Tenant{{VrfId: 2}}
-	users := []serviceability.User{{UserType: serviceability.UserTypeMulticast}}
-	nss := vrfNamespaces("ns-vrf1", tenants, users)
-	if len(nss) != 3 || nss[0] != "ns-vrf1" || nss[1] != "ns-vrf2" || nss[2] != rootNamespace {
-		t.Errorf("expected [ns-vrf1 ns-vrf2 %q], got %v", rootNamespace, nss)
+	for _, tc := range cases {
+		ip, ipnet, err := net.ParseCIDR(tc.cidr)
+		if err != nil {
+			t.Fatalf("ParseCIDR(%q): %v", tc.cidr, err)
+		}
+		ipnet.IP = ip.To4()
+		a, b := peerIPsFor31(ipnet)
+		got := map[string]struct{}{a.String(): {}, b.String(): {}}
+		for _, want := range []string{tc.ip0, tc.ip1} {
+			if _, ok := got[want]; !ok {
+				t.Errorf("cidr=%s: expected %s in result, got %s and %s", tc.cidr, want, a, b)
+			}
+		}
 	}
 }
 
 // ============================================================
-// Worker retry behaviour (integration-style, no Linux syscalls)
+// Worker retry behaviour (integration-style, no syscalls)
 // ============================================================
 
 // workerTestSetup creates a submitter and pre-populates it with a task
@@ -539,12 +473,11 @@ func TestNewSubmitter_MissingFields(t *testing.T) {
 		name string
 		cfg  Config
 	}{
-		{"no log", Config{Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
-		{"no executor", Config{Log: slog.Default(), ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
-		{"no svc client", Config{Log: slog.Default(), Executor: &mockExecutor{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
-		{"no collector", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
-		{"zero device pk", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), BGPNamespace: "ns-vrf1"}},
-		{"no namespace", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey()}},
+		{"no log", Config{Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey()}},
+		{"no executor", Config{Log: slog.Default(), ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey()}},
+		{"no svc client", Config{Log: slog.Default(), Executor: &mockExecutor{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey()}},
+		{"no collector", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, LocalDevicePK: solana.NewWallet().PublicKey()}},
+		{"zero device pk", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector()}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -569,7 +502,6 @@ func TestTaskChannel_DropWhenFull(t *testing.T) {
 		ServiceabilityClient:    &mockSvcClient{data: &serviceability.ProgramData{}},
 		Collector:               noopCollector(),
 		LocalDevicePK:           devicePK,
-		BGPNamespace:            "ns-vrf1",
 		Interval:                time.Hour,
 		PeriodicRefreshInterval: 6 * time.Hour,
 		Clock:                   clockwork.NewFakeClock(),
@@ -603,5 +535,309 @@ func TestTaskChannel_DropWhenFull(t *testing.T) {
 	}
 	if !dropped.Load() {
 		t.Error("expected drop when channel full")
+	}
+}
+
+// ============================================================
+// Helpers for tick() and parseEstablished tests
+// ============================================================
+
+// fixedCollector returns a BGPCollector that serves a fixed established set.
+func fixedCollector(established map[string]struct{}) BGPCollector {
+	return func(_ context.Context) (map[string]struct{}, error) {
+		return established, nil
+	}
+}
+
+// makeActivatedUser returns a User activated on devicePK with the given /31 tunnelNet.
+func makeActivatedUser(devicePK solana.PublicKey, tunnelNet [5]byte) serviceability.User {
+	u := serviceability.User{}
+	copy(u.DevicePubKey[:], devicePK[:])
+	userPK := solana.NewWallet().PublicKey()
+	copy(u.PubKey[:], userPK[:])
+	u.TunnelNet = tunnelNet
+	u.Status = serviceability.UserStatusActivated
+	return u
+}
+
+// makeMulticastUser returns a multicast User activated on devicePK with the given /31 tunnelNet.
+func makeMulticastUser(devicePK solana.PublicKey, tunnelNet [5]byte) serviceability.User {
+	u := makeActivatedUser(devicePK, tunnelNet)
+	u.UserType = serviceability.UserTypeMulticast
+	return u
+}
+
+// ============================================================
+// tick() – BGP session detection via BGPCollector
+// ============================================================
+
+func TestTick_BGPUp(t *testing.T) {
+	devicePK := solana.NewWallet().PublicKey()
+	user := makeActivatedUser(devicePK, [5]byte{10, 0, 0, 0, 31})
+	userPK := solana.PublicKeyFromBytes(user.PubKey[:]).String()
+
+	exec := &mockExecutor{}
+	clk := clockwork.NewFakeClock()
+	svc := &mockSvcClient{data: &serviceability.ProgramData{Users: []serviceability.User{user}}}
+
+	col := fixedCollector(map[string]struct{}{"10.0.0.1": {}})
+	s := newTestSubmitter(t, clk, exec, svc, col, devicePK, 0, 6*time.Hour)
+	s.tick(context.Background())
+
+	s.mu.Lock()
+	enqueued := len(s.taskCh)
+	s.mu.Unlock()
+
+	if enqueued != 1 {
+		t.Fatalf("expected 1 task enqueued, got %d", enqueued)
+	}
+	task := <-s.taskCh
+	if task.status != serviceability.BGPStatusUp {
+		t.Errorf("expected Up task, got %v", task.status)
+	}
+	if solana.PublicKeyFromBytes(task.user.PubKey[:]).String() != userPK {
+		t.Errorf("unexpected user in task")
+	}
+}
+
+// TestTick_BGPUp_FirstIPInSlash31 verifies that the first IP in the /31 also
+// triggers an Up submission (not only the second IP).
+func TestTick_BGPUp_FirstIPInSlash31(t *testing.T) {
+	devicePK := solana.NewWallet().PublicKey()
+	user := makeActivatedUser(devicePK, [5]byte{10, 0, 0, 0, 31})
+
+	svc := &mockSvcClient{data: &serviceability.ProgramData{Users: []serviceability.User{user}}}
+	col := fixedCollector(map[string]struct{}{"10.0.0.0": {}})
+	s := newTestSubmitter(t, clockwork.NewFakeClock(), &mockExecutor{}, svc, col, devicePK, 0, 6*time.Hour)
+	s.tick(context.Background())
+
+	s.mu.Lock()
+	enqueued := len(s.taskCh)
+	s.mu.Unlock()
+
+	if enqueued != 1 {
+		t.Fatalf("expected 1 task enqueued, got %d", enqueued)
+	}
+	task := <-s.taskCh
+	if task.status != serviceability.BGPStatusUp {
+		t.Errorf("expected Up task, got %v", task.status)
+	}
+}
+
+// TestTick_BGPDown_PreviouslyUp verifies that an empty established set when the
+// user was previously Up results in a Down submission.
+func TestTick_BGPDown_PreviouslyUp(t *testing.T) {
+	devicePK := solana.NewWallet().PublicKey()
+	user := makeActivatedUser(devicePK, [5]byte{10, 0, 0, 0, 31})
+	userPK := solana.PublicKeyFromBytes(user.PubKey[:]).String()
+
+	clk := clockwork.NewFakeClock()
+	svc := &mockSvcClient{data: &serviceability.ProgramData{Users: []serviceability.User{user}}}
+	col := fixedCollector(map[string]struct{}{})
+	s := newTestSubmitter(t, clk, &mockExecutor{}, svc, col, devicePK, 0, 6*time.Hour)
+
+	s.mu.Lock()
+	s.userState[userPK] = &userState{
+		lastOnchainStatus: serviceability.BGPStatusUp,
+		lastWriteTime:     clk.Now().Add(-1 * time.Minute),
+	}
+	s.mu.Unlock()
+
+	s.tick(context.Background())
+
+	s.mu.Lock()
+	enqueued := len(s.taskCh)
+	s.mu.Unlock()
+
+	if enqueued != 1 {
+		t.Fatalf("expected 1 task enqueued, got %d", enqueued)
+	}
+	task := <-s.taskCh
+	if task.status != serviceability.BGPStatusDown {
+		t.Errorf("expected Down task, got %v", task.status)
+	}
+}
+
+// TestTick_CollectorError_NoTask verifies that a collector error causes tick to
+// abort without enqueueing any tasks.
+func TestTick_CollectorError_NoTask(t *testing.T) {
+	devicePK := solana.NewWallet().PublicKey()
+	user := makeActivatedUser(devicePK, [5]byte{10, 0, 0, 0, 31})
+	userPK := solana.PublicKeyFromBytes(user.PubKey[:]).String()
+
+	svc := &mockSvcClient{data: &serviceability.ProgramData{Users: []serviceability.User{user}}}
+	s := newTestSubmitter(t, clockwork.NewFakeClock(), &mockExecutor{}, svc,
+		func(_ context.Context) (map[string]struct{}, error) {
+			return nil, errors.New("gNMI unavailable")
+		}, devicePK, 0, 6*time.Hour)
+
+	s.mu.Lock()
+	s.userState[userPK] = &userState{lastOnchainStatus: serviceability.BGPStatusUp}
+	s.mu.Unlock()
+
+	s.tick(context.Background())
+
+	s.mu.Lock()
+	enqueued := len(s.taskCh)
+	s.mu.Unlock()
+
+	if enqueued != 0 {
+		t.Errorf("expected no tasks when collector fails, got %d", enqueued)
+	}
+}
+
+// TestTick_MulticastUser verifies that multicast users are handled identically
+// to regular users — the peer IP check is type-agnostic.
+func TestTick_MulticastUser(t *testing.T) {
+	devicePK := solana.NewWallet().PublicKey()
+	user := makeMulticastUser(devicePK, [5]byte{10, 0, 3, 0, 31})
+
+	svc := &mockSvcClient{data: &serviceability.ProgramData{Users: []serviceability.User{user}}}
+	col := fixedCollector(map[string]struct{}{"10.0.3.1": {}})
+	s := newTestSubmitter(t, clockwork.NewFakeClock(), &mockExecutor{}, svc, col, devicePK, 0, 6*time.Hour)
+	s.tick(context.Background())
+
+	s.mu.Lock()
+	enqueued := len(s.taskCh)
+	s.mu.Unlock()
+
+	if enqueued != 1 {
+		t.Fatalf("expected 1 task enqueued, got %d", enqueued)
+	}
+	task := <-s.taskCh
+	if task.status != serviceability.BGPStatusUp {
+		t.Errorf("expected Up task, got %v", task.status)
+	}
+}
+
+// ============================================================
+// parseEstablished
+// ============================================================
+
+func gnmiStateJSON(sessionState string) []byte {
+	b, _ := json.Marshal(map[string]string{
+		"openconfig-network-instance:session-state": sessionState,
+	})
+	return b
+}
+
+func buildGetResponse(neighborAddr, sessionState string) *gpb.GetResponse {
+	return &gpb.GetResponse{
+		Notification: []*gpb.Notification{
+			{
+				Update: []*gpb.Update{
+					{
+						Path: &gpb.Path{
+							Elem: []*gpb.PathElem{
+								{Name: "network-instances"},
+								{Name: "network-instance", Key: map[string]string{"name": "default"}},
+								{Name: "bgp"},
+								{Name: "neighbors"},
+								{Name: "neighbor", Key: map[string]string{"neighbor-address": neighborAddr}},
+								{Name: "state"},
+							},
+						},
+						Val: &gpb.TypedValue{
+							Value: &gpb.TypedValue_JsonIetfVal{JsonIetfVal: gnmiStateJSON(sessionState)},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestParseEstablished_ESTABLISHED(t *testing.T) {
+	resp := buildGetResponse("10.0.0.1", "ESTABLISHED")
+	got := parseEstablished(resp)
+	if _, ok := got["10.0.0.1"]; !ok {
+		t.Error("expected 10.0.0.1 in established set")
+	}
+	if len(got) != 1 {
+		t.Errorf("expected 1 entry, got %d", len(got))
+	}
+}
+
+func TestParseEstablished_NonEstablished(t *testing.T) {
+	for _, state := range []string{"IDLE", "ACTIVE", "CONNECT", "OPENSENT", "OPENCONFIRM"} {
+		resp := buildGetResponse("10.0.0.1", state)
+		got := parseEstablished(resp)
+		if _, ok := got["10.0.0.1"]; ok {
+			t.Errorf("state=%s: did not expect 10.0.0.1 in established set", state)
+		}
+	}
+}
+
+func TestParseEstablished_Multiple(t *testing.T) {
+	resp := &gpb.GetResponse{
+		Notification: []*gpb.Notification{
+			{
+				Update: []*gpb.Update{
+					{
+						Path: &gpb.Path{Elem: []*gpb.PathElem{
+							{Name: "neighbor", Key: map[string]string{"neighbor-address": "10.0.0.1"}},
+							{Name: "state"},
+						}},
+						Val: &gpb.TypedValue{Value: &gpb.TypedValue_JsonIetfVal{JsonIetfVal: gnmiStateJSON("ESTABLISHED")}},
+					},
+					{
+						Path: &gpb.Path{Elem: []*gpb.PathElem{
+							{Name: "neighbor", Key: map[string]string{"neighbor-address": "10.0.0.3"}},
+							{Name: "state"},
+						}},
+						Val: &gpb.TypedValue{Value: &gpb.TypedValue_JsonIetfVal{JsonIetfVal: gnmiStateJSON("ACTIVE")}},
+					},
+					{
+						Path: &gpb.Path{Elem: []*gpb.PathElem{
+							{Name: "neighbor", Key: map[string]string{"neighbor-address": "10.0.0.5"}},
+							{Name: "state"},
+						}},
+						Val: &gpb.TypedValue{Value: &gpb.TypedValue_JsonIetfVal{JsonIetfVal: gnmiStateJSON("ESTABLISHED")}},
+					},
+				},
+			},
+		},
+	}
+	got := parseEstablished(resp)
+	if _, ok := got["10.0.0.1"]; !ok {
+		t.Error("expected 10.0.0.1 in established set")
+	}
+	if _, ok := got["10.0.0.5"]; !ok {
+		t.Error("expected 10.0.0.5 in established set")
+	}
+	if _, ok := got["10.0.0.3"]; ok {
+		t.Error("did not expect 10.0.0.3 (ACTIVE) in established set")
+	}
+}
+
+func TestParseEstablished_NeighborAddressInPrefix(t *testing.T) {
+	// Some Arista responses place the neighbor key in the notification prefix.
+	resp := &gpb.GetResponse{
+		Notification: []*gpb.Notification{
+			{
+				Prefix: &gpb.Path{
+					Elem: []*gpb.PathElem{
+						{Name: "neighbor", Key: map[string]string{"neighbor-address": "10.0.1.0"}},
+					},
+				},
+				Update: []*gpb.Update{
+					{
+						Path: &gpb.Path{Elem: []*gpb.PathElem{{Name: "state"}}},
+						Val:  &gpb.TypedValue{Value: &gpb.TypedValue_JsonIetfVal{JsonIetfVal: gnmiStateJSON("ESTABLISHED")}},
+					},
+				},
+			},
+		},
+	}
+	got := parseEstablished(resp)
+	if _, ok := got["10.0.1.0"]; !ok {
+		t.Error("expected 10.0.1.0 in established set (address was in prefix)")
+	}
+}
+
+func TestParseEstablished_EmptyResponse(t *testing.T) {
+	got := parseEstablished(&gpb.GetResponse{})
+	if len(got) != 0 {
+		t.Errorf("expected empty set for empty response, got %d entries", len(got))
 	}
 }

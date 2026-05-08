@@ -3,6 +3,7 @@ package revdist
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"os"
 	"testing"
 
@@ -311,16 +312,52 @@ func TestCompatRewardShares(t *testing.T) {
 	client, _ := compatClient(t)
 	ctx := context.Background()
 
-	// Fetch config and use an older epoch that is more likely to have ledger records.
 	progConfig, err := client.FetchConfig(ctx)
 	if err != nil {
 		t.Fatalf("FetchConfig: %v", err)
 	}
-	epoch := progConfig.NextCompletedDZEpoch - 5
 
-	shares, err := client.FetchRewardShares(ctx, epoch)
-	if err != nil {
-		t.Fatalf("FetchRewardShares(%d): %v", epoch, err)
+	// Not every recent DZ epoch has a Shapley output record on the ledger
+	// (records can be absent or get pruned), so scan a small window of older
+	// epochs for the first one that does. Starting at next-5 follows the
+	// original heuristic of giving the most recent epochs time to settle.
+	const (
+		startOffset = 5
+		scanDepth   = 10
+	)
+	if progConfig.NextCompletedDZEpoch <= startOffset {
+		t.Skipf("NextCompletedDZEpoch=%d is too low to scan reward shares", progConfig.NextCompletedDZEpoch)
+	}
+	maxOffset := startOffset + scanDepth - 1
+	if uint64(maxOffset) >= progConfig.NextCompletedDZEpoch {
+		maxOffset = int(progConfig.NextCompletedDZEpoch - 1)
+	}
+
+	var (
+		shares  *ShapleyOutputStorage
+		epoch   uint64
+		missing []uint64
+	)
+	for offset := startOffset; offset <= maxOffset; offset++ {
+		candidate := progConfig.NextCompletedDZEpoch - uint64(offset)
+		s, err := client.FetchRewardShares(ctx, candidate)
+		if err == nil {
+			shares = s
+			epoch = candidate
+			break
+		}
+		if errors.Is(err, ErrAccountNotFound) {
+			missing = append(missing, candidate)
+			continue
+		}
+		t.Fatalf("FetchRewardShares(%d): %v", candidate, err)
+	}
+	if shares == nil {
+		t.Fatalf("no reward shares record found in epochs %v (next=%d)",
+			missing, progConfig.NextCompletedDZEpoch)
+	}
+	if len(missing) > 0 {
+		t.Logf("skipped epochs without records: %v", missing)
 	}
 
 	if shares.Epoch != epoch {

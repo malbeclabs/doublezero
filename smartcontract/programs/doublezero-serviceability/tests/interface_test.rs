@@ -608,6 +608,8 @@ async fn test_device_interfaces() {
             status: None,
             ip_net: None,
             node_segment_idx: None,
+            topology_count: 0,
+            update_topologies: false,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

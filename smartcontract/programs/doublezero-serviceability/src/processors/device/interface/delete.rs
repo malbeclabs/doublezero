@@ -163,6 +163,11 @@ pub fn process_delete_device_interface(
             // Deallocate node_segment_idx if it was allocated (only for Vpnv4 loopbacks)
             if iface.loopback_type == LoopbackType::Vpnv4 && iface.node_segment_idx != 0 {
                 deallocate_id(segment_routing_ids_ext, iface.node_segment_idx);
+
+                // Deallocate flex-algo node segments allocated alongside the loopback
+                for entry in &iface.flex_algo_node_segments {
+                    deallocate_id(segment_routing_ids_ext, entry.node_segment_idx);
+                }
             }
         }
 

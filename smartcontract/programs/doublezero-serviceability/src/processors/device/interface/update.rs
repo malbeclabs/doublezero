@@ -4,7 +4,7 @@ use crate::{
     helper::format_option_displayable,
     pda::get_resource_extension_pda,
     processors::{
-        resource::{allocate_specific_id, deallocate_id},
+        resource::{allocate_id, allocate_specific_id, deallocate_id},
         validation::validate_program_account,
     },
     resource::ResourceType,
@@ -19,6 +19,7 @@ use crate::{
             InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
             CYOA_DIA_INTERFACE_MTU, INTERFACE_MTU,
         },
+        topology::FlexAlgoNodeSegment,
     },
 };
 use borsh::BorshSerialize;
@@ -32,6 +33,7 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
+use std::collections::HashSet;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct DeviceInterfaceUpdateArgs {
@@ -48,6 +50,15 @@ pub struct DeviceInterfaceUpdateArgs {
     pub cir: Option<u64>,
     pub mtu: Option<u16>,
     pub routing_mode: Option<RoutingMode>,
+    /// Number of topology PDA accounts appended after segment_routing_ids.
+    /// Only consumed when update_topologies is true.
+    #[incremental(default = 0)]
+    pub topology_count: u8,
+    /// When true, the variadic topology accounts represent the desired set of
+    /// flex-algo topologies; the processor reconciles flex_algo_node_segments
+    /// (deallocate removed, allocate added). Only valid on Vpnv4 loopbacks.
+    #[incremental(default = false)]
+    pub update_topologies: bool,
 }
 
 impl fmt::Debug for DeviceInterfaceUpdateArgs {
@@ -56,7 +67,7 @@ impl fmt::Debug for DeviceInterfaceUpdateArgs {
             f,
             "name: {}, loopback_type: {}, vlan_id: {}, user_tunnel_endpoint: {}, status: {}, \
 ip_net: {}, node_segment_idx: {}, interface_cyoa: {}, interface_dia: {}, bandwidth: {}, \
-cir: {}, mtu: {}, routing_mode: {}",
+cir: {}, mtu: {}, routing_mode: {}, topology_count: {}, update_topologies: {}",
             self.name,
             format_option!(self.loopback_type),
             format_option!(self.vlan_id),
@@ -70,6 +81,8 @@ cir: {}, mtu: {}, routing_mode: {}",
             format_option!(self.cir),
             format_option!(self.mtu),
             format_option!(self.routing_mode),
+            self.topology_count,
+            self.update_topologies,
         )
     }
 }
@@ -85,17 +98,31 @@ pub fn process_update_device_interface(
     let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: SegmentRoutingIds resource extension account (when node_segment_idx
-    // is being updated with onchain allocation enabled).
-    // Account layout WITH onchain allocation (node_segment_idx is Some):
+    // Optional: SegmentRoutingIds resource extension account, present when
+    // node_segment_idx is being updated under onchain allocation, OR when
+    // reconciling flex-algo topologies.
+    // Account layout when reconciling topologies:
+    //   [device, contributor, globalstate, segment_routing_ids_ext, topo_0..N, payer, system]
+    // Account layout for node_segment_idx under onchain allocation:
     //   [device, contributor, globalstate, segment_routing_ids_ext, payer, system]
     // Account layout WITHOUT (legacy):
     //   [device, contributor, globalstate, payer, system]
-    let segment_routing_ids_ext = if accounts.len() > 5 {
+    //
+    // The presence of update_topologies forces seg_ext consumption; otherwise
+    // fall back to the legacy account-count heuristic so callers that set
+    // node_segment_idx without onchain allocation enabled still work.
+    let segment_routing_ids_ext = if value.update_topologies || accounts.len() > 5 {
         Some(next_account_info(accounts_iter)?)
     } else {
         None
     };
+
+    let mut topology_accounts = Vec::new();
+    if value.update_topologies {
+        for _ in 0..value.topology_count {
+            topology_accounts.push(next_account_info(accounts_iter)?);
+        }
+    }
 
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
@@ -224,6 +251,69 @@ pub fn process_update_device_interface(
         }
 
         iface.node_segment_idx = node_segment_idx;
+    }
+
+    // Reconcile flex-algo node segments against the desired topology set.
+    // Existing entries whose topology is still in the set keep their SR ID; entries
+    // for removed topologies have their SR ID deallocated; new topologies get a
+    // freshly allocated SR ID.
+    if value.update_topologies {
+        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+
+        if iface.loopback_type != LoopbackType::Vpnv4 {
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+
+        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
+            return Err(DoubleZeroError::FeatureNotEnabled.into());
+        }
+
+        let seg_ext = segment_routing_ids_ext.ok_or(DoubleZeroError::InvalidArgument)?;
+
+        let (expected_seg_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
+        validate_program_account!(
+            seg_ext,
+            program_id,
+            writable = true,
+            pda = &expected_seg_pda,
+            "SegmentRoutingIds"
+        );
+
+        let mut desired: HashSet<Pubkey> = HashSet::new();
+        for topo_account in &topology_accounts {
+            assert_eq!(
+                topo_account.owner, program_id,
+                "Invalid Topology Account Owner"
+            );
+            assert!(!topo_account.data_is_empty(), "Topology account is empty");
+            if !desired.insert(*topo_account.key) {
+                return Err(DoubleZeroError::InvalidArgument.into());
+            }
+        }
+
+        let mut kept: Vec<FlexAlgoNodeSegment> =
+            Vec::with_capacity(iface.flex_algo_node_segments.len());
+        for entry in iface.flex_algo_node_segments.drain(..) {
+            if desired.contains(&entry.topology) {
+                kept.push(entry);
+            } else {
+                deallocate_id(seg_ext, entry.node_segment_idx);
+            }
+        }
+        let current: HashSet<Pubkey> = kept.iter().map(|e| e.topology).collect();
+        for topology in &desired {
+            if !current.contains(topology) {
+                let node_segment_idx = allocate_id(seg_ext)?;
+                kept.push(FlexAlgoNodeSegment {
+                    topology: *topology,
+                    node_segment_idx,
+                });
+            }
+        }
+        iface.flex_algo_node_segments = kept;
     }
 
     // CYOA interfaces must have an ip_net — prevent setting CYOA without ip_net

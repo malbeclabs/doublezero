@@ -519,7 +519,7 @@ impl DoubleZeroInstruction {
             Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 108
             Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 109
             Self::AssignTopologyNodeSegments(_) => "AssignTopologyNodeSegments".to_string(), // variant 110
-            Self::Deprecated111() => "Deprecated111".to_string(),    // variant 111
+            Self::Deprecated111() => "Deprecated111".to_string(), // variant 111
         }
     }
 
@@ -1236,6 +1236,8 @@ mod tests {
                 ip_net: Some("10.0.0.0/3".parse().unwrap()),
                 node_segment_idx: Some(1),
                 status: None,
+                topology_count: 0,
+                update_topologies: false,
             }),
             "UpdateDeviceInterface",
         );

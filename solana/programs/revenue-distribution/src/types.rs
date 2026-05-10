@@ -22,7 +22,7 @@ use solana_pubkey::Pubkey;
 pub struct DoubleZeroEpoch(u64);
 
 impl DoubleZeroEpoch {
-    pub fn new(epoch: u64) -> Self {
+    pub const fn new(epoch: u64) -> Self {
         Self(epoch)
     }
 

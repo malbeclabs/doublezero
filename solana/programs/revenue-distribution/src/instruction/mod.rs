@@ -118,7 +118,7 @@ pub enum RevenueDistributionInstructionData {
     /// This creates a `RewardsIntegration` PDA that stores the integration's
     /// program ID. Registration is a prerequisite for that program to drive
     /// `DistributeIntegrationRewards`.
-    InitializeRewardsIntegration(Pubkey),
+    InitializeRewardsIntegration,
 
     /// CPIs into a whitelisted integration's `WithdrawIntegrationRewards`
     /// handler and credits the transferred 2Z into the current epoch's
@@ -277,9 +277,7 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
                     .map(Self::SetDistributionEconomicBurnRate)
             }
             Self::WITHDRAW_SOLANA_VALIDATOR_DEPOSIT => Ok(Self::WithdrawSolanaValidatorDeposit),
-            Self::INITIALIZE_REWARDS_INTEGRATION => {
-                BorshDeserialize::deserialize_reader(reader).map(Self::InitializeRewardsIntegration)
-            }
+            Self::INITIALIZE_REWARDS_INTEGRATION => Ok(Self::InitializeRewardsIntegration),
             Self::COLLECT_INTEGRATION_REWARDS => Ok(Self::CollectIntegrationRewards),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -383,9 +381,8 @@ impl BorshSerialize for RevenueDistributionInstructionData {
             Self::WithdrawSolanaValidatorDeposit => {
                 Self::WITHDRAW_SOLANA_VALIDATOR_DEPOSIT.serialize(writer)
             }
-            Self::InitializeRewardsIntegration(integration_program_id) => {
-                Self::INITIALIZE_REWARDS_INTEGRATION.serialize(writer)?;
-                integration_program_id.serialize(writer)
+            Self::InitializeRewardsIntegration => {
+                Self::INITIALIZE_REWARDS_INTEGRATION.serialize(writer)
             }
             Self::CollectIntegrationRewards => Self::COLLECT_INTEGRATION_REWARDS.serialize(writer),
         }

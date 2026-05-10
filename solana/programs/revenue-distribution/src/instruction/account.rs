@@ -88,6 +88,57 @@ impl From<SetAdminAccounts> for Vec<AccountMeta> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MigrateProgramAccountsAccounts {
+    pub program_data_key: Pubkey,
+    pub upgrade_authority_key: Pubkey,
+    pub journal_key: Pubkey,
+    pub distribution_keys: Vec<Pubkey>,
+}
+
+impl MigrateProgramAccountsAccounts {
+    pub fn new(
+        program_id: &Pubkey,
+        upgrade_authority_key: &Pubkey,
+        dz_epochs: &[DoubleZeroEpoch],
+    ) -> Self {
+        Self {
+            program_data_key: get_program_data_address(program_id).0,
+            upgrade_authority_key: *upgrade_authority_key,
+            journal_key: Journal::find_address().0,
+            distribution_keys: dz_epochs
+                .iter()
+                .map(|dz_epoch| Distribution::find_address(*dz_epoch).0)
+                .collect(),
+        }
+    }
+}
+
+impl From<MigrateProgramAccountsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: MigrateProgramAccountsAccounts) -> Self {
+        let MigrateProgramAccountsAccounts {
+            program_data_key,
+            upgrade_authority_key,
+            journal_key,
+            distribution_keys,
+        } = accounts;
+
+        let mut account_metas = vec![
+            AccountMeta::new_readonly(program_data_key, false),
+            AccountMeta::new_readonly(upgrade_authority_key, true),
+            AccountMeta::new_readonly(journal_key, false),
+        ];
+
+        account_metas.extend(
+            distribution_keys
+                .into_iter()
+                .map(|key| AccountMeta::new(key, false)),
+        );
+
+        account_metas
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigureProgramAccounts {
     pub program_config_key: Pubkey,
     pub admin_key: Pubkey,
@@ -1058,9 +1109,9 @@ impl From<InitializeRewardsIntegrationAccounts> for Vec<AccountMeta> {
         vec![
             AccountMeta::new_readonly(program_config_key, false),
             AccountMeta::new_readonly(admin_key, true),
+            AccountMeta::new_readonly(integration_program_key, false),
             AccountMeta::new(payer_key, true),
             AccountMeta::new(new_rewards_integration_key, false),
-            AccountMeta::new_readonly(integration_program_key, false),
             AccountMeta::new(journal_key, false),
             AccountMeta::new_readonly(system_program::ID, false),
         ]

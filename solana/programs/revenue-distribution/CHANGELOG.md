@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## [v0.3.7]
+
+- migrate distributions to fix integrations_count_snapshot
+- simplify initialize-rewards-integration interface
+
 ## [v0.3.6]
 
 - validate destination authority in withdraw integration rewards handler (#119)
@@ -102,3 +107,4 @@
 [v0.3.4]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.3.4
 [v0.3.5]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.3.5
 [v0.3.6]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.3.6
+[v0.3.7]: https://github.com/doublezerofoundation/doublezero-solana/tree/revenue-distribution/v0.3.7

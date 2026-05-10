@@ -37,7 +37,7 @@ use crate::{
         ProgramConfig, RecipientShare, RecipientShares, RelayParameters, RewardsIntegration,
         SolanaValidatorDeposit, SolanaValidatorFeeParameters,
     },
-    types::{BurnRate, ByteFlags, RewardShare, SolanaValidatorDebt, ValidatorFee},
+    types::{BurnRate, ByteFlags, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, ValidatorFee},
     DOUBLEZERO_MINT_KEY, ID,
 };
 
@@ -142,9 +142,9 @@ fn try_process_instruction(
         RevenueDistributionInstructionData::WithdrawSolanaValidatorDeposit => {
             try_withdraw_solana_validator_deposit(accounts)
         }
-        RevenueDistributionInstructionData::InitializeRewardsIntegration(
-            integration_program_id,
-        ) => try_initialize_rewards_integration(accounts, integration_program_id),
+        RevenueDistributionInstructionData::InitializeRewardsIntegration => {
+            try_initialize_rewards_integration(accounts)
+        }
         RevenueDistributionInstructionData::CollectIntegrationRewards => {
             try_collect_integration_rewards(accounts)
         }
@@ -1788,18 +1788,15 @@ fn try_initialize_solana_validator_deposit(
     Ok(())
 }
 
-fn try_initialize_rewards_integration(
-    accounts: &[AccountInfo],
-    integration_program_id: Pubkey,
-) -> ProgramResult {
+fn try_initialize_rewards_integration(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Initialize rewards integration");
 
     // We expect the following accounts for this instruction:
     // - 0: Program config.
     // - 1: Admin.
-    // - 2: Payer (funder for new account).
-    // - 3: New rewards integration.
-    // - 4: Integration program (must be executable).
+    // - 2: Integration program (must be executable).
+    // - 3: Payer (funder for new account).
+    // - 4: New rewards integration.
     // - 5: Journal (writable; its integrations_count gets upticked).
     // - 6: System program.
     let mut accounts_iter = accounts.iter().enumerate();
@@ -1810,13 +1807,26 @@ fn try_initialize_rewards_integration(
     let _authorized_use =
         VerifiedProgramAuthority::try_next_accounts(&mut accounts_iter, Authority::Admin)?;
 
-    // Account 2 must be a signer and writable because it will send lamports to
+    // Account 2 must be the integration program. It must be executable. Its
+    // pubkey is the source of truth for the integration's program ID — the
+    // PDA seeds and the value persisted into RewardsIntegration both come
+    // from it.
+    let (_, integration_program_info) = try_next_enumerated_account(
+        &mut accounts_iter,
+        NextAccountOptions {
+            must_be_executable: true,
+            ..Default::default()
+        },
+    )?;
+    let integration_program_id = *integration_program_info.key;
+
+    // Account 3 must be a signer and writable because it will send lamports to
     // the new rewards integration account. We do not check these fields because
     // the create-account workflow requires that this account is writable and a
     // signer.
     let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
-    // Account 3 must be the new rewards integration account. The create-account
+    // Account 4 must be the new rewards integration account. The create-account
     // workflow requires that this account does not exist yet and is writable.
     let (account_index, new_rewards_integration_info) =
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
@@ -1830,24 +1840,6 @@ fn try_initialize_rewards_integration(
             account_index
         );
         return Err(ProgramError::InvalidSeeds);
-    }
-
-    // Account 4 must be the integration program. Its pubkey must match the
-    // program ID carried in the instruction data and it must be executable.
-    let (account_index, integration_program_info) = try_next_enumerated_account(
-        &mut accounts_iter,
-        NextAccountOptions {
-            must_be_executable: true,
-            ..Default::default()
-        },
-    )?;
-
-    if integration_program_info.key != &integration_program_id {
-        msg!(
-            "Integration program key mismatch (account {})",
-            account_index
-        );
-        return Err(ProgramError::InvalidAccountData);
     }
 
     try_create_account(
@@ -3315,16 +3307,26 @@ fn try_process_remaining_data_leaf_index(
 ///
 /// # Why are we migrating?
 ///
-/// After the last migration, the migrated bit is set to true. This instruction
-/// will reset this bit to false.
+/// `Distribution.integrations_count_snapshot` was introduced after some
+/// distributions had already been initialized, leaving those accounts stuck
+/// at `snapshot = 0`. This instruction overwrites that field with the current
+/// `Journal.integrations_count` for each distribution passed in — exactly the
+/// value `try_initialize_distribution` would have written had the field been
+/// wired correctly at init time. Only distributions whose `dz_epoch` is at or
+/// above the floor below are eligible.
 fn try_migrate_program_accounts(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Migrate program accounts");
+
+    // The earliest DZ epoch this migration is allowed to touch. Distributions
+    // older than this floor are out of scope and reject the migration.
+    const MIN_DZ_EPOCH: DoubleZeroEpoch = DoubleZeroEpoch::new(140);
 
     // We expect the following accounts for this instruction:
     // - 0: This program's program data account (BPF Loader Upgradeable
     //      program).
     // - 1: The program's owner (i.e., upgrade authority).
-    // - 2: Program config.
+    // - 2: Journal.
+    // - 3..N: Distributions to repair (writable).
     let mut accounts_iter = accounts.iter().enumerate();
 
     // Account 0 must be the program data belonging to this program.
@@ -3332,12 +3334,28 @@ fn try_migrate_program_accounts(accounts: &[AccountInfo]) -> ProgramResult {
     // authority).
     UpgradeAuthority::try_next_accounts(&mut accounts_iter, &ID)?;
 
-    // Account 2 must be the program config.
-    let mut program_config =
-        ZeroCopyMutAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+    // Account 2 must be the journal. We only need to read its
+    // integrations_count to populate the snapshot.
+    let journal = ZeroCopyAccount::<Journal>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+    let integrations_count_snapshot = journal.integrations_count;
 
-    program_config.set_is_migrated(false);
-    msg!("Set flag is_migrated to false");
+    // Remaining accounts must each be a writable Distribution PDA owned by
+    // this program. ZeroCopyMutAccount enforces all three.
+    while accounts_iter.len() != 0 {
+        let mut distribution =
+            ZeroCopyMutAccount::<Distribution>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+        if distribution.dz_epoch < MIN_DZ_EPOCH {
+            msg!(
+                "DZ epoch {} is below migration floor {}",
+                distribution.dz_epoch,
+                MIN_DZ_EPOCH
+            );
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        distribution.integrations_count_snapshot = integrations_count_snapshot;
+    }
 
     Ok(())
 }

@@ -44,12 +44,11 @@ async fn setup_for_initialize_rewards_integration() -> InitializeRewardsIntegrat
 
 fn build_initialize_rewards_integration_ix(
     accounts: InitializeRewardsIntegrationAccounts,
-    integration_program_id: &Pubkey,
 ) -> solana_sdk::instruction::Instruction {
     try_build_instruction(
         &ID,
         accounts,
-        &RevenueDistributionInstructionData::InitializeRewardsIntegration(*integration_program_id),
+        &RevenueDistributionInstructionData::InitializeRewardsIntegration,
     )
     .unwrap()
 }
@@ -105,14 +104,11 @@ async fn test_initialize_rewards_integration_unauthorized() {
     let impostor_signer = Keypair::new();
     let payer_key = test_setup.payer_signer().pubkey();
 
-    let ix = build_initialize_rewards_integration_ix(
-        InitializeRewardsIntegrationAccounts::new(
-            &impostor_signer.pubkey(),
-            &payer_key,
-            &integration_program_id,
-        ),
+    let ix = build_initialize_rewards_integration_ix(InitializeRewardsIntegrationAccounts::new(
+        &impostor_signer.pubkey(),
+        &payer_key,
         &integration_program_id,
-    );
+    ));
 
     let (tx_err, _) = test_setup
         .unwrap_simulation_error(&[ix], &[&impostor_signer])
@@ -140,14 +136,11 @@ async fn test_initialize_rewards_integration_not_executable() {
     let non_executable_program_id = DOUBLEZERO_MINT_KEY;
     let payer_key = test_setup.payer_signer().pubkey();
 
-    let ix = build_initialize_rewards_integration_ix(
-        InitializeRewardsIntegrationAccounts::new(
-            &admin_signer.pubkey(),
-            &payer_key,
-            &non_executable_program_id,
-        ),
+    let ix = build_initialize_rewards_integration_ix(InitializeRewardsIntegrationAccounts::new(
+        &admin_signer.pubkey(),
+        &payer_key,
         &non_executable_program_id,
-    );
+    ));
 
     let (tx_err, _) = test_setup
         .unwrap_simulation_error(&[ix], &[&admin_signer])
@@ -180,7 +173,7 @@ async fn test_initialize_rewards_integration_wrong_seeds() {
     );
     accounts.new_rewards_integration_key = Pubkey::new_unique();
 
-    let ix = build_initialize_rewards_integration_ix(accounts, &integration_program_id);
+    let ix = build_initialize_rewards_integration_ix(accounts);
 
     let (tx_err, _) = test_setup
         .unwrap_simulation_error(&[ix], &[&admin_signer])
@@ -210,14 +203,11 @@ async fn test_initialize_rewards_integration_already_registered() {
         .unwrap();
 
     let payer_key = test_setup.payer_signer().pubkey();
-    let ix = build_initialize_rewards_integration_ix(
-        InitializeRewardsIntegrationAccounts::new(
-            &admin_signer.pubkey(),
-            &payer_key,
-            &integration_program_id,
-        ),
+    let ix = build_initialize_rewards_integration_ix(InitializeRewardsIntegrationAccounts::new(
+        &admin_signer.pubkey(),
+        &payer_key,
         &integration_program_id,
-    );
+    ));
 
     let (tx_err, _) = test_setup
         .unwrap_simulation_error(&[ix], &[&admin_signer])

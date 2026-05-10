@@ -889,9 +889,7 @@ impl ProgramTestWithOwner {
                 &payer_signer.pubkey(),
                 integration_program_id,
             ),
-            &RevenueDistributionInstructionData::InitializeRewardsIntegration(
-                *integration_program_id,
-            ),
+            &RevenueDistributionInstructionData::InitializeRewardsIntegration,
         )
         .unwrap();
 

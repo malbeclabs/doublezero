@@ -705,7 +705,7 @@ impl Validate for Device {
         // Public IP must be a global address
         if self.device_type != DeviceType::Transit && !is_global(self.public_ip) {
             msg!("Invalid public IP: {}", self.public_ip);
-            return Err(DoubleZeroError::InvalidClientIp);
+            return Err(DoubleZeroError::InvalidPublicIp);
         }
         // Device prefixes must be present
         if self.dz_prefixes.is_empty() {
@@ -968,7 +968,7 @@ mod tests {
     }
 
     #[test]
-    fn test_state_device_validate_error_invalid_client_ip() {
+    fn test_state_device_validate_error_invalid_public_ip() {
         let val = Device {
             account_type: AccountType::Device,
             owner: Pubkey::new_unique(),
@@ -1000,7 +1000,7 @@ mod tests {
             max_multicast_publishers: 0,
         };
         let err = val.validate();
-        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidPublicIp);
     }
 
     #[test]
@@ -1460,7 +1460,7 @@ mod test_device_validate_errors {
         device.device_type = DeviceType::Edge;
         device.public_ip = "192.168.0.1".parse().unwrap();
         let err = device.validate();
-        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidPublicIp);
     }
 
     #[test]
@@ -1469,7 +1469,7 @@ mod test_device_validate_errors {
         device.device_type = DeviceType::Hybrid;
         device.public_ip = "192.168.0.1".parse().unwrap();
         let err = device.validate();
-        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidClientIp);
+        assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidPublicIp);
     }
 
     #[test]

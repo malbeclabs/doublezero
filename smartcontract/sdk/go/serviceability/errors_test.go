@@ -147,21 +147,21 @@ func TestFormatRPCError(t *testing.T) {
 				"err": map[string]any{
 					"InstructionError": []any{
 						json.Number("1"),
-						map[string]any{"Custom": json.Number("26")},
+						map[string]any{"Custom": json.Number("62")},
 					},
 				},
 				"logs": []any{
 					"Program invoke [1]",
 					"Program log: Instruction: SetDeviceHealth(health: ReadyForUsers)",
 					"Program log: Invalid public IP: 0.1.2.3",
-					"Program failed: custom program error: 0x1a",
+					"Program failed: custom program error: 0x3e",
 				},
 			},
 		}
 		// Wrap it like executeTransaction does.
 		wrapped := fmt.Errorf("failed to send transaction: %w", rpcErr)
 		msg := formatRPCError(wrapped)
-		assert.Equal(t, "InvalidClientIp (program logs: [Invalid public IP: 0.1.2.3])", msg)
+		assert.Equal(t, "InvalidPublicIp (program logs: [Invalid public IP: 0.1.2.3])", msg)
 	})
 
 	t.Run("known code without interesting logs", func(t *testing.T) {

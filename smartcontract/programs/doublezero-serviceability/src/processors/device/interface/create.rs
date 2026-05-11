@@ -31,6 +31,7 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
+use std::collections::HashSet;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct DeviceInterfaceCreateArgs {
@@ -231,6 +232,7 @@ pub fn process_create_device_interface(
                 node_segment_idx = allocate_id(segment_routing_ids_ext)?;
 
                 // Allocate a flex-algo node segment for each topology
+                let mut seen: HashSet<Pubkey> = HashSet::with_capacity(topology_accounts.len());
                 for topo_account in &topology_accounts {
                     assert_eq!(
                         topo_account.owner, program_id,
@@ -243,6 +245,9 @@ pub fn process_create_device_interface(
                         AccountType::Topology,
                         "Invalid Topology Account Type"
                     );
+                    if !seen.insert(*topo_account.key) {
+                        return Err(DoubleZeroError::InvalidArgument.into());
+                    }
                     let topo_segment_idx = allocate_id(segment_routing_ids_ext)?;
                     flex_algo_node_segments.push(FlexAlgoNodeSegment {
                         topology: *topo_account.key,

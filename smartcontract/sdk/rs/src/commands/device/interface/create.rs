@@ -54,7 +54,16 @@ impl CreateDeviceInterfaceCommand {
             AccountMeta::new(globalstate_pubkey, false),
         ];
 
-        let mut topology_count: u8 = 0;
+        let topology_count: u8 =
+            if use_onchain_allocation && self.loopback_type == LoopbackType::Vpnv4 {
+                let n = self.topology_names.len();
+                u8::try_from(n).map_err(|_| {
+                    eyre::eyre!("too many topologies for one CreateDeviceInterface call: {n} > 255")
+                })?
+            } else {
+                0
+            };
+
         if use_onchain_allocation {
             let (device_tunnel_block_ext, _, _) = get_resource_extension_pda(
                 &client.get_program_id(),
@@ -73,7 +82,6 @@ impl CreateDeviceInterfaceCommand {
                 for name in &self.topology_names {
                     let (topology_pda, _) = get_topology_pda(&client.get_program_id(), name);
                     accounts.push(AccountMeta::new_readonly(topology_pda, false));
-                    topology_count += 1;
                 }
             }
         }

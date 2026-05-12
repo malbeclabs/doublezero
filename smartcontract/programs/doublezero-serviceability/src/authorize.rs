@@ -623,7 +623,7 @@ mod tests {
         let program_id = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
         let mut gs = gs_with_foundation(&payer);
-        gs.feature_flags = FeatureFlag::OnChainAllocation.to_mask(); // unrelated flag
+        gs.feature_flags = FeatureFlag::OnChainAllocationDeprecated.to_mask(); // unrelated flag
         assert!(authorize_legacy(&program_id, &payer, &gs, permission_flags::FOUNDATION).is_ok());
     }
 

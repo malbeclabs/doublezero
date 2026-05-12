@@ -8,17 +8,10 @@ use doublezero_serviceability::{
     },
     processors::{
         contributor::create::ContributorCreateArgs,
-        device::{
-            activate::DeviceActivateArgs,
-            create::DeviceCreateArgs,
-            interface::{
-                activate::DeviceInterfaceActivateArgs, create::DeviceInterfaceCreateArgs,
-                unlink::DeviceInterfaceUnlinkArgs,
-            },
-        },
+        device::{create::DeviceCreateArgs, interface::create::DeviceInterfaceCreateArgs},
         exchange::create::ExchangeCreateArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
-        link::{activate::LinkActivateArgs, create::LinkCreateArgs, update::LinkUpdateArgs},
+        link::{create::LinkCreateArgs, update::LinkUpdateArgs},
         location::create::LocationCreateArgs,
         topology::{
             assign_node_segments::AssignTopologyNodeSegmentsArgs, clear::TopologyClearArgs,
@@ -629,9 +622,19 @@ async fn setup_wan_link(
     )
     .await;
 
-    // Device A
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+
+    // Device A (atomic create+activate)
     let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
     let (device_a_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (device_a_tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_a_pubkey, 0));
+    let (device_a_dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_a_pubkey, 0));
     execute_transaction(
         banks_client,
         recent_blockhash,
@@ -644,7 +647,7 @@ async fn setup_wan_link(
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
@@ -652,12 +655,15 @@ async fn setup_wan_link(
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(device_a_tunnel_ids_pda, false),
+            AccountMeta::new(device_a_dz_prefix_pda, false),
         ],
         payer,
     )
     .await;
 
-    // Device A interface
+    // Device A interface (atomic create; physical → Unlinked)
     execute_transaction(
         banks_client,
         recent_blockhash,
@@ -674,38 +680,27 @@ async fn setup_wan_link(
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
             topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_a_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
         ],
         payer,
     )
     .await;
 
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
-            name: "Ethernet0".to_string(),
-            ip_net: "10.0.0.0/31".parse().unwrap(),
-            node_segment_idx: 0,
-        }),
-        vec![
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-
-    // Device Z
+    // Device Z (atomic create+activate)
     let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
     let (device_z_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
+    let (device_z_tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_z_pubkey, 0));
+    let (device_z_dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_z_pubkey, 0));
     execute_transaction(
         banks_client,
         recent_blockhash,
@@ -718,7 +713,7 @@ async fn setup_wan_link(
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
@@ -726,12 +721,15 @@ async fn setup_wan_link(
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(device_z_tunnel_ids_pda, false),
+            AccountMeta::new(device_z_dz_prefix_pda, false),
         ],
         payer,
     )
     .await;
 
-    // Device Z interface
+    // Device Z interface (atomic create; physical → Unlinked)
     execute_transaction(
         banks_client,
         recent_blockhash,
@@ -748,68 +746,22 @@ async fn setup_wan_link(
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
             topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
         ],
         payer,
     )
     .await;
 
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
-            name: "Ethernet1".to_string(),
-            ip_net: "10.0.0.1/31".parse().unwrap(),
-            node_segment_idx: 0,
-        }),
-        vec![
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-
-    // Unlink interfaces (make them available for linking)
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "Ethernet0".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "Ethernet1".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-
-    // Create link (unicast-default topology must already exist at this point so
-    // CreateLink can auto-tag the link with it).
+    // Create link (atomic create+activate). Interfaces are already Unlinked from
+    // atomic create, so no separate Unlink call is needed.
     let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
     let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
     let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
@@ -827,7 +779,7 @@ async fn setup_wan_link(
             side_a_iface_name: "Ethernet0".to_string(),
             side_z_iface_name: Some("Ethernet1".to_string()),
             desired_status: Some(LinkDesiredStatus::Activated),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(link_pubkey, false),
@@ -836,26 +788,8 @@ async fn setup_wan_link(
             AccountMeta::new(device_z_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(unicast_default_pda, false),
-        ],
-        payer,
-    )
-    .await;
-
-    // Activate link
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
-            tunnel_id: 500,
-            tunnel_net: "10.100.0.0/30".parse().unwrap(),
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(link_pubkey, false),
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
         ],
         payer,
     )
@@ -1598,13 +1532,15 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
     )
     .await;
 
-    // Step 4: Create Device
+    // Step 4: Create Device (atomic create+activate with onchain allocation)
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
     let (tunnel_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
     let (dz_prefix_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1617,27 +1553,13 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Step 5: Activate Device
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(globalconfig_pubkey, false),
             AccountMeta::new(tunnel_ids_pda, false),
@@ -1647,7 +1569,7 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
     )
     .await;
 
-    // Step 6: Create a Vpnv4 loopback interface
+    // Step 5: Create a Vpnv4 loopback interface (atomic onchain allocation)
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1664,19 +1586,21 @@ async fn test_topology_backfill_populates_vpnv4_loopbacks() {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
             topology_count: 0,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
         ],
         &payer,
     )
     .await;
 
-    // Step 7: Create topology WITHOUT passing device accounts — no backfill at create time
+    // Step 6: Create topology WITHOUT passing device accounts — no backfill at create time
     create_topology(
         &mut banks_client,
         program_id,
@@ -1897,7 +1821,7 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
+            feature_flags: FeatureFlag::OnChainAllocationDeprecated.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
@@ -1970,7 +1894,7 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     )
     .await;
 
-    // Step 4: Create Device
+    // Step 4: Create Device (atomic create+activate with onchain allocation)
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
     let (tunnel_ids_pda, _, _) =
@@ -1989,27 +1913,13 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Step 5: Activate Device
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(globalconfig_pubkey, false),
             AccountMeta::new(tunnel_ids_pda, false),
@@ -2019,7 +1929,7 @@ async fn test_topology_backfill_allocates_sr_id_from_onchain_resource() {
     )
     .await;
 
-    // Step 6: Create a Vpnv4 loopback with onchain allocation. The interface is
+    // Step 5: Create a Vpnv4 loopback with onchain allocation. The interface is
     // created and activated atomically — the IP is drawn from DeviceTunnelBlock
     // and the base node_segment_idx is drawn from SegmentRoutingIds (first free
     // ID = 1), marking that ID as in use in the resource bitmap.

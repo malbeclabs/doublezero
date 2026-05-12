@@ -11,11 +11,11 @@ use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct SetFeatureFlagsCliCommand {
-    /// Feature flags to enable (comma-separated, e.g. --enable onchain-allocation)
+    /// Feature flags to enable (comma-separated, e.g. --enable require-permission-accounts)
     #[arg(long, value_delimiter = ',')]
     pub enable: Vec<String>,
 
-    /// Feature flags to disable (comma-separated, e.g. --disable onchain-allocation)
+    /// Feature flags to disable (comma-separated, e.g. --disable require-permission-accounts)
     #[arg(long, value_delimiter = ',')]
     pub disable: Vec<String>,
 }
@@ -115,7 +115,7 @@ mod tests {
 
         let mut output = Vec::new();
         let res = SetFeatureFlagsCliCommand {
-            enable: vec!["onchain-allocation".to_string()],
+            enable: vec!["onchain-allocation-deprecated".to_string()],
             disable: vec![],
         }
         .execute(&client, &mut output);
@@ -146,7 +146,7 @@ mod tests {
         let mut output = Vec::new();
         let res = SetFeatureFlagsCliCommand {
             enable: vec![],
-            disable: vec!["onchain-allocation".to_string()],
+            disable: vec!["onchain-allocation-deprecated".to_string()],
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -178,7 +178,7 @@ mod tests {
         let mut output = Vec::new();
         let res = SetFeatureFlagsCliCommand {
             enable: vec![],
-            disable: vec!["onchain-allocation".to_string()],
+            disable: vec!["onchain-allocation-deprecated".to_string()],
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

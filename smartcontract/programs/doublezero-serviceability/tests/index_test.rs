@@ -5,6 +5,7 @@ use doublezero_serviceability::{
         index::{create::IndexCreateArgs, delete::IndexDeleteArgs},
         multicastgroup::create::MulticastGroupCreateArgs,
     },
+    resource::ResourceType,
     seeds::SEED_MULTICAST_GROUP,
     state::accounttype::AccountType,
 };
@@ -39,11 +40,15 @@ async fn create_multicast_group(
             code: code.to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         payer,
     )

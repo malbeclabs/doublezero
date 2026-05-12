@@ -4,11 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
 )
+
+// ClickhouseReader is an interface for reading from ClickHouse.
+// It's satisfied by *sql.DB and can be easily mocked for testing.
+type ClickhouseReader interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
 
 type IfIndexRecord struct {
 	Pubkey      string `ch:"pubkey"`
@@ -19,31 +25,40 @@ type IfIndexRecord struct {
 }
 
 type IfNameAnnotator struct {
-	name   string
-	chConn *sql.DB
-	cache  map[string]string // key is a composite key of exporterIp:ifindex; val is ifname
-	mu     sync.RWMutex
+	name    string
+	querier ClickhouseReader
+	logger  *slog.Logger
+	cache   map[string]string // key is a composite key of exporterIp:ifindex; val is ifname
+	mu      sync.RWMutex
 }
 
-func NewIfNameAnnotator() *IfNameAnnotator {
+// NewIfNameAnnotator creates a new IfNameAnnotator with the given ClickhouseReader.
+// The querier is used to query the device_ifindex table for interface name mappings.
+// Typically, pass a *sql.DB connected to ClickHouse.
+func NewIfNameAnnotator(querier ClickhouseReader, logger *slog.Logger) *IfNameAnnotator {
 	return &IfNameAnnotator{
-		name:  "ifname annotator",
-		cache: make(map[string]string),
+		name:    "ifname annotator",
+		querier: querier,
+		logger:  logger,
+		cache:   make(map[string]string),
 	}
 }
 
 func (i *IfNameAnnotator) populateCache(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	row, err := i.chConn.QueryContext(ctx, "SELECT * from device_ifindex FINAL;")
+	rows, err := i.querier.QueryContext(ctx, "SELECT * from device_ifindex FINAL;")
 	if err != nil {
 		return fmt.Errorf("error querying clickhouse: %v", err)
 	}
+	defer rows.Close()
+
 	var cache = make(map[string]string)
-	for row.Next() {
+	for rows.Next() {
 		record := &IfIndexRecord{}
-		if err := row.Scan(&record.Pubkey, &record.IfIndex, &record.IPv4Address, &record.IfName, &record.Timestamp); err != nil {
-			log.Printf("An error while reading the data: %s\n", err)
+		if err := rows.Scan(&record.Pubkey, &record.IfIndex, &record.IPv4Address, &record.IfName, &record.Timestamp); err != nil {
+			i.logger.Warn("error scanning ifindex record", "error", err)
+			continue
 		}
 		if record.IPv4Address == nil || record.IfIndex == 0 || record.IfName == "" {
 			continue
@@ -63,8 +78,11 @@ func (i *IfNameAnnotator) populateCache(ctx context.Context) error {
 }
 
 // Init populates a local cache of per-device ifindexes to interface names.
-func (i *IfNameAnnotator) Init(ctx context.Context, sql *sql.DB) error {
-	i.chConn = sql
+// It starts a background goroutine that refreshes the cache every minute.
+func (i *IfNameAnnotator) Init(ctx context.Context) error {
+	if i.querier == nil {
+		return fmt.Errorf("querier is required for ifname annotator")
+	}
 	if err := i.populateCache(ctx); err != nil {
 		return fmt.Errorf("error populating initial ifname cache: %v", err)
 	}
@@ -73,12 +91,12 @@ func (i *IfNameAnnotator) Init(ctx context.Context, sql *sql.DB) error {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Println("ifname annotator closing due to signal")
+				i.logger.Info("ifname annotator closing due to signal")
 				return
 			case <-ticker.C:
 				if err := i.populateCache(ctx); err != nil {
 					// TODO: add metric
-					log.Printf("error populating ifname cache: %v", err)
+					i.logger.Warn("error populating ifname cache", "error", err)
 					continue
 				}
 			}
@@ -96,6 +114,8 @@ func (i *IfNameAnnotator) Annotate(flow *FlowSample) error {
 
 	annotate := func(samplerAddr string, ifindex int) string {
 		key := fmt.Sprintf("%s:%d", samplerAddr, ifindex)
+		i.mu.RLock()
+		defer i.mu.RUnlock()
 		if val, ok := i.cache[key]; ok {
 			return val
 		}

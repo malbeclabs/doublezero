@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- client: break latency ties with avg latency ([#362](https://github.com/malbeclabs/doublezero/pull/3692))
+
 ### Breaking
 
 ### Changes
@@ -13,6 +15,7 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
+
 - Smartcontract
   - Rename the `BackfillTopology` instruction to `AssignTopologyNodeSegments` across the program, CLI, and Rust SDK; the instruction discriminant (110) and on-disk semantics are unchanged ([#3648](https://github.com/malbeclabs/doublezero/pull/3648))
   - Extend `CreateDeviceInterface` with optional trailing topology PDA accounts (`topology_count: u8`); for Vpnv4 loopbacks under onchain allocation the processor allocates a `FlexAlgoNodeSegment` per topology atomically with interface creation, so newly-provisioned devices no longer need a separate `AssignTopologyNodeSegments` step. The CLI/SDK auto-discover existing topologies and pass them. Topology accounts are validated by program-owner and by first-byte `AccountType::Topology` ([#3648](https://github.com/malbeclabs/doublezero/pull/3648))

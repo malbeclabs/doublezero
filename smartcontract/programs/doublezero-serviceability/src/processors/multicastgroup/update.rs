@@ -7,11 +7,7 @@ use crate::{
     },
     resource::ResourceType,
     serializer::try_acc_write,
-    state::{
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        globalstate::GlobalState,
-        multicastgroup::*,
-    },
+    state::{globalstate::GlobalState, multicastgroup::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -55,15 +51,20 @@ pub fn process_update_multicastgroup(
     accounts: &[AccountInfo],
     value: &MulticastGroupUpdateArgs,
 ) -> ProgramResult {
+    // multicast_ip changes must go through the onchain path. Other updates leave the boolean
+    // unset and skip the resource account entirely.
+    if value.multicast_ip.is_some() && !value.use_onchain_allocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let multicastgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension account for onchain allocation (before payer)
-    // Account layout WITH allocation (use_onchain_allocation = true):
+    // Account layout when the boolean is true:
     //   [mgroup, globalstate, multicast_group_block, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_allocation = false):
+    // Otherwise:
     //   [mgroup, globalstate, payer, system]
     let resource_extension_account = if value.use_onchain_allocation {
         Some(next_account_info(accounts_iter)?)
@@ -114,10 +115,6 @@ pub fn process_update_multicastgroup(
     if let Some(ref multicast_ip) = value.multicast_ip {
         // Handle onchain allocation for IP changes
         if let Some(multicast_group_block_ext) = resource_extension_account.as_ref() {
-            if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-                return Err(DoubleZeroError::FeatureNotEnabled.into());
-            }
-
             let (expected_pda, _, _) =
                 get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
             validate_program_account!(

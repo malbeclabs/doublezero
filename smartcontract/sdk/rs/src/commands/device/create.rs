@@ -4,10 +4,7 @@ use doublezero_serviceability::{
     pda::{get_device_pda, get_globalconfig_pda, get_resource_extension_pda},
     processors::device::create::DeviceCreateArgs,
     resource::ResourceType,
-    state::{
-        device::{DeviceDesiredStatus, DeviceType},
-        feature_flags::{is_feature_enabled, FeatureFlag},
-    },
+    state::device::{DeviceDesiredStatus, DeviceType},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
@@ -38,11 +35,13 @@ impl CreateDeviceCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let use_onchain_allocation =
-            is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation);
-
         let (pda_pubkey, _) =
             get_device_pda(&client.get_program_id(), globalstate.account_index + 1);
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
+        let (tunnel_ids_pda, _, _) = get_resource_extension_pda(
+            &client.get_program_id(),
+            ResourceType::TunnelIds(pda_pubkey, 0),
+        );
 
         let mut accounts = vec![
             AccountMeta::new(pda_pubkey, false),
@@ -50,31 +49,17 @@ impl CreateDeviceCommand {
             AccountMeta::new(self.location_pk, false),
             AccountMeta::new(self.exchange_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda, false),
         ];
-
-        let resource_count: u8 = if use_onchain_allocation {
-            let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
-            accounts.push(AccountMeta::new(globalconfig_pubkey, false));
-
-            // TunnelIds(device_pk, 0) + DzPrefixBlock(device_pk, 0..dz_prefixes.len())
-            let tunnel_ids_pda = get_resource_extension_pda(
+        for idx in 0..self.dz_prefixes.len() {
+            let (dz_prefix_pda, _, _) = get_resource_extension_pda(
                 &client.get_program_id(),
-                ResourceType::TunnelIds(pda_pubkey, 0),
+                ResourceType::DzPrefixBlock(pda_pubkey, idx),
             );
-            accounts.push(AccountMeta::new(tunnel_ids_pda.0, false));
-
-            for idx in 0..self.dz_prefixes.len() {
-                let dz_prefix_pda = get_resource_extension_pda(
-                    &client.get_program_id(),
-                    ResourceType::DzPrefixBlock(pda_pubkey, idx),
-                );
-                accounts.push(AccountMeta::new(dz_prefix_pda.0, false));
-            }
-
-            (1 + self.dz_prefixes.len()) as u8
-        } else {
-            0
-        };
+            accounts.push(AccountMeta::new(dz_prefix_pda, false));
+        }
+        let resource_count = (1 + self.dz_prefixes.len()) as u8;
 
         client
             .execute_transaction(
@@ -98,7 +83,7 @@ impl CreateDeviceCommand {
 mod tests {
     use crate::{
         commands::device::create::CreateDeviceCommand, tests::utils::create_test_client,
-        DoubleZeroClient, MockDoubleZeroClient,
+        DoubleZeroClient,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
@@ -112,8 +97,6 @@ mod tests {
             accounttype::AccountType,
             device::DeviceType,
             exchange::{Exchange, ExchangeStatus},
-            feature_flags::FeatureFlag,
-            globalstate::GlobalState,
             location::{Location, LocationStatus},
         },
     };
@@ -170,7 +153,13 @@ mod tests {
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
         let contributor_pubkey = Pubkey::default();
-        let (device_pubkey, _) = get_device_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let (device_pubkey, _) = get_device_pda(&program_id, 1);
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+        let (tunnel_ids_pda, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+        let (dz_prefix0_pda, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
 
         let pubmetrics_publisher = Pubkey::default();
 
@@ -185,7 +174,7 @@ mod tests {
                     metrics_publisher_pk: pubmetrics_publisher,
                     mgmt_vrf: "mgmt".to_string(),
                     desired_status: None,
-                    resource_count: 0,
+                    resource_count: 2,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(device_pubkey, false),
@@ -193,6 +182,9 @@ mod tests {
                     AccountMeta::new(location_pubkey, false),
                     AccountMeta::new(exchange_pubkey, false),
                     AccountMeta::new(globalstate_pubkey, false),
+                    AccountMeta::new(globalconfig_pubkey, false),
+                    AccountMeta::new(tunnel_ids_pda, false),
+                    AccountMeta::new(dz_prefix0_pda, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
@@ -221,92 +213,6 @@ mod tests {
         assert!(res.is_err());
 
         let res = command.execute(&client);
-        assert!(res.is_ok());
-    }
-
-    #[test]
-    fn test_commands_device_create_with_onchain_allocation() {
-        let mut client = MockDoubleZeroClient::new();
-
-        let payer = Pubkey::new_unique();
-        client.expect_get_payer().returning(move || payer);
-        let program_id = Pubkey::new_unique();
-        client.expect_get_program_id().returning(move || program_id);
-
-        let (globalstate_pubkey, bump_seed) = get_globalstate_pda(&program_id);
-        let globalstate = GlobalState {
-            account_type: AccountType::GlobalState,
-            bump_seed,
-            account_index: 0,
-            foundation_allowlist: vec![],
-            _device_allowlist: vec![],
-            _user_allowlist: vec![],
-            activator_authority_pk: Pubkey::new_unique(),
-            sentinel_authority_pk: Pubkey::new_unique(),
-            contributor_airdrop_lamports: 1_000_000_000,
-            user_airdrop_lamports: 40_000,
-            health_oracle_pk: Pubkey::new_unique(),
-            qa_allowlist: vec![],
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
-            feed_authority_pk: Pubkey::default(),
-        };
-        client
-            .expect_get()
-            .with(predicate::eq(globalstate_pubkey))
-            .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
-
-        let contributor_pubkey = Pubkey::new_unique();
-        let location_pubkey = Pubkey::new_unique();
-        let exchange_pubkey = Pubkey::new_unique();
-        let (device_pubkey, _) = get_device_pda(&program_id, 1);
-        let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
-        let (tunnel_ids_pda, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
-        let (dz_prefix0_pda, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
-
-        let metrics_publisher = Pubkey::default();
-
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
-                    code: "test_device".to_string(),
-                    device_type: DeviceType::Hybrid,
-                    public_ip: [10, 0, 0, 1].into(),
-                    dz_prefixes: "10.0.0.0/8".parse().unwrap(),
-                    metrics_publisher_pk: metrics_publisher,
-                    mgmt_vrf: "mgmt".to_string(),
-                    desired_status: None,
-                    resource_count: 2,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(device_pubkey, false),
-                    AccountMeta::new(contributor_pubkey, false),
-                    AccountMeta::new(location_pubkey, false),
-                    AccountMeta::new(exchange_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(globalconfig_pubkey, false),
-                    AccountMeta::new(tunnel_ids_pda, false),
-                    AccountMeta::new(dz_prefix0_pda, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
-
-        let res = CreateDeviceCommand {
-            code: "Test_Device".to_string(),
-            contributor_pk: contributor_pubkey,
-            location_pk: location_pubkey,
-            exchange_pk: exchange_pubkey,
-            device_type: DeviceType::Hybrid,
-            public_ip: [10, 0, 0, 1].into(),
-            dz_prefixes: "10.0.0.0/8".parse().unwrap(),
-            metrics_publisher,
-            mgmt_vrf: "mgmt".to_string(),
-            desired_status: None,
-        }
-        .execute(&client);
-
         assert!(res.is_ok());
     }
 }

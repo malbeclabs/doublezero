@@ -174,6 +174,6 @@ mod tests {
         }
         .execute(&client);
 
-        assert_eq!(res.unwrap().len(), 3);
+        assert_eq!(res.unwrap().len(), 9);
     }
 }

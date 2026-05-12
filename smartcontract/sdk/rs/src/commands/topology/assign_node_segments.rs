@@ -9,8 +9,8 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 
 /// Max device accounts per backfill transaction. Solana caps transactions at
 /// 32 accounts; with 5 non-device accounts (3 fixed PDAs + payer + system_program
-/// appended by the client) we stay well under that limit at 16.
-pub const BACKFILL_BATCH_SIZE: usize = 16;
+/// appended by the client) we stay well under that limit at 4.
+pub const BACKFILL_BATCH_SIZE: usize = 4;
 
 pub const ASSIGN_TOPOLOGY_NODE_SEGMENTS_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
 

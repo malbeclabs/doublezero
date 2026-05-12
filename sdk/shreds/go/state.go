@@ -138,9 +138,23 @@ type ClientSeat struct {
 	Gap                      [2][32]byte // StorageGap<2>
 }
 
+// Flag bits in ClientSeat.Flags. Mirrors the onchain bit indices from the
+// shred-subscription program.
+const (
+	clientSeatFlagHasPriceOverrideBit         = 0
+	clientSeatFlagHasPendingInstantRequestBit = 1
+)
+
 // HasPriceOverride returns true if a flat price override is active.
 func (s *ClientSeat) HasPriceOverride() bool {
-	return s.Flags&1 != 0
+	return s.Flags&(1<<clientSeatFlagHasPriceOverrideBit) != 0
+}
+
+// HasPendingInstantRequest returns true if the seat has a pending instant
+// allocation request that the oracle has not yet acked or rejected. Withdrawal
+// and escrow-close are blocked onchain while this is set.
+func (s *ClientSeat) HasPendingInstantRequest() bool {
+	return s.Flags&(1<<clientSeatFlagHasPendingInstantRequestBit) != 0
 }
 
 // PaymentEscrow holds USDC balance funding a client seat.

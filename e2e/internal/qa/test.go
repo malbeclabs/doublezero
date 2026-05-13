@@ -127,8 +127,10 @@ func (d *Device) capacityFor(userType DeviceUserType) (current, max int) {
 
 // ValidDevices returns devices that pass filtering criteria for the given
 // user type. A device is considered valid when it has at least minCapacity
-// free slots in the type-specific bucket (e.g. unicast) AND in the aggregate
-// users bucket — both are enforced onchain independently.
+// free slots in the aggregate users bucket. The type-specific bucket
+// (e.g. unicast) is also checked, but only when its onchain max is non-zero —
+// onchain, a per-type max of 0 means the cap is unenforced (see
+// smartcontract/programs/doublezero-serviceability/src/processors/user/create_core.rs).
 //
 // If skipCapacityCheck is true (e.g., when using a QA identity that bypasses
 // on-chain capacity checks), devices are not filtered by available capacity.
@@ -145,7 +147,10 @@ func (t *Test) ValidDevices(userType DeviceUserType, minCapacity int, skipCapaci
 		// Skip capacity check if using QA identity (bypasses on-chain max_users check)
 		if !skipCapacityCheck {
 			typeCount, typeMax := device.capacityFor(userType)
-			if typeMax-typeCount < minCapacity {
+			// Mirror the onchain semantic: the per-type cap is only enforced
+			// when max > 0. A max of 0 means "no per-type cap" and we fall
+			// through to the aggregate check.
+			if typeMax > 0 && typeMax-typeCount < minCapacity {
 				t.log.Debug("Skipping device with insufficient type-specific capacity",
 					"device", device.Code,
 					"userType", userType,

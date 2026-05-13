@@ -373,29 +373,6 @@ impl TryFrom<&InterfaceV1> for InterfaceV2 {
     }
 }
 
-impl TryFrom<&InterfaceV3> for InterfaceV2 {
-    type Error = ProgramError;
-
-    fn try_from(data: &InterfaceV3) -> Result<Self, Self::Error> {
-        Ok(Self {
-            status: data.status,
-            name: data.name.clone(),
-            interface_type: data.interface_type,
-            interface_cyoa: data.interface_cyoa,
-            interface_dia: data.interface_dia,
-            loopback_type: data.loopback_type,
-            bandwidth: data.bandwidth,
-            cir: data.cir,
-            mtu: data.mtu,
-            routing_mode: data.routing_mode,
-            vlan_id: data.vlan_id,
-            ip_net: data.ip_net,
-            node_segment_idx: data.node_segment_idx,
-            user_tunnel_endpoint: data.user_tunnel_endpoint,
-        })
-    }
-}
-
 impl Default for InterfaceV2 {
     fn default() -> Self {
         Self {
@@ -417,77 +394,6 @@ impl Default for InterfaceV2 {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct InterfaceV3 {
-    pub status: InterfaceStatus,
-    pub name: String,
-    pub interface_type: InterfaceType,
-    pub interface_cyoa: InterfaceCYOA,
-    pub interface_dia: InterfaceDIA,
-    pub loopback_type: LoopbackType,
-    pub bandwidth: u64,
-    pub cir: u64,
-    pub mtu: u16,
-    pub routing_mode: RoutingMode,
-    pub vlan_id: u16,
-    pub ip_net: NetworkV4,
-    pub node_segment_idx: u16,
-    pub user_tunnel_endpoint: bool,
-    pub flex_algo_node_segments: Vec<crate::state::topology::FlexAlgoNodeSegment>,
-}
-
-impl InterfaceV3 {
-    pub fn size(&self) -> usize {
-        Self::size_given_name_len(self.name.len())
-    }
-
-    pub fn to_interface(&self) -> InterfaceDeprecated {
-        InterfaceDeprecated::V3(self.clone())
-    }
-
-    pub fn size_given_name_len(name_len: usize) -> usize {
-        1 + 4 + name_len + 1 + 1 + 1 + 1 + 8 + 8 + 2 + 1 + 2 + 5 + 2 + 1 + 4 // +4 for empty flex_algo_node_segments vec (Borsh length prefix)
-    }
-}
-
-impl From<InterfaceV2> for InterfaceV3 {
-    fn from(v2: InterfaceV2) -> Self {
-        Self {
-            status: v2.status,
-            name: v2.name,
-            interface_type: v2.interface_type,
-            interface_cyoa: v2.interface_cyoa,
-            interface_dia: v2.interface_dia,
-            loopback_type: v2.loopback_type,
-            bandwidth: v2.bandwidth,
-            cir: v2.cir,
-            mtu: v2.mtu,
-            routing_mode: v2.routing_mode,
-            vlan_id: v2.vlan_id,
-            ip_net: v2.ip_net,
-            node_segment_idx: v2.node_segment_idx,
-            user_tunnel_endpoint: v2.user_tunnel_endpoint,
-            flex_algo_node_segments: vec![],
-        }
-    }
-}
-
-impl TryFrom<&InterfaceV1> for InterfaceV3 {
-    type Error = ProgramError;
-
-    fn try_from(data: &InterfaceV1) -> Result<Self, Self::Error> {
-        let v2: InterfaceV2 = data.try_into()?;
-        Ok(v2.into())
-    }
-}
-
-impl Default for InterfaceV3 {
-    fn default() -> Self {
-        InterfaceV2::default().into()
-    }
-}
-
 #[repr(u8)]
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -495,10 +401,12 @@ impl Default for InterfaceV3 {
 pub enum InterfaceDeprecated {
     V1(InterfaceV1) = 0,
     /// Discriminant 1: V2 format. Does NOT include flex_algo_node_segments.
+    /// Discriminant 2 is reserved (never written). Discriminant 3 was a transient
+    /// V3 format (V2 body + a `flex_algo_node_segments` vec) that no longer has
+    /// a corresponding type — the deserializer still consumes V3 bytes from
+    /// pre-existing on-chain accounts and projects them to V2 (segments dropped),
+    /// but nothing writes V3 going forward.
     V2(InterfaceV2) = 1,
-    /// Discriminant 3: V3 format. Includes flex_algo_node_segments (RFC-18).
-    /// Discriminant 2 is intentionally skipped (reserved).
-    V3(InterfaceV3) = 3,
 }
 
 impl borsh::BorshDeserialize for InterfaceDeprecated {
@@ -511,23 +419,29 @@ impl borsh::BorshDeserialize for InterfaceDeprecated {
             1 | 2 => Ok(InterfaceDeprecated::V2(
                 borsh::BorshDeserialize::deserialize_reader(reader)?,
             )),
-            3 => Ok(InterfaceDeprecated::V3(
-                borsh::BorshDeserialize::deserialize_reader(reader)?,
-            )),
-            _ => Ok(InterfaceDeprecated::V3(InterfaceV3::default())),
+            // Discriminant 3 (legacy V3): consume V2 body + the trailing
+            // flex_algo_node_segments vec, then surface as V2. The segments are
+            // dropped — they live in the trailing forward-compat `interfaces` vec
+            // on Device post-#3667.
+            3 => {
+                let v2: InterfaceV2 = borsh::BorshDeserialize::deserialize_reader(reader)?;
+                let _segments: Vec<crate::state::topology::FlexAlgoNodeSegment> =
+                    borsh::BorshDeserialize::deserialize_reader(reader)?;
+                Ok(InterfaceDeprecated::V2(v2))
+            }
+            _ => Ok(InterfaceDeprecated::V2(InterfaceV2::default())),
         }
     }
 }
 
 impl InterfaceDeprecated {
-    /// Convert any legacy variant to its V2 projection. V1 and V3 fan in via
-    /// `TryFrom<&InterfaceVN>` for `InterfaceV2`; conversion failures fall back
+    /// Convert any legacy variant to its V2 projection. V1 fans in via
+    /// `TryFrom<&InterfaceV1>` for `InterfaceV2`; conversion failures fall back
     /// to `InterfaceV2::default()`.
     pub fn to_v2(&self) -> InterfaceV2 {
         match self {
             InterfaceDeprecated::V1(v1) => v1.try_into().unwrap_or_default(),
             InterfaceDeprecated::V2(v2) => v2.clone(),
-            InterfaceDeprecated::V3(v3) => v3.try_into().unwrap_or_default(),
         }
     }
 
@@ -535,7 +449,6 @@ impl InterfaceDeprecated {
         let base_size = match self {
             InterfaceDeprecated::V1(v1) => v1.size(),
             InterfaceDeprecated::V2(v2) => v2.size(),
-            InterfaceDeprecated::V3(v3) => v3.size(),
         };
         base_size + 1 // +1 for the enum discriminant
     }
@@ -872,38 +785,68 @@ fn test_interface_version() {
     assert_eq!(iface_v2.ip_net, "10.0.0.0/24".parse().unwrap());
     assert_eq!(iface_v2.node_segment_idx, 200);
     assert!(iface_v2.user_tunnel_endpoint);
+}
 
-    let iface = InterfaceV3 {
+/// Hand-craft a `Vec<InterfaceDeprecated>` whose first element is a legacy V3
+/// byte stream (discriminant 3 + V2 body + flex_algo_node_segments vec) and a
+/// trailing V2 element. Asserts that the V3 bytes are fully consumed (segments
+/// included) so the V2 element after them deserializes correctly — guards
+/// against the byte-misalignment that broke `sdk-compat-test` on mainnet-beta
+/// device `la2r-dz01` (discriminant 3 entry `Ethernet20/1`).
+#[test]
+fn test_interface_deprecated_consumes_legacy_v3_bytes() {
+    use crate::state::topology::FlexAlgoNodeSegment;
+    use solana_program::pubkey::Pubkey;
+
+    // Build a V2 body and append the V3-only flex_algo_node_segments vec by hand.
+    let v2 = InterfaceV2 {
         status: InterfaceStatus::Activated,
-        name: "Loopback0".to_string(),
-        interface_type: InterfaceType::Loopback,
-        interface_cyoa: InterfaceCYOA::GREOverDIA,
-        interface_dia: InterfaceDIA::DIA,
-        loopback_type: LoopbackType::Ipv4,
-        bandwidth: 1000,
-        cir: 500,
-        mtu: 1500,
+        name: "Ethernet20/1".to_string(),
+        interface_type: InterfaceType::Physical,
+        interface_cyoa: InterfaceCYOA::None,
+        interface_dia: InterfaceDIA::None,
+        loopback_type: LoopbackType::None,
+        bandwidth: 1_000_000_000,
+        cir: 0,
+        mtu: 9000,
         routing_mode: RoutingMode::BGP,
-        vlan_id: 100,
-        ip_net: "10.0.0.0/24".parse().unwrap(),
-        node_segment_idx: 200,
-        user_tunnel_endpoint: true,
-        flex_algo_node_segments: vec![],
-    }
-    .to_interface();
+        vlan_id: 0,
+        ip_net: "10.0.0.1/30".parse().unwrap(),
+        node_segment_idx: 0,
+        user_tunnel_endpoint: false,
+    };
+    let segments = vec![FlexAlgoNodeSegment {
+        topology: Pubkey::new_unique(),
+        node_segment_idx: 7,
+    }];
+    let trailing = InterfaceV2 {
+        name: "Ethernet1".to_string(),
+        ..InterfaceV2::default()
+    };
 
-    assert!(
-        matches!(iface, InterfaceDeprecated::V3(_)),
-        "iface is not InterfaceDeprecated::V3"
-    );
-    let iface_v3 = iface.to_v2();
-    assert_eq!(iface_v3.name, "Loopback0");
-    assert_eq!(iface_v3.interface_type, InterfaceType::Loopback);
-    assert_eq!(iface_v3.loopback_type, LoopbackType::Ipv4);
-    assert_eq!(iface_v3.vlan_id, 100);
-    assert_eq!(iface_v3.ip_net, "10.0.0.0/24".parse().unwrap());
-    assert_eq!(iface_v3.node_segment_idx, 200);
-    assert!(iface_v3.user_tunnel_endpoint);
+    // Wire bytes: u32 vec_len=2, then [disc=3, V2 body, segments vec] + [disc=1, V2 body].
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&2u32.to_le_bytes());
+    bytes.push(3); // legacy V3 discriminant
+    bytes.extend_from_slice(&borsh::to_vec(&v2).unwrap());
+    bytes.extend_from_slice(&borsh::to_vec(&segments).unwrap());
+    bytes.push(1); // V2 discriminant
+    bytes.extend_from_slice(&borsh::to_vec(&trailing).unwrap());
+
+    let decoded: Vec<InterfaceDeprecated> = borsh::BorshDeserialize::try_from_slice(&bytes)
+        .expect("legacy V3 bytes should be consumed without misalignment");
+    assert_eq!(decoded.len(), 2);
+    match &decoded[0] {
+        InterfaceDeprecated::V2(d) => {
+            assert_eq!(d.name, "Ethernet20/1");
+            assert_eq!(d.mtu, 9000);
+        }
+        other => panic!("expected V3 to project to V2, got {:?}", other),
+    }
+    match &decoded[1] {
+        InterfaceDeprecated::V2(d) => assert_eq!(d.name, "Ethernet1"),
+        other => panic!("expected trailing V2, got {:?}", other),
+    }
 }
 
 #[cfg(test)]
@@ -1010,157 +953,6 @@ mod test_interface_validate {
 
         let err = InterfaceDeprecated::V2(iface).validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidInterfaceIp);
-    }
-
-    /// Test that prints serialized bytes of InterfaceV3 for cross-language debugging.
-    /// Run with: cargo test test_interface_v3_serialization_bytes -- --nocapture
-    #[test]
-    fn test_interface_v3_serialization_bytes() {
-        // Create an interface similar to what the e2e test creates after update
-        let iface = InterfaceV3 {
-            status: InterfaceStatus::Activated,
-            name: "Loopback106".to_string(),
-            interface_type: InterfaceType::Loopback,
-            interface_cyoa: InterfaceCYOA::None,
-            interface_dia: InterfaceDIA::None,
-            loopback_type: LoopbackType::Ipv4, // Updated value
-            bandwidth: 0,
-            cir: 0,
-            mtu: 9000, // Updated value
-            routing_mode: RoutingMode::Static,
-            vlan_id: 0,
-            ip_net: "203.0.113.40/32".parse().unwrap(),
-            node_segment_idx: 0,
-            user_tunnel_endpoint: true,
-            flex_algo_node_segments: vec![],
-        };
-
-        // Serialize as InterfaceDeprecated::V3 (with enum discriminant)
-        let interface_enum = InterfaceDeprecated::V3(iface.clone());
-        let bytes = borsh::to_vec(&interface_enum).unwrap();
-
-        println!("\n=== InterfaceV3 Serialization Debug ===");
-        println!("Total bytes: {}", bytes.len());
-        println!("Hex: {:02x?}", bytes);
-        println!("\nField breakdown:");
-        println!("  [0] enum discriminant (V3=3): {:02x}", bytes[0]);
-
-        let mut offset = 1;
-        println!("  [{}] status (Activated=1): {:02x}", offset, bytes[offset]);
-        offset += 1;
-
-        // String: 4 bytes length + chars
-        let name_len = u32::from_le_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-        ]);
-        println!(
-            "  [{}-{}] name length: {} (0x{:08x})",
-            offset,
-            offset + 3,
-            name_len,
-            name_len
-        );
-        offset += 4;
-        let name_bytes = &bytes[offset..offset + name_len as usize];
-        println!(
-            "  [{}-{}] name: {:?}",
-            offset,
-            offset + name_len as usize - 1,
-            String::from_utf8_lossy(name_bytes)
-        );
-        offset += name_len as usize;
-
-        println!(
-            "  [{}] interface_type (Loopback=2): {:02x}",
-            offset, bytes[offset]
-        );
-        offset += 1;
-        println!(
-            "  [{}] interface_cyoa (None=0): {:02x}",
-            offset, bytes[offset]
-        );
-        offset += 1;
-        println!(
-            "  [{}] interface_dia (None=0): {:02x}",
-            offset, bytes[offset]
-        );
-        offset += 1;
-        println!(
-            "  [{}] loopback_type (Ipv4=1): {:02x}",
-            offset, bytes[offset]
-        );
-        offset += 1;
-
-        let bandwidth = u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap());
-        println!(
-            "  [{}-{}] bandwidth: {} (0x{:016x})",
-            offset,
-            offset + 7,
-            bandwidth,
-            bandwidth
-        );
-        offset += 8;
-
-        let cir = u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap());
-        println!(
-            "  [{}-{}] cir: {} (0x{:016x})",
-            offset,
-            offset + 7,
-            cir,
-            cir
-        );
-        offset += 8;
-
-        let mtu = u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap());
-        println!("  [{}-{}] mtu: {} (0x{:04x})", offset, offset + 1, mtu, mtu);
-        offset += 2;
-
-        println!(
-            "  [{}] routing_mode (Static=0): {:02x}",
-            offset, bytes[offset]
-        );
-        offset += 1;
-
-        let vlan_id = u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap());
-        println!(
-            "  [{}-{}] vlan_id: {} (0x{:04x})",
-            offset,
-            offset + 1,
-            vlan_id,
-            vlan_id
-        );
-        offset += 2;
-
-        println!(
-            "  [{}-{}] ip_net: {:02x?}",
-            offset,
-            offset + 4,
-            &bytes[offset..offset + 5]
-        );
-        offset += 5;
-
-        let node_segment_idx = u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap());
-        println!(
-            "  [{}-{}] node_segment_idx: {} (0x{:04x})",
-            offset,
-            offset + 1,
-            node_segment_idx,
-            node_segment_idx
-        );
-        offset += 2;
-
-        println!("  [{}] user_tunnel_endpoint: {:02x}", offset, bytes[offset]);
-        offset += 1;
-
-        println!("  Total parsed: {} bytes", offset);
-        println!("=====================================\n");
-
-        // Verify the serialization
-        assert_eq!(mtu, 9000);
-        assert_eq!(bytes[0], 3); // V3 discriminant
     }
 }
 

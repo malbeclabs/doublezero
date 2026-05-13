@@ -791,40 +791,32 @@ impl ProvisioningCliCommand {
         user_pubkey: &Pubkey,
         spinner: &ProgressBar,
     ) -> eyre::Result<User> {
-        spinner.set_message("Waiting for user activation...");
+        spinner.set_message("Reading user account...");
 
-        // activator polling is done every 1-minute, so if the activator websocket misses the user
-        // create, then we may need to wait up to 2 minutes for the activator to pick up the user
+        // User accounts are created atomically in Activated status, but the RPC
+        // node we read from may lag a few seconds behind the slot the create
+        // transaction landed in — retry until the account is visible.
         let builder = ExponentialBuilder::new()
-            .with_max_times(8) // 1+2+4+8+16+32+32+32 = 127 seconds max
+            .with_max_times(6)
             .with_min_delay(Duration::from_secs(1))
-            .with_max_delay(Duration::from_secs(32));
+            .with_max_delay(Duration::from_secs(8));
 
-        let get_activated_user = || {
+        let get_user = || {
             client
                 .get_user(GetUserCommand {
                     pubkey: *user_pubkey,
                 })
-                .and_then(|(pk, user)| {
-                    if user.status != UserStatus::Activated {
-                        Err(eyre::eyre!("User not activated yet"))
-                    } else {
-                        Ok((pk, user))
-                    }
-                })
                 .map_err(|e| eyre::eyre!(e.to_string()))
         };
 
-        get_activated_user
+        get_user
             .retry(builder)
             .notify(|_, dur| {
-                spinner.set_message(format!(
-                    "Waiting for user activation (checking in {dur:?})..."
-                ))
+                spinner.set_message(format!("Reading user account (retrying in {dur:?})..."))
             })
             .call()
             .map(|(_, user)| user)
-            .map_err(|_| eyre::eyre!("Timeout waiting for user activation"))
+            .map_err(|_| eyre::eyre!("Timeout reading user account"))
     }
 
     async fn user_activated<T: ServiceController>(

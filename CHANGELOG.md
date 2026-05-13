@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - Drop the activator-only pollers from `doublezero` (user and multicastgroup activation waits). The `--wait` flag on `user create`, `user create-subscribe`, `user subscribe`, `multicastgroup create`, and `multicastgroup update` now fetches the post-create state once instead of polling — creates are atomic to `Activated` post-RFC-11, so the wait loop was watching a transition that no longer happens ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
+  - Trim the `Rejected` status arm from the device and link activation pollers; `Rejected` was itself an activator-driven transition ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
+- Client
+  - Simplify `doublezero connect`'s post-create user fetch to a fixed retry-on-RPC-lag get instead of waiting for `UserStatus::Activated`; the activator-driven transition is gone, so the fetch only needs to ride out replica lag ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
+
 ## [v0.22.0](https://github.com/malbeclabs/doublezero/compare/client/v0.21.0...client/v0.22.0) - 2026-05-08
 
 ### Breaking

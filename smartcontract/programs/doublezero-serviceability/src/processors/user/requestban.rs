@@ -135,7 +135,6 @@ pub fn process_request_ban_user(
             multicast_publisher_block_ext.as_ref().map(|a| *a),
             device_tunnel_ids_ext,
             &dz_prefix_accounts,
-            &globalstate,
         )?;
 
         // Zero out deallocated fields so subsequent delete sees them as already-deallocated

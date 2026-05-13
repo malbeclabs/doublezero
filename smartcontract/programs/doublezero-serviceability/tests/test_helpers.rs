@@ -482,6 +482,77 @@ pub async fn wait_for_new_blockhash(banks_client: &mut BanksClient) -> solana_pr
 
 /// Setup program with global state and global config initialized.
 /// Returns (banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey)
+/// Initialize global state and set global config (creating all resource extension accounts).
+/// Idempotent helper for tests that already called `init_test()` and now need the resource
+/// extensions in place — for example, before any onchain-allocation instruction.
+#[allow(dead_code)]
+pub async fn init_globalstate_and_config(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    payer: &Keypair,
+    recent_blockhash: solana_program::hash::Hash,
+) {
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
+            local_asn: 65000,
+            remote_asn: 65001,
+            device_tunnel_block: "10.100.0.0/24".parse().unwrap(),
+            user_tunnel_block: "169.254.0.0/24".parse().unwrap(),
+            multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
+            next_bgp_community: None,
+        }),
+        vec![
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
+        ],
+        payer,
+    )
+    .await;
+}
+
 #[allow(dead_code)]
 pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey) {
     let program_id = Pubkey::new_unique();

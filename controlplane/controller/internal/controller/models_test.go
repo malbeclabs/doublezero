@@ -3,6 +3,8 @@ package controller
 import (
 	"net"
 	"testing"
+
+	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 func TestIsBgpMartian(t *testing.T) {
@@ -51,5 +53,140 @@ func TestIsBgpMartian(t *testing.T) {
 				t.Errorf("isBgpMartian(%s) = %v, want %v", tt.ip, got, tt.isMartian)
 			}
 		})
+	}
+}
+
+func TestMtuForInterface(t *testing.T) {
+	tests := []struct {
+		name string
+		in   Interface
+		want uint16
+	}{
+		{"plain fabric physical", Interface{InterfaceType: InterfaceTypePhysical}, InterfaceMtu},
+		{"CYOA", Interface{InterfaceType: InterfaceTypePhysical, IsCYOA: true}, CyoaDiaInterfaceMtu},
+		{"DIA", Interface{InterfaceType: InterfaceTypePhysical, IsDIA: true}, CyoaDiaInterfaceMtu},
+		{"CYOA and DIA both set", Interface{IsCYOA: true, IsDIA: true}, CyoaDiaInterfaceMtu},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := mtuForInterface(tt.in); got != tt.want {
+				t.Errorf("mtuForInterface(%+v) = %d, want %d", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestToInterface_RoleBasedMTU(t *testing.T) {
+	// toInterface must compute MTU from role and ignore the onchain Mtu field
+	// entirely. This guards against V1-deserialized interfaces (Mtu = 0) and
+	// any stale onchain MTU.
+	tests := []struct {
+		name      string
+		iface     serviceability.Interface
+		wantMtu   uint16
+		wantCYOA  bool
+		wantDIA   bool
+		wantIsSub bool
+	}{
+		{
+			name: "fabric physical, onchain Mtu=0",
+			iface: serviceability.Interface{
+				Name:          "Switch1/1/1",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				IpNet:         [5]uint8{172, 16, 0, 0, 31},
+				Mtu:           0,
+			},
+			wantMtu: InterfaceMtu,
+		},
+		{
+			name: "fabric physical, onchain Mtu=2048",
+			iface: serviceability.Interface{
+				Name:          "Switch1/1/1",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				IpNet:         [5]uint8{172, 16, 0, 0, 31},
+				Mtu:           2048,
+			},
+			wantMtu: InterfaceMtu,
+		},
+		{
+			name: "fabric subinterface, onchain Mtu=9216",
+			iface: serviceability.Interface{
+				Name:          "Switch1/1/2.100",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				VlanId:        100,
+				IpNet:         [5]uint8{172, 16, 0, 2, 31},
+				Mtu:           9216,
+			},
+			wantMtu:   InterfaceMtu,
+			wantIsSub: true,
+		},
+		{
+			name: "CYOA physical, onchain Mtu=0",
+			iface: serviceability.Interface{
+				Name:          "Switch1/1/5",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				InterfaceCYOA: serviceability.InterfaceCYOAGREOverFabric,
+				IpNet:         [5]uint8{172, 16, 0, 14, 31},
+				Mtu:           0,
+			},
+			wantMtu:  CyoaDiaInterfaceMtu,
+			wantCYOA: true,
+		},
+		{
+			name: "DIA physical, onchain Mtu=9216",
+			iface: serviceability.Interface{
+				Name:          "Switch1/1/6",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				InterfaceDIA:  serviceability.InterfaceDIADIA,
+				IpNet:         [5]uint8{172, 16, 0, 16, 31},
+				Mtu:           9216,
+			},
+			wantMtu: CyoaDiaInterfaceMtu,
+			wantDIA: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := toInterface(tt.iface)
+			if err != nil {
+				t.Fatalf("toInterface(%+v) returned error: %v", tt.iface, err)
+			}
+			if got.Mtu != tt.wantMtu {
+				t.Errorf("Mtu = %d, want %d (role-based, ignoring onchain %d)", got.Mtu, tt.wantMtu, tt.iface.Mtu)
+			}
+			if got.IsCYOA != tt.wantCYOA {
+				t.Errorf("IsCYOA = %v, want %v", got.IsCYOA, tt.wantCYOA)
+			}
+			if got.IsDIA != tt.wantDIA {
+				t.Errorf("IsDIA = %v, want %v", got.IsDIA, tt.wantDIA)
+			}
+			if got.IsSubInterface != tt.wantIsSub {
+				t.Errorf("IsSubInterface = %v, want %v", got.IsSubInterface, tt.wantIsSub)
+			}
+		})
+	}
+}
+
+func TestInterface_GetParent_DoesNotCopyMTU(t *testing.T) {
+	// Parent MTU is set in processDeviceInterfacesAndPeers (max of subinterface
+	// MTUs); GetParent must not copy the child's MTU.
+	child := Interface{
+		Name:           "Switch1/1/2.100",
+		IsSubInterface: true,
+		InterfaceType:  InterfaceTypePhysical,
+		Mtu:            InterfaceMtu,
+	}
+	parent, err := child.GetParent()
+	if err != nil {
+		t.Fatalf("GetParent returned error: %v", err)
+	}
+	if parent.Name != "Switch1/1/2" {
+		t.Errorf("parent Name = %q, want %q", parent.Name, "Switch1/1/2")
+	}
+	if !parent.IsSubInterfaceParent {
+		t.Errorf("parent IsSubInterfaceParent = false, want true")
+	}
+	if parent.Mtu != 0 {
+		t.Errorf("parent Mtu = %d, want 0 (parent MTU is set by the dedup loop, not copied from child)", parent.Mtu)
 	}
 }

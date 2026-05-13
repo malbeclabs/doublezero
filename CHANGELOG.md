@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- controller: enforce interface MTU during config render from interface role (CYOA/DIA → 1500, fabric → 9000) instead of trusting onchain `Interface.Mtu` / `Link.Mtu`; render each parent interface exactly once with `max` of its subinterface MTUs; change the `tunnel.tmpl` fallback from `2048` to `9000`. Guards against stale V1 onchain interfaces (`Mtu = 0`) and duplicate parent blocks that previously caused silent IS-IS adjacency failures ([#3690](https://github.com/malbeclabs/doublezero/issues/3690))
 - client: break latency ties with avg latency ([#362](https://github.com/malbeclabs/doublezero/pull/3692))
 
 ### Breaking

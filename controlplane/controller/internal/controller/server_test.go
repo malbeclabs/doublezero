@@ -472,7 +472,7 @@ func TestGetConfig(t *testing.T) {
 								Name:          "Ethernet1/1",
 								InterfaceType: InterfaceTypePhysical,
 								Ip:            netip.MustParsePrefix("172.16.0.2/31"),
-								Mtu:           2048,
+								Mtu:           9000,
 								Metric:        40000,
 								IsLink:        true,
 							},
@@ -480,7 +480,7 @@ func TestGetConfig(t *testing.T) {
 								Name:          "Ethernet1/2",
 								InterfaceType: InterfaceTypePhysical,
 								Ip:            netip.MustParsePrefix("172.16.0.4/31"),
-								Mtu:           2048,
+								Mtu:           9000,
 								Metric:        40000,
 								IsLink:        false, // make sure we don't render an isis config since it's not in a link
 							},
@@ -987,7 +987,7 @@ func TestStateCache(t *testing.T) {
 							{
 								InterfaceType: InterfaceTypePhysical,
 								Ip:            netip.MustParsePrefix("172.16.0.2/31"),
-								Mtu:           2048,
+								Mtu:           9000,
 								Name:          "Ethernet1/1",
 								IsLink:        true,
 								Metric:        400000,
@@ -997,7 +997,7 @@ func TestStateCache(t *testing.T) {
 							{
 								InterfaceType: InterfaceTypePhysical,
 								Ip:            netip.MustParsePrefix("172.16.0.4/31"),
-								Mtu:           2048,
+								Mtu:           9000,
 								Name:          "Ethernet1/2",
 								IsLink:        true,
 								Metric:        1,
@@ -1007,7 +1007,7 @@ func TestStateCache(t *testing.T) {
 							{
 								InterfaceType: InterfaceTypePhysical,
 								Ip:            netip.MustParsePrefix("172.16.0.6/31"),
-								Mtu:           2048,
+								Mtu:           9000,
 								Name:          "Ethernet1/3",
 								IsLink:        true,
 								Metric:        50,
@@ -2818,5 +2818,132 @@ func Test_resolveTenantColors(t *testing.T) {
 				t.Errorf("resolveTenantColors() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestProcessDeviceInterfacesAndPeers_ParentDedup asserts that a device with
+// multiple subinterfaces on the same physical parent produces exactly one
+// parent interface in the rendered model. Before #3690 the controller appended
+// a fresh parent for every subinterface, producing N duplicate "interface
+// Switch1/1/2" blocks in the rendered config.
+func TestProcessDeviceInterfacesAndPeers_ParentDedup(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{log: logger}
+
+	device := serviceability.Device{
+		Code: "abc01",
+		Interfaces: []serviceability.Interface{
+			{
+				Name:          "Switch1/1/2.100",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				VlanId:        100,
+				IpNet:         [5]uint8{172, 16, 0, 2, 31},
+				Mtu:           9000,
+			},
+			{
+				Name:          "Switch1/1/2.200",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				VlanId:        200,
+				IpNet:         [5]uint8{172, 16, 0, 4, 31},
+				Mtu:           9000,
+			},
+			{
+				Name:          "Switch1/1/2.300",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				VlanId:        300,
+				IpNet:         [5]uint8{172, 16, 0, 6, 31},
+				Mtu:           9000,
+			},
+		},
+	}
+
+	d := &Device{}
+	controller.processDeviceInterfacesAndPeers(device, d, "pubkey1")
+
+	var parents []Interface
+	for _, intf := range d.Interfaces {
+		if intf.Name == "Switch1/1/2" && intf.IsSubInterfaceParent {
+			parents = append(parents, intf)
+		}
+	}
+	if len(parents) != 1 {
+		var names []string
+		for _, intf := range d.Interfaces {
+			names = append(names, intf.Name)
+		}
+		t.Fatalf("expected exactly one Switch1/1/2 parent interface, got %d. all rendered names: %v", len(parents), names)
+	}
+}
+
+// TestProcessDeviceInterfacesAndPeers_RoleBasedMTU asserts that the rendered
+// MTU is determined by interface role (CYOA/DIA → 1500, fabric → 9000) and not
+// by the onchain Interface.Mtu field. This guards against V1-deserialized
+// interfaces with Mtu = 0, against the legacy 2048 placeholder, and against
+// any stale onchain value.
+func TestProcessDeviceInterfacesAndPeers_RoleBasedMTU(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{log: logger}
+
+	device := serviceability.Device{
+		Code: "abc01",
+		Interfaces: []serviceability.Interface{
+			// V1-style fabric physical with Mtu == 0 (Go SDK V1 default).
+			{
+				Name:          "Switch1/1/1",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				IpNet:         [5]uint8{172, 16, 0, 0, 31},
+				Mtu:           0,
+			},
+			// Fabric subinterface with the legacy 2048 placeholder onchain.
+			{
+				Name:          "Switch1/1/2.100",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				VlanId:        100,
+				IpNet:         [5]uint8{172, 16, 0, 2, 31},
+				Mtu:           2048,
+			},
+			// CYOA physical with Mtu == 0.
+			{
+				Name:          "Switch1/1/5",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				InterfaceCYOA: serviceability.InterfaceCYOAGREOverFabric,
+				IpNet:         [5]uint8{172, 16, 0, 14, 31},
+				Mtu:           0,
+			},
+			// DIA physical with a wrong-but-non-zero onchain Mtu.
+			{
+				Name:          "Switch1/1/6",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				InterfaceDIA:  serviceability.InterfaceDIADIA,
+				IpNet:         [5]uint8{172, 16, 0, 16, 31},
+				Mtu:           9216,
+			},
+		},
+	}
+
+	d := &Device{}
+	controller.processDeviceInterfacesAndPeers(device, d, "pubkey1")
+
+	got := make(map[string]uint16)
+	for _, intf := range d.Interfaces {
+		got[intf.Name] = intf.Mtu
+	}
+
+	want := map[string]uint16{
+		"Switch1/1/1":     9000, // fabric physical, was Mtu=0 onchain
+		"Switch1/1/2":     9000, // fabric subinterface parent (max of children)
+		"Switch1/1/2.100": 9000, // fabric subinterface, was Mtu=2048 onchain
+		"Switch1/1/5":     1500, // CYOA, was Mtu=0 onchain
+		"Switch1/1/6":     1500, // DIA, was Mtu=9216 onchain
+	}
+	for name, wantMtu := range want {
+		gotMtu, ok := got[name]
+		if !ok {
+			t.Errorf("expected interface %q in rendered model, got names: %v", name, got)
+			continue
+		}
+		if gotMtu != wantMtu {
+			t.Errorf("interface %q: got Mtu=%d, want %d (role-based, ignoring onchain value)", name, gotMtu, wantMtu)
+		}
 	}
 }

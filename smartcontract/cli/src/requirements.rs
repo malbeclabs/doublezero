@@ -100,8 +100,11 @@ pub fn check_balance(client: &dyn CliCommand, spinner: Option<&ProgressBar>) -> 
     }
 }
 
-pub fn check_accesspass(client: &dyn CliCommand, client_ip: Ipv4Addr) -> eyre::Result<bool> {
-    let epoch = client.get_epoch()?;
+pub fn check_accesspass(
+    client: &dyn CliCommand,
+    client_ip: Ipv4Addr,
+    enforce_epoch: bool,
+) -> eyre::Result<bool> {
     let (_, accesspass) = client
         .get_accesspass(GetAccessPassCommand {
             client_ip,
@@ -109,6 +112,10 @@ pub fn check_accesspass(client: &dyn CliCommand, client_ip: Ipv4Addr) -> eyre::R
         })?
         .ok_or_else(|| eyre::eyre!("Access Pass not found"))?;
 
+    if !enforce_epoch {
+        return Ok(true);
+    }
+    let epoch = client.get_epoch()?;
     Ok(accesspass.last_access_epoch >= epoch)
 }
 

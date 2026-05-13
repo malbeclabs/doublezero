@@ -8,6 +8,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Smartcontract
+  - Skip `last_access_epoch` enforcement for `UserType::Multicast` in `CreateSubscribeUser` and `CheckUserAccessPass`. Multicast access is gated by `mgroup_pub_allowlist` / `mgroup_sub_allowlist` on the access pass, not by epoch, so multicast users can be created and remain `Activated` regardless of the access-pass expiry. IBRL/unicast epoch enforcement is unchanged.
+- Client
+  - `doublezero connect multicast` no longer fails the client-side `check_accesspass` epoch check; only the AccessPass existence is verified for multicast. IBRL paths still enforce `last_access_epoch >= current_epoch`.
+
 ## [v0.22.0](https://github.com/malbeclabs/doublezero/compare/client/v0.21.0...client/v0.22.0) - 2026-05-08
 
 ### Breaking

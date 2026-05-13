@@ -1,7 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
-    poll_for_activation::{poll_for_multicastgroup_activated, poll_for_user_activated},
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{validate_pubkey, validate_pubkey_or_code},
 };
@@ -71,10 +70,12 @@ impl SubscribeUserCliCommand {
         }
 
         if self.wait {
-            let user = poll_for_user_activated(client, &user_pk)?;
+            let (_, user) = client.get_user(GetUserCommand { pubkey: user_pk })?;
             writeln!(out, "User status: {}", user.status)?;
             for group_pk in &group_pks {
-                let mgroup = poll_for_multicastgroup_activated(client, group_pk)?;
+                let (_, mgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
+                    pubkey_or_code: group_pk.to_string(),
+                })?;
                 writeln!(out, "Multicast group {group_pk} status: {}", mgroup.status)?;
             }
         }

@@ -25,6 +25,17 @@ fn device_has_available_endpoint(device: &Device, exclude_ips: &[Ipv4Addr]) -> b
     endpoints.iter().any(|ep| !exclude_ips.contains(ep))
 }
 
+/// Compare latency records by minimum latency, then average latency.
+///
+/// Callers use stable `sort_by`, so exact `(min_latency_ns, avg_latency_ns)` ties
+/// intentionally preserve the daemon/result order instead of introducing an
+/// arbitrary final tie-breaker.
+fn compare_latency_min_then_avg(a: &LatencyRecord, b: &LatencyRecord) -> std::cmp::Ordering {
+    a.min_latency_ns
+        .cmp(&b.min_latency_ns)
+        .then_with(|| a.avg_latency_ns.cmp(&b.avg_latency_ns))
+}
+
 /// Select the best tunnel endpoint for the given device based on latency data.
 /// Returns the lowest-latency endpoint IP not in `exclude_ips`.
 /// Falls back to Ipv4Addr::UNSPECIFIED if no per-endpoint data is available.
@@ -39,11 +50,7 @@ pub fn select_tunnel_endpoint(
         .iter()
         .filter(|l| l.device_pk == device_pk)
         .collect();
-    device_latencies.sort_by(|a, b| {
-        a.min_latency_ns
-            .partial_cmp(&b.min_latency_ns)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    device_latencies.sort_by(|a, b| compare_latency_min_then_avg(a, b));
 
     // Pick the first endpoint not in exclude_ips
     for latency in &device_latencies {
@@ -124,13 +131,9 @@ pub async fn retrieve_latencies<T: ServiceController>(
     };
 
     latencies.sort_by(|a, b| {
-        let reachable_cmp = b.reachable.cmp(&a.reachable);
-        if reachable_cmp != std::cmp::Ordering::Equal {
-            return reachable_cmp;
-        }
-        a.min_latency_ns
-            .partial_cmp(&b.min_latency_ns)
-            .unwrap_or(std::cmp::Ordering::Equal)
+        b.reachable
+            .cmp(&a.reachable)
+            .then_with(|| compare_latency_min_then_avg(a, b))
     });
 
     Ok(latencies)
@@ -948,6 +951,64 @@ mod tests {
         assert_eq!(result, Ipv4Addr::new(10, 0, 0, 2)); // lower min wins
     }
 
+    #[test]
+    fn test_select_tunnel_endpoint_tiebreaker_prefers_lower_avg() {
+        let pk = Pubkey::new_unique();
+        let pk_str = pk.to_string();
+        let latencies = vec![
+            LatencyRecord {
+                device_pk: pk_str.clone(),
+                device_code: "device1".to_string(),
+                device_ip: "10.0.0.1".to_string(),
+                min_latency_ns: 15_000_000,
+                max_latency_ns: 80_000_000,
+                avg_latency_ns: 80_000_000,
+                reachable: true,
+            },
+            LatencyRecord {
+                device_pk: pk_str.clone(),
+                device_code: "device1".to_string(),
+                device_ip: "10.0.0.2".to_string(),
+                min_latency_ns: 15_000_000,
+                max_latency_ns: 16_000_000,
+                avg_latency_ns: 16_000_000,
+                reachable: true,
+            },
+        ];
+
+        let result = select_tunnel_endpoint(&latencies, &pk_str, Ipv4Addr::new(10, 0, 0, 1), &[]);
+        assert_eq!(result, Ipv4Addr::new(10, 0, 0, 2));
+    }
+
+    #[test]
+    fn test_select_tunnel_endpoint_preserves_input_order_on_exact_tie() {
+        let pk = Pubkey::new_unique();
+        let pk_str = pk.to_string();
+        let latencies = vec![
+            LatencyRecord {
+                device_pk: pk_str.clone(),
+                device_code: "device1".to_string(),
+                device_ip: "10.0.0.2".to_string(),
+                min_latency_ns: 15_000_000,
+                max_latency_ns: 16_000_000,
+                avg_latency_ns: 16_000_000,
+                reachable: true,
+            },
+            LatencyRecord {
+                device_pk: pk_str.clone(),
+                device_code: "device1".to_string(),
+                device_ip: "10.0.0.1".to_string(),
+                min_latency_ns: 15_000_000,
+                max_latency_ns: 16_000_000,
+                avg_latency_ns: 16_000_000,
+                reachable: true,
+            },
+        ];
+
+        let result = select_tunnel_endpoint(&latencies, &pk_str, Ipv4Addr::new(10, 0, 0, 1), &[]);
+        assert_eq!(result, Ipv4Addr::new(10, 0, 0, 2));
+    }
+
     #[tokio::test]
     async fn test_retrieve_latencies_sorts_by_min_not_avg() {
         let (pk1, dev1) = make_device(DeviceStatus::Activated, 0);
@@ -995,6 +1056,53 @@ mod tests {
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].device_pk, pk1.to_string()); // lower min first
         assert_eq!(result[1].device_pk, pk2.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_retrieve_latencies_tiebreaker_prefers_lower_avg() {
+        let (pk1, dev1) = make_device(DeviceStatus::Activated, 0);
+        let (pk2, dev2) = make_device(DeviceStatus::Activated, 0);
+
+        let mut devices = HashMap::new();
+        devices.insert(pk1, dev1);
+        devices.insert(pk2, dev2);
+
+        let latencies = vec![
+            LatencyRecord {
+                device_pk: pk1.to_string(),
+                device_code: "device".to_string(),
+                device_ip: "0.0.0.0".to_string(),
+                min_latency_ns: 15_000_000,
+                max_latency_ns: 80_000_000,
+                avg_latency_ns: 80_000_000,
+                reachable: true,
+            },
+            LatencyRecord {
+                device_pk: pk2.to_string(),
+                device_code: "device".to_string(),
+                device_ip: "0.0.0.0".to_string(),
+                min_latency_ns: 15_000_000,
+                max_latency_ns: 16_000_000,
+                avg_latency_ns: 16_000_000,
+                reachable: true,
+            },
+        ];
+
+        let mut controller = MockServiceController::new();
+        controller.expect_latency().returning(move || {
+            Ok(LatencyResponse {
+                ready: true,
+                results: latencies.clone(),
+            })
+        });
+
+        let result = retrieve_latencies(&controller, &devices, false, None)
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].device_pk, pk2.to_string());
+        assert_eq!(result[1].device_pk, pk1.to_string());
     }
 
     #[tokio::test]

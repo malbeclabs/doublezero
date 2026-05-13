@@ -604,18 +604,13 @@ impl TryFrom<&[u8]> for Device {
 
         let interfaces = if trailing.is_empty() {
             // Legacy account: rebuild from the legacy enum vec via per-variant
-            // `TryFrom`. V3 is projected through V2, dropping `flex_algo_node_segments`
-            // (V3 only exists from migrate/backfill paths post-#3653).
+            // `TryFrom`.
             deprecated_interfaces
                 .iter()
                 .map(|iface| -> Result<Interface, ProgramError> {
                     match iface {
                         InterfaceDeprecated::V1(v1) => v1.try_into(),
                         InterfaceDeprecated::V2(v2) => v2.try_into(),
-                        InterfaceDeprecated::V3(v3) => {
-                            let v2: InterfaceV2 = v3.try_into()?;
-                            (&v2).try_into()
-                        }
                     }
                 })
                 .collect::<Result<Vec<_>, _>>()?

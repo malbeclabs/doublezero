@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- client: break latency ties with avg latency ([#362](https://github.com/malbeclabs/doublezero/pull/3692))
+
 ### Breaking
 
 ### Changes
@@ -12,12 +14,16 @@ All notable changes to this project will be documented in this file.
   - Skip `last_access_epoch` enforcement for `UserType::Multicast` in `CreateSubscribeUser` and `CheckUserAccessPass`. Multicast access is gated by `mgroup_pub_allowlist` / `mgroup_sub_allowlist` on the access pass, not by epoch, so multicast users can be created and remain `Activated` regardless of the access-pass expiry. IBRL/unicast epoch enforcement is unchanged.
 - Client
   - `doublezero connect multicast` no longer fails the client-side `check_accesspass` epoch check; only the AccessPass existence is verified for multicast. IBRL paths still enforce `last_access_epoch >= current_epoch`.
+  - Delete `InterfaceV3` and the `InterfaceDeprecated::V3` variant from the serviceability program. V3 was added by an earlier change, never written to production accounts, and reverted in #3653 / no longer produced after #3667; this removes the dead type. Discriminant 3 is now an unused reserved slot in `InterfaceDeprecated`'s encoding space — unknown discriminants fall through to `InterfaceV2::default()`. Removes the V3 struct, its helper impls (`From<InterfaceV2>`, `TryFrom<&InterfaceV1>`, `Default`, `TryFrom<&InterfaceV3> for InterfaceV2`), V3 match arms in `InterfaceDeprecated::to_v2`/`size`/`Device::TryFrom`, and the V3 cross-language byte-layout debug test. On-disk write format is unchanged ([#3664](https://github.com/malbeclabs/doublezero/issues/3664))
+- SDK
+  - Drop V3 handling from the Go, Python, and TypeScript serviceability readers: remove `DeserializeInterfaceV3` (Go) and the `version === 3` / `version == 3` legacy-slot branches (Python/TS); remove the `TestDeserializeInterfaceV3CrossLanguage` Go test. The forward-compat trailing `interfaces` vec continues to carry `flex_algo_node_segments` via the size-prefixed body — that path is unchanged ([#3664](https://github.com/malbeclabs/doublezero/issues/3664))
 
 ## [v0.22.0](https://github.com/malbeclabs/doublezero/compare/client/v0.21.0...client/v0.22.0) - 2026-05-08
 
 ### Breaking
 
 ### Changes
+
 - Smartcontract
   - Rename the `BackfillTopology` instruction to `AssignTopologyNodeSegments` across the program, CLI, and Rust SDK; the instruction discriminant (110) and on-disk semantics are unchanged ([#3648](https://github.com/malbeclabs/doublezero/pull/3648))
   - Extend `CreateDeviceInterface` with optional trailing topology PDA accounts (`topology_count: u8`); for Vpnv4 loopbacks under onchain allocation the processor allocates a `FlexAlgoNodeSegment` per topology atomically with interface creation, so newly-provisioned devices no longer need a separate `AssignTopologyNodeSegments` step. The CLI/SDK auto-discover existing topologies and pass them. Topology accounts are validated by program-owner and by first-byte `AccountType::Topology` ([#3648](https://github.com/malbeclabs/doublezero/pull/3648))

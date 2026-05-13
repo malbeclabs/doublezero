@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- DeviceHealthOracle
+  - Detect impaired links from the `link_rollup_5m` ClickHouse table (`isis_down=true` or `a_loss_pct`/`z_loss_pct` above a configurable threshold) and write `LinkHealth = Impaired` onchain. Recover to `ReadyForService` only after every bucket in the recovery window (reuses `--drained-slot-count`) is clean — this asymmetry surfaces real impairment quickly while preventing borderline links from flapping. New flag `--link-loss-threshold` (default `5.0`). `LinkHealth` is reported as a signal only — the serviceability program does not gate `link.status` on it ([#2652](https://github.com/malbeclabs/doublezero/issues/2652))
 - Smartcontract
   - Rename the `BackfillTopology` instruction to `AssignTopologyNodeSegments` across the program, CLI, and Rust SDK; the instruction discriminant (110) and on-disk semantics are unchanged ([#3648](https://github.com/malbeclabs/doublezero/pull/3648))
   - Extend `CreateDeviceInterface` with optional trailing topology PDA accounts (`topology_count: u8`); for Vpnv4 loopbacks under onchain allocation the processor allocates a `FlexAlgoNodeSegment` per topology atomically with interface creation, so newly-provisioned devices no longer need a separate `AssignTopologyNodeSegments` step. The CLI/SDK auto-discover existing topologies and pass them. Topology accounts are validated by program-owner and by first-byte `AccountType::Topology` ([#3648](https://github.com/malbeclabs/doublezero/pull/3648))

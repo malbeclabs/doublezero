@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - client: break latency ties with avg latency ([#362](https://github.com/malbeclabs/doublezero/pull/3692))
+- e2e/qa: skip the per-type capacity check in `ValidDevices` when the onchain per-type max is zero. The chain treats `max_unicast_users == 0` (and the multicast equivalents) as "no per-type cap," so the QA filter falls back to the aggregate `max_users - users_count` check for those devices. Fixes the regression where `qa.alldevices` on mainnet-beta dropped from testing 85 devices to testing 3 (malbeclabs/infra#1294)
 
 ### Breaking
 

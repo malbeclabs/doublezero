@@ -1,6 +1,5 @@
 use crate::{
     doublezerocommand::CliCommand,
-    poll_for_activation::poll_for_multicastgroup_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
         validate_code, validate_parse_bandwidth, validate_pubkey, validate_pubkey_or_code,
@@ -67,8 +66,10 @@ impl UpdateMulticastGroupCliCommand {
         writeln!(out, "Signature: {signature}",)?;
 
         if self.wait {
-            let user = poll_for_multicastgroup_activated(client, &pubkey)?;
-            writeln!(out, "Status: {0}", user.status)?;
+            let (_, mgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
+                pubkey_or_code: pubkey.to_string(),
+            })?;
+            writeln!(out, "Status: {0}", mgroup.status)?;
         }
 
         Ok(())

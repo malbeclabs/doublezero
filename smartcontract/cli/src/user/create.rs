@@ -1,15 +1,16 @@
 use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
-    poll_for_activation::poll_for_user_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
 use doublezero_sdk::{
     commands::{
-        accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
-        tenant::get::GetTenantCommand, user::create::CreateUserCommand,
+        accesspass::get::GetAccessPassCommand,
+        device::get::GetDeviceCommand,
+        tenant::get::GetTenantCommand,
+        user::{create::CreateUserCommand, get::GetUserCommand},
     },
     UserCYOA, UserType,
 };
@@ -105,7 +106,7 @@ impl CreateUserCliCommand {
         writeln!(out, "Signature: {signature}",)?;
 
         if self.wait {
-            let user = poll_for_user_activated(client, &pubkey)?;
+            let (_, user) = client.get_user(GetUserCommand { pubkey })?;
             writeln!(out, "Status: {0}", user.status)?;
         }
 

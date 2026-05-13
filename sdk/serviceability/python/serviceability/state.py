@@ -540,6 +540,10 @@ class GlobalState:
     user_airdrop_lamports: int = 0
     health_oracle_pk: Pubkey = Pubkey.default()
     qa_allowlist: list[Pubkey] = field(default_factory=list)
+    # u128 bitmask. Bit 0 is the deprecated OnChainAllocation flag (onchain
+    # allocation is now always on) and is reserved — must never be reused.
+    # Source of truth:
+    # smartcontract/programs/doublezero-serviceability/src/state/feature_flags.rs
     feature_flags: int = 0
     feed_authority_pk: Pubkey = Pubkey.default()
 

@@ -307,6 +307,10 @@ export interface GlobalState {
   userAirdropLamports: bigint;
   healthOraclePk: PublicKey;
   qaAllowlist: PublicKey[];
+  // u128 bitmask. Bit 0 is the deprecated OnChainAllocation flag
+  // (onchain allocation is now always on) and is reserved — must never be
+  // reused. Source of truth:
+  // smartcontract/programs/doublezero-serviceability/src/state/feature_flags.rs.
   featureFlags: bigint;
   feedAuthorityPk: PublicKey;
 }

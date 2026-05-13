@@ -126,7 +126,11 @@ impl ProvisioningCliCommand {
         let client_ip = super::helpers::resolve_client_ip(controller).await?;
         let client_ip_str = client_ip.to_string();
 
-        if !check_accesspass(client, client_ip)? {
+        let parsed_mode = self.parse_dz_mode()?;
+        // Multicast users are not subject to epoch expiry — only verify the AccessPass exists.
+        let enforce_epoch = !matches!(parsed_mode, ParsedDzMode::Multicast { .. });
+
+        if !check_accesspass(client, client_ip, enforce_epoch)? {
             println!(
                 "❌  Unable to find a valid AccessPass for the IP: {client_ip_str} UserPayer: {}",
                 client.get_payer()
@@ -140,7 +144,7 @@ impl ProvisioningCliCommand {
         spinner.println(format!("    DoubleZero ID: {}", client.get_payer()));
         spinner.println(format!("⚡  Provisioning for IP: {client_ip_str}"));
 
-        match self.parse_dz_mode()? {
+        match parsed_mode {
             ParsedDzMode::Ibrl(user_type, tenant) => {
                 self.execute_ibrl(client, controller, user_type, client_ip, tenant, &spinner)
                     .await
@@ -1014,6 +1018,7 @@ mod tests {
         pub mcast_groups: Arc<Mutex<HashMap<Pubkey, MulticastGroup>>>,
         pub tenants: Arc<Mutex<HashMap<Pubkey, Tenant>>>,
         pub default_tenant_pk: Pubkey,
+        pub accesspass: Arc<Mutex<AccessPass>>,
         /// Tracks which service types the daemon has "provisioned" (simulating
         /// what the reconciler would do). The status mock only returns entries
         /// for types in this set.
@@ -1075,6 +1080,24 @@ mod tests {
             let mut tenants = HashMap::new();
             tenants.insert(default_tenant_pk, default_tenant);
 
+            let client = create_test_client();
+            let payer = client.get_payer();
+            let accesspass = Arc::new(Mutex::new(AccessPass {
+                account_type: AccountType::AccessPass,
+                owner: payer,
+                bump_seed: 1,
+                client_ip: Ipv4Addr::new(1, 2, 3, 4),
+                user_payer: payer,
+                last_access_epoch: u64::MAX,
+                accesspass_type: AccessPassType::Prepaid,
+                connection_count: 0,
+                status: AccessPassStatus::Requested,
+                mgroup_pub_allowlist: vec![],
+                mgroup_sub_allowlist: vec![],
+                tenant_allowlist: vec![],
+                flags: 0,
+            }));
+
             let mut fixture = Self {
                 global_cfg: GlobalConfig {
                     account_type: AccountType::GlobalConfig,
@@ -1088,7 +1111,7 @@ mod tests {
                     multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
                     next_bgp_community: 10000,
                 },
-                client: create_test_client(),
+                client,
                 controller: MockServiceController::new(),
                 devices: Arc::new(Mutex::new(HashMap::new())),
                 users: Arc::new(Mutex::new(HashMap::new())),
@@ -1096,6 +1119,7 @@ mod tests {
                 mcast_groups: Arc::new(Mutex::new(HashMap::new())),
                 tenants: Arc::new(Mutex::new(tenants)),
                 default_tenant_pk,
+                accesspass,
                 provisioned_services: Arc::new(Mutex::new(HashSet::new())),
             };
 
@@ -1203,21 +1227,7 @@ mod tests {
                 &Ipv4Addr::new(1, 2, 3, 4),
                 &payer,
             );
-            let accesspass = AccessPass {
-                account_type: AccountType::AccessPass,
-                owner: payer,
-                bump_seed: 1,
-                client_ip: Ipv4Addr::new(1, 2, 3, 4),
-                user_payer: payer,
-                last_access_epoch: u64::MAX,
-                accesspass_type: AccessPassType::Prepaid,
-                connection_count: 0,
-                status: AccessPassStatus::Requested,
-                mgroup_pub_allowlist: vec![],
-                mgroup_sub_allowlist: vec![],
-                tenant_allowlist: vec![],
-                flags: 0,
-            };
+            let accesspass = fixture.accesspass.clone();
             fixture
                 .client
                 .expect_get_accesspass()
@@ -1225,7 +1235,9 @@ mod tests {
                     client_ip: Ipv4Addr::new(1, 2, 3, 4),
                     user_payer: payer,
                 }))
-                .returning_st(move |_| Ok(Some((accesspass_pk, accesspass.clone()))));
+                .returning_st(move |_| {
+                    Ok(Some((accesspass_pk, accesspass.lock().unwrap().clone())))
+                });
 
             let users = fixture.users.clone();
             fixture
@@ -1874,6 +1886,227 @@ mod tests {
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
         assert!(result.is_ok());
+    }
+
+    /// Multicast connect succeeds when the AccessPass has last_access_epoch = 0 (expired).
+    /// Multicast access is gated by mgroup_*_allowlist, not by epoch.
+    #[tokio::test]
+    async fn test_connect_command_multicast_publisher_with_expired_accesspass() {
+        let mut fixture = TestFixture::new();
+        // Expire the access pass (last_access_epoch < current_epoch). The CLI must NOT
+        // reject the connect for multicast.
+        fixture.accesspass.lock().unwrap().last_access_epoch = 0;
+
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &user,
+            mcast_group_pk,
+            true,
+            false,
+        );
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: None,
+                multicast_groups: vec![],
+                pub_groups: vec!["test-group".to_string()],
+                sub_groups: vec![],
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_ok(),
+            "multicast connect must succeed with expired access pass, got: {:?}",
+            result.err()
+        );
+    }
+
+    /// Multicast subscriber connect succeeds with expired access pass — symmetric to publisher.
+    #[tokio::test]
+    async fn test_connect_command_multicast_subscriber_with_expired_accesspass() {
+        let mut fixture = TestFixture::new();
+        fixture.accesspass.lock().unwrap().last_access_epoch = 0;
+
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &user,
+            mcast_group_pk,
+            false,
+            true,
+        );
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: None,
+                multicast_groups: vec![],
+                pub_groups: vec![],
+                sub_groups: vec!["test-group".to_string()],
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_ok(),
+            "multicast subscriber connect must succeed with expired access pass: {:?}",
+            result.err()
+        );
+    }
+
+    /// Existing IBRL user adding a multicast subscription with expired access pass succeeds.
+    /// Exercises the `(Some(ibrl), None)` branch of `find_or_create_user_and_subscribe`:
+    /// a separate Multicast user is created via CreateSubscribeUser on a different device.
+    #[tokio::test]
+    async fn test_add_multicast_to_existing_ibrl_user_with_expired_accesspass() {
+        let mut fixture = TestFixture::new();
+        fixture.accesspass.lock().unwrap().last_access_epoch = 0;
+
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let (device2_pk, _device2) = fixture.add_device(DeviceType::Hybrid, 110, true);
+
+        // Existing IBRL user on device1
+        let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+        let _ibrl_user_pk = fixture.add_user(&ibrl_user);
+
+        // Expect a new Multicast user to be created on device2 (concurrent tunnels = different device)
+        let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
+        fixture.expect_create_subscribe_user(
+            Pubkey::new_unique(),
+            &mcast_user,
+            mcast_group_pk,
+            false,
+            true,
+        );
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: None,
+                multicast_groups: vec![],
+                pub_groups: vec![],
+                sub_groups: vec!["test-group".to_string()],
+            },
+            client_ip: Some(ibrl_user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_ok(),
+            "adding multicast to existing IBRL user must succeed with expired access pass: {:?}",
+            result.err()
+        );
+    }
+
+    /// Existing multicast user subscribes to a new group with expired access pass.
+    /// Exercises the `(_, Some(mcast))` branch of `find_or_create_user_and_subscribe`,
+    /// which calls UpdateMulticastGroupRoles (the on-chain processor never had an epoch
+    /// check; this test verifies the CLI gate no longer blocks it either).
+    #[tokio::test]
+    async fn test_connect_command_multicast_add_group_to_existing_user_with_expired_accesspass() {
+        let mut fixture = TestFixture::new();
+        fixture.accesspass.lock().unwrap().last_access_epoch = 0;
+
+        let (mcast_group_pk, _mcast_group) = fixture.add_multicast_group("test-group", "239.0.0.1");
+        let (mcast_group2_pk, _mcast_group2) =
+            fixture.add_multicast_group("test-group2", "239.0.0.2");
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+        // Existing multicast user already subscribed to test-group
+        let mut user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+        user.subscribers.push(mcast_group_pk);
+        let user_pk = fixture.add_user(&user);
+
+        // Expect UpdateMulticastGroupRoles for the new group
+        fixture.expect_update_multicastgroup_roles(
+            user_pk,
+            mcast_group2_pk,
+            user.client_ip,
+            false,
+            true,
+        );
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: None,
+                multicast_groups: vec![],
+                pub_groups: vec![],
+                sub_groups: vec!["test-group2".to_string()],
+            },
+            client_ip: Some(user.client_ip.to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_ok(),
+            "adding new group to existing multicast user must succeed with expired access pass: {:?}",
+            result.err()
+        );
+    }
+
+    /// Regression: IBRL connect still fails when the AccessPass has last_access_epoch < current_epoch.
+    #[tokio::test]
+    async fn test_connect_command_ibrl_with_expired_accesspass_fails() {
+        let mut fixture = TestFixture::new();
+        fixture.accesspass.lock().unwrap().last_access_epoch = 0;
+
+        let (_device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
+                allocate_addr: false,
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_err(),
+            "IBRL connect must still fail with expired access pass"
+        );
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("AccessPass"),
+            "expected AccessPass error, got: {err}"
+        );
     }
 
     async fn execute_multicast_test_succeed_adding_second_group(multicast_mode: MulticastMode) {

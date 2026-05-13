@@ -206,16 +206,19 @@ pub fn create_user_core(
         }
     }
 
-    // Check Initial epoch
-    let clock = Clock::get()?;
-    let current_epoch = clock.epoch;
-    if accesspass.last_access_epoch < current_epoch {
-        msg!(
-            "Invalid epoch last_access_epoch: {} < current_epoch: {}",
-            accesspass.last_access_epoch,
-            current_epoch
-        );
-        return Err(DoubleZeroError::AccessPassUnauthorized.into());
+    // Enforce epoch validity for unicast users only. Multicast access is
+    // governed by mgroup_*_allowlist on the access pass, not by epoch.
+    if user_type != UserType::Multicast {
+        let clock = Clock::get()?;
+        let current_epoch = clock.epoch;
+        if accesspass.last_access_epoch < current_epoch {
+            msg!(
+                "Invalid epoch last_access_epoch: {} < current_epoch: {}",
+                accesspass.last_access_epoch,
+                current_epoch
+            );
+            return Err(DoubleZeroError::AccessPassUnauthorized.into());
+        }
     }
 
     // Read validator_pubkey from AccessPass

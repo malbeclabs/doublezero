@@ -6,7 +6,7 @@ use crate::{
     state::{
         accesspass::{AccessPass, AccessPassStatus},
         globalstate::GlobalState,
-        user::{User, UserStatus},
+        user::{User, UserStatus, UserType},
     },
 };
 use borsh::BorshSerialize;
@@ -98,7 +98,11 @@ pub fn process_check_access_pass_user(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    user.status = if accesspass.status == AccessPassStatus::Expired {
+    // Multicast users are not subject to epoch expiry — their access is gated by
+    // mgroup_*_allowlist, not by accesspass.last_access_epoch.
+    user.status = if user.user_type == UserType::Multicast {
+        UserStatus::Activated
+    } else if accesspass.status == AccessPassStatus::Expired {
         UserStatus::OutOfCredits
     } else {
         UserStatus::Activated

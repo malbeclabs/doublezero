@@ -81,9 +81,14 @@ type GlobalState struct {
 	UserAirdropLamports        uint64
 	HealthOraclePK             [32]byte
 	QAAllowlist                [][32]byte
-	FeatureFlags               Uint128
-	FeedAuthorityPK            [32]byte
-	PubKey                     [32]byte
+	// FeatureFlags is a bitmask of u128. Bit 0 is the deprecated
+	// OnChainAllocation flag (onchain allocation is now always on) and is
+	// reserved — it must never be reused for a new feature. Source of truth
+	// for bit assignments lives in
+	// smartcontract/programs/doublezero-serviceability/src/state/feature_flags.rs.
+	FeatureFlags    Uint128
+	FeedAuthorityPK [32]byte
+	PubKey          [32]byte
 }
 
 type Location struct {

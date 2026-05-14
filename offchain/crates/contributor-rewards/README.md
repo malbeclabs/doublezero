@@ -25,7 +25,8 @@ $ wget https://doublezero-contributor-rewards-mn-beta-snapshots.s3.us-east-1.ama
 | -------------------- | -------------------- | --------------------------- |
 | -                    | 48                   | v0.2.2                      |
 | 49                   | 109                  | v0.3.5                      |
-| 110                  | -                    | v0.4.1                      |
+| 110                  | 138                  | v0.4.1                      |
+| 139                  | -                    | v0.5.3                      |
 
 In order to check you can follow these steps (depending on tags/snapshots) as shown in the table above.
 

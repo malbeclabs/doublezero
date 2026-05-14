@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use anyhow::{Result, ensure};
 use doublezero_solana_client_tools::{
     account::zero_copy::ZeroCopyAccountOwnedData,
@@ -126,8 +128,8 @@ pub async fn try_distribute_epoch_rewards(
     )
     .await?;
 
-    let mut distributed_count = 0u32;
-    let mut skipped_count = 0u32;
+    let mut newly_distributed_leaf_indices = HashSet::new();
+    let mut skipped_leaf_indices = HashSet::new();
 
     for (leaf_index, reward_share, is_processed) in
         try_distribution_rewards_iter(&distribution, &shapley_output)?
@@ -152,23 +154,41 @@ pub async fn try_distribute_epoch_rewards(
         .await?;
 
         if was_distributed {
-            distributed_count += 1;
+            newly_distributed_leaf_indices.insert(leaf_index);
         } else {
-            skipped_count += 1;
+            skipped_leaf_indices.insert(leaf_index);
         }
     }
 
-    let outcome = if skipped_count > 0 {
+    let outcome = if skipped_leaf_indices.is_empty() {
+        DistributionOutcome::Complete { total_contributors }
+    } else {
         DistributionOutcome::PartiallyComplete {
             total_contributors,
-            distributed: distribution.distributed_rewards_count + distributed_count,
-            skipped: skipped_count,
+            distributed: distribution.distributed_rewards_count
+                + newly_distributed_leaf_indices.len() as u32,
+            skipped: skipped_leaf_indices.len() as u32,
         }
-    } else {
-        DistributionOutcome::Complete { total_contributors }
     };
 
-    // Build per-contributor summary from in-scope data (no additional RPC calls).
+    let contributors = try_build_contributor_distribution_results(
+        &distribution,
+        &shapley_output,
+        &newly_distributed_leaf_indices,
+    )?;
+
+    Ok(DistributionSummary {
+        dz_epoch: dz_epoch_value,
+        outcome,
+        contributors,
+    })
+}
+
+fn try_build_contributor_distribution_results(
+    distribution: &ZeroCopyAccountOwnedData<Distribution>,
+    shapley_output: &ShapleyOutputStorage,
+    newly_distributed_leaf_indices: &HashSet<usize>,
+) -> Result<Vec<ContributorDistributionResult>> {
     let collected_rewards = distribution.total_collected_2z_tokens();
     let burnable_rewards = distribution
         .community_burn_rate
@@ -176,7 +196,7 @@ pub async fn try_distribute_epoch_rewards(
     let distributable_rewards = collected_rewards - burnable_rewards;
     let decimals_divisor = f64::powi(10.0, DOUBLEZERO_MINT_DECIMALS as i32);
 
-    let contributors = try_distribution_rewards_iter(&distribution, &shapley_output)?
+    try_distribution_rewards_iter(distribution, shapley_output)?
         .map(|(index, reward_share, is_processed)| {
             let proportion = reward_share.unit_share as f64 / u32::from(UnitShare32::MAX) as f64;
             let reward_tokens = reward_share
@@ -185,21 +205,15 @@ pub async fn try_distribute_epoch_rewards(
                 .mul_scalar(distributable_rewards) as f64
                 / decimals_divisor;
 
-            ContributorDistributionResult {
+            Ok(ContributorDistributionResult {
                 index,
                 contributor_key: reward_share.contributor_key,
                 proportion,
                 reward_tokens,
-                distributed: is_processed,
-            }
+                distributed: is_processed || newly_distributed_leaf_indices.contains(&index),
+            })
         })
-        .collect();
-
-    Ok(DistributionSummary {
-        dz_epoch: dz_epoch_value,
-        outcome,
-        contributors,
-    })
+        .collect()
 }
 
 /// Iterate over distribution rewards, yielding (leaf_index, reward_share, is_processed)
@@ -386,12 +400,14 @@ async fn try_distribute_contributor_rewards(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use doublezero_revenue_distribution::{state::Distribution, types::DoubleZeroEpoch};
     use doublezero_solana_client_tools::account::zero_copy::ZeroCopyAccountOwnedData;
     use network_shapley::shapley::{ShapleyOutput, ShapleyValue};
     use solana_sdk::pubkey::Pubkey;
 
-    use super::try_distribution_rewards_iter;
+    use super::{try_build_contributor_distribution_results, try_distribution_rewards_iter};
     use crate::calculator::proof::ShapleyOutputStorage;
 
     fn create_test_shapley_output(num_contributors: usize) -> ShapleyOutput {
@@ -481,6 +497,44 @@ mod tests {
         assert!(results[0].2, "leaf 0 should be processed");
         assert!(!results[1].2, "leaf 1 should be unprocessed");
         assert!(results[2].2, "leaf 2 should be processed");
+    }
+
+    #[test]
+    fn test_distribution_summary_marks_newly_distributed_leaves() {
+        let shapley = create_test_shapley_output(3);
+        let shapley_storage = ShapleyOutputStorage::new(42, &shapley).unwrap();
+        let distribution = make_distribution(42, vec![0x00], 3);
+        let newly_distributed_leaf_indices = HashSet::from([0usize, 2usize]);
+
+        let contributors = try_build_contributor_distribution_results(
+            &distribution,
+            &shapley_storage,
+            &newly_distributed_leaf_indices,
+        )
+        .unwrap();
+
+        assert!(contributors[0].distributed, "leaf 0 was newly distributed");
+        assert!(!contributors[1].distributed, "leaf 1 remains undistributed");
+        assert!(contributors[2].distributed, "leaf 2 was newly distributed");
+    }
+
+    #[test]
+    fn test_distribution_summary_keeps_previously_processed_leaves() {
+        let shapley = create_test_shapley_output(3);
+        let shapley_storage = ShapleyOutputStorage::new(42, &shapley).unwrap();
+        let distribution = make_distribution(42, vec![0b0000_0010], 3);
+        let newly_distributed_leaf_indices = HashSet::from([0usize]);
+
+        let contributors = try_build_contributor_distribution_results(
+            &distribution,
+            &shapley_storage,
+            &newly_distributed_leaf_indices,
+        )
+        .unwrap();
+
+        assert!(contributors[0].distributed, "leaf 0 was newly distributed");
+        assert!(contributors[1].distributed, "leaf 1 was already processed");
+        assert!(!contributors[2].distributed, "leaf 2 remains undistributed");
     }
 
     #[test]

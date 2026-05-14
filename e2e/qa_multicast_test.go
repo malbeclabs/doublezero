@@ -355,6 +355,8 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	require.Greater(t, reportB.PacketCount, uint64(0), "subscriberB received no packets from group B")
 	log.Info("Received multicast packets", "subscriber", subscriberB.Host, "group", groupB.Code, "packetCount", reportB.PacketCount)
 
+	phase1Cancel()
+
 	// --- Phase 2: Incremental subscription ---
 	// SubA adds group B without disconnecting — verify tunnel stays up, identity preserved, and receives from both.
 	log.Debug("Phase 2: incremental subscription (no disconnect)")
@@ -403,6 +405,8 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 
 	log.Debug("Phase 2 passed: incremental subscription verified",
 		"groupA_packets", reportA.PacketCount, "groupB_packets", reportB.PacketCount)
+
+	phase2Cancel()
 
 	// --- Phase 3: Incremental publish after subscribe (cross-role) ---
 	// SubA adds a publisher role on group A without disconnecting. Both roles use

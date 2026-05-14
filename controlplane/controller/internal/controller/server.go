@@ -176,7 +176,11 @@ func (c *Controller) processDeviceInterfacesAndPeers(device serviceability.Devic
 	// Build parents in a map keyed by parent name so each physical is rendered
 	// exactly once, and so the parent's MTU is the max of its subinterfaces'
 	// MTUs. Parents are not defined onchain; the controller synthesizes them.
+	// seenNames also dedupes same-name direct entries from onchain data and
+	// suppresses a synthesized parent when an explicit entry already claims
+	// that name.
 	parents := make(map[string]*Interface)
+	seenNames := make(map[string]bool)
 	for _, iface := range device.Interfaces {
 		intf, err := toInterface(iface)
 		if err != nil {
@@ -191,17 +195,24 @@ func (c *Controller) processDeviceInterfacesAndPeers(device serviceability.Devic
 				continue
 			}
 			if existing, ok := parents[parent.Name]; ok {
-				if intf.Mtu > existing.Mtu {
-					existing.Mtu = intf.Mtu
-				}
+				existing.Mtu = max(existing.Mtu, intf.Mtu)
 			} else {
 				parent.Mtu = intf.Mtu
 				parents[parent.Name] = &parent
 			}
 		}
+		if seenNames[intf.Name] {
+			c.log.Warn("duplicate interface name in onchain device data, skipping", "device pubkey", devicePubKey, "name", intf.Name)
+			continue
+		}
+		seenNames[intf.Name] = true
 		d.Interfaces = append(d.Interfaces, intf)
 	}
 	for _, p := range parents {
+		if seenNames[p.Name] {
+			c.log.Warn("synthesized subinterface parent collides with explicit onchain interface, skipping synthesized parent", "device pubkey", devicePubKey, "name", p.Name)
+			continue
+		}
 		d.Interfaces = append(d.Interfaces, *p)
 	}
 	sort.Slice(d.Interfaces, func(i, j int) bool {

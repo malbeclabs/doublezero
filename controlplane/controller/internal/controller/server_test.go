@@ -2608,6 +2608,7 @@ func TestGetConfig_FlexAlgo(t *testing.T) {
 		Name:           "Ethernet2",
 		Ip:             netip.MustParsePrefix("10.0.0.1/30"),
 		InterfaceType:  InterfaceTypePhysical,
+		Mtu:            InterfaceMtu,
 		Metric:         10,
 		IsLink:         true,
 		PubKey:         linkPubKey,
@@ -2617,6 +2618,7 @@ func TestGetConfig_FlexAlgo(t *testing.T) {
 		Name:          "Ethernet2",
 		Ip:            netip.MustParsePrefix("10.0.0.1/30"),
 		InterfaceType: InterfaceTypePhysical,
+		Mtu:           InterfaceMtu,
 		Metric:        10,
 		IsLink:        true,
 		PubKey:        linkPubKey,
@@ -2945,5 +2947,120 @@ func TestProcessDeviceInterfacesAndPeers_RoleBasedMTU(t *testing.T) {
 		if gotMtu != wantMtu {
 			t.Errorf("interface %q: got Mtu=%d, want %d (role-based, ignoring onchain value)", name, gotMtu, wantMtu)
 		}
+	}
+}
+
+// TestProcessDeviceInterfacesAndPeers_DuplicateDirectName asserts that when
+// the onchain device.Interfaces slice contains two entries with the same
+// Name, the controller renders that interface exactly once.
+func TestProcessDeviceInterfacesAndPeers_DuplicateDirectName(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{log: logger}
+
+	device := serviceability.Device{
+		Code: "abc01",
+		Interfaces: []serviceability.Interface{
+			{
+				Name:          "Switch1/1/1",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				IpNet:         [5]uint8{172, 16, 0, 0, 31},
+			},
+			{
+				Name:          "Switch1/1/1",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				IpNet:         [5]uint8{172, 16, 0, 2, 31},
+			},
+		},
+	}
+
+	d := &Device{}
+	controller.processDeviceInterfacesAndPeers(device, d, "pubkey1")
+
+	count := 0
+	for _, intf := range d.Interfaces {
+		if intf.Name == "Switch1/1/1" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly one Switch1/1/1 entry, got %d (all: %+v)", count, d.Interfaces)
+	}
+}
+
+// TestProcessDeviceInterfacesAndPeers_ParentCollidesWithDirect asserts that
+// when a synthesized subinterface parent name matches an explicit onchain
+// interface, the controller keeps the explicit entry and drops the
+// synthesized parent, producing a single rendered block.
+func TestProcessDeviceInterfacesAndPeers_ParentCollidesWithDirect(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	controller := &Controller{log: logger}
+
+	device := serviceability.Device{
+		Code: "abc01",
+		Interfaces: []serviceability.Interface{
+			// Explicit parent — should win.
+			{
+				Name:          "Switch1/1/2",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				IpNet:         [5]uint8{172, 16, 0, 0, 31},
+			},
+			// Subinterface whose synthesized parent collides with the
+			// explicit entry above.
+			{
+				Name:          "Switch1/1/2.100",
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				VlanId:        100,
+				IpNet:         [5]uint8{172, 16, 0, 2, 31},
+			},
+		},
+	}
+
+	d := &Device{}
+	controller.processDeviceInterfacesAndPeers(device, d, "pubkey1")
+
+	var matched []Interface
+	for _, intf := range d.Interfaces {
+		if intf.Name == "Switch1/1/2" {
+			matched = append(matched, intf)
+		}
+	}
+	if len(matched) != 1 {
+		t.Fatalf("expected exactly one Switch1/1/2 entry, got %d (all: %+v)", len(matched), d.Interfaces)
+	}
+	if matched[0].IsSubInterfaceParent {
+		t.Errorf("expected explicit Switch1/1/2 entry to win, but got the synthesized parent (IsSubInterfaceParent=true)")
+	}
+}
+
+// TestRenderConfig_PhysicalZeroMtuFails asserts that the tunnel template's
+// fail builtin trips when a physical interface ends up in the render data
+// with Mtu == 0. After the role-based MTU work, this should be unreachable
+// in normal flow; the fail call exists to surface upstream bugs loudly
+// instead of silently emitting a wrong-but-syntactically-valid mtu line.
+func TestRenderConfig_PhysicalZeroMtuFails(t *testing.T) {
+	data := templateData{
+		Device: &Device{
+			PubKey:                "pubkey1",
+			PublicIP:              net.IPv4(7, 7, 7, 7),
+			Vpn4vLoopbackIP:       net.IPv4(14, 14, 14, 14),
+			Vpn4vLoopbackIntfName: "Loopback255",
+			IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+			Interfaces: []Interface{
+				{
+					Name:          "Ethernet1/1",
+					InterfaceType: InterfaceTypePhysical,
+					Mtu:           0,
+				},
+			},
+		},
+		NoHardware: true,
+	}
+
+	_, err := renderConfig(data)
+	if err == nil {
+		t.Fatal("expected renderConfig to fail for physical interface with zero MTU, got nil error")
+	}
+	if !strings.Contains(err.Error(), "Ethernet1/1") {
+		t.Errorf("expected error to mention interface name Ethernet1/1, got: %v", err)
 	}
 }

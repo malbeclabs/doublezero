@@ -90,7 +90,7 @@ interface {{ .Name }}
       {{- if .Mtu }}
    mtu {{ .Mtu }}
       {{- else }}
-   mtu 9000
+      {{- fail (printf "physical interface %q has zero MTU" .Name) }}
       {{- end }}
    {{- end }}
    {{- if and .IsPhysical (not .IsSubInterface) (not .IsVlanInterface) }}

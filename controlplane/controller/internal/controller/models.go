@@ -31,8 +31,8 @@ const (
 	CyoaDiaInterfaceMtu uint16 = 1500
 )
 
-func mtuForInterface(i Interface) uint16 {
-	if i.IsCYOA || i.IsDIA {
+func mtuForInterface(isCYOA, isDIA bool) uint16 {
+	if isCYOA || isDIA {
 		return CyoaDiaInterfaceMtu
 	}
 	return InterfaceMtu
@@ -125,32 +125,9 @@ func toInterface(iface serviceability.Interface) (Interface, error) {
 		IsDIA:                iface.InterfaceDIA != serviceability.InterfaceDIANone,
 	}
 	if ifType == InterfaceTypePhysical {
-		out.Mtu = mtuForInterface(out)
+		out.Mtu = mtuForInterface(out.IsCYOA, out.IsDIA)
 	}
 	return out, nil
-}
-
-func NewInterface(
-	name string,
-	vlanId uint16,
-	ip netip.Prefix,
-	nodeSegmentIdx uint16,
-	isSubInterface bool,
-	isSubInterfaceParent bool,
-	interfaceType InterfaceType,
-	loopbackType LoopbackType,
-) Interface {
-	return Interface{
-		Name:                 name,
-		VlanId:               vlanId,
-		Ip:                   ip,
-		NodeSegmentIdx:       nodeSegmentIdx,
-		IsSubInterface:       isSubInterface,
-		IsSubInterfaceParent: isSubInterfaceParent,
-		InterfaceType:        interfaceType,
-		LoopbackType:         loopbackType,
-		IsLink:               false,
-	}
 }
 
 func (i Interface) IsLoopback() bool {

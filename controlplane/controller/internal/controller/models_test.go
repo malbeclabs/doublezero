@@ -58,19 +58,20 @@ func TestIsBgpMartian(t *testing.T) {
 
 func TestMtuForInterface(t *testing.T) {
 	tests := []struct {
-		name string
-		in   Interface
-		want uint16
+		name   string
+		isCYOA bool
+		isDIA  bool
+		want   uint16
 	}{
-		{"plain fabric physical", Interface{InterfaceType: InterfaceTypePhysical}, InterfaceMtu},
-		{"CYOA", Interface{InterfaceType: InterfaceTypePhysical, IsCYOA: true}, CyoaDiaInterfaceMtu},
-		{"DIA", Interface{InterfaceType: InterfaceTypePhysical, IsDIA: true}, CyoaDiaInterfaceMtu},
-		{"CYOA and DIA both set", Interface{IsCYOA: true, IsDIA: true}, CyoaDiaInterfaceMtu},
+		{"plain fabric physical", false, false, InterfaceMtu},
+		{"CYOA", true, false, CyoaDiaInterfaceMtu},
+		{"DIA", false, true, CyoaDiaInterfaceMtu},
+		{"CYOA and DIA both set", true, true, CyoaDiaInterfaceMtu},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := mtuForInterface(tt.in); got != tt.want {
-				t.Errorf("mtuForInterface(%+v) = %d, want %d", tt.in, got, tt.want)
+			if got := mtuForInterface(tt.isCYOA, tt.isDIA); got != tt.want {
+				t.Errorf("mtuForInterface(isCYOA=%v, isDIA=%v) = %d, want %d", tt.isCYOA, tt.isDIA, got, tt.want)
 			}
 		})
 	}

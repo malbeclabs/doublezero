@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - client: break latency ties with avg latency ([#362](https://github.com/malbeclabs/doublezero/pull/3692))
+- rfcs: add RFC-20 proposing the extension of `Tenant` from a unicast-only construct to a per-use-case resource grouping primitive (capabilities flag, optional `tenant_pk` on multicast groups, widened access-pass authorization for tenant administrators)
 
 ### Breaking
 

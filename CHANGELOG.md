@@ -17,6 +17,8 @@ All notable changes to this project will be documented in this file.
 - SDK
   - Drop V3 handling from the Go, Python, and TypeScript serviceability readers: remove `DeserializeInterfaceV3` (Go) and the `version === 3` / `version == 3` legacy-slot branches (Python/TS); remove the `TestDeserializeInterfaceV3CrossLanguage` Go test. The forward-compat trailing `interfaces` vec continues to carry `flex_algo_node_segments` via the size-prefixed body — that path is unchanged ([#3664](https://github.com/malbeclabs/doublezero/issues/3664))
   - Let side-Z contributors update a link's `status` / `desired_status` / `delay_override_ns` via `UpdateLinkCommand`; the Rust SDK now auto-detects the signer's side and builds the 4-account side-Z preamble the on-chain processor expects, instead of always sending the side-A layout ([#3702](https://github.com/malbeclabs/doublezero/issues/3702))
+- E2E tests
+  - Make multicast QA failures self-explanatory: require a `Multicast`-typed status entry after multicast connect (instead of accepting a stale IBRL one), retry `MulticastJoin` briefly on "interface not found" to absorb the daemon/kernel race, snapshot host state once after 30s of zero packets, and heartbeat the publisher's tunnel status during send windows to catch silent regressions
 
 ## [v0.22.0](https://github.com/malbeclabs/doublezero/compare/client/v0.21.0...client/v0.22.0) - 2026-05-08
 

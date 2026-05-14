@@ -43,7 +43,10 @@ impl From<AllocateResourceCliCommand> for AllocateResourceCommand {
             ResourceType::TunnelIds
             | ResourceType::LinkIds
             | ResourceType::SegmentRoutingIds
-            | ResourceType::VrfIds => IdOrIp::Id(x.parse::<u16>().expect("Failed to parse ID")),
+            | ResourceType::VrfIds
+            | ResourceType::AdminGroupBits => {
+                IdOrIp::Id(x.parse::<u16>().expect("Failed to parse ID"))
+            }
         });
 
         AllocateResourceCommand {

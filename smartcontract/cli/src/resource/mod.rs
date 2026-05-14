@@ -20,6 +20,7 @@ pub enum ResourceType {
     LinkIds,
     SegmentRoutingIds,
     VrfIds,
+    AdminGroupBits,
 }
 
 pub fn resource_type_from(
@@ -45,6 +46,7 @@ pub fn resource_type_from(
         ResourceType::LinkIds => SdkResourceType::LinkIds,
         ResourceType::SegmentRoutingIds => SdkResourceType::SegmentRoutingIds,
         ResourceType::VrfIds => SdkResourceType::VrfIds,
+        ResourceType::AdminGroupBits => SdkResourceType::AdminGroupBits,
     }
 }
 
@@ -137,5 +139,17 @@ mod tests {
     fn test_segment_routing_ids() {
         let result = resource_type_from(ResourceType::SegmentRoutingIds, None, None);
         assert_eq!(result, SdkResourceType::SegmentRoutingIds);
+    }
+
+    #[test]
+    fn test_vrf_ids() {
+        let result = resource_type_from(ResourceType::VrfIds, None, None);
+        assert_eq!(result, SdkResourceType::VrfIds);
+    }
+
+    #[test]
+    fn test_admin_group_bits() {
+        let result = resource_type_from(ResourceType::AdminGroupBits, None, None);
+        assert_eq!(result, SdkResourceType::AdminGroupBits);
     }
 }

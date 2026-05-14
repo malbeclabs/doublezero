@@ -1,11 +1,12 @@
 use crate::{
     doublezerocommand::CliCommand,
+    helpers::parse_pubkey,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::validate_pubkey,
+    validators::{validate_pubkey, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_program_common::types::NetworkV4;
-use doublezero_sdk::commands::user::update::UpdateUserCommand;
+use doublezero_sdk::commands::{tenant::get::GetTenantCommand, user::update::UpdateUserCommand};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr, str::FromStr};
 
@@ -29,6 +30,9 @@ pub struct UpdateUserCliCommand {
     /// New Tunnel Endpoint IP address
     #[arg(long)]
     pub tunnel_endpoint: Option<Ipv4Addr>,
+    /// New Tenant Pubkey or code (foundation only)
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub tenant: Option<String>,
 }
 
 impl UpdateUserCliCommand {
@@ -37,6 +41,22 @@ impl UpdateUserCliCommand {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
+
+        let tenant_pk = match self.tenant {
+            None => None,
+            Some(tenant_str) => match parse_pubkey(&tenant_str) {
+                Some(pk) => Some(pk),
+                None => {
+                    let (pubkey, _) = client
+                        .get_tenant(GetTenantCommand {
+                            pubkey_or_code: tenant_str.clone(),
+                        })
+                        .map_err(|_| eyre::eyre!("Tenant not found"))?;
+                    Some(pubkey)
+                }
+            },
+        };
+
         let signature = client.update_user(UpdateUserCommand {
             pubkey,
             user_type: None,
@@ -48,7 +68,7 @@ impl UpdateUserCliCommand {
                 .validator_pubkey
                 .map(|s| Pubkey::from_str(&s))
                 .transpose()?,
-            tenant_pk: None,
+            tenant_pk,
             tunnel_endpoint: self.tunnel_endpoint,
         })?;
         writeln!(out, "Signature: {signature}",)?;
@@ -148,6 +168,7 @@ mod tests {
             tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
             validator_pubkey: None,
             tunnel_endpoint: Some([1, 2, 3, 4].into()),
+            tenant: None,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());
@@ -155,5 +176,51 @@ mod tests {
         assert_eq!(
             output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
         );
+    }
+
+    #[test]
+    fn test_cli_user_update_with_tenant_pubkey() {
+        let mut client = create_test_client();
+
+        let (pda_pubkey, _bump_seed) = get_user_old_pda(&client.get_program_id(), 1);
+        let tenant_pubkey = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let signature = Signature::from([
+            120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
+            82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
+            139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
+            100, 221, 20, 137, 4, 5,
+        ]);
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_update_user()
+            .with(predicate::eq(UpdateUserCommand {
+                pubkey: pda_pubkey,
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: None,
+                tunnel_net: None,
+                validator_pubkey: None,
+                tenant_pk: Some(tenant_pubkey),
+                tunnel_endpoint: None,
+            }))
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = UpdateUserCliCommand {
+            pubkey: pda_pubkey.to_string(),
+            dz_ip: None,
+            tunnel_id: None,
+            tunnel_net: None,
+            validator_pubkey: None,
+            tunnel_endpoint: None,
+            tenant: Some(tenant_pubkey.to_string()),
+        }
+        .execute(&client, &mut output);
+        assert!(res.is_ok());
     }
 }

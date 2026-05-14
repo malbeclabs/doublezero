@@ -45,7 +45,8 @@ impl From<DeallocateResourceCliCommand> for DeallocateResourceCommand {
             ResourceType::TunnelIds
             | ResourceType::LinkIds
             | ResourceType::SegmentRoutingIds
-            | ResourceType::VrfIds => {
+            | ResourceType::VrfIds
+            | ResourceType::AdminGroupBits => {
                 IdOrIp::Id(cmd.value.parse::<u16>().expect("Failed to parse ID"))
             }
         };

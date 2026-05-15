@@ -99,3 +99,50 @@ func (c *DNSCache) Resolve(hostPort string) (*net.UDPAddr, error) {
 
 	return &net.UDPAddr{IP: resolvedIP, Port: port}, nil
 }
+
+// LookupDeliveryUDPAddr returns a UDP address for delivery without performing DNS.
+// Literal IPs are parsed and validated against ValidateScope on every call (cheap).
+// Hostnames are only satisfied from the in-memory cache populated by Resolve (e.g.
+// from DeliveryDNSRefresher); if missing or expired, returns ok=false so callers can
+// skip sending until a background refresh succeeds.
+func (c *DNSCache) LookupDeliveryUDPAddr(hostPort string) (*net.UDPAddr, bool) {
+	host, portStr, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		return nil, false
+	}
+
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return nil, false
+	}
+
+	if ip := net.ParseIP(host); ip != nil {
+		scopeCheck := ProbeAddress{Host: host}
+		if err := scopeCheck.ValidateScope(); err != nil {
+			return nil, false
+		}
+		return &net.UDPAddr{IP: ip, Port: port}, true
+	}
+
+	now := c.now()
+
+	c.mu.RLock()
+	entry, ok := c.entries[host]
+	c.mu.RUnlock()
+
+	if !ok || !now.Before(entry.expiresAt) {
+		return nil, false
+	}
+
+	resolvedIP := net.ParseIP(entry.ip)
+	if resolvedIP == nil {
+		return nil, false
+	}
+
+	scopeCheck := ProbeAddress{Host: entry.ip}
+	if err := scopeCheck.ValidateScope(); err != nil {
+		return nil, false
+	}
+
+	return &net.UDPAddr{IP: resolvedIP, Port: port}, true
+}

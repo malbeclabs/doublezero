@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- add `--synthetic-vcr-manager <PUBKEY>` flag that bakes a `ValidatorClientRewards` PDA for `client_id=65535` with the given manager into the fork at genesis, for exercising `shreds validator-client-rewards claim` in fork tests
+- fix: synthetic VCR account body is 184 bytes — `StorageGap<2>` is 64 bytes (not 48); the prior 176-byte account was rejected at runtime by the on-chain `data_end == 184` const assertion
 - revert: seed journal and fills registry in localnet fork ([#322](https://github.com/doublezerofoundation/doublezero-offchain/pull/322))
 - seed journal and fills registry in localnet fork ([#309](https://github.com/doublezerofoundation/doublezero-offchain/pull/309))
 

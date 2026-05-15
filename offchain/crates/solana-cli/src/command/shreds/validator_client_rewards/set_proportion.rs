@@ -13,12 +13,12 @@ use doublezero_solana_sdk::{
 use solana_sdk::compute_budget::ComputeBudgetInstruction;
 
 /*
-   doublezero-solana shreds validator-client-rewards \
+   doublezero-solana shreds validator-client-rewards set-proportion \
        --client-id <ID> --proportion <PERCENT>
 */
 
 #[derive(Debug, Args)]
-pub struct ValidatorClientRewardsCommand {
+pub struct SetProportionCommand {
     /// Validator client ID.
     #[arg(long)]
     client_id: u16,
@@ -29,7 +29,7 @@ pub struct ValidatorClientRewardsCommand {
     solana_payer_options: SolanaPayerOptions,
 }
 
-impl ValidatorClientRewardsCommand {
+impl SetProportionCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         let proportion_bps = percentage_to_bps(self.proportion)?;
 
@@ -54,7 +54,7 @@ impl ValidatorClientRewardsCommand {
             &ShredSubscriptionInstructionData::SetValidatorClientRewardsProportion(proportion_bps),
         )?;
 
-        let check_ix = super::build_check_cli_version_instruction()?;
+        let check_ix = super::super::build_check_cli_version_instruction()?;
         let mut instructions = vec![check_ix, ix];
 
         instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(35_000));

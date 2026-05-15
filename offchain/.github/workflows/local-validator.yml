@@ -34,8 +34,12 @@ jobs:
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - name: Generate ~/.config/solana/id.json
         run: solana-keygen new --silent --no-bip39-passphrase
+      - name: Generate manager keypair for synthetic ValidatorClientRewards
+        run: solana-keygen new --silent --no-bip39-passphrase -o manager_keypair.json
       - name: Start Solana mainnet-beta fork in background
-        run: cargo run --bin doublezero-solana-fork -- -um --reset > /dev/null 2>&1 &
+        run: |
+          MANAGER_PUBKEY=$(solana address -k manager_keypair.json)
+          cargo run --bin doublezero-solana-fork -- -um --reset --synthetic-vcr-manager "$MANAGER_PUBKEY" > /dev/null 2>&1 &
       - name: Build `doublezero-solana`
         run: cargo build --bin doublezero-solana
       - name: Run `doublezero-solana` tests

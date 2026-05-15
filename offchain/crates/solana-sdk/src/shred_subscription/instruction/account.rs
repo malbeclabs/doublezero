@@ -430,3 +430,225 @@ impl From<FundPaymentEscrowUsdcAccounts> for Vec<AccountMeta> {
         ]
     }
 }
+
+/// Accounts for the `InitializeClaimHoldingAccount` instruction (6 accounts).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitializeClaimHoldingAccountAccounts {
+    pub parent_pda_key: Pubkey,
+    pub payer_key: Pubkey,
+    pub new_claim_holding_account_key: Pubkey,
+    pub mint_key: Pubkey,
+}
+
+impl InitializeClaimHoldingAccountAccounts {
+    pub fn new(
+        client_id: u16,
+        subscription_epoch: u64,
+        mint_key: &Pubkey,
+        payer_key: &Pubkey,
+    ) -> Self {
+        let parent_pda_key = state::find_validator_client_rewards_address(client_id).0;
+        let new_claim_holding_account_key =
+            state::find_claim_holding_address(&parent_pda_key, subscription_epoch, mint_key).0;
+        Self {
+            parent_pda_key,
+            payer_key: *payer_key,
+            new_claim_holding_account_key,
+            mint_key: *mint_key,
+        }
+    }
+}
+
+impl From<InitializeClaimHoldingAccountAccounts> for Vec<AccountMeta> {
+    fn from(accounts: InitializeClaimHoldingAccountAccounts) -> Self {
+        vec![
+            AccountMeta::new(accounts.parent_pda_key, false),
+            AccountMeta::new(accounts.payer_key, true),
+            AccountMeta::new(accounts.new_claim_holding_account_key, false),
+            AccountMeta::new_readonly(accounts.mint_key, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+        ]
+    }
+}
+
+/// Accounts for the `ClaimValidatorClientRewards` instruction (6 fixed +
+/// one writable per claim holding in `claim_holding_account_keys`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaimValidatorClientRewardsAccounts {
+    pub program_config_key: Pubkey,
+    pub validator_client_rewards_key: Pubkey,
+    pub manager_key: Pubkey,
+    pub destination_token_account_key: Pubkey,
+    pub rent_beneficiary_key: Pubkey,
+    pub claim_holding_account_keys: Vec<Pubkey>,
+}
+
+impl ClaimValidatorClientRewardsAccounts {
+    pub fn new(
+        client_id: u16,
+        manager_key: &Pubkey,
+        destination_token_account_key: &Pubkey,
+        rent_beneficiary_key: &Pubkey,
+        mint_key: &Pubkey,
+        subscription_epochs: &[u64],
+    ) -> Self {
+        let validator_client_rewards_key =
+            state::find_validator_client_rewards_address(client_id).0;
+        let claim_holding_account_keys = subscription_epochs
+            .iter()
+            .map(|epoch| {
+                state::find_claim_holding_address(&validator_client_rewards_key, *epoch, mint_key).0
+            })
+            .collect();
+        Self {
+            program_config_key: state::find_program_config_address().0,
+            validator_client_rewards_key,
+            manager_key: *manager_key,
+            destination_token_account_key: *destination_token_account_key,
+            rent_beneficiary_key: *rent_beneficiary_key,
+            claim_holding_account_keys,
+        }
+    }
+}
+
+impl From<ClaimValidatorClientRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: ClaimValidatorClientRewardsAccounts) -> Self {
+        let mut metas = vec![
+            AccountMeta::new_readonly(accounts.program_config_key, false),
+            AccountMeta::new(accounts.validator_client_rewards_key, false),
+            AccountMeta::new_readonly(accounts.manager_key, true),
+            AccountMeta::new(accounts.destination_token_account_key, false),
+            AccountMeta::new(accounts.rent_beneficiary_key, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+        ];
+        metas.extend(
+            accounts
+                .claim_holding_account_keys
+                .into_iter()
+                .map(|key| AccountMeta::new(key, false)),
+        );
+        metas
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use solana_sdk::pubkey::Pubkey;
+
+    use super::*;
+
+    #[test]
+    fn initialize_claim_holding_account_metas_order() {
+        let payer = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let client_id: u16 = 7;
+        let epoch: u64 = 1234;
+        let accounts = InitializeClaimHoldingAccountAccounts::new(client_id, epoch, &mint, &payer);
+        let parent_pda = state::find_validator_client_rewards_address(client_id).0;
+        let holding_pda = state::find_claim_holding_address(&parent_pda, epoch, &mint).0;
+        assert_eq!(accounts.parent_pda_key, parent_pda);
+        assert_eq!(accounts.new_claim_holding_account_key, holding_pda);
+        assert_eq!(accounts.payer_key, payer);
+        assert_eq!(accounts.mint_key, mint);
+
+        let metas: Vec<AccountMeta> = accounts.into();
+        assert_eq!(metas.len(), 6);
+        // 0: parent_pda (writable, not signer)
+        assert_eq!(metas[0].pubkey, parent_pda);
+        assert!(metas[0].is_writable && !metas[0].is_signer);
+        // 1: payer (writable, signer)
+        assert_eq!(metas[1].pubkey, payer);
+        assert!(metas[1].is_writable && metas[1].is_signer);
+        // 2: new_holding (writable, not signer)
+        assert_eq!(metas[2].pubkey, holding_pda);
+        assert!(metas[2].is_writable && !metas[2].is_signer);
+        // 3: mint (readonly, not signer)
+        assert_eq!(metas[3].pubkey, mint);
+        assert!(!metas[3].is_writable && !metas[3].is_signer);
+        // 4: spl token program (readonly, not signer)
+        assert_eq!(metas[4].pubkey, spl_token_interface::ID);
+        assert!(!metas[4].is_writable && !metas[4].is_signer);
+        // 5: system program (readonly, not signer)
+        assert_eq!(metas[5].pubkey, solana_sdk::system_program::ID);
+        assert!(!metas[5].is_writable && !metas[5].is_signer);
+    }
+
+    #[test]
+    fn claim_validator_client_rewards_metas_order_empty() {
+        let manager = Pubkey::new_unique();
+        let destination = Pubkey::new_unique();
+        let rent_beneficiary = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let client_id: u16 = 11;
+        let accounts = ClaimValidatorClientRewardsAccounts::new(
+            client_id,
+            &manager,
+            &destination,
+            &rent_beneficiary,
+            &mint,
+            &[],
+        );
+        let vcr = state::find_validator_client_rewards_address(client_id).0;
+        let cfg = state::find_program_config_address().0;
+        assert_eq!(accounts.program_config_key, cfg);
+        assert_eq!(accounts.validator_client_rewards_key, vcr);
+        assert_eq!(accounts.manager_key, manager);
+        assert_eq!(accounts.destination_token_account_key, destination);
+        assert_eq!(accounts.rent_beneficiary_key, rent_beneficiary);
+        assert!(accounts.claim_holding_account_keys.is_empty());
+
+        let metas: Vec<AccountMeta> = accounts.into();
+        assert_eq!(metas.len(), 6);
+        // 0: program_config (readonly, not signer)
+        assert_eq!(metas[0].pubkey, cfg);
+        assert!(!metas[0].is_writable && !metas[0].is_signer);
+        // 1: VCR (writable, not signer)
+        assert_eq!(metas[1].pubkey, vcr);
+        assert!(metas[1].is_writable && !metas[1].is_signer);
+        // 2: manager (readonly, SIGNER)
+        assert_eq!(metas[2].pubkey, manager);
+        assert!(!metas[2].is_writable && metas[2].is_signer);
+        // 3: destination (writable, not signer)
+        assert_eq!(metas[3].pubkey, destination);
+        assert!(metas[3].is_writable && !metas[3].is_signer);
+        // 4: rent_beneficiary (writable, not signer)
+        assert_eq!(metas[4].pubkey, rent_beneficiary);
+        assert!(metas[4].is_writable && !metas[4].is_signer);
+        // 5: spl token program (readonly, not signer)
+        assert_eq!(metas[5].pubkey, spl_token_interface::ID);
+        assert!(!metas[5].is_writable && !metas[5].is_signer);
+    }
+
+    #[test]
+    fn claim_validator_client_rewards_metas_with_three_holdings() {
+        let manager = Pubkey::new_unique();
+        let destination = Pubkey::new_unique();
+        let rent_beneficiary = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let client_id: u16 = 11;
+        let epochs: &[u64] = &[100, 101, 102];
+        let accounts = ClaimValidatorClientRewardsAccounts::new(
+            client_id,
+            &manager,
+            &destination,
+            &rent_beneficiary,
+            &mint,
+            epochs,
+        );
+        let vcr = state::find_validator_client_rewards_address(client_id).0;
+        let expected_holdings: Vec<Pubkey> = epochs
+            .iter()
+            .map(|e| state::find_claim_holding_address(&vcr, *e, &mint).0)
+            .collect();
+        assert_eq!(accounts.claim_holding_account_keys, expected_holdings);
+
+        let metas: Vec<AccountMeta> = accounts.into();
+        assert_eq!(metas.len(), 6 + 3);
+        for (i, expected_holding) in expected_holdings.iter().enumerate() {
+            let meta = &metas[6 + i];
+            assert_eq!(meta.pubkey, *expected_holding);
+            assert!(meta.is_writable && !meta.is_signer);
+        }
+    }
+}

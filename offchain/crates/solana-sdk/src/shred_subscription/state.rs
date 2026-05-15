@@ -14,6 +14,7 @@ pub const VALIDATOR_CLIENT_REWARDS_SEED_PREFIX: &[u8] = b"validator_client_rewar
 pub const INSTANT_ALLOCATION_REQUEST_SEED_PREFIX: &[u8] = b"instant_seat_allocation_request";
 pub const WITHDRAW_SEAT_REQUEST_SEED_PREFIX: &[u8] = b"withdraw_seat_request";
 pub const SHRED_DISTRIBUTION_SEED_PREFIX: &[u8] = b"shred_distribution";
+pub const CLAIM_HOLDING_SEED_PREFIX: &[u8] = b"claim";
 
 pub fn find_program_config_address() -> (Pubkey, u8) {
     Pubkey::find_program_address(
@@ -120,6 +121,22 @@ pub fn find_shred_distribution_address(subscription_epoch: u64) -> (Pubkey, u8) 
     )
 }
 
+pub fn find_claim_holding_address(
+    parent_pda_key: &Pubkey,
+    subscription_epoch: u64,
+    mint_key: &Pubkey,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            CLAIM_HOLDING_SEED_PREFIX,
+            parent_pda_key.as_ref(),
+            &subscription_epoch.to_le_bytes(),
+            mint_key.as_ref(),
+        ],
+        &crate::shred_subscription::ID,
+    )
+}
+
 // ---------------------------------------------------------------------------
 // ProgramConfig raw-byte parsing.
 //
@@ -134,6 +151,7 @@ pub const PROGRAM_CONFIG_DISCRIMINATOR: Discriminator<DISCRIMINATOR_LEN> =
     Discriminator::new_sha2(b"dz::account::program_config");
 
 pub const PROGRAM_CONFIG_FLAGS_OFFSET: usize = DISCRIMINATOR_LEN;
+pub const PROGRAM_CONFIG_SHRED_ORACLE_KEY_OFFSET: usize = DISCRIMINATOR_LEN + 48;
 
 const PROGRAM_CONFIG_FLAG_IS_PRORATED_SERVICE_ENABLED_BIT: u64 = 1 << 2;
 
@@ -152,6 +170,24 @@ pub fn is_prorated_service_enabled(data: &[u8]) -> bool {
     };
     let flags = u64::from_le_bytes(flags_bytes);
     flags & PROGRAM_CONFIG_FLAG_IS_PRORATED_SERVICE_ENABLED_BIT != 0
+}
+
+/// Parse the `shred_oracle_key` from a `ProgramConfig` account. Returns
+/// `None` when the data is too short or the discriminator does not match.
+pub fn parse_program_config_shred_oracle_key(data: &[u8]) -> Option<Pubkey> {
+    if data.len() < PROGRAM_CONFIG_SHRED_ORACLE_KEY_OFFSET + 32 {
+        return None;
+    }
+    let expected_disc =
+        borsh::to_vec(&PROGRAM_CONFIG_DISCRIMINATOR).expect("discriminator serialization");
+    if data[..DISCRIMINATOR_LEN] != expected_disc[..] {
+        return None;
+    }
+    Some(Pubkey::new_from_array(
+        data[PROGRAM_CONFIG_SHRED_ORACLE_KEY_OFFSET..PROGRAM_CONFIG_SHRED_ORACLE_KEY_OFFSET + 32]
+            .try_into()
+            .ok()?,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -502,6 +538,85 @@ pub fn parse_metro_history(data: &[u8]) -> Option<MetroHistoryInfo> {
     })
 }
 
+// ---------------------------------------------------------------------------
+// ValidatorClientRewards raw-byte parsing.
+//
+// Layout (Pod with 8-byte discriminator prefix):
+//   [0..8)     discriminator
+//   [8..10)    client_id: u16
+//   [10..11)   bump_seed: u8
+//   [11..16)   _padding_0: [u8; 5]
+//   [16..48)   manager_key: Pubkey
+//   [48..112)  short_description_bytes: [u8; 64]
+//   [112..116) claim_holding_count: u32
+//   ...        remaining fields (padding + StorageGap) unused by the CLI
+// ---------------------------------------------------------------------------
+
+pub const VALIDATOR_CLIENT_REWARDS_DISCRIMINATOR: Discriminator<DISCRIMINATOR_LEN> =
+    Discriminator::new_sha2(b"dz::account::validator_client_rewards");
+
+pub const VCR_CLIENT_ID_OFFSET: usize = DISCRIMINATOR_LEN;
+pub const VCR_BUMP_SEED_OFFSET: usize = DISCRIMINATOR_LEN + 2;
+pub const VCR_MANAGER_KEY_OFFSET: usize = DISCRIMINATOR_LEN + 8;
+pub const VCR_SHORT_DESCRIPTION_OFFSET: usize = DISCRIMINATOR_LEN + 40;
+pub const VCR_CLAIM_HOLDING_COUNT_OFFSET: usize = DISCRIMINATOR_LEN + 104;
+pub const VCR_SHORT_DESCRIPTION_LEN: usize = 64;
+/// Total on-chain size of a `ValidatorClientRewards` account, including the
+/// 8-byte discriminator. Mirrors the program's
+/// `assert!(zero_copy::data_end::<ValidatorClientRewards>() == 184)`.
+/// Update both sides together if the on-chain layout changes.
+pub const VCR_ACCOUNT_DATA_LEN: usize = 184;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatorClientRewardsInfo {
+    pub client_id: u16,
+    pub manager_key: Pubkey,
+    pub short_description: Option<String>,
+    pub claim_holding_count: u32,
+}
+
+/// Parse a `ValidatorClientRewards` from raw account data. Returns `None`
+/// when the data is too short or the discriminator does not match.
+pub fn parse_validator_client_rewards(data: &[u8]) -> Option<ValidatorClientRewardsInfo> {
+    if data.len() < VCR_CLAIM_HOLDING_COUNT_OFFSET + 4 {
+        return None;
+    }
+    let expected_disc = borsh::to_vec(&VALIDATOR_CLIENT_REWARDS_DISCRIMINATOR)
+        .expect("discriminator serialization");
+    if data[..DISCRIMINATOR_LEN] != expected_disc[..] {
+        return None;
+    }
+    let client_id = u16::from_le_bytes(
+        data[VCR_CLIENT_ID_OFFSET..VCR_CLIENT_ID_OFFSET + 2]
+            .try_into()
+            .ok()?,
+    );
+    let manager_key = Pubkey::new_from_array(
+        data[VCR_MANAGER_KEY_OFFSET..VCR_MANAGER_KEY_OFFSET + 32]
+            .try_into()
+            .ok()?,
+    );
+    let short_description_bytes = &data
+        [VCR_SHORT_DESCRIPTION_OFFSET..VCR_SHORT_DESCRIPTION_OFFSET + VCR_SHORT_DESCRIPTION_LEN];
+    let short_description = match short_description_bytes.iter().rposition(|&b| b != 0) {
+        Some(end) => std::str::from_utf8(&short_description_bytes[..=end])
+            .ok()
+            .map(str::to_string),
+        None => None,
+    };
+    let claim_holding_count = u32::from_le_bytes(
+        data[VCR_CLAIM_HOLDING_COUNT_OFFSET..VCR_CLAIM_HOLDING_COUNT_OFFSET + 4]
+            .try_into()
+            .ok()?,
+    );
+    Some(ValidatorClientRewardsInfo {
+        client_id,
+        manager_key,
+        short_description,
+        claim_holding_count,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -569,5 +684,104 @@ mod tests {
     fn last_usdc_price_short_buffer_returns_none() {
         let data = vec![0u8; CLIENT_SEAT_LAST_USDC_PRICE_OFFSET];
         assert_eq!(parse_client_seat_last_usdc_price_dollars(&data), None);
+    }
+
+    #[test]
+    fn find_claim_holding_address_matches_seed() {
+        use solana_sdk::pubkey::Pubkey;
+        let parent = Pubkey::new_from_array([7u8; 32]);
+        let mint = Pubkey::new_from_array([3u8; 32]);
+        let epoch: u64 = 42;
+        let (addr, bump) = find_claim_holding_address(&parent, epoch, &mint);
+        let (expected_addr, expected_bump) = Pubkey::find_program_address(
+            &[
+                CLAIM_HOLDING_SEED_PREFIX,
+                parent.as_ref(),
+                &epoch.to_le_bytes(),
+                mint.as_ref(),
+            ],
+            &crate::shred_subscription::ID,
+        );
+        assert_eq!(addr, expected_addr);
+        assert_eq!(bump, expected_bump);
+    }
+
+    fn vcr_data(client_id: u16, manager: Pubkey, desc: &[u8], count: u32) -> Vec<u8> {
+        let mut data = vec![0u8; VCR_CLAIM_HOLDING_COUNT_OFFSET + 4];
+        let disc_bytes = borsh::to_vec(&VALIDATOR_CLIENT_REWARDS_DISCRIMINATOR)
+            .expect("discriminator serialization");
+        data[..DISCRIMINATOR_LEN].copy_from_slice(&disc_bytes);
+        data[VCR_CLIENT_ID_OFFSET..VCR_CLIENT_ID_OFFSET + 2]
+            .copy_from_slice(&client_id.to_le_bytes());
+        data[VCR_MANAGER_KEY_OFFSET..VCR_MANAGER_KEY_OFFSET + 32].copy_from_slice(manager.as_ref());
+        let desc_end = VCR_SHORT_DESCRIPTION_OFFSET + desc.len();
+        data[VCR_SHORT_DESCRIPTION_OFFSET..desc_end].copy_from_slice(desc);
+        data[VCR_CLAIM_HOLDING_COUNT_OFFSET..VCR_CLAIM_HOLDING_COUNT_OFFSET + 4]
+            .copy_from_slice(&count.to_le_bytes());
+        data
+    }
+
+    #[test]
+    fn parse_validator_client_rewards_happy_path() {
+        use solana_sdk::pubkey::Pubkey;
+        let manager = Pubkey::new_from_array([11u8; 32]);
+        let data = vcr_data(42, manager, b"acme", 3);
+        let info = parse_validator_client_rewards(&data).expect("parse");
+        assert_eq!(info.client_id, 42);
+        assert_eq!(info.manager_key, manager);
+        assert_eq!(info.short_description.as_deref(), Some("acme"));
+        assert_eq!(info.claim_holding_count, 3);
+    }
+
+    #[test]
+    fn parse_validator_client_rewards_empty_description_returns_none_description() {
+        use solana_sdk::pubkey::Pubkey;
+        let data = vcr_data(0, Pubkey::default(), b"", 0);
+        let info = parse_validator_client_rewards(&data).expect("parse");
+        assert!(info.short_description.is_none());
+    }
+
+    #[test]
+    fn parse_validator_client_rewards_short_buffer_returns_none() {
+        let data = vec![0u8; VCR_CLAIM_HOLDING_COUNT_OFFSET + 3];
+        assert!(parse_validator_client_rewards(&data).is_none());
+    }
+
+    #[test]
+    fn parse_validator_client_rewards_wrong_discriminator_returns_none() {
+        use solana_sdk::pubkey::Pubkey;
+        let mut data = vcr_data(1, Pubkey::default(), b"x", 0);
+        data[0] ^= 0xff;
+        assert!(parse_validator_client_rewards(&data).is_none());
+    }
+
+    #[test]
+    fn parse_program_config_shred_oracle_key_happy_path() {
+        use solana_sdk::pubkey::Pubkey;
+        let oracle = Pubkey::new_from_array([5u8; 32]);
+        let mut data = vec![0u8; PROGRAM_CONFIG_SHRED_ORACLE_KEY_OFFSET + 32];
+        let disc_bytes =
+            borsh::to_vec(&PROGRAM_CONFIG_DISCRIMINATOR).expect("discriminator serialization");
+        data[..DISCRIMINATOR_LEN].copy_from_slice(&disc_bytes);
+        data[PROGRAM_CONFIG_SHRED_ORACLE_KEY_OFFSET..PROGRAM_CONFIG_SHRED_ORACLE_KEY_OFFSET + 32]
+            .copy_from_slice(oracle.as_ref());
+        assert_eq!(parse_program_config_shred_oracle_key(&data), Some(oracle));
+    }
+
+    #[test]
+    fn parse_program_config_shred_oracle_key_short_buffer_returns_none() {
+        let data = vec![0u8; PROGRAM_CONFIG_SHRED_ORACLE_KEY_OFFSET + 31];
+        assert_eq!(parse_program_config_shred_oracle_key(&data), None);
+    }
+
+    #[test]
+    fn parse_program_config_shred_oracle_key_wrong_discriminator_returns_none() {
+        use solana_sdk::pubkey::Pubkey;
+        let oracle = Pubkey::new_from_array([5u8; 32]);
+        let mut data = vec![0u8; PROGRAM_CONFIG_SHRED_ORACLE_KEY_OFFSET + 32];
+        data[0] = 0x01;
+        data[PROGRAM_CONFIG_SHRED_ORACLE_KEY_OFFSET..PROGRAM_CONFIG_SHRED_ORACLE_KEY_OFFSET + 32]
+            .copy_from_slice(oracle.as_ref());
+        assert_eq!(parse_program_config_shred_oracle_key(&data), None);
     }
 }

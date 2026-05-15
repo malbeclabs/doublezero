@@ -56,3 +56,6 @@ test-ledger/
 .tool-versions
 crates/contributor-rewards/dry-run-output/
 crates/contributor-rewards/mainnet-beta.config.toml
+crates/solana-client-tools/target/
+docs/plans
+docs/superpowers

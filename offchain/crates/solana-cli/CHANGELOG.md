@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `shreds validator-client-rewards`: relocate existing `set-proportion` behavior into a subcommand group (hidden); preparation for `claim`, `init-holding`, `show`
+- `shreds validator-client-rewards init-holding`: new permissionless command to initialize claim holding accounts for one or more `(subscription_epoch, mint)` pairs under a `ValidatorClientRewards` PDA
+- `shreds validator-client-rewards claim`: new manager-signed command to drain claim holdings into a destination token account. Defaults destination to ATA(manager, mint); override with `--destination-token-account`. Reads `program_config.shred_oracle_key` to set the on-chain rent beneficiary
+- `shreds validator-client-rewards show`: new read-only command. With just `--client-id`, prints the VCR PDA, manager, description, and claim holding count. With `--rewards-token-mint --subscription-epoch <e>...`, also lists per-epoch holding balances (or `(not initialized)`)
 - `shreds pay`: integrate prorated instant seat allocation — when the onchain `is_prorated_service_enabled` flag is set, skip the client-side min-price check and suppress the late-epoch warning; legacy behavior preserved when the flag is unset
 - `shreds withdraw`: use `RequestProratedInstantSeatWithdrawal` to receive a prorated USDC refund when the onchain flag is set and the seat has a recorded `last_usdc_price_dollars`; falls back to the legacy instruction when the flag is unset or the seat pre-dates the prorated rollout
 - `shreds withdraw`: bail with a clear error when an instant seat allocation request is in flight for the seat, rather than submitting a transaction that would be rejected onchain
+- `shreds validator-client-rewards show`: when `--rewards-token-mint` is supplied without `--subscription-epoch`, print the manager's ATA address and balance (previously silently no-op)
+- `shreds validator-client-rewards claim`: print per-holding drained breakdown and re-fetch the VCR to report the remaining `claim_holding_count` after the claim transaction lands
+- `shreds validator-client-rewards claim`: split "wrong owner" and "wrong mint" pre-flight checks into distinct error messages so a non-SPL holding is no longer mislabeled as a wrong-mint holding
 
 ## [0.5.3](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.3)
 

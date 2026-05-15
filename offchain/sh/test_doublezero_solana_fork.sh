@@ -213,12 +213,100 @@ $CLI_BIN revenue-distribution validator-deposit \
     --node-id $DUMMY_KEY
 echo
 
+### Validator-client claim commands.
+# Skipped when manager_keypair.json is not present. To exercise this block,
+# generate the keypair BEFORE starting the fork loader and pass its pubkey:
+#
+#   solana-keygen new --silent --no-bip39-passphrase -o manager_keypair.json
+#   cargo run --bin doublezero-solana-fork -- -um --reset \
+#       --synthetic-vcr-manager $(solana address -k manager_keypair.json)
+#   bash sh/test_doublezero_solana_fork.sh
+#
+# The fork loader bakes a synthetic ValidatorClientRewards PDA at
+# `client_id=65535` with the keypair's pubkey as the manager_key.
+#
+# Note: in v1, the on-chain `InitializeClaimHoldingAccount` handler
+# constrains the mint to the 2Z mint. We can't `mint-to` 2Z (no
+# authority on mainnet), so the holding stays at balance=0; claim still
+# exercises the full ix path and closes the holding, recovering rent.
+
+# Mainnet 2Z mint, hard-coded because the fork is `-um` mainnet.
+DOUBLEZERO_MINT=J6pQQ3FAcJQeWPPGppWRb4nM8jU3wLyYbRrLh7feMfvd
+MANAGER_KEY_PATH=manager_keypair.json
+if [ -f "$MANAGER_KEY_PATH" ]; then
+    CLIENT_ID=65535
+    MANAGER_PUBKEY=$(solana address -k $MANAGER_KEY_PATH)
+    TEST_EPOCH=100
+
+    echo "solana airdrop -ul 1 -k $MANAGER_KEY_PATH"
+    solana airdrop -ul 1 -k $MANAGER_KEY_PATH
+    echo
+
+    echo "solana-keygen new --silent --no-bip39-passphrase -o claim_payer.json"
+    solana-keygen new --silent --no-bip39-passphrase -o claim_payer.json
+    solana airdrop -ul 10 -k claim_payer.json
+    echo
+
+    echo "spl-token create-account -ul $DOUBLEZERO_MINT --owner $MANAGER_PUBKEY --fee-payer claim_payer.json"
+    spl-token create-account \
+        -ul \
+        $DOUBLEZERO_MINT \
+        --owner $MANAGER_PUBKEY \
+        --fee-payer claim_payer.json
+    echo
+
+    echo "doublezero-solana shreds validator-client-rewards show --client-id $CLIENT_ID -ul"
+    $CLI_BIN shreds validator-client-rewards show --client-id $CLIENT_ID -ul
+    echo
+
+    echo "doublezero-solana shreds validator-client-rewards init-holding -ul --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH -k claim_payer.json"
+    $CLI_BIN shreds validator-client-rewards init-holding \
+        -ul \
+        --client-id $CLIENT_ID \
+        --rewards-token-mint $DOUBLEZERO_MINT \
+        --subscription-epoch $TEST_EPOCH \
+        -k claim_payer.json
+    echo
+
+    echo "doublezero-solana shreds validator-client-rewards show -ul --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH"
+    $CLI_BIN shreds validator-client-rewards show \
+        -ul \
+        --client-id $CLIENT_ID \
+        --rewards-token-mint $DOUBLEZERO_MINT \
+        --subscription-epoch $TEST_EPOCH
+    echo
+
+    echo "doublezero-solana shreds validator-client-rewards claim -ul --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH -k $MANAGER_KEY_PATH"
+    $CLI_BIN shreds validator-client-rewards claim \
+        -ul \
+        --client-id $CLIENT_ID \
+        --rewards-token-mint $DOUBLEZERO_MINT \
+        --subscription-epoch $TEST_EPOCH \
+        -k $MANAGER_KEY_PATH
+    echo
+
+    echo "doublezero-solana shreds validator-client-rewards show -ul --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH"
+    $CLI_BIN shreds validator-client-rewards show \
+        -ul \
+        --client-id $CLIENT_ID \
+        --rewards-token-mint $DOUBLEZERO_MINT \
+        --subscription-epoch $TEST_EPOCH
+    echo
+else
+    echo "Skipping validator-client claim commands: $MANAGER_KEY_PATH not found."
+    echo "To exercise this block, generate the keypair before starting the fork loader:"
+    echo "  solana-keygen new --silent --no-bip39-passphrase -o $MANAGER_KEY_PATH"
+    echo "  cargo run --bin doublezero-solana-fork -- -um --reset --synthetic-vcr-manager \$(solana address -k $MANAGER_KEY_PATH)"
+    echo
+fi
+
 ### Clean up.
 
 echo "rm dummy.json another_payer.json rewards_manager.json " \
-     "service_key_1.json service_key_1.json validator_node_id.json"
+     "service_key_1.json validator_node_id.json claim_payer.json"
 rm \
     dummy.json \
     another_payer.json \
     rewards_manager.json \
     service_key_1.json
+rm -f claim_payer.json

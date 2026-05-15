@@ -50,8 +50,7 @@ pub enum ShredsSubcommand {
     Payments(payments::PaymentsCommand),
     /// Show current device pricing.
     Price(price::PriceCommand),
-    /// Set the rewards proportion for a validator client.
-    #[command(hide = true)]
+    /// Validator client rewards: claim accumulated rewards and manage proportions.
     ValidatorClientRewards(validator_client_rewards::ValidatorClientRewardsCommand),
 }
 
@@ -105,7 +104,7 @@ impl DeviceArgs {
 
 /// Construct a DZ Ledger connection, using the explicit URL if provided or
 /// falling back to the environment-derived URL.
-pub(super) fn make_dz_connection(
+pub(in crate::command::shreds) fn make_dz_connection(
     dz_ledger_url: &Option<String>,
     network_env: NetworkEnvironment,
 ) -> DoubleZeroLedgerConnection {
@@ -118,7 +117,7 @@ pub(super) fn make_dz_connection(
 /// Known shred oracle pubkey per environment. Returns `None` on localnet
 /// (the multicast-user guard is already skipped there because
 /// `serviceability_program_id` returns `Err`).
-pub(super) fn shred_oracle_key(env: NetworkEnvironment) -> Option<Pubkey> {
+pub(in crate::command::shreds) fn shred_oracle_key(env: NetworkEnvironment) -> Option<Pubkey> {
     match env {
         NetworkEnvironment::MainnetBeta => Some(solana_sdk::pubkey!(
             "3b2Ze7VYUvhwQBfx5oCMCmsc2xvyZ74s2Lata5vmQeeN"
@@ -151,8 +150,8 @@ fn cli_version() -> (u32, u32, u32) {
 }
 
 /// Build a `CheckCliVersion` instruction to prepend to write transactions.
-pub(super) fn build_check_cli_version_instruction() -> Result<solana_sdk::instruction::Instruction>
-{
+pub(in crate::command::shreds) fn build_check_cli_version_instruction()
+-> Result<solana_sdk::instruction::Instruction> {
     let (major, minor, patch) = cli_version();
     let ix = doublezero_solana_sdk::try_build_instruction(
         &SHRED_SUBSCRIPTION_PROGRAM_ID,
@@ -166,7 +165,9 @@ pub(super) fn build_check_cli_version_instruction() -> Result<solana_sdk::instru
     Ok(ix)
 }
 
-pub(super) fn serviceability_program_id(env: NetworkEnvironment) -> Result<Pubkey> {
+pub(in crate::command::shreds) fn serviceability_program_id(
+    env: NetworkEnvironment,
+) -> Result<Pubkey> {
     match env {
         NetworkEnvironment::MainnetBeta => {
             Ok(doublezero_serviceability::addresses::mainnet::program_id::id())

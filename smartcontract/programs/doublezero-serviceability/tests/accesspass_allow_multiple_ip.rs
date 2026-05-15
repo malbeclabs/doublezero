@@ -5,7 +5,7 @@ use doublezero_serviceability::{
         accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
         device::update::DeviceUpdateArgs,
-        user::{activate::*, create::*, delete::*, update::*},
+        user::{create::*, delete::*, update::*},
         *,
     },
     resource::ResourceType,
@@ -74,7 +74,7 @@ async fn test_accesspass_allow_multiple_ip() {
             local_asn: 65000,
             remote_asn: 65001,
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-            user_tunnel_block: "9.0.0.0/24".parse().unwrap(),
+            user_tunnel_block: "169.254.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/16".parse().unwrap(),
             multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
             next_bgp_community: None,
@@ -316,13 +316,17 @@ async fn test_accesspass_allow_multiple_ip() {
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -336,44 +340,9 @@ async fn test_accesspass_allow_multiple_ip() {
     assert_eq!(user.account_type, AccountType::User);
     assert_eq!(user.client_ip.to_string(), "100.0.0.1");
     assert_eq!(user.device_pk, device_pubkey);
-    assert_eq!(user.status, UserStatus::Pending);
-
-    println!("✅ User created successfully",);
-    /***********************************************************************************************************************************/
-    println!("🟢 8. Testing User activation...");
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 500,
-            tunnel_net: "169.254.0.0/25".parse().unwrap(),
-            dz_ip: [200, 0, 0, 1].into(),
-            dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.tunnel_id, 500);
-    assert_eq!(user.tunnel_net.to_string(), "169.254.0.0/25");
-    assert_eq!(user.dz_ip.to_string(), "200.0.0.1");
     assert_eq!(user.status, UserStatus::Activated);
 
-    println!("✅ User created successfully",);
+    println!("✅ User created and activated successfully",);
     /*****************************************************************************************************************************************************/
     println!("🟢 9. Testing User update...");
     execute_transaction(

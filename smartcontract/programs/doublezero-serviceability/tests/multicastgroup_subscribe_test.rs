@@ -14,7 +14,7 @@ use doublezero_serviceability::{
             create::MulticastGroupCreateArgs,
             subscribe::UpdateMulticastGroupRolesArgs,
         },
-        user::{activate::UserActivateArgs, create::UserCreateArgs},
+        user::create::UserCreateArgs,
     },
     resource::ResourceType,
     state::{
@@ -62,7 +62,9 @@ async fn setup_fixture() -> TestFixture {
     // 2. Set global config
     let (config_pubkey, _) = get_globalconfig_pda(&program_id);
     let (_link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
-    let (_multicast_publisher_block_pda, _, _) =
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (_vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
 
@@ -308,7 +310,7 @@ async fn setup_fixture() -> TestFixture {
         .await;
     }
 
-    // 9. Create user (Multicast type) and activate
+    // 9. Create user (Multicast type) — atomic create+activate via onchain allocation
     let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
     execute_transaction(
         &mut banks_client,
@@ -319,33 +321,17 @@ async fn setup_fixture() -> TestFixture {
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 500,
-            tunnel_net: "169.254.0.0/31".parse().unwrap(),
-            dz_ip: user_ip,
-            dz_prefix_count: 0,
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )

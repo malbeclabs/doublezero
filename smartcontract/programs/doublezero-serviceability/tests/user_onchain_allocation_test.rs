@@ -256,7 +256,7 @@ async fn setup_user_onchain_allocation_test(
     )
     .await;
 
-    // Create User
+    // Create User — atomic create+allocate+activate via onchain allocation.
     let (user_pubkey, _) = get_user_pda(&program_id, &client_ip.into(), user_type);
 
     execute_transaction(
@@ -268,13 +268,17 @@ async fn setup_user_onchain_allocation_test(
             user_type,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pubkey, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(tunnel_ids_pubkey, false),
+            AccountMeta::new(dz_prefix_block_pubkey, false),
         ],
         &payer,
     )
@@ -308,48 +312,21 @@ async fn test_activate_user_with_onchain_allocation() {
     let client_ip = [100, 0, 0, 1];
     let (
         mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
+        _payer,
+        _program_id,
+        _globalstate_pubkey,
         _device_pubkey,
         user_pubkey,
-        accesspass_pubkey,
+        _accesspass_pubkey,
         (
             user_tunnel_block_pubkey,
-            multicast_publisher_block_pubkey,
+            _multicast_publisher_block_pubkey,
             tunnel_ids_pubkey,
             dz_prefix_block_pubkey,
         ),
     ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
 
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // Activate user with 8 accounts (on-chain allocation path)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,                             // ignored when ResourceExtension provided
-            tunnel_net: "0.0.0.0/0".parse().unwrap(), // ignored when ResourceExtension provided
-            dz_ip: [0, 0, 0, 0].into(),               // ignored when ResourceExtension provided
-            dz_prefix_count: 1,                       // 1 DzPrefixBlock account provided
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Verify user was activated with allocated values
+    // CreateUser performed atomic create+allocate+activate. Verify allocated values.
     let user = get_account_data(&mut banks_client, user_pubkey)
         .await
         .expect("User should exist")
@@ -428,34 +405,9 @@ async fn test_closeaccount_user_with_deallocation() {
         ),
     ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
 
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let _ = multicast_publisher_block_pubkey;
 
-    // First activate the user with on-chain allocation
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Verify allocations exist
+    // CreateUser performed atomic create+allocate+activate. Verify allocations exist.
     let user_tunnel_resource_before =
         get_resource_extension_data(&mut banks_client, user_tunnel_block_pubkey)
             .await
@@ -570,53 +522,21 @@ async fn test_closeaccount_user_with_deallocation() {
 async fn test_activate_user_foundation_allowlist() {
     println!("[TEST] test_activate_user_foundation_allowlist");
 
-    // This test verifies that foundation_allowlist members can activate users
-    // The default payer in setup_program_with_globalconfig is the activator_authority_pk
-    // which is in the foundation_allowlist by default
+    // CreateUser by a foundation_allowlist member should succeed and atomically
+    // create+allocate+activate. The default payer in setup is the
+    // activator_authority_pk and is in foundation_allowlist by default.
 
     let client_ip = [100, 0, 0, 4];
     let (
         mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
+        _payer,
+        _program_id,
+        _globalstate_pubkey,
         _device_pubkey,
         user_pubkey,
-        accesspass_pubkey,
-        (
-            user_tunnel_block_pubkey,
-            multicast_publisher_block_pubkey,
-            tunnel_ids_pubkey,
-            dz_prefix_block_pubkey,
-        ),
+        _accesspass_pubkey,
+        _,
     ) = setup_user_onchain_allocation_test(UserType::IBRL, client_ip).await;
-
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // Payer is in foundation_allowlist - should succeed
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
 
     let user = get_account_data(&mut banks_client, user_pubkey)
         .await
@@ -644,47 +564,21 @@ async fn test_activate_user_ibrl_uses_client_ip() {
     let client_ip = [100, 0, 0, 5];
     let (
         mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
+        _payer,
+        _program_id,
+        _globalstate_pubkey,
         _device_pubkey,
         user_pubkey,
-        accesspass_pubkey,
+        _accesspass_pubkey,
         (
-            user_tunnel_block_pubkey,
-            multicast_publisher_block_pubkey,
-            tunnel_ids_pubkey,
+            _user_tunnel_block_pubkey,
+            _multicast_publisher_block_pubkey,
+            _tunnel_ids_pubkey,
             dz_prefix_block_pubkey,
         ),
     ) = setup_user_onchain_allocation_test(UserType::IBRL, client_ip).await;
 
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // For IBRL UserType, dz_ip should be set to client_ip (no allocation)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
+    // CreateUser activates atomically. For IBRL, dz_ip should equal client_ip.
     let user = get_account_data(&mut banks_client, user_pubkey)
         .await
         .expect("User should exist")
@@ -717,47 +611,21 @@ async fn test_activate_user_ibrl_with_allocated_ip() {
     let client_ip = [100, 0, 0, 6];
     let (
         mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
+        _payer,
+        _program_id,
+        _globalstate_pubkey,
         _device_pubkey,
         user_pubkey,
-        accesspass_pubkey,
+        _accesspass_pubkey,
         (
-            user_tunnel_block_pubkey,
-            multicast_publisher_block_pubkey,
-            tunnel_ids_pubkey,
+            _user_tunnel_block_pubkey,
+            _multicast_publisher_block_pubkey,
+            _tunnel_ids_pubkey,
             dz_prefix_block_pubkey,
         ),
     ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
 
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // For IBRLWithAllocatedIP, dz_ip should be allocated from DzPrefixBlock
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
+    // CreateUser activates atomically. For IBRLWithAllocatedIP, dz_ip is allocated from DzPrefixBlock.
     let user = get_account_data(&mut banks_client, user_pubkey)
         .await
         .expect("User should exist")
@@ -796,47 +664,21 @@ async fn test_activate_user_edge_filtering() {
     let client_ip = [100, 0, 0, 7];
     let (
         mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
+        _payer,
+        _program_id,
+        _globalstate_pubkey,
         _device_pubkey,
         user_pubkey,
-        accesspass_pubkey,
+        _accesspass_pubkey,
         (
-            user_tunnel_block_pubkey,
-            multicast_publisher_block_pubkey,
-            tunnel_ids_pubkey,
+            _user_tunnel_block_pubkey,
+            _multicast_publisher_block_pubkey,
+            _tunnel_ids_pubkey,
             dz_prefix_block_pubkey,
         ),
     ) = setup_user_onchain_allocation_test(UserType::EdgeFiltering, client_ip).await;
 
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // For EdgeFiltering, dz_ip should be allocated from DzPrefixBlock
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
+    // CreateUser activates atomically. For EdgeFiltering, dz_ip is allocated from DzPrefixBlock.
     let user = get_account_data(&mut banks_client, user_pubkey)
         .await
         .expect("User should exist")
@@ -891,36 +733,9 @@ async fn test_activate_user_already_activated_fails() {
         ),
     ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
 
+    // CreateUser already activates atomically. A subsequent ActivateUser must fail
+    // with InvalidStatus.
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // First activation - should succeed
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1, // 1 DzPrefixBlock account provided
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // Second activation - should fail (InvalidStatus)
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1385,34 +1200,9 @@ async fn test_delete_user_atomic_with_deallocation() {
         ),
     ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
 
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let _ = multicast_publisher_block_pubkey;
 
-    // Activate user with on-chain allocation
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Verify allocations exist
+    // CreateUser already activated the user atomically. Verify allocations exist.
     let user_tunnel_before =
         get_resource_extension_data(&mut banks_client, user_tunnel_block_pubkey)
             .await
@@ -1532,34 +1322,10 @@ async fn test_request_ban_user_onchain_deallocation() {
         ),
     ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
 
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let _ = multicast_publisher_block_pubkey;
+    let _ = accesspass_pubkey;
 
-    // Activate user with onchain allocation
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Verify user is activated with allocated resources
+    // CreateUser already activated the user atomically.
     let user_before = get_account_data(&mut banks_client, user_pubkey)
         .await
         .expect("User should exist")
@@ -1705,56 +1471,8 @@ async fn setup_activated_user_for_update(
     Pubkey,                           // accesspass_pubkey
     (Pubkey, Pubkey, Pubkey, Pubkey), // resource pubkeys
 ) {
-    let (
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        user_pubkey,
-        accesspass_pubkey,
-        resource_pubkeys,
-    ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
-
-    let (user_tunnel_block, multicast_publisher_block, tunnel_ids, dz_prefix_block) =
-        resource_pubkeys;
-
-    // Activate user with onchain allocation
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    (
-        banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        user_pubkey,
-        accesspass_pubkey,
-        resource_pubkeys,
-    )
+    // CreateUser activates atomically — no explicit ActivateUser needed.
+    setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await
 }
 
 #[tokio::test]
@@ -2022,49 +1740,17 @@ async fn test_activate_sets_multicast_publisher_false_for_subscriber() {
     let client_ip = [100, 0, 0, 51];
     let (
         mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
+        _payer,
+        _program_id,
+        _globalstate_pubkey,
         _device_pubkey,
         user_pubkey,
-        accesspass_pubkey,
-        (
-            user_tunnel_block_pubkey,
-            multicast_publisher_block_pubkey,
-            tunnel_ids_pubkey,
-            dz_prefix_block_pubkey,
-        ),
+        _accesspass_pubkey,
+        _,
     ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
 
-    // Activate the user with no publisher subscriptions (publishers list is empty).
-    // CreatedAsPublisher should be unset because publishers.is_empty() == true.
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Verify CreatedAsPublisher is unset
+    // CreateUser created a Multicast user with no publisher subscriptions (passes
+    // is_publisher=false in CreateUser). CreatedAsPublisher should be unset.
     let user = get_account_data(&mut banks_client, user_pubkey)
         .await
         .expect("User should exist")
@@ -2074,7 +1760,7 @@ async fn test_activate_sets_multicast_publisher_false_for_subscriber() {
     assert_eq!(user.status, UserStatus::Activated);
     assert!(
         !TunnelFlags::is_set(user.tunnel_flags, TunnelFlags::CreatedAsPublisher),
-        "CreatedAsPublisher must be unset after activating a user with no publisher subscriptions"
+        "CreatedAsPublisher must be unset for a user with no publisher subscriptions"
     );
 
     println!("[PASS] test_activate_sets_multicast_publisher_false_for_subscriber");
@@ -2132,36 +1818,10 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
     )
     .await;
 
-    let _recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    // CreateUser already activated the user atomically with CreatedAsPublisher unset.
+    let _ = multicast_publisher_block_pubkey;
 
-    // Step 2: Activate user (moves from Pending to Activated, sets CreatedAsPublisher unset)
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Step 3: Add user to subscriber allowlist, then subscribe as subscriber.
+    // Step 2: Add user to subscriber allowlist, then subscribe as subscriber.
     // Note: subscriber-only subscribe does NOT change user status to Updating
     // (only publisher_list_transitioned triggers Updating).
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -2351,31 +2011,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
         ),
     ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
 
-    // Activate user (legacy CreateUser created it Pending).
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    // CreateUser already activated the user atomically.
 
     // Create + activate multicast group.
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -2671,32 +2307,8 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
         ),
     ) = setup_user_onchain_allocation_test(UserType::Multicast, client_ip).await;
 
-    // Activate user (Multicast subscriber: CreatedAsPublisher unset,
-    // multicast_subscribers_count = 1).
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    // CreateUser activates atomically as a Multicast subscriber:
+    // CreatedAsPublisher unset, multicast_subscribers_count = 1.
 
     // Create + activate multicast group.
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;

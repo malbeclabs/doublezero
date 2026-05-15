@@ -53,7 +53,7 @@ pub struct CreateUserCoreResult {
 /// initial User struct with Pending status.
 ///
 /// Callers are responsible for:
-/// - Parsing resource extension accounts (if dz_prefix_count > 0)
+/// - Parsing the required resource extension accounts
 /// - Onchain allocation + try_activate
 /// - Account creation (try_acc_create) and write-back
 /// - Multicast subscription logic (CreateSubscribeUser only)

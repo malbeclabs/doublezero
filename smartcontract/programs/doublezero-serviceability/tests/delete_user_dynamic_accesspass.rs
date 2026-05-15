@@ -5,7 +5,7 @@ use doublezero_serviceability::{
         accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
         device::update::DeviceUpdateArgs,
-        user::{activate::*, create::*, delete::*},
+        user::{create::*, delete::*},
         *,
     },
     resource::ResourceType,
@@ -76,7 +76,7 @@ async fn setup_test_env() -> TestEnv {
             local_asn: 65000,
             remote_asn: 65001,
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-            user_tunnel_block: "9.0.0.0/24".parse().unwrap(),
+            user_tunnel_block: "169.254.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/16".parse().unwrap(),
             multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
             next_bgp_community: None,
@@ -260,6 +260,19 @@ async fn create_and_activate_user(
 
     let (user_pubkey, _) = get_user_pda(&env.program_id, &user_ip, user_type);
 
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&env.program_id, ResourceType::UserTunnelBlock);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&env.program_id, ResourceType::MulticastPublisherBlock);
+    let (device_tunnel_ids_pda, _, _) = get_resource_extension_pda(
+        &env.program_id,
+        ResourceType::TunnelIds(env.device_pubkey, 0),
+    );
+    let (dz_prefix_block_pda, _, _) = get_resource_extension_pda(
+        &env.program_id,
+        ResourceType::DzPrefixBlock(env.device_pubkey, 0),
+    );
+
     execute_transaction(
         &mut env.banks_client,
         recent_blockhash,
@@ -269,33 +282,17 @@ async fn create_and_activate_user(
             user_type,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(env.device_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(env.globalstate_pubkey, false),
-        ],
-        &env.payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut env.banks_client,
-        recent_blockhash,
-        env.program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 500,
-            tunnel_net: "169.254.0.0/25".parse().unwrap(),
-            dz_ip: [200, 0, 0, 1].into(),
-            dz_prefix_count: 0,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(env.globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(device_tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_block_pda, false),
         ],
         &env.payer,
     )

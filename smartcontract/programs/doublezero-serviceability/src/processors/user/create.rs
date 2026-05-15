@@ -1,4 +1,5 @@
 use crate::{
+    error::DoubleZeroError,
     seeds::{SEED_PREFIX, SEED_USER},
     serializer::{try_acc_create, try_acc_write},
     state::user::*,
@@ -27,8 +28,8 @@ pub struct UserCreateArgs {
     pub client_ip: std::net::Ipv4Addr,
     #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub tunnel_endpoint: std::net::Ipv4Addr,
-    /// Number of DzPrefixBlock accounts passed for on-chain allocation.
-    /// When 0, legacy behavior is used (Pending status). When > 0, atomic create+allocate+activate.
+    /// Number of DzPrefixBlock accounts passed for on-chain allocation. Must be > 0:
+    /// user creation always allocates resources and activates atomically.
     #[incremental(default = 0)]
     pub dz_prefix_count: u8,
 }
@@ -52,6 +53,11 @@ pub fn process_create_user(
     accounts: &[AccountInfo],
     value: &UserCreateArgs,
 ) -> ProgramResult {
+    if value.dz_prefix_count == 0 {
+        msg!("dz_prefix_count must be > 0; CreateUser requires on-chain allocation");
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let user_account = next_account_info(accounts_iter)?;
@@ -59,22 +65,24 @@ pub fn process_create_user(
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for on-chain allocation (between globalstate and optional_tenant)
-    // Account layout WITH ResourceExtension (dz_prefix_count > 0):
-    //   [user, device, accesspass, globalstate, user_tunnel_block, multicast_publisher_block, device_tunnel_ids, dz_prefix_0..N, optional_tenant, payer, system]
-    // Account layout WITHOUT (legacy, dz_prefix_count == 0):
-    //   [user, device, accesspass, globalstate, optional_tenant, payer, system]
-    let resource_extension_accounts = resource_onchain_helpers::parse_resource_extension_accounts(
+    // Required ResourceExtension accounts for on-chain allocation.
+    // Account layout:
+    //   [user, device, accesspass, globalstate,
+    //    user_tunnel_block, multicast_publisher_block, device_tunnel_ids, dz_prefix_0..N,
+    //    optional_tenant, payer, system]
+    let (
+        user_tunnel_block_ext,
+        multicast_publisher_block_ext,
+        device_tunnel_ids_ext,
+        dz_prefix_accounts,
+    ) = resource_onchain_helpers::parse_resource_extension_accounts(
         accounts_iter,
         value.dz_prefix_count,
-    )?;
+    )?
+    .expect("dz_prefix_count > 0 guarantees Some");
 
-    // Parse optional tenant account
-    let resource_ext_accounts = if value.dz_prefix_count > 0 {
-        3 + value.dz_prefix_count as usize
-    } else {
-        0
-    };
+    // Parse optional tenant account: present iff there is one extra account before payer+system.
+    let resource_ext_accounts = 3 + value.dz_prefix_count as usize;
     let tenant_account = if accounts.len() >= 7 + resource_ext_accounts {
         Some(next_account_info(accounts_iter)?)
     } else {
@@ -107,25 +115,17 @@ pub fn process_create_user(
         None,
     )?;
 
-    // Atomic create+allocate+activate if on-chain allocation is requested
-    if let Some((
+    // Always allocate resources and activate atomically.
+    resource_onchain_helpers::validate_and_allocate_user_resources(
+        program_id,
+        &mut result.user,
         user_tunnel_block_ext,
         multicast_publisher_block_ext,
         device_tunnel_ids_ext,
-        dz_prefix_accounts,
-    )) = resource_extension_accounts
-    {
-        resource_onchain_helpers::validate_and_allocate_user_resources(
-            program_id,
-            &mut result.user,
-            user_tunnel_block_ext,
-            multicast_publisher_block_ext,
-            device_tunnel_ids_ext,
-            &dz_prefix_accounts,
-        )?;
+        &dz_prefix_accounts,
+    )?;
 
-        result.user.try_activate(&mut result.accesspass)?;
-    }
+    result.user.try_activate(&mut result.accesspass)?;
 
     if result.pda_ver == PDAVersion::V1 {
         try_acc_create(

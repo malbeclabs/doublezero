@@ -278,7 +278,6 @@ pub fn process_set_access_pass(
     // Manage tenant reference counting for added/removed tenants (if provided)
     if let Some(tenant_remove_acc) = tenant_remove_account {
         if tenant_remove_acc.key != &Pubkey::default() {
-            // Validate removed tenant account
             assert_eq!(
                 *tenant_remove_acc.owner, *program_id,
                 "Invalid Tenant Remove Account Owner"
@@ -288,6 +287,19 @@ pub fn process_set_access_pass(
                 "Tenant Remove Account is not writable"
             );
             let mut tenant_remove = Tenant::try_from(tenant_remove_acc)?;
+
+            // Non-privileged callers may only remove a tenant they administer. Privileged
+            // callers (sentinel/feed/foundation) retain unrestricted removal authority to
+            // preserve prior behavior.
+            if !is_privileged && !tenant_remove.administrators.contains(payer_account.key) {
+                msg!(
+                    "Payer {} is not an administrator of tenant {} being removed",
+                    payer_account.key,
+                    tenant_remove_acc.key
+                );
+                return Err(DoubleZeroError::NotAllowed.into());
+            }
+
             tenant_remove.reference_count = tenant_remove.reference_count.saturating_sub(1);
             try_acc_write(&tenant_remove, tenant_remove_acc, payer_account, accounts)?;
         }

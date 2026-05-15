@@ -6,7 +6,6 @@ use doublezero_serviceability::{
             check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs,
             set::SetAccessPassArgs,
         },
-        allowlist::foundation::add::AddFoundationAllowlistArgs,
         contributor::create::ContributorCreateArgs,
         device::{activate::DeviceActivateArgs, update::DeviceUpdateArgs},
         tenant::create::TenantCreateArgs,
@@ -1302,19 +1301,6 @@ async fn test_set_accesspass_with_tenant_admin_succeeds() {
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(vrf_ids_pda, false),
         ],
-        &payer,
-    )
-    .await;
-
-    // Add tenant_admin to foundation_allowlist so they can create access passes
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
-            pubkey: tenant_admin.pubkey(),
-        }),
-        vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
     )
     .await;

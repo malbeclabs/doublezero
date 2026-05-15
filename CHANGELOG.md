@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- client: add `--tenant` flag to `doublezero user update` for foundation-driven tenant reassignment
+- client: break latency ties with avg latency ([#362](https://github.com/malbeclabs/doublezero/pull/3692))
+
 ### Breaking
 
 ### Changes

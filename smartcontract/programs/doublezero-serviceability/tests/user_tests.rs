@@ -474,6 +474,134 @@ async fn test_user() {
 
     println!("✅ User updated");
     /*****************************************************************************************************************************************************/
+    println!("🟢 10a. Testing User tenant initial assignment (old_tenant = Pubkey::default())...");
+
+    let tenant_admin = Pubkey::new_unique();
+    let tenant_1_code = "tenant-1";
+    let (tenant_1_pubkey, _) = get_tenant_pda(&program_id, tenant_1_code);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: tenant_1_code.to_string(),
+            administrator: tenant_admin,
+            token_account: None,
+            metro_routing: true,
+            route_liveness: false,
+        }),
+        vec![
+            AccountMeta::new(tenant_1_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // User currently has tenant_pk == Pubkey::default() (initial assignment).
+    // Old tenant slot is the system program (Pubkey::default()) passed readonly;
+    // the processor must skip the old-tenant logic for that placeholder.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
+            tenant_pk: Some(tenant_1_pubkey),
+            ..UserUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new_readonly(Pubkey::default(), false),
+            AccountMeta::new(tenant_1_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.tenant_pk, tenant_1_pubkey);
+
+    let tenant_1 = get_account_data(&mut banks_client, tenant_1_pubkey)
+        .await
+        .expect("Unable to get Tenant")
+        .get_tenant()
+        .unwrap();
+    assert_eq!(tenant_1.reference_count, 1);
+
+    println!("✅ Initial tenant assignment succeeded");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 10b. Testing User tenant reassignment (old_tenant = tenant_1, new_tenant = tenant_2)...");
+
+    let tenant_2_code = "tenant-2";
+    let (tenant_2_pubkey, _) = get_tenant_pda(&program_id, tenant_2_code);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: tenant_2_code.to_string(),
+            administrator: tenant_admin,
+            token_account: None,
+            metro_routing: true,
+            route_liveness: false,
+        }),
+        vec![
+            AccountMeta::new(tenant_2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
+            tenant_pk: Some(tenant_2_pubkey),
+            ..UserUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(tenant_1_pubkey, false),
+            AccountMeta::new(tenant_2_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.tenant_pk, tenant_2_pubkey);
+
+    let tenant_1 = get_account_data(&mut banks_client, tenant_1_pubkey)
+        .await
+        .expect("Unable to get Tenant")
+        .get_tenant()
+        .unwrap();
+    let tenant_2 = get_account_data(&mut banks_client, tenant_2_pubkey)
+        .await
+        .expect("Unable to get Tenant")
+        .get_tenant()
+        .unwrap();
+    assert_eq!(tenant_1.reference_count, 0);
+    assert_eq!(tenant_2.reference_count, 1);
+
+    println!("✅ Tenant reassignment succeeded");
+    /*****************************************************************************************************************************************************/
     println!("🟢 11. Testing User deletion...");
     execute_transaction(
         &mut banks_client,
@@ -519,6 +647,8 @@ async fn test_user() {
             AccountMeta::new(user.owner, false),
             AccountMeta::new(user.device_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
+            // user.tenant_pk is non-default (set in step 10b); closeaccount expects the tenant.
+            AccountMeta::new(user.tenant_pk, false),
         ],
         &payer,
     )

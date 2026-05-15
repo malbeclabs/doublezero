@@ -1419,3 +1419,139 @@ async fn test_set_accesspass_with_tenant_non_admin_fails() {
 
     println!("✅ SetAccessPass correctly rejected non-administrator payer for tenant (error 22)");
 }
+
+#[tokio::test]
+async fn test_set_accesspass_tenant_admin_cannot_replace_other_tenant() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    println!("🟢 Start test_set_accesspass_tenant_admin_cannot_replace_other_tenant");
+
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+
+    // Tenant A and its administrator.
+    let admin_acme = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &admin_acme.pubkey(),
+        10_000_000_000,
+    )
+    .await;
+    let acme_code = "acme-tenant";
+    let (tenant_acme, _) = get_tenant_pda(&program_id, acme_code);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: acme_code.to_string(),
+            administrator: admin_acme.pubkey(),
+            token_account: None,
+            metro_routing: true,
+            route_liveness: false,
+        }),
+        vec![
+            AccountMeta::new(tenant_acme, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Tenant B and its administrator.
+    let admin_hyper = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &admin_hyper.pubkey(),
+        10_000_000_000,
+    )
+    .await;
+    let hyper_code = "hyper-tenant";
+    let (tenant_hyper, _) = get_tenant_pda(&program_id, hyper_code);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: hyper_code.to_string(),
+            administrator: admin_hyper.pubkey(),
+            token_account: None,
+            metro_routing: true,
+            route_liveness: false,
+        }),
+        vec![
+            AccountMeta::new(tenant_hyper, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // admin_acme creates an access pass scoped to tenant_acme.
+    let client_ip = Ipv4Addr::new(100, 0, 0, 80);
+    let user_payer = Pubkey::new_unique();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 10,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+            AccountMeta::new(Pubkey::default(), false),
+            AccountMeta::new(tenant_acme, false),
+        ],
+        &admin_acme,
+    )
+    .await;
+
+    // admin_hyper now attempts to update the same AP, asking the program to swap
+    // tenant_acme out for tenant_hyper. This is the SDK "replace" flow. Must fail.
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 20,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+            AccountMeta::new(tenant_acme, false), // tenant_remove (not administered by admin_hyper)
+            AccountMeta::new(tenant_hyper, false), // tenant_add
+        ],
+        &admin_hyper,
+    )
+    .await;
+
+    assert!(
+        res.is_err(),
+        "SetAccessPass must reject tenant_remove when payer does not administer the removed tenant"
+    );
+
+    let error_string = format!("{:?}", res.unwrap_err());
+    assert!(
+        error_string.contains("Custom(8)"),
+        "Expected NotAllowed error (Custom(8)), got: {}",
+        error_string
+    );
+
+    println!("✅ SetAccessPass correctly rejected cross-tenant replacement");
+}

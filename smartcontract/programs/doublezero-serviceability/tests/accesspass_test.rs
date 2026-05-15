@@ -8,6 +8,7 @@ use doublezero_serviceability::{
         },
         contributor::create::ContributorCreateArgs,
         device::{activate::DeviceActivateArgs, update::DeviceUpdateArgs},
+        globalstate::setauthority::SetAuthorityArgs,
         tenant::create::TenantCreateArgs,
         user::create::UserCreateArgs,
         *,
@@ -1554,4 +1555,215 @@ async fn test_set_accesspass_tenant_admin_cannot_replace_other_tenant() {
     );
 
     println!("✅ SetAccessPass correctly rejected cross-tenant replacement");
+}
+
+#[tokio::test]
+async fn test_set_accesspass_with_sentinel_authority_succeeds() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    println!("🟢 Start test_set_accesspass_with_sentinel_authority_succeeds");
+
+    // Promote a brand-new keypair to sentinel authority.
+    let sentinel = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &sentinel.pubkey(),
+        10_000_000_000,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
+            sentinel_authority_pk: Some(sentinel.pubkey()),
+            ..Default::default()
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // Sentinel (not in foundation_allowlist) creates an access pass without --tenant.
+    let client_ip = Ipv4Addr::new(100, 0, 0, 90);
+    let user_payer = Pubkey::new_unique();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 100,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+        ],
+        &sentinel,
+    )
+    .await;
+
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .expect("Unable to get AccessPass")
+        .get_accesspass()
+        .unwrap();
+
+    assert_eq!(accesspass.owner, sentinel.pubkey());
+    assert!(accesspass.tenant_allowlist.is_empty());
+
+    println!("✅ SetAccessPass succeeded for sentinel authority");
+}
+
+#[tokio::test]
+async fn test_set_accesspass_with_feed_authority_succeeds() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    println!("🟢 Start test_set_accesspass_with_feed_authority_succeeds");
+
+    // Promote a brand-new keypair to feed authority.
+    let feed = Keypair::new();
+    transfer(&mut banks_client, &payer, &feed.pubkey(), 10_000_000_000).await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
+            feed_authority_pk: Some(feed.pubkey()),
+            ..Default::default()
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // Feed (not in foundation_allowlist) creates an access pass without --tenant.
+    let client_ip = Ipv4Addr::new(100, 0, 0, 91);
+    let user_payer = Pubkey::new_unique();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 100,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+        ],
+        &feed,
+    )
+    .await;
+
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .expect("Unable to get AccessPass")
+        .get_accesspass()
+        .unwrap();
+
+    assert_eq!(accesspass.owner, feed.pubkey());
+    assert!(accesspass.tenant_allowlist.is_empty());
+
+    println!("✅ SetAccessPass succeeded for feed authority");
+}
+
+#[tokio::test]
+async fn test_set_accesspass_tenant_admin_without_tenant_accounts_fails() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    println!("🟢 Start test_set_accesspass_tenant_admin_without_tenant_accounts_fails");
+
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+
+    // Tenant exists with admin = tenant_admin keypair.
+    let tenant_admin = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &tenant_admin.pubkey(),
+        10_000_000_000,
+    )
+    .await;
+    let tenant_code = "scoped-tenant";
+    let (tenant_pubkey, _) = get_tenant_pda(&program_id, tenant_code);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: tenant_code.to_string(),
+            administrator: tenant_admin.pubkey(),
+            token_account: None,
+            metro_routing: true,
+            route_liveness: false,
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // tenant_admin attempts to create an access pass WITHOUT passing the tenant accounts.
+    let client_ip = Ipv4Addr::new(100, 0, 0, 92);
+    let user_payer = Pubkey::new_unique();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+
+    let res = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 100,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+        ],
+        &tenant_admin,
+    )
+    .await;
+
+    assert!(
+        res.is_err(),
+        "SetAccessPass must reject a tenant administrator when no tenant accounts are supplied"
+    );
+
+    let error_string = format!("{:?}", res.unwrap_err());
+    assert!(
+        error_string.contains("Custom(8)"),
+        "Expected NotAllowed error (Custom(8)), got: {}",
+        error_string
+    );
+
+    println!("✅ SetAccessPass correctly rejected tenant admin without tenant accounts");
 }

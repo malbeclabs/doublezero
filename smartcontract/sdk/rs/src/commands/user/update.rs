@@ -110,8 +110,15 @@ impl UpdateUserCommand {
 
             let old_tenant_pk = user.tenant_pk;
 
-            // Add tenant accounts (old_tenant, new_tenant)
-            accounts.push(AccountMeta::new(old_tenant_pk, false));
+            // Add tenant accounts (old_tenant, new_tenant).
+            // Initial tenant assignment: old_tenant_pk is Pubkey::default() (system
+            // program). Pass it readonly so the runtime doesn't reject the transaction;
+            // the processor skips it when its key is Pubkey::default().
+            if old_tenant_pk == Pubkey::default() {
+                accounts.push(AccountMeta::new_readonly(old_tenant_pk, false));
+            } else {
+                accounts.push(AccountMeta::new(old_tenant_pk, false));
+            }
             accounts.push(AccountMeta::new(new_tenant_pk, false));
         }
 

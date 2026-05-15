@@ -1,4 +1,10 @@
-use crate::{commands::link::get::GetLinkCommand, DoubleZeroClient, GetGlobalStateCommand};
+use crate::{
+    commands::{
+        contributor::get::GetContributorCommand, device::get::GetDeviceCommand,
+        link::get::GetLinkCommand,
+    },
+    DoubleZeroClient, GetGlobalStateCommand,
+};
 use doublezero_program_common::{types::NetworkV4, validate_account_code};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
@@ -43,6 +49,21 @@ impl UpdateLinkCommand {
         .execute(client)
         .map_err(|_err| eyre::eyre!("Link not found"))?;
 
+        // Fetch to check if side Z is the caller
+        let payer = client.get_payer();
+
+        let (_, device_z) = GetDeviceCommand {
+            pubkey_or_code: link.side_z_pk.to_string(),
+        }
+        .execute(client)
+        .map_err(|_err| eyre::eyre!("Device Z not found"))?;
+
+        let (_, contributor_z) = GetContributorCommand {
+            pubkey_or_code: device_z.contributor_pk.to_string(),
+        }
+        .execute(client)
+        .map_err(|_err| eyre::eyre!("Contributor Z not found"))?;
+
         let code = self
             .code
             .as_ref()
@@ -61,11 +82,20 @@ impl UpdateLinkCommand {
             is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation)
                 && updating_tunnel_resources;
 
-        let mut accounts = vec![
-            AccountMeta::new(self.pubkey, false),
-            AccountMeta::new(link.contributor_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ];
+        let mut accounts = if contributor_z.owner == payer {
+            vec![
+                AccountMeta::new(self.pubkey, false),
+                AccountMeta::new(device_z.contributor_pk, false),
+                AccountMeta::new(link.side_z_pk, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ]
+        } else {
+            vec![
+                AccountMeta::new(self.pubkey, false),
+                AccountMeta::new(link.contributor_pk, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ]
+        };
 
         // Device accounts needed when updating tunnel_net (for interface IP update)
         if self.tunnel_net.is_some() {
@@ -122,5 +152,144 @@ impl UpdateLinkCommand {
             }),
             accounts,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{tests::utils::create_test_client, MockDoubleZeroClient};
+    use doublezero_serviceability::{
+        pda::get_globalstate_pda,
+        state::{
+            accountdata::AccountData,
+            accounttype::AccountType,
+            contributor::{Contributor, ContributorStatus},
+            device::Device,
+            link::Link,
+        },
+    };
+    use mockall::predicate;
+
+    fn make_contributor(owner: Pubkey, code: &str) -> Contributor {
+        Contributor {
+            account_type: AccountType::Contributor,
+            owner,
+            index: 1,
+            bump_seed: 0,
+            status: ContributorStatus::Activated,
+            code: code.to_string(),
+            reference_count: 0,
+            ops_manager_pk: Pubkey::default(),
+        }
+    }
+
+    /// Builds and wires the get() mocks for `link`, `side_z` device, and `side_z`'s contributor.
+    /// `contributor_z_owner` controls whether the side-Z path is selected.
+    /// Returns `(link_pubkey, contributor_a_pk, contributor_z_pk, side_z_pk)`.
+    fn setup_link_and_contributors(
+        client: &mut MockDoubleZeroClient,
+        contributor_z_owner: Pubkey,
+    ) -> (Pubkey, Pubkey, Pubkey, Pubkey) {
+        let link_pubkey = Pubkey::new_unique();
+        let contributor_a_pk = Pubkey::new_unique();
+        let contributor_z_pk = Pubkey::new_unique();
+        let side_a_pk = Pubkey::new_unique();
+        let side_z_pk = Pubkey::new_unique();
+
+        let link = Link {
+            contributor_pk: contributor_a_pk,
+            side_a_pk,
+            side_z_pk,
+            ..Default::default()
+        };
+        let device_z = Device {
+            contributor_pk: contributor_z_pk,
+            ..Default::default()
+        };
+        let contributor_z = make_contributor(contributor_z_owner, "co_z");
+
+        client
+            .expect_get()
+            .with(predicate::eq(link_pubkey))
+            .returning(move |_| Ok(AccountData::Link(link.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(side_z_pk))
+            .returning(move |_| Ok(AccountData::Device(device_z.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(contributor_z_pk))
+            .returning(move |_| Ok(AccountData::Contributor(contributor_z.clone())));
+
+        (link_pubkey, contributor_a_pk, contributor_z_pk, side_z_pk)
+    }
+
+    fn drain_command(link_pubkey: Pubkey) -> UpdateLinkCommand {
+        UpdateLinkCommand {
+            pubkey: link_pubkey,
+            code: None,
+            contributor_pk: None,
+            tunnel_type: None,
+            bandwidth: None,
+            mtu: None,
+            delay_ns: None,
+            jitter_ns: None,
+            delay_override_ns: None,
+            status: Some(LinkStatus::SoftDrained),
+            desired_status: None,
+            tunnel_id: None,
+            tunnel_net: None,
+            link_topologies: None,
+            unicast_drained: None,
+        }
+    }
+
+    #[test]
+    fn test_update_link_side_z_uses_4_account_preamble() {
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+
+        // contributor_z.owner == payer  =>  SDK should pick the side-Z layout
+        let (link_pubkey, _contributor_a_pk, contributor_z_pk, side_z_pk) =
+            setup_link_and_contributors(&mut client, payer);
+
+        client
+            .expect_execute_transaction()
+            .withf(move |_, accounts| {
+                accounts.len() == 4
+                    && accounts[0].pubkey == link_pubkey
+                    && accounts[1].pubkey == contributor_z_pk
+                    && accounts[2].pubkey == side_z_pk
+                    && accounts[3].pubkey == globalstate_pubkey
+            })
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = drain_command(link_pubkey).execute(&client);
+        assert!(res.is_ok(), "execute failed: {:?}", res);
+    }
+
+    #[test]
+    fn test_update_link_side_a_uses_3_account_preamble() {
+        let mut client = create_test_client();
+        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+
+        // contributor_z.owner != payer  =>  SDK should fall back to the side-A layout
+        let (link_pubkey, contributor_a_pk, _contributor_z_pk, _side_z_pk) =
+            setup_link_and_contributors(&mut client, Pubkey::new_unique());
+
+        client
+            .expect_execute_transaction()
+            .withf(move |_, accounts| {
+                accounts.len() == 3
+                    && accounts[0].pubkey == link_pubkey
+                    && accounts[1].pubkey == contributor_a_pk
+                    && accounts[2].pubkey == globalstate_pubkey
+            })
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = drain_command(link_pubkey).execute(&client);
+        assert!(res.is_ok(), "execute failed: {:?}", res);
     }
 }

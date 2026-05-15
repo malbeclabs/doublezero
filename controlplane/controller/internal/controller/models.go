@@ -20,6 +20,24 @@ const (
 	InterfaceTypePhysical
 )
 
+// Role-based interface MTU. Mirrors the onchain constants in
+// smartcontract/programs/doublezero-serviceability/src/state/interface.rs
+// (LINK_MTU / INTERFACE_MTU / CYOA_DIA_INTERFACE_MTU). The controller
+// computes the rendered MTU from interface role instead of trusting the
+// onchain Interface.Mtu / Link.Mtu values, so the rendered config remains
+// correct even for V1 interfaces that deserialize with Mtu = 0.
+const (
+	InterfaceMtu        uint16 = 9000
+	CyoaDiaInterfaceMtu uint16 = 1500
+)
+
+func mtuForInterface(isCYOA, isDIA bool) uint16 {
+	if isCYOA || isDIA {
+		return CyoaDiaInterfaceMtu
+	}
+	return InterfaceMtu
+}
+
 type LoopbackType uint8
 
 const (
@@ -93,12 +111,11 @@ func toInterface(iface serviceability.Interface) (Interface, error) {
 		return Interface{}, fmt.Errorf("node segment cannot be defined on non-vpnv4 loopbacks")
 	}
 
-	return Interface{
+	out := Interface{
 		Name:                 iface.Name,
 		VlanId:               iface.VlanId,
 		Ip:                   prefix,
 		NodeSegmentIdx:       iface.NodeSegmentIdx,
-		Mtu:                  iface.Mtu,
 		IsSubInterface:       subIntf,
 		IsSubInterfaceParent: false,
 		InterfaceType:        ifType,
@@ -106,31 +123,11 @@ func toInterface(iface serviceability.Interface) (Interface, error) {
 		IsLink:               false,
 		IsCYOA:               iface.InterfaceCYOA != serviceability.InterfaceCYOANone,
 		IsDIA:                iface.InterfaceDIA != serviceability.InterfaceDIANone,
-	}, nil
-
-}
-
-func NewInterface(
-	name string,
-	vlanId uint16,
-	ip netip.Prefix,
-	nodeSegmentIdx uint16,
-	isSubInterface bool,
-	isSubInterfaceParent bool,
-	interfaceType InterfaceType,
-	loopbackType LoopbackType,
-) Interface {
-	return Interface{
-		Name:                 name,
-		VlanId:               vlanId,
-		Ip:                   ip,
-		NodeSegmentIdx:       nodeSegmentIdx,
-		IsSubInterface:       isSubInterface,
-		IsSubInterfaceParent: isSubInterfaceParent,
-		InterfaceType:        interfaceType,
-		LoopbackType:         loopbackType,
-		IsLink:               false,
 	}
+	if ifType == InterfaceTypePhysical {
+		out.Mtu = mtuForInterface(out.IsCYOA, out.IsDIA)
+	}
+	return out, nil
 }
 
 func (i Interface) IsLoopback() bool {
@@ -159,7 +156,6 @@ func (i Interface) GetParent() (Interface, error) {
 	}
 	return Interface{
 		Name:                 parentName,
-		Mtu:                  i.Mtu,
 		IsSubInterface:       false,
 		IsSubInterfaceParent: true,
 		InterfaceType:        i.InterfaceType,

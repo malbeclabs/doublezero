@@ -151,7 +151,7 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 
 	// Wait for status of all clients to be up.
 	for _, client := range clients {
-		err := client.WaitForStatusUp(ctx)
+		err := client.WaitForMulticastStatusUp(ctx)
 		require.NoError(t, err, "failed to wait for status")
 	}
 
@@ -174,6 +174,10 @@ func validateMulticastConnectivity(t *testing.T, ctx context.Context, log *slog.
 	go func() {
 		_ = publisher.MulticastSend(ctx, group, 120*time.Second)
 	}()
+
+	monCtx, monCancel := context.WithCancel(ctx)
+	defer monCancel()
+	go publisher.MonitorStatusUntilDone(monCtx, 10*time.Second)
 
 	// Get multicast report from each subscriber.
 	for _, subscriber := range subscribers {
@@ -304,7 +308,7 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	log.Debug("Connecting publisher to both groups simultaneously", "codes", []string{groupA.Code, groupB.Code})
 	err = publisher.ConnectUserMulticast_Publisher_Wait(ctx, groupA.Code, groupB.Code)
 	require.NoError(t, err, "failed to connect publisher to groups")
-	err = publisher.WaitForStatusUp(ctx)
+	err = publisher.WaitForMulticastStatusUp(ctx)
 	require.NoError(t, err, "failed to wait for publisher status up")
 
 	// --- Phase 1: Selective fan-out ---
@@ -319,9 +323,9 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	err = subscriberB.ConnectUserMulticast_Subscriber_Wait(ctx, groupB.Code)
 	require.NoError(t, err, "failed to connect subscriberB to group B")
 
-	err = subscriberA.WaitForStatusUp(ctx)
+	err = subscriberA.WaitForMulticastStatusUp(ctx)
 	require.NoError(t, err, "failed to wait for subscriberA status up")
-	err = subscriberB.WaitForStatusUp(ctx)
+	err = subscriberB.WaitForMulticastStatusUp(ctx)
 	require.NoError(t, err, "failed to wait for subscriberB status up")
 
 	err = subscriberA.MulticastJoin(ctx, groupA)
@@ -337,6 +341,10 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 		_ = publisher.MulticastSend(ctx, groupB, 120*time.Second)
 	}()
 
+	phase1Ctx, phase1Cancel := context.WithCancel(ctx)
+	defer phase1Cancel()
+	go publisher.MonitorStatusUntilDone(phase1Ctx, 10*time.Second)
+
 	reportA, err := subscriberA.WaitForMulticastReport(ctx, groupA)
 	require.NoError(t, err, "failed to get report for group A from subscriberA")
 	require.Greater(t, reportA.PacketCount, uint64(0), "subscriberA received no packets from group A")
@@ -346,6 +354,8 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	require.NoError(t, err, "failed to get report for group B from subscriberB")
 	require.Greater(t, reportB.PacketCount, uint64(0), "subscriberB received no packets from group B")
 	log.Info("Received multicast packets", "subscriber", subscriberB.Host, "group", groupB.Code, "packetCount", reportB.PacketCount)
+
+	phase1Cancel()
 
 	// --- Phase 2: Incremental subscription ---
 	// SubA adds group B without disconnecting — verify tunnel stays up, identity preserved, and receives from both.
@@ -359,7 +369,7 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	err = subscriberA.ConnectUserMulticast_Subscriber_AddTunnel(ctx, groupB.Code)
 	require.NoError(t, err, "failed to incrementally add group B to subscriberA")
 
-	err = subscriberA.WaitForStatusUp(ctx)
+	err = subscriberA.WaitForMulticastStatusUp(ctx)
 	require.NoError(t, err, "failed to wait for subscriberA status up after adding group B")
 
 	// Verify user pubkey is preserved (user was not recreated).
@@ -378,6 +388,10 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 		_ = publisher.MulticastSend(ctx, groupB, 120*time.Second)
 	}()
 
+	phase2Ctx, phase2Cancel := context.WithCancel(ctx)
+	defer phase2Cancel()
+	go publisher.MonitorStatusUntilDone(phase2Ctx, 10*time.Second)
+
 	reports, err := subscriberA.WaitForMulticastReports(ctx, []*qa.MulticastGroup{groupA, groupB})
 	require.NoError(t, err, "failed to get reports from both groups")
 
@@ -392,6 +406,8 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	log.Debug("Phase 2 passed: incremental subscription verified",
 		"groupA_packets", reportA.PacketCount, "groupB_packets", reportB.PacketCount)
 
+	phase2Cancel()
+
 	// --- Phase 3: Incremental publish after subscribe (cross-role) ---
 	// SubA adds a publisher role on group A without disconnecting. Both roles use
 	// UserTypeMulticast so InfraEqual returns true and the incremental UpdateGroups
@@ -402,7 +418,7 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	err = subscriberA.ConnectUserMulticast_Publisher_AddTunnel(ctx, groupA.Code)
 	require.NoError(t, err, "failed to incrementally add publisher role to subscriberA")
 
-	err = subscriberA.WaitForStatusUp(ctx)
+	err = subscriberA.WaitForMulticastStatusUp(ctx)
 	require.NoError(t, err, "failed to wait for subscriberA status up as pub+sub")
 
 	err = subscriberA.MulticastJoin(ctx, groupA)
@@ -418,6 +434,11 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	go func() {
 		_ = subscriberA.MulticastSend(ctx, groupA, 120*time.Second)
 	}()
+
+	phase3Ctx, phase3Cancel := context.WithCancel(ctx)
+	defer phase3Cancel()
+	go publisher.MonitorStatusUntilDone(phase3Ctx, 10*time.Second)
+	go subscriberA.MonitorStatusUntilDone(phase3Ctx, 10*time.Second)
 
 	reportPubSub, err := subscriberA.WaitForMulticastReport(ctx, groupA)
 	require.NoError(t, err, "failed to get report for group A as pub+sub")

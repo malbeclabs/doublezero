@@ -338,54 +338,50 @@ pub fn process_update_user(
         if let (Some(old_tenant_acc), Some(new_tenant_acc)) =
             (old_tenant_account, new_tenant_account)
         {
-            // Validate old tenant matches current user tenant
-            assert_eq!(
-                old_tenant_acc.key, &user.tenant_pk,
-                "Old tenant account doesn't match current user tenant"
-            );
-
             // Validate new tenant matches the requested tenant
             assert_eq!(
                 new_tenant_acc.key, &new_tenant_pk,
                 "New tenant account doesn't match requested tenant"
             );
-
-            // Check account ownership
-            assert_eq!(
-                old_tenant_acc.owner, program_id,
-                "Invalid Old Tenant Account Owner"
-            );
             assert_eq!(
                 new_tenant_acc.owner, program_id,
                 "Invalid New Tenant Account Owner"
-            );
-
-            // Check writability
-            assert!(
-                old_tenant_acc.is_writable,
-                "Old Tenant Account is not writable"
             );
             assert!(
                 new_tenant_acc.is_writable,
                 "New Tenant Account is not writable"
             );
 
-            // Update reference counts
-            let mut old_tenant = Tenant::try_from(old_tenant_acc)?;
-            let mut new_tenant = Tenant::try_from(new_tenant_acc)?;
-
-            // Decrement old tenant reference count
-            old_tenant.reference_count = old_tenant.reference_count.saturating_sub(1);
-
             // Increment new tenant reference count
+            let mut new_tenant = Tenant::try_from(new_tenant_acc)?;
             new_tenant.reference_count = new_tenant
                 .reference_count
                 .checked_add(1)
                 .ok_or(DoubleZeroError::InvalidIndex)?;
-
-            // Write updated tenants
-            try_acc_write(&old_tenant, old_tenant_acc, payer_account, accounts)?;
             try_acc_write(&new_tenant, new_tenant_acc, payer_account, accounts)?;
+
+            // Skip old tenant when its key is Pubkey::default() — placeholder used
+            // for initial tenant assignment, when the user has no prior tenant.
+            if old_tenant_acc.key != &Pubkey::default() {
+                // Validate old tenant matches current user tenant
+                assert_eq!(
+                    old_tenant_acc.key, &user.tenant_pk,
+                    "Old tenant account doesn't match current user tenant"
+                );
+                assert_eq!(
+                    old_tenant_acc.owner, program_id,
+                    "Invalid Old Tenant Account Owner"
+                );
+                assert!(
+                    old_tenant_acc.is_writable,
+                    "Old Tenant Account is not writable"
+                );
+
+                // Decrement old tenant reference count
+                let mut old_tenant = Tenant::try_from(old_tenant_acc)?;
+                old_tenant.reference_count = old_tenant.reference_count.saturating_sub(1);
+                try_acc_write(&old_tenant, old_tenant_acc, payer_account, accounts)?;
+            }
         }
 
         user.tenant_pk = new_tenant_pk;

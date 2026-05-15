@@ -4,8 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-- client: add `--tenant` flag to `doublezero user update` for foundation-driven tenant reassignment
-- client: break latency ties with avg latency ([#362](https://github.com/malbeclabs/doublezero/pull/3692))
+## [v0.23.0](https://github.com/malbeclabs/doublezero/compare/client/v0.22.0...client/v0.23.0) - 2026-05-15
 
 ### Breaking
 
@@ -15,6 +14,8 @@ All notable changes to this project will be documented in this file.
   - Tenant administrators can now create or update access passes scoped to their tenant without being added to the foundation allowlist; non-privileged callers cannot remove a tenant they do not administer from an existing access pass.
   - Skip `last_access_epoch` enforcement for `UserType::Multicast` in `CreateSubscribeUser` and `CheckUserAccessPass`. Multicast access is gated by `mgroup_pub_allowlist` / `mgroup_sub_allowlist` on the access pass, not by epoch, so multicast users can be created and remain `Activated` regardless of the access-pass expiry. IBRL/unicast epoch enforcement is unchanged.
 - Client
+  - add `--tenant` flag to `doublezero user update` for foundation-driven tenant reassignment
+  - break latency ties with avg latency ([#362](https://github.com/malbeclabs/doublezero/pull/3692))
   - `doublezero connect multicast` no longer fails the client-side `check_accesspass` epoch check; only the AccessPass existence is verified for multicast. IBRL paths still enforce `last_access_epoch >= current_epoch`.
   - Break latency ties using average latency when ranking candidate devices ([#3692](https://github.com/malbeclabs/doublezero/pull/3692))
   - Delete `InterfaceV3` and the `InterfaceDeprecated::V3` variant from the serviceability program. V3 was added by an earlier change, never written to production accounts, and reverted in #3653 / no longer produced after #3667; this removes the dead type. Discriminant 3 is now an unused reserved slot in `InterfaceDeprecated`'s encoding space — unknown discriminants fall through to `InterfaceV2::default()`. Removes the V3 struct, its helper impls (`From<InterfaceV2>`, `TryFrom<&InterfaceV1>`, `Default`, `TryFrom<&InterfaceV3> for InterfaceV2`), V3 match arms in `InterfaceDeprecated::to_v2`/`size`/`Device::TryFrom`, and the V3 cross-language byte-layout debug test. On-disk write format is unchanged ([#3664](https://github.com/malbeclabs/doublezero/issues/3664))

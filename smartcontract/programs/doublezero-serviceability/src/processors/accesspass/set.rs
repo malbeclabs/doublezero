@@ -107,12 +107,33 @@ pub fn process_set_access_pass(
         "Invalid System Program Account Owner"
     );
 
-    // Parse the global state account & check if the payer is in the allowlist
+    // Parse the global state account & resolve authorization. A caller is allowed if any of:
+    //   - they are the sentinel authority,
+    //   - they are the feed authority,
+    //   - they are in the foundation allowlist, or
+    //   - they are an administrator of the tenant being added (tenant_add_account).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if globalstate.sentinel_authority_pk != *payer_account.key
-        && globalstate.feed_authority_pk != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
+
+    let is_privileged = globalstate.sentinel_authority_pk == *payer_account.key
+        || globalstate.feed_authority_pk == *payer_account.key
+        || globalstate.foundation_allowlist.contains(payer_account.key);
+
+    // Pre-deserialize the tenant_add account when present so we can both authorize the caller
+    // and later increment its reference_count without double-reading it.
+    let tenant_add_pre = match tenant_add_account {
+        Some(acc) if acc.key != &Pubkey::default() => {
+            assert_eq!(*acc.owner, *program_id, "Invalid Tenant Add Account Owner");
+            Some(Tenant::try_from(acc)?)
+        }
+        _ => None,
+    };
+
+    let is_tenant_admin = tenant_add_pre
+        .as_ref()
+        .map(|t| t.administrators.contains(payer_account.key))
+        .unwrap_or(false);
+
+    if !is_privileged && !is_tenant_admin {
         msg!(
             "sentinel_authority_pk: {} feed_authority_pk: {} payer: {} foundation_allowlist: {:?}",
             globalstate.sentinel_authority_pk,
@@ -274,18 +295,17 @@ pub fn process_set_access_pass(
 
     if let Some(tenant_add_acc) = tenant_add_account {
         if tenant_add_acc.key != &Pubkey::default() {
-            // Validate added tenant account
-            assert_eq!(
-                *tenant_add_acc.owner, *program_id,
-                "Invalid Tenant Add Account Owner"
-            );
+            // We deserialized the tenant up front for authorization. Take it back here
+            // so we can mutate and persist the updated reference_count.
+            let mut tenant_add =
+                tenant_add_pre.expect("tenant_add_pre is Some when tenant_add_acc is non-default");
             assert!(
                 tenant_add_acc.is_writable,
                 "Tenant Add Account is not writable"
             );
-            let mut tenant_add = Tenant::try_from(tenant_add_acc)?;
 
-            // Validate payer is administrator of the tenant
+            // Foundation/sentinel/feed callers must still administer the tenant they add,
+            // matching the prior behavior.
             if !tenant_add.administrators.contains(payer_account.key) {
                 msg!(
                     "Payer {} is not an administrator of tenant {}",

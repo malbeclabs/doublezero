@@ -4,9 +4,7 @@ use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutco
 use doublezero_solana_sdk::{
     shred_subscription::{
         ID,
-        instruction::{
-            ShredSubscriptionInstructionData, account::InitializeClaimHoldingAccountAccounts,
-        },
+        instruction::{ShredSubscriptionInstructionData, account::InitializeClaimHoldingAccounts},
         state::{
             find_claim_holding_address, find_validator_client_rewards_address,
             parse_validator_client_rewards,
@@ -134,13 +132,13 @@ impl InitHoldingCommand {
         for (epoch, _) in &to_init {
             let ix = try_build_instruction(
                 &ID,
-                InitializeClaimHoldingAccountAccounts::new(
+                InitializeClaimHoldingAccounts::new(
                     self.client_id,
                     *epoch,
                     &self.rewards_token_mint,
                     &wallet_key,
                 ),
-                &ShredSubscriptionInstructionData::InitializeClaimHoldingAccount(*epoch),
+                &ShredSubscriptionInstructionData::InitializeClaimHolding(*epoch),
             )?;
             instructions.push(ix);
         }

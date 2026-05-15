@@ -37,7 +37,7 @@ pub enum ShredSubscriptionInstructionData {
     /// Permissionless. Initialize a non-ATA claim holding token account
     /// owned by the `ValidatorClientRewards` parent PDA for
     /// `(subscription_epoch, mint)`. Payload is the subscription epoch.
-    InitializeClaimHoldingAccount(u64),
+    InitializeClaimHolding(u64),
     /// `ValidatorClientRewards.manager_key`-signed. Drain N claim holdings
     /// into a destination token account and close each, recovering rent to
     /// `program_config.shred_oracle_key`.
@@ -63,8 +63,8 @@ impl ShredSubscriptionInstructionData {
         Discriminator::new_sha2(b"dz::ix::request_prorated_instant_seat_withdrawal");
     pub const SET_VALIDATOR_CLIENT_REWARDS_PROPORTION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::set_validator_client_rewards_proportion");
-    pub const INITIALIZE_CLAIM_HOLDING_ACCOUNT: Discriminator<DISCRIMINATOR_LEN> =
-        Discriminator::new_sha2(b"dz::ix::initialize_claim_holding_account");
+    pub const INITIALIZE_CLAIM_HOLDING: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::initialize_claim_holding");
     pub const CLAIM_VALIDATOR_CLIENT_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::claim_validator_client_rewards");
     pub const CHECK_CLI_VERSION: Discriminator<DISCRIMINATOR_LEN> =
@@ -97,8 +97,8 @@ impl BorshSerialize for ShredSubscriptionInstructionData {
                 Self::SET_VALIDATOR_CLIENT_REWARDS_PROPORTION.serialize(writer)?;
                 proportion.serialize(writer)
             }
-            Self::InitializeClaimHoldingAccount(subscription_epoch) => {
-                Self::INITIALIZE_CLAIM_HOLDING_ACCOUNT.serialize(writer)?;
+            Self::InitializeClaimHolding(subscription_epoch) => {
+                Self::INITIALIZE_CLAIM_HOLDING.serialize(writer)?;
                 subscription_epoch.serialize(writer)
             }
             Self::ClaimValidatorClientRewards(holdings) => {
@@ -141,9 +141,9 @@ impl BorshDeserialize for ShredSubscriptionInstructionData {
                 let proportion = u16::deserialize_reader(reader)?;
                 Ok(Self::SetValidatorClientRewardsProportion(proportion))
             }
-            Self::INITIALIZE_CLAIM_HOLDING_ACCOUNT => {
+            Self::INITIALIZE_CLAIM_HOLDING => {
                 let subscription_epoch = u64::deserialize_reader(reader)?;
-                Ok(Self::InitializeClaimHoldingAccount(subscription_epoch))
+                Ok(Self::InitializeClaimHolding(subscription_epoch))
             }
             Self::CLAIM_VALIDATOR_CLIENT_REWARDS => {
                 let holdings = Vec::<ClaimHoldingId>::deserialize_reader(reader)?;
@@ -197,9 +197,8 @@ mod tests {
     }
 
     #[test]
-    fn round_trip_initialize_claim_holding_account() {
-        let ix =
-            ShredSubscriptionInstructionData::InitializeClaimHoldingAccount(0xDEAD_BEEF_CAFE_BABE);
+    fn round_trip_initialize_claim_holding() {
+        let ix = ShredSubscriptionInstructionData::InitializeClaimHolding(0xDEAD_BEEF_CAFE_BABE);
         let bytes = borsh::to_vec(&ix).unwrap();
         let decoded = ShredSubscriptionInstructionData::try_from_slice(&bytes).unwrap();
         assert_eq!(decoded, ix);
@@ -235,10 +234,10 @@ mod tests {
     }
 
     #[test]
-    fn frozen_bytes_initialize_claim_holding_account() {
-        let ix = ShredSubscriptionInstructionData::InitializeClaimHoldingAccount(0x01);
+    fn frozen_bytes_initialize_claim_holding() {
+        let ix = ShredSubscriptionInstructionData::InitializeClaimHolding(0x01);
         let mut expected =
-            borsh::to_vec(&ShredSubscriptionInstructionData::INITIALIZE_CLAIM_HOLDING_ACCOUNT)
+            borsh::to_vec(&ShredSubscriptionInstructionData::INITIALIZE_CLAIM_HOLDING)
                 .expect("discriminator serialization");
         expected.extend_from_slice(&1u64.to_le_bytes());
         assert_eq!(borsh::to_vec(&ix).unwrap(), expected);

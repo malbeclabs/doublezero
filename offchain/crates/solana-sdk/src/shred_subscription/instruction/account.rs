@@ -431,16 +431,16 @@ impl From<FundPaymentEscrowUsdcAccounts> for Vec<AccountMeta> {
     }
 }
 
-/// Accounts for the `InitializeClaimHoldingAccount` instruction (6 accounts).
+/// Accounts for the `InitializeClaimHolding` instruction (6 accounts).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InitializeClaimHoldingAccountAccounts {
+pub struct InitializeClaimHoldingAccounts {
     pub parent_pda_key: Pubkey,
     pub payer_key: Pubkey,
-    pub new_claim_holding_account_key: Pubkey,
+    pub new_claim_holding_key: Pubkey,
     pub mint_key: Pubkey,
 }
 
-impl InitializeClaimHoldingAccountAccounts {
+impl InitializeClaimHoldingAccounts {
     pub fn new(
         client_id: u16,
         subscription_epoch: u64,
@@ -448,23 +448,23 @@ impl InitializeClaimHoldingAccountAccounts {
         payer_key: &Pubkey,
     ) -> Self {
         let parent_pda_key = state::find_validator_client_rewards_address(client_id).0;
-        let new_claim_holding_account_key =
+        let new_claim_holding_key =
             state::find_claim_holding_address(&parent_pda_key, subscription_epoch, mint_key).0;
         Self {
             parent_pda_key,
             payer_key: *payer_key,
-            new_claim_holding_account_key,
+            new_claim_holding_key,
             mint_key: *mint_key,
         }
     }
 }
 
-impl From<InitializeClaimHoldingAccountAccounts> for Vec<AccountMeta> {
-    fn from(accounts: InitializeClaimHoldingAccountAccounts) -> Self {
+impl From<InitializeClaimHoldingAccounts> for Vec<AccountMeta> {
+    fn from(accounts: InitializeClaimHoldingAccounts) -> Self {
         vec![
             AccountMeta::new(accounts.parent_pda_key, false),
             AccountMeta::new(accounts.payer_key, true),
-            AccountMeta::new(accounts.new_claim_holding_account_key, false),
+            AccountMeta::new(accounts.new_claim_holding_key, false),
             AccountMeta::new_readonly(accounts.mint_key, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
@@ -539,16 +539,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn initialize_claim_holding_account_metas_order() {
+    fn initialize_claim_holding_metas_order() {
         let payer = Pubkey::new_unique();
         let mint = Pubkey::new_unique();
         let client_id: u16 = 7;
         let epoch: u64 = 1234;
-        let accounts = InitializeClaimHoldingAccountAccounts::new(client_id, epoch, &mint, &payer);
+        let accounts = InitializeClaimHoldingAccounts::new(client_id, epoch, &mint, &payer);
         let parent_pda = state::find_validator_client_rewards_address(client_id).0;
         let holding_pda = state::find_claim_holding_address(&parent_pda, epoch, &mint).0;
         assert_eq!(accounts.parent_pda_key, parent_pda);
-        assert_eq!(accounts.new_claim_holding_account_key, holding_pda);
+        assert_eq!(accounts.new_claim_holding_key, holding_pda);
         assert_eq!(accounts.payer_key, payer);
         assert_eq!(accounts.mint_key, mint);
 

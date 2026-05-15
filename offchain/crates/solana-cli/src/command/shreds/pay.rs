@@ -107,6 +107,21 @@ fn epoch_warning_prompt(input: &EpochWarningInput) -> Option<String> {
 /// because they will never win an auction and are harmless — blocking on
 /// them would prevent users from migrating an IP to a new device after
 /// withdrawal. An empty vec means no conflict.
+/// Whether an existing serviceability User PDA for this IP, owned by
+/// `user_owner`, is benign for this `pay` call. The shred oracle's
+/// `CreateSubscribeUser` would collide on the User PDA unless the existing
+/// owner is either the oracle (legacy top-up / re-sub) or the wallet
+/// running this command (self-owned per the new design).
+fn user_owner_is_acceptable(
+    user_owner: Option<Pubkey>,
+    oracle_key: Option<Pubkey>,
+    wallet_key: Pubkey,
+) -> bool {
+    let is_shred_oracle_user = oracle_key.zip(user_owner).is_some_and(|(o, u)| o == u);
+    let is_self_owned = user_owner == Some(wallet_key);
+    is_shred_oracle_user || is_self_owned
+}
+
 fn other_device_keys_for_ip(
     accounts: &[(Pubkey, solana_sdk::account::Account)],
     target_device: &Pubkey,
@@ -187,9 +202,10 @@ impl PayCommand {
         let client_ip_bits = u32::from(self.client_ip);
 
         // Best-effort check: if this client IP already has a Multicast user on
-        // serviceability owned by a *different* authority, the shred oracle will
-        // fail at create_subscribe_user (the User PDA is derived from IP alone).
-        // If the user is owned by the shred oracle, this is a top-up or re-sub.
+        // serviceability owned by neither the shred oracle nor the wallet
+        // running this command, the shred oracle's CreateSubscribeUser would
+        // collide on the User PDA. Both oracle-owned (legacy top-up / re-sub)
+        // and self-owned (validator-owned per the new design) are benign.
         let svc_program_id_result = match self.serviceability_program_id {
             Some(id) => Ok(id),
             None => serviceability_program_id(network_env),
@@ -206,19 +222,19 @@ impl PayCommand {
                 .await
                 .map(|r| r.value)
             {
-                let is_shred_oracle_user = oracle_key
-                    .map(|key| {
-                        user_account.data.len() >= 33
-                            && Pubkey::try_from(&user_account.data[1..33]).ok() == Some(key)
-                    })
-                    .unwrap_or(false);
+                let user_owner = if user_account.data.len() >= 33 {
+                    Pubkey::try_from(&user_account.data[1..33]).ok()
+                } else {
+                    None
+                };
 
-                if !is_shred_oracle_user {
+                if !user_owner_is_acceptable(user_owner, oracle_key, wallet.pubkey()) {
                     bail!(
                         "Client IP {} already has a multicast user on serviceability \
-                         owned by a different authority. This IP may be subscribed to \
-                         another multicast group. Disconnect first \
-                         (doublezero disconnect) before purchasing a shred subscription.",
+                         owned by neither the shred oracle nor your wallet. This IP \
+                         may be subscribed to another wallet's multicast group. \
+                         Disconnect first (doublezero disconnect) before purchasing \
+                         a shred subscription.",
                         self.client_ip,
                     );
                 }
@@ -975,5 +991,56 @@ mod tests {
         let other = Pubkey::new_unique();
         let accounts = vec![(Pubkey::new_unique(), make_seat_with_device(&other, 0))];
         assert!(other_device_keys_for_ip(&accounts, &target).is_empty());
+    }
+
+    // --- user_owner_is_acceptable tests ---
+
+    #[test]
+    fn user_acceptable_when_owned_by_shred_oracle() {
+        let oracle = Pubkey::new_unique();
+        let wallet = Pubkey::new_unique();
+        assert!(user_owner_is_acceptable(Some(oracle), Some(oracle), wallet,));
+    }
+
+    #[test]
+    fn user_acceptable_when_self_owned() {
+        // New behavior: validator-owned (self-owned) Users are benign.
+        let oracle = Pubkey::new_unique();
+        let wallet = Pubkey::new_unique();
+        assert!(user_owner_is_acceptable(Some(wallet), Some(oracle), wallet,));
+    }
+
+    #[test]
+    fn user_acceptable_self_owned_even_when_oracle_key_unknown() {
+        // If we can't resolve the oracle pubkey, self-ownership still passes.
+        let wallet = Pubkey::new_unique();
+        assert!(user_owner_is_acceptable(Some(wallet), None, wallet));
+    }
+
+    #[test]
+    fn user_rejected_when_owned_by_third_party() {
+        let oracle = Pubkey::new_unique();
+        let wallet = Pubkey::new_unique();
+        let third_party = Pubkey::new_unique();
+        assert!(!user_owner_is_acceptable(
+            Some(third_party),
+            Some(oracle),
+            wallet,
+        ));
+    }
+
+    #[test]
+    fn user_rejected_when_owner_missing() {
+        // Malformed account data → user_owner is None → bail (safe default).
+        let oracle = Pubkey::new_unique();
+        let wallet = Pubkey::new_unique();
+        assert!(!user_owner_is_acceptable(None, Some(oracle), wallet));
+    }
+
+    #[test]
+    fn user_rejected_when_third_party_and_oracle_unknown() {
+        let wallet = Pubkey::new_unique();
+        let third_party = Pubkey::new_unique();
+        assert!(!user_owner_is_acceptable(Some(third_party), None, wallet));
     }
 }

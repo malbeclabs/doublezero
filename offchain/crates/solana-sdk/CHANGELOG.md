@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - add `find_claim_holding_address` PDA helper and `CLAIM_HOLDING_SEED_PREFIX` constant for `ValidatorClientRewards` claim holding accounts
 - add `ValidatorClientRewards` discriminator + offset constants and `parse_validator_client_rewards` parser
 - add `parse_program_config_shred_oracle_key` helper for reading `ProgramConfig.shred_oracle_key`
-- add `InitializeClaimHoldingAccount` and `ClaimValidatorClientRewards` instruction variants and the `ClaimHoldingId` Borsh struct
-- add `InitializeClaimHoldingAccountAccounts` builder for the `InitializeClaimHoldingAccount` instruction
+- add `InitializeClaimHolding` and `ClaimValidatorClientRewards` instruction variants and the `ClaimHoldingId` Borsh struct (rename mirrors on-chain `shred-subscription/v0.6.6`: discriminator string `dz::ix::initialize_claim_holding_account` → `dz::ix::initialize_claim_holding`)
+- add `InitializeClaimHoldingAccounts` builder for the `InitializeClaimHolding` instruction
 - add `ClaimValidatorClientRewardsAccounts` builder for the `ClaimValidatorClientRewards` instruction (6 fixed + N holding accounts)
 - add `RequestProratedInstantSeatWithdrawal` instruction variant and accounts builder
 - add `find_shred_distribution_address` PDA helper and `parse_client_seat_last_usdc_price_dollars` parser for prorated withdrawal integration

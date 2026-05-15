@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- relax ownership constraint so that a user can manage their connection but oracle is ultimately the authority
+- align `shreds validator-client-rewards init-holding` with on-chain `shred-subscription/v0.6.6` rename: `InitializeClaimHoldingAccount` → `InitializeClaimHolding` (discriminator string `dz::ix::initialize_claim_holding_account` → `dz::ix::initialize_claim_holding`). Required to unbreak `init-holding` after the on-chain redeploy on 2026-05-15
 - `shreds validator-client-rewards`: relocate existing `set-proportion` behavior into a subcommand group (hidden); preparation for `claim`, `init-holding`, `show`
 - `shreds validator-client-rewards init-holding`: new permissionless command to initialize claim holding accounts for one or more `(subscription_epoch, mint)` pairs under a `ValidatorClientRewards` PDA
 - `shreds validator-client-rewards claim`: new manager-signed command to drain claim holdings into a destination token account. Defaults destination to ATA(manager, mint); override with `--destination-token-account`. Reads `program_config.shred_oracle_key` to set the on-chain rent beneficiary

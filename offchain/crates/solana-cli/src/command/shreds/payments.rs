@@ -216,7 +216,7 @@ impl PaymentsCommand {
                             | ShredSubscriptionInstructionData::SetValidatorClientRewardsProportion(
                                 _,
                             )
-                            | ShredSubscriptionInstructionData::InitializeClaimHoldingAccount(_)
+                            | ShredSubscriptionInstructionData::InitializeClaimHolding(_)
                             | ShredSubscriptionInstructionData::ClaimValidatorClientRewards(_)
                             | ShredSubscriptionInstructionData::CheckCliVersion { .. },
                         ) => {}

@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Smartcontract
+  - Tenant administrators can now create or update access passes scoped to their tenant without being added to the foundation allowlist; non-privileged callers cannot remove a tenant they do not administer from an existing access pass.
   - Skip `last_access_epoch` enforcement for `UserType::Multicast` in `CreateSubscribeUser` and `CheckUserAccessPass`. Multicast access is gated by `mgroup_pub_allowlist` / `mgroup_sub_allowlist` on the access pass, not by epoch, so multicast users can be created and remain `Activated` regardless of the access-pass expiry. IBRL/unicast epoch enforcement is unchanged.
 - Client
   - `doublezero connect multicast` no longer fails the client-side `check_accesspass` epoch check; only the AccessPass existence is verified for multicast. IBRL paths still enforce `last_access_epoch >= current_epoch`.

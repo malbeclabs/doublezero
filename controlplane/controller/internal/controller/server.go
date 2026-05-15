@@ -173,6 +173,14 @@ func WithFeaturesConfig(cfg *FeaturesConfig) Option {
 // processDeviceInterfacesAndPeers processes a device's interfaces and extracts BGP peer information.
 // It returns the candidate VPNv4 and IPv4 BGP peers found from the device's loopback interfaces.
 func (c *Controller) processDeviceInterfacesAndPeers(device serviceability.Device, d *Device, devicePubKey string) (candidateVpnv4BgpPeer, candidateIpv4BgpPeer BgpPeer) {
+	// Build parents in a map keyed by parent name so each physical is rendered
+	// exactly once, and so the parent's MTU is the max of its subinterfaces'
+	// MTUs. Parents are not defined onchain; the controller synthesizes them.
+	// seenNames also dedupes same-name direct entries from onchain data and
+	// suppresses a synthesized parent when an explicit entry already claims
+	// that name.
+	parents := make(map[string]*Interface)
+	seenNames := make(map[string]bool)
 	for _, iface := range device.Interfaces {
 		intf, err := toInterface(iface)
 		if err != nil {
@@ -180,16 +188,32 @@ func (c *Controller) processDeviceInterfacesAndPeers(device serviceability.Devic
 			c.log.Error("failed to convert serviceability interface to controller interface", "device pubkey", devicePubKey, "iface", iface, "error", err)
 			continue
 		}
-		// Create a parent interface since they're not defined on-chain.
 		if intf.IsSubInterface {
 			parent, err := intf.GetParent()
 			if err != nil {
 				c.log.Error("failed to get parent interface for subinterface", "device pubkey", devicePubKey, "iface", intf.Name, "error", err)
 				continue
 			}
-			d.Interfaces = append(d.Interfaces, parent)
+			if existing, ok := parents[parent.Name]; ok {
+				existing.Mtu = max(existing.Mtu, intf.Mtu)
+			} else {
+				parent.Mtu = intf.Mtu
+				parents[parent.Name] = &parent
+			}
 		}
+		if seenNames[intf.Name] {
+			c.log.Warn("duplicate interface name in onchain device data, skipping", "device pubkey", devicePubKey, "name", intf.Name)
+			continue
+		}
+		seenNames[intf.Name] = true
 		d.Interfaces = append(d.Interfaces, intf)
+	}
+	for _, p := range parents {
+		if seenNames[p.Name] {
+			c.log.Warn("synthesized subinterface parent collides with explicit onchain interface, skipping synthesized parent", "device pubkey", devicePubKey, "name", p.Name)
+			continue
+		}
+		d.Interfaces = append(d.Interfaces, *p)
 	}
 	sort.Slice(d.Interfaces, func(i, j int) bool {
 		return d.Interfaces[i].Name < d.Interfaces[j].Name
@@ -407,9 +431,6 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 
 			d.Interfaces[i].Metric = uint32(microseconds)
-			if link.Mtu > 0 {
-				d.Interfaces[i].Mtu = uint16(link.Mtu)
-			}
 			d.Interfaces[i].IsLink = true
 			d.Interfaces[i].LinkStatus = link.Status
 			d.Interfaces[i].UnicastDrained = link.LinkFlags&serviceability.LinkFlagUnicastDrained != 0

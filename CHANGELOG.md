@@ -19,6 +19,8 @@ All notable changes to this project will be documented in this file.
   - Let side-Z contributors update a link's `status` / `desired_status` / `delay_override_ns` via `UpdateLinkCommand`; the Rust SDK now auto-detects the signer's side and builds the 4-account side-Z preamble the on-chain processor expects, instead of always sending the side-A layout ([#3702](https://github.com/malbeclabs/doublezero/issues/3702))
 - E2E tests
   - Make multicast QA failures self-explanatory: require a `Multicast`-typed status entry after multicast connect (instead of accepting a stale IBRL one), retry `MulticastJoin` briefly on "interface not found" to absorb the daemon/kernel race, snapshot host state once after 30s of zero packets, and heartbeat the publisher's tunnel status during send windows to catch silent regressions
+- controller: enforce interface MTU during config render from interface role (CYOA/DIA → 1500, fabric → 9000) instead of trusting onchain `Interface.Mtu` / `Link.Mtu`; render each parent interface exactly once with `max` of its subinterface MTUs; change the `tunnel.tmpl` fallback from `2048` to `9000`. Guards against stale V1 onchain interfaces (`Mtu = 0`) and duplicate parent blocks that previously caused silent IS-IS adjacency failures ([#3696](https://github.com/malbeclabs/doublezero/pull/3696))
+- client: break latency ties with avg latency ([#362](https://github.com/malbeclabs/doublezero/pull/3692))
 
 ## [v0.22.0](https://github.com/malbeclabs/doublezero/compare/client/v0.21.0...client/v0.22.0) - 2026-05-08
 

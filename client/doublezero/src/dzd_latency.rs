@@ -315,14 +315,20 @@ mod tests {
         )
     }
 
-    fn make_latency(pk: &str, latency_ns: i64, reachable: bool) -> LatencyRecord {
+    fn make_latency(
+        pk: &str,
+        min_latency_ns: i64,
+        avg_latency_ns: i64,
+        max_latency_ns: i64,
+        reachable: bool,
+    ) -> LatencyRecord {
         LatencyRecord {
             device_pk: pk.to_string(),
             device_code: "device".to_string(),
             device_ip: "0.0.0.0".to_string(),
-            min_latency_ns: latency_ns,
-            max_latency_ns: latency_ns,
-            avg_latency_ns: latency_ns,
+            min_latency_ns,
+            avg_latency_ns,
+            max_latency_ns,
             reachable,
         }
     }
@@ -339,9 +345,9 @@ mod tests {
         devices.insert(pk3, dev3);
 
         let latencies = vec![
-            make_latency(&pk1.to_string(), 10000000, true),
-            make_latency(&pk2.to_string(), 20000000, false),
-            make_latency(&pk3.to_string(), 5000000, true),
+            make_latency(&pk1.to_string(), 10000000, 11000000, 12000000, true),
+            make_latency(&pk2.to_string(), 20000000, 21000000, 22000000, false),
+            make_latency(&pk3.to_string(), 5000000, 5000000, 5000000, true),
         ];
 
         let mut controller = MockServiceController::new();
@@ -378,8 +384,8 @@ mod tests {
         devices.insert(pk2, dev2);
 
         let latencies = vec![
-            make_latency(&pk1.to_string(), 10000000, true),
-            make_latency(&pk2.to_string(), 11000000, true),
+            make_latency(&pk1.to_string(), 10000000, 10500000, 11000000, true),
+            make_latency(&pk2.to_string(), 11000000, 11500000, 12000000, true),
         ];
 
         let mut controller = MockServiceController::new();
@@ -409,9 +415,9 @@ mod tests {
         devices.insert(pk3, dev3);
 
         let latencies = vec![
-            make_latency(&pk1.to_string(), 12000000, true),
-            make_latency(&pk2.to_string(), 9000000, true),
-            make_latency(&pk3.to_string(), 15000000, true),
+            make_latency(&pk1.to_string(), 12000000, 5000000, 14000000, true),
+            make_latency(&pk2.to_string(), 9000000, 20000000, 11000000, true),
+            make_latency(&pk3.to_string(), 15000000, 15000000, 17000000, true),
         ];
 
         let mut controller = MockServiceController::new();
@@ -441,9 +447,9 @@ mod tests {
         devices.insert(pk3, dev3);
 
         let latencies = vec![
-            make_latency(&pk1.to_string(), 12000000, false), // unreachable
-            make_latency(&pk2.to_string(), 9000000, false),  // unreachable
-            make_latency(&pk3.to_string(), 15000000, true),  // reachable
+            make_latency(&pk1.to_string(), 12000000, 13000000, 14000000, false), // unreachable
+            make_latency(&pk2.to_string(), 9000000, 10000000, 11000000, false),  // unreachable
+            make_latency(&pk3.to_string(), 15000000, 16000000, 17000000, true),  // reachable
         ];
 
         let mut controller = MockServiceController::new();
@@ -471,8 +477,8 @@ mod tests {
         devices.insert(pk2, dev2);
 
         let latencies = vec![
-            make_latency(&pk1.to_string(), 9000000, true),
-            make_latency(&pk2.to_string(), 12000000, true),
+            make_latency(&pk1.to_string(), 9000000, 10000000, 11000000, true),
+            make_latency(&pk2.to_string(), 12000000, 13000000, 14000000, true),
         ];
 
         let mut controller = MockServiceController::new();
@@ -500,8 +506,8 @@ mod tests {
         devices.insert(pk2, dev2);
 
         let latencies = vec![
-            make_latency(&pk1.to_string(), 12000000, true),
-            make_latency(&pk2.to_string(), 9000000, true),
+            make_latency(&pk1.to_string(), 12000000, 13000000, 14000000, true),
+            make_latency(&pk2.to_string(), 9000000, 10000000, 11000000, true),
         ];
 
         let mut controller = MockServiceController::new();
@@ -535,9 +541,9 @@ mod tests {
         devices.insert(pk3, dev3);
 
         let latencies = vec![
-            make_latency(&pk1.to_string(), 12000000, true),
-            make_latency(&pk2.to_string(), 5000000, true), // lowest but will be excluded
-            make_latency(&pk3.to_string(), 15000000, true),
+            make_latency(&pk1.to_string(), 12000000, 13000000, 14000000, true),
+            make_latency(&pk2.to_string(), 5000000, 6000000, 7000000, true), // lowest but will be excluded
+            make_latency(&pk3.to_string(), 15000000, 16000000, 17000000, true),
         ];
 
         let mut controller = MockServiceController::new();
@@ -1021,24 +1027,8 @@ mod tests {
         // pk1: low min, high avg. pk2: high min, low avg.
         // Sorted by min: pk1 first. Sorted by avg: pk2 first.
         let latencies = vec![
-            LatencyRecord {
-                device_pk: pk1.to_string(),
-                device_code: "device".to_string(),
-                device_ip: "0.0.0.0".to_string(),
-                min_latency_ns: 5_000_000, // lower min → should be first
-                max_latency_ns: 30_000_000,
-                avg_latency_ns: 25_000_000, // higher avg
-                reachable: true,
-            },
-            LatencyRecord {
-                device_pk: pk2.to_string(),
-                device_code: "device".to_string(),
-                device_ip: "0.0.0.0".to_string(),
-                min_latency_ns: 15_000_000, // higher min
-                max_latency_ns: 20_000_000,
-                avg_latency_ns: 8_000_000, // lower avg → would be first if sorted by avg
-                reachable: true,
-            },
+            make_latency(&pk1.to_string(), 5000000, 25000000, 30000000, true),
+            make_latency(&pk2.to_string(), 15000000, 8000000, 20000000, true),
         ];
 
         let mut controller = MockServiceController::new();
@@ -1117,24 +1107,8 @@ mod tests {
         // pk1: low min, high avg. pk2: high min, low avg.
         // Should select pk1 (lower min).
         let latencies = vec![
-            LatencyRecord {
-                device_pk: pk1.to_string(),
-                device_code: "device".to_string(),
-                device_ip: "0.0.0.0".to_string(),
-                min_latency_ns: 5_000_000, // lower min → should win
-                max_latency_ns: 30_000_000,
-                avg_latency_ns: 25_000_000, // higher avg
-                reachable: true,
-            },
-            LatencyRecord {
-                device_pk: pk2.to_string(),
-                device_code: "device".to_string(),
-                device_ip: "0.0.0.0".to_string(),
-                min_latency_ns: 15_000_000, // higher min → should lose
-                max_latency_ns: 20_000_000,
-                avg_latency_ns: 8_000_000, // lower avg → would win if sorted by avg
-                reachable: true,
-            },
+            make_latency(&pk1.to_string(), 5000000, 25000000, 30000000, true),
+            make_latency(&pk2.to_string(), 15000000, 20000000, 8000000, true),
         ];
 
         let mut controller = MockServiceController::new();
@@ -1170,24 +1144,8 @@ mod tests {
         devices.insert(pk2, dev2);
 
         let latencies = vec![
-            LatencyRecord {
-                device_pk: pk1.to_string(),
-                device_code: "device".to_string(),
-                device_ip: "0.0.0.0".to_string(),
-                min_latency_ns: 5_000_000, // lower min → should win
-                max_latency_ns: 30_000_000,
-                avg_latency_ns: 25_000_000, // higher avg
-                reachable: true,
-            },
-            LatencyRecord {
-                device_pk: pk2.to_string(),
-                device_code: "device".to_string(),
-                device_ip: "0.0.0.0".to_string(),
-                min_latency_ns: 13_000_000, // higher min → current device
-                max_latency_ns: 20_000_000,
-                avg_latency_ns: 6_000_000, // lower avg (would anchor tolerance if avg-seeded)
-                reachable: true,
-            },
+            make_latency(&pk1.to_string(), 5000000, 25000000, 30000000, true),
+            make_latency(&pk2.to_string(), 13000000, 6000000, 20000000, true),
         ];
 
         let mut controller = MockServiceController::new();
@@ -1240,7 +1198,13 @@ mod tests {
         let mut devices = HashMap::new();
         devices.insert(pk1, dev1);
 
-        let latencies = vec![make_latency(&pk1.to_string(), 10000000, true)];
+        let latencies = vec![make_latency(
+            &pk1.to_string(),
+            10000000,
+            11000000,
+            12000000,
+            true,
+        )];
         let call_count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
         let call_count_clone = call_count.clone();
         let latencies_clone = latencies.clone();
@@ -1296,7 +1260,13 @@ mod tests {
         devices.insert(pk1, dev1);
 
         // Device exists and is activated, but unreachable
-        let latencies = vec![make_latency(&pk1.to_string(), 10000000, false)];
+        let latencies = vec![make_latency(
+            &pk1.to_string(),
+            10000000,
+            11000000,
+            12000000,
+            false,
+        )];
 
         let mut controller = MockServiceController::new();
         controller.expect_latency().returning(move || {

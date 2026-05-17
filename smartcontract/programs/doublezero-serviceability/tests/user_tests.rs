@@ -6,7 +6,7 @@ use doublezero_serviceability::{
         contributor::create::ContributorCreateArgs,
         device::update::DeviceUpdateArgs,
         tenant::create::TenantCreateArgs,
-        user::{ban::*, check_access_pass, create::*, delete::*, requestban::*, update::*},
+        user::{check_access_pass, create::*, delete::*, requestban::*, update::*},
         *,
     },
     resource::ResourceType,
@@ -22,7 +22,6 @@ use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Keypair, signer::Signer};
 use std::net::Ipv4Addr;
-use user::closeaccount::UserCloseAccountArgs;
 
 mod test_helpers;
 use test_helpers::*;
@@ -345,6 +344,11 @@ async fn test_user() {
     println!("✅ User created and activated successfully",);
     /*****************************************************************************************************************************************************/
     println!("🟢 9. Testing User update...");
+    let user_before_update = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_user()
+        .unwrap();
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -352,16 +356,19 @@ async fn test_user() {
         DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
             user_type: Some(UserType::IBRL),
             cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
-            dz_ip: Some([200, 0, 0, 4].into()),
-            tunnel_id: Some(501),
-            tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
+            // Resource fields (dz_ip / tunnel_id / tunnel_net) are now bitmap-coordinated
+            // and not part of this happy-path test.
             validator_pubkey: None,
             tenant_pk: None,
+            dz_prefix_count: 1,
             ..UserUpdateArgs::default()
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -376,42 +383,10 @@ async fn test_user() {
     assert_eq!(user.client_ip.to_string(), "100.0.0.1");
     assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
     assert_eq!(user.status, UserStatus::Activated);
-
-    println!("✅ User updated");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 10. Testing User update (regression test: unspecified dz_ip should not clear the dz_ip)...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
-            user_type: Some(UserType::IBRL),
-            cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
-            dz_ip: None,
-            tunnel_id: Some(505),
-            tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
-            validator_pubkey: None,
-            tenant_pk: None,
-            ..UserUpdateArgs::default()
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.client_ip.to_string(), "100.0.0.1");
-    assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
-    assert_eq!(user.status, UserStatus::Activated);
-    assert_eq!(user.dz_ip.to_string(), "200.0.0.4");
+    // Resource fields are preserved when not specified in UpdateUser.
+    assert_eq!(user.dz_ip, user_before_update.dz_ip);
+    assert_eq!(user.tunnel_id, user_before_update.tunnel_id);
+    assert_eq!(user.tunnel_net, user_before_update.tunnel_net);
 
     println!("✅ User updated");
     /*****************************************************************************************************************************************************/
@@ -450,11 +425,15 @@ async fn test_user() {
         program_id,
         DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
             tenant_pk: Some(tenant_1_pubkey),
+            dz_prefix_count: 1,
             ..UserUpdateArgs::default()
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
             AccountMeta::new_readonly(Pubkey::default(), false),
             AccountMeta::new(tenant_1_pubkey, false),
         ],
@@ -509,11 +488,15 @@ async fn test_user() {
         program_id,
         DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
             tenant_pk: Some(tenant_2_pubkey),
+            dz_prefix_count: 1,
             ..UserUpdateArgs::default()
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
             AccountMeta::new(tenant_1_pubkey, false),
             AccountMeta::new(tenant_2_pubkey, false),
         ],
@@ -543,53 +526,31 @@ async fn test_user() {
 
     println!("✅ Tenant reassignment succeeded");
     /*****************************************************************************************************************************************************/
-    println!("🟢 11. Testing User deletion...");
+    println!("🟢 11. Testing User deletion (atomic)...");
+    // DeleteUser is atomic: deallocates resources + closes the account in one call.
+    let user_before_delete = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_user()
+        .unwrap();
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.client_ip.to_string(), "100.0.0.1");
-    assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
-    assert_eq!(user.status, UserStatus::Deleting);
-
-    println!("✅ Link deleting");
-
-    /*****************************************************************************************************************************************************/
-    println!("🟢 12. Testing User deactivation...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-            dz_prefix_count: 0,
-            multicast_publisher_count: 0, // legacy path - no ResourceExtension accounts
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(user.owner, false),
-            AccountMeta::new(user.device_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            // user.tenant_pk is non-default (set in step 10b); closeaccount expects the tenant.
-            AccountMeta::new(user.tenant_pk, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+            AccountMeta::new(user_before_delete.tenant_pk, false),
+            AccountMeta::new(user_before_delete.owner, false),
         ],
         &payer,
     )
@@ -598,7 +559,7 @@ async fn test_user() {
     let user = get_account_data(&mut banks_client, user_pubkey).await;
     assert_eq!(user, None);
 
-    println!("✅ Link deleted successfully");
+    println!("✅ User deleted successfully");
 
     println!("🟢🟢🟢  End test_user  🟢🟢🟢");
 }
@@ -849,36 +810,22 @@ async fn test_user_ban_requires_pendingban() {
         .unwrap();
     assert_eq!(user.status, UserStatus::Activated);
 
-    // Request ban should move status to PendingBan
+    // RequestBanUser is now atomic: deallocates resources and moves the user
+    // straight to Banned. The legacy PendingBan intermediate state is gone.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs::default()),
+        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
+            dz_prefix_count: 1,
+            multicast_publisher_count: 0,
+        }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get User")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::PendingBan);
-
-    // BanUser should only succeed when status is PendingBan and move it to Banned
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::BanUser(UserBanArgs {}),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -1224,7 +1171,8 @@ async fn test_user_create_tenant_allowlist_validation() {
 
 /// Helper: set up global state, config, location, exchange, contributor, device (activated),
 /// access pass, user (activated). Returns the keys needed for delete tests.
-async fn setup_activated_user() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey, Pubkey) {
+#[allow(clippy::type_complexity)]
+async fn setup_activated_user() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey, Pubkey, Pubkey) {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
@@ -1468,94 +1416,52 @@ async fn setup_activated_user() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey
         payer,
         program_id,
         globalstate_pubkey,
+        device_pubkey,
         user_pubkey,
         accesspass_pubkey,
     )
 }
 
+// Note: the legacy `test_user_delete_from_pending_ban` test was removed —
+// the PendingBan intermediate state is no longer reachable now that
+// RequestBanUser is atomic.
+
 #[tokio::test]
-async fn test_user_delete_from_pending_ban() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, user_pubkey, accesspass_pubkey) =
-        setup_activated_user().await;
+async fn test_user_delete_from_banned() {
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+    ) = setup_activated_user().await;
+
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    // Request ban → PendingBan
+    // Atomic RequestBanUser moves the user directly to Banned.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs::default()),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .unwrap()
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::PendingBan);
-
-    // Delete from PendingBan should succeed
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-            dz_prefix_count: 0,
+        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
+            dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .unwrap()
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Deleting);
-}
-
-#[tokio::test]
-async fn test_user_delete_from_banned() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, user_pubkey, accesspass_pubkey) =
-        setup_activated_user().await;
-
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // Request ban → PendingBan → Ban → Banned
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs::default()),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::BanUser(UserBanArgs {}),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -1568,36 +1474,52 @@ async fn test_user_delete_from_banned() {
         .unwrap();
     assert_eq!(user.status, UserStatus::Banned);
 
-    // Delete from Banned should succeed
+    // Atomic DeleteUser closes the account from Banned status.
+    let user_owner = user.owner;
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+            AccountMeta::new(user_owner, false),
         ],
         &payer,
     )
     .await;
 
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .unwrap()
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Deleting);
+    let user = get_account_data(&mut banks_client, user_pubkey).await;
+    assert_eq!(user, None);
 }
 
 #[tokio::test]
 async fn test_user_delete_from_out_of_credits() {
-    let (mut banks_client, payer, program_id, globalstate_pubkey, user_pubkey, accesspass_pubkey) =
-        setup_activated_user().await;
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+    ) = setup_activated_user().await;
+
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
@@ -1644,28 +1566,31 @@ async fn test_user_delete_from_out_of_credits() {
         .unwrap();
     assert_eq!(user.status, UserStatus::OutOfCredits);
 
-    // Delete from OutOfCredits should succeed
+    let user_owner = user.owner;
+
+    // Atomic DeleteUser succeeds from OutOfCredits and closes the account.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+            AccountMeta::new(user_owner, false),
         ],
         &payer,
     )
     .await;
 
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .unwrap()
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Deleting);
+    let user = get_account_data(&mut banks_client, user_pubkey).await;
+    assert_eq!(user, None);
 }

@@ -32,8 +32,12 @@ pub struct UserUpdateArgs {
     pub tunnel_net: Option<NetworkV4>,
     pub validator_pubkey: Option<Pubkey>,
     pub tenant_pk: Option<Pubkey>,
+    /// Number of DzPrefixBlock accounts passed for on-chain (de)allocation. Must be > 0:
+    /// UpdateUser always reconciles the ResourceExtension bitmaps when changing
+    /// dz_ip / tunnel_id / tunnel_net.
     #[incremental(default = 0)]
     pub dz_prefix_count: u8,
+    /// Whether the MulticastPublisherBlock account is supplied (1 = yes, 0 = no).
     #[incremental(default = 0)]
     pub multicast_publisher_count: u8,
     pub tunnel_endpoint: Option<Ipv4Addr>,
@@ -63,40 +67,35 @@ pub fn process_update_user(
     accounts: &[AccountInfo],
     value: &UserUpdateArgs,
 ) -> ProgramResult {
+    if value.dz_prefix_count == 0 {
+        #[cfg(test)]
+        msg!("dz_prefix_count must be > 0; UpdateUser requires on-chain allocation");
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let user_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Account layout WITH resource accounts (dz_prefix_count > 0):
-    //   [user, globalstate, user_tunnel_block, multicast_publisher_block?, device_tunnel_ids, dz_prefix_0..N, old_tenant?, new_tenant?, payer, system]
-    // Account layout WITHOUT (legacy, dz_prefix_count == 0):
-    //   [user, globalstate, old_tenant?, new_tenant?, payer, system]
-    let resource_accounts = if value.dz_prefix_count > 0 {
-        let user_tunnel_block_ext = next_account_info(accounts_iter)?;
+    // Account layout:
+    //   [user, globalstate,
+    //    user_tunnel_block, multicast_publisher_block?, device_tunnel_ids, dz_prefix_0..N,
+    //    old_tenant?, new_tenant?, payer, system]
+    let user_tunnel_block_ext = next_account_info(accounts_iter)?;
 
-        let multicast_publisher_block_ext = if value.multicast_publisher_count > 0 {
-            Some(next_account_info(accounts_iter)?)
-        } else {
-            None
-        };
-
-        let device_tunnel_ids_ext = next_account_info(accounts_iter)?;
-
-        let mut dz_prefix_accounts = Vec::with_capacity(value.dz_prefix_count as usize);
-        for _ in 0..value.dz_prefix_count {
-            dz_prefix_accounts.push(next_account_info(accounts_iter)?);
-        }
-
-        Some((
-            user_tunnel_block_ext,
-            multicast_publisher_block_ext,
-            device_tunnel_ids_ext,
-            dz_prefix_accounts,
-        ))
+    let multicast_publisher_block_ext = if value.multicast_publisher_count > 0 {
+        Some(next_account_info(accounts_iter)?)
     } else {
         None
     };
+
+    let device_tunnel_ids_ext = next_account_info(accounts_iter)?;
+
+    let mut dz_prefix_accounts = Vec::with_capacity(value.dz_prefix_count as usize);
+    for _ in 0..value.dz_prefix_count {
+        dz_prefix_accounts.push(next_account_info(accounts_iter)?);
+    }
 
     // Tenant accounts are optional — present when tenant_pk is being updated.
     // We compute the expected count of remaining accounts to detect their presence.
@@ -138,177 +137,157 @@ pub fn process_update_user(
 
     let mut user: User = User::try_from(user_account)?;
 
-    // Handle resource allocation/deallocation for tunnel_id, tunnel_net, dz_ip
-    if let Some((
+    // Validate UserTunnelBlock PDA
+    let (expected_user_tunnel_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);
+    validate_program_account!(
         user_tunnel_block_ext,
-        multicast_publisher_block_ext,
+        program_id,
+        writable = true,
+        pda = &expected_user_tunnel_pda,
+        "UserTunnelBlock"
+    );
+
+    // Validate MulticastPublisherBlock PDA if provided
+    if let Some(multicast_publisher_ext) = multicast_publisher_block_ext {
+        let (expected_multicast_publisher_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+        validate_program_account!(
+            multicast_publisher_ext,
+            program_id,
+            writable = true,
+            pda = &expected_multicast_publisher_pda,
+            "MulticastPublisherBlock"
+        );
+    }
+
+    // Validate TunnelIds PDA
+    let (expected_tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::TunnelIds(user.device_pk, 0));
+    validate_program_account!(
         device_tunnel_ids_ext,
-        ref dz_prefix_accounts,
-    )) = resource_accounts
-    {
-        // Validate UserTunnelBlock PDA
-        let (expected_user_tunnel_pda, _, _) =
-            get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);
+        program_id,
+        writable = true,
+        pda = &expected_tunnel_ids_pda,
+        "TunnelIds"
+    );
+
+    // Validate all DzPrefixBlock accounts
+    for (idx, dz_prefix_account) in dz_prefix_accounts.iter().enumerate() {
+        let (expected_dz_prefix_pda, _, _) = get_resource_extension_pda(
+            program_id,
+            ResourceType::DzPrefixBlock(user.device_pk, idx),
+        );
         validate_program_account!(
-            user_tunnel_block_ext,
+            dz_prefix_account,
             program_id,
             writable = true,
-            pda = &expected_user_tunnel_pda,
-            "UserTunnelBlock"
+            pda = &expected_dz_prefix_pda,
+            &format!("DzPrefixBlock[{idx}]")
         );
+    }
 
-        // Validate MulticastPublisherBlock PDA if provided
-        if let Some(multicast_publisher_ext) = multicast_publisher_block_ext {
-            let (expected_multicast_publisher_pda, _, _) =
-                get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
-            validate_program_account!(
-                multicast_publisher_ext,
-                program_id,
-                writable = true,
-                pda = &expected_multicast_publisher_pda,
-                "MulticastPublisherBlock"
-            );
+    // Deallocate/allocate tunnel_id
+    if let Some(new_tunnel_id) = value.tunnel_id {
+        if user.tunnel_id != 0 {
+            deallocate_id(device_tunnel_ids_ext, user.tunnel_id);
+            #[cfg(test)]
+            msg!("Deallocated old tunnel_id {}", user.tunnel_id);
         }
-
-        // Validate TunnelIds PDA
-        let (expected_tunnel_ids_pda, _, _) =
-            get_resource_extension_pda(program_id, ResourceType::TunnelIds(user.device_pk, 0));
-        validate_program_account!(
-            device_tunnel_ids_ext,
-            program_id,
-            writable = true,
-            pda = &expected_tunnel_ids_pda,
-            "TunnelIds"
-        );
-
-        // Validate all DzPrefixBlock accounts
-        for (idx, dz_prefix_account) in dz_prefix_accounts.iter().enumerate() {
-            let (expected_dz_prefix_pda, _, _) = get_resource_extension_pda(
-                program_id,
-                ResourceType::DzPrefixBlock(user.device_pk, idx),
-            );
-            validate_program_account!(
-                dz_prefix_account,
-                program_id,
-                writable = true,
-                pda = &expected_dz_prefix_pda,
-                &format!("DzPrefixBlock[{idx}]")
-            );
+        if new_tunnel_id != 0 {
+            allocate_specific_id(device_tunnel_ids_ext, new_tunnel_id)?;
+            #[cfg(test)]
+            msg!("Allocated new tunnel_id {}", new_tunnel_id);
         }
+        user.tunnel_id = new_tunnel_id;
+    }
 
-        // Deallocate/allocate tunnel_id
-        if let Some(new_tunnel_id) = value.tunnel_id {
-            if user.tunnel_id != 0 {
-                deallocate_id(device_tunnel_ids_ext, user.tunnel_id);
-                #[cfg(test)]
-                msg!("Deallocated old tunnel_id {}", user.tunnel_id);
-            }
-            if new_tunnel_id != 0 {
-                allocate_specific_id(device_tunnel_ids_ext, new_tunnel_id)?;
-                #[cfg(test)]
-                msg!("Allocated new tunnel_id {}", new_tunnel_id);
-            }
-            user.tunnel_id = new_tunnel_id;
+    // Deallocate/allocate tunnel_net
+    if let Some(new_tunnel_net) = value.tunnel_net {
+        if user.tunnel_net != NetworkV4::default() {
+            deallocate_ip(user_tunnel_block_ext, user.tunnel_net);
+            #[cfg(test)]
+            msg!("Deallocated old tunnel_net {}", user.tunnel_net);
         }
-
-        // Deallocate/allocate tunnel_net
-        if let Some(new_tunnel_net) = value.tunnel_net {
-            if user.tunnel_net != NetworkV4::default() {
-                deallocate_ip(user_tunnel_block_ext, user.tunnel_net);
-                #[cfg(test)]
-                msg!("Deallocated old tunnel_net {}", user.tunnel_net);
-            }
-            if new_tunnel_net != NetworkV4::default() {
-                allocate_specific_ip(user_tunnel_block_ext, new_tunnel_net)?;
-                #[cfg(test)]
-                msg!("Allocated new tunnel_net {}", new_tunnel_net);
-            }
-            user.tunnel_net = new_tunnel_net;
+        if new_tunnel_net != NetworkV4::default() {
+            allocate_specific_ip(user_tunnel_block_ext, new_tunnel_net)?;
+            #[cfg(test)]
+            msg!("Allocated new tunnel_net {}", new_tunnel_net);
         }
+        user.tunnel_net = new_tunnel_net;
+    }
 
-        // Deallocate/allocate dz_ip
-        if let Some(new_dz_ip) = value.dz_ip {
-            // Deallocate old dz_ip if it was allocated (not client_ip and not UNSPECIFIED)
-            if user.dz_ip != user.client_ip && user.dz_ip != Ipv4Addr::UNSPECIFIED {
-                if let Ok(old_dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
-                    let mut deallocated = false;
+    // Deallocate/allocate dz_ip
+    if let Some(new_dz_ip) = value.dz_ip {
+        // Deallocate old dz_ip if it was allocated (not client_ip and not UNSPECIFIED)
+        if user.dz_ip != user.client_ip && user.dz_ip != Ipv4Addr::UNSPECIFIED {
+            if let Ok(old_dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
+                let mut deallocated = false;
 
-                    // Try MulticastPublisherBlock first
-                    if let Some(multicast_publisher_ext) = multicast_publisher_block_ext {
-                        deallocated = deallocate_ip(multicast_publisher_ext, old_dz_ip_net);
+                // Try MulticastPublisherBlock first
+                if let Some(multicast_publisher_ext) = multicast_publisher_block_ext {
+                    deallocated = deallocate_ip(multicast_publisher_ext, old_dz_ip_net);
+                    #[cfg(test)]
+                    msg!(
+                        "Deallocated old dz_ip {} from MulticastPublisherBlock: {}",
+                        old_dz_ip_net,
+                        deallocated
+                    );
+                }
+
+                // Fall back to DzPrefixBlock
+                if !deallocated {
+                    for dz_prefix_account in dz_prefix_accounts.iter() {
+                        deallocated = deallocate_ip(dz_prefix_account, old_dz_ip_net);
                         #[cfg(test)]
                         msg!(
-                            "Deallocated old dz_ip {} from MulticastPublisherBlock: {}",
+                            "Deallocated old dz_ip {} from DzPrefixBlock: {}",
                             old_dz_ip_net,
                             deallocated
                         );
-                    }
-
-                    // Fall back to DzPrefixBlock
-                    if !deallocated {
-                        for dz_prefix_account in dz_prefix_accounts.iter() {
-                            deallocated = deallocate_ip(dz_prefix_account, old_dz_ip_net);
-                            #[cfg(test)]
-                            msg!(
-                                "Deallocated old dz_ip {} from DzPrefixBlock: {}",
-                                old_dz_ip_net,
-                                deallocated
-                            );
-                            if deallocated {
-                                break;
-                            }
+                        if deallocated {
+                            break;
                         }
                     }
                 }
             }
+        }
 
-            // Allocate new dz_ip if it's not UNSPECIFIED and not client_ip
-            if new_dz_ip != Ipv4Addr::UNSPECIFIED && new_dz_ip != user.client_ip {
-                if let Ok(new_dz_ip_net) = NetworkV4::new(new_dz_ip, 32) {
-                    // Try MulticastPublisherBlock first
-                    let mut allocated = false;
-                    if let Some(multicast_publisher_ext) = multicast_publisher_block_ext {
-                        if allocate_specific_ip(multicast_publisher_ext, new_dz_ip_net).is_ok() {
-                            allocated = true;
+        // Allocate new dz_ip if it's not UNSPECIFIED and not client_ip
+        if new_dz_ip != Ipv4Addr::UNSPECIFIED && new_dz_ip != user.client_ip {
+            if let Ok(new_dz_ip_net) = NetworkV4::new(new_dz_ip, 32) {
+                // Try MulticastPublisherBlock first
+                let mut allocated = false;
+                if let Some(multicast_publisher_ext) = multicast_publisher_block_ext {
+                    if allocate_specific_ip(multicast_publisher_ext, new_dz_ip_net).is_ok() {
+                        allocated = true;
+                        #[cfg(test)]
+                        msg!(
+                            "Allocated new dz_ip {} in MulticastPublisherBlock",
+                            new_dz_ip_net
+                        );
+                    }
+                }
+
+                // Fall back to DzPrefixBlock
+                if !allocated {
+                    let mut found = false;
+                    for dz_prefix_account in dz_prefix_accounts.iter() {
+                        if allocate_specific_ip(dz_prefix_account, new_dz_ip_net).is_ok() {
+                            found = true;
                             #[cfg(test)]
-                            msg!(
-                                "Allocated new dz_ip {} in MulticastPublisherBlock",
-                                new_dz_ip_net
-                            );
+                            msg!("Allocated new dz_ip {} in DzPrefixBlock", new_dz_ip_net);
+                            break;
                         }
                     }
-
-                    // Fall back to DzPrefixBlock
-                    if !allocated {
-                        let mut found = false;
-                        for dz_prefix_account in dz_prefix_accounts.iter() {
-                            if allocate_specific_ip(dz_prefix_account, new_dz_ip_net).is_ok() {
-                                found = true;
-                                #[cfg(test)]
-                                msg!("Allocated new dz_ip {} in DzPrefixBlock", new_dz_ip_net);
-                                break;
-                            }
-                        }
-                        if !found {
-                            return Err(DoubleZeroError::AllocationFailed.into());
-                        }
+                    if !found {
+                        return Err(DoubleZeroError::AllocationFailed.into());
                     }
                 }
             }
+        }
 
-            user.dz_ip = new_dz_ip;
-        }
-    } else {
-        // Legacy path: no resource accounts, just overwrite fields
-        if let Some(value) = value.dz_ip {
-            user.dz_ip = value;
-        }
-        if let Some(value) = value.tunnel_id {
-            user.tunnel_id = value;
-        }
-        if let Some(value) = value.tunnel_net {
-            user.tunnel_net = value;
-        }
+        user.dz_ip = new_dz_ip;
     }
 
     if let Some(value) = value.user_type {

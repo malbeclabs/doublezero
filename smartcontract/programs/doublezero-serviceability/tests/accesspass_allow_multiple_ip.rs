@@ -21,7 +21,6 @@ use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
 use std::net::Ipv4Addr;
-use user::closeaccount::UserCloseAccountArgs;
 
 mod test_helpers;
 use test_helpers::*;
@@ -345,6 +344,11 @@ async fn test_accesspass_allow_multiple_ip() {
     println!("✅ User created and activated successfully",);
     /*****************************************************************************************************************************************************/
     println!("🟢 9. Testing User update...");
+    let user_before_update = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_user()
+        .unwrap();
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -352,16 +356,19 @@ async fn test_accesspass_allow_multiple_ip() {
         DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
             user_type: Some(UserType::IBRL),
             cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
-            dz_ip: Some([200, 0, 0, 4].into()),
-            tunnel_id: Some(501),
-            tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
+            // Resource fields stay bitmap-coordinated; the happy-path test only
+            // touches non-resource fields.
             validator_pubkey: None,
             tenant_pk: None,
+            dz_prefix_count: 1,
             ..UserUpdateArgs::default()
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -376,90 +383,36 @@ async fn test_accesspass_allow_multiple_ip() {
     assert_eq!(user.client_ip.to_string(), "100.0.0.1");
     assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
     assert_eq!(user.status, UserStatus::Activated);
+    // Resource fields preserved when not specified.
+    assert_eq!(user.dz_ip, user_before_update.dz_ip);
+    assert_eq!(user.tunnel_id, user_before_update.tunnel_id);
+    assert_eq!(user.tunnel_net, user_before_update.tunnel_net);
 
     println!("✅ User updated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 10. Testing User update (regression test: unspecified dz_ip should not clear the dz_ip)...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
-            user_type: Some(UserType::IBRL),
-            cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
-            dz_ip: None,
-            tunnel_id: Some(505),
-            tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
-            validator_pubkey: None,
-            tenant_pk: None,
-            ..UserUpdateArgs::default()
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
+    println!("🟢 11. Testing User deletion (atomic)...");
+    let user_before_delete = get_account_data(&mut banks_client, user_pubkey)
         .await
         .expect("Unable to get Account")
         .get_user()
         .unwrap();
-    assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.client_ip.to_string(), "100.0.0.1");
-    assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
-    assert_eq!(user.status, UserStatus::Activated);
-    assert_eq!(user.dz_ip.to_string(), "200.0.0.4");
-
-    println!("✅ User updated");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 11. Testing User deletion...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.client_ip.to_string(), "100.0.0.1");
-    assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
-    assert_eq!(user.status, UserStatus::Deleting);
-
-    println!("✅ Link deleting");
-
-    /*****************************************************************************************************************************************************/
-    println!("🟢 12. Testing User deactivation...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-            dz_prefix_count: 0,
-            multicast_publisher_count: 0, // legacy path - no ResourceExtension accounts
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(user.owner, false),
-            AccountMeta::new(user.device_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+            AccountMeta::new(user_before_delete.owner, false),
         ],
         &payer,
     )
@@ -468,7 +421,7 @@ async fn test_accesspass_allow_multiple_ip() {
     let user = get_account_data(&mut banks_client, user_pubkey).await;
     assert_eq!(user, None);
 
-    println!("✅ Link deleted successfully");
+    println!("✅ User deleted successfully");
 
     println!("🟢🟢🟢  End test_user  🟢🟢🟢");
 }

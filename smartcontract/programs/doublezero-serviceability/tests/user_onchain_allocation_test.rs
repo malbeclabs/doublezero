@@ -32,8 +32,8 @@ use doublezero_serviceability::{
             subscribe::UpdateMulticastGroupRolesArgs,
         },
         user::{
-            activate::UserActivateArgs, closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
-            delete::UserDeleteArgs, requestban::UserRequestBanArgs, update::UserUpdateArgs,
+            activate::UserActivateArgs, create::UserCreateArgs, delete::UserDeleteArgs,
+            requestban::UserRequestBanArgs, update::UserUpdateArgs,
         },
     },
     resource::ResourceType,
@@ -383,136 +383,11 @@ async fn test_activate_user_with_onchain_allocation() {
 // ============================================================================
 // Deallocation Tests
 // ============================================================================
-
-#[tokio::test]
-async fn test_closeaccount_user_with_deallocation() {
-    println!("[TEST] test_closeaccount_user_with_deallocation");
-
-    let client_ip = [100, 0, 0, 3];
-    let (
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        user_pubkey,
-        accesspass_pubkey,
-        (
-            user_tunnel_block_pubkey,
-            multicast_publisher_block_pubkey,
-            tunnel_ids_pubkey,
-            dz_prefix_block_pubkey,
-        ),
-    ) = setup_user_onchain_allocation_test(UserType::IBRLWithAllocatedIP, client_ip).await;
-
-    let _ = multicast_publisher_block_pubkey;
-
-    // CreateUser performed atomic create+allocate+activate. Verify allocations exist.
-    let user_tunnel_resource_before =
-        get_resource_extension_data(&mut banks_client, user_tunnel_block_pubkey)
-            .await
-            .expect("UserTunnelBlock should exist");
-    let tunnel_ids_resource_before =
-        get_resource_extension_data(&mut banks_client, tunnel_ids_pubkey)
-            .await
-            .expect("TunnelIds should exist");
-    let dz_prefix_resource_before =
-        get_resource_extension_data(&mut banks_client, dz_prefix_block_pubkey)
-            .await
-            .expect("DzPrefixBlock should exist");
-
-    assert_eq!(user_tunnel_resource_before.iter_allocated().len(), 2);
-    assert_eq!(tunnel_ids_resource_before.iter_allocated().len(), 1);
-    // DzPrefixBlock has reserved first IP + user allocation = 2
-    assert_eq!(dz_prefix_resource_before.iter_allocated().len(), 2);
-
-    // Get user owner for CloseAccount
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should exist")
-        .get_user()
-        .unwrap();
-    let user_owner = user.owner;
-
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // Delete user (sets status to Deleting)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-            dz_prefix_count: 0,
-            multicast_publisher_count: 0,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-
-    // CloseAccount with deallocation
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-            dz_prefix_count: 1,
-            multicast_publisher_count: 0,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(user_owner, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_pubkey, false),
-            AccountMeta::new(tunnel_ids_pubkey, false),
-            AccountMeta::new(dz_prefix_block_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Verify user account is closed
-    let user = get_account_data(&mut banks_client, user_pubkey).await;
-    assert!(user.is_none(), "User account should be closed");
-
-    // CRITICAL: Verify bitmap bits were actually deallocated
-    let user_tunnel_resource_after =
-        get_resource_extension_data(&mut banks_client, user_tunnel_block_pubkey)
-            .await
-            .expect("UserTunnelBlock should exist");
-    let tunnel_ids_resource_after =
-        get_resource_extension_data(&mut banks_client, tunnel_ids_pubkey)
-            .await
-            .expect("TunnelIds should exist");
-    let dz_prefix_resource_after =
-        get_resource_extension_data(&mut banks_client, dz_prefix_block_pubkey)
-            .await
-            .expect("DzPrefixBlock should exist");
-
-    assert!(
-        user_tunnel_resource_after.iter_allocated().is_empty(),
-        "UserTunnelBlock should have no allocations after deallocation"
-    );
-    assert!(
-        tunnel_ids_resource_after.iter_allocated().is_empty(),
-        "TunnelIds should have no allocations after deallocation"
-    );
-    // DzPrefixBlock still has reserved first IP after user deallocation
-    assert_eq!(
-        dz_prefix_resource_after.iter_allocated().len(),
-        1,
-        "DzPrefixBlock should have only reserved first IP after user deallocation"
-    );
-
-    println!("[PASS] test_closeaccount_user_with_deallocation");
-}
+//
+// The legacy `test_closeaccount_user_with_deallocation` test was removed —
+// DeleteUser is now atomic (delete+deallocate+close in one call), so the
+// CloseAccountUser-after-Deleting path is no longer reachable. The same
+// resource-deallocation behavior is covered by `test_delete_user_atomic_with_deallocation`.
 
 // ============================================================================
 // Authorization Tests

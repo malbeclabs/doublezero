@@ -334,29 +334,49 @@ async fn test_delete_user_is_dynamic_pass() {
         .await
         .expect("Failed to get latest blockhash");
 
+    let user_before_delete = get_account_data(&mut env.banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&env.program_id, ResourceType::UserTunnelBlock);
+    let (tunnel_ids_pda, _, _) = get_resource_extension_pda(
+        &env.program_id,
+        ResourceType::TunnelIds(env.device_pubkey, 0),
+    );
+    let (dz_prefix_pda, _, _) = get_resource_extension_pda(
+        &env.program_id,
+        ResourceType::DzPrefixBlock(env.device_pubkey, 0),
+    );
+
     execute_transaction(
         &mut env.banks_client,
         recent_blockhash,
         env.program_id,
         DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(env.globalstate_pubkey, false),
+            AccountMeta::new(env.device_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+            AccountMeta::new(user_before_delete.owner, false),
         ],
         &env.payer,
     )
     .await;
 
-    let user = get_account_data(&mut env.banks_client, user_pubkey)
-        .await
-        .unwrap()
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Deleting);
+    let user = get_account_data(&mut env.banks_client, user_pubkey).await;
+    assert!(
+        user.is_none(),
+        "User account should be closed after atomic delete"
+    );
 
     let pass = get_account_data(&mut env.banks_client, accesspass_pubkey)
         .await
@@ -401,29 +421,49 @@ async fn test_delete_user_allow_multiple_ip_resets_client_ip() {
         .await
         .expect("Failed to get latest blockhash");
 
+    let user_before_delete = get_account_data(&mut env.banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&env.program_id, ResourceType::UserTunnelBlock);
+    let (tunnel_ids_pda, _, _) = get_resource_extension_pda(
+        &env.program_id,
+        ResourceType::TunnelIds(env.device_pubkey, 0),
+    );
+    let (dz_prefix_pda, _, _) = get_resource_extension_pda(
+        &env.program_id,
+        ResourceType::DzPrefixBlock(env.device_pubkey, 0),
+    );
+
     execute_transaction(
         &mut env.banks_client,
         recent_blockhash,
         env.program_id,
         DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(env.globalstate_pubkey, false),
+            AccountMeta::new(env.device_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+            AccountMeta::new(user_before_delete.owner, false),
         ],
         &env.payer,
     )
     .await;
 
-    let user = get_account_data(&mut env.banks_client, user_pubkey)
-        .await
-        .unwrap()
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Deleting);
+    let user = get_account_data(&mut env.banks_client, user_pubkey).await;
+    assert!(
+        user.is_none(),
+        "User account should be closed after atomic delete"
+    );
 
     let pass = get_account_data(&mut env.banks_client, accesspass_pubkey)
         .await
@@ -452,29 +492,49 @@ async fn test_delete_user_specific_ip_pass() {
         .await
         .expect("Failed to get latest blockhash");
 
+    let user_before_delete = get_account_data(&mut env.banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&env.program_id, ResourceType::UserTunnelBlock);
+    let (tunnel_ids_pda, _, _) = get_resource_extension_pda(
+        &env.program_id,
+        ResourceType::TunnelIds(env.device_pubkey, 0),
+    );
+    let (dz_prefix_pda, _, _) = get_resource_extension_pda(
+        &env.program_id,
+        ResourceType::DzPrefixBlock(env.device_pubkey, 0),
+    );
+
     execute_transaction(
         &mut env.banks_client,
         recent_blockhash,
         env.program_id,
         DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(env.globalstate_pubkey, false),
+            AccountMeta::new(env.device_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+            AccountMeta::new(user_before_delete.owner, false),
         ],
         &env.payer,
     )
     .await;
 
-    let user = get_account_data(&mut env.banks_client, user_pubkey)
-        .await
-        .unwrap()
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Deleting);
+    let user = get_account_data(&mut env.banks_client, user_pubkey).await;
+    assert!(
+        user.is_none(),
+        "User account should be closed after atomic delete"
+    );
 
     let pass = get_account_data(&mut env.banks_client, accesspass_pubkey)
         .await
@@ -517,29 +577,49 @@ async fn test_delete_multicast_user_dynamic_pass() {
         .await
         .expect("Failed to get latest blockhash");
 
+    let user_before_delete = get_account_data(&mut env.banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&env.program_id, ResourceType::UserTunnelBlock);
+    let (tunnel_ids_pda, _, _) = get_resource_extension_pda(
+        &env.program_id,
+        ResourceType::TunnelIds(env.device_pubkey, 0),
+    );
+    let (dz_prefix_pda, _, _) = get_resource_extension_pda(
+        &env.program_id,
+        ResourceType::DzPrefixBlock(env.device_pubkey, 0),
+    );
+
     execute_transaction(
         &mut env.banks_client,
         recent_blockhash,
         env.program_id,
         DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(env.globalstate_pubkey, false),
+            AccountMeta::new(env.device_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+            AccountMeta::new(user_before_delete.owner, false),
         ],
         &env.payer,
     )
     .await;
 
-    let user = get_account_data(&mut env.banks_client, user_pubkey)
-        .await
-        .unwrap()
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Deleting);
+    let user = get_account_data(&mut env.banks_client, user_pubkey).await;
+    assert!(
+        user.is_none(),
+        "User account should be closed after atomic delete"
+    );
 
     let pass = get_account_data(&mut env.banks_client, accesspass_pubkey)
         .await

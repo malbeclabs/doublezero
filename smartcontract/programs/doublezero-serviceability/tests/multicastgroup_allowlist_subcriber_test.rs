@@ -21,6 +21,121 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Keypair, s
 mod test_helpers;
 use test_helpers::*;
 
+/// Owner happy path: foundation member can add and remove a subscriber allowlist
+/// entry on an Activated multicast group.
+#[tokio::test]
+async fn test_multicast_subscriber_allowlist() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let client_ip = [100, 0, 0, 1].into();
+    let user_payer = payer.pubkey();
+
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let gs = get_account_data(&mut banks_client, globalstate_pubkey)
+        .await
+        .unwrap()
+        .get_global_state()
+        .unwrap();
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "sub-owner-flow".to_string(),
+            max_bandwidth: 1_000_000_000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 100,
+            allow_multiple_ip: false,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
+            client_ip,
+            user_payer,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert!(accesspass
+        .mgroup_sub_allowlist
+        .contains(&multicastgroup_pubkey));
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(
+            RemoveMulticastGroupSubAllowlistArgs {
+                client_ip,
+                user_payer,
+            },
+        ),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(accesspass.mgroup_sub_allowlist.len(), 0);
+}
+
 #[tokio::test]
 async fn test_multicast_subscriber_allowlist_sentinel_authority() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;

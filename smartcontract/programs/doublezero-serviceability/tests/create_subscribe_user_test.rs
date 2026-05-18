@@ -29,17 +29,19 @@ use doublezero_serviceability::{
             },
             create::MulticastGroupCreateArgs,
             subscribe::UpdateMulticastGroupRolesArgs,
+            suspend::MulticastGroupSuspendArgs,
         },
         tenant::create::TenantCreateArgs,
         user::{
             check_access_pass::CheckUserAccessPassArgs, create_subscribe::UserCreateSubscribeArgs,
+            delete::UserDeleteArgs,
         },
     },
     resource::ResourceType,
     state::{
         accesspass::AccessPassType,
         device::DeviceType,
-        user::{UserCYOA, UserStatus, UserType},
+        user::{TunnelFlags, UserCYOA, UserStatus, UserType},
     },
 };
 use solana_program_test::*;
@@ -1911,4 +1913,316 @@ async fn test_subscribe_pending_user_succeeds() {
     assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.publishers, vec![mgroup_pubkey]);
     assert_eq!(user.subscribers, vec![mgroup_pubkey]);
+}
+
+/// CreateSubscribeUser fails when the multicast group is not Activated.
+/// Regression: subscribe must reject any non-Activated mgroup status — here
+/// we exercise Suspended (Activated -> Suspended via SuspendMulticastGroup).
+#[tokio::test]
+async fn test_create_subscribe_user_inactive_mgroup_fails() {
+    let client_ip = [100, 0, 0, 97];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+    } = f;
+
+    // Suspend the mgroup so it is no longer Activated.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SuspendMulticastGroup(MulticastGroupSuspendArgs {}),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Attempt CreateSubscribeUser against the Suspended mgroup — must fail gracefully.
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "CreateSubscribeUser must fail when mgroup is not Activated"
+    );
+}
+
+/// CreatedAsPublisher tunnel_flags bit must persist across a publisher disconnect
+/// (unsubscribe with publisher=false, subscriber=false). This is the durable
+/// "user was created as a publisher" marker that delete uses to decrement the
+/// correct device counter.
+#[tokio::test]
+async fn test_publisher_multicast_publisher_persists_through_disconnect() {
+    let client_ip = [100, 0, 0, 90];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+    } = f;
+
+    // Atomic CreateSubscribeUser(publisher=true) — sets CreatedAsPublisher.
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: true,
+            subscriber: false,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_created = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_created.status, UserStatus::Activated);
+    assert_eq!(user_created.publishers, vec![mgroup_pubkey]);
+    assert!(
+        TunnelFlags::is_set(user_created.tunnel_flags, TunnelFlags::CreatedAsPublisher),
+        "CreatedAsPublisher must be set after CreateSubscribeUser(publisher=true)"
+    );
+
+    let device_created = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_created.multicast_publishers_count, 1);
+    assert_eq!(device_created.multicast_subscribers_count, 0);
+
+    // Disconnect: unsubscribe as publisher (and subscriber). The CreatedAsPublisher
+    // flag must remain set — UpdateMulticastGroupRoles does not touch tunnel_flags.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_publisher_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_after = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert!(user_after.publishers.is_empty());
+    assert!(
+        TunnelFlags::is_set(user_after.tunnel_flags, TunnelFlags::CreatedAsPublisher),
+        "CreatedAsPublisher must STAY set after a publisher unsubscribes — the flag is the \
+         durable record of which device counter to decrement at delete time"
+    );
+}
+
+/// Atomic DeleteUser of a user that was *created* as a publisher (even if their
+/// publishers list is currently empty) must decrement `multicast_publishers_count`,
+/// not `multicast_subscribers_count`. The decision is driven by the
+/// `CreatedAsPublisher` tunnel_flags bit, not the live publishers list.
+#[tokio::test]
+async fn test_publisher_disconnect_delete_decrements_publishers_count() {
+    let client_ip = [100, 0, 0, 91];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+    } = f;
+
+    // Create publisher.
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: true,
+            subscriber: false,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Disconnect — drains the publishers list but keeps the CreatedAsPublisher flag.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_publisher_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_before_delete = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert!(user_before_delete.publishers.is_empty());
+
+    // Atomic DeleteUser. Delete must consult CreatedAsPublisher to pick the right
+    // counter — publishers_count down by 1, subscribers_count unchanged.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 1,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+            AccountMeta::new(user_before_delete.owner, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_after = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .unwrap()
+        .get_device()
+        .unwrap();
+    assert_eq!(
+        device_after.multicast_publishers_count, 0,
+        "publishers_count must drop to 0 (CreatedAsPublisher routes the decrement here)"
+    );
+    assert_eq!(
+        device_after.multicast_subscribers_count, 0,
+        "subscribers_count must NOT change — user was created as publisher"
+    );
 }

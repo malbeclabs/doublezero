@@ -137,8 +137,8 @@ var knownIncompatibilities = map[string]knownIncompat{
 	// RFC-18 mandatory upgrade boundary: link operations that read device accounts
 	// require a CLI that understands the new account layout. v0.18.0 and earlier
 	// were released before RFC-18 and are incompatible.
-	"write/link_create_wan":           {ranges: []versionRange{{before: "0.23.0"}}},
-	"write/link_create_dzx":           {ranges: []versionRange{{before: "0.23.0"}}},
+	"write/link_create_wan":           {ranges: []versionRange{{before: "0.24.0"}}},
+	"write/link_create_dzx":           {ranges: []versionRange{{before: "0.24.0"}}},
 	"write/link_accept_dzx":           {ranges: []versionRange{{before: "0.19.0"}}},
 	"write/link_update":               {ranges: []versionRange{{before: "0.19.0"}}},
 	"write/link_set_health":           {ranges: []versionRange{{before: "0.19.0"}}},

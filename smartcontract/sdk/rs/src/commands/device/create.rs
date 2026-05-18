@@ -59,7 +59,10 @@ impl CreateDeviceCommand {
             );
             accounts.push(AccountMeta::new(dz_prefix_pda, false));
         }
-        let resource_count = (1 + self.dz_prefixes.len()) as u8;
+        let resource_total = 1usize.saturating_add(self.dz_prefixes.len());
+        let resource_count = u8::try_from(resource_total).map_err(|_| {
+            eyre::eyre!("Device resource_count ({}) exceeds u8::MAX", resource_total)
+        })?;
 
         client
             .execute_transaction(

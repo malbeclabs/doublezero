@@ -35,65 +35,66 @@ impl UpdateUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let updating_resources =
-            self.dz_ip.is_some() || self.tunnel_id.is_some() || self.tunnel_net.is_some();
-
         let mut accounts = vec![
             AccountMeta::new(self.pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
         ];
 
-        let (dz_prefix_count, multicast_publisher_count) = if updating_resources {
-            let (_user_pubkey, user) = GetUserCommand {
-                pubkey: self.pubkey,
-            }
-            .execute(client)?;
+        // UpdateUser always requires the user's resource-extension accounts so the
+        // bitmaps stay in sync, even when only updating non-resource fields.
+        let (_user_pubkey, user) = GetUserCommand {
+            pubkey: self.pubkey,
+        }
+        .execute(client)?;
 
-            let (_, device) = GetDeviceCommand {
-                pubkey_or_code: user.device_pk.to_string(),
-            }
-            .execute(client)
-            .map_err(|_| eyre::eyre!("Device not found"))?;
+        let (_, device) = GetDeviceCommand {
+            pubkey_or_code: user.device_pk.to_string(),
+        }
+        .execute(client)
+        .map_err(|_| eyre::eyre!("Device not found"))?;
 
-            let count = device.dz_prefixes.len();
+        let count = device.dz_prefixes.len();
+        if count == 0 {
+            return Err(eyre::eyre!(
+                "Device {} has no dz_prefixes; cannot update user",
+                user.device_pk
+            ));
+        }
+        let dz_prefix_count = u8::try_from(count).map_err(|_| {
+            eyre::eyre!(
+                "Device {} has {} dz_prefixes, exceeds u8::MAX",
+                user.device_pk,
+                count
+            )
+        })?;
+        let multicast_publisher_count = 1u8;
 
-            let (user_tunnel_block_ext, _, _) =
-                get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
-            accounts.push(AccountMeta::new(user_tunnel_block_ext, false));
+        let (user_tunnel_block_ext, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
+        accounts.push(AccountMeta::new(user_tunnel_block_ext, false));
 
-            let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
+        let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
+            &client.get_program_id(),
+            ResourceType::MulticastPublisherBlock,
+        );
+        accounts.push(AccountMeta::new(multicast_publisher_block_ext, false));
+
+        let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
+            &client.get_program_id(),
+            ResourceType::TunnelIds(user.device_pk, 0),
+        );
+        accounts.push(AccountMeta::new(device_tunnel_ids_ext, false));
+
+        for idx in 0..count {
+            let (dz_prefix_ext, _, _) = get_resource_extension_pda(
                 &client.get_program_id(),
-                ResourceType::MulticastPublisherBlock,
+                ResourceType::DzPrefixBlock(user.device_pk, idx),
             );
-            accounts.push(AccountMeta::new(multicast_publisher_block_ext, false));
-
-            let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
-                &client.get_program_id(),
-                ResourceType::TunnelIds(user.device_pk, 0),
-            );
-            accounts.push(AccountMeta::new(device_tunnel_ids_ext, false));
-
-            for idx in 0..count {
-                let (dz_prefix_ext, _, _) = get_resource_extension_pda(
-                    &client.get_program_id(),
-                    ResourceType::DzPrefixBlock(user.device_pk, idx),
-                );
-                accounts.push(AccountMeta::new(dz_prefix_ext, false));
-            }
-
-            (count as u8, 1u8)
-        } else {
-            (0u8, 0u8)
-        };
+            accounts.push(AccountMeta::new(dz_prefix_ext, false));
+        }
 
         // If updating tenant_pk, add old and new tenant accounts for reference counting
         if let Some(new_tenant_pk) = self.tenant_pk {
-            // Get current user to find old tenant (may already have been fetched above)
-            let (_user_pubkey, user) = GetUserCommand {
-                pubkey: self.pubkey,
-            }
-            .execute(client)?;
-
             let old_tenant_pk = user.tenant_pk;
 
             // Add tenant accounts (old_tenant, new_tenant).
@@ -250,48 +251,9 @@ mod tests {
         assert!(res.is_ok());
     }
 
-    #[test]
-    fn test_commands_user_update_no_resource_fields_skips_accounts() {
-        let mut client = create_test_client();
-        let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-        let user_pubkey = Pubkey::new_unique();
-
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
-                    user_type: Some(UserType::IBRL),
-                    cyoa_type: None,
-                    dz_ip: None,
-                    tunnel_id: None,
-                    tunnel_net: None,
-                    validator_pubkey: None,
-                    tenant_pk: None,
-                    dz_prefix_count: 0,
-                    multicast_publisher_count: 0,
-                    tunnel_endpoint: None,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(user_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
-
-        let res = UpdateUserCommand {
-            pubkey: user_pubkey,
-            user_type: Some(UserType::IBRL),
-            cyoa_type: None,
-            dz_ip: None,
-            tunnel_id: None,
-            tunnel_net: None,
-            validator_pubkey: None,
-            tenant_pk: None,
-            tunnel_endpoint: None,
-        }
-        .execute(&client);
-
-        assert!(res.is_ok());
-    }
+    // Note: `test_commands_user_update_no_resource_fields_skips_accounts` was
+    // removed — the SDK no longer has a "skip resource accounts" path. UpdateUser
+    // always parses the ResourceExtension accounts so the bitmaps stay in sync,
+    // even when only updating non-resource fields. The resource-fields path is
+    // covered by `test_commands_user_update_with_resource_fields` above.
 }

@@ -79,6 +79,19 @@ impl CreateSubscribeUserCommand {
         .execute(client)
         .map_err(|_| eyre::eyre!("Device not found"))?;
         let dz_prefix_count = device.dz_prefixes.len();
+        if dz_prefix_count == 0 {
+            return Err(eyre::eyre!(
+                "Device {} has no dz_prefixes; cannot create user",
+                self.device_pk
+            ));
+        }
+        let dz_prefix_count_u8 = u8::try_from(dz_prefix_count).map_err(|_| {
+            eyre::eyre!(
+                "Device {} has {} dz_prefixes, exceeds u8::MAX",
+                self.device_pk,
+                dz_prefix_count
+            )
+        })?;
 
         let (user_tunnel_block_ext, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
@@ -119,7 +132,7 @@ impl CreateSubscribeUserCommand {
                     publisher: self.publisher,
                     subscriber: self.subscriber,
                     tunnel_endpoint: self.tunnel_endpoint,
-                    dz_prefix_count: dz_prefix_count as u8,
+                    dz_prefix_count: dz_prefix_count_u8,
                     owner: self.owner.unwrap_or_default(),
                 }),
                 accounts,

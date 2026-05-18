@@ -12,7 +12,7 @@ impl GetConfigCliCommand {
 
         writeln!(
             out,
-            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\nTenant: {}\n",
+            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\nGeolocation Program ID: {}\nTenant: {}\n",
             filename.display(),
             config.json_rpc_url,
             config.websocket_url.unwrap_or(format!(
@@ -23,6 +23,10 @@ impl GetConfigCliCommand {
             config.program_id.unwrap_or(format!(
                 "{} (computed)",
                 doublezero_sdk::default_program_id()
+            )),
+            config.geo_program_id.unwrap_or(format!(
+                "{} (computed)",
+                doublezero_sdk::default_geolocation_program_id()
             )),
             config.tenant.unwrap_or("(not set)".to_string())
         )?;
@@ -65,6 +69,7 @@ mod tests {
             assert!(output_str.contains("WebSocket URL:"));
             assert!(output_str.contains("Keypair Path:"));
             assert!(output_str.contains("Program ID:"));
+            assert!(output_str.contains("Geolocation Program ID:"));
             assert!(output_str.contains("Tenant: (not set)"));
 
             let devnet_config = Environment::Devnet.config().unwrap();

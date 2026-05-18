@@ -195,8 +195,8 @@ pub fn process_update_multicastgroup_roles(
     let has_role = value.publisher || value.subscriber;
     if has_role
         && user.status != UserStatus::Activated
-        && user.status != UserStatus::Updating
-        && user.status != UserStatus::Pending
+        && user.status != UserStatus::UpdatingDeprecated
+        && user.status != UserStatus::PendingDeprecated
     {
         msg!("UserStatus: {:?}", user.status);
         return Err(DoubleZeroError::InvalidStatus.into());

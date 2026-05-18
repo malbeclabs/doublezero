@@ -134,7 +134,8 @@ pub fn process_activate_user(
 
     let mut user: User = User::try_from(user_account)?;
 
-    if user.status != UserStatus::Pending && user.status != UserStatus::Updating {
+    if user.status != UserStatus::PendingDeprecated && user.status != UserStatus::UpdatingDeprecated
+    {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
@@ -261,7 +262,7 @@ pub fn process_activate_user(
     // On re-activation (Updating → Activated), leave the flag unchanged: the publishers list
     // may be empty after an unsubscribe, but the device counter that was incremented at
     // creation time hasn't changed and must still be decremented at delete time.
-    if user.status == UserStatus::Pending
+    if user.status == UserStatus::PendingDeprecated
         && user.user_type == UserType::Multicast
         && !user.publishers.is_empty()
     {

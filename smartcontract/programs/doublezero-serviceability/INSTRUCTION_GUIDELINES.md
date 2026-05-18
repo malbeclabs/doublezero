@@ -72,7 +72,7 @@ let multicastgroup = MulticastGroup {
     code,
     multicast_ip: std::net::Ipv4Addr::UNSPECIFIED,
     max_bandwidth: value.max_bandwidth,
-    status: MulticastGroupStatus::Pending,
+    status: MulticastGroupStatus::PendingDeprecated,
     publisher_count: 0,
     subscriber_count: 0,
 };

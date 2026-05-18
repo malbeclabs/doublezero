@@ -147,7 +147,7 @@ func TestCustomJSONMarshal(t *testing.T) {
 				"JitterNs": 0,
 				"TunnelId": 0,
 				"TunnelNet": "",
-				"Status": "pending",
+				"Status": "pending (deprecated)",
 				"Code": "",
 				"ContributorPubKey": "11111111111111111111111111111111",
 				"SideAIfaceName": "",

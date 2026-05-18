@@ -50,25 +50,25 @@ func TestCompare(t *testing.T) {
 		{
 			name:          "item added",
 			before:        []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusActivated)},
-			after:         []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusActivated), newTestDevice("2", serviceability.DeviceStatusPending)},
+			after:         []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusActivated), newTestDevice("2", serviceability.DeviceStatusPendingDeprecated)},
 			expectedAdded: 1,
 		},
 		{
 			name:            "item removed",
-			before:          []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusActivated), newTestDevice("2", serviceability.DeviceStatusPending)},
+			before:          []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusActivated), newTestDevice("2", serviceability.DeviceStatusPendingDeprecated)},
 			after:           []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusActivated)},
 			expectedRemoved: 1,
 		},
 		{
 			name:             "item modified",
-			before:           []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusPending)},
+			before:           []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusPendingDeprecated)},
 			after:            []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusActivated)},
 			expectedModified: 1,
 		},
 		{
 			name:             "multiple event types",
-			before:           []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusActivated), newTestDevice("2", serviceability.DeviceStatusPending)}, // 2 is removed
-			after:            []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusDrained), newTestDevice("3", serviceability.DeviceStatusPending)},   // 1 is modified, 3 is added
+			before:           []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusActivated), newTestDevice("2", serviceability.DeviceStatusPendingDeprecated)}, // 2 is removed
+			after:            []serviceability.Device{newTestDevice("1", serviceability.DeviceStatusDrained), newTestDevice("3", serviceability.DeviceStatusPendingDeprecated)},   // 1 is modified, 3 is added
 			expectedAdded:    1,
 			expectedRemoved:  1,
 			expectedModified: 1,
@@ -117,18 +117,18 @@ func TestCompare(t *testing.T) {
 		{
 			name:          "item added",
 			before:        []serviceability.Link{newTestLink("1", serviceability.LinkStatusActivated)},
-			after:         []serviceability.Link{newTestLink("1", serviceability.LinkStatusActivated), newTestLink("2", serviceability.LinkStatusPending)},
+			after:         []serviceability.Link{newTestLink("1", serviceability.LinkStatusActivated), newTestLink("2", serviceability.LinkStatusPendingDeprecated)},
 			expectedAdded: 1,
 		},
 		{
 			name:            "item removed",
-			before:          []serviceability.Link{newTestLink("1", serviceability.LinkStatusActivated), newTestLink("2", serviceability.LinkStatusPending)},
+			before:          []serviceability.Link{newTestLink("1", serviceability.LinkStatusActivated), newTestLink("2", serviceability.LinkStatusPendingDeprecated)},
 			after:           []serviceability.Link{newTestLink("1", serviceability.LinkStatusActivated)},
 			expectedRemoved: 1,
 		},
 		{
 			name:             "item modified",
-			before:           []serviceability.Link{newTestLink("1", serviceability.LinkStatusPending)},
+			before:           []serviceability.Link{newTestLink("1", serviceability.LinkStatusPendingDeprecated)},
 			after:            []serviceability.Link{newTestLink("1", serviceability.LinkStatusActivated)},
 			expectedModified: 1,
 		},

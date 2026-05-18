@@ -386,7 +386,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 						},
 						{
 							PubKey:      stringToPubkey("rejected_link"),
-							Status:      serviceability.LinkStatusRejected,
+							Status:      serviceability.LinkStatusRejectedDeprecated,
 							SideAPubKey: localDevicePK,
 							SideZPubKey: stringToPubkey("device3"),
 							TunnelNet:   [5]uint8{10, 1, 6, 0, 31},

@@ -33,15 +33,15 @@ const (
 type LocationStatus uint8
 
 const (
-	LocationStatusPending   LocationStatus = 0
-	LocationStatusActivated LocationStatus = 1
-	LocationStatusSuspended LocationStatus = 2
+	LocationStatusPendingDeprecated LocationStatus = 0 // activator-only; unreachable for new accounts
+	LocationStatusActivated         LocationStatus = 1
+	LocationStatusSuspended         LocationStatus = 2
 )
 
 func (s LocationStatus) String() string {
 	switch s {
-	case LocationStatusPending:
-		return "pending"
+	case LocationStatusPendingDeprecated:
+		return "pending (deprecated)"
 	case LocationStatusActivated:
 		return "activated"
 	case LocationStatusSuspended:
@@ -105,15 +105,15 @@ type Location struct {
 type ExchangeStatus uint8
 
 const (
-	ExchangeStatusPending   ExchangeStatus = 0
-	ExchangeStatusActivated ExchangeStatus = 1
-	ExchangeStatusSuspended ExchangeStatus = 2
+	ExchangeStatusPendingDeprecated ExchangeStatus = 0 // activator-only; unreachable for new accounts
+	ExchangeStatusActivated         ExchangeStatus = 1
+	ExchangeStatusSuspended         ExchangeStatus = 2
 )
 
 func (e ExchangeStatus) String() string {
 	switch e {
-	case ExchangeStatusPending:
-		return "pending"
+	case ExchangeStatusPendingDeprecated:
+		return "pending (deprecated)"
 	case ExchangeStatusActivated:
 		return "activated"
 	case ExchangeStatusSuspended:
@@ -159,10 +159,10 @@ func (d DeviceDeviceType) String() string {
 type DeviceStatus uint8
 
 const (
-	DeviceStatusPending            DeviceStatus = 0
+	DeviceStatusPendingDeprecated  DeviceStatus = 0 // activator-only; unreachable for new accounts
 	DeviceStatusActivated          DeviceStatus = 1
 	DeviceStatusDeleting           DeviceStatus = 3
-	DeviceStatusRejected           DeviceStatus = 4
+	DeviceStatusRejectedDeprecated DeviceStatus = 4 // activator-only; unreachable for new accounts
 	DeviceStatusDrained            DeviceStatus = 5
 	DeviceStatusDeviceProvisioning DeviceStatus = 6
 	DeviceStatusLinkProvisioning   DeviceStatus = 7
@@ -170,14 +170,14 @@ const (
 
 func (d DeviceStatus) String() string {
 	switch d {
-	case DeviceStatusPending:
-		return "pending"
+	case DeviceStatusPendingDeprecated:
+		return "pending (deprecated)"
 	case DeviceStatusActivated:
 		return "activated"
 	case DeviceStatusDeleting:
 		return "deleting"
-	case DeviceStatusRejected:
-		return "rejected"
+	case DeviceStatusRejectedDeprecated:
+		return "rejected (deprecated)"
 	case DeviceStatusDrained:
 		return "drained"
 	case DeviceStatusDeviceProvisioning:
@@ -553,26 +553,26 @@ func (l LinkLinkType) MarshalJSON() ([]byte, error) {
 type LinkStatus uint8
 
 const (
-	LinkStatusPending      LinkStatus = 0
-	LinkStatusActivated    LinkStatus = 1
-	LinkStatusDeleting     LinkStatus = 3
-	LinkStatusRejected     LinkStatus = 4
-	LinkStatusRequested    LinkStatus = 5
-	LinkStatusHardDrained  LinkStatus = 6
-	LinkStatusSoftDrained  LinkStatus = 7
-	LinkStatusProvisioning LinkStatus = 8
+	LinkStatusPendingDeprecated  LinkStatus = 0 // activator-only; unreachable for new accounts
+	LinkStatusActivated          LinkStatus = 1
+	LinkStatusDeleting           LinkStatus = 3
+	LinkStatusRejectedDeprecated LinkStatus = 4 // activator-only; unreachable for new accounts
+	LinkStatusRequested          LinkStatus = 5
+	LinkStatusHardDrained        LinkStatus = 6
+	LinkStatusSoftDrained        LinkStatus = 7
+	LinkStatusProvisioning       LinkStatus = 8
 )
 
 func (l LinkStatus) String() string {
 	switch l {
-	case LinkStatusPending:
-		return "pending"
+	case LinkStatusPendingDeprecated:
+		return "pending (deprecated)"
 	case LinkStatusActivated:
 		return "activated"
 	case LinkStatusDeleting:
 		return "deleting"
-	case LinkStatusRejected:
-		return "rejected"
+	case LinkStatusRejectedDeprecated:
+		return "rejected (deprecated)"
 	case LinkStatusRequested:
 		return "requested"
 	case LinkStatusHardDrained:
@@ -915,35 +915,35 @@ func (c CyoaType) MarshalJSON() ([]byte, error) {
 type UserStatus uint8
 
 const (
-	UserStatusPending             UserStatus = 0
-	UserStatusActivated           UserStatus = 1
-	UserStatusSuspendedDeprecated UserStatus = 2
-	UserStatusDeleted             UserStatus = 3
-	UserStatusRejected            UserStatus = 4
-	UserStatusPendingBan          UserStatus = 5
-	UserStatusBanned              UserStatus = 6
-	UserStatusUpdating            UserStatus = 7
-	UserStatusOutOfCredits        UserStatus = 8
+	UserStatusPendingDeprecated    UserStatus = 0 // activator-only; unreachable for new accounts
+	UserStatusActivated            UserStatus = 1
+	UserStatusSuspendedDeprecated  UserStatus = 2
+	UserStatusDeleted              UserStatus = 3
+	UserStatusRejectedDeprecated   UserStatus = 4 // activator-only; unreachable for new accounts
+	UserStatusPendingBanDeprecated UserStatus = 5 // activator-only
+	UserStatusBanned               UserStatus = 6
+	UserStatusUpdatingDeprecated   UserStatus = 7 // activator-only intermediate state
+	UserStatusOutOfCredits         UserStatus = 8
 )
 
 func (u UserStatus) String() string {
 	switch u {
-	case UserStatusPending:
-		return "pending"
+	case UserStatusPendingDeprecated:
+		return "pending (deprecated)"
 	case UserStatusActivated:
 		return "activated"
 	case UserStatusSuspendedDeprecated:
-		return "suspended"
+		return "suspended (deprecated)"
 	case UserStatusDeleted:
 		return "deleted"
-	case UserStatusRejected:
-		return "rejected"
-	case UserStatusPendingBan:
-		return "pending_ban"
+	case UserStatusRejectedDeprecated:
+		return "rejected (deprecated)"
+	case UserStatusPendingBanDeprecated:
+		return "pending_ban (deprecated)"
 	case UserStatusBanned:
 		return "banned"
-	case UserStatusUpdating:
-		return "updating"
+	case UserStatusUpdatingDeprecated:
+		return "updating (deprecated)"
 	case UserStatusOutOfCredits:
 		return "out_of_credits"
 	default:
@@ -1037,12 +1037,29 @@ func (u User) MarshalJSON() ([]byte, error) {
 type MulticastGroupStatus uint8
 
 const (
-	MulticastGroupStatusPending MulticastGroupStatus = iota
-	MulticastGroupStatusActivated
-	MulticastGroupStatusSuspended
-	MulticastGroupStatusDeleting
-	MulticastGroupStatusRejected
+	MulticastGroupStatusPendingDeprecated  MulticastGroupStatus = 0 // activator-only; unreachable for new accounts
+	MulticastGroupStatusActivated          MulticastGroupStatus = 1
+	MulticastGroupStatusSuspended          MulticastGroupStatus = 2
+	MulticastGroupStatusDeleting           MulticastGroupStatus = 3
+	MulticastGroupStatusRejectedDeprecated MulticastGroupStatus = 4 // activator-only; unreachable for new accounts
 )
+
+func (m MulticastGroupStatus) String() string {
+	switch m {
+	case MulticastGroupStatusPendingDeprecated:
+		return "pending (deprecated)"
+	case MulticastGroupStatusActivated:
+		return "activated"
+	case MulticastGroupStatusSuspended:
+		return "suspended"
+	case MulticastGroupStatusDeleting:
+		return "deleting"
+	case MulticastGroupStatusRejectedDeprecated:
+		return "rejected (deprecated)"
+	default:
+		return "unknown"
+	}
+}
 
 type MulticastGroup struct {
 	AccountType     AccountType

@@ -20,10 +20,10 @@ SETTINGS index_granularity = 8192;
 CREATE VIEW IF NOT EXISTS isis_global_state_latest AS
 SELECT *
 FROM isis_global_state
-WHERE (device_pubkey, timestamp) IN (
-    SELECT device_pubkey, max(timestamp)
+WHERE (device_pubkey, network_instance, timestamp) IN (
+    SELECT device_pubkey, network_instance, max(timestamp)
     FROM isis_global_state
-    GROUP BY device_pubkey
+    GROUP BY device_pubkey, network_instance
 );
 -- +goose StatementEnd
 

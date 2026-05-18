@@ -864,7 +864,7 @@ mod tests {
             device_type: DeviceType::Hybrid,
             public_ip: [5, 6, 7, 8].into(),
             dz_prefixes: "5.6.7.8/32".parse().unwrap(),
-            status: DeviceStatus::Pending,
+            status: DeviceStatus::PendingDeprecated,
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
             mgmt_vrf: "default".to_string(),

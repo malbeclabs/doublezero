@@ -1500,7 +1500,7 @@ mod tests {
             dz_ip: [2, 3, 4, 6].into(),
             tunnel_id: 501,
             tunnel_net: "1.2.3.6/32".parse().unwrap(),
-            status: UserStatus::Pending,
+            status: UserStatus::PendingDeprecated,
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),

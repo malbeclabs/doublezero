@@ -1042,7 +1042,9 @@ impl ServiceabilityProgramHelper {
         // re-activates after this step.
         self.execute_transaction(
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                status: Some(doublezero_serviceability::state::device::DeviceStatus::Pending),
+                status: Some(
+                    doublezero_serviceability::state::device::DeviceStatus::PendingDeprecated,
+                ),
                 ..Default::default()
             }),
             vec![

@@ -69,7 +69,7 @@ impl RequestBanUserCommand {
             .execute(client)
             {
                 Ok((_, user)) => {
-                    if user.status == UserStatus::Updating {
+                    if user.status == UserStatus::UpdatingDeprecated {
                         Err(())
                     } else {
                         Ok(user)

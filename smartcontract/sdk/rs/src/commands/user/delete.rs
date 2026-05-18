@@ -72,7 +72,7 @@ impl DeleteUserCommand {
             .execute(client)
             {
                 Ok((_, user)) => {
-                    if user.status == UserStatus::Updating {
+                    if user.status == UserStatus::UpdatingDeprecated {
                         Err(())
                     } else {
                         Ok(user)
@@ -238,7 +238,7 @@ mod tests {
 
         // User with Updating status (returned by first retry call)
         let user_updating = User {
-            status: UserStatus::Updating,
+            status: UserStatus::UpdatingDeprecated,
             subscribers: vec![], // After unsubscribe, empty
             ..user_activated_with_sub.clone()
         };
@@ -485,7 +485,7 @@ mod tests {
         };
 
         let user_updating = User {
-            status: UserStatus::Updating,
+            status: UserStatus::UpdatingDeprecated,
             publishers: vec![],
             subscribers: vec![],
             ..user_activated.clone()

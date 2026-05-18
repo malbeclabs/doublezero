@@ -98,7 +98,9 @@ impl MigrateMulticastCountsCommand {
         for user in users.values() {
             let is_live = !matches!(
                 user.status,
-                UserStatus::Rejected | UserStatus::Banned | UserStatus::PendingBan
+                UserStatus::RejectedDeprecated
+                    | UserStatus::Banned
+                    | UserStatus::PendingBanDeprecated
             );
             if user.user_type == UserType::Multicast && is_live {
                 let (pub_count, sub_count) = per_device.entry(user.device_pk).or_default();
@@ -202,7 +204,9 @@ impl MigrateUnicastCountsCommand {
         for user in users.values() {
             let is_live = !matches!(
                 user.status,
-                UserStatus::Rejected | UserStatus::Banned | UserStatus::PendingBan
+                UserStatus::RejectedDeprecated
+                    | UserStatus::Banned
+                    | UserStatus::PendingBanDeprecated
             );
             if user.user_type != UserType::Multicast && is_live {
                 let count = per_device.entry(user.device_pk).or_default();

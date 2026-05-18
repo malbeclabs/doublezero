@@ -191,7 +191,9 @@ impl ProvisioningCliCommand {
                 self.user_activated(controller, user_type, spinner).await;
                 Ok(())
             }
-            UserStatus::Rejected => self.user_rejected(client, &user_pubkey, spinner).await,
+            UserStatus::RejectedDeprecated => {
+                self.user_rejected(client, &user_pubkey, spinner).await
+            }
             _ => eyre::bail!("User status not expected"),
         }
     }
@@ -251,7 +253,9 @@ impl ProvisioningCliCommand {
                     .await;
                 Ok(())
             }
-            UserStatus::Rejected => self.user_rejected(client, &user_pubkey, spinner).await,
+            UserStatus::RejectedDeprecated => {
+                self.user_rejected(client, &user_pubkey, spinner).await
+            }
             _ => eyre::bail!("User status not expected"),
         }
     }
@@ -422,7 +426,9 @@ impl ProvisioningCliCommand {
                 spinner.println(format!(
                     "    An account already exists with Pubkey: {pubkey}"
                 ));
-                if user.status == UserStatus::PendingBan || user.status == UserStatus::Banned {
+                if user.status == UserStatus::PendingBanDeprecated
+                    || user.status == UserStatus::Banned
+                {
                     spinner.println("❌  The user is banned.");
                     eyre::bail!("User is banned.");
                 }

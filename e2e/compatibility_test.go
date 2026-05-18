@@ -137,23 +137,23 @@ var knownIncompatibilities = map[string]knownIncompat{
 	// RFC-18 mandatory upgrade boundary: link operations that read device accounts
 	// require a CLI that understands the new account layout. v0.18.0 and earlier
 	// were released before RFC-18 and are incompatible.
-	"write/link_create_wan":                 {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_create_dzx":                 {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_accept_dzx":                 {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_update":                     {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_set_health":                 {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_set_health_dzx":             {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_get":                        {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_wait_activated":             {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_wait_activated_dzx":         {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_drain":                      {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_drain_dzx":                  {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_delete":                     {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/link_delete_dzx":                 {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/device_interface_delete":         {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/device_interface_delete_2":       {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/device_interface_delete_3":       {ranges: []versionRange{{before: "0.19.0"}}},
-	"write/device_interface_delete_4":       {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/link_create_wan":           {ranges: []versionRange{{before: "0.24.0"}}},
+	"write/link_create_dzx":           {ranges: []versionRange{{before: "0.24.0"}}},
+	"write/link_accept_dzx":           {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/link_update":               {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/link_set_health":           {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/link_set_health_dzx":       {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/link_get":                  {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/link_wait_activated":       {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/link_wait_activated_dzx":   {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/link_drain":                {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/link_drain_dzx":            {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/link_delete":               {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/link_delete_dzx":           {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/device_interface_delete":   {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/device_interface_delete_2": {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/device_interface_delete_3": {ranges: []versionRange{{before: "0.19.0"}}},
+	"write/device_interface_delete_4": {ranges: []versionRange{{before: "0.19.0"}}},
 }
 
 // versionInRange checks whether ver falls within the half-open range [from, before).
@@ -1141,13 +1141,16 @@ func runWriteWorkflows(
 
 		// Link/multicast/accesspass creates use counter-based PDA derivation — must be sequential.
 		{name: "create_links_and_entities", parallel: false, steps: []writeStep{
-			{name: "link_create_wan", cmd: cli + " link create wan" +
+			// cascadeKnownFail: when these are known-incompatible (older CLIs that don't
+			// set use_onchain_allocation=true), downstream link_update/set_health phases
+			// are skipped rather than running and failing because the link doesn't exist.
+			{name: "link_create_wan", cascadeKnownFail: true, cmd: cli + " link create wan" +
 				" --code " + linkCode +
 				" --contributor " + contributorCode +
 				" --side-a " + deviceCode + " --side-a-interface " + ifaceName +
 				" --side-z " + deviceCode2 + " --side-z-interface " + ifaceName +
 				` --bandwidth "10 Gbps" --mtu 9000 --delay-ms 1 --jitter-ms 0.01`},
-			{name: "link_create_dzx", cmd: cli + " link create dzx" +
+			{name: "link_create_dzx", cascadeKnownFail: true, cmd: cli + " link create dzx" +
 				" --code " + dzxLinkCode +
 				" --contributor " + contributorCode +
 				" --side-a " + deviceCode + " --side-a-interface " + ifaceName2 +

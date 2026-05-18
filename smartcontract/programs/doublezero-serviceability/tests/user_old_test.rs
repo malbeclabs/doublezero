@@ -5,7 +5,7 @@ use doublezero_serviceability::{
         accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
         device::update::DeviceUpdateArgs,
-        user::{activate::*, create::*, delete::*, update::*},
+        user::{create::*, delete::*, update::*},
         *,
     },
     resource::ResourceType,
@@ -21,7 +21,6 @@ use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
 use std::net::Ipv4Addr;
-use user::closeaccount::UserCloseAccountArgs;
 
 mod test_helpers;
 use test_helpers::*;
@@ -74,7 +73,7 @@ async fn test_old_user() {
             local_asn: 65000,
             remote_asn: 65001,
             device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-            user_tunnel_block: "10.0.0.0/24".parse().unwrap(),
+            user_tunnel_block: "169.254.0.0/24".parse().unwrap(),
             multicastgroup_block: "224.0.0.0/16".parse().unwrap(),
             multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
             next_bgp_community: None,
@@ -212,7 +211,7 @@ async fn test_old_user() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -220,6 +219,9 @@ async fn test_old_user() {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -232,7 +234,7 @@ async fn test_old_user() {
         .unwrap();
     assert_eq!(device_la.account_type, AccountType::Device);
     assert_eq!(device_la.code, "la".to_string());
-    assert_eq!(device_la.status, DeviceStatus::Pending);
+    assert_eq!(device_la.status, DeviceStatus::Activated);
 
     execute_transaction(
         &mut banks_client,
@@ -260,36 +262,7 @@ async fn test_old_user() {
         .unwrap();
     assert_eq!(device_la.max_users, 128);
 
-    println!("✅ Device initialized successfully",);
-    /*****************************************************************************************************************************************************/
-    println!("🟢 5. Testing Activate Device...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(device::activate::DeviceActivateArgs {
-            resource_count: 2,
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(config_pubkey, false),
-            AccountMeta::new(tunnel_ids_pda, false),
-            AccountMeta::new(dz_prefix_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let device_la = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_device()
-        .unwrap();
-    assert_eq!(device_la.account_type, AccountType::Device);
-    assert_eq!(device_la.status, DeviceStatus::Activated);
-
-    println!("✅ Device activated successfully");
+    println!("✅ Device initialized and activated successfully");
     /***********************************************************************************************************************************/
     println!("🟢 6. Testing Access Pass creation...");
 
@@ -341,13 +314,17 @@ async fn test_old_user() {
             user_type: UserType::IBRL,
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -361,46 +338,16 @@ async fn test_old_user() {
     assert_eq!(user.account_type, AccountType::User);
     assert_eq!(user.client_ip.to_string(), "100.0.0.1");
     assert_eq!(user.device_pk, device_pubkey);
-    assert_eq!(user.status, UserStatus::Pending);
-
-    println!("✅ User created successfully",);
-    /***********************************************************************************************************************************/
-    println!("🟢 8. Testing User activation...");
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 500,
-            tunnel_net: "169.254.0.0/25".parse().unwrap(),
-            dz_ip: [200, 0, 0, 1].into(),
-            dz_prefix_count: 0, // legacy path - no ResourceExtension accounts
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.tunnel_id, 500);
-    assert_eq!(user.tunnel_net.to_string(), "169.254.0.0/25");
-    assert_eq!(user.dz_ip.to_string(), "200.0.0.1");
     assert_eq!(user.status, UserStatus::Activated);
 
-    println!("✅ User created successfully",);
+    println!("✅ User created and activated successfully",);
     /*****************************************************************************************************************************************************/
     println!("🟢 9. Testing User update...");
+    let user_before_update = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_user()
+        .unwrap();
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -408,16 +355,19 @@ async fn test_old_user() {
         DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
             user_type: Some(UserType::IBRL),
             cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
-            dz_ip: Some([200, 0, 0, 4].into()),
-            tunnel_id: Some(501),
-            tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
+            // Resource fields stay bitmap-coordinated; the happy-path test only
+            // touches non-resource fields.
             validator_pubkey: None,
             tenant_pk: None,
+            dz_prefix_count: 1,
             ..UserUpdateArgs::default()
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         &payer,
     )
@@ -432,90 +382,36 @@ async fn test_old_user() {
     assert_eq!(user.client_ip.to_string(), "100.0.0.1");
     assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
     assert_eq!(user.status, UserStatus::Activated);
+    // Resource fields preserved when not specified.
+    assert_eq!(user.dz_ip, user_before_update.dz_ip);
+    assert_eq!(user.tunnel_id, user_before_update.tunnel_id);
+    assert_eq!(user.tunnel_net, user_before_update.tunnel_net);
 
     println!("✅ User updated");
     /*****************************************************************************************************************************************************/
-    println!("🟢 10. Testing User update (regression test: unspecified dz_ip should not clear the dz_ip)...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
-            user_type: Some(UserType::IBRL),
-            cyoa_type: Some(UserCYOA::GREOverPrivatePeering),
-            dz_ip: None,
-            tunnel_id: Some(505),
-            tunnel_net: Some("169.254.0.2/25".parse().unwrap()),
-            validator_pubkey: None,
-            tenant_pk: None,
-            ..UserUpdateArgs::default()
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
+    println!("🟢 11. Testing User deletion (atomic)...");
+    let user_before_delete = get_account_data(&mut banks_client, user_pubkey)
         .await
         .expect("Unable to get Account")
         .get_user()
         .unwrap();
-    assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.client_ip.to_string(), "100.0.0.1");
-    assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
-    assert_eq!(user.status, UserStatus::Activated);
-    assert_eq!(user.dz_ip.to_string(), "200.0.0.4");
-
-    println!("✅ User updated");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 11. Testing User deletion...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.account_type, AccountType::User);
-    assert_eq!(user.client_ip.to_string(), "100.0.0.1");
-    assert_eq!(user.cyoa_type, UserCYOA::GREOverPrivatePeering);
-    assert_eq!(user.status, UserStatus::Deleting);
-
-    println!("✅ Link deleting");
-
-    /*****************************************************************************************************************************************************/
-    println!("🟢 12. Testing User deactivation...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-            dz_prefix_count: 0,
-            multicast_publisher_count: 0, // legacy path - no ResourceExtension accounts
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(user.owner, false),
-            AccountMeta::new(user.device_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+            AccountMeta::new(user_before_delete.owner, false),
         ],
         &payer,
     )
@@ -524,7 +420,7 @@ async fn test_old_user() {
     let user = get_account_data(&mut banks_client, user_pubkey).await;
     assert_eq!(user, None);
 
-    println!("✅ Link deleted successfully");
+    println!("✅ User deleted successfully");
 
     println!("🟢🟢🟢  End test_user  🟢🟢🟢");
 }

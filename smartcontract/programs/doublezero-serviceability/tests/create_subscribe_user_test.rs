@@ -5,7 +5,6 @@
 //! - Atomic path (dz_prefix_count>0): user created + allocated + activated with subscription
 //! - Publisher and subscriber count correctness
 //! - Backward compatibility (old args without dz_prefix_count)
-//! - Feature flag enforcement for atomic path
 //! - Invalid multicast group status rejection (graceful error, not panic)
 //! - Foundation allowlist owner override (custom owner for user creation)
 
@@ -20,26 +19,21 @@ use doublezero_serviceability::{
     processors::{
         accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
-        device::{
-            activate::DeviceActivateArgs, create::DeviceCreateArgs, update::DeviceUpdateArgs,
-        },
+        device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
         exchange::create::ExchangeCreateArgs,
-        globalconfig::set::SetGlobalConfigArgs,
-        globalstate::setfeatureflags::SetFeatureFlagsArgs,
         location::create::LocationCreateArgs,
         multicastgroup::{
-            activate::MulticastGroupActivateArgs,
             allowlist::{
                 publisher::add::AddMulticastGroupPubAllowlistArgs,
                 subscriber::add::AddMulticastGroupSubAllowlistArgs,
             },
             create::MulticastGroupCreateArgs,
             subscribe::UpdateMulticastGroupRolesArgs,
+            suspend::MulticastGroupSuspendArgs,
         },
         tenant::create::TenantCreateArgs,
         user::{
-            activate::UserActivateArgs, check_access_pass::CheckUserAccessPassArgs,
-            closeaccount::UserCloseAccountArgs, create_subscribe::UserCreateSubscribeArgs,
+            check_access_pass::CheckUserAccessPassArgs, create_subscribe::UserCreateSubscribeArgs,
             delete::UserDeleteArgs,
         },
     },
@@ -47,7 +41,6 @@ use doublezero_serviceability::{
     state::{
         accesspass::AccessPassType,
         device::DeviceType,
-        feature_flags::FeatureFlag,
         user::{TunnelFlags, UserCYOA, UserStatus, UserType},
     },
 };
@@ -95,68 +88,28 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
     program_test.set_compute_max_units(1_000_000);
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
-    let (device_tunnel_block_pda, _, _) =
+    let (_device_tunnel_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
     let (user_tunnel_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-    let (multicastgroup_block_pda, _, _) =
+    let (_multicastgroup_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
-    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
-    let (segment_routing_ids_pda, _, _) =
+    let (_link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (_segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
     let (multicast_publisher_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
-    let (admin_group_bits_pda, _, _) =
+    let (_vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (_admin_group_bits_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Init global state
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     // Set global config with link-local user_tunnel_block for onchain allocation
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
-            local_asn: 65000,
-            remote_asn: 65001,
-            device_tunnel_block: "10.100.0.0/24".parse().unwrap(),
-            user_tunnel_block: "169.254.0.0/24".parse().unwrap(),
-            multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
-            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
-            next_bgp_community: None,
-        }),
-        vec![
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicastgroup_block_pda, false),
-            AccountMeta::new(link_ids_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(vrf_ids_pda, false),
-            AccountMeta::new(admin_group_bits_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
     // Create Location
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);
@@ -222,9 +175,14 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
     )
     .await;
 
-    // Create Device
+    // Create Device (atomic create+activate via onchain allocation)
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_pubkey, _) = get_device_pda(&program_id, gs.account_index + 1);
+    let (tunnel_ids, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_block, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -237,7 +195,7 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -245,6 +203,9 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
         ],
         &payer,
     )
@@ -270,28 +231,6 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
     )
     .await;
 
-    // Activate Device (creates TunnelIds and DzPrefixBlock)
-    let (tunnel_ids, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
-    let (dz_prefix_block, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
     // Create and activate multicast group
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
@@ -303,26 +242,15 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             code: "group1".to_string(),
             max_bandwidth: 1000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: "224.0.0.1".parse().unwrap(),
-        }),
-        vec![
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -405,199 +333,6 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
 // Legacy Path Tests (dz_prefix_count=0)
 // ============================================================================
 
-/// Legacy CreateSubscribeUser: user created in Pending status with publisher subscription.
-#[tokio::test]
-async fn test_create_subscribe_user_legacy_publisher() {
-    let client_ip = [100, 0, 0, 1];
-    let f = setup_create_subscribe_fixture(client_ip).await;
-    let CreateSubscribeFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        accesspass_pubkey,
-        mgroup_pubkey,
-        user_ip,
-        ..
-    } = f;
-
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: user_ip,
-            publisher: true,
-            subscriber: false,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
-            owner: Pubkey::default(),
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should exist")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Pending);
-    assert_eq!(user.publishers, vec![mgroup_pubkey]);
-    assert!(user.subscribers.is_empty());
-    assert_eq!(
-        user.tunnel_id, 0,
-        "Legacy path should not allocate tunnel_id"
-    );
-
-    let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
-        .await
-        .expect("MulticastGroup should exist")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(mgroup.publisher_count, 1);
-    assert_eq!(mgroup.subscriber_count, 0);
-}
-
-/// Legacy CreateSubscribeUser: user created in Pending status with subscriber subscription.
-#[tokio::test]
-async fn test_create_subscribe_user_legacy_subscriber() {
-    let client_ip = [100, 0, 0, 2];
-    let f = setup_create_subscribe_fixture(client_ip).await;
-    let CreateSubscribeFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        accesspass_pubkey,
-        mgroup_pubkey,
-        user_ip,
-        ..
-    } = f;
-
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: user_ip,
-            publisher: false,
-            subscriber: true,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
-            owner: Pubkey::default(),
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should exist")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Pending);
-    assert!(user.publishers.is_empty());
-    assert_eq!(user.subscribers, vec![mgroup_pubkey]);
-
-    let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
-        .await
-        .expect("MulticastGroup should exist")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(mgroup.publisher_count, 0);
-    assert_eq!(mgroup.subscriber_count, 1);
-}
-
-/// Legacy CreateSubscribeUser: user created with both publisher and subscriber.
-#[tokio::test]
-async fn test_create_subscribe_user_legacy_publisher_and_subscriber() {
-    let client_ip = [100, 0, 0, 3];
-    let f = setup_create_subscribe_fixture(client_ip).await;
-    let CreateSubscribeFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        accesspass_pubkey,
-        mgroup_pubkey,
-        user_ip,
-        ..
-    } = f;
-
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: user_ip,
-            publisher: true,
-            subscriber: true,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
-            owner: Pubkey::default(),
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should exist")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Pending);
-    assert_eq!(user.publishers, vec![mgroup_pubkey]);
-    assert_eq!(user.subscribers, vec![mgroup_pubkey]);
-
-    let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
-        .await
-        .expect("MulticastGroup should exist")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(mgroup.publisher_count, 1);
-    assert_eq!(mgroup.subscriber_count, 1);
-}
-
 // ============================================================================
 // Atomic Path Tests (dz_prefix_count > 0)
 // ============================================================================
@@ -624,19 +359,6 @@ async fn test_create_subscribe_user_atomic_publisher() {
     } = f;
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    // Enable feature flag
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
-        }),
-        vec![AccountMeta::new(globalstate_pubkey, false)],
-        &payer,
-    )
-    .await;
 
     let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
 
@@ -724,19 +446,6 @@ async fn test_create_subscribe_user_atomic_subscriber() {
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    // Enable feature flag
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
-        }),
-        vec![AccountMeta::new(globalstate_pubkey, false)],
-        &payer,
-    )
-    .await;
-
     let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
 
     execute_transaction(
@@ -797,159 +506,6 @@ async fn test_create_subscribe_user_atomic_subscriber() {
 // Error Path Tests
 // ============================================================================
 
-/// Atomic CreateSubscribeUser fails when feature flag is disabled.
-#[tokio::test]
-async fn test_create_subscribe_user_atomic_feature_flag_disabled() {
-    let client_ip = [100, 0, 0, 6];
-    let f = setup_create_subscribe_fixture(client_ip).await;
-    let CreateSubscribeFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        accesspass_pubkey,
-        mgroup_pubkey,
-        user_ip,
-        user_tunnel_block,
-        multicast_publisher_block,
-        tunnel_ids,
-        dz_prefix_block,
-        ..
-    } = f;
-
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
-
-    // Feature flag NOT enabled — atomic create should fail
-    let result = execute_transaction_expect_failure(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: user_ip,
-            publisher: true,
-            subscriber: false,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 1,
-            owner: Pubkey::default(),
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    assert!(result.is_err(), "Should fail when feature flag is disabled");
-
-    // Verify user account was NOT created
-    let user_data = get_account_data(&mut banks_client, user_pubkey).await;
-    assert!(user_data.is_none(), "User account should not exist");
-}
-
-/// CreateSubscribeUser fails when multicast group is not activated (graceful error, not panic).
-#[tokio::test]
-async fn test_create_subscribe_user_inactive_mgroup_fails() {
-    let client_ip = [100, 0, 0, 7];
-    let f = setup_create_subscribe_fixture(client_ip).await;
-    let CreateSubscribeFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        accesspass_pubkey,
-        user_ip,
-        ..
-    } = f;
-
-    // Create a new mgroup but do NOT activate it
-    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (pending_mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
-            code: "pending".to_string(),
-            max_bandwidth: 1000,
-            owner: payer.pubkey(),
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(pending_mgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Add to allowlists (the accesspass allowlist check happens before status check)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
-            client_ip: user_ip,
-            user_payer: payer.pubkey(),
-        }),
-        vec![
-            AccountMeta::new(pending_mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
-
-    // Attempt CreateSubscribeUser with inactive mgroup — should return graceful error
-    let result = execute_transaction_expect_failure(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: user_ip,
-            publisher: false,
-            subscriber: true,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
-            owner: Pubkey::default(),
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(pending_mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    assert!(
-        result.is_err(),
-        "Should fail with graceful error when mgroup is not activated"
-    );
-}
-
 /// Multicast user creation succeeds when the access-pass has a tenant_allowlist.
 ///
 /// Regression test: multicast connections are not tenant-scoped. A user with an access-pass
@@ -967,6 +523,10 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
         device_pubkey,
         mgroup_pubkey,
         user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
         ..
     } = f;
 
@@ -1067,7 +627,7 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
             publisher: false,
             subscriber: true,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             owner: Pubkey::default(),
         }),
         vec![
@@ -1076,6 +636,10 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
         ],
         &payer,
     )
@@ -1086,7 +650,7 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
         .expect("User should exist")
         .get_user()
         .unwrap();
-    assert_eq!(user.status, UserStatus::Pending);
+    assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.subscribers, vec![mgroup_pubkey]);
 }
 
@@ -1108,6 +672,10 @@ async fn test_create_subscribe_user_ignores_expired_epoch() {
         accesspass_pubkey,
         mgroup_pubkey,
         user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
         ..
     } = f;
 
@@ -1146,7 +714,7 @@ async fn test_create_subscribe_user_ignores_expired_epoch() {
             publisher: true,
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             owner: Pubkey::default(),
         }),
         vec![
@@ -1155,6 +723,10 @@ async fn test_create_subscribe_user_ignores_expired_epoch() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
         ],
         &payer,
     )
@@ -1165,7 +737,10 @@ async fn test_create_subscribe_user_ignores_expired_epoch() {
         .expect("User should exist")
         .get_user()
         .unwrap();
-    assert_eq!(user.status, UserStatus::Pending);
+    // Multicast creation is not blocked by an expired access pass — the user is
+    // still created (and ends up in OutOfCredits because try_activate sees the
+    // pass as Expired). Multicast access is then gated by mgroup_*_allowlist.
+    assert_eq!(user.status, UserStatus::OutOfCredits);
     assert_eq!(user.publishers, vec![mgroup_pubkey]);
     assert_eq!(user.user_type, UserType::Multicast);
 }
@@ -1194,7 +769,7 @@ async fn test_check_access_pass_multicast_stays_activated() {
         dz_prefix_block,
     } = f;
 
-    // Create a Pending multicast publisher user
+    // Create a multicast publisher user — atomic create+allocate+activate.
     let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     execute_transaction(
@@ -1208,35 +783,13 @@ async fn test_check_access_pass_multicast_stays_activated() {
             publisher: true,
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             owner: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Activate the user (Pending → Activated)
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(user_tunnel_block, false),
@@ -1308,430 +861,6 @@ async fn test_check_access_pass_multicast_stays_activated() {
 // Regression Tests: tunnel_flags (CreatedAsPublisher) and counter lifecycle
 // ============================================================================
 
-/// Regression test: verify `tunnel_flags` is set at creation time (via create_user_core)
-/// and confirmed on first Pending activation, then PRESERVED through re-activation after
-/// unsubscribing (the Updating→Activated path must NOT reset the flag).
-///
-/// This covers the exact E2E failure scenario: publisher connects (CreateSubscribeUser →
-/// ActivateUser), then disconnects (UpdateMulticastGroupRoles publisher=false → ActivateUser).
-/// After disconnect, CreatedAsPublisher flag must still be set so delete decrements publishers_count.
-#[tokio::test]
-async fn test_publisher_multicast_publisher_persists_through_disconnect() {
-    let client_ip = [100, 0, 0, 90];
-    let f = setup_create_subscribe_fixture(client_ip).await;
-    let CreateSubscribeFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        accesspass_pubkey,
-        mgroup_pubkey,
-        user_ip,
-        user_tunnel_block,
-        multicast_publisher_block,
-        tunnel_ids,
-        dz_prefix_block,
-    } = f;
-
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
-
-    // Step 1: CreateSubscribeUser with publisher=true (legacy, non-atomic)
-    // create_user_core sets is_publisher=true → device.publishers_count++
-    // and TunnelFlags::CreatedAsPublisher set at creation.
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: user_ip,
-            publisher: true,
-            subscriber: false,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
-            owner: Pubkey::default(),
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user_created = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should exist")
-        .get_user()
-        .unwrap();
-    assert_eq!(user_created.status, UserStatus::Pending);
-    assert_eq!(user_created.publishers, vec![mgroup_pubkey]);
-    assert!(
-        TunnelFlags::is_set(user_created.tunnel_flags, TunnelFlags::CreatedAsPublisher),
-        "CreatedAsPublisher flag must be set at creation (create_user_core sets is_publisher)"
-    );
-
-    // Verify device counter incremented at creation
-    let device_created = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device should exist")
-        .get_device()
-        .unwrap();
-    assert_eq!(
-        device_created.multicast_publishers_count, 1,
-        "publishers_count must be 1 after CreateSubscribeUser(publisher=true)"
-    );
-    assert_eq!(
-        device_created.multicast_subscribers_count, 0,
-        "subscribers_count must be 0 (user is a publisher)"
-    );
-
-    // Step 2: First activation (Pending → Activated) — "only on Pending" sets flag
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user_activated = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should exist")
-        .get_user()
-        .unwrap();
-    assert_eq!(user_activated.status, UserStatus::Activated);
-    assert!(
-        TunnelFlags::is_set(user_activated.tunnel_flags, TunnelFlags::CreatedAsPublisher),
-        "CreatedAsPublisher flag must be set after first (Pending) activation with publishers non-empty"
-    );
-
-    // Step 3: Disconnect — unsubscribe as publisher (legacy path → status=Updating, publishers=[])
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-            client_ip: user_ip,
-            publisher: false,
-            subscriber: false,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user_updating = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should exist")
-        .get_user()
-        .unwrap();
-    assert_eq!(user_updating.status, UserStatus::Updating);
-    assert!(user_updating.publishers.is_empty());
-    // CreatedAsPublisher flag should still be set (UpdateMulticastGroupRoles doesn't touch it)
-    assert!(
-        TunnelFlags::is_set(user_updating.tunnel_flags, TunnelFlags::CreatedAsPublisher),
-        "CreatedAsPublisher flag must still be set after unsubscribing (only activate.rs touches tunnel_flags)"
-    );
-
-    // Step 4: Re-activation (Updating → Activated) — THE KEY REGRESSION CHECK
-    // activate.rs must NOT reset CreatedAsPublisher flag when publishers is empty.
-    // "only on Pending" approach: Updating activations never change the flag.
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user_reactivated = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should exist")
-        .get_user()
-        .unwrap();
-    assert_eq!(user_reactivated.status, UserStatus::Activated);
-    assert!(
-        user_reactivated.publishers.is_empty(),
-        "publishers list should be empty after unsubscribing"
-    );
-    assert!(
-        TunnelFlags::is_set(
-            user_reactivated.tunnel_flags,
-            TunnelFlags::CreatedAsPublisher
-        ),
-        "REGRESSION: CreatedAsPublisher flag must STAY set after re-activation (Updating) with \
-         empty publishers. This is the core fix — activate.rs must not reset the flag on \
-         re-activation, only set it on first Pending activation."
-    );
-}
-
-/// Regression test: verify `multicast_publishers_count` is decremented (not
-/// `multicast_subscribers_count`) when a publisher created via CreateSubscribeUser disconnects
-/// and is deleted.
-///
-/// This is the exact production scenario that caused the E2E test failure: publisher
-/// connects → disconnects (unsubscribe + re-activate with empty publishers) → deletes.
-/// Before the fix, the delete always decremented subscribers_count (bug). After the fix,
-/// it correctly decrements publishers_count.
-#[tokio::test]
-async fn test_publisher_disconnect_delete_decrements_publishers_count() {
-    let client_ip = [100, 0, 0, 91];
-    let f = setup_create_subscribe_fixture(client_ip).await;
-    let CreateSubscribeFixture {
-        mut banks_client,
-        payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        accesspass_pubkey,
-        mgroup_pubkey,
-        user_ip,
-        user_tunnel_block,
-        multicast_publisher_block,
-        tunnel_ids,
-        dz_prefix_block,
-    } = f;
-
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
-
-    // Step 1: CreateSubscribeUser(publisher=true) — publishers_count=1
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-            user_type: UserType::Multicast,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: user_ip,
-            publisher: true,
-            subscriber: false,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
-            owner: Pubkey::default(),
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Step 2: First Pending activation
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Step 3: Disconnect — unsubscribe (publishers → [], status → Updating)
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
-            client_ip: user_ip,
-            publisher: false,
-            subscriber: false,
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Step 4: Re-activation (Updating → Activated)
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-            tunnel_id: 0,
-            tunnel_net: "0.0.0.0/0".parse().unwrap(),
-            dz_ip: [0, 0, 0, 0].into(),
-            dz_prefix_count: 1,
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user_after_disconnect = get_account_data(&mut banks_client, user_pubkey)
-        .await
-        .expect("User should exist")
-        .get_user()
-        .unwrap();
-    assert_eq!(user_after_disconnect.status, UserStatus::Activated);
-    assert!(
-        TunnelFlags::is_set(
-            user_after_disconnect.tunnel_flags,
-            TunnelFlags::CreatedAsPublisher
-        ),
-        "CreatedAsPublisher flag must be set after disconnect re-activation"
-    );
-
-    let user_owner = user_after_disconnect.owner;
-
-    // Capture counters before legacy delete
-    let device_before = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device should exist")
-        .get_device()
-        .unwrap();
-    assert_eq!(
-        device_before.multicast_publishers_count, 1,
-        "publishers_count must be 1 before delete (set at CreateSubscribeUser)"
-    );
-    assert_eq!(
-        device_before.multicast_subscribers_count, 0,
-        "subscribers_count must be 0 (user is a publisher)"
-    );
-
-    // Step 5: Legacy DeleteUser (status → Deleting)
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-            dz_prefix_count: 0,
-            multicast_publisher_count: 0,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Step 6: Legacy CloseAccountUser → REGRESSION CHECK: publishers_count decremented
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-            dz_prefix_count: 0,
-            multicast_publisher_count: 0,
-        }),
-        vec![
-            AccountMeta::new(user_pubkey, false),
-            AccountMeta::new(user_owner, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let user_closed = get_account_data(&mut banks_client, user_pubkey).await;
-    assert!(user_closed.is_none(), "User account should be closed");
-
-    let device_after = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device should exist")
-        .get_device()
-        .unwrap();
-    assert_eq!(
-        device_after.multicast_publishers_count, 0,
-        "REGRESSION: publishers_count must be decremented from 1 to 0. \
-         Bug: was never decremented because tunnel_flags was reset on re-activation on re-activation."
-    );
-    assert_eq!(
-        device_after.multicast_subscribers_count, 0,
-        "subscribers_count must remain 0 (was never incremented for publisher user)"
-    );
-}
-
 // ============================================================================
 // Owner Override Tests
 // ============================================================================
@@ -1751,68 +880,28 @@ async fn test_create_subscribe_user_foundation_owner_override() {
     program_test.set_compute_max_units(1_000_000);
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
-    let (device_tunnel_block_pda, _, _) =
+    let (_device_tunnel_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
     let (user_tunnel_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-    let (multicastgroup_block_pda, _, _) =
+    let (_multicastgroup_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
-    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
-    let (segment_routing_ids_pda, _, _) =
+    let (_link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (_segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
     let (multicast_publisher_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
-    let (admin_group_bits_pda, _, _) =
+    let (_vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (_admin_group_bits_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Init global state (payer is automatically in foundation_allowlist)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     // Set global config
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
-            local_asn: 65000,
-            remote_asn: 65001,
-            device_tunnel_block: "10.100.0.0/24".parse().unwrap(),
-            user_tunnel_block: "169.254.0.0/24".parse().unwrap(),
-            multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
-            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
-            next_bgp_community: None,
-        }),
-        vec![
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicastgroup_block_pda, false),
-            AccountMeta::new(link_ids_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(vrf_ids_pda, false),
-            AccountMeta::new(admin_group_bits_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
     // Create Location, Exchange, Contributor
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);
@@ -1876,9 +965,13 @@ async fn test_create_subscribe_user_foundation_owner_override() {
     )
     .await;
 
-    // Create and activate Device
+    // Create and activate Device (atomic via onchain allocation)
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_pubkey, _) = get_device_pda(&program_id, gs.account_index + 1);
+    let (tunnel_ids, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_block, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1891,7 +984,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1899,6 +992,9 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
         ],
         &payer,
     )
@@ -1923,26 +1019,6 @@ async fn test_create_subscribe_user_foundation_owner_override() {
     )
     .await;
 
-    let (tunnel_ids, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
-    let (dz_prefix_block, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
     // Create and activate multicast group
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
@@ -1954,26 +1030,15 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             code: "group1".to_string(),
             max_bandwidth: 1000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: "224.0.0.1".parse().unwrap(),
-        }),
-        vec![
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -2037,7 +1102,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             publisher: true,
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             owner: custom_owner,
         }),
         vec![
@@ -2046,6 +1111,10 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
         ],
         &payer,
     )
@@ -2061,7 +1130,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
         user.owner, custom_owner,
         "User owner should be the custom owner, not the payer"
     );
-    assert_eq!(user.status, UserStatus::Pending);
+    assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.publishers, vec![mgroup_pubkey]);
 }
 
@@ -2095,37 +1164,28 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
 
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
-    let (device_tunnel_block_pda, _, _) =
+    let (_device_tunnel_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
     let (user_tunnel_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-    let (multicastgroup_block_pda, _, _) =
+    let (_multicastgroup_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
-    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
-    let (segment_routing_ids_pda, _, _) =
+    let (_link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (_segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
     let (multicast_publisher_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
-    let (admin_group_bits_pda, _, _) =
+    let (_vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (_admin_group_bits_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Init global state
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    // Set sentinel_authority_pk to our second keypair
 
     // Set sentinel_authority_pk to our second keypair
     use doublezero_serviceability::processors::globalstate::setauthority::SetAuthorityArgs;
@@ -2145,35 +1205,6 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
     .await;
 
     // Set global config
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
-            local_asn: 65000,
-            remote_asn: 65001,
-            device_tunnel_block: "10.100.0.0/24".parse().unwrap(),
-            user_tunnel_block: "169.254.0.0/24".parse().unwrap(),
-            multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
-            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
-            next_bgp_community: None,
-        }),
-        vec![
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicastgroup_block_pda, false),
-            AccountMeta::new(link_ids_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(vrf_ids_pda, false),
-            AccountMeta::new(admin_group_bits_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
     // Create Location, Exchange, Contributor
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);
@@ -2237,9 +1268,13 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
     )
     .await;
 
-    // Create and activate Device
+    // Create and activate Device (atomic via onchain allocation)
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_pubkey, _) = get_device_pda(&program_id, gs.account_index + 1);
+    let (tunnel_ids, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_block, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2252,7 +1287,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -2260,6 +1295,9 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
         ],
         &payer,
     )
@@ -2284,26 +1322,6 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
     )
     .await;
 
-    let (tunnel_ids, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
-    let (dz_prefix_block, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
     // Create and activate multicast group
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
@@ -2315,26 +1333,15 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             code: "group1".to_string(),
             max_bandwidth: 1000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: "224.0.0.1".parse().unwrap(),
-        }),
-        vec![
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -2396,7 +1403,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             publisher: true,
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             owner: custom_owner,
         }),
         vec![
@@ -2405,6 +1412,10 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
         ],
         &sentinel,
     )
@@ -2420,7 +1431,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
         user.owner, custom_owner,
         "User owner should be the custom owner, not the sentinel"
     );
-    assert_eq!(user.status, UserStatus::Pending);
+    assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.publishers, vec![mgroup_pubkey]);
 }
 
@@ -2455,68 +1466,28 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
 
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
-    let (device_tunnel_block_pda, _, _) =
+    let (_device_tunnel_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (user_tunnel_block, _, _) =
+    let (_user_tunnel_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-    let (multicastgroup_block_pda, _, _) =
+    let (_multicastgroup_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
-    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
-    let (segment_routing_ids_pda, _, _) =
+    let (_link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (_segment_routing_ids_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
-    let (multicast_publisher_block, _, _) =
+    let (_multicast_publisher_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
-    let (admin_group_bits_pda, _, _) =
+    let (_vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (_admin_group_bits_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Init global state with foundation payer
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     // Set global config
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
-            local_asn: 65000,
-            remote_asn: 65001,
-            device_tunnel_block: "10.100.0.0/24".parse().unwrap(),
-            user_tunnel_block: "169.254.0.0/24".parse().unwrap(),
-            multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
-            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
-            next_bgp_community: None,
-        }),
-        vec![
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(user_tunnel_block, false),
-            AccountMeta::new(multicastgroup_block_pda, false),
-            AccountMeta::new(link_ids_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
-            AccountMeta::new(multicast_publisher_block, false),
-            AccountMeta::new(vrf_ids_pda, false),
-            AccountMeta::new(admin_group_bits_pda, false),
-        ],
-        &payer,
-    )
-    .await;
-
     // Create Location, Exchange, Contributor (with foundation payer)
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);
@@ -2580,9 +1551,13 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
     )
     .await;
 
-    // Create and activate Device (payer is in foundation, allows on non-activated device)
+    // Create and activate Device (atomic via onchain allocation)
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_pubkey, _) = get_device_pda(&program_id, gs.account_index + 1);
+    let (tunnel_ids, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_block, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2595,7 +1570,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -2603,6 +1578,9 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
         ],
         &payer,
     )
@@ -2627,26 +1605,6 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
     )
     .await;
 
-    let (tunnel_ids, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
-    let (dz_prefix_block, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(tunnel_ids, false),
-            AccountMeta::new(dz_prefix_block, false),
-        ],
-        &payer,
-    )
-    .await;
-
     // Create and activate multicast group
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
@@ -2658,26 +1616,15 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             code: "group1".to_string(),
             max_bandwidth: 1000,
             owner: payer.pubkey(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: "224.0.0.1".parse().unwrap(),
-        }),
-        vec![
-            AccountMeta::new(mgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -2764,9 +1711,8 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
 // Unsubscribe Pending User (regression for oracle withdrawal deadlock)
 // ============================================================================
 
-/// A user created via CreateSubscribeUser (legacy) is Pending with a publisher
-/// subscription. Unsubscribing (publisher: false, subscriber: false) must
-/// succeed so the oracle can clean up the user before activation.
+/// A multicast publisher created via CreateSubscribeUser can be unsubscribed
+/// (publisher: false, subscriber: false) so the oracle can clean up the user.
 #[tokio::test]
 async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
     let client_ip = [100, 0, 0, 99];
@@ -2780,13 +1726,15 @@ async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
         accesspass_pubkey,
         mgroup_pubkey,
         user_ip,
-        ..
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
     } = f;
 
     let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    // Create user via legacy path — user is Pending with publisher subscription.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2798,7 +1746,7 @@ async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
             publisher: true,
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             owner: Pubkey::default(),
         }),
         vec![
@@ -2807,6 +1755,10 @@ async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
         ],
         &payer,
     )
@@ -2817,11 +1769,10 @@ async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
         .expect("User should exist")
         .get_user()
         .unwrap();
-    assert_eq!(user.status, UserStatus::Pending);
+    assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.publishers, vec![mgroup_pubkey]);
 
-    // Unsubscribe the Pending user — this is the path the oracle takes during
-    // instant withdrawal cleanup. Before the fix this returned InvalidStatus.
+    // Unsubscribe — the oracle uses this path during withdrawal cleanup.
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     try_execute_transaction(
         &mut banks_client,
@@ -2831,24 +1782,28 @@ async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
             client_ip: user_ip,
             publisher: false,
             subscriber: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(get_globalstate_pda(&program_id).0, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
     .await
-    .expect("Unsubscribe should succeed for Pending user");
+    .expect("Unsubscribe should succeed");
 
     let user = get_account_data(&mut banks_client, user_pubkey)
         .await
         .expect("User should exist")
         .get_user()
         .unwrap();
-    assert_eq!(user.status, UserStatus::Pending);
     assert!(user.publishers.is_empty(), "Publisher should be removed");
 
     let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
@@ -2859,10 +1814,9 @@ async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
     assert_eq!(mgroup.publisher_count, 0);
 }
 
-/// Subscribing a Pending user must succeed so that CreateSubscribeUser (which
-/// only takes one mgroup) can be followed by additional UpdateMulticastGroupRoles
-/// calls before the activator runs.  This mirrors the shred oracle flow where a
-/// user is subscribed to multiple multicast groups at creation time.
+/// CreateSubscribeUser (which only takes one mgroup) can be followed by
+/// additional UpdateMulticastGroupRoles calls to add roles or subscribe to
+/// further groups. This mirrors the shred oracle flow.
 #[tokio::test]
 async fn test_subscribe_pending_user_succeeds() {
     let client_ip = [100, 0, 0, 98];
@@ -2876,13 +1830,15 @@ async fn test_subscribe_pending_user_succeeds() {
         accesspass_pubkey,
         mgroup_pubkey,
         user_ip,
-        ..
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
     } = f;
 
     let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    // Create user via legacy path — user is Pending with publisher subscription.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -2894,7 +1850,7 @@ async fn test_subscribe_pending_user_succeeds() {
             publisher: true,
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            dz_prefix_count: 0,
+            dz_prefix_count: 1,
             owner: Pubkey::default(),
         }),
         vec![
@@ -2903,6 +1859,10 @@ async fn test_subscribe_pending_user_succeeds() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
         ],
         &payer,
     )
@@ -2913,7 +1873,7 @@ async fn test_subscribe_pending_user_succeeds() {
         .expect("User should exist")
         .get_user()
         .unwrap();
-    assert_eq!(user.status, UserStatus::Pending);
+    assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.publishers, vec![mgroup_pubkey]);
 
     // Subscribe the Pending user as subscriber to the same group.
@@ -2928,28 +1888,341 @@ async fn test_subscribe_pending_user_succeeds() {
             client_ip: user_ip,
             publisher: true,
             subscriber: true,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(get_globalstate_pda(&program_id).0, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
     .await
-    .expect("Subscribe should succeed for Pending user");
+    .expect("Subscribe should succeed");
 
     let user = get_account_data(&mut banks_client, user_pubkey)
         .await
         .expect("User should exist")
         .get_user()
         .unwrap();
-    assert_eq!(
-        user.status,
-        UserStatus::Pending,
-        "User should remain Pending"
-    );
+    assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.publishers, vec![mgroup_pubkey]);
     assert_eq!(user.subscribers, vec![mgroup_pubkey]);
+}
+
+/// CreateSubscribeUser fails when the multicast group is not Activated.
+/// Regression: subscribe must reject any non-Activated mgroup status — here
+/// we exercise Suspended (Activated -> Suspended via SuspendMulticastGroup).
+#[tokio::test]
+async fn test_create_subscribe_user_inactive_mgroup_fails() {
+    let client_ip = [100, 0, 0, 97];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+    } = f;
+
+    // Suspend the mgroup so it is no longer Activated.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SuspendMulticastGroup(MulticastGroupSuspendArgs {}),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Attempt CreateSubscribeUser against the Suspended mgroup — must fail gracefully.
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "CreateSubscribeUser must fail when mgroup is not Activated"
+    );
+}
+
+/// CreatedAsPublisher tunnel_flags bit must persist across a publisher disconnect
+/// (unsubscribe with publisher=false, subscriber=false). This is the durable
+/// "user was created as a publisher" marker that delete uses to decrement the
+/// correct device counter.
+#[tokio::test]
+async fn test_publisher_multicast_publisher_persists_through_disconnect() {
+    let client_ip = [100, 0, 0, 90];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+    } = f;
+
+    // Atomic CreateSubscribeUser(publisher=true) — sets CreatedAsPublisher.
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: true,
+            subscriber: false,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_created = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user_created.status, UserStatus::Activated);
+    assert_eq!(user_created.publishers, vec![mgroup_pubkey]);
+    assert!(
+        TunnelFlags::is_set(user_created.tunnel_flags, TunnelFlags::CreatedAsPublisher),
+        "CreatedAsPublisher must be set after CreateSubscribeUser(publisher=true)"
+    );
+
+    let device_created = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device should exist")
+        .get_device()
+        .unwrap();
+    assert_eq!(device_created.multicast_publishers_count, 1);
+    assert_eq!(device_created.multicast_subscribers_count, 0);
+
+    // Disconnect: unsubscribe as publisher (and subscriber). The CreatedAsPublisher
+    // flag must remain set — UpdateMulticastGroupRoles does not touch tunnel_flags.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_publisher_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_after = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert!(user_after.publishers.is_empty());
+    assert!(
+        TunnelFlags::is_set(user_after.tunnel_flags, TunnelFlags::CreatedAsPublisher),
+        "CreatedAsPublisher must STAY set after a publisher unsubscribes — the flag is the \
+         durable record of which device counter to decrement at delete time"
+    );
+}
+
+/// Atomic DeleteUser of a user that was *created* as a publisher (even if their
+/// publishers list is currently empty) must decrement `multicast_publishers_count`,
+/// not `multicast_subscribers_count`. The decision is driven by the
+/// `CreatedAsPublisher` tunnel_flags bit, not the live publishers list.
+#[tokio::test]
+async fn test_publisher_disconnect_delete_decrements_publishers_count() {
+    let client_ip = [100, 0, 0, 91];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+    } = f;
+
+    // Create publisher.
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: true,
+            subscriber: false,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Disconnect — drains the publishers list but keeps the CreatedAsPublisher flag.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_publisher_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_before_delete = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert!(user_before_delete.publishers.is_empty());
+
+    // Atomic DeleteUser. Delete must consult CreatedAsPublisher to pick the right
+    // counter — publishers_count down by 1, subscribers_count unchanged.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            dz_prefix_count: 1,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+            AccountMeta::new(user_before_delete.owner, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let device_after = get_account_data(&mut banks_client, device_pubkey)
+        .await
+        .unwrap()
+        .get_device()
+        .unwrap();
+    assert_eq!(
+        device_after.multicast_publishers_count, 0,
+        "publishers_count must drop to 0 (CreatedAsPublisher routes the decrement here)"
+    );
+    assert_eq!(
+        device_after.multicast_subscribers_count, 0,
+        "subscribers_count must NOT change — user was created as publisher"
+    );
 }

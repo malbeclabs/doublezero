@@ -1,259 +1,18 @@
-use std::net::Ipv4Addr;
-
 use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::multicastgroup::{
-        activate::MulticastGroupActivateArgs, closeaccount::MulticastGroupDeactivateArgs,
-        create::*, delete::*, reactivate::*, suspend::*, update::*,
+        closeaccount::MulticastGroupDeactivateArgs, create::*, delete::*,
+        reactivate::MulticastGroupReactivateArgs, suspend::MulticastGroupSuspendArgs, update::*,
     },
-    state::{accounttype::AccountType, multicastgroup::*},
+    resource::ResourceType,
+    state::multicastgroup::*,
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
 
 mod test_helpers;
 use test_helpers::*;
-
-#[tokio::test]
-async fn test_multicastgroup() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
-
-    /***********************************************************************************************************************************/
-    println!("🟢  Start test_multicastgroup");
-
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-
-    println!("🟢 1. Global Initialization...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    /***********************************************************************************************************************************/
-    // MulticastGroup _la
-
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-
-    println!("1. Testing MulticastGroup initialization...");
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    assert_eq!(globalstate_account.account_index, 0);
-
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
-            code: "la".to_string(),
-            max_bandwidth: 1000,
-            owner: Pubkey::new_unique(),
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let multicastgroup_la = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
-    assert_eq!(multicastgroup_la.code, "la".to_string());
-    assert_eq!(
-        multicastgroup_la.multicast_ip,
-        std::net::Ipv4Addr::UNSPECIFIED
-    );
-    assert_eq!(multicastgroup_la.max_bandwidth, 1000);
-    assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Pending);
-
-    println!("✅ MulticastGroup initialized successfully",);
-
-    /*****************************************************************************************************************************************************/
-    println!("2. Testing MulticastGroup suspend...");
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: [224, 0, 0, 0].into(),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let multicastgroup_la = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
-    assert_eq!(multicastgroup_la.code, "la".to_string());
-    assert_eq!(multicastgroup_la.multicast_ip.to_string(), "224.0.0.0");
-    assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Activated);
-
-    println!("✅ MulticastGroup activate successfully",);
-    /*****************************************************************************************************************************************************/
-    println!("2. Testing MulticastGroup suspend...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SuspendMulticastGroup(MulticastGroupSuspendArgs {}),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let multicastgroup_la = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
-    assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Suspended);
-
-    println!("✅ MulticastGroup suspended");
-    /*****************************************************************************************************************************************************/
-    println!("3. Testing MulticastGroup reactivated...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ReactivateMulticastGroup(MulticastGroupReactivateArgs {}),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let multicastgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(multicastgroup.account_type, AccountType::MulticastGroup);
-    assert_eq!(multicastgroup.status, MulticastGroupStatus::Activated);
-
-    println!("✅ MulticastGroup reactivated");
-    /*****************************************************************************************************************************************************/
-    println!("4. Testing MulticastGroup update...");
-    let new_owner = Pubkey::new_unique();
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
-            code: Some("la2".to_string()),
-            multicast_ip: Some([239, 1, 1, 2].into()),
-            max_bandwidth: Some(2000),
-            // Keep publisher/subscriber counts at zero so that DeactivateMulticastGroup
-            // can successfully close the account once it reaches Deleting status.
-            publisher_count: None,
-            subscriber_count: None,
-            use_onchain_allocation: false,
-            owner: Some(new_owner),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let multicastgroup_la = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
-    assert_eq!(multicastgroup_la.code, "la2".to_string());
-    assert_eq!(multicastgroup_la.multicast_ip, Ipv4Addr::new(239, 1, 1, 2));
-    assert_eq!(multicastgroup_la.max_bandwidth, 2000);
-    assert_eq!(multicastgroup_la.publisher_count, 0);
-    assert_eq!(multicastgroup_la.subscriber_count, 0);
-    assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Activated);
-    assert_eq!(multicastgroup_la.owner, new_owner);
-
-    println!("✅ MulticastGroup updated");
-    /*****************************************************************************************************************************************************/
-    println!("5. Testing MulticastGroup deletion...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
-            use_onchain_deallocation: false,
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let multicastgroup_la = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(multicastgroup_la.account_type, AccountType::MulticastGroup);
-    assert_eq!(multicastgroup_la.code, "la2".to_string());
-    assert_eq!(multicastgroup_la.status, MulticastGroupStatus::Deleting);
-
-    println!("✅ MulticastGroup deleted");
-    /*****************************************************************************************************************************************************/
-    println!("6. Testing MulticastGroup deactivation (final delete)...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
-            use_onchain_deallocation: false,
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(new_owner, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let multicastgroup_la = get_account_data(&mut banks_client, multicastgroup_pubkey).await;
-    assert_eq!(multicastgroup_la, None);
-
-    println!("✅ MulticastGroup deleted successfully");
-    println!("🟢  End test_multicastgroup");
-}
 
 #[tokio::test]
 async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
@@ -261,21 +20,10 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
 
     println!("🟢  Start test_multicastgroup_deactivate_fails_when_counts_nonzero");
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (multicastgroup_pubkey, _) =
@@ -289,11 +37,15 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
             code: "la".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -305,33 +57,22 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: [224, 0, 0, 0].into(),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
         DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
             code: None,
             multicast_ip: None,
             max_bandwidth: None,
             publisher_count: Some(1),
             subscriber_count: Some(1),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
             owner: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -351,11 +92,15 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
-            use_onchain_deallocation: false,
+            use_onchain_deallocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -379,123 +124,16 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
 }
 
 #[tokio::test]
-async fn test_multicastgroup_deactivate_fails_when_not_deleting() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
-
-    println!("🟢  Start test_multicastgroup_deactivate_fails_when_not_deleting");
-
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
-            code: "la".to_string(),
-            max_bandwidth: 1000,
-            owner: Pubkey::new_unique(),
-            use_onchain_allocation: false,
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    // Activate the multicast group (status = Activated, not Deleting)
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: [224, 0, 0, 0].into(),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let multicastgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(multicastgroup.status, MulticastGroupStatus::Activated);
-
-    // Try to deactivate without first deleting (status is Activated, not Deleting)
-    let result = try_execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
-            use_onchain_deallocation: false,
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(multicastgroup.owner, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    assert!(result.is_err());
-    let error_string = format!("{:?}", result.unwrap_err());
-    assert!(
-        error_string.contains("Custom(7)"),
-        "Expected InvalidStatus error (Custom(7)), got: {}",
-        error_string
-    );
-
-    println!("✅ Deactivating non-deleting multicastgroup correctly fails with InvalidStatus");
-    println!("🟢  End test_multicastgroup_deactivate_fails_when_not_deleting");
-}
-
-#[tokio::test]
 async fn test_multicastgroup_create_with_wrong_index_fails() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
     println!("🟢  Start test_multicastgroup_create_with_wrong_index_fails");
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (_program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
     println!("1. Global Initialization...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     println!("2. Testing MulticastGroup creation with wrong index...");
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
@@ -517,11 +155,15 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
             code: "test".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(wrong_multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -545,11 +187,15 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
             code: "test".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(correct_multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
@@ -567,60 +213,117 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
     println!("🟢  End test_multicastgroup_create_with_wrong_index_fails");
 }
 
+/// DeactivateMulticastGroup (closeaccount) requires status == Deleting.
+/// Calling it directly on an Activated mgroup must fail with InvalidStatus.
 #[tokio::test]
-async fn test_multicastgroup_reactivate_invalid_status_fails() {
+async fn test_multicastgroup_deactivate_fails_when_not_deleting() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
-    println!("🟢  Start test_multicastgroup_reactivate_invalid_status_fails");
-
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
-    println!("1. Global Initialization...");
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+
+    // Atomic create+activate via onchain allocation.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::InitGlobalState(),
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "la".to_string(),
+            max_bandwidth: 1000,
+            owner: Pubkey::new_unique(),
+            use_onchain_allocation: true,
+        }),
         vec![
-            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
     .await;
 
-    println!("2. Create MulticastGroup (status Pending)...");
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+    let mgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
+        .await
+        .unwrap()
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
+
+    // DeactivateMulticastGroup on an Activated (non-Deleting) mgroup must fail.
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
+            use_onchain_deallocation: true,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(mgroup.owner, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "deactivate should reject non-Deleting status"
+    );
+    let err = format!("{:?}", result.unwrap_err());
+    assert!(
+        err.contains("Custom(7)"),
+        "Expected InvalidStatus (Custom(7)), got: {err}"
+    );
+}
+
+/// ReactivateMulticastGroup requires status == Suspended. From Activated
+/// (the natural post-create state) it must fail with InvalidStatus.
+#[tokio::test]
+async fn test_multicastgroup_reactivate_invalid_status_fails() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
-            code: "reactivate-test".to_string(),
+            code: "la".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
         ],
         &payer,
     )
     .await;
 
-    let multicastgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(multicastgroup.status, MulticastGroupStatus::Pending);
-
-    println!("3. Attempt to reactivate while not Suspended (should fail)...");
+    // Reactivate from Activated must fail.
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -634,51 +337,57 @@ async fn test_multicastgroup_reactivate_invalid_status_fails() {
     )
     .await;
 
+    assert!(result.is_err(), "reactivate from non-Suspended must fail");
+    let err = format!("{:?}", result.unwrap_err());
     assert!(
-        result.is_err(),
-        "Reactivate should fail when status is not Suspended"
+        err.contains("Custom(7)"),
+        "Expected InvalidStatus (Custom(7)), got: {err}"
     );
-
-    println!("✅ Correctly rejected ReactivateMulticastGroup for non-Suspended status");
-    println!("🟢  End test_multicastgroup_reactivate_invalid_status_fails");
 }
 
+/// SuspendMulticastGroup requires status == Activated. The processor used to
+/// guard the legacy Pending state too; the test was named for that source
+/// state, but the meaningful check today is "from a non-Activated state, it
+/// must fail." We exercise it from Suspended (idempotent suspend rejected).
 #[tokio::test]
 async fn test_suspend_multicastgroup_from_pending_fails() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
-    // Initialize global state
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
-    // Create a multicast group (starts in Pending status)
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
 
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
-            code: "test".to_string(),
+            code: "la".to_string(),
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
         }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    // First suspend (Activated -> Suspended) succeeds.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SuspendMulticastGroup(MulticastGroupSuspendArgs {}),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -687,15 +396,7 @@ async fn test_suspend_multicastgroup_from_pending_fails() {
     )
     .await;
 
-    // Verify multicast group is in Pending status
-    let multicastgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(multicastgroup.status, MulticastGroupStatus::Pending);
-
-    // Try to suspend from Pending (should fail with InvalidStatus)
+    // Second suspend (Suspended -> ?) must fail with InvalidStatus.
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -709,44 +410,34 @@ async fn test_suspend_multicastgroup_from_pending_fails() {
     )
     .await;
 
-    assert!(result.is_err());
-    let error_string = format!("{:?}", result.unwrap_err());
     assert!(
-        error_string.contains("Custom(7)"),
-        "Expected InvalidStatus error (Custom(7)), got: {}",
-        error_string
+        result.is_err(),
+        "suspend from non-Activated status must fail"
     );
-    println!("✅ Suspending pending multicastgroup correctly fails with InvalidStatus");
+    let err = format!("{:?}", result.unwrap_err());
+    assert!(
+        err.contains("Custom(7)"),
+        "Expected InvalidStatus (Custom(7)), got: {err}"
+    );
 }
 
+/// DeleteMulticastGroup rejects when publisher_count > 0 OR subscriber_count > 0.
+/// Verifies both branches of the guard separately, then confirms delete succeeds
+/// with both counts at 0.
 #[tokio::test]
 async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 
-    println!("🟢  Start test_delete_multicastgroup_fails_with_active_publishers_or_subscribers");
-
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
 
-    println!("1. Global Initialization...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
-    println!("2. Create MulticastGroup...");
-    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (multicastgroup_pubkey, _) =
-        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
 
+    let mgroup_owner = solana_sdk::signature::Keypair::new().pubkey();
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -754,41 +445,19 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
         DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
             code: "delete-test".to_string(),
             max_bandwidth: 1000,
-            owner: Pubkey::new_unique(),
-            use_onchain_allocation: false,
+            owner: mgroup_owner,
+            use_onchain_allocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
         ],
         &payer,
     )
     .await;
 
-    println!("3. Activate MulticastGroup...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-            multicast_ip: [224, 0, 0, 1].into(),
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let multicastgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(multicastgroup.status, MulticastGroupStatus::Activated);
-
-    println!("4. Set publisher_count to 1...");
+    // publisher_count=1, subscriber_count=0 → delete must fail.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -798,44 +467,45 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             multicast_ip: None,
             max_bandwidth: None,
             publisher_count: Some(1),
-            subscriber_count: None,
-            use_onchain_allocation: false,
+            subscriber_count: Some(0),
+            use_onchain_allocation: true,
             owner: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
         ],
         &payer,
     )
     .await;
 
-    println!("5. Try to delete with active publishers (should fail)...");
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
-            use_onchain_deallocation: false,
+            use_onchain_deallocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(mgroup_owner, false),
         ],
         &payer,
     )
     .await;
-
-    assert!(result.is_err());
-    let error_string = format!("{:?}", result.unwrap_err());
-    assert!(
-        error_string.contains("Custom(71)"),
-        "Expected MulticastGroupNotEmpty error (Custom(71)), got: {}",
-        error_string
+    let err = format!(
+        "{:?}",
+        result.expect_err("delete must reject publisher_count > 0")
     );
-    println!("✅ Delete correctly rejected with active publishers");
+    assert!(
+        err.contains("Custom(71)"),
+        "Expected MulticastGroupNotEmpty (Custom(71)), got: {err}"
+    );
 
-    println!("6. Reset publisher_count to 0, set subscriber_count to 1...");
+    // publisher_count=0, subscriber_count=1 → delete must still fail.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -846,43 +516,44 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             max_bandwidth: None,
             publisher_count: Some(0),
             subscriber_count: Some(1),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
             owner: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
         ],
         &payer,
     )
     .await;
 
-    println!("7. Try to delete with active subscribers (should fail)...");
     let result = try_execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
-            use_onchain_deallocation: false,
+            use_onchain_deallocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(mgroup_owner, false),
         ],
         &payer,
     )
     .await;
-
-    assert!(result.is_err());
-    let error_string = format!("{:?}", result.unwrap_err());
-    assert!(
-        error_string.contains("Custom(71)"),
-        "Expected MulticastGroupNotEmpty error (Custom(71)), got: {}",
-        error_string
+    let err = format!(
+        "{:?}",
+        result.expect_err("delete must reject subscriber_count > 0")
     );
-    println!("✅ Delete correctly rejected with active subscribers");
+    assert!(
+        err.contains("Custom(71)"),
+        "Expected MulticastGroupNotEmpty (Custom(71)), got: {err}"
+    );
 
-    println!("8. Reset both counts to 0...");
+    // Both counts back to 0 → delete succeeds, status moves to Deleting.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -893,40 +564,36 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             max_bandwidth: None,
             publisher_count: Some(0),
             subscriber_count: Some(0),
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
             owner: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
         ],
         &payer,
     )
     .await;
 
-    println!("9. Delete with zero counts (should succeed)...");
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
-            use_onchain_deallocation: false,
+            use_onchain_deallocation: true,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(mgroup_owner, false),
         ],
         &payer,
     )
     .await;
 
-    let multicastgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(multicastgroup.status, MulticastGroupStatus::Deleting);
-    println!("✅ Delete succeeded with zero counts");
-
-    println!("🟢  End test_delete_multicastgroup_fails_with_active_publishers_or_subscribers");
+    // Atomic delete closes the account (no Deleting status to observe).
+    let mgroup = get_account_data(&mut banks_client, multicastgroup_pubkey).await;
+    assert!(mgroup.is_none(), "MulticastGroup account should be closed");
 }

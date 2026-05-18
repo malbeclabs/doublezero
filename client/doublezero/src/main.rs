@@ -13,6 +13,7 @@ use crate::cli::{
     config::ConfigCommands,
     device::{DeviceCommands, InterfaceCommands},
     exchange::ExchangeCommands,
+    geolocation::{probe::ProbeCommands, GeolocationCommands},
     globalconfig::{
         AirdropCommands, AuthorityCommands, FeatureFlagsCommands, FoundationAllowlistCommands,
         GlobalConfigCommands, QaAllowlistCommands,
@@ -22,9 +23,11 @@ use crate::cli::{
     user::UserCommands,
 };
 use doublezero_cli::{
-    checkversion::check_version, doublezerocommand::CliCommandImpl, version::VersionCliCommand,
+    checkversion::check_version, doublezerocommand::CliCommandImpl,
+    geoclicommand::GeoCliCommandImpl, version::VersionCliCommand,
 };
-use doublezero_sdk::{DZClient, ProgramVersion};
+use doublezero_sdk::{geolocation::client::GeoClient, DZClient, ProgramVersion};
+use doublezero_serviceability::pda::get_globalstate_pda;
 use servicecontroller::ServiceControllerImpl;
 
 #[derive(Parser, Debug)]
@@ -47,6 +50,9 @@ struct App {
     /// DZ program ID (testnet or devnet)
     #[arg(long, value_name = "PROGRAM_ID", global = true)]
     program_id: Option<String>,
+    /// Geolocation program ID
+    #[arg(long, value_name = "GEO_PROGRAM_ID", global = true)]
+    geo_program_id: Option<String>,
     /// Path to the keypair file
     #[arg(long, value_name = "KEYPAIR", global = true)]
     keypair: Option<PathBuf>,
@@ -106,7 +112,7 @@ async fn main() -> eyre::Result<()> {
         (app.url, app.ws, app.program_id)
     };
 
-    let dzclient = DZClient::new(url, ws, program_id, app.keypair)?;
+    let dzclient = DZClient::new(url.clone(), ws, program_id, app.keypair.clone())?;
     let client = CliCommandImpl::new(&dzclient);
 
     let stdout = std::io::stdout();
@@ -350,6 +356,25 @@ async fn main() -> eyre::Result<()> {
             cli::multicast::MulticastCommands::Publish(args) => args.execute(&client).await,
             cli::multicast::MulticastCommands::Unpublish(args) => args.execute(&client).await,
         },
+
+        Command::Geolocation(command) => {
+            let geo_client =
+                GeoClient::new(url.clone(), app.geo_program_id.clone(), app.keypair.clone())?;
+            let svc_program_id = *dzclient.get_program_id();
+            let (globalstate_pk, _) = get_globalstate_pda(&svc_program_id);
+            let geo_cli = GeoCliCommandImpl::new(&geo_client, &dzclient, globalstate_pk);
+            match command.command {
+                GeolocationCommands::Probe(command) => match command.command {
+                    ProbeCommands::Create(args) => args.execute(&geo_cli, &mut handle),
+                    ProbeCommands::Update(args) => args.execute(&geo_cli, &mut handle),
+                    ProbeCommands::Delete(args) => args.execute(&geo_cli, &mut handle),
+                    ProbeCommands::Get(args) => args.execute(&geo_cli, &mut handle),
+                    ProbeCommands::List(args) => args.execute(&geo_cli, &mut handle),
+                    ProbeCommands::AddParent(args) => args.execute(&geo_cli, &mut handle),
+                    ProbeCommands::RemoveParent(args) => args.execute(&geo_cli, &mut handle),
+                },
+            }
+        }
 
         Command::Resource(command) => match command.command {
             cli::resource::ResourceCommands::Allocate(args) => args.execute(&client, &mut handle),

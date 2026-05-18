@@ -23,6 +23,8 @@ import (
 	"github.com/twmb/franz-go/pkg/sasl/scram"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/malbeclabs/doublezero/telemetry/migrations"
 )
 
 const (
@@ -62,29 +64,22 @@ func newTestHarness(t *testing.T) *testHarness {
 		logger: logger,
 	}
 
-	// Setup ClickHouse with production schemas
-	schemaDir := filepath.Join("..", "..", "clickhouse")
+	// Setup ClickHouse and apply migrations.
 	var err error
 	h.clickhouseCtr, err = clickhouse.Run(ctx,
 		"clickhouse/clickhouse-server:23.3.8.21-alpine",
 		clickhouse.WithUsername(chUser),
 		clickhouse.WithPassword(chPassword),
 		clickhouse.WithDatabase(chDbname),
-		clickhouse.WithInitScripts(
-			filepath.Join(schemaDir, "isis_adjacencies.sql"),
-			filepath.Join(schemaDir, "system_state.sql"),
-			filepath.Join(schemaDir, "bgp_neighbors.sql"),
-			filepath.Join(schemaDir, "interface_ifindex.sql"),
-			filepath.Join(schemaDir, "transceiver_state.sql"),
-			filepath.Join(schemaDir, "transceiver_thresholds.sql"),
-			filepath.Join(schemaDir, "interface_state.sql"),
-		),
 	)
 	require.NoError(t, err, "error setting up clickhouse container")
 	testcontainers.CleanupContainer(t, h.clickhouseCtr)
 
 	h.chConn, err = h.clickhouseCtr.ConnectionHost(ctx)
 	require.NoError(t, err, "error getting clickhouse connection")
+
+	err = migrations.RunMigrations(h.chConn, chDbname, chUser, chPassword, false, logger)
+	require.NoError(t, err, "error running clickhouse migrations")
 
 	// Setup Redpanda with retry logic for flaky container registry
 	const maxAttempts = 5

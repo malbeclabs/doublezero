@@ -325,18 +325,22 @@ class TestFixtureUser:
                 "BgpStatus": u.bgp_status,
                 "LastBgpUpAt": u.last_bgp_up_at,
                 "LastBgpReportedAt": u.last_bgp_reported_at,
+                "BgpRttNs": u.bgp_rtt_ns,
             },
         )
 
     def test_backward_compat_old_layout(self):
-        # Deserializing an account binary that predates bgp_status/last_bgp_up_at/last_bgp_reported_at
-        # must return zero values for those fields rather than failing.
+        # Deserializing an account binary that predates the BGP fields must
+        # return zero values for those fields rather than failing.
         data, _ = _load_fixture("user")
-        truncated = data[:-17]  # remove bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
+        # Remove bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
+        # + bgp_rtt_ns (8) = 25 bytes.
+        truncated = data[:-25]
         u = User.from_bytes(truncated)
         assert u.bgp_status == BGPStatus.UNKNOWN
         assert u.last_bgp_up_at == 0
         assert u.last_bgp_reported_at == 0
+        assert u.bgp_rtt_ns == 0
 
 
 class TestFixtureMulticastGroup:

@@ -51,22 +51,22 @@ class AccountTypeEnum(IntEnum):
 
 
 class LocationStatus(IntEnum):
-    PENDING = 0
+    PENDING_DEPRECATED = 0  # activator-only; unreachable for new accounts
     ACTIVATED = 1
     SUSPENDED = 2
 
     def __str__(self) -> str:
-        _names = {0: "pending", 1: "activated", 2: "suspended"}
+        _names = {0: "pending (deprecated)", 1: "activated", 2: "suspended"}
         return _names.get(self.value, "unknown")
 
 
 class ExchangeStatus(IntEnum):
-    PENDING = 0
+    PENDING_DEPRECATED = 0  # activator-only; unreachable for new accounts
     ACTIVATED = 1
     SUSPENDED = 2
 
     def __str__(self) -> str:
-        _names = {0: "pending", 1: "activated", 2: "suspended"}
+        _names = {0: "pending (deprecated)", 1: "activated", 2: "suspended"}
         return _names.get(self.value, "unknown")
 
 
@@ -81,20 +81,20 @@ class DeviceDeviceType(IntEnum):
 
 
 class DeviceStatus(IntEnum):
-    PENDING = 0
+    PENDING_DEPRECATED = 0  # activator-only; unreachable for new accounts
     ACTIVATED = 1
     DELETING = 2
-    REJECTED = 3
+    REJECTED_DEPRECATED = 3  # activator-only; unreachable for new accounts
     DRAINED = 4
     DEVICE_PROVISIONING = 5
     LINK_PROVISIONING = 6
 
     def __str__(self) -> str:
         _names = {
-            0: "pending",
+            0: "pending (deprecated)",
             1: "activated",
             2: "deleting",
-            3: "rejected",
+            3: "rejected (deprecated)",
             4: "drained",
             5: "device-provisioning",
             6: "link-provisioning",
@@ -222,10 +222,10 @@ class LinkLinkType(IntEnum):
 
 
 class LinkStatus(IntEnum):
-    PENDING = 0
+    PENDING_DEPRECATED = 0  # activator-only; unreachable for new accounts
     ACTIVATED = 1
     DELETING = 3
-    REJECTED = 4
+    REJECTED_DEPRECATED = 4  # activator-only; unreachable for new accounts
     REQUESTED = 5
     HARD_DRAINED = 6
     SOFT_DRAINED = 7
@@ -233,10 +233,10 @@ class LinkStatus(IntEnum):
 
     def __str__(self) -> str:
         _names = {
-            0: "pending",
+            0: "pending (deprecated)",
             1: "activated",
             3: "deleting",
-            4: "rejected",
+            4: "rejected (deprecated)",
             5: "requested",
             6: "hard-drained",
             7: "soft-drained",
@@ -315,24 +315,24 @@ class CyoaType(IntEnum):
 
 
 class UserStatus(IntEnum):
-    PENDING = 0
+    PENDING_DEPRECATED = 0  # activator-only; unreachable for new accounts
     ACTIVATED = 1
     DELETING = 3
-    REJECTED = 4
-    PENDING_BAN = 5
+    REJECTED_DEPRECATED = 4  # activator-only; unreachable for new accounts
+    PENDING_BAN_DEPRECATED = 5  # activator-only
     BANNED = 6
-    UPDATING = 7
+    UPDATING_DEPRECATED = 7  # activator-only intermediate state
     OUT_OF_CREDITS = 8
 
     def __str__(self) -> str:
         _names = {
-            0: "pending",
+            0: "pending (deprecated)",
             1: "activated",
             3: "deleting",
-            4: "rejected",
-            5: "pending_ban",
+            4: "rejected (deprecated)",
+            5: "pending_ban (deprecated)",
             6: "banned",
-            7: "updating",
+            7: "updating (deprecated)",
             8: "out_of_credits",
         }
         return _names.get(self.value, "unknown")
@@ -349,19 +349,19 @@ class BGPStatus(IntEnum):
 
 
 class MulticastGroupStatus(IntEnum):
-    PENDING = 0
+    PENDING_DEPRECATED = 0  # activator-only; unreachable for new accounts
     ACTIVATED = 1
     SUSPENDED = 2
     DELETING = 3
-    REJECTED = 4
+    REJECTED_DEPRECATED = 4  # activator-only; unreachable for new accounts
 
     def __str__(self) -> str:
         _names = {
-            0: "pending",
+            0: "pending (deprecated)",
             1: "activated",
             2: "suspended",
             3: "deleting",
-            4: "rejected",
+            4: "rejected (deprecated)",
         }
         return _names.get(self.value, "unknown")
 
@@ -603,7 +603,7 @@ class Location:
     lat: float = 0.0
     lng: float = 0.0
     loc_id: int = 0
-    status: LocationStatus = LocationStatus.PENDING
+    status: LocationStatus = LocationStatus.PENDING_DEPRECATED
     code: str = ""
     name: str = ""
     country: str = ""
@@ -637,7 +637,7 @@ class Exchange:
     lat: float = 0.0
     lng: float = 0.0
     bgp_community: int = 0
-    status: ExchangeStatus = ExchangeStatus.PENDING
+    status: ExchangeStatus = ExchangeStatus.PENDING_DEPRECATED
     code: str = ""
     name: str = ""
     reference_count: int = 0
@@ -675,7 +675,7 @@ class Device:
     exchange_pub_key: Pubkey = Pubkey.default()
     device_type: DeviceDeviceType = DeviceDeviceType.HYBRID
     public_ip: bytes = b"\x00" * 4
-    status: DeviceStatus = DeviceStatus.PENDING
+    status: DeviceStatus = DeviceStatus.PENDING_DEPRECATED
     code: str = ""
     dz_prefixes: list[bytes] = field(default_factory=list)
     metrics_publisher_pub_key: Pubkey = Pubkey.default()
@@ -789,7 +789,7 @@ class Link:
     jitter_ns: int = 0
     tunnel_id: int = 0
     tunnel_net: bytes = b"\x00" * 5
-    status: LinkStatus = LinkStatus.PENDING
+    status: LinkStatus = LinkStatus.PENDING_DEPRECATED
     code: str = ""
     contributor_pub_key: Pubkey = Pubkey.default()
     side_a_iface_name: str = ""
@@ -844,7 +844,7 @@ class User:
     dz_ip: bytes = b"\x00" * 4
     tunnel_id: int = 0
     tunnel_net: bytes = b"\x00" * 5
-    status: UserStatus = UserStatus.PENDING
+    status: UserStatus = UserStatus.PENDING_DEPRECATED
     publishers: list[Pubkey] = field(default_factory=list)
     subscribers: list[Pubkey] = field(default_factory=list)
     validator_pub_key: Pubkey = Pubkey.default()
@@ -897,7 +897,7 @@ class MulticastGroup:
     tenant_pub_key: Pubkey = Pubkey.default()
     multicast_ip: bytes = b"\x00" * 4
     max_bandwidth: int = 0
-    status: MulticastGroupStatus = MulticastGroupStatus.PENDING
+    status: MulticastGroupStatus = MulticastGroupStatus.PENDING_DEPRECATED
     code: str = ""
     publisher_count: int = 0
     subscriber_count: int = 0

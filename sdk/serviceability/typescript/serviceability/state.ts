@@ -38,7 +38,7 @@ export const ACCOUNT_TYPE_PERMISSION = 15;
 // ---------------------------------------------------------------------------
 
 const LOCATION_STATUS_NAMES: Record<number, string> = {
-  0: "pending",
+  0: "pending (deprecated)",
   1: "activated",
   2: "suspended",
 };
@@ -47,7 +47,7 @@ export function locationStatusString(v: number): string {
 }
 
 const EXCHANGE_STATUS_NAMES: Record<number, string> = {
-  0: "pending",
+  0: "pending (deprecated)",
   1: "activated",
   2: "suspended",
 };
@@ -65,10 +65,10 @@ export function deviceDeviceTypeString(v: number): string {
 }
 
 const DEVICE_STATUS_NAMES: Record<number, string> = {
-  0: "pending",
+  0: "pending (deprecated)",
   1: "activated",
   2: "deleting",
-  3: "rejected",
+  3: "rejected (deprecated)",
   4: "drained",
   5: "device-provisioning",
   6: "link-provisioning",
@@ -167,10 +167,10 @@ export function linkLinkTypeString(v: number): string {
 }
 
 const LINK_STATUS_NAMES: Record<number, string> = {
-  0: "pending",
+  0: "pending (deprecated)",
   1: "activated",
   3: "deleting",
-  4: "rejected",
+  4: "rejected (deprecated)",
   5: "requested",
   6: "hard-drained",
   7: "soft-drained",
@@ -233,13 +233,13 @@ export function cyoaTypeString(v: number): string {
 }
 
 const USER_STATUS_NAMES: Record<number, string> = {
-  0: "pending",
+  0: "pending (deprecated)",
   1: "activated",
   3: "deleting",
-  4: "rejected",
-  5: "pending_ban",
+  4: "rejected (deprecated)",
+  5: "pending_ban (deprecated)",
   6: "banned",
-  7: "updating",
+  7: "updating (deprecated)",
   8: "out_of_credits",
 };
 export function userStatusString(v: number): string {
@@ -260,11 +260,11 @@ export function bgpStatusString(v: number): string {
 }
 
 const MULTICAST_GROUP_STATUS_NAMES: Record<number, string> = {
-  0: "pending",
+  0: "pending (deprecated)",
   1: "activated",
   2: "suspended",
   3: "deleting",
-  4: "rejected",
+  4: "rejected (deprecated)",
 };
 export function multicastGroupStatusString(v: number): string {
   return MULTICAST_GROUP_STATUS_NAMES[v] ?? "unknown";

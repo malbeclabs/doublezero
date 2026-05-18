@@ -3,9 +3,9 @@ use crate::{
     cli::{
         accesspass::AccessPassCliCommand, config::ConfigCliCommand,
         contributor::ContributorCliCommand, device::DeviceCliCommand, exchange::ExchangeCliCommand,
-        globalconfig::GlobalConfigCliCommand, link::LinkCliCommand, location::LocationCliCommand,
-        permission::PermissionCliCommand, resource::ResourceCliCommand, tenant::TenantCliCommand,
-        user::UserCliCommand,
+        geolocation::GeolocationCliCommand, globalconfig::GlobalConfigCliCommand,
+        link::LinkCliCommand, location::LocationCliCommand, permission::PermissionCliCommand,
+        resource::ResourceCliCommand, tenant::TenantCliCommand, user::UserCliCommand,
     },
     command::{
         connect::ProvisioningCliCommand, disable::DisableCliCommand,
@@ -97,6 +97,9 @@ pub enum Command {
     /// Manage multicast
     #[command()]
     Multicast(MulticastCliCommand),
+    /// Manage geolocation probes and users
+    #[command()]
+    Geolocation(GeolocationCliCommand),
     /// Export all data to files
     #[command()]
     Export(ExportCliCommand),

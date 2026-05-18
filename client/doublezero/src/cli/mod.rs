@@ -4,6 +4,7 @@ pub mod config;
 pub mod contributor;
 pub mod device;
 pub mod exchange;
+pub mod geolocation;
 pub mod globalconfig;
 pub mod link;
 pub mod location;

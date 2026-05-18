@@ -155,12 +155,12 @@ mod tests {
 
     #[test]
     fn request_ban_disallowed_statuses() {
-        assert!(!can_request_ban(UserStatus::Pending));
+        assert!(!can_request_ban(UserStatus::PendingDeprecated));
         assert!(!can_request_ban(UserStatus::Deleting));
-        assert!(!can_request_ban(UserStatus::Rejected));
-        assert!(!can_request_ban(UserStatus::PendingBan));
+        assert!(!can_request_ban(UserStatus::RejectedDeprecated));
+        assert!(!can_request_ban(UserStatus::PendingBanDeprecated));
         assert!(!can_request_ban(UserStatus::Banned));
-        assert!(!can_request_ban(UserStatus::Updating));
+        assert!(!can_request_ban(UserStatus::UpdatingDeprecated));
         assert!(!can_request_ban(UserStatus::OutOfCredits));
     }
 }

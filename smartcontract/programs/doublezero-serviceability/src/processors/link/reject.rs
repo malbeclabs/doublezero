@@ -51,7 +51,7 @@ pub fn process_reject_link(
     // Allow foundation to reject Pending links
     // Allow Contributor B to reject Requested links
     let payer_account = match link.status {
-        LinkStatus::Pending => {
+        LinkStatus::PendingDeprecated => {
             let payer_account = next_account_info(accounts_iter)?;
             let system_program = next_account_info(accounts_iter)?;
 
@@ -106,7 +106,7 @@ pub fn process_reject_link(
 
     link.tunnel_id = 0;
     link.tunnel_net = NetworkV4::default();
-    link.status = LinkStatus::Rejected;
+    link.status = LinkStatus::RejectedDeprecated;
     msg!("Reason: {:?}", value.reason);
 
     try_acc_write(&link, link_account, payer_account, accounts)?;

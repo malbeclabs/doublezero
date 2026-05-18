@@ -96,30 +96,30 @@ impl fmt::Display for UserCYOA {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UserStatus {
     #[default]
-    Pending = 0,
+    PendingDeprecated = 0, // activator-only; unreachable for new accounts
     Activated = 1,
-    SuspendedDeprecated = 2, // deprecated
+    SuspendedDeprecated = 2,
     Deleting = 3,
-    Rejected = 4,
-    PendingBan = 5,
+    RejectedDeprecated = 4,   // activator-only; unreachable for new accounts
+    PendingBanDeprecated = 5, // activator-only
     Banned = 6,
-    Updating = 7,
+    UpdatingDeprecated = 7, // activator-only intermediate state
     OutOfCredits = 8,
 }
 
 impl From<u8> for UserStatus {
     fn from(value: u8) -> Self {
         match value {
-            0 => UserStatus::Pending,
+            0 => UserStatus::PendingDeprecated,
             1 => UserStatus::Activated,
             2 => UserStatus::SuspendedDeprecated,
             3 => UserStatus::Deleting,
-            4 => UserStatus::Rejected,
-            5 => UserStatus::PendingBan,
+            4 => UserStatus::RejectedDeprecated,
+            5 => UserStatus::PendingBanDeprecated,
             6 => UserStatus::Banned,
-            7 => UserStatus::Updating,
+            7 => UserStatus::UpdatingDeprecated,
             8 => UserStatus::OutOfCredits,
-            _ => UserStatus::Pending,
+            _ => UserStatus::PendingDeprecated,
         }
     }
 }
@@ -127,13 +127,13 @@ impl From<u8> for UserStatus {
 impl fmt::Display for UserStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UserStatus::Pending => write!(f, "pending"),
+            UserStatus::PendingDeprecated => write!(f, "pending (deprecated)"),
             UserStatus::Activated => write!(f, "activated"),
-            UserStatus::SuspendedDeprecated => write!(f, "suspended"),
+            UserStatus::SuspendedDeprecated => write!(f, "suspended (deprecated)"),
             UserStatus::Deleting => write!(f, "deleting"),
-            UserStatus::Rejected => write!(f, "rejected"),
-            UserStatus::PendingBan => write!(f, "pending ban"),
-            UserStatus::Updating => write!(f, "updating"),
+            UserStatus::RejectedDeprecated => write!(f, "rejected (deprecated)"),
+            UserStatus::PendingBanDeprecated => write!(f, "pending ban (deprecated)"),
+            UserStatus::UpdatingDeprecated => write!(f, "updating (deprecated)"),
             UserStatus::Banned => write!(f, "banned"),
             UserStatus::OutOfCredits => write!(f, "out_of_credits"),
         }
@@ -355,12 +355,12 @@ impl Validate for User {
             return Err(DoubleZeroError::InvalidClientIp);
         }
         // dz_ip must be global unicast
-        if self.status != UserStatus::Pending && !is_global(self.dz_ip) {
+        if self.status != UserStatus::PendingDeprecated && !is_global(self.dz_ip) {
             msg!("dz_ip: {}", self.dz_ip);
             return Err(DoubleZeroError::InvalidDzIp);
         }
         // tunnel net must be private
-        if self.status != UserStatus::Pending && !self.tunnel_net.ip().is_link_local() {
+        if self.status != UserStatus::PendingDeprecated && !self.tunnel_net.ip().is_link_local() {
             msg!("tunnel_net: {}", self.tunnel_net);
             return Err(DoubleZeroError::InvalidTunnelNet);
         }
@@ -487,7 +487,7 @@ mod tests {
             val.tunnel_net,
             NetworkV4::new(Ipv4Addr::new(0, 0, 0, 0), 0).unwrap()
         );
-        assert_eq!(val.status, UserStatus::Pending);
+        assert_eq!(val.status, UserStatus::PendingDeprecated);
         assert_eq!(val.publishers, Vec::<Pubkey>::new());
         assert_eq!(val.subscribers, Vec::<Pubkey>::new());
         assert_eq!(val.validator_pubkey, Pubkey::default());
@@ -823,7 +823,7 @@ mod tests {
             dz_ip: [192, 168, 1, 1].into(),
             tunnel_id: 0,
             tunnel_net: NetworkV4::default(),
-            status: UserStatus::Pending,
+            status: UserStatus::PendingDeprecated,
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),

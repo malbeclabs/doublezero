@@ -69,11 +69,11 @@ pub fn process_reject_multicastgroup(
 
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
 
-    if multicastgroup.status != MulticastGroupStatus::Pending {
+    if multicastgroup.status != MulticastGroupStatus::PendingDeprecated {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    multicastgroup.status = MulticastGroupStatus::Rejected;
+    multicastgroup.status = MulticastGroupStatus::RejectedDeprecated;
     msg!("Reason: {:?}", value.reason);
 
     try_acc_write(

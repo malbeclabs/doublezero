@@ -120,7 +120,7 @@ pub fn process_activate_link(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    if link.status != LinkStatus::Pending {
+    if link.status != LinkStatus::PendingDeprecated {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 

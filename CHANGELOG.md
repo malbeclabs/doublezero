@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
   - Trim the `Rejected` status arm from the device and link activation pollers; `Rejected` was itself an activator-driven transition ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
 - Client
   - Simplify `doublezero connect`'s post-create user fetch to a fixed retry-on-RPC-lag get instead of waiting for `UserStatus::Activated`; the activator-driven transition is gone, so the fetch only needs to ride out replica lag ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
+- E2E
+  - Switch geolocation invocations to `doublezero geolocation ...` and `doublezero init-geolocation-config`
 
 ## [v0.23.0](https://github.com/malbeclabs/doublezero/compare/client/v0.22.0...client/v0.23.0) - 2026-05-15
 

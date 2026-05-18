@@ -1,6 +1,6 @@
 -- +goose Up
 -- +goose StatementBegin
-CREATE TABLE IF NOT EXISTS default.device_ifindex
+CREATE TABLE IF NOT EXISTS device_ifindex
 (
     `pubkey` String,
     `ifindex` UInt64,
@@ -16,5 +16,5 @@ SETTINGS index_granularity = 8192;
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE IF EXISTS default.device_ifindex;
+DROP TABLE IF EXISTS device_ifindex;
 -- +goose StatementEnd

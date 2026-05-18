@@ -1,6 +1,6 @@
 -- +goose Up
 -- +goose StatementBegin
-CREATE TABLE IF NOT EXISTS default.flows
+CREATE TABLE IF NOT EXISTS flows
 (
     `as_path` Array(String),
     `bgp_communities` Array(String),
@@ -81,5 +81,5 @@ SETTINGS index_granularity = 8192;
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE default.flows;
+DROP TABLE flows;
 -- +goose StatementEnd

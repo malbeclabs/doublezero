@@ -13,7 +13,9 @@ use crate::cli::{
     config::ConfigCommands,
     device::{DeviceCommands, InterfaceCommands},
     exchange::ExchangeCommands,
-    geolocation::{probe::ProbeCommands, GeolocationCommands},
+    geolocation::{
+        probe::ProbeCommands, user::UserCommands as GeoUserCommands, GeolocationCommands,
+    },
     globalconfig::{
         AirdropCommands, AuthorityCommands, FeatureFlagsCommands, FoundationAllowlistCommands,
         GlobalConfigCommands, QaAllowlistCommands,
@@ -372,6 +374,19 @@ async fn main() -> eyre::Result<()> {
                     ProbeCommands::List(args) => args.execute(&geo_cli, &mut handle),
                     ProbeCommands::AddParent(args) => args.execute(&geo_cli, &mut handle),
                     ProbeCommands::RemoveParent(args) => args.execute(&geo_cli, &mut handle),
+                },
+                GeolocationCommands::User(command) => match command.command {
+                    GeoUserCommands::Create(args) => args.execute(&geo_cli, &mut handle),
+                    GeoUserCommands::Delete(args) => args.execute(&geo_cli, &mut handle),
+                    GeoUserCommands::Update(args) => args.execute(&geo_cli, &mut handle),
+                    GeoUserCommands::Get(args) => args.execute(&geo_cli, &mut handle),
+                    GeoUserCommands::List(args) => args.execute(&geo_cli, &mut handle),
+                    GeoUserCommands::AddTarget(args) => args.execute(&geo_cli, &mut handle),
+                    GeoUserCommands::RemoveTarget(args) => args.execute(&geo_cli, &mut handle),
+                    GeoUserCommands::SetResultDestination(args) => {
+                        args.execute(&geo_cli, &mut handle)
+                    }
+                    GeoUserCommands::UpdatePayment(args) => args.execute(&geo_cli, &mut handle),
                 },
             }
         }

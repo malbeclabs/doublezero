@@ -4,9 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-- cli: `config set` accepts `--geo-program-id`; `config get` and `config set` print Geolocation Program ID
-- cli: `doublezero geolocation probe ...` mirrors `doublezero-geolocation probe ...`; new `--geo-program-id` global flag
 - CLI
+  - cli: `doublezero geolocation` `probe ...` and `user ...` mirrors `doublezero-geolocation` versions; new `--geo-program-id` global flag, `config get/set` include Geolocation Program ID.
   - Drop the activator-only pollers from `doublezero` (user and multicastgroup activation waits). The `--wait` flag on `user create`, `user create-subscribe`, `user subscribe`, `multicastgroup create`, and `multicastgroup update` now fetches the post-create state once instead of polling — creates are atomic to `Activated` post-RFC-11, so the wait loop was watching a transition that no longer happens ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
   - Trim the `Rejected` status arm from the device and link activation pollers; `Rejected` was itself an activator-driven transition ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
 - Client

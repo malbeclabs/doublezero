@@ -1356,6 +1356,7 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::SetUserBGPStatus(SetUserBGPStatusArgs {
                 bgp_status: BGPStatus::Up,
+                bgp_rtt_ns: 0,
             }),
             "SetUserBGPStatus",
         );

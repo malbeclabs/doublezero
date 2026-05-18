@@ -379,7 +379,7 @@ func main() {
 	var bgpStatusErrCh <-chan error
 	if *bgpStatusEnable {
 		bgpStatusErrCh = startBGPStatusSubmitter(ctx, cancel, log, keypair, localDevicePK,
-			serviceabilityProgramID, localNet, *bgpNamespace, cachedSvcClient, rpcClient)
+			serviceabilityProgramID, localNet, cachedSvcClient, rpcClient)
 	}
 
 	// Wait for the context to be done or an error to be returned.
@@ -413,7 +413,6 @@ func startBGPStatusSubmitter(
 	localDevicePK solana.PublicKey,
 	serviceabilityProgramID solana.PublicKey,
 	localNet netutil.LocalNet,
-	bgpNamespace string,
 	svcClient telemetrysvc.ProgramDataProvider,
 	rpcClient *solanarpc.Client,
 ) <-chan error {
@@ -425,7 +424,6 @@ func startBGPStatusSubmitter(
 		ServiceabilityClient:    svcClient,
 		Collector:               bgpstatus.DefaultCollector(localNet),
 		LocalDevicePK:           localDevicePK,
-		BGPNamespace:            bgpNamespace,
 		Interval:                *bgpStatusInterval,
 		PeriodicRefreshInterval: *bgpStatusRefreshInterval,
 		DownGracePeriod:         *bgpStatusDownGracePeriod,

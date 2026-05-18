@@ -233,6 +233,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         // User with Updating status (returned by first retry call)
@@ -480,6 +481,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let user_updating = User {
@@ -768,6 +770,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let user_activated_final = User {
@@ -994,6 +997,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let owner = user.owner;

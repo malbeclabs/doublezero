@@ -38,16 +38,23 @@ func (s *Submitter) run(ctx context.Context) error {
 // DefaultCollector returns a NamespaceCollector that collects BGP socket stats
 // via netlink and local interfaces via Linux namespace switching.
 func DefaultCollector(localNet netutil.LocalNet) NamespaceCollector {
-	return func(ctx context.Context, namespace string) (map[string]struct{}, []netutil.Interface, error) {
+	return func(ctx context.Context, namespace string) (map[string]BGPPeerState, []netutil.Interface, error) {
 		rawSockets, err := state.GetBGPSocketStatsInNamespace(ctx, namespace)
 		if err != nil {
 			return nil, nil, fmt.Errorf("bgp sockets in %s: %w", namespace, err)
 		}
 		socks := make([]bgpSocket, len(rawSockets))
 		for i, rs := range rawSockets {
-			socks[i] = bgpSocket{RemoteIP: rs.RemoteIP, State: rs.State}
+			// state.BGPSocketState.RTTms is the kernel's tcp_info.rtt (µs) divided
+			// by 1000. Multiply by 1_000_000 to recover nanoseconds — matches the
+			// onchain unit used by Link.delay_ns / jitter_ns.
+			var rttNs uint64
+			if rs.RTTms != nil {
+				rttNs = uint64(*rs.RTTms * 1_000_000)
+			}
+			socks[i] = bgpSocket{RemoteIP: rs.RemoteIP, State: rs.State, RttNs: rttNs}
 		}
-		established := buildEstablishedIPSet(socks)
+		peers := buildPeerStateMap(socks)
 
 		ifaces, err := netns.RunInNamespace(namespace, func() ([]netutil.Interface, error) {
 			return localNet.Interfaces()
@@ -55,7 +62,7 @@ func DefaultCollector(localNet netutil.LocalNet) NamespaceCollector {
 		if err != nil {
 			return nil, nil, fmt.Errorf("interfaces in %s: %w", namespace, err)
 		}
-		return established, ifaces, nil
+		return peers, ifaces, nil
 	}
 }
 
@@ -81,25 +88,33 @@ func (s *Submitter) tick(ctx context.Context) {
 		}
 	}
 
-	// User tunnel interfaces live in a per-tenant VRF namespace (e.g. ns-vrf1,
-	// ns-vrf2). Multicast users are an exception: their tunnels live in the
-	// global VRF (root network namespace). Collect state from all relevant namespaces so that
-	// all user types are handled correctly.
-	// Tunnel IPs are globally unique (onchain-allocated), so merging is safe.
-	namespaces := vrfNamespaces(s.cfg.BGPNamespace, programData.Tenants, deviceUsers)
+	// Discover VRFs by enumerating /var/run/netns/. This is the kernel's source
+	// of truth — every namespace that may host a user GRE tunnel and BGP session
+	// is bind-mounted there (e.g. "default", "ns-vrf1", "ns-vrf2", "ns-management").
+	// Tunnel IPs are globally unique (onchain-allocated), so merging across
+	// namespaces is safe.
+	namespaces, err := listNamespaces(s.cfg.NetnsDir)
+	if err != nil {
+		s.log.Error("bgpstatus: failed to list netns dir", "dir", s.cfg.NetnsDir, "error", err)
+		return
+	}
+	if len(namespaces) == 0 {
+		s.log.Warn("bgpstatus: netns dir is empty, nothing to collect", "dir", s.cfg.NetnsDir)
+		return
+	}
 
-	establishedIPs := make(map[string]struct{})
+	peers := make(map[string]BGPPeerState)
 	var interfaces []netutil.Interface
 	successCount := 0
 
 	for _, ns := range namespaces {
-		established, ifaces, err := s.cfg.Collector(ctx, ns)
+		nsPeers, ifaces, err := s.cfg.Collector(ctx, ns)
 		if err != nil {
 			s.log.Warn("bgpstatus: failed to collect namespace state", "namespace", ns, "error", err)
 			continue
 		}
-		for ip := range established {
-			establishedIPs[ip] = struct{}{}
+		for ip, p := range nsPeers {
+			peers[ip] = p
 		}
 		interfaces = append(interfaces, ifaces...)
 		successCount++
@@ -129,6 +144,7 @@ func (s *Submitter) tick(ctx context.Context) {
 		// Resolve the BGP peer IP for this user's /31 tunnel net.
 		tunnelNet := tunnelNetToIPNet(user.TunnelNet)
 		var observedUp bool
+		var peer BGPPeerState
 		tunnel, err := netutil.FindLocalTunnel(interfaces, tunnelNet)
 		if err != nil {
 			if !errors.Is(err, netutil.ErrLocalTunnelNotFound) {
@@ -145,7 +161,8 @@ func (s *Submitter) tick(ctx context.Context) {
 			// The tunnel is gone but the last known onchain status is Up.
 			// Fall through with observedUp=false so we submit Down.
 		} else {
-			_, observedUp = establishedIPs[tunnel.TargetIP.String()]
+			peer = peers[tunnel.TargetIP.String()]
+			observedUp = peer.Established
 			if observedUp {
 				us.lastUpObservedAt = now
 			}
@@ -163,7 +180,13 @@ func (s *Submitter) tick(ctx context.Context) {
 			continue
 		}
 
-		task := submitTask{user: user, status: effectiveStatus}
+		// Only carry RTT when reporting Up — clearing it on Down ensures the
+		// onchain value can't outlive the session.
+		var rttNs uint64
+		if effectiveStatus == serviceability.BGPStatusUp {
+			rttNs = peer.RttNs
+		}
+		task := submitTask{user: user, status: effectiveStatus, rttNs: rttNs}
 		select {
 		case s.taskCh <- task:
 			s.pending[userPK] = true
@@ -205,11 +228,11 @@ func (s *Submitter) worker(ctx context.Context) {
 				us.lastOnchainStatus = task.status
 				us.lastWriteTime = s.cfg.Clock.Now()
 				s.log.Info("bgpstatus: submitted BGP status",
-					"user", userPK, "status", task.status, "sig", sig)
+					"user", userPK, "status", task.status, "rtt_ns", task.rttNs, "sig", sig)
 			} else {
 				metricSubmissionsTotal.WithLabelValues(statusLabel, "error").Inc()
 				s.log.Error("bgpstatus: failed to submit after retries",
-					"user", userPK, "status", task.status, "error", err)
+					"user", userPK, "status", task.status, "rtt_ns", task.rttNs, "error", err)
 			}
 			s.mu.Unlock()
 		}
@@ -223,6 +246,7 @@ func (s *Submitter) submitWithRetry(ctx context.Context, task submitTask) (solan
 		UserPubkey:   solana.PublicKeyFromBytes(task.user.PubKey[:]),
 		DevicePubkey: s.cfg.LocalDevicePK,
 		Status:       task.status,
+		BgpRttNs:     task.rttNs,
 	}
 
 	var lastErr error

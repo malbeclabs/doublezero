@@ -978,7 +978,10 @@ type User struct {
 	BgpStatus         uint8
 	LastBgpUpAt       uint64
 	LastBgpReportedAt uint64
-	PubKey            [32]byte
+	// BgpRttNs is the smoothed BGP TCP RTT in nanoseconds, as last reported by the
+	// device agent. 0 means no sample has been observed yet. Same unit as Link.DelayNs.
+	BgpRttNs uint64
+	PubKey   [32]byte
 }
 
 func (u User) MarshalJSON() ([]byte, error) {

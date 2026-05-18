@@ -114,8 +114,23 @@ pub struct UserDisplay {
     pub tunnel_net: NetworkV4,
     pub status: UserStatus,
     pub bgp_status: BGPStatus,
+    /// Raw BGP RTT in nanoseconds (kept on the struct for JSON output).
+    #[tabled(skip)]
+    pub bgp_rtt_ns: u64,
+    /// Pretty-printed BGP RTT (e.g. "5.50 ms" or "-" when no sample yet).
+    #[tabled(rename = "rtt")]
+    pub bgp_rtt: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
+}
+
+/// Formats a BGP RTT value in nanoseconds as a human-readable millisecond
+/// string. Returns "-" for 0 (the sentinel for "no sample observed").
+fn format_bgp_rtt_ns(ns: u64) -> String {
+    if ns == 0 {
+        return "-".to_string();
+    }
+    format!("{:.2} ms", ns as f64 / 1_000_000.0)
 }
 
 impl ListUserCliCommand {
@@ -364,6 +379,8 @@ impl ListUserCliCommand {
                     tunnel_net: user.tunnel_net,
                     status: user.status,
                     bgp_status: user.bgp_status,
+                    bgp_rtt_ns: user.bgp_rtt_ns,
+                    bgp_rtt: format_bgp_rtt_ns(user.bgp_rtt_ns),
                     owner: user.owner,
                 }
             })
@@ -789,6 +806,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let (accesspass1_pubkey, _) =
@@ -831,6 +849,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let (accesspass2_pubkey, _) =
@@ -896,7 +915,7 @@ mod tests {
         .execute(&client, &mut output);
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | tenant                                    | user_type | groups   | device       | location       | cyoa_type  | client_ip | dz_ip   | accesspass                  | tunnel_id | tunnel_net | status    | bgp_status | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | Multicast | S:m_code | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | Prepaid: (expires epoch 10) | 500       | 1.2.3.5/32 | activated | unknown    | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | tenant                                    | user_type | groups   | device       | location       | cyoa_type  | client_ip | dz_ip   | accesspass                  | tunnel_id | tunnel_net | status    | bgp_status | rtt | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | Multicast | S:m_code | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | Prepaid: (expires epoch 10) | 500       | 1.2.3.5/32 | activated | unknown    | -   | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -924,7 +943,7 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"tenant\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"Prepaid: (expires epoch 10)\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"bgp_status\":\"Unknown\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"tenant\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"Prepaid: (expires epoch 10)\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"bgp_status\":\"Unknown\",\"bgp_rtt_ns\":0,\"bgp_rtt\":\"-\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
 
         let mut output = Vec::new();
         let res = ListUserCliCommand {
@@ -1017,6 +1036,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let user2 = User {
@@ -1041,6 +1061,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1127,6 +1148,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let user2 = User {
@@ -1151,6 +1173,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1237,6 +1260,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let user2 = User {
@@ -1261,6 +1285,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1347,6 +1372,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let user2 = User {
@@ -1371,6 +1397,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1457,6 +1484,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let user2 = User {
@@ -1481,6 +1509,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1582,6 +1611,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let user2 = User {
@@ -1606,6 +1636,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1730,6 +1761,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let user2 = User {
@@ -1754,6 +1786,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1909,6 +1942,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let user2 = User {
@@ -1933,6 +1967,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         client.expect_list_user().returning(move |_| {

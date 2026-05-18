@@ -866,6 +866,7 @@ fn generate_user(dir: &Path) {
         bgp_status: BGPStatus::Up,
         last_bgp_up_at: 1_700_000_000,
         last_bgp_reported_at: 1_700_000_100,
+        bgp_rtt_ns: 5_500_000,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -897,6 +898,7 @@ fn generate_user(dir: &Path) {
             FieldValue { name: "BgpStatus".into(), value: "1".into(), typ: "u8".into() },
             FieldValue { name: "LastBgpUpAt".into(), value: "1700000000".into(), typ: "u64".into() },
             FieldValue { name: "LastBgpReportedAt".into(), value: "1700000100".into(), typ: "u64".into() },
+            FieldValue { name: "BgpRttNs".into(), value: "5500000".into(), typ: "u64".into() },
         ],
     };
 

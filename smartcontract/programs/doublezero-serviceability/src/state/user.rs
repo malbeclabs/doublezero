@@ -255,6 +255,9 @@ pub struct User {
     pub last_bgp_up_at: u64, // 8
     /// Slot number of the most recent BGP status report from the device agent.
     pub last_bgp_reported_at: u64, // 8
+    /// Smoothed BGP TCP RTT in nanoseconds, sourced from the kernel via INET_DIAG.
+    /// 0 means no sample has been observed yet. Same unit as `Link.delay_ns`.
+    pub bgp_rtt_ns: u64, // 8
 }
 
 impl fmt::Display for User {
@@ -306,6 +309,7 @@ impl TryFrom<&[u8]> for User {
             bgp_status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             last_bgp_up_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             last_bgp_reported_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bgp_rtt_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::User {
@@ -517,6 +521,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -568,6 +573,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let err = val.validate();
@@ -599,6 +605,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -629,6 +636,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -659,6 +667,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -689,6 +698,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -719,6 +729,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -750,6 +761,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -762,6 +774,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
             ..val.clone()
         };
         let err = val_loopback.validate();
@@ -775,6 +788,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
             ..val.clone()
         };
         let err = val_link_local.validate();
@@ -788,6 +802,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
             ..val.clone()
         };
         assert!(val_unspecified.validate().is_ok());
@@ -799,6 +814,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
             ..val
         };
         assert!(val_global.validate().is_ok());
@@ -832,6 +848,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         }
     }
 
@@ -974,6 +991,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         assert!(val.validate().is_ok());
@@ -1031,11 +1049,12 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let data = borsh::to_vec(&user).unwrap();
         // Remove tunnel_flags (1) + bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
-        // to simulate an old account that predates tunnel_flags.
-        let old_data = &data[..data.len() - 18];
+        // + bgp_rtt_ns (8) to simulate an old account that predates tunnel_flags.
+        let old_data = &data[..data.len() - 26];
         let deserialized = User::try_from(old_data).unwrap();
         assert_eq!(
             deserialized.tunnel_flags, 0,
@@ -1053,6 +1072,10 @@ mod tests {
         assert_eq!(
             deserialized.last_bgp_reported_at, 0,
             "Old accounts must default last_bgp_reported_at to 0"
+        );
+        assert_eq!(
+            deserialized.bgp_rtt_ns, 0,
+            "Old accounts must default bgp_rtt_ns to 0"
         );
     }
 
@@ -1080,6 +1103,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let data = borsh::to_vec(&user).unwrap();
         let deserialized = User::try_from(&data[..]).unwrap();

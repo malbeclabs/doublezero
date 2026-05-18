@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- cli: `config set` accepts `--geo-program-id`; `config get` and `config set` print Geolocation Program ID
+
 ## [v0.23.0](https://github.com/malbeclabs/doublezero/compare/client/v0.22.0...client/v0.23.0) - 2026-05-15
 
 ### Breaking

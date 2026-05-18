@@ -10,7 +10,7 @@ use std::{io::Write, path::PathBuf};
 #[derive(Args, Debug)]
 #[clap(group(
     ArgGroup::new("mandatory")
-        .args(&["env", "url", "ws", "keypair", "program_id", "tenant", "no_tenant"])
+        .args(&["env", "url", "ws", "keypair", "program_id", "geo_program_id", "tenant", "no_tenant"])
         .required(true)
         .multiple(true)
 ))]
@@ -30,6 +30,9 @@ pub struct SetConfigCliCommand {
     /// Pubkey of the smart contract (devnet, testnet)
     #[arg(long)]
     pub program_id: Option<String>,
+    /// Geolocation program ID
+    #[arg(long)]
+    pub geo_program_id: Option<String>,
     /// Default tenant code or pubkey
     #[arg(long, conflicts_with = "no_tenant")]
     pub tenant: Option<String>,
@@ -41,10 +44,14 @@ pub struct SetConfigCliCommand {
 impl SetConfigCliCommand {
     pub fn execute<W: Write>(self, _client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
         let (ledger_url, ledger_ws, program_id, geo_program_id) = if let Some(env) = self.env {
-            if self.url.is_some() || self.ws.is_some() || self.program_id.is_some() {
+            if self.url.is_some()
+                || self.ws.is_some()
+                || self.program_id.is_some()
+                || self.geo_program_id.is_some()
+            {
                 writeln!(
                     out,
-                    "Invalid flag combination: Use either --env for environment shortcuts OR individual --url/--ws/--program-id flags, but not both."
+                    "Invalid flag combination: Use either --env for environment shortcuts OR individual --url/--ws/--program-id/--geo-program-id flags, but not both."
                 )?;
                 return Ok(());
             }
@@ -57,13 +64,14 @@ impl SetConfigCliCommand {
                 Some(config.geolocation_program_id.to_string()),
             )
         } else {
-            (self.url, self.ws, self.program_id, None)
+            (self.url, self.ws, self.program_id, self.geo_program_id)
         };
 
         if ledger_url.is_none()
             && ledger_ws.is_none()
             && self.keypair.is_none()
             && program_id.is_none()
+            && geo_program_id.is_none()
             && self.tenant.is_none()
             && !self.no_tenant
         {
@@ -99,7 +107,7 @@ impl SetConfigCliCommand {
 
         writeln!(
             out,
-            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\nTenant: {}\n",
+            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\nGeolocation Program ID: {}\nTenant: {}\n",
             filename.display(),
             config.json_rpc_url,
             config.websocket_url.unwrap_or(format!(
@@ -110,6 +118,10 @@ impl SetConfigCliCommand {
             config.program_id.unwrap_or(format!(
                 "{} (computed)",
                 doublezero_sdk::default_program_id()
+            )),
+            config.geo_program_id.unwrap_or(format!(
+                "{} (computed)",
+                doublezero_sdk::default_geolocation_program_id()
             )),
             config.tenant.unwrap_or("(not set)".to_string())
         )?;
@@ -147,6 +159,7 @@ mod tests {
                 ws: None,
                 keypair: None,
                 program_id: None,
+                geo_program_id: None,
                 tenant: None,
                 no_tenant: false,
             }
@@ -180,6 +193,7 @@ mod tests {
                 ws: None,
                 keypair: None,
                 program_id: None,
+                geo_program_id: None,
                 tenant: None,
                 no_tenant: false,
             }
@@ -208,6 +222,7 @@ mod tests {
                 ws: None,
                 keypair: None,
                 program_id: None,
+                geo_program_id: None,
                 tenant: None,
                 no_tenant: false,
             }
@@ -242,6 +257,7 @@ mod tests {
                 ws: None,
                 keypair: None,
                 program_id: None,
+                geo_program_id: None,
                 tenant: None,
                 no_tenant: false,
             }
@@ -276,6 +292,7 @@ mod tests {
                 ws: None,
                 keypair: None,
                 program_id: Some("1234567890".to_string()),
+                geo_program_id: None,
                 tenant: None,
                 no_tenant: false,
             }
@@ -332,6 +349,7 @@ mod tests {
                 ws: None,
                 keypair: None,
                 program_id: None,
+                geo_program_id: None,
                 tenant: Some("my-tenant".to_string()),
                 no_tenant: false,
             }
@@ -366,6 +384,7 @@ mod tests {
                 ws: None,
                 keypair: None,
                 program_id: None,
+                geo_program_id: None,
                 tenant: None,
                 no_tenant: true,
             }
@@ -377,6 +396,68 @@ mod tests {
             // Verify it was persisted
             let (_, saved_config) = read_doublezero_config().unwrap();
             assert_eq!(saved_config.tenant, None);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_cli_config_set_geo_program_id() {
+        let (_tmp, config_path, cfg) = new_test_config(|_cfg| {});
+
+        temp_env::with_var(CONFIG_ENV_VAR, Some(&config_path.to_str().unwrap()), || {
+            write_doublezero_config(&cfg).unwrap();
+            create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
+
+            let client = create_test_client();
+
+            let mut output = Vec::new();
+            SetConfigCliCommand {
+                env: None,
+                url: None,
+                ws: None,
+                keypair: None,
+                program_id: None,
+                geo_program_id: Some("MyGeoProgram123".to_string()),
+                tenant: None,
+                no_tenant: false,
+            }
+            .execute(&client, &mut output)
+            .unwrap();
+            let output_str = String::from_utf8(output).unwrap();
+
+            assert!(output_str.contains("Geolocation Program ID: MyGeoProgram123"));
+
+            let (_, saved) = doublezero_sdk::read_doublezero_config().unwrap();
+            assert_eq!(saved.geo_program_id, Some("MyGeoProgram123".to_string()));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_cli_config_set_env_with_geo_program_id_errors() {
+        let (_tmp, config_path, cfg) = new_test_config(|_cfg| {});
+
+        temp_env::with_var(CONFIG_ENV_VAR, Some(&config_path.to_str().unwrap()), || {
+            write_doublezero_config(&cfg).unwrap();
+            create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
+
+            let client = create_test_client();
+
+            let mut output = Vec::new();
+            SetConfigCliCommand {
+                env: Some(Environment::Devnet.to_string()),
+                url: None,
+                ws: None,
+                keypair: None,
+                program_id: None,
+                geo_program_id: Some("MyGeoProgram123".to_string()),
+                tenant: None,
+                no_tenant: false,
+            }
+            .execute(&client, &mut output)
+            .unwrap();
+            let output_str = String::from_utf8(output).unwrap();
+            assert!(output_str.contains("Invalid flag combination"));
         });
     }
 
@@ -411,6 +492,13 @@ mod tests {
         assert!(
             output_str.contains("Keypair Path:"),
             "Keypair Path line missing"
+        );
+
+        // Verify Geolocation Program ID line is present (value is environment-dependent;
+        // just confirm the label).
+        assert!(
+            output_str.contains("Geolocation Program ID:"),
+            "Geolocation Program ID line missing"
         );
     }
 }

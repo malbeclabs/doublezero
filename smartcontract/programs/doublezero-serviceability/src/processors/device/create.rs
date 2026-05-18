@@ -34,8 +34,8 @@ pub struct DeviceCreateArgs {
     pub mgmt_vrf: String,
     pub desired_status: Option<DeviceDesiredStatus>,
     /// Number of resource accounts to create (TunnelIds + DzPrefixBlocks).
-    /// When > 0, performs atomic create+activate with onchain allocation.
-    /// When 0 (default), uses the legacy two-step create+activate flow.
+    /// Must equal `1 + dz_prefixes.len()`: one TunnelIds account plus one
+    /// DzPrefixBlock per advertised prefix.
     #[incremental(default = 0)]
     pub resource_count: u8,
 }
@@ -71,21 +71,15 @@ pub fn process_create_device(
     let exchange_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: globalconfig + resource accounts for onchain allocation (before payer)
-    // Account layout WITH onchain allocation (resource_count > 0):
-    //   [device, contributor, location, exchange, globalstate, globalconfig, resource_0..N, payer, system]
-    // Account layout WITHOUT (legacy, resource_count == 0):
-    //   [device, contributor, location, exchange, globalstate, payer, system]
-    let (globalconfig_account, resource_accounts) = if value.resource_count > 0 {
-        let globalconfig = next_account_info(accounts_iter)?;
-        let mut resources = vec![];
-        for _ in 0..value.resource_count {
-            resources.push(next_account_info(accounts_iter)?);
-        }
-        (Some(globalconfig), resources)
-    } else {
-        (None, vec![])
-    };
+    // Account layout:
+    //   [device, contributor, location, exchange, globalstate,
+    //    globalconfig, tunnel_ids, dz_prefix_block_0..N-1,
+    //    payer, system]
+    let globalconfig_account = next_account_info(accounts_iter)?;
+    let mut resource_accounts = Vec::with_capacity(value.resource_count as usize);
+    for _ in 0..value.resource_count {
+        resource_accounts.push(next_account_info(accounts_iter)?);
+    }
 
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -164,9 +158,18 @@ pub fn process_create_device(
         }
     }
 
-    // Onchain resource allocation is mandatory: caller must pass TunnelIds plus at least one
-    // DzPrefixBlock account.
-    if value.resource_count < 2 {
+    // resource_count must match the device's prefix list exactly: one TunnelIds
+    // plus one DzPrefixBlock per dz_prefix. A short count would leave later
+    // user allocations unable to derive a DzPrefixBlock PDA; an over-long
+    // count would create unused resource accounts.
+    let expected_resource_count = 1usize.saturating_add(value.dz_prefixes.len());
+    if value.resource_count as usize != expected_resource_count {
+        #[cfg(test)]
+        msg!(
+            "resource_count {} != 1 + dz_prefixes.len() {}",
+            value.resource_count,
+            expected_resource_count
+        );
         return Err(DoubleZeroError::InvalidArgument.into());
     }
 
@@ -221,22 +224,20 @@ pub fn process_create_device(
         ],
     )?;
 
-    // Create resource accounts after device account exists
-    if let Some(globalconfig_account) = globalconfig_account {
-        for (idx, resource_account) in resource_accounts.iter().enumerate() {
-            create_resource(
-                program_id,
-                resource_account,
-                Some(device_account),
-                globalconfig_account,
-                payer_account,
-                accounts,
-                match idx {
-                    0 => ResourceType::TunnelIds(*device_account.key, 0),
-                    _ => ResourceType::DzPrefixBlock(*device_account.key, idx - 1),
-                },
-            )?;
-        }
+    // Create resource accounts after device account exists.
+    for (idx, resource_account) in resource_accounts.iter().enumerate() {
+        create_resource(
+            program_id,
+            resource_account,
+            Some(device_account),
+            globalconfig_account,
+            payer_account,
+            accounts,
+            match idx {
+                0 => ResourceType::TunnelIds(*device_account.key, 0),
+                _ => ResourceType::DzPrefixBlock(*device_account.key, idx - 1),
+            },
+        )?;
     }
 
     try_acc_write(&contributor, contributor_account, payer_account, accounts)?;

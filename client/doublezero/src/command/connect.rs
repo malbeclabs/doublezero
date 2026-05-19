@@ -191,9 +191,6 @@ impl ProvisioningCliCommand {
                 self.user_activated(controller, user_type, spinner).await;
                 Ok(())
             }
-            UserStatus::RejectedDeprecated => {
-                self.user_rejected(client, &user_pubkey, spinner).await
-            }
             _ => eyre::bail!("User status not expected"),
         }
     }
@@ -252,9 +249,6 @@ impl ProvisioningCliCommand {
                 self.user_activated(controller, UserType::Multicast, spinner)
                     .await;
                 Ok(())
-            }
-            UserStatus::RejectedDeprecated => {
-                self.user_rejected(client, &user_pubkey, spinner).await
             }
             _ => eyre::bail!("User status not expected"),
         }
@@ -426,9 +420,7 @@ impl ProvisioningCliCommand {
                 spinner.println(format!(
                     "    An account already exists with Pubkey: {pubkey}"
                 ));
-                if user.status == UserStatus::PendingBanDeprecated
-                    || user.status == UserStatus::Banned
-                {
+                if user.status == UserStatus::Banned {
                     spinner.println("❌  The user is banned.");
                     eyre::bail!("User is banned.");
                 }
@@ -914,28 +906,6 @@ impl ProvisioningCliCommand {
         eyre::bail!("timed out waiting for daemon to provision tunnel")
     }
 
-    async fn user_rejected(
-        &self,
-        client: &dyn CliCommand,
-        user_pubkey: &Pubkey,
-        spinner: &ProgressBar,
-    ) -> eyre::Result<()> {
-        spinner.println(format!("    {}", "User rejected"));
-
-        spinner.set_message("Reading logs...");
-        std::thread::sleep(std::time::Duration::from_secs(10));
-        let msgs = client
-            .get_logs(user_pubkey)
-            .map_err(|_| eyre::eyre!("Unable to get logs"))?;
-
-        for mut msg in msgs {
-            if msg.starts_with("Program log: Error: ") {
-                spinner.println(format!("    {}", msg.split_off(20)));
-            }
-        }
-
-        Ok(())
-    }
 }
 
 fn exclude_ips(

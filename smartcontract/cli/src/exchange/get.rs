@@ -129,7 +129,7 @@ mod tests {
             exchange_pk: exchange1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [192, 168, 1, 1].into(),
-            status: DeviceStatus::PendingDeprecated,
+            status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "default".to_string(),

@@ -96,12 +96,7 @@ impl MigrateMulticastCountsCommand {
         let users = client.list_user(ListUserCommand)?;
         let mut per_device: HashMap<Pubkey, (u16, u16)> = HashMap::new(); // (publishers, subscribers)
         for user in users.values() {
-            let is_live = !matches!(
-                user.status,
-                UserStatus::RejectedDeprecated
-                    | UserStatus::Banned
-                    | UserStatus::PendingBanDeprecated
-            );
+            let is_live = user.status != UserStatus::Banned;
             if user.user_type == UserType::Multicast && is_live {
                 let (pub_count, sub_count) = per_device.entry(user.device_pk).or_default();
                 if user.is_publisher() {
@@ -202,12 +197,7 @@ impl MigrateUnicastCountsCommand {
         let users = client.list_user(ListUserCommand)?;
         let mut per_device: HashMap<Pubkey, u16> = HashMap::new();
         for user in users.values() {
-            let is_live = !matches!(
-                user.status,
-                UserStatus::RejectedDeprecated
-                    | UserStatus::Banned
-                    | UserStatus::PendingBanDeprecated
-            );
+            let is_live = user.status != UserStatus::Banned;
             if user.user_type != UserType::Multicast && is_live {
                 let count = per_device.entry(user.device_pk).or_default();
                 *count = count.saturating_add(1);

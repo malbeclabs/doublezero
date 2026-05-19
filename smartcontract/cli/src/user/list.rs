@@ -1500,7 +1500,7 @@ mod tests {
             dz_ip: [2, 3, 4, 6].into(),
             tunnel_id: 501,
             tunnel_net: "1.2.3.6/32".parse().unwrap(),
-            status: UserStatus::PendingDeprecated,
+            status: UserStatus::OutOfCredits,
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
@@ -1562,7 +1562,7 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("activated"));
-        assert!(!output_str.contains("pending"));
+        assert!(!output_str.contains("out_of_credits"));
     }
 
     #[test]

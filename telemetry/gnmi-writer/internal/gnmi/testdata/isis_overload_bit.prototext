@@ -1,0 +1,52 @@
+update: {
+  timestamp: 1779197016855727675
+  prefix: {
+    target: "CHiDN1111111111111111111111111111111111111111"
+  }
+  update: {
+    path: {
+      elem: {
+        name: "network-instances"
+      }
+      elem: {
+        name: "network-instance"
+        key: {
+          key: "name"
+          value: "default"
+        }
+      }
+      elem: {
+        name: "protocols"
+      }
+      elem: {
+        name: "protocol"
+        key: {
+          key: "identifier"
+          value: "ISIS"
+        }
+        key: {
+          key: "name"
+          value: "1"
+        }
+      }
+      elem: {
+        name: "isis"
+      }
+      elem: {
+        name: "global"
+      }
+      elem: {
+        name: "lsp-bit"
+      }
+      elem: {
+        name: "overload-bit"
+      }
+      elem: {
+        name: "state"
+      }
+    }
+    val: {
+      json_ietf_val: "{\"openconfig-network-instance:set-bit\":true}"
+    }
+  }
+}

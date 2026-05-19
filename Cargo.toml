@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "client/doublezero",
-    "client/doublezero-geolocation-cli",
     "config",
     "controlplane/doublezero-admin",
     "smartcontract/cli",

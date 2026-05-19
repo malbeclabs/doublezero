@@ -17,7 +17,8 @@ use clap::{Args, Subcommand};
 use clap_complete::Shell;
 use doublezero_cli::{
     account::GetAccountCliCommand, accounts::GetAccountsCliCommand, address::AddressCliCommand,
-    balance::BalanceCliCommand, export::ExportCliCommand, init::InitCliCommand,
+    balance::BalanceCliCommand, export::ExportCliCommand,
+    geolocation::programconfig::init::InitProgramConfigCliCommand, init::InitCliCommand,
     keygen::KeyGenCliCommand, logcommand::LogCliCommand, migrate::MigrateCliCommand,
 };
 
@@ -27,6 +28,8 @@ pub enum Command {
     Init(InitCliCommand),
     #[command(hide = true)]
     Migrate(MigrateCliCommand),
+    #[command(hide = true)]
+    InitGeolocationConfig(InitProgramConfigCliCommand),
     /// Connect your server to a doublezero device
     #[command()]
     Connect(ProvisioningCliCommand),

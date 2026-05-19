@@ -554,25 +554,23 @@ max_offset_age_seconds: 300
 ```
 
 #### CLI For DZ Ledger Management
-PoC CLI will be a separate `doublezero-geolocation` CLI, future work will integrate it into `doublezero` CLI as `doublezero geolocation`
-
 - New CLI module `smartcontract/cli/src/geolocation/probe/`
 - Commands for probe management:
-    - `doublezero-geolocation probe create` — creates a GeoProbe account (args: code, exchange, public-ip, port, metrics-publisher-pk)
-    - `doublezero-geolocation probe update` — updates GeoProbe fields (public-ip, port, metrics-publisher-pk)
-    - `doublezero-geolocation probe delete` — deletes a GeoProbe account
-    - `doublezero-geolocation probe list` — lists all GeoProbe accounts
-    - `doublezero-geolocation probe get` — gets a specific GeoProbe by code
-    - `doublezero-geolocation probe add-parent` — adds a parent DZD to a GeoProbe
-    - `doublezero-geolocation probe remove-parent` — removes a parent DZD from a GeoProbe
-    - `doublezero-geolocation init-config` — initializes the GeolocationProgramConfig (one-time)
+    - `doublezero geolocation probe create` — creates a GeoProbe account (args: code, exchange, public-ip, port, metrics-publisher-pk)
+    - `doublezero geolocation probe update` — updates GeoProbe fields (public-ip, port, metrics-publisher-pk)
+    - `doublezero geolocation probe delete` — deletes a GeoProbe account
+    - `doublezero geolocation probe list` — lists all GeoProbe accounts
+    - `doublezero geolocation probe get` — gets a specific GeoProbe by code
+    - `doublezero geolocation probe add-parent` — adds a parent DZD to a GeoProbe
+    - `doublezero geolocation probe remove-parent` — removes a parent DZD from a GeoProbe
+    - `doublezero geolocation init-config` — initializes the GeolocationProgramConfig (one-time)
 - Commands for user management: 
-    - `doublezero-geolocation user create` - Creates a GeoLocation User (args: Code, token_account)
-    - `doublezero-geolocation user list` - lists all GeoLocation users
-    - `doublezero-geolocation user delete` - Deletes a GeoLocation User (must be that user or foundation)
-    - `doublezero-geolocation add-target` - Adds targets to be covered by a user (Args: code, ip or pubkey)
-    - `doublezero-geolocation remove-target` - removes a target from a user  (Args: code, ip or pubkey)
-    - `doublezero-geolocation probe get` - Gets offset from a probe (args: Probe Code(s), optional: epoch)
+    - `doublezero geolocation user create` - Creates a GeoLocation User (args: Code, token_account)
+    - `doublezero geolocation user list` - lists all GeoLocation users
+    - `doublezero geolocation user delete` - Deletes a GeoLocation User (must be that user or foundation)
+    - `doublezero geolocation add-target` - Adds targets to be covered by a user (Args: code, ip or pubkey)
+    - `doublezero geolocation remove-target` - removes a target from a user  (Args: code, ip or pubkey)
+    - `doublezero geolocation probe get` - Gets offset from a probe (args: Probe Code(s), optional: epoch)
 
 
 ### MVP Requirements

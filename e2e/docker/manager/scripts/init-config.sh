@@ -28,19 +28,19 @@ if [ -n "${DZ_GEOLOCATION_PROGRAM_KEYPAIR_PATH:-}" ]; then
 fi
 
 # Initialize doublezero CLI config.
+geo_flag=()
+if [ -n "${geolocation_program_id:-}" ]; then
+  geo_flag=(--geo-program-id "$geolocation_program_id")
+fi
 doublezero config set \
   --keypair /root/.config/doublezero/id.json \
   --url $DZ_LEDGER_URL \
   --ws $DZ_LEDGER_WS \
-  --program-id $serviceability_program_id
+  --program-id $serviceability_program_id \
+  "${geo_flag[@]}"
 echo "==> Config:"
 cat /root/.config/doublezero/cli/config.yml
 echo
-
-# Configure geolocation program ID if available.
-if [ -n "${geolocation_program_id:-}" ]; then
-  doublezero-geolocation config set --geo-program-id $geolocation_program_id
-fi
 
 # Configure the solana CLI.
 echo "==> Configuring solana CLI"

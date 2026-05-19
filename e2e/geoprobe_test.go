@@ -312,7 +312,7 @@ func getExchangePK(t *testing.T, dn *devnet.Devnet, exchangeCode string) string 
 func createGeoprobeOnchain(t *testing.T, dn *devnet.Devnet, code, exchangePK, publicIP, signingKeypair string) string {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
-		"doublezero-geolocation", "probe", "create",
+		"doublezero", "geolocation", "probe", "create",
 		"--code", code,
 		"--exchange", exchangePK,
 		"--public-ip", publicIP,
@@ -341,7 +341,7 @@ func createGeoprobeOnchain(t *testing.T, dn *devnet.Devnet, code, exchangePK, pu
 func getGeoprobePK(t *testing.T, dn *devnet.Devnet, code string) string {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
-		"doublezero-geolocation", "probe", "get", "--probe", code, "--json",
+		"doublezero", "geolocation", "probe", "get", "--probe", code, "--json",
 	})
 	require.NoError(t, err, "probe get failed: %s", string(output))
 
@@ -357,7 +357,7 @@ func getGeoprobePK(t *testing.T, dn *devnet.Devnet, code string) string {
 func addGeoprobeParent(t *testing.T, dn *devnet.Devnet, code, devicePK string) {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
-		"doublezero-geolocation", "probe", "add-parent",
+		"doublezero", "geolocation", "probe", "add-parent",
 		"--probe", code,
 		"--device", devicePK,
 	})
@@ -870,7 +870,7 @@ func TestE2E_GeoprobeIcmpTargets(t *testing.T) {
 func createGeolocationUser(t *testing.T, dn *devnet.Devnet, code, tokenAccount string) {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
-		"doublezero-geolocation", "user", "create",
+		"doublezero", "geolocation", "user", "create",
 		"--code", code,
 		"--token-account", tokenAccount,
 	})
@@ -881,7 +881,7 @@ func createGeolocationUser(t *testing.T, dn *devnet.Devnet, code, tokenAccount s
 func updateGeolocationUserPayment(t *testing.T, dn *devnet.Devnet, code, status string) {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
-		"doublezero-geolocation", "user", "update-payment",
+		"doublezero", "geolocation", "user", "update-payment",
 		"--user", code,
 		"--status", status,
 	})
@@ -892,7 +892,7 @@ func updateGeolocationUserPayment(t *testing.T, dn *devnet.Devnet, code, status 
 func setGeolocationUserResultDestination(t *testing.T, dn *devnet.Devnet, userCode, destination string) {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
-		"doublezero-geolocation", "user", "set-result-destination",
+		"doublezero", "geolocation", "user", "set-result-destination",
 		"--user", userCode,
 		"--destination", destination,
 	})
@@ -903,7 +903,7 @@ func setGeolocationUserResultDestination(t *testing.T, dn *devnet.Devnet, userCo
 func addGeolocationOutboundTarget(t *testing.T, dn *devnet.Devnet, userCode, targetIP string, targetPort int, probeCode string) {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
-		"doublezero-geolocation", "user", "add-target",
+		"doublezero", "geolocation", "user", "add-target",
 		"--user", userCode,
 		"--type", "outbound",
 		"--target-ip", targetIP,
@@ -917,7 +917,7 @@ func addGeolocationOutboundTarget(t *testing.T, dn *devnet.Devnet, userCode, tar
 func addGeolocationOutboundIcmpTarget(t *testing.T, dn *devnet.Devnet, userCode, targetIP string, targetPort int, probeCode string) {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
-		"doublezero-geolocation", "user", "add-target",
+		"doublezero", "geolocation", "user", "add-target",
 		"--user", userCode,
 		"--type", "outbound-icmp",
 		"--target-ip", targetIP,
@@ -931,7 +931,7 @@ func addGeolocationOutboundIcmpTarget(t *testing.T, dn *devnet.Devnet, userCode,
 func addGeolocationInboundTarget(t *testing.T, dn *devnet.Devnet, userCode, targetPK, probeCode string) {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
-		"doublezero-geolocation", "user", "add-target",
+		"doublezero", "geolocation", "user", "add-target",
 		"--user", userCode,
 		"--type", "inbound",
 		"--target-signing-pubkey", targetPK,

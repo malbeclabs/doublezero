@@ -164,6 +164,14 @@ async fn main() -> eyre::Result<()> {
 
         Command::Init(args) => args.execute(&client, &mut handle),
         Command::Migrate(args) => args.execute(&client, &mut handle),
+        Command::InitGeolocationConfig(args) => {
+            let geo_client =
+                GeoClient::new(url.clone(), app.geo_program_id.clone(), app.keypair.clone())?;
+            let svc_program_id = *dzclient.get_program_id();
+            let (globalstate_pk, _) = get_globalstate_pda(&svc_program_id);
+            let geo_cli = GeoCliCommandImpl::new(&geo_client, &dzclient, globalstate_pk);
+            args.execute(&geo_cli, &mut handle)
+        }
         Command::Config(command) => match command.command {
             ConfigCommands::Get(args) => args.execute(&client, &mut handle),
             ConfigCommands::Set(args) => args.execute(&client, &mut handle),

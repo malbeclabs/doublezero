@@ -2,6 +2,7 @@ pub mod list;
 pub mod pay;
 pub mod payments;
 pub mod price;
+pub mod publisher_rewards;
 pub mod validator_client_rewards;
 pub mod withdraw;
 
@@ -52,6 +53,8 @@ pub enum ShredsSubcommand {
     Price(price::PriceCommand),
     /// Validator client rewards: claim accumulated rewards and manage proportions.
     ValidatorClientRewards(validator_client_rewards::ValidatorClientRewardsCommand),
+    /// Validator publisher rewards configuration.
+    PublisherRewards(publisher_rewards::PublisherRewardsCommand),
 }
 
 impl ShredsSubcommand {
@@ -63,6 +66,7 @@ impl ShredsSubcommand {
             Self::Payments(command) => command.try_into_execute(dz_ledger_url).await,
             Self::Price(command) => command.try_into_execute(dz_ledger_url).await,
             Self::ValidatorClientRewards(command) => command.try_into_execute().await,
+            Self::PublisherRewards(command) => command.try_into_execute().await,
         }
     }
 }

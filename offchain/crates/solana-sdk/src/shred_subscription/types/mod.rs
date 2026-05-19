@@ -1,0 +1,3 @@
+pub mod configure_validator_publisher_rewards_auth_message;
+
+pub use configure_validator_publisher_rewards_auth_message::ConfigureValidatorPublisherRewardsAuthMessage;

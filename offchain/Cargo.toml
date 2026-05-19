@@ -47,6 +47,7 @@ csv = "1"
 dotenvy = "0.15"
 futures = "0.3"
 governor = "0.6"
+hex = "0.4"
 home = "0.5"
 indexmap = { version = "2", features = ["serde"] }
 itertools = "0.14"
@@ -76,6 +77,7 @@ spl-associated-token-account-interface = "1"
 spl-memo-interface = "1"
 spl-token-interface = "1"
 solana-loader-v3-interface = "5"
+solana-offchain-message = { version = "2", features = ["verify"] }
 solana-program-pack = "2"
 solana-program-test = "=2.3.13"
 strum = { version = "0.27", features = ["derive"] }

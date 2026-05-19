@@ -300,6 +300,66 @@ else
     echo
 fi
 
+### Shreds publisher-rewards commands.
+
+echo "doublezero-solana shreds publisher-rewards -h"
+$CLI_BIN shreds publisher-rewards -h
+echo
+
+NODE_ID=$(solana address -k test-ledger/validator-keypair.json)
+# Canonical 2Z mint on mainnet-beta. Pinned literal so the script doesn't
+# need to import Rust constants. Source: doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY.
+DZ_MINT="J6pQQ3FAcJQeWPPGppWRb4nM8jU3wLyYbRrLh7feMfvd"
+ANOTHER_PAYER_KEY=$(solana address -k another_payer.json)
+
+# Airdrop SOL to the validator identity so it can pay tx fees on the direct
+# configure path (where the fee-payer keypair doubles as the validator
+# identity).
+solana airdrop -ul 1 -k test-ledger/validator-keypair.json
+echo
+
+# `configure` idempotently creates the rewards-token ATA for the supplied
+# owner/mint pair, so no separate `spl-token create-account` step is needed.
+# The 2Z mint is forked from mainnet.
+
+# Init (paid by dummy)
+echo "doublezero-solana shreds publisher-rewards init -ul -k dummy.json --node-id $NODE_ID"
+$CLI_BIN shreds publisher-rewards init -ul -k dummy.json --node-id $NODE_ID
+echo
+
+# Direct path: fee-payer keypair (-k) doubles as the validator identity, so we
+# pass the validator-keypair as the fee-payer and --node-id matches its pubkey.
+echo "doublezero-solana shreds publisher-rewards configure -ul (direct path)"
+$CLI_BIN shreds publisher-rewards configure -ul -k test-ledger/validator-keypair.json \
+    --node-id $NODE_ID --rewards-token-mint $DZ_MINT --rewards-token-owner $DUMMY_KEY
+echo
+
+echo "doublezero-solana shreds publisher-rewards show -ul --node-id $NODE_ID"
+$CLI_BIN shreds publisher-rewards show -ul --node-id $NODE_ID
+echo
+
+# Offchain path: prepare → solana sign-offchain-message → configure
+echo "Preparing offchain authorization message..."
+PREPARED=$($CLI_BIN shreds publisher-rewards prepare-offchain-message -ul \
+    --node-id $NODE_ID --rewards-token-mint $DZ_MINT \
+    --rewards-token-owner $ANOTHER_PAYER_KEY --valid-for 1h --json)
+HEX=$(echo "$PREPARED" | jq -r .hex)
+DEADLINE=$(echo "$PREPARED" | jq -r .deadline_slot)
+
+echo "Signing message with validator identity..."
+SIG=$(solana sign-offchain-message -k test-ledger/validator-keypair.json "$HEX")
+
+echo "doublezero-solana shreds publisher-rewards configure -ul (offchain path)"
+$CLI_BIN shreds publisher-rewards configure -ul -k another_payer.json \
+    --node-id $NODE_ID --rewards-token-mint $DZ_MINT \
+    --rewards-token-owner $ANOTHER_PAYER_KEY \
+    --signature "$SIG" --deadline-slot "$DEADLINE"
+echo
+
+echo "doublezero-solana shreds publisher-rewards show -ul --node-id $NODE_ID"
+$CLI_BIN shreds publisher-rewards show -ul --node-id $NODE_ID
+echo
+
 ### Clean up.
 
 echo "rm dummy.json another_payer.json rewards_manager.json " \

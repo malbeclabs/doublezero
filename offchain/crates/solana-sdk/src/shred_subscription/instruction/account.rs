@@ -532,10 +532,77 @@ impl From<ClaimValidatorClientRewardsAccounts> for Vec<AccountMeta> {
     }
 }
 
+/// Accounts for the `InitializeValidatorPublisherRewards` instruction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitializeValidatorPublisherRewardsAccounts {
+    pub payer_key: Pubkey,
+    pub new_validator_publisher_rewards_key: Pubkey,
+}
+
+impl InitializeValidatorPublisherRewardsAccounts {
+    pub fn new(payer_key: &Pubkey, node_id: &Pubkey) -> Self {
+        Self {
+            payer_key: *payer_key,
+            new_validator_publisher_rewards_key: state::find_validator_publisher_rewards_address(
+                node_id,
+            )
+            .0,
+        }
+    }
+}
+
+impl From<InitializeValidatorPublisherRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: InitializeValidatorPublisherRewardsAccounts) -> Self {
+        vec![
+            AccountMeta::new(accounts.payer_key, true),
+            AccountMeta::new(accounts.new_validator_publisher_rewards_key, false),
+            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+        ]
+    }
+}
+
+/// Accounts for the `ConfigureValidatorPublisherRewards` instruction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigureValidatorPublisherRewardsAccounts {
+    pub program_config_key: Pubkey,
+    pub shred_reward_token_key: Pubkey,
+    pub validator_node_key: Pubkey,
+    pub validator_publisher_rewards_key: Pubkey,
+    /// `true` when the `validator_node` account is a Solana signer on the
+    /// transaction (direct path); `false` when authorization is carried in
+    /// instruction data via `ValidatorOffchainAuthorization`.
+    pub is_node_signer: bool,
+}
+
+impl ConfigureValidatorPublisherRewardsAccounts {
+    pub fn new(node_id: &Pubkey, rewards_token_mint_key: &Pubkey, is_node_signer: bool) -> Self {
+        Self {
+            program_config_key: state::find_program_config_address().0,
+            shred_reward_token_key: state::find_shred_reward_token_address(rewards_token_mint_key)
+                .0,
+            validator_node_key: *node_id,
+            validator_publisher_rewards_key: state::find_validator_publisher_rewards_address(
+                node_id,
+            )
+            .0,
+            is_node_signer,
+        }
+    }
+}
+
+impl From<ConfigureValidatorPublisherRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: ConfigureValidatorPublisherRewardsAccounts) -> Self {
+        vec![
+            AccountMeta::new_readonly(accounts.program_config_key, false),
+            AccountMeta::new_readonly(accounts.shred_reward_token_key, false),
+            AccountMeta::new_readonly(accounts.validator_node_key, accounts.is_node_signer),
+            AccountMeta::new(accounts.validator_publisher_rewards_key, false),
+        ]
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use solana_sdk::pubkey::Pubkey;
-
     use super::*;
 
     #[test]
@@ -650,5 +717,61 @@ mod tests {
             assert_eq!(meta.pubkey, *expected_holding);
             assert!(meta.is_writable && !meta.is_signer);
         }
+    }
+
+    #[test]
+    fn initialize_vpr_account_metas() {
+        let payer = Pubkey::new_unique();
+        let node_id = Pubkey::new_unique();
+        let metas: Vec<AccountMeta> =
+            InitializeValidatorPublisherRewardsAccounts::new(&payer, &node_id).into();
+        assert_eq!(metas.len(), 3);
+        // 0: payer (signer, mut)
+        assert!(metas[0].is_signer);
+        assert!(metas[0].is_writable);
+        assert_eq!(metas[0].pubkey, payer);
+        // 1: new VPR PDA (mut, not signer)
+        assert!(!metas[1].is_signer);
+        assert!(metas[1].is_writable);
+        // 2: system program (ro)
+        assert!(!metas[2].is_signer);
+        assert!(!metas[2].is_writable);
+        assert_eq!(metas[2].pubkey, solana_sdk::system_program::ID);
+    }
+
+    #[test]
+    fn configure_vpr_account_metas_direct() {
+        let node_id = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let metas: Vec<AccountMeta> = ConfigureValidatorPublisherRewardsAccounts::new(
+            &node_id, &mint, /* is_node_signer = */ true,
+        )
+        .into();
+        assert_eq!(metas.len(), 4);
+        // 0: program_config (ro)
+        assert!(!metas[0].is_signer);
+        assert!(!metas[0].is_writable);
+        // 1: shred_reward_token (ro)
+        assert!(!metas[1].is_signer);
+        assert!(!metas[1].is_writable);
+        // 2: validator_node (signer in direct path, ro)
+        assert!(metas[2].is_signer);
+        assert!(!metas[2].is_writable);
+        assert_eq!(metas[2].pubkey, node_id);
+        // 3: vpr PDA (mut)
+        assert!(!metas[3].is_signer);
+        assert!(metas[3].is_writable);
+    }
+
+    #[test]
+    fn configure_vpr_account_metas_offchain() {
+        let node_id = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+        let metas: Vec<AccountMeta> = ConfigureValidatorPublisherRewardsAccounts::new(
+            &node_id, &mint, /* is_node_signer = */ false,
+        )
+        .into();
+        // Validator node not a signer in offchain path.
+        assert!(!metas[2].is_signer);
     }
 }

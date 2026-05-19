@@ -4,6 +4,17 @@ use std::io;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_tools::{DISCRIMINATOR_LEN, Discriminator};
+use solana_sdk::pubkey::Pubkey;
+
+/// Envelope for an offchain authorization produced by a validator operator
+/// via `solana sign-offchain-message`. Carries the ed25519 signature plus the
+/// cluster slot after which the authorization is no longer valid. Mirrors the
+/// on-chain `ValidatorOffchainAuthorization` Borsh layout.
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+pub struct ValidatorOffchainAuthorization {
+    pub deadline_slot: u64,
+    pub signature: [u8; 64],
+}
 
 /// Identifier for a single claim holding account, used as a payload element
 /// in `ClaimValidatorClientRewards`. Mirrors the on-chain struct byte for
@@ -42,6 +53,20 @@ pub enum ShredSubscriptionInstructionData {
     /// into a destination token account and close each, recovering rent to
     /// `program_config.shred_oracle_key`.
     ClaimValidatorClientRewards(Vec<ClaimHoldingId>),
+    /// Anyone can initialize validator publisher rewards for a given node.
+    /// The `node_id` must not be `Pubkey::default()`.
+    InitializeValidatorPublisherRewards(Pubkey),
+    /// Set the reward token owner and mint on a previously initialized
+    /// validator publisher rewards account. Two auth paths:
+    /// - `offchain_authorization = Some(_)`: ed25519 signature produced by the
+    ///   `node_id` keypair via `solana sign-offchain-message` over
+    ///   `ConfigureValidatorPublisherRewardsAuthMessage::to_hex_encoded()`.
+    /// - `offchain_authorization = None`: the `validator_node` account must be
+    ///   a Solana signer on the transaction.
+    ConfigureValidatorPublisherRewards {
+        rewards_token_owner_key: Pubkey,
+        offchain_authorization: Option<ValidatorOffchainAuthorization>,
+    },
     /// Validates the provided CLI version against the onchain minimum.
     CheckCliVersion { major: u32, minor: u32, patch: u32 },
 }
@@ -67,6 +92,10 @@ impl ShredSubscriptionInstructionData {
         Discriminator::new_sha2(b"dz::ix::initialize_claim_holding");
     pub const CLAIM_VALIDATOR_CLIENT_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::claim_validator_client_rewards");
+    pub const INITIALIZE_VALIDATOR_PUBLISHER_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::initialize_validator_publisher_rewards");
+    pub const CONFIGURE_VALIDATOR_PUBLISHER_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::configure_validator_publisher_rewards");
     pub const CHECK_CLI_VERSION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::check_cli_version");
 }
@@ -104,6 +133,18 @@ impl BorshSerialize for ShredSubscriptionInstructionData {
             Self::ClaimValidatorClientRewards(holdings) => {
                 Self::CLAIM_VALIDATOR_CLIENT_REWARDS.serialize(writer)?;
                 holdings.serialize(writer)
+            }
+            Self::InitializeValidatorPublisherRewards(node_id) => {
+                Self::INITIALIZE_VALIDATOR_PUBLISHER_REWARDS.serialize(writer)?;
+                node_id.serialize(writer)
+            }
+            Self::ConfigureValidatorPublisherRewards {
+                rewards_token_owner_key,
+                offchain_authorization,
+            } => {
+                Self::CONFIGURE_VALIDATOR_PUBLISHER_REWARDS.serialize(writer)?;
+                rewards_token_owner_key.serialize(writer)?;
+                offchain_authorization.serialize(writer)
             }
             Self::CheckCliVersion {
                 major,
@@ -149,6 +190,19 @@ impl BorshDeserialize for ShredSubscriptionInstructionData {
                 let holdings = Vec::<ClaimHoldingId>::deserialize_reader(reader)?;
                 Ok(Self::ClaimValidatorClientRewards(holdings))
             }
+            Self::INITIALIZE_VALIDATOR_PUBLISHER_REWARDS => {
+                let node_id = Pubkey::deserialize_reader(reader)?;
+                Ok(Self::InitializeValidatorPublisherRewards(node_id))
+            }
+            Self::CONFIGURE_VALIDATOR_PUBLISHER_REWARDS => {
+                let rewards_token_owner_key = Pubkey::deserialize_reader(reader)?;
+                let offchain_authorization =
+                    Option::<ValidatorOffchainAuthorization>::deserialize_reader(reader)?;
+                Ok(Self::ConfigureValidatorPublisherRewards {
+                    rewards_token_owner_key,
+                    offchain_authorization,
+                })
+            }
             Self::CHECK_CLI_VERSION => {
                 let major = u32::deserialize_reader(reader)?;
                 let minor = u32::deserialize_reader(reader)?;
@@ -170,6 +224,12 @@ impl BorshDeserialize for ShredSubscriptionInstructionData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn round_trip(ix: &ShredSubscriptionInstructionData) {
+        let bytes = borsh::to_vec(ix).unwrap();
+        let parsed = ShredSubscriptionInstructionData::try_from_slice(&bytes).unwrap();
+        assert_eq!(*ix, parsed);
+    }
 
     #[test]
     fn claim_holding_id_round_trip() {
@@ -258,5 +318,37 @@ mod tests {
         expected.extend_from_slice(&7u64.to_le_bytes());
         expected.push(250);
         assert_eq!(borsh::to_vec(&ix).unwrap(), expected);
+    }
+
+    #[test]
+    fn round_trip_initialize_validator_publisher_rewards() {
+        round_trip(
+            &ShredSubscriptionInstructionData::InitializeValidatorPublisherRewards(
+                Pubkey::new_unique(),
+            ),
+        );
+    }
+
+    #[test]
+    fn round_trip_configure_validator_publisher_rewards_direct() {
+        round_trip(
+            &ShredSubscriptionInstructionData::ConfigureValidatorPublisherRewards {
+                rewards_token_owner_key: Pubkey::new_unique(),
+                offchain_authorization: None,
+            },
+        );
+    }
+
+    #[test]
+    fn round_trip_configure_validator_publisher_rewards_offchain() {
+        round_trip(
+            &ShredSubscriptionInstructionData::ConfigureValidatorPublisherRewards {
+                rewards_token_owner_key: Pubkey::new_unique(),
+                offchain_authorization: Some(ValidatorOffchainAuthorization {
+                    deadline_slot: 999_888,
+                    signature: [7u8; 64],
+                }),
+            },
+        );
     }
 }

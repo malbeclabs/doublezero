@@ -1,6 +1,7 @@
 pub mod env;
 pub mod instruction;
 pub mod state;
+pub mod types;
 
 use std::sync::LazyLock;
 

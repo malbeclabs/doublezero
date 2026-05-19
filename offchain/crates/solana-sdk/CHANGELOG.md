@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - add `InitializeClaimHolding` and `ClaimValidatorClientRewards` instruction variants and the `ClaimHoldingId` Borsh struct (rename mirrors on-chain `shred-subscription/v0.6.6`: discriminator string `dz::ix::initialize_claim_holding_account` → `dz::ix::initialize_claim_holding`)
 - add `InitializeClaimHoldingAccounts` builder for the `InitializeClaimHolding` instruction
 - add `ClaimValidatorClientRewardsAccounts` builder for the `ClaimValidatorClientRewards` instruction (6 fixed + N holding accounts)
+- add shred-subscription publisher-rewards SDK surface for offchain consumers:
+  - `state::find_validator_publisher_rewards_address`, `state::find_shred_reward_token_address`, plus byte-offset constants and `parse_validator_publisher_rewards` / `parse_shred_reward_token` parsers.
+  - `instruction::ShredSubscriptionInstructionData::{InitializeValidatorPublisherRewards, ConfigureValidatorPublisherRewards}` variants with discriminators and Borsh round-trip.
+  - `instruction::account::{InitializeValidatorPublisherRewardsAccounts, ConfigureValidatorPublisherRewardsAccounts}` account-list builders.
+  - `instruction::ValidatorOffchainAuthorization` envelope carrying an ed25519 signature + deadline-slot for the offchain auth path.
+  - new `types::ConfigureValidatorPublisherRewardsAuthMessage` mirroring the on-chain canonical bytes (sha256 over `DOMAIN_TAG || bytemuck::bytes_of(self)`, hex-encoded for `solana sign-offchain-message`).
+- add `bytemuck` and `hex` dependencies (and `solana-offchain-message` dev-dependency) for shred-subscription publisher-rewards sign/verify round-trip tests
 - add `RequestProratedInstantSeatWithdrawal` instruction variant and accounts builder
 - add `find_shred_distribution_address` PDA helper and `parse_client_seat_last_usdc_price_dollars` parser for prorated withdrawal integration
 - add `is_prorated_service_enabled` helper and `ProgramConfig` flag/offset constants for raw-byte parsing

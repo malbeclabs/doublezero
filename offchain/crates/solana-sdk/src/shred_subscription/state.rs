@@ -1,6 +1,11 @@
 use std::net::Ipv4Addr;
 
-use doublezero_program_tools::{DISCRIMINATOR_LEN, Discriminator};
+use bytemuck::{Pod, Zeroable};
+use doublezero_program_tools::{
+    DISCRIMINATOR_LEN, Discriminator, PrecomputedDiscriminator,
+    types::{Flags, StorageGap},
+};
+use doublezero_revenue_distribution::types::UnitShare16;
 use solana_sdk::pubkey::Pubkey;
 
 pub const PROGRAM_CONFIG_SEED_PREFIX: &[u8] = b"program_config";
@@ -11,6 +16,8 @@ pub const METRO_HISTORY_SEED_PREFIX: &[u8] = b"metro_history";
 pub const TOKEN_PDA_SEED_PREFIX: &[u8] = b"token";
 pub const PAYMENT_ESCROW_SEED_PREFIX: &[u8] = b"payment_escrow";
 pub const VALIDATOR_CLIENT_REWARDS_SEED_PREFIX: &[u8] = b"validator_client_rewards";
+pub const VALIDATOR_PUBLISHER_REWARDS_SEED_PREFIX: &[u8] = b"validator_publisher_rewards";
+pub const SHRED_REWARD_TOKEN_SEED_PREFIX: &[u8] = b"shred_reward_token";
 pub const INSTANT_ALLOCATION_REQUEST_SEED_PREFIX: &[u8] = b"instant_seat_allocation_request";
 pub const WITHDRAW_SEAT_REQUEST_SEED_PREFIX: &[u8] = b"withdraw_seat_request";
 pub const SHRED_DISTRIBUTION_SEED_PREFIX: &[u8] = b"shred_distribution";
@@ -72,6 +79,20 @@ pub fn find_validator_client_rewards_address(client_id: u16) -> (Pubkey, u8) {
             VALIDATOR_CLIENT_REWARDS_SEED_PREFIX,
             &client_id.to_le_bytes(),
         ],
+        &crate::shred_subscription::ID,
+    )
+}
+
+pub fn find_validator_publisher_rewards_address(node_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[VALIDATOR_PUBLISHER_REWARDS_SEED_PREFIX, node_id.as_ref()],
+        &crate::shred_subscription::ID,
+    )
+}
+
+pub fn find_shred_reward_token_address(mint_key: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[SHRED_REWARD_TOKEN_SEED_PREFIX, mint_key.as_ref()],
         &crate::shred_subscription::ID,
     )
 }
@@ -615,6 +636,51 @@ pub fn parse_validator_client_rewards(data: &[u8]) -> Option<ValidatorClientRewa
         short_description,
         claim_holding_count,
     })
+}
+
+// ---------------------------------------------------------------------------
+// ShredRewardToken and ValidatorPublisherRewards: layout mirrored from
+// the on-chain `doublezero-shred-subscription` program (state module).
+// Kept here to avoid pulling the program crate as a dependency just for two
+// account types. If the on-chain layout changes, update both this file and
+// the discriminator strings together.
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Pod, Zeroable)]
+#[repr(C, align(8))]
+pub struct ShredRewardToken {
+    pub mint_key: Pubkey,
+    pub flags: Flags,
+    pub max_slippage_bps: UnitShare16,
+    _padding_0: [u8; 6],
+    _gap: StorageGap<2>,
+}
+
+impl PrecomputedDiscriminator for ShredRewardToken {
+    const DISCRIMINATOR: Discriminator<8> =
+        Discriminator::new_sha2(b"dz::account::shred_reward_token");
+}
+
+impl ShredRewardToken {
+    pub const FLAG_IS_ENABLED_BIT: usize = 1;
+
+    pub fn is_enabled(&self) -> bool {
+        self.flags.bit(Self::FLAG_IS_ENABLED_BIT)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Pod, Zeroable)]
+#[repr(C, align(8))]
+pub struct ValidatorPublisherRewards {
+    pub node_id: Pubkey,
+    pub rewards_token_owner_key: Pubkey,
+    pub rewards_token_mint_key: Pubkey,
+    _gap: StorageGap<4>,
+}
+
+impl PrecomputedDiscriminator for ValidatorPublisherRewards {
+    const DISCRIMINATOR: Discriminator<8> =
+        Discriminator::new_sha2(b"dz::account::validator_publisher_rewards");
 }
 
 #[cfg(test)]

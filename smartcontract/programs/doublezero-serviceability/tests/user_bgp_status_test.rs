@@ -334,6 +334,7 @@ async fn test_bgp_status_first_write_up() {
     assert_eq!(user_before.bgp_status, BGPStatus::Unknown);
     assert_eq!(user_before.last_bgp_up_at, 0);
     assert_eq!(user_before.last_bgp_reported_at, 0);
+    assert_eq!(user_before.bgp_rtt_ns, 0);
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction(
@@ -342,6 +343,7 @@ async fn test_bgp_status_first_write_up() {
         program_id,
         DoubleZeroInstruction::SetUserBGPStatus(SetUserBGPStatusArgs {
             bgp_status: BGPStatus::Up,
+            bgp_rtt_ns: 7_500_000, // 7.5 ms
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -367,6 +369,10 @@ async fn test_bgp_status_first_write_up() {
         user.last_bgp_up_at, user.last_bgp_reported_at,
         "both timestamps must match when Up is the only write so far"
     );
+    assert_eq!(
+        user.bgp_rtt_ns, 7_500_000,
+        "bgp_rtt_ns must reflect the value submitted in SetUserBGPStatusArgs"
+    );
 }
 
 /// First write with status=Down: last_bgp_up_at must remain zero.
@@ -387,6 +393,7 @@ async fn test_bgp_status_first_write_down() {
         program_id,
         DoubleZeroInstruction::SetUserBGPStatus(SetUserBGPStatusArgs {
             bgp_status: BGPStatus::Down,
+            bgp_rtt_ns: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -433,6 +440,7 @@ async fn test_bgp_status_multiple_writes() {
         program_id,
         DoubleZeroInstruction::SetUserBGPStatus(SetUserBGPStatusArgs {
             bgp_status: BGPStatus::Up,
+            bgp_rtt_ns: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -460,6 +468,7 @@ async fn test_bgp_status_multiple_writes() {
         program_id,
         DoubleZeroInstruction::SetUserBGPStatus(SetUserBGPStatusArgs {
             bgp_status: BGPStatus::Down,
+            bgp_rtt_ns: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -493,6 +502,7 @@ async fn test_bgp_status_multiple_writes() {
         program_id,
         DoubleZeroInstruction::SetUserBGPStatus(SetUserBGPStatusArgs {
             bgp_status: BGPStatus::Up,
+            bgp_rtt_ns: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -548,6 +558,7 @@ async fn test_bgp_status_wrong_signer() {
         program_id,
         DoubleZeroInstruction::SetUserBGPStatus(SetUserBGPStatusArgs {
             bgp_status: BGPStatus::Up,
+            bgp_rtt_ns: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -663,6 +674,7 @@ async fn test_bgp_status_user_device_mismatch() {
         program_id,
         DoubleZeroInstruction::SetUserBGPStatus(SetUserBGPStatusArgs {
             bgp_status: BGPStatus::Up,
+            bgp_rtt_ns: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

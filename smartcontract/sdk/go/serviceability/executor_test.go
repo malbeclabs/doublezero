@@ -2,6 +2,7 @@ package serviceability
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -258,6 +259,37 @@ func TestBuildSetDeviceHealthInstruction(t *testing.T) {
 	data, err := instruction.Data()
 	require.NoError(t, err)
 	assert.Equal(t, []byte{instructionSetDeviceHealth, byte(DeviceHealthReadyForUsers)}, data)
+}
+
+func TestBuildSetUserBGPStatusInstruction(t *testing.T) {
+	t.Parallel()
+
+	rpc := &mockRPCClient{}
+	executor, signer := newTestExecutor(t, rpc)
+
+	userPubkey := solana.NewWallet().PublicKey()
+	devicePubkey := solana.NewWallet().PublicKey()
+	const rttNs uint64 = 7_500_000 // 7.5 ms
+
+	instruction := executor.buildSetUserBGPStatusInstruction(userPubkey, devicePubkey, BGPStatusUp, rttNs)
+
+	assert.Equal(t, executor.programID, instruction.ProgramID())
+
+	accounts := instruction.Accounts()
+	require.Len(t, accounts, 4)
+	assert.Equal(t, userPubkey, accounts[0].PublicKey)
+	assert.True(t, accounts[0].IsWritable)
+	assert.Equal(t, devicePubkey, accounts[1].PublicKey)
+	assert.Equal(t, signer.PublicKey(), accounts[2].PublicKey)
+	assert.True(t, accounts[2].IsSigner)
+	assert.Equal(t, solana.SystemProgramID, accounts[3].PublicKey)
+
+	data, err := instruction.Data()
+	require.NoError(t, err)
+	require.Len(t, data, 10, "opcode (1) + status (1) + bgp_rtt_ns u64 LE (8) = 10")
+	assert.Equal(t, byte(instructionSetUserBGPStatus), data[0])
+	assert.Equal(t, byte(BGPStatusUp), data[1])
+	assert.Equal(t, rttNs, binary.LittleEndian.Uint64(data[2:]))
 }
 
 func TestBuildSetLinkHealthInstruction(t *testing.T) {

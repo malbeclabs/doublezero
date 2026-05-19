@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -14,6 +17,21 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
+
+// newNetnsDir creates a temp directory and touches an empty file for each
+// namespace name, simulating /var/run/netns/. Returns the directory path.
+func newNetnsDir(t *testing.T, namespaces ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, ns := range namespaces {
+		f, err := os.Create(filepath.Join(dir, ns))
+		if err != nil {
+			t.Fatalf("create netns file %q: %v", ns, err)
+		}
+		_ = f.Close()
+	}
+	return dir
+}
 
 // --- mock executor ---
 
@@ -67,12 +85,13 @@ func makeUser(pubkey solana.PublicKey, devicePK solana.PublicKey, tunnelNet [5]b
 // noopCollector returns a NamespaceCollector that always succeeds with empty results.
 // Used by tests that never call tick() and only exercise the worker.
 func noopCollector() NamespaceCollector {
-	return func(_ context.Context, _ string) (map[string]struct{}, []netutil.Interface, error) {
+	return func(_ context.Context, _ string) (map[string]BGPPeerState, []netutil.Interface, error) {
 		return nil, nil, nil
 	}
 }
 
 // newTestSubmitter creates a Submitter with the given clock, executor, and collector.
+// netnsNames are written as empty files in a temp NetnsDir so tick() iterates them.
 func newTestSubmitter(
 	t *testing.T,
 	clk clockwork.Clock,
@@ -82,10 +101,14 @@ func newTestSubmitter(
 	devicePK solana.PublicKey,
 	gracePeriod time.Duration,
 	refreshInterval time.Duration,
+	netnsNames ...string,
 ) *Submitter {
 	t.Helper()
 	if collector == nil {
 		collector = noopCollector()
+	}
+	if len(netnsNames) == 0 {
+		netnsNames = []string{"ns-vrf1"}
 	}
 	s, err := NewSubmitter(Config{
 		Log:                     newTestLogger(t),
@@ -93,7 +116,7 @@ func newTestSubmitter(
 		ServiceabilityClient:    svcClient,
 		Collector:               collector,
 		LocalDevicePK:           devicePK,
-		BGPNamespace:            "ns-vrf1",
+		NetnsDir:                newNetnsDir(t, netnsNames...),
 		Interval:                time.Hour, // irrelevant; tests call tick() directly
 		PeriodicRefreshInterval: refreshInterval,
 		DownGracePeriod:         gracePeriod,
@@ -119,31 +142,32 @@ func (tw testWriter) Write(p []byte) (int, error) {
 }
 
 // ============================================================
-// buildEstablishedIPSet
+// buildPeerStateMap
 // ============================================================
 
-func TestBuildEstablishedIPSet_OnlyEstablished(t *testing.T) {
+func TestBuildPeerStateMap_MarksEstablishedAndCarriesRTT(t *testing.T) {
 	sockets := []bgpSocket{
-		{RemoteIP: "10.0.0.1", State: "ESTABLISHED"},
-		{RemoteIP: "10.0.0.2", State: "TIME_WAIT"},
-		{RemoteIP: "10.0.0.3", State: "ESTABLISHED"},
+		{RemoteIP: "10.0.0.1", State: "ESTABLISHED", RttNs: 4_200_000},
+		{RemoteIP: "10.0.0.2", State: "TIME_WAIT", RttNs: 9_000_000},
+		{RemoteIP: "10.0.0.3", State: "ESTABLISHED", RttNs: 0},
 	}
-	got := buildEstablishedIPSet(sockets)
-	if _, ok := got["10.0.0.1"]; !ok {
-		t.Error("expected 10.0.0.1 in set")
+	got := buildPeerStateMap(sockets)
+
+	if p, ok := got["10.0.0.1"]; !ok || !p.Established || p.RttNs != 4_200_000 {
+		t.Errorf("expected 10.0.0.1 established with rtt 4_200_000, got %+v", p)
 	}
-	if _, ok := got["10.0.0.3"]; !ok {
-		t.Error("expected 10.0.0.3 in set")
+	if p, ok := got["10.0.0.2"]; !ok || p.Established {
+		t.Errorf("expected 10.0.0.2 present but not Established, got %+v", p)
 	}
-	if _, ok := got["10.0.0.2"]; ok {
-		t.Error("did not expect 10.0.0.2 (TIME_WAIT) in set")
+	if p, ok := got["10.0.0.3"]; !ok || !p.Established || p.RttNs != 0 {
+		t.Errorf("expected 10.0.0.3 established with rtt 0, got %+v", p)
 	}
 }
 
-func TestBuildEstablishedIPSet_Empty(t *testing.T) {
-	got := buildEstablishedIPSet(nil /* []bgpSocket */)
+func TestBuildPeerStateMap_Empty(t *testing.T) {
+	got := buildPeerStateMap(nil /* []bgpSocket */)
 	if len(got) != 0 {
-		t.Errorf("expected empty set, got %d entries", len(got))
+		t.Errorf("expected empty map, got %d entries", len(got))
 	}
 }
 
@@ -258,70 +282,76 @@ func TestShouldSubmit_PeriodicRefresh(t *testing.T) {
 }
 
 // ============================================================
-// vrfNamespaces
+// listNamespaces
 // ============================================================
 
-func TestVrfNamespaces_NoTenants(t *testing.T) {
-	nss := vrfNamespaces("ns-vrf1", nil, nil)
-	if len(nss) != 1 || nss[0] != "ns-vrf1" {
-		t.Errorf("expected [ns-vrf1], got %v", nss)
+func TestListNamespaces_ReturnsAllEntries(t *testing.T) {
+	dir := newNetnsDir(t, "default", "ns-vrf1", "ns-vrf2", "ns-management")
+	got, err := listNamespaces(dir)
+	if err != nil {
+		t.Fatalf("listNamespaces: %v", err)
+	}
+	sort.Strings(got)
+	want := []string{"default", "ns-management", "ns-vrf1", "ns-vrf2"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("entry %d: want %q got %q", i, want[i], got[i])
+		}
 	}
 }
 
-func TestVrfNamespaces_SameVrf(t *testing.T) {
-	tenants := []serviceability.Tenant{{VrfId: 1}}
-	nss := vrfNamespaces("ns-vrf1", tenants, nil)
-	if len(nss) != 1 || nss[0] != "ns-vrf1" {
-		t.Errorf("expected [ns-vrf1], got %v", nss)
+func TestListNamespaces_EmptyDir(t *testing.T) {
+	dir := newNetnsDir(t)
+	got, err := listNamespaces(dir)
+	if err != nil {
+		t.Fatalf("listNamespaces: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty slice, got %v", got)
 	}
 }
 
-func TestVrfNamespaces_AdditionalVrf(t *testing.T) {
-	tenants := []serviceability.Tenant{{VrfId: 1}, {VrfId: 2}}
-	nss := vrfNamespaces("ns-vrf1", tenants, nil)
-	if len(nss) != 2 || nss[0] != "ns-vrf1" || nss[1] != "ns-vrf2" {
-		t.Errorf("expected [ns-vrf1 ns-vrf2], got %v", nss)
+func TestListNamespaces_MissingDir(t *testing.T) {
+	_, err := listNamespaces("/nonexistent/path/that/should/not/exist")
+	if err == nil {
+		t.Error("expected error for missing dir")
 	}
 }
 
-func TestVrfNamespaces_Deduplication(t *testing.T) {
-	tenants := []serviceability.Tenant{{VrfId: 2}, {VrfId: 2}, {VrfId: 2}}
-	nss := vrfNamespaces("ns-vrf1", tenants, nil)
-	if len(nss) != 2 {
-		t.Errorf("expected 2 unique namespaces, got %v", nss)
-	}
-}
+// ============================================================
+// tick() with empty NetnsDir
+// ============================================================
 
-func TestVrfNamespaces_SkipsZeroVrfId(t *testing.T) {
-	tenants := []serviceability.Tenant{{VrfId: 0}, {VrfId: 3}}
-	nss := vrfNamespaces("ns-vrf1", tenants, nil)
-	if len(nss) != 2 || nss[0] != "ns-vrf1" || nss[1] != "ns-vrf3" {
-		t.Errorf("expected [ns-vrf1 ns-vrf3], got %v", nss)
-	}
-}
+func TestTick_EmptyNetnsDir_NoSubmissions(t *testing.T) {
+	devicePK := solana.NewWallet().PublicKey()
+	user := makeUser(solana.NewWallet().PublicKey(), devicePK, [5]byte{10, 0, 0, 0, 31})
 
-func TestVrfNamespaces_MulticastUserAddsRootNamespace(t *testing.T) {
-	users := []serviceability.User{{UserType: serviceability.UserTypeMulticast}}
-	nss := vrfNamespaces("ns-vrf1", nil, users)
-	if len(nss) != 2 || nss[0] != "ns-vrf1" || nss[1] != rootNamespace {
-		t.Errorf("expected [ns-vrf1 %q], got %v", rootNamespace, nss)
-	}
-}
+	exec := &mockExecutor{}
+	clk := clockwork.NewFakeClock()
+	svc := &mockSvcClient{data: &serviceability.ProgramData{Users: []serviceability.User{user}}}
 
-func TestVrfNamespaces_NonMulticastUserNoRootNamespace(t *testing.T) {
-	users := []serviceability.User{{UserType: serviceability.UserTypeIBRL}}
-	nss := vrfNamespaces("ns-vrf1", nil, users)
-	if len(nss) != 1 || nss[0] != "ns-vrf1" {
-		t.Errorf("expected [ns-vrf1], got %v", nss)
+	s, err := NewSubmitter(Config{
+		Log:                     newTestLogger(t),
+		Executor:                exec,
+		ServiceabilityClient:    svc,
+		Collector:               noopCollector(),
+		LocalDevicePK:           devicePK,
+		NetnsDir:                newNetnsDir(t), // empty
+		Interval:                time.Hour,
+		PeriodicRefreshInterval: 6 * time.Hour,
+		Clock:                   clk,
+	})
+	if err != nil {
+		t.Fatalf("NewSubmitter: %v", err)
 	}
-}
 
-func TestVrfNamespaces_MulticastAndTenantVrfs(t *testing.T) {
-	tenants := []serviceability.Tenant{{VrfId: 2}}
-	users := []serviceability.User{{UserType: serviceability.UserTypeMulticast}}
-	nss := vrfNamespaces("ns-vrf1", tenants, users)
-	if len(nss) != 3 || nss[0] != "ns-vrf1" || nss[1] != "ns-vrf2" || nss[2] != rootNamespace {
-		t.Errorf("expected [ns-vrf1 ns-vrf2 %q], got %v", rootNamespace, nss)
+	s.tick(context.Background())
+
+	if len(s.taskCh) != 0 {
+		t.Errorf("expected no tasks enqueued, got %d", len(s.taskCh))
 	}
 }
 
@@ -539,12 +569,11 @@ func TestNewSubmitter_MissingFields(t *testing.T) {
 		name string
 		cfg  Config
 	}{
-		{"no log", Config{Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
-		{"no executor", Config{Log: slog.Default(), ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
-		{"no svc client", Config{Log: slog.Default(), Executor: &mockExecutor{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
-		{"no collector", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, LocalDevicePK: solana.NewWallet().PublicKey(), BGPNamespace: "ns-vrf1"}},
-		{"zero device pk", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), BGPNamespace: "ns-vrf1"}},
-		{"no namespace", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey()}},
+		{"no log", Config{Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey()}},
+		{"no executor", Config{Log: slog.Default(), ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey()}},
+		{"no svc client", Config{Log: slog.Default(), Executor: &mockExecutor{}, Collector: noopCollector(), LocalDevicePK: solana.NewWallet().PublicKey()}},
+		{"no collector", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, LocalDevicePK: solana.NewWallet().PublicKey()}},
+		{"zero device pk", Config{Log: slog.Default(), Executor: &mockExecutor{}, ServiceabilityClient: &mockSvcClient{}, Collector: noopCollector()}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -553,6 +582,22 @@ func TestNewSubmitter_MissingFields(t *testing.T) {
 				t.Error("expected error for invalid config")
 			}
 		})
+	}
+}
+
+func TestNewSubmitter_NetnsDirDefaults(t *testing.T) {
+	s, err := NewSubmitter(Config{
+		Log:                  slog.Default(),
+		Executor:             &mockExecutor{},
+		ServiceabilityClient: &mockSvcClient{},
+		Collector:            noopCollector(),
+		LocalDevicePK:        solana.NewWallet().PublicKey(),
+	})
+	if err != nil {
+		t.Fatalf("NewSubmitter: %v", err)
+	}
+	if s.cfg.NetnsDir != defaultNetnsDir {
+		t.Errorf("expected NetnsDir to default to %q, got %q", defaultNetnsDir, s.cfg.NetnsDir)
 	}
 }
 
@@ -569,7 +614,7 @@ func TestTaskChannel_DropWhenFull(t *testing.T) {
 		ServiceabilityClient:    &mockSvcClient{data: &serviceability.ProgramData{}},
 		Collector:               noopCollector(),
 		LocalDevicePK:           devicePK,
-		BGPNamespace:            "ns-vrf1",
+		NetnsDir:                newNetnsDir(t, "ns-vrf1"),
 		Interval:                time.Hour,
 		PeriodicRefreshInterval: 6 * time.Hour,
 		Clock:                   clockwork.NewFakeClock(),

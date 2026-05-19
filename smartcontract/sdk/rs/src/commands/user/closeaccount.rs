@@ -180,6 +180,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         // Mock User fetch
@@ -246,6 +247,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         // Compute ResourceExtension PDAs
@@ -358,6 +360,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         client
@@ -425,6 +428,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let (global_resource_ext, _, _) =

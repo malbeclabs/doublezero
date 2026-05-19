@@ -358,6 +358,7 @@ pub fn create_user_core(
         bgp_status: BGPStatus::Unknown,
         last_bgp_up_at: 0,
         last_bgp_reported_at: 0,
+        bgp_rtt_ns: 0,
     };
 
     Ok(CreateUserCoreResult {

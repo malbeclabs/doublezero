@@ -52,7 +52,22 @@ struct UserDisplay {
     pub last_bgp_up_at: u64,
     #[tabled(rename = "last_bgp_up_at")]
     pub last_bgp_up_at_str: String,
+    /// Raw BGP RTT in nanoseconds (kept in JSON output for tooling).
+    #[tabled(skip)]
+    pub bgp_rtt_ns: u64,
+    /// Pretty-printed BGP RTT (e.g. "5.50 ms" or "-" when no sample yet).
+    #[tabled(rename = "bgp_rtt")]
+    pub bgp_rtt_str: String,
     pub owner: String,
+}
+
+/// Formats a BGP RTT value in nanoseconds as a human-readable millisecond
+/// string. Returns "-" for 0 (the sentinel for "no sample observed").
+fn format_bgp_rtt_ns(ns: u64) -> String {
+    if ns == 0 {
+        return "-".to_string();
+    }
+    format!("{:.2} ms", ns as f64 / 1_000_000.0)
 }
 
 impl GetUserCliCommand {
@@ -125,6 +140,8 @@ impl GetUserCliCommand {
             last_bgp_reported_at_str: slot_to_datetime(client, user.last_bgp_reported_at),
             last_bgp_up_at: user.last_bgp_up_at,
             last_bgp_up_at_str: slot_to_datetime(client, user.last_bgp_up_at),
+            bgp_rtt_ns: user.bgp_rtt_ns,
+            bgp_rtt_str: format_bgp_rtt_ns(user.bgp_rtt_ns),
             owner: user.owner.to_string(),
         };
 
@@ -269,6 +286,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let (accesspass_pubkey, _) =
@@ -448,6 +466,7 @@ mod tests {
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         client

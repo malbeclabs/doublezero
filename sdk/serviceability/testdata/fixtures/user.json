@@ -116,6 +116,11 @@
       "name": "LastBgpReportedAt",
       "value": "1700000100",
       "typ": "u64"
+    },
+    {
+      "name": "BgpRttNs",
+      "value": "5500000",
+      "typ": "u64"
     }
   ]
 }

@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"strconv"
-	"strings"
+	"os"
 	"sync"
 	"time"
 
@@ -23,6 +22,7 @@ const (
 	defaultRefreshInterval = 6 * time.Hour
 	submitMaxRetries       = 3
 	submitBaseBackoff      = 100 * time.Millisecond
+	defaultNetnsDir        = "/var/run/netns"
 )
 
 // BGPStatusExecutor submits a SetUserBGPStatus instruction onchain.
@@ -35,11 +35,21 @@ type ServiceabilityClient interface {
 	GetProgramData(ctx context.Context) (*serviceability.ProgramData, error)
 }
 
+// BGPPeerState captures the per-peer BGP session info we want to surface onchain
+// for each user. Keyed by remote IP string in the maps returned by NamespaceCollector.
+type BGPPeerState struct {
+	// Established is true when the peer's BGP TCP session is in ESTABLISHED state.
+	Established bool
+	// RttNs is the smoothed BGP TCP RTT in nanoseconds, sourced from the kernel's
+	// tcp_info struct via INET_DIAG. 0 means no sample yet.
+	RttNs uint64
+}
+
 // NamespaceCollector collects BGP session state and local network interfaces
-// from a single Linux VRF network namespace. It returns the set of remote IP
-// strings with ESTABLISHED BGP sessions, the local interfaces, and any error.
+// from a single Linux VRF network namespace. The returned map is keyed by the
+// peer remote IP string and carries both Established and RttNs per peer.
 // Implement with DefaultCollector for production; use a mock in tests.
-type NamespaceCollector func(ctx context.Context, namespace string) (established map[string]struct{}, ifaces []netutil.Interface, err error)
+type NamespaceCollector func(ctx context.Context, namespace string) (peers map[string]BGPPeerState, ifaces []netutil.Interface, err error)
 
 // Config holds all parameters for the BGP status submitter.
 type Config struct {
@@ -48,7 +58,7 @@ type Config struct {
 	ServiceabilityClient    ServiceabilityClient
 	Collector               NamespaceCollector
 	LocalDevicePK           solana.PublicKey
-	BGPNamespace            string
+	NetnsDir                string        // default: /var/run/netns
 	Interval                time.Duration // default: 60s
 	PeriodicRefreshInterval time.Duration // default: 6h
 	DownGracePeriod         time.Duration // default: 0
@@ -71,8 +81,8 @@ func (c *Config) validate() error {
 	if c.LocalDevicePK.IsZero() {
 		return errors.New("local device pubkey is required")
 	}
-	if c.BGPNamespace == "" {
-		return errors.New("bgp namespace is required")
+	if c.NetnsDir == "" {
+		c.NetnsDir = defaultNetnsDir
 	}
 	if c.Interval <= 0 {
 		c.Interval = defaultInterval
@@ -97,6 +107,9 @@ type userState struct {
 type submitTask struct {
 	user   serviceability.User
 	status serviceability.BGPStatus
+	// rttNs is the smoothed BGP TCP RTT in nanoseconds to write alongside status.
+	// 0 when the session is Down or no sample is available.
+	rttNs uint64
 }
 
 // Submitter collects BGP socket state on each tick, determines per-user BGP
@@ -157,17 +170,23 @@ func (s *Submitter) userStateFor(key string, initialStatus serviceability.BGPSta
 type bgpSocket struct {
 	RemoteIP string
 	State    string
+	// RttNs is the smoothed BGP TCP RTT in nanoseconds (kernel tcp_info.rtt
+	// is microseconds; convert at the boundary). 0 means no sample.
+	RttNs uint64
 }
 
 // --- Pure helpers (no Linux syscalls; fully testable on all platforms) ---
 
-// buildEstablishedIPSet returns a set of remote IP strings for BGP sessions
-// that are currently in the ESTABLISHED state.
-func buildEstablishedIPSet(sockets []bgpSocket) map[string]struct{} {
-	m := make(map[string]struct{}, len(sockets))
+// buildPeerStateMap returns a map from remote IP to BGPPeerState for the given
+// socket slice. Only sockets with State == "ESTABLISHED" mark Established=true;
+// every observed peer still gets its RTT recorded so we can submit on a tunnel
+// going Up later.
+func buildPeerStateMap(sockets []bgpSocket) map[string]BGPPeerState {
+	m := make(map[string]BGPPeerState, len(sockets))
 	for _, sock := range sockets {
-		if sock.State == "ESTABLISHED" {
-			m[sock.RemoteIP] = struct{}{}
+		m[sock.RemoteIP] = BGPPeerState{
+			Established: sock.State == "ESTABLISHED",
+			RttNs:       sock.RttNs,
 		}
 	}
 	return m
@@ -202,46 +221,21 @@ func computeEffectiveStatus(
 	return serviceability.BGPStatusDown
 }
 
-// rootNamespace is the sentinel passed to DefaultCollector / RunInNamespace
-// to indicate the root (global) Linux network namespace. Arista EOS places
-// the default VRF in the root namespace rather than a named namespace under
-// /var/run/netns/, so there is no file to open with netns.GetFromName.
-// RunInNamespace treats "" as "execute in the current namespace" (no switching).
-const rootNamespace = ""
-
-// vrfNamespaces builds the list of Linux network namespaces to check for BGP
-// sockets and tunnel interfaces. The base namespace is always included first.
-// Additional namespaces are derived from two sources:
-//   - Tenant VRF IDs (non-zero): replaces the trailing numeric suffix of base
-//     (e.g. "ns-vrf1") with each tenant's VrfId, giving e.g. "ns-vrf2".
-//   - Multicast users: GRE tunnels for multicast users live in the global VRF
-//     (the root network namespace), not in a per-tenant namespace. rootNamespace
-//     is appended if any user in the provided slice has UserTypeMulticast.
-func vrfNamespaces(base string, tenants []serviceability.Tenant, users []serviceability.User) []string {
-	prefix := strings.TrimRight(base, "0123456789")
-	seen := map[string]struct{}{base: {}}
-	nss := []string{base}
-	for _, t := range tenants {
-		if t.VrfId == 0 {
-			continue
-		}
-		ns := prefix + strconv.FormatUint(uint64(t.VrfId), 10)
-		if _, ok := seen[ns]; !ok {
-			seen[ns] = struct{}{}
-			nss = append(nss, ns)
-		}
+// listNamespaces returns the names of every entry under dir (typically
+// /var/run/netns/). Each entry corresponds to one Linux network namespace
+// the kernel currently exposes. Subdirectories and broken symlinks are
+// included by name and left for the collector to handle, so we never miss
+// a VRF because of a filtering rule that has drifted from kernel behavior.
+func listNamespaces(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read netns dir %s: %w", dir, err)
 	}
-	// Multicast users' GRE tunnels live in the root network namespace (global VRF).
-	if _, ok := seen[rootNamespace]; !ok {
-		for _, u := range users {
-			if u.UserType == serviceability.UserTypeMulticast {
-				seen[rootNamespace] = struct{}{}
-				nss = append(nss, rootNamespace)
-				break
-			}
-		}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
 	}
-	return nss
+	return names, nil
 }
 
 // shouldSubmit returns true when a submission is warranted: either the status

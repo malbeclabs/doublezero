@@ -848,6 +848,11 @@ export interface User {
   bgpStatus: number;
   lastBgpUpAt: bigint;
   lastBgpReportedAt: bigint;
+  /**
+   * Smoothed BGP TCP RTT in nanoseconds, as last reported by the device agent.
+   * 0 means no sample. Same unit as Link.delayNs.
+   */
+  bgpRttNs: bigint;
 }
 
 export function deserializeUser(data: Uint8Array): User {
@@ -874,6 +879,9 @@ export function deserializeUser(data: Uint8Array): User {
     bgpStatus: r.readU8(),
     lastBgpUpAt: r.readU64(),
     lastBgpReportedAt: r.readU64(),
+    // DefensiveReader returns 0n on EOF, so old accounts that predate
+    // bgpRttNs deserialize with the field defaulted to 0.
+    bgpRttNs: r.readU64(),
   };
 }
 

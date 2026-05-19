@@ -307,6 +307,9 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	user.BgpStatus = reader.ReadU8()
 	user.LastBgpUpAt = reader.ReadU64()
 	user.LastBgpReportedAt = reader.ReadU64()
+	// ReadU64 returns 0 on EOF, so old accounts that predate BgpRttNs deserialize
+	// with the field defaulted to 0 — matches the Rust append-only contract.
+	user.BgpRttNs = reader.ReadU64()
 	// Note: user.PubKey is set separately in client.go after deserialization
 }
 

@@ -163,14 +163,16 @@ func TestE2E_UserBGPStatus(t *testing.T) {
 				if user.Status != serviceability.UserStatusActivated {
 					continue
 				}
-				if user.BgpStatus == uint8(serviceability.BGPStatusUp) {
-					log.Debug("bgp status: user BGP status is Up onchain", "user", solana.PublicKeyFromBytes(user.PubKey[:]).String())
+				if user.BgpStatus == uint8(serviceability.BGPStatusUp) && user.BgpRttNs > 0 {
+					log.Debug("bgp status: user BGP status is Up onchain",
+						"user", solana.PublicKeyFromBytes(user.PubKey[:]).String(),
+						"rtt_ns", user.BgpRttNs)
 					return true
 				}
-				log.Debug("bgp status: user BGP status not yet Up", "bgpStatus", user.BgpStatus)
+				log.Debug("bgp status: user BGP status not yet Up with RTT", "bgpStatus", user.BgpStatus, "rtt_ns", user.BgpRttNs)
 			}
 			return false
-		}, 60*time.Second, 5*time.Second, "user BGP status never reached Up onchain")
+		}, 60*time.Second, 5*time.Second, "user BGP status never reached Up onchain with a non-zero RTT")
 	}) {
 		t.FailNow()
 	}
@@ -205,14 +207,15 @@ func TestE2E_UserBGPStatus(t *testing.T) {
 				if user.Status != serviceability.UserStatusActivated {
 					continue
 				}
-				if user.BgpStatus == uint8(serviceability.BGPStatusDown) {
+				// A Down submission must clear RTT (no stale sample outliving the session).
+				if user.BgpStatus == uint8(serviceability.BGPStatusDown) && user.BgpRttNs == 0 {
 					log.Debug("bgp status: user BGP status is Down onchain", "user", solana.PublicKeyFromBytes(user.PubKey[:]).String())
 					return true
 				}
-				log.Debug("bgp status: user BGP status not yet Down", "bgpStatus", user.BgpStatus)
+				log.Debug("bgp status: user BGP status not yet Down with cleared RTT", "bgpStatus", user.BgpStatus, "rtt_ns", user.BgpRttNs)
 			}
 			return false
-		}, 60*time.Second, 5*time.Second, "user BGP status never reached Down onchain")
+		}, 60*time.Second, 5*time.Second, "user BGP status never reached Down with cleared RTT onchain")
 	}) {
 		t.Fail()
 	}
@@ -383,14 +386,16 @@ func TestE2E_UserBGPStatus_MulticastUser(t *testing.T) {
 				if user.UserType != serviceability.UserTypeMulticast {
 					continue
 				}
-				if user.BgpStatus == uint8(serviceability.BGPStatusUp) {
-					log.Debug("bgp status: multicast user BGP status is Up onchain", "user", solana.PublicKeyFromBytes(user.PubKey[:]).String())
+				if user.BgpStatus == uint8(serviceability.BGPStatusUp) && user.BgpRttNs > 0 {
+					log.Debug("bgp status: multicast user BGP status is Up onchain",
+						"user", solana.PublicKeyFromBytes(user.PubKey[:]).String(),
+						"rtt_ns", user.BgpRttNs)
 					return true
 				}
-				log.Debug("bgp status: multicast user BGP status not yet Up", "bgpStatus", user.BgpStatus)
+				log.Debug("bgp status: multicast user BGP status not yet Up with RTT", "bgpStatus", user.BgpStatus, "rtt_ns", user.BgpRttNs)
 			}
 			return false
-		}, 60*time.Second, 5*time.Second, "multicast user BGP status never reached Up onchain")
+		}, 60*time.Second, 5*time.Second, "multicast user BGP status never reached Up onchain with a non-zero RTT")
 	}) {
 		t.FailNow()
 	}
@@ -418,14 +423,14 @@ func TestE2E_UserBGPStatus_MulticastUser(t *testing.T) {
 				if user.UserType != serviceability.UserTypeMulticast {
 					continue
 				}
-				if user.BgpStatus == uint8(serviceability.BGPStatusDown) {
+				if user.BgpStatus == uint8(serviceability.BGPStatusDown) && user.BgpRttNs == 0 {
 					log.Debug("bgp status: multicast user BGP status is Down onchain", "user", solana.PublicKeyFromBytes(user.PubKey[:]).String())
 					return true
 				}
-				log.Debug("bgp status: multicast user BGP status not yet Down", "bgpStatus", user.BgpStatus)
+				log.Debug("bgp status: multicast user BGP status not yet Down with cleared RTT", "bgpStatus", user.BgpStatus, "rtt_ns", user.BgpRttNs)
 			}
 			return false
-		}, 60*time.Second, 5*time.Second, "multicast user BGP status never reached Down onchain")
+		}, 60*time.Second, 5*time.Second, "multicast user BGP status never reached Down with cleared RTT onchain")
 	}) {
 		t.Fail()
 	}
@@ -600,14 +605,16 @@ func TestE2E_UserBGPStatus_NonDefaultTenant(t *testing.T) {
 				if user.Status != serviceability.UserStatusActivated {
 					continue
 				}
-				if user.BgpStatus == uint8(serviceability.BGPStatusUp) {
-					log.Debug("bgp status: user BGP status is Up onchain", "user", solana.PublicKeyFromBytes(user.PubKey[:]).String())
+				if user.BgpStatus == uint8(serviceability.BGPStatusUp) && user.BgpRttNs > 0 {
+					log.Debug("bgp status: user BGP status is Up onchain",
+						"user", solana.PublicKeyFromBytes(user.PubKey[:]).String(),
+						"rtt_ns", user.BgpRttNs)
 					return true
 				}
-				log.Debug("bgp status: user BGP status not yet Up", "bgpStatus", user.BgpStatus)
+				log.Debug("bgp status: user BGP status not yet Up with RTT", "bgpStatus", user.BgpStatus, "rtt_ns", user.BgpRttNs)
 			}
 			return false
-		}, 60*time.Second, 5*time.Second, "user BGP status never reached Up onchain for non-default tenant")
+		}, 60*time.Second, 5*time.Second, "user BGP status never reached Up onchain with a non-zero RTT for non-default tenant")
 	}) {
 		t.FailNow()
 	}
@@ -632,14 +639,14 @@ func TestE2E_UserBGPStatus_NonDefaultTenant(t *testing.T) {
 				if user.Status != serviceability.UserStatusActivated {
 					continue
 				}
-				if user.BgpStatus == uint8(serviceability.BGPStatusDown) {
+				if user.BgpStatus == uint8(serviceability.BGPStatusDown) && user.BgpRttNs == 0 {
 					log.Debug("bgp status: user BGP status is Down onchain", "user", solana.PublicKeyFromBytes(user.PubKey[:]).String())
 					return true
 				}
-				log.Debug("bgp status: user BGP status not yet Down", "bgpStatus", user.BgpStatus)
+				log.Debug("bgp status: user BGP status not yet Down with cleared RTT", "bgpStatus", user.BgpStatus, "rtt_ns", user.BgpRttNs)
 			}
 			return false
-		}, 60*time.Second, 5*time.Second, "user BGP status never reached Down onchain for non-default tenant")
+		}, 60*time.Second, 5*time.Second, "user BGP status never reached Down with cleared RTT onchain for non-default tenant")
 	}) {
 		t.Fail()
 	}

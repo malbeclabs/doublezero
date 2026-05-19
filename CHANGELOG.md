@@ -4,10 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Smartcontract
+  - Extend `SetUserBGPStatus` with `bgp_rtt_ns: u64` (smoothed BGP TCP RTT in nanoseconds, same unit as `Link.delay_ns` / `Link.jitter_ns`); append `bgp_rtt_ns` to the `User` account. Old payloads (status-only) decode with `bgp_rtt_ns = 0` via `BorshDeserializeIncremental`; old serialized accounts decode with `bgp_rtt_ns = 0` via the existing append-only field pattern. Deploy order is unconstrained.
+- SDK (Go/TS/Python)
+  - Add the `bgp_rtt_ns` field to the `User` deserializer in all three SDKs; the Go executor builder accepts and serializes the new field via a 10-byte instruction payload.
+- Telemetry
+  - `bgpstatus` now discovers VRFs by enumerating `/var/run/netns/` instead of deriving namespace names from onchain tenant data and a hardcoded base prefix. Fixes multicast user BGP status never being collected on Arista EOS: the previous code assumed the default VRF was the agent's current Linux namespace, but on the device the default VRF is exposed as `/var/run/netns/default` while the agent runs in `ns-management`. Drops the `--bgp-namespace` flag wiring from the BGP status submitter (the flag is still used by the state collector); adds `NetnsDir` config (default `/var/run/netns`); removes the empty-string short-circuit in `netns.RunInNamespace`.
+  - `bgpstatus` reports per-user BGP RTT onchain on every status-change or periodic-refresh write. RTT comes from the same INET_DIAG snapshot already used to detect ESTABLISHED sessions (`state.BGPSocketState.RTTms × 1_000_000` to ns), so no new collection cost. RTT does not by itself trigger a submission; it piggybacks on writes that would already happen, capped by `PeriodicRefreshInterval` staleness. A Down submission always carries `bgp_rtt_ns = 0` to avoid stale RTT outliving a missing session.
 - CLI
+  - `doublezero geolocation` `probe ...` and `user ...` mirrors `doublezero-geolocation` versions; new `--geo-program-id` global flag, `config get/set` include Geolocation Program ID.
+  - Drop the activator-only pollers from `doublezero` (user and multicastgroup activation waits). The `--wait` flag on `user create`, `user create-subscribe`, `user subscribe`, `multicastgroup create`, and `multicastgroup update` now fetches the post-create state once instead of polling; creates are atomic to `Activated` post-RFC-11, so the wait loop was watching a transition that no longer happens ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
   - `doublezero geolocation` `probe ...` and `user ...` mirrors `doublezero-geolocation` versions; new `--geo-program-id` global flag, `config get/set` include Geolocation Program ID; new `-init-geolocation-config` for init of geolocation program
   - Drop the activator-only pollers from `doublezero` (user and multicastgroup activation waits). The `--wait` flag on `user create`, `user create-subscribe`, `user subscribe`, `multicastgroup create`, and `multicastgroup update` now fetches the post-create state once instead of polling — creates are atomic to `Activated` post-RFC-11, so the wait loop was watching a transition that no longer happens ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
   - Trim the `Rejected` status arm from the device and link activation pollers; `Rejected` was itself an activator-driven transition ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
+  - `doublezero user get` and `doublezero user list` surface BGP RTT as an `rtt` column (e.g. `5.50 ms`, or `-` when no sample has been observed). JSON output includes raw `bgp_rtt_ns` alongside the pretty `bgp_rtt` string.
 - Client
   - Simplify `doublezero connect`'s post-create user fetch to a fixed retry-on-RPC-lag get instead of waiting for `UserStatus::Activated`; the activator-driven transition is gone, so the fetch only needs to ride out replica lag ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
 

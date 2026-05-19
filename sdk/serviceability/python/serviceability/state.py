@@ -853,6 +853,9 @@ class User:
     bgp_status: BGPStatus = BGPStatus.UNKNOWN
     last_bgp_up_at: int = 0
     last_bgp_reported_at: int = 0
+    # Smoothed BGP TCP RTT in nanoseconds, as last reported by the device agent.
+    # 0 means no sample. Same unit as Link.delay_ns.
+    bgp_rtt_ns: int = 0
 
     @classmethod
     def from_bytes(cls, data: bytes) -> User:
@@ -879,6 +882,9 @@ class User:
         u.bgp_status = BGPStatus(r.read_u8())
         u.last_bgp_up_at = r.read_u64()
         u.last_bgp_reported_at = r.read_u64()
+        # DefensiveReader returns 0 on EOF, so old accounts that predate
+        # bgp_rtt_ns deserialize with the field defaulted to 0.
+        u.bgp_rtt_ns = r.read_u64()
         return u
 
 

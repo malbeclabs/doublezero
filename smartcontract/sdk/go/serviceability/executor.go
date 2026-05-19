@@ -2,6 +2,7 @@ package serviceability
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -169,17 +170,25 @@ type UserBGPStatusUpdate struct {
 	UserPubkey   solana.PublicKey
 	DevicePubkey solana.PublicKey
 	Status       BGPStatus
+	// BgpRttNs is the smoothed BGP TCP RTT in nanoseconds, sourced from the
+	// kernel via INET_DIAG on the device. 0 means no sample. Old programs that
+	// predate this field ignore the trailing bytes via BorshDeserializeIncremental.
+	BgpRttNs uint64
 }
 
 // SetUserBGPStatus submits a SetUserBGPStatus instruction for a single user.
 // The executor's signer must be the device's metrics_publisher_pk.
 func (e *Executor) SetUserBGPStatus(ctx context.Context, u UserBGPStatusUpdate) (solana.Signature, error) {
-	instr := e.buildSetUserBGPStatusInstruction(u.UserPubkey, u.DevicePubkey, u.Status)
+	instr := e.buildSetUserBGPStatusInstruction(u.UserPubkey, u.DevicePubkey, u.Status, u.BgpRttNs)
 	sig, _, err := e.executeTransaction(ctx, []solana.Instruction{instr})
 	return sig, err
 }
 
-func (e *Executor) buildSetUserBGPStatusInstruction(userPubkey, devicePubkey solana.PublicKey, status BGPStatus) solana.Instruction {
+func (e *Executor) buildSetUserBGPStatusInstruction(userPubkey, devicePubkey solana.PublicKey, status BGPStatus, bgpRttNs uint64) solana.Instruction {
+	data := make([]byte, 10)
+	data[0] = instructionSetUserBGPStatus
+	data[1] = byte(status)
+	binary.LittleEndian.PutUint64(data[2:], bgpRttNs)
 	return &genericInstruction{
 		programID: e.programID,
 		accounts: solana.AccountMetaSlice{
@@ -188,7 +197,7 @@ func (e *Executor) buildSetUserBGPStatusInstruction(userPubkey, devicePubkey sol
 			solana.Meta(e.signer.PublicKey()).SIGNER().WRITE(),
 			solana.Meta(solana.SystemProgramID),
 		},
-		data: []byte{instructionSetUserBGPStatus, byte(status)},
+		data: data,
 	}
 }
 

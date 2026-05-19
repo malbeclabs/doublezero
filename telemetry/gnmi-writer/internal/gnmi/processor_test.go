@@ -537,6 +537,129 @@ func TestExtractSystemState_Isolation(t *testing.T) {
 	}
 }
 
+// TestProcessor_IsisGlobalState exercises the full pipeline (prototext → kafka
+// round-trip → unmarshal → extractor) against a notification captured from a
+// live Arista device. The JSON IETF value contains an arista-isis-augments
+// vendor field alongside the openconfig leaves.
+func TestProcessor_IsisGlobalState(t *testing.T) {
+	resp := loadGoldenPrototext(t, "isis_global_state.prototext")
+	resp = serializeAndDeserialize(t, resp)
+	notification := resp.GetUpdate()
+
+	processor, err := NewProcessor(
+		WithProcessorMetrics(newTestMetrics()),
+	)
+	if err != nil {
+		t.Fatalf("failed to create processor: %v", err)
+	}
+
+	ctx := context.Background()
+	records := processor.ProcessNotifications(ctx, []*gpb.Notification{notification})
+
+	if len(records) != 1 {
+		t.Fatalf("expected 1 IsisGlobalStateRecord, got %d records", len(records))
+	}
+	record, ok := records[0].(IsisGlobalStateRecord)
+	if !ok {
+		t.Fatalf("expected IsisGlobalStateRecord, got %T", records[0])
+	}
+	if record.NetworkInstance != "default" {
+		t.Errorf("expected NetworkInstance default, got %s", record.NetworkInstance)
+	}
+	if record.Instance != "1" {
+		t.Errorf("expected Instance 1, got %s", record.Instance)
+	}
+	if record.Net != "49.0000.c612.00fe.0000.00" {
+		t.Errorf("expected Net 49.0000.c612.00fe.0000.00, got %s", record.Net)
+	}
+}
+
+// TestProcessor_IsisOverloadBit exercises the full pipeline against a synthetic
+// overload-bit notification (we can't capture one from prod unless the bit is
+// actually set). The path ends at .../lsp-bit/overload-bit/state and the JSON
+// IETF value carries set-bit=true.
+func TestProcessor_IsisOverloadBit(t *testing.T) {
+	resp := loadGoldenPrototext(t, "isis_overload_bit.prototext")
+	resp = serializeAndDeserialize(t, resp)
+	notification := resp.GetUpdate()
+
+	processor, err := NewProcessor(
+		WithProcessorMetrics(newTestMetrics()),
+	)
+	if err != nil {
+		t.Fatalf("failed to create processor: %v", err)
+	}
+
+	ctx := context.Background()
+	records := processor.ProcessNotifications(ctx, []*gpb.Notification{notification})
+
+	if len(records) != 1 {
+		t.Fatalf("expected 1 IsisOverloadBitRecord, got %d records", len(records))
+	}
+	record, ok := records[0].(IsisOverloadBitRecord)
+	if !ok {
+		t.Fatalf("expected IsisOverloadBitRecord, got %T", records[0])
+	}
+	if record.NetworkInstance != "default" {
+		t.Errorf("expected NetworkInstance default, got %s", record.NetworkInstance)
+	}
+	if !record.OverloadBit {
+		t.Errorf("expected OverloadBit true, got false")
+	}
+}
+
+// TestUnmarshal_IsisGlobalState verifies that ygot SetNode populates
+// device.NetworkInstances.NetworkInstance[default].Protocols.Protocol[ISIS,1].Isis.Global.State
+// from the captured json_ietf_val. Splits the unmarshal failure from the
+// extractor failure when TestProcessor_IsisGlobalState fails.
+func TestUnmarshal_IsisGlobalState(t *testing.T) {
+	resp := loadGoldenPrototext(t, "isis_global_state.prototext")
+	resp = serializeAndDeserialize(t, resp)
+	notification := resp.GetUpdate()
+
+	processor, err := NewProcessor()
+	if err != nil {
+		t.Fatalf("failed to create processor: %v", err)
+	}
+
+	update := notification.GetUpdate()[0]
+	device, err := processor.unmarshalNotification(notification, update)
+	if err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	ni, ok := device.NetworkInstances.NetworkInstance["default"]
+	if !ok {
+		t.Fatal("expected network instance 'default'")
+	}
+	if ni.Protocols == nil {
+		t.Fatal("expected Protocols to be populated")
+	}
+
+	var found bool
+	for key, proto := range ni.Protocols.Protocol {
+		if key.Identifier.String() != "ISIS" {
+			continue
+		}
+		if proto.Isis == nil || proto.Isis.Global == nil {
+			t.Fatal("Isis.Global is nil after unmarshal")
+		}
+		if proto.Isis.Global.State == nil {
+			t.Fatal("Isis.Global.State is nil after unmarshal")
+		}
+		if proto.Isis.Global.State.Instance == nil || *proto.Isis.Global.State.Instance != "1" {
+			t.Errorf("expected State.Instance=1, got %v", proto.Isis.Global.State.Instance)
+		}
+		if len(proto.Isis.Global.State.Net) != 1 || proto.Isis.Global.State.Net[0] != "49.0000.c612.00fe.0000.00" {
+			t.Errorf("expected State.Net=[49.0000.c612.00fe.0000.00], got %v", proto.Isis.Global.State.Net)
+		}
+		found = true
+	}
+	if !found {
+		t.Fatal("expected ISIS protocol to be found")
+	}
+}
+
 // newIsisProtocol builds a NetworkInstance containing a single ISIS protocol entry
 // whose Isis.Global the caller can populate to drive extractIsisGlobalState /
 // extractIsisOverloadBit. Returns the Global so the caller can set state directly.

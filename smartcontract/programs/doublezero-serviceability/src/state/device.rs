@@ -62,8 +62,8 @@ impl FromStr for DeviceType {
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DeviceStatus {
-    #[default]
     PendingDeprecated = 0, // activator-only; unreachable for new accounts
+    #[default]
     Activated = 1,
     //Suspended = 2, // The suspended status is no longer used
     Deleting = 3,
@@ -300,7 +300,7 @@ impl Default for Device {
             exchange_pk: Pubkey::default(),
             device_type: DeviceType::Hybrid,
             public_ip: Ipv4Addr::new(0, 0, 0, 0),
-            status: DeviceStatus::PendingDeprecated,
+            status: DeviceStatus::Activated,
             code: String::new(),
             dz_prefixes: Vec::new().into(),
             metrics_publisher_pk: Pubkey::default(),
@@ -763,15 +763,6 @@ mod tests {
         assert!(!device.is_device_eligible_for_provisioning());
 
         let device = Device {
-            status: DeviceStatus::PendingDeprecated,
-            device_type: DeviceType::Hybrid,
-            users_count: 2,
-            max_users: 5,
-            ..Device::default()
-        };
-        assert!(!device.is_device_eligible_for_provisioning());
-
-        let device = Device {
             status: DeviceStatus::Activated,
             device_type: DeviceType::Hybrid,
             users_count: 5,
@@ -806,7 +797,7 @@ mod tests {
         assert_eq!(val.location_pk, Pubkey::default());
         assert_eq!(val.exchange_pk, Pubkey::default());
         assert_eq!(val.public_ip, Ipv4Addr::new(0, 0, 0, 0));
-        assert_eq!(val.status, DeviceStatus::PendingDeprecated);
+        assert_eq!(val.status, DeviceStatus::Activated);
         assert_eq!(val.device_type, DeviceType::Hybrid);
         assert_eq!(val.metrics_publisher_pk, Pubkey::default());
         assert_eq!(val.contributor_pk, Pubkey::default());

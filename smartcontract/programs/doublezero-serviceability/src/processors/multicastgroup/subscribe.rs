@@ -190,14 +190,8 @@ pub fn process_update_multicastgroup_roles(
     let mut user: User = User::try_from(user_account)?;
     // Removing all roles is allowed for any status so that users
     // created via CreateSubscribeUser can be cleaned up before activation.
-    // Adding roles is also allowed for Pending users so that CreateSubscribeUser
-    // (which only takes one mgroup) can be followed by additional calls.
     let has_role = value.publisher || value.subscriber;
-    if has_role
-        && user.status != UserStatus::Activated
-        && user.status != UserStatus::UpdatingDeprecated
-        && user.status != UserStatus::PendingDeprecated
-    {
+    if has_role && user.status != UserStatus::Activated {
         msg!("UserStatus: {:?}", user.status);
         return Err(DoubleZeroError::InvalidStatus.into());
     }

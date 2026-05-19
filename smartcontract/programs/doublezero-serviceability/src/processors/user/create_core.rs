@@ -345,7 +345,7 @@ pub fn create_user_core(
         dz_ip: Ipv4Addr::UNSPECIFIED,
         tunnel_id: 0,
         tunnel_net: NetworkV4::default(),
-        status: UserStatus::PendingDeprecated,
+        status: UserStatus::Activated,
         publishers: vec![],
         subscribers: vec![],
         validator_pubkey,

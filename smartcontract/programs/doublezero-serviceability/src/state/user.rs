@@ -95,8 +95,8 @@ impl fmt::Display for UserCYOA {
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UserStatus {
-    #[default]
     PendingDeprecated = 0, // activator-only; unreachable for new accounts
+    #[default]
     Activated = 1,
     SuspendedDeprecated = 2,
     Deleting = 3,
@@ -359,12 +359,12 @@ impl Validate for User {
             return Err(DoubleZeroError::InvalidClientIp);
         }
         // dz_ip must be global unicast
-        if self.status != UserStatus::PendingDeprecated && !is_global(self.dz_ip) {
+        if !is_global(self.dz_ip) {
             msg!("dz_ip: {}", self.dz_ip);
             return Err(DoubleZeroError::InvalidDzIp);
         }
         // tunnel net must be private
-        if self.status != UserStatus::PendingDeprecated && !self.tunnel_net.ip().is_link_local() {
+        if !self.tunnel_net.ip().is_link_local() {
             msg!("tunnel_net: {}", self.tunnel_net);
             return Err(DoubleZeroError::InvalidTunnelNet);
         }
@@ -491,7 +491,7 @@ mod tests {
             val.tunnel_net,
             NetworkV4::new(Ipv4Addr::new(0, 0, 0, 0), 0).unwrap()
         );
-        assert_eq!(val.status, UserStatus::PendingDeprecated);
+        assert_eq!(val.status, UserStatus::Activated);
         assert_eq!(val.publishers, Vec::<Pubkey>::new());
         assert_eq!(val.subscribers, Vec::<Pubkey>::new());
         assert_eq!(val.validator_pubkey, Pubkey::default());
@@ -839,7 +839,7 @@ mod tests {
             dz_ip: [192, 168, 1, 1].into(),
             tunnel_id: 0,
             tunnel_net: NetworkV4::default(),
-            status: UserStatus::PendingDeprecated,
+            status: UserStatus::Activated,
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),

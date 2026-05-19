@@ -365,28 +365,25 @@ impl PayCommand {
         // Check the current price so the user gets a friendly error instead of
         // an opaque on-chain revert. If the seat has a per-seat price
         // override, use that instead of the metro base + device premium.
-        // Skipped when prorated service is enabled.
-        if !prorated_service_enabled {
-            let seat_price_override = accounts[0]
-                .as_ref()
-                .and_then(|a| state::parse_client_seat_price_override(&a.data));
+        let seat_price_override = accounts[0]
+            .as_ref()
+            .and_then(|a| state::parse_client_seat_price_override(&a.data));
 
-            let metro_history_key = state::find_metro_history_address(&exchange_key).0;
-            let metro_history_account = wallet.connection.get_account(&metro_history_key).await?;
-            if let Some(metro_info) = state::parse_metro_history(&metro_history_account.data) {
-                let min_price = seat_price_override.unwrap_or_else(|| {
-                    (metro_info.current_usdc_price as i32 + device_info.current_premium as i32)
-                        .max(0) as u64
-                        * 1_000_000
-                });
-                if amount_micro < min_price {
-                    let min_usdc = min_price as f64 / 1_000_000.0;
-                    bail!(
-                        "Amount ({:.6} USDC) is below the current price ({:.6} USDC)",
-                        self.amount,
-                        min_usdc,
-                    );
-                }
+        let metro_history_key = state::find_metro_history_address(&exchange_key).0;
+        let metro_history_account = wallet.connection.get_account(&metro_history_key).await?;
+        if let Some(metro_info) = state::parse_metro_history(&metro_history_account.data) {
+            let min_price = seat_price_override.unwrap_or_else(|| {
+                (metro_info.current_usdc_price as i32 + device_info.current_premium as i32).max(0)
+                    as u64
+                    * 1_000_000
+            });
+            if amount_micro < min_price {
+                let min_usdc = min_price as f64 / 1_000_000.0;
+                bail!(
+                    "Amount ({:.6} USDC) is below the current price ({:.6} USDC)",
+                    self.amount,
+                    min_usdc,
+                );
             }
         }
 

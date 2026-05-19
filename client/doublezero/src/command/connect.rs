@@ -181,7 +181,7 @@ impl ProvisioningCliCommand {
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
         // Look for user
-        let (user_pubkey, user) = self
+        let (_user_pubkey, user) = self
             .find_or_create_user(client, controller, &client_ip, spinner, user_type, tenant)
             .await?;
 
@@ -233,7 +233,7 @@ impl ProvisioningCliCommand {
         }
 
         // Look for user and subscribe to all groups
-        let (user_pubkey, user) = self
+        let (_user_pubkey, user) = self
             .find_or_create_user_and_subscribe(
                 client,
                 controller,
@@ -905,7 +905,6 @@ impl ProvisioningCliCommand {
 
         eyre::bail!("timed out waiting for daemon to provision tunnel")
     }
-
 }
 
 fn exclude_ips(

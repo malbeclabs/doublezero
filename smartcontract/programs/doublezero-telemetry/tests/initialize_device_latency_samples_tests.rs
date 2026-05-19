@@ -800,7 +800,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
         .await
         .unwrap();
 
-    // Origin device: not activated
+    // Origin device: not activated (demoted to legacy PendingDeprecated)
     let origin_device_pk = ledger
         .serviceability
         .create_device(
@@ -822,6 +822,12 @@ async fn test_initialize_device_latency_samples_fail_origin_device_not_activated
     ledger
         .serviceability
         .create_interface(origin_device_pk, contributor_pk, "Ethernet0".to_string())
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .demote_device_to_pending_deprecated(origin_device_pk, contributor_pk)
         .await
         .unwrap();
 
@@ -963,7 +969,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
         .await
         .unwrap();
 
-    // Target device: not activated
+    // Target device: not activated (demoted to legacy PendingDeprecated)
     let target_device_pk = ledger
         .serviceability
         .create_device(
@@ -979,6 +985,12 @@ async fn test_initialize_device_latency_samples_fail_target_device_not_activated
             location_pk,
             exchange_pk,
         )
+        .await
+        .unwrap();
+
+    ledger
+        .serviceability
+        .demote_device_to_pending_deprecated(target_device_pk, contributor_pk)
         .await
         .unwrap();
 

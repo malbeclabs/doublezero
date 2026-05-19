@@ -1085,6 +1085,32 @@ impl ServiceabilityProgramHelper {
         .await
     }
 
+    /// Demote a device to the legacy PendingDeprecated status for tests that
+    /// exercise the "device not activated" rejection paths. New accounts can
+    /// never reach this status — only legacy onchain data has it — so tests
+    /// must construct it explicitly via UpdateDevice (foundation members may
+    /// set any status).
+    pub async fn demote_device_to_pending_deprecated(
+        &mut self,
+        device_pk: Pubkey,
+        contributor_pk: Pubkey,
+    ) -> Result<(), BanksClientError> {
+        self.execute_transaction(
+            DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+                status: Some(
+                    doublezero_serviceability::state::device::DeviceStatus::PendingDeprecated,
+                ),
+                ..Default::default()
+            }),
+            vec![
+                AccountMeta::new(device_pk, false),
+                AccountMeta::new(contributor_pk, false),
+                AccountMeta::new(self.global_state_pubkey, false),
+            ],
+        )
+        .await
+    }
+
     pub async fn create_interface(
         &mut self,
         device_pk: Pubkey,

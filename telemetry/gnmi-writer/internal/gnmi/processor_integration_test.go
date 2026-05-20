@@ -587,15 +587,26 @@ func verifyInterfaceState(t *testing.T, h *testHarness) {
 		OperStatus         string
 		Ifindex            uint32
 		CarrierTransitions uint64
+		InFcsErrors        uint64
+		InUnicastPkts      uint64
+		OutUnicastPkts     uint64
+		InMulticastPkts    uint64
+		OutMulticastPkts   uint64
+		InBroadcastPkts    uint64
+		OutBroadcastPkts   uint64
 	}
 
 	rows := queryRows(h, fmt.Sprintf(`
-		SELECT device_pubkey, interface_name, admin_status, oper_status, ifindex, carrier_transitions
+		SELECT device_pubkey, interface_name, admin_status, oper_status, ifindex, carrier_transitions,
+			in_fcs_errors, in_unicast_pkts, out_unicast_pkts, in_multicast_pkts, out_multicast_pkts,
+			in_broadcast_pkts, out_broadcast_pkts
 		FROM %s.interface_state
 	`, chDbname), func(r *sql.Rows) (interfaceStateRow, error) {
 		var row interfaceStateRow
 		err := r.Scan(&row.DevicePubkey, &row.InterfaceName, &row.AdminStatus,
-			&row.OperStatus, &row.Ifindex, &row.CarrierTransitions)
+			&row.OperStatus, &row.Ifindex, &row.CarrierTransitions,
+			&row.InFcsErrors, &row.InUnicastPkts, &row.OutUnicastPkts, &row.InMulticastPkts,
+			&row.OutMulticastPkts, &row.InBroadcastPkts, &row.OutBroadcastPkts)
 		return row, err
 	})
 
@@ -622,6 +633,19 @@ func verifyInterfaceState(t *testing.T, h *testHarness) {
 	eth2 := ifMap["Ethernet2"]
 	require.Equal(t, "UP", eth2.AdminStatus, "unexpected admin_status for Ethernet2")
 	require.Equal(t, "NOT_PRESENT", eth2.OperStatus, "unexpected oper_status for Ethernet2")
+
+	// Verify packet-class counters round-trip through ClickHouse on an active
+	// interface with non-zero traffic. Distinct values guard against column
+	// mis-mapping (struct ch tags / migration column names).
+	require.Contains(t, ifMap, "Switch1/11/2", "expected Switch1/11/2 to exist")
+	sw := ifMap["Switch1/11/2"]
+	require.Equal(t, uint64(0), sw.InFcsErrors, "unexpected in_fcs_errors for Switch1/11/2")
+	require.Equal(t, uint64(8807515372), sw.InUnicastPkts, "unexpected in_unicast_pkts for Switch1/11/2")
+	require.Equal(t, uint64(272452842), sw.OutUnicastPkts, "unexpected out_unicast_pkts for Switch1/11/2")
+	require.Equal(t, uint64(17427508), sw.InMulticastPkts, "unexpected in_multicast_pkts for Switch1/11/2")
+	require.Equal(t, uint64(16883007), sw.OutMulticastPkts, "unexpected out_multicast_pkts for Switch1/11/2")
+	require.Equal(t, uint64(437), sw.InBroadcastPkts, "unexpected in_broadcast_pkts for Switch1/11/2")
+	require.Equal(t, uint64(38), sw.OutBroadcastPkts, "unexpected out_broadcast_pkts for Switch1/11/2")
 }
 
 func verifyTransceiverThresholds(t *testing.T, h *testHarness) {

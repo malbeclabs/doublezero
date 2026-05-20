@@ -199,6 +199,13 @@ type InterfaceStateRecord struct {
 	OutErrors          uint64    `json:"out_errors,omitempty" ch:"out_errors"`
 	InDiscards         uint64    `json:"in_discards,omitempty" ch:"in_discards"`
 	OutDiscards        uint64    `json:"out_discards,omitempty" ch:"out_discards"`
+	InFcsErrors        uint64    `json:"in_fcs_errors,omitempty" ch:"in_fcs_errors"`
+	InUnicastPkts      uint64    `json:"in_unicast_pkts,omitempty" ch:"in_unicast_pkts"`
+	InMulticastPkts    uint64    `json:"in_multicast_pkts,omitempty" ch:"in_multicast_pkts"`
+	InBroadcastPkts    uint64    `json:"in_broadcast_pkts,omitempty" ch:"in_broadcast_pkts"`
+	OutUnicastPkts     uint64    `json:"out_unicast_pkts,omitempty" ch:"out_unicast_pkts"`
+	OutMulticastPkts   uint64    `json:"out_multicast_pkts,omitempty" ch:"out_multicast_pkts"`
+	OutBroadcastPkts   uint64    `json:"out_broadcast_pkts,omitempty" ch:"out_broadcast_pkts"`
 }
 
 // TableName returns the ClickHouse table name for interface state records.

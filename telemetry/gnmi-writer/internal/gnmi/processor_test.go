@@ -779,6 +779,8 @@ func TestExtractIsisOverloadBit_NoState(t *testing.T) {
 
 func boolPtr(b bool) *bool { return &b }
 
+func uint64Ptr(v uint64) *uint64 { return &v }
+
 // newTestMetrics creates metrics with no-op implementations for testing.
 func newTestMetrics() *ProcessorMetrics {
 	return &ProcessorMetrics{
@@ -1168,6 +1170,74 @@ func TestExtractInterfaceState_Isolation(t *testing.T) {
 	}
 
 	t.Logf("extracted %d interface state records", len(allRecords))
+}
+
+// TestExtractInterfaceState_Counters verifies that every interface counter,
+// including the packet-class counters, maps to the correct record field.
+// Distinct values guard against copy/paste field-assignment mistakes.
+func TestExtractInterfaceState_Counters(t *testing.T) {
+	device := &oc.Device{
+		Interfaces: &oc.OpenconfigInterfaces_Interfaces{
+			Interface: map[string]*oc.OpenconfigInterfaces_Interfaces_Interface{
+				"Ethernet1": {
+					State: &oc.OpenconfigInterfaces_Interfaces_Interface_State{
+						AdminStatus: oc.OpenconfigInterfaces_Interfaces_Interface_State_AdminStatus_UP,
+						OperStatus:  oc.OpenconfigInterfaces_Interfaces_Interface_State_OperStatus_UP,
+						Counters: &oc.OpenconfigInterfaces_Interfaces_Interface_State_Counters{
+							CarrierTransitions: uint64Ptr(1),
+							InOctets:           uint64Ptr(100),
+							OutOctets:          uint64Ptr(200),
+							InPkts:             uint64Ptr(11),
+							OutPkts:            uint64Ptr(22),
+							InErrors:           uint64Ptr(3),
+							OutErrors:          uint64Ptr(4),
+							InDiscards:         uint64Ptr(5),
+							OutDiscards:        uint64Ptr(6),
+							InFcsErrors:        uint64Ptr(7),
+							InUnicastPkts:      uint64Ptr(8),
+							OutUnicastPkts:     uint64Ptr(9),
+							InMulticastPkts:    uint64Ptr(10),
+							OutMulticastPkts:   uint64Ptr(12),
+							InBroadcastPkts:    uint64Ptr(13),
+							OutBroadcastPkts:   uint64Ptr(14),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	records := extractInterfaceState(device, Metadata{DevicePubkey: "test-device"})
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	got := records[0].(InterfaceStateRecord)
+
+	want := InterfaceStateRecord{
+		DevicePubkey:       "test-device",
+		InterfaceName:      "Ethernet1",
+		AdminStatus:        "UP",
+		OperStatus:         "UP",
+		CarrierTransitions: 1,
+		InOctets:           100,
+		OutOctets:          200,
+		InPkts:             11,
+		OutPkts:            22,
+		InErrors:           3,
+		OutErrors:          4,
+		InDiscards:         5,
+		OutDiscards:        6,
+		InFcsErrors:        7,
+		InUnicastPkts:      8,
+		OutUnicastPkts:     9,
+		InMulticastPkts:    10,
+		OutMulticastPkts:   12,
+		InBroadcastPkts:    13,
+		OutBroadcastPkts:   14,
+	}
+	if got != want {
+		t.Errorf("unexpected record:\n got  %+v\n want %+v", got, want)
+	}
 }
 
 func TestExtractTransceiverThresholds_Isolation(t *testing.T) {

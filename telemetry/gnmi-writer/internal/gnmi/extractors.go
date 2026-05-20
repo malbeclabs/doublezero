@@ -373,6 +373,27 @@ func extractInterfaceState(device *oc.Device, meta Metadata) []Record {
 			if iface.State.Counters.OutDiscards != nil {
 				record.OutDiscards = *iface.State.Counters.OutDiscards
 			}
+			if iface.State.Counters.InFcsErrors != nil {
+				record.InFcsErrors = *iface.State.Counters.InFcsErrors
+			}
+			if iface.State.Counters.InUnicastPkts != nil {
+				record.InUnicastPkts = *iface.State.Counters.InUnicastPkts
+			}
+			if iface.State.Counters.InMulticastPkts != nil {
+				record.InMulticastPkts = *iface.State.Counters.InMulticastPkts
+			}
+			if iface.State.Counters.InBroadcastPkts != nil {
+				record.InBroadcastPkts = *iface.State.Counters.InBroadcastPkts
+			}
+			if iface.State.Counters.OutUnicastPkts != nil {
+				record.OutUnicastPkts = *iface.State.Counters.OutUnicastPkts
+			}
+			if iface.State.Counters.OutMulticastPkts != nil {
+				record.OutMulticastPkts = *iface.State.Counters.OutMulticastPkts
+			}
+			if iface.State.Counters.OutBroadcastPkts != nil {
+				record.OutBroadcastPkts = *iface.State.Counters.OutBroadcastPkts
+			}
 		}
 
 		records = append(records, record)

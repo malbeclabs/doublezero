@@ -871,6 +871,19 @@ fn verify_device_tunnel_block(
         return;
     };
 
+    // Pull the base network so we can ignore loopback/link IPs that fall
+    // outside the block's range. Both interface and link processors honor a
+    // caller-supplied ip_net/tunnel_net and skip the allocator in that path
+    // (see `processors/device/interface/create.rs` and
+    // `processors/link/resource_onchain_helpers.rs`) — most commonly for
+    // user-tunnel-endpoint loopbacks that land on a globally routable IP.
+    // Those IPs aren't in the DeviceTunnelBlock bitmap and would otherwise
+    // be falsely reported as `UsedButNotAllocated`.
+    let base_net = match &extension.allocator {
+        Allocator::Ip(ip_alloc) => ip_alloc.base_net,
+        Allocator::Id(_) => return,
+    };
+
     let allocated: HashSet<IdOrIp> = extension.iter_allocated().into_iter().collect();
 
     let mut in_use: HashMap<IdOrIp, Vec<(Pubkey, String)>> = HashMap::new();
@@ -887,6 +900,9 @@ fn verify_device_tunnel_block(
                     // Iterate over all IPs in the network
                     for i in 0..iface.ip_net.size() {
                         if let Some(ip) = iface.ip_net.nth(i) {
+                            if !base_net.contains(ip) {
+                                continue;
+                            }
                             let ip_net = NetworkV4::new(ip, 32).unwrap();
                             let id_or_ip = IdOrIp::Ip(ip_net);
                             insert_usage(
@@ -910,6 +926,9 @@ fn verify_device_tunnel_block(
             // Iterate over all IPs in the network (e.g., /31 has 2 IPs)
             for i in 0..link.tunnel_net.size() {
                 if let Some(ip) = link.tunnel_net.nth(i) {
+                    if !base_net.contains(ip) {
+                        continue;
+                    }
                     let ip_net = NetworkV4::new(ip, 32).unwrap();
                     let id_or_ip = IdOrIp::Ip(ip_net);
                     insert_usage(&mut in_use, id_or_ip, *link_pk, "Link".to_string());
@@ -2120,6 +2139,15 @@ mod tests {
         }
     }
 
+    fn make_vpnv4_loopback_with_ip(
+        name: &str,
+        ip_net: &str,
+    ) -> doublezero_serviceability::state::interface::Interface {
+        let mut iface = make_vpnv4_loopback(name, 0, vec![]);
+        iface.ip_net = ip_net.parse().unwrap();
+        iface
+    }
+
     fn segment_routing_discrepancies(result: &VerifyResourceResult) -> Vec<&ResourceDiscrepancy> {
         result
             .discrepancies
@@ -2374,5 +2402,54 @@ mod tests {
             dup_entries
         );
         assert_eq!(dup_entries[0].len(), 3);
+    }
+
+    #[test]
+    fn test_verify_device_tunnel_block_ignores_loopback_ip_outside_base_net() {
+        // User-tunnel-endpoint Vpnv4 loopbacks land on a caller-supplied
+        // globally routable IP and skip the DeviceTunnelBlock allocator
+        // (see processors/device/interface/create.rs). The verifier must
+        // not report those IPs as `UsedButNotAllocated`.
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+
+        // The DeviceTunnelBlock from insert_all_globals is 172.16.0.0/24.
+        // Give the loopback a globally routable IP outside that block.
+        let device_pk = Pubkey::new_unique();
+        let device = Device {
+            interfaces: vec![make_vpnv4_loopback_with_ip("Loopback0", "203.0.113.5/32")],
+            ..Device::default()
+        };
+        accounts.insert(Box::new(device_pk), Box::new(AccountData::Device(device)));
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        let dtb_used_not_alloc: Vec<_> = result
+            .discrepancies
+            .iter()
+            .filter(|d| {
+                matches!(
+                    d,
+                    ResourceDiscrepancy::UsedButNotAllocated {
+                        resource_type: ResourceType::DeviceTunnelBlock,
+                        ..
+                    }
+                )
+            })
+            .collect();
+        assert!(
+            dtb_used_not_alloc.is_empty(),
+            "loopback IP outside the DeviceTunnelBlock base_net should not produce a UsedButNotAllocated entry, got {:?}",
+            dtb_used_not_alloc
+        );
     }
 }

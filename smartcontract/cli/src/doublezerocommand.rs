@@ -22,18 +22,14 @@ use doublezero_sdk::{
             update::UpdateContributorCommand,
         },
         device::{
-            activate::ActivateDeviceCommand,
-            closeaccount::CloseAccountDeviceCommand,
             create::CreateDeviceCommand,
             delete::DeleteDeviceCommand,
             get::GetDeviceCommand,
             interface::{
-                activate::ActivateDeviceInterfaceCommand, create::CreateDeviceInterfaceCommand,
-                delete::DeleteDeviceInterfaceCommand, remove::RemoveDeviceInterfaceCommand,
+                create::CreateDeviceInterfaceCommand, delete::DeleteDeviceInterfaceCommand,
                 update::UpdateDeviceInterfaceCommand,
             },
             list::ListDeviceCommand,
-            reject::RejectDeviceCommand,
             sethealth::SetDeviceHealthCommand,
             update::UpdateDeviceCommand,
         },
@@ -49,11 +45,9 @@ use doublezero_sdk::{
             setversion::SetVersionCommand,
         },
         link::{
-            accept::AcceptLinkCommand, activate::ActivateLinkCommand,
-            closeaccount::CloseAccountLinkCommand, create::CreateLinkCommand,
-            delete::DeleteLinkCommand, get::GetLinkCommand, latency::LatencyLinkCommand,
-            list::ListLinkCommand, reject::RejectLinkCommand, sethealth::SetLinkHealthCommand,
-            update::UpdateLinkCommand,
+            accept::AcceptLinkCommand, create::CreateLinkCommand, delete::DeleteLinkCommand,
+            get::GetLinkCommand, latency::LatencyLinkCommand, list::ListLinkCommand,
+            sethealth::SetLinkHealthCommand, update::UpdateLinkCommand,
         },
         location::{
             create::CreateLocationCommand, delete::DeleteLocationCommand, get::GetLocationCommand,
@@ -61,7 +55,6 @@ use doublezero_sdk::{
         },
         migrate::MigrateCommand,
         multicastgroup::{
-            activate::ActivateMulticastGroupCommand,
             allowlist::{
                 publisher::{
                     add::AddMulticastGroupPubAllowlistCommand,
@@ -73,11 +66,9 @@ use doublezero_sdk::{
                 },
             },
             create::CreateMulticastGroupCommand,
-            deactivate::DeactivateMulticastGroupCommand,
             delete::DeleteMulticastGroupCommand,
             get::GetMulticastGroupCommand,
             list::ListMulticastGroupCommand,
-            reject::RejectMulticastGroupCommand,
             subscribe::UpdateMulticastGroupRolesCommand,
             update::UpdateMulticastGroupCommand,
         },
@@ -228,21 +219,11 @@ pub trait CliCommand {
     fn delete_device(&self, cmd: DeleteDeviceCommand) -> eyre::Result<Signature>;
     fn set_device_health(&self, cmd: SetDeviceHealthCommand) -> eyre::Result<Signature>;
 
-    fn activate_device(&self, cmd: ActivateDeviceCommand) -> eyre::Result<Signature>;
-    fn reject_device(&self, cmd: RejectDeviceCommand) -> eyre::Result<Signature>;
-    fn closeaccount_device(&self, cmd: CloseAccountDeviceCommand) -> eyre::Result<Signature>;
-
-    fn activate_device_interface(
-        &self,
-        cmd: ActivateDeviceInterfaceCommand,
-    ) -> eyre::Result<Signature>;
     fn create_device_interface(
         &self,
         cmd: CreateDeviceInterfaceCommand,
     ) -> eyre::Result<(Signature, Pubkey)>;
     fn delete_device_interface(&self, cmd: DeleteDeviceInterfaceCommand)
-        -> eyre::Result<Signature>;
-    fn remove_device_interface(&self, cmd: RemoveDeviceInterfaceCommand)
         -> eyre::Result<Signature>;
     fn update_device_interface(&self, cmd: UpdateDeviceInterfaceCommand)
         -> eyre::Result<Signature>;
@@ -253,10 +234,7 @@ pub trait CliCommand {
     fn list_link(&self, cmd: ListLinkCommand) -> eyre::Result<HashMap<Pubkey, Link>>;
     fn update_link(&self, cmd: UpdateLinkCommand) -> eyre::Result<Signature>;
     fn delete_link(&self, cmd: DeleteLinkCommand) -> eyre::Result<Signature>;
-    fn activate_link(&self, cmd: ActivateLinkCommand) -> eyre::Result<Signature>;
     fn latency_link(&self, cmd: LatencyLinkCommand) -> eyre::Result<Vec<LinkLatencyStats>>;
-    fn reject_link(&self, cmd: RejectLinkCommand) -> eyre::Result<Signature>;
-    fn closeaccount_link(&self, cmd: CloseAccountLinkCommand) -> eyre::Result<Signature>;
     fn set_link_health(&self, cmd: SetLinkHealthCommand) -> eyre::Result<Signature>;
 
     fn create_user(&self, cmd: CreateUserCommand) -> eyre::Result<(Signature, Pubkey)>;
@@ -299,15 +277,6 @@ pub trait CliCommand {
     ) -> eyre::Result<HashMap<Pubkey, MulticastGroup>>;
     fn update_multicastgroup(&self, cmd: UpdateMulticastGroupCommand) -> eyre::Result<Signature>;
     fn delete_multicastgroup(&self, cmd: DeleteMulticastGroupCommand) -> eyre::Result<Signature>;
-    fn activate_multicastgroup(
-        &self,
-        cmd: ActivateMulticastGroupCommand,
-    ) -> eyre::Result<Signature>;
-    fn reject_multicastgroup(&self, cmd: RejectMulticastGroupCommand) -> eyre::Result<Signature>;
-    fn deactivate_multicastgroup(
-        &self,
-        cmd: DeactivateMulticastGroupCommand,
-    ) -> eyre::Result<Signature>;
     fn update_multicastgroup_roles(
         &self,
         cmd: UpdateMulticastGroupRolesCommand,
@@ -601,21 +570,6 @@ impl CliCommand for CliCommandImpl<'_> {
     fn set_device_health(&self, cmd: SetDeviceHealthCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn activate_device(&self, cmd: ActivateDeviceCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn reject_device(&self, cmd: RejectDeviceCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn closeaccount_device(&self, cmd: CloseAccountDeviceCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn activate_device_interface(
-        &self,
-        cmd: ActivateDeviceInterfaceCommand,
-    ) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
     fn create_device_interface(
         &self,
         cmd: CreateDeviceInterfaceCommand,
@@ -625,12 +579,6 @@ impl CliCommand for CliCommandImpl<'_> {
     fn delete_device_interface(
         &self,
         cmd: DeleteDeviceInterfaceCommand,
-    ) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn remove_device_interface(
-        &self,
-        cmd: RemoveDeviceInterfaceCommand,
     ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
@@ -658,19 +606,10 @@ impl CliCommand for CliCommandImpl<'_> {
     fn delete_link(&self, cmd: DeleteLinkCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn activate_link(&self, cmd: ActivateLinkCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
     fn latency_link(&self, cmd: LatencyLinkCommand) -> eyre::Result<Vec<LinkLatencyStats>> {
         cmd.execute(self.client)
     }
-    fn reject_link(&self, cmd: RejectLinkCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
     fn set_link_health(&self, cmd: SetLinkHealthCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn closeaccount_link(&self, cmd: CloseAccountLinkCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn create_user(&self, cmd: CreateUserCommand) -> eyre::Result<(Signature, Pubkey)> {
@@ -746,21 +685,6 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn delete_multicastgroup(&self, cmd: DeleteMulticastGroupCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn activate_multicastgroup(
-        &self,
-        cmd: ActivateMulticastGroupCommand,
-    ) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn reject_multicastgroup(&self, cmd: RejectMulticastGroupCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn deactivate_multicastgroup(
-        &self,
-        cmd: DeactivateMulticastGroupCommand,
-    ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn update_multicastgroup_roles(

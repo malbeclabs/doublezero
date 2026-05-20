@@ -3,7 +3,7 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         contributor::create::ContributorCreateArgs,
-        device::interface::{update::DeviceInterfaceUpdateArgs, DeviceInterfaceUnlinkArgs},
+        device::interface::update::DeviceInterfaceUpdateArgs,
         link::{create::*, update::*},
         topology::create::TopologyCreateArgs,
         *,
@@ -185,40 +185,6 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
     )
     .await;
 
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDeviceInterface(
-            device::interface::activate::DeviceInterfaceActivateArgs {
-                name: "Ethernet0".to_string(),
-                ip_net: "10.0.0.0/31".parse().unwrap(),
-                node_segment_idx: 0,
-            },
-        ),
-        vec![
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "Ethernet0".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
     // Create device Z with clean interface
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (device_z_pubkey, _) = get_device_pda(&program_id, globalstate_account.account_index + 1);
@@ -288,40 +254,6 @@ async fn test_cannot_set_cyoa_on_linked_interface() {
                 get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds).0,
                 false,
             ),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDeviceInterface(
-            device::interface::activate::DeviceInterfaceActivateArgs {
-                name: "Ethernet1".to_string(),
-                ip_net: "10.0.0.1/31".parse().unwrap(),
-                node_segment_idx: 0,
-            },
-        ),
-        vec![
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "Ethernet1".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -636,38 +568,6 @@ async fn setup_link_env() -> (
         &payer,
     )
     .await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDeviceInterface(
-            device::interface::activate::DeviceInterfaceActivateArgs {
-                name: "Ethernet0".to_string(),
-                ip_net: "10.0.0.0/31".parse().unwrap(),
-                node_segment_idx: 0,
-            },
-        ),
-        vec![
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "Ethernet0".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
 
     // Device Z
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
@@ -737,38 +637,6 @@ async fn setup_link_env() -> (
                 get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds).0,
                 false,
             ),
-        ],
-        &payer,
-    )
-    .await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDeviceInterface(
-            device::interface::activate::DeviceInterfaceActivateArgs {
-                name: "Ethernet1".to_string(),
-                ip_net: "10.0.0.1/31".parse().unwrap(),
-                node_segment_idx: 0,
-            },
-        ),
-        vec![
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "Ethernet1".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -1100,38 +968,6 @@ async fn test_link_activation_succeeds_without_unicast_default() {
         &payer,
     )
     .await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDeviceInterface(
-            device::interface::activate::DeviceInterfaceActivateArgs {
-                name: "Ethernet0".to_string(),
-                ip_net: "10.0.0.0/31".parse().unwrap(),
-                node_segment_idx: 0,
-            },
-        ),
-        vec![
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "Ethernet0".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_a_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
 
     // Device Z + Ethernet1
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
@@ -1201,38 +1037,6 @@ async fn test_link_activation_succeeds_without_unicast_default() {
                 get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds).0,
                 false,
             ),
-        ],
-        &payer,
-    )
-    .await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDeviceInterface(
-            device::interface::activate::DeviceInterfaceActivateArgs {
-                name: "Ethernet1".to_string(),
-                ip_net: "10.0.0.1/31".parse().unwrap(),
-                node_segment_idx: 0,
-            },
-        ),
-        vec![
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-            name: "Ethernet1".to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_z_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )
@@ -1457,7 +1261,7 @@ async fn test_link_topology_valid_accepted() {
 // ─── link_topologies update tests ────────────────────────────────────────────
 
 /// Foundation key can reassign link_topologies to a different topology after
-/// activation, overriding the auto-tag set by ActivateLink.
+/// activation, overriding the auto-tag set by CreateLink.
 #[tokio::test]
 async fn test_link_topology_reassigned_by_foundation() {
     let (

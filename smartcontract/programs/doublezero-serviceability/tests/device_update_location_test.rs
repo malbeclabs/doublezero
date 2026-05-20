@@ -4,7 +4,7 @@ use doublezero_serviceability::{
     pda::*,
     processors::{
         contributor::create::ContributorCreateArgs,
-        device::{closeaccount::*, create::*, delete::*, update::*},
+        device::{create::*, update::*},
         *,
     },
     resource::ResourceType,
@@ -327,13 +327,6 @@ async fn device_update_location_test() {
 
     println!("✅ Device initialized successfully",);
 
-    // Re-capture device state after location update so subsequent CloseAccount uses the
-    // current location_pk.
-    let device = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_device()
-        .unwrap();
     /*****************************************************************************************************************************************************/
     println!("🟢 10. Update Device...");
     execute_transaction(
@@ -453,81 +446,7 @@ async fn device_update_location_test() {
     assert_eq!(device_la.status, DeviceStatus::Drained);
 
     println!("✅ Device drained");
-    /*****************************************************************************************************************************************************/
-    println!("🟢 13. Deleting Device...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs::default()),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let device_la = get_account_data(&mut banks_client, device_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_device()
-        .unwrap();
-    assert_eq!(device_la.account_type, AccountType::Device);
-    assert_eq!(device_la.code, "la".to_string());
-    assert_eq!(device_la.public_ip.to_string(), "8.8.8.8");
-    assert_eq!(device_la.status, DeviceStatus::Deleting);
-
-    /*****************************************************************************************************************************************************/
-    println!("🟢 14. CloseAccount Device...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs { resource_count: 2 }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(device.owner, false),
-            AccountMeta::new(device.contributor_pk, false),
-            AccountMeta::new(device.location_pk, false),
-            AccountMeta::new(device.exchange_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(config_pubkey, false),
-            AccountMeta::new(tunnel_ids_pda, false),
-            AccountMeta::new(dz_prefix_pda, false),
-            AccountMeta::new(payer.pubkey(), false),
-            AccountMeta::new(payer.pubkey(), false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let device_la = get_account_data(&mut banks_client, device_pubkey).await;
-    assert_eq!(device_la, None);
-
-    // check reference counts
-    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_contributor()
-        .unwrap();
-    assert_eq!(contributor.reference_count, 0);
-    //check reference counts
-    let location = get_account_data(&mut banks_client, location_la_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_location()
-        .unwrap();
-    assert_eq!(location.reference_count, 0);
-    //check reference counts
-    let exchange = get_account_data(&mut banks_client, exchange_pubkey)
-        .await
-        .expect("Unable to get Account")
-        .get_exchange()
-        .unwrap();
-    assert_eq!(exchange.reference_count, 0);
-
-    println!("✅ Device deleted successfully");
+    // Note: atomic DeleteDevice + account close is covered by
+    // test_delete_device_atomic_close in device_test.rs.
     println!("🟢🟢🟢  End test_device  🟢🟢🟢");
 }

@@ -1,8 +1,5 @@
-pub mod activate;
-pub mod closeaccount;
 pub mod create;
 pub mod delete;
 pub mod interface;
-pub mod reject;
 pub mod sethealth;
 pub mod update;

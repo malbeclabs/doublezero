@@ -1,9 +1,6 @@
 pub mod accept;
-pub mod activate;
-pub mod closeaccount;
 pub mod create;
 pub mod delete;
-pub mod reject;
 pub mod resource_onchain_helpers;
 pub mod sethealth;
 pub mod update;

@@ -15,10 +15,7 @@ use doublezero_serviceability::{
         },
         exchange::{create::ExchangeCreateArgs, suspend::ExchangeSuspendArgs},
         globalconfig::set::SetGlobalConfigArgs,
-        link::{
-            activate::LinkActivateArgs, create::LinkCreateArgs, sethealth::LinkSetHealthArgs,
-            update::LinkUpdateArgs,
-        },
+        link::{create::LinkCreateArgs, update::LinkUpdateArgs},
         location::{create::LocationCreateArgs, suspend::LocationSuspendArgs},
         topology::create::TopologyCreateArgs,
     },
@@ -28,7 +25,7 @@ use doublezero_serviceability::{
         exchange::Exchange,
         globalstate::GlobalState,
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
-        link::{Link, LinkDesiredStatus, LinkHealth, LinkLinkType},
+        link::{Link, LinkDesiredStatus, LinkLinkType},
         location::Location,
         topology::TopologyConstraint,
     },
@@ -1219,65 +1216,6 @@ impl ServiceabilityProgramHelper {
         .await?;
 
         Ok(link_pk)
-    }
-
-    pub async fn activate_link(
-        &mut self,
-        link_pk: Pubkey,
-        contributor_pk: Pubkey,
-        side_a_pk: Pubkey,
-        side_z_pk: Pubkey,
-        tunnel_id: u16,
-        tunnel_net: NetworkV4,
-    ) -> Result<(), BanksClientError> {
-        let (device_tunnel_block_pda, _, _) =
-            get_resource_extension_pda(&self.program_id, ResourceType::DeviceTunnelBlock);
-        let (link_ids_pda, _, _) =
-            get_resource_extension_pda(&self.program_id, ResourceType::LinkIds);
-
-        self.execute_transaction(
-            DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
-                tunnel_id,
-                tunnel_net,
-                use_onchain_allocation: true,
-            }),
-            vec![
-                AccountMeta::new(link_pk, false),
-                AccountMeta::new(side_a_pk, false),
-                AccountMeta::new(side_z_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
-                AccountMeta::new(device_tunnel_block_pda, false),
-                AccountMeta::new(link_ids_pda, false),
-            ],
-        )
-        .await?;
-
-        self.execute_transaction(
-            DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
-                desired_status: Some(LinkDesiredStatus::Activated),
-                tunnel_id: None,
-                tunnel_net: None,
-                use_onchain_allocation: false,
-                ..Default::default()
-            }),
-            vec![
-                AccountMeta::new(link_pk, false),
-                AccountMeta::new(contributor_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
-            ],
-        )
-        .await?;
-
-        self.execute_transaction(
-            DoubleZeroInstruction::SetLinkHealth(LinkSetHealthArgs {
-                health: LinkHealth::ReadyForService,
-            }),
-            vec![
-                AccountMeta::new(link_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
-            ],
-        )
-        .await
     }
 
     pub async fn get_link(&mut self, pubkey: Pubkey) -> Result<Link, BanksClientError> {

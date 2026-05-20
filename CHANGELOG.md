@@ -5,7 +5,10 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - Smartcontract
+  - Deprecate the `ActivateUser`, `RejectUser`, `CloseAccountUser`, and `BanUser` user-lifecycle program instructions: dispatch arms now return `DoubleZeroError::Deprecated` (custom code 67), and the processor files / argument structs are removed. Borsh variant tags 37/38/43/45 are preserved so the wire format is unchanged. The activator was the only client of all four — `CreateUser` has been atomic-to-`Activated` since RFC-11, `closeaccount` was activator-driven only, and `RequestBanUser` is now atomic. Gated on onchain `min_compatible_version ≥ 0.12.0` ([#3622](https://github.com/malbeclabs/doublezero/issues/3622))
   - Extend `SetUserBGPStatus` with `bgp_rtt_ns: u64` (smoothed BGP TCP RTT in nanoseconds, same unit as `Link.delay_ns` / `Link.jitter_ns`); append `bgp_rtt_ns` to the `User` account. Old payloads (status-only) decode with `bgp_rtt_ns = 0` via `BorshDeserializeIncremental`; old serialized accounts decode with `bgp_rtt_ns = 0` via the existing append-only field pattern. Deploy order is unconstrained.
+- SDK (Rust)
+  - Delete the now-dead `ActivateUserCommand`, `RejectUserCommand`, `CloseAccountUserCommand`, and `BanUserCommand` wrappers — none are reachable from any live caller. `RequestBanUserCommand` (operator-driven, atomic) is unaffected ([#3622](https://github.com/malbeclabs/doublezero/issues/3622))
 - SDK (Go/TS/Python)
   - Add the `bgp_rtt_ns` field to the `User` deserializer in all three SDKs; the Go executor builder accepts and serializes the new field via a 10-byte instruction payload.
 - Telemetry

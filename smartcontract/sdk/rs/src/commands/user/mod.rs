@@ -1,12 +1,8 @@
-pub mod activate;
-pub mod ban;
 pub mod check_access_pass;
-pub mod closeaccount;
 pub mod create;
 pub mod create_subscribe;
 pub mod delete;
 pub mod get;
 pub mod list;
-pub mod reject;
 pub mod requestban;
 pub mod update;

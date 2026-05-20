@@ -103,12 +103,10 @@ use crate::{
             delete::process_topology_delete,
         },
         user::{
-            activate::process_activate_user, ban::process_ban_user,
-            check_access_pass::process_check_access_pass_user,
-            closeaccount::process_closeaccount_user, create::process_create_user,
+            check_access_pass::process_check_access_pass_user, create::process_create_user,
             create_subscribe::process_create_subscribe_user, delete::process_delete_user,
-            reject::process_reject_user, requestban::process_request_ban_user,
-            set_bgp_status::process_set_bgp_status_user, update::process_update_user,
+            requestban::process_request_ban_user, set_bgp_status::process_set_bgp_status_user,
+            update::process_update_user,
         },
     },
 };
@@ -168,8 +166,11 @@ pub fn process_instruction(
         DoubleZeroInstruction::ActivateDevice(value) => {
             process_activate_device(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ActivateUser(value) => {
-            process_activate_user(program_id, accounts, &value)?
+        DoubleZeroInstruction::ActivateUser()
+        | DoubleZeroInstruction::RejectUser()
+        | DoubleZeroInstruction::CloseAccountUser()
+        | DoubleZeroInstruction::BanUser() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
         DoubleZeroInstruction::DeleteUser(value) => {
             process_delete_user(program_id, accounts, &value)?
@@ -226,18 +227,11 @@ pub fn process_instruction(
         DoubleZeroInstruction::CloseAccountLink(value) => {
             process_closeaccount_link(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::CloseAccountUser(value) => {
-            process_closeaccount_user(program_id, accounts, &value)?
-        }
-
         DoubleZeroInstruction::RejectDevice(value) => {
             process_reject_device(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::RejectLink(value) => {
             process_reject_link(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::RejectUser(value) => {
-            process_reject_user(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::AddFoundationAllowlist(value) => {
             process_add_foundation_allowlist_globalconfig(program_id, accounts, &value)?
@@ -260,7 +254,6 @@ pub fn process_instruction(
         DoubleZeroInstruction::RequestBanUser(value) => {
             process_request_ban_user(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::BanUser(value) => process_ban_user(program_id, accounts, &value)?,
 
         DoubleZeroInstruction::CreateMulticastGroup(value) => {
             process_create_multicastgroup(program_id, accounts, &value)?

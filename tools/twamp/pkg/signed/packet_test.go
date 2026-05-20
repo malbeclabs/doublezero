@@ -60,7 +60,7 @@ func TestReplyPacket_MarshalUnmarshal(t *testing.T) {
 	copy(geoprobePubkey[:], geoprobePub)
 
 	probe := signed.NewProbePacket(7, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil, 0, 0, 0, 0, 0)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil, 0, 0, 0, 0, 0, false)
 	require.NoError(t, err)
 
 	buf := make([]byte, reply.Size())
@@ -93,7 +93,7 @@ func TestReplyPacket_MarshalUnmarshal_WithOffsets(t *testing.T) {
 	offsets := [][]byte{makeTestOffset(t), makeTestOffset(t)}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0, false)
 	require.NoError(t, err)
 	assert.Equal(t, signed.MinReplyPacketSize+2*signed.LocationOffsetSize, reply.Size())
 
@@ -122,7 +122,7 @@ func TestReplyPacket_MarshalUnmarshal_MaxOffsets(t *testing.T) {
 	}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0, false)
 	require.NoError(t, err)
 	assert.Equal(t, signed.MaxReplyPacketSize, reply.Size())
 
@@ -147,7 +147,7 @@ func TestReplyPacket_MarshalUnmarshal_NewFields(t *testing.T) {
 
 	probe := signed.NewProbePacket(1, senderSigner)
 	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil,
-		42_000_000, 37.7749, -122.4194, 1_500_000, 3_000_000)
+		42_000_000, 37.7749, -122.4194, 1_500_000, 3_000_000, false)
 	require.NoError(t, err)
 
 	buf := make([]byte, reply.Size())
@@ -195,7 +195,7 @@ func TestReplyPacket_Verify(t *testing.T) {
 	copy(geoprobePubkey[:], geoprobePub)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil, 0, 0, 0, 0, 0)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil, 0, 0, 0, 0, 0, false)
 	require.NoError(t, err)
 
 	assert.True(t, reply.Probe.Verify())
@@ -211,7 +211,7 @@ func TestReplyPacket_Verify_WithOffsets(t *testing.T) {
 	offsets := [][]byte{makeTestOffset(t), makeTestOffset(t), makeTestOffset(t)}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0, false)
 	require.NoError(t, err)
 
 	assert.True(t, reply.Verify())
@@ -226,7 +226,7 @@ func TestReplyPacket_Verify_TamperedOffset(t *testing.T) {
 	offsets := [][]byte{makeTestOffset(t)}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0, false)
 	require.NoError(t, err)
 
 	reply.Offsets[0][0] ^= 0xff
@@ -240,7 +240,7 @@ func TestReplyPacket_Verify_TamperedAuthorityPubkey(t *testing.T) {
 	_, reflectorSigner := newTestSigner(t)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 0, 0, 0, 0, 0)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 0, 0, 0, 0, 0, false)
 	require.NoError(t, err)
 
 	reply.AuthorityPubkey[0] ^= 0xff
@@ -257,7 +257,7 @@ func TestReplyPacket_Verify_TamperedGeoprobePubkey(t *testing.T) {
 	copy(geoprobePubkey[:], geoprobePub)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil, 0, 0, 0, 0, 0)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil, 0, 0, 0, 0, 0, false)
 	require.NoError(t, err)
 
 	reply.GeoprobePubkey[0] ^= 0xff
@@ -273,35 +273,35 @@ func TestReplyPacket_Verify_TamperedNewFields(t *testing.T) {
 	probe := signed.NewProbePacket(1, senderSigner)
 
 	t.Run("tampered MeasurementSlot", func(t *testing.T) {
-		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000)
+		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000, false)
 		require.NoError(t, err)
 		reply.MeasurementSlot = 999
 		assert.False(t, reply.Verify())
 	})
 
 	t.Run("tampered Lat", func(t *testing.T) {
-		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000)
+		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000, false)
 		require.NoError(t, err)
 		reply.Lat = 99.0
 		assert.False(t, reply.Verify())
 	})
 
 	t.Run("tampered Lng", func(t *testing.T) {
-		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000)
+		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000, false)
 		require.NoError(t, err)
 		reply.Lng = 99.0
 		assert.False(t, reply.Verify())
 	})
 
 	t.Run("tampered SinceLastRxNs", func(t *testing.T) {
-		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000)
+		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000, false)
 		require.NoError(t, err)
 		reply.SinceLastRxNs = 999999
 		assert.False(t, reply.Verify())
 	})
 
 	t.Run("tampered RttNs", func(t *testing.T) {
-		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000)
+		reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 100, 1.0, 2.0, 500, 1000, false)
 		require.NoError(t, err)
 		reply.RttNs = 999999
 		assert.False(t, reply.Verify())
@@ -374,7 +374,7 @@ func TestNewReplyPacket_RejectsTooManyOffsets(t *testing.T) {
 	}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	_, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
+	_, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0, false)
 	assert.Error(t, err)
 }
 
@@ -387,7 +387,7 @@ func TestNewReplyPacket_RejectsWrongSizeOffset(t *testing.T) {
 	offsets := [][]byte{make([]byte, signed.LocationOffsetSize-1)}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	_, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
+	_, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0, false)
 	assert.Error(t, err)
 }
 
@@ -409,7 +409,7 @@ func TestReplyPacket_Marshal_BufferTooSmall(t *testing.T) {
 	_, reflectorSigner := newTestSigner(t)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 0, 0, 0, 0, 0)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 0, 0, 0, 0, 0, false)
 	require.NoError(t, err)
 	buf := make([]byte, reply.Size()-1)
 	_, err = reply.Marshal(buf)
@@ -425,7 +425,7 @@ func TestReplyPacket_Marshal_BufferTooSmallWithOffsets(t *testing.T) {
 	offsets := [][]byte{makeTestOffset(t)}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0, false)
 	require.NoError(t, err)
 	buf := make([]byte, reply.Size()-1)
 	_, err = reply.Marshal(buf)
@@ -460,7 +460,7 @@ func TestReplyPacket_ByteLayout(t *testing.T) {
 
 	probe := signed.NewProbePacket(1, senderSigner)
 	reply, err := signed.NewReplyPacket(probe, reflectorSigner, geoprobePubkey, nil,
-		42_000_000, 37.7749, -122.4194, 1_500_000, 3_000_000)
+		42_000_000, 37.7749, -122.4194, 1_500_000, 3_000_000, false)
 	require.NoError(t, err)
 
 	buf := make([]byte, reply.Size())
@@ -490,7 +490,7 @@ func TestReplyPacket_ByteLayout_WithOffsets(t *testing.T) {
 	offsets := [][]byte{makeTestOffset(t), makeTestOffset(t)}
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0, false)
 	require.NoError(t, err)
 
 	buf := make([]byte, reply.Size())
@@ -522,7 +522,7 @@ func TestReplyPacket_Verify_TamperedEmbeddedProbe(t *testing.T) {
 	_, reflectorSigner := newTestSigner(t)
 
 	probe := signed.NewProbePacket(1, senderSigner)
-	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 0, 0, 0, 0, 0)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 0, 0, 0, 0, 0, false)
 	require.NoError(t, err)
 
 	reply.Probe.Seq = 999
@@ -552,11 +552,94 @@ func TestReplyPacket_Size(t *testing.T) {
 			for i := range offsets {
 				offsets[i] = makeTestOffset(t)
 			}
-			reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0)
+			reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, offsets, 0, 0, 0, 0, 0, false)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedSize, reply.Size())
 		})
 	}
+}
+
+func TestReplyPacket_Challenged_RoundTrip(t *testing.T) {
+	_, signer := newTestSigner(t)
+	probe := signed.NewProbePacket(42, signer)
+
+	var gpk [32]byte
+	for i := range gpk {
+		gpk[i] = byte(i)
+	}
+
+	r, err := signed.NewReplyPacket(probe, signer, gpk, nil, 1234, 51.5, -0.1, 0xDEADBEEFCAFEBABE, 999, true)
+	require.NoError(t, err)
+	require.True(t, r.Challenged, "Challenged not set on constructed reply")
+
+	buf := make([]byte, signed.MaxReplyPacketSize)
+	n, err := r.Marshal(buf)
+	require.NoError(t, err)
+	require.NotZero(t, buf[212]&0x80, "expected NumOffsets challenged bit set, got 0x%02x", buf[212])
+	require.Zero(t, buf[212]&0x7F, "expected 0 offsets in count, got %d", buf[212]&0x7F)
+
+	r2, err := signed.UnmarshalReplyPacket(buf[:n])
+	require.NoError(t, err)
+	require.True(t, r2.Challenged, "Challenged flag lost in round-trip")
+	require.Equal(t, uint64(0xDEADBEEFCAFEBABE), r2.SinceLastRxNs)
+	require.True(t, r2.Verify(), "signature did not verify")
+}
+
+func TestReplyPacket_Challenged_FalseRoundTrip(t *testing.T) {
+	_, signer := newTestSigner(t)
+	probe := signed.NewProbePacket(42, signer)
+
+	var gpk [32]byte
+
+	r, err := signed.NewReplyPacket(probe, signer, gpk, nil, 1, 0, 0, 0, 0, false)
+	require.NoError(t, err)
+
+	buf := make([]byte, signed.MaxReplyPacketSize)
+	n, err := r.Marshal(buf)
+	require.NoError(t, err)
+	require.Equal(t, byte(0), buf[212], "expected NumOffsets byte=0")
+
+	r2, err := signed.UnmarshalReplyPacket(buf[:n])
+	require.NoError(t, err)
+	require.False(t, r2.Challenged, "Challenged flag spuriously set")
+}
+
+func TestReplyPacket_Challenged_WithOffsets_RoundTrip(t *testing.T) {
+	_, signer := newTestSigner(t)
+	probe := signed.NewProbePacket(7, signer)
+
+	var gpk [32]byte
+	for i := range gpk {
+		gpk[i] = byte(i + 1)
+	}
+
+	offsets := make([][]byte, 2)
+	for i := range offsets {
+		blob := make([]byte, signed.LocationOffsetSize)
+		for j := range blob {
+			blob[j] = byte(i*7 + j)
+		}
+		offsets[i] = blob
+	}
+
+	r, err := signed.NewReplyPacket(probe, signer, gpk, offsets, 999, 40.0, -74.0, 0x1122334455667788, 12345, true)
+	require.NoError(t, err)
+
+	buf := make([]byte, signed.MaxReplyPacketSize)
+	n, err := r.Marshal(buf)
+	require.NoError(t, err)
+
+	require.NotZero(t, buf[212]&0x80, "expected NumOffsets challenged bit set, got 0x%02x", buf[212])
+	require.Equal(t, byte(2), buf[212]&0x7F, "expected offset count 2 in lower 7 bits, got %d (full byte 0x%02x)", buf[212]&0x7F, buf[212])
+
+	r2, err := signed.UnmarshalReplyPacket(buf[:n])
+	require.NoError(t, err)
+	require.True(t, r2.Challenged, "Challenged flag lost in round-trip")
+	require.Len(t, r2.Offsets, 2, "expected 2 offsets after round-trip")
+	for i := range offsets {
+		require.Equal(t, offsets[i], r2.Offsets[i], "offset %d differs after round-trip", i)
+	}
+	require.True(t, r2.Verify(), "signature did not verify")
 }
 
 func TestParseOffsetInfo(t *testing.T) {

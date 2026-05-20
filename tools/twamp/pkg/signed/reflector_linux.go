@@ -286,7 +286,7 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 				}
 			}
 
-			reply, err := NewReplyPacket(probe, r.signer, r.geoprobePubkey, currentOffsets, slot, lat, lng, sinceLastRxNs, dzdRttNs+sinceLastRxNs)
+			reply, err := NewReplyPacket(probe, r.signer, r.geoprobePubkey, currentOffsets, slot, lat, lng, sinceLastRxNs, dzdRttNs+sinceLastRxNs, false)
 			if err != nil {
 				continue
 			}

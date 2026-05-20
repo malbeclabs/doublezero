@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/binary"
 	"net"
 	"runtime"
 	"sync"
@@ -587,6 +588,109 @@ func TestReflector_Linux(t *testing.T) {
 		}
 	})
 
+	t.Run("Reply1 challenged when nonce matches", func(t *testing.T) {
+		t.Parallel()
+
+		senderPub, senderSigner := newTestSigner(t)
+		_, reflectorSigner := newTestSigner(t)
+
+		var senderPubKey [32]byte
+		copy(senderPubKey[:], senderPub)
+
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, [][32]byte{senderPubKey}, 0)
+		require.NoError(t, err)
+		defer reflector.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		go func() { _ = reflector.Run(ctx) }()
+		time.Sleep(10 * time.Millisecond)
+
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
+		require.NoError(t, err)
+		defer conn.Close()
+
+		sendAndReadReply := func(probe *signed.ProbePacket) *signed.ReplyPacket {
+			t.Helper()
+			var buf [signed.ProbePacketSize]byte
+			require.NoError(t, probe.Marshal(buf[:]))
+			_, err = conn.Write(buf[:])
+			require.NoError(t, err)
+			require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+			replyBuf := make([]byte, signed.MaxReplyPacketSize)
+			n, err := conn.Read(replyBuf)
+			require.NoError(t, err)
+			reply, err := signed.UnmarshalReplyPacket(replyBuf[:n])
+			require.NoError(t, err)
+			return reply
+		}
+
+		probe0 := signed.NewProbePacket(1, senderSigner)
+		reply0 := sendAndReadReply(probe0)
+		nonce := reply0.SinceLastRxNs
+
+		probe1 := signed.NewProbePacket(2, senderSigner)
+		overwriteProbeSecFracAndResign(t, probe1, nonce, senderSigner)
+		reply1 := sendAndReadReply(probe1)
+
+		if !reply1.Challenged {
+			t.Fatalf("expected Reply 1 to be flagged Challenged after nonce echo")
+		}
+		if reply1.SinceLastRxNs == 0 {
+			t.Fatalf("expected non-zero Reply 1 SinceLastRxNs (Tx-to-Rx interval)")
+		}
+	})
+
+	t.Run("Reply1 unchallenged when nonce mismatches", func(t *testing.T) {
+		t.Parallel()
+
+		senderPub, senderSigner := newTestSigner(t)
+		_, reflectorSigner := newTestSigner(t)
+
+		var senderPubKey [32]byte
+		copy(senderPubKey[:], senderPub)
+
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, [][32]byte{senderPubKey}, 0)
+		require.NoError(t, err)
+		defer reflector.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		go func() { _ = reflector.Run(ctx) }()
+		time.Sleep(10 * time.Millisecond)
+
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
+		require.NoError(t, err)
+		defer conn.Close()
+
+		sendAndReadReply := func(probe *signed.ProbePacket) *signed.ReplyPacket {
+			t.Helper()
+			var buf [signed.ProbePacketSize]byte
+			require.NoError(t, probe.Marshal(buf[:]))
+			_, err = conn.Write(buf[:])
+			require.NoError(t, err)
+			require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+			replyBuf := make([]byte, signed.MaxReplyPacketSize)
+			n, err := conn.Read(replyBuf)
+			require.NoError(t, err)
+			reply, err := signed.UnmarshalReplyPacket(replyBuf[:n])
+			require.NoError(t, err)
+			return reply
+		}
+
+		probe0 := signed.NewProbePacket(1, senderSigner)
+		_ = sendAndReadReply(probe0)
+
+		// Probe 1 with default NTP timestamp — not echoing the nonce.
+		probe1 := signed.NewProbePacket(2, senderSigner)
+		reply1 := sendAndReadReply(probe1)
+
+		assert.False(t, reply1.Challenged, "Reply 1 should not be flagged Challenged when nonce was not echoed")
+		assert.Empty(t, reply1.Offsets, "test setup attached no offsets to the reflector")
+	})
+
 	t.Run("pair-based rate limiting", func(t *testing.T) {
 		t.Parallel()
 
@@ -653,4 +757,20 @@ func TestReflector_Linux(t *testing.T) {
 		_, err = conn.Read(replyBuf)
 		assert.Error(t, err, "third probe should be rate-limited")
 	})
+}
+
+// overwriteProbeSecFracAndResign rewrites the Sec/Frac fields of probe to
+// carry the given nonce (BigEndian: Sec = upper 4 bytes, Frac = lower 4),
+// then re-signs the probe payload. Mirrors what a challenged sender does.
+func overwriteProbeSecFracAndResign(t *testing.T, p *signed.ProbePacket, nonce uint64, signer signed.Signer) {
+	t.Helper()
+	p.Sec = uint32(nonce >> 32)
+	p.Frac = uint32(nonce & 0xFFFFFFFF)
+	var payload [44]byte
+	binary.BigEndian.PutUint32(payload[0:4], p.Seq)
+	binary.BigEndian.PutUint32(payload[4:8], p.Sec)
+	binary.BigEndian.PutUint32(payload[8:12], p.Frac)
+	copy(payload[12:44], p.SenderPubkey[:])
+	sig := signer.Sign(payload[:])
+	copy(p.Signature[:], sig)
 }

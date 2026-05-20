@@ -234,12 +234,14 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 						continue
 					}
 					state.pairCount = 0
+					state.nonce = 0
 				}
 			}
 
 			// If probe 1 never arrived, reset so the next probe starts a fresh pair.
 			if state.pairCount == 1 && !state.lastTxTime.IsZero() && now.Sub(state.lastTxTime) > stalePairTimeout {
 				state.pairCount = 0
+				state.nonce = 0
 			}
 
 			// Pair integrity: both probes must come from the same source IP.
@@ -264,6 +266,7 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			// Probe 0: generate nonce; Probe 1: compute actual Tx-to-Rx interval.
 			var sinceLastRxNs uint64
 			isProbe0 := state.pairCount == 0
+			challenged := false
 			if isProbe0 {
 				state.pairStart = now
 				state.nonce = randomNonce()
@@ -271,8 +274,17 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 					r.logger.Error("randomNonce returned 0; challenged inbound will fail to authenticate for this pair")
 				}
 				sinceLastRxNs = state.nonce
-			} else if !state.lastTxTime.IsZero() {
-				sinceLastRxNs = uint64(now.Sub(state.lastTxTime).Nanoseconds())
+			} else {
+				// Variable-time compare is fine: the nonce is a freshness check, not a secret.
+				// Its full value is published in cleartext in Reply 0 to the legitimate sender.
+				presentedNonce := (uint64(probe.Sec) << 32) | uint64(probe.Frac)
+				if state.nonce != 0 && presentedNonce == state.nonce {
+					challenged = true
+				}
+				state.nonce = 0 // pair complete; field invariant says nonce is 0 outside a live pair
+				if !state.lastTxTime.IsZero() {
+					sinceLastRxNs = uint64(now.Sub(state.lastTxTime).Nanoseconds())
+				}
 			}
 			state.pairCount++
 
@@ -297,7 +309,7 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			if !isProbe0 {
 				rttNs += sinceLastRxNs
 			}
-			reply, err := NewReplyPacket(probe, r.signer, r.geoprobePubkey, currentOffsets, slot, lat, lng, sinceLastRxNs, rttNs, false)
+			reply, err := NewReplyPacket(probe, r.signer, r.geoprobePubkey, currentOffsets, slot, lat, lng, sinceLastRxNs, rttNs, challenged)
 			if err != nil {
 				continue
 			}

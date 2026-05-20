@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- release(contributor-rewards): prep v0.5.5 ([#371](https://github.com/doublezerofoundation/doublezero-offchain/pull/371))
 - docs(contributor-rewards): document reward calculation methodology ([#370](https://github.com/doublezerofoundation/doublezero-offchain/pull/370))
 - feat(contributor-rewards): add configurable public latency multiplier ([#369](https://github.com/doublezerofoundation/doublezero-offchain/pull/369))
 

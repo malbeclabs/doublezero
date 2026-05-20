@@ -31,6 +31,7 @@ fn test_settings() -> settings::Settings {
             demand_multiplier: 1.2,
         },
         demand: settings::DemandSettings::default(),
+        input: settings::InputSettings::default(),
         rpc: settings::RpcSettings {
             dz_url: "https://test.com".to_string(),
             solana_read_url: "https://test.com".to_string(),
@@ -231,6 +232,48 @@ mod tests {
                     "Latency mismatch for {city1} -> {city2}: got {actual_latency}, expected {expected_latency}"
                 );
             }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_public_latency_multiplier() -> Result<()> {
+        let fetch_data = load_test_data()?;
+        let internet_stats = InternetTelemetryProcessor::process(&fetch_data)?;
+        let previous_epoch_cache = PreviousEpochCache::new();
+
+        let settings = test_settings();
+        let public_links = build_public_links(
+            &settings,
+            &internet_stats,
+            &fetch_data,
+            &previous_epoch_cache,
+        )?;
+
+        let mut adjusted_settings = test_settings();
+        adjusted_settings.input.public_latency_multiplier = 1.25;
+        let adjusted_public_links = build_public_links(
+            &adjusted_settings,
+            &internet_stats,
+            &fetch_data,
+            &previous_epoch_cache,
+        )?;
+
+        assert_eq!(public_links.len(), adjusted_public_links.len());
+        for (base_link, adjusted_link) in public_links.iter().zip(adjusted_public_links.iter()) {
+            assert_eq!(base_link.city1, adjusted_link.city1);
+            assert_eq!(base_link.city2, adjusted_link.city2);
+            let expected_latency = base_link.latency * 1.25;
+            let diff = (adjusted_link.latency - expected_latency).abs();
+            assert!(
+                diff < f64::EPSILON,
+                "Latency mismatch for {} -> {}: got {}, expected {}",
+                adjusted_link.city1,
+                adjusted_link.city2,
+                adjusted_link.latency,
+                expected_latency
+            );
         }
 
         Ok(())

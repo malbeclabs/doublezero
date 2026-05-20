@@ -100,6 +100,12 @@ contiguity_bonus = 5.0
 # Increases rewards in high-demand areas
 demand_multiplier = 1.2
 
+# ========== Shapley Input Parameters ==========
+[input]
+# Multiplier applied to public internet latency inputs.
+# 1.25 inflates single-packet public latency measurements by 25%.
+public_latency_multiplier = 1.25
+
 # ========== Demand Generation Parameters ==========
 [demand]
 # Traffic per receiver in Gbps, used for both IBRL and shred demands
@@ -107,7 +113,7 @@ traffic = 0.15
 
 # Priority for IBRL validator-to-validator demands
 # Shred demand priority remains derived from metro price
-priority = 0.0
+priority = 20.0
 
 # Demand kind/type values written into Shapley demand rows
 kind = 1

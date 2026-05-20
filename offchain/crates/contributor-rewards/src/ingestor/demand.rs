@@ -296,7 +296,7 @@ pub fn generate(city_stats: &CityStats, demand_settings: &DemandSettings) -> Dem
         .filter(|(_, stats)| stats.subscriber_count > 0 && stats.city_price > 0)
         .collect();
 
-    // Generate IBRL demands (validator-to-validator, priority = 0)
+    // Generate IBRL demands (validator-to-validator, priority = demand_settings.priority)
     let ibrl_demands: Vec<Demand> = cities_with_validators
         .par_iter()
         .flat_map(|(start_city, _start_stats)| {

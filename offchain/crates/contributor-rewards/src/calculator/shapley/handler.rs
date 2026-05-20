@@ -339,6 +339,17 @@ pub fn build_public_links(
     // Sort by city pairs for consistent output
     public_links.sort_by(|a, b| (&a.city1, &a.city2).cmp(&(&b.city1, &b.city2)));
 
+    let public_latency_multiplier = settings.input.public_latency_multiplier;
+    if (public_latency_multiplier - 1.0).abs() > f64::EPSILON {
+        info!(
+            "Applying public latency multiplier: {}",
+            public_latency_multiplier
+        );
+        for link in &mut public_links {
+            link.latency *= public_latency_multiplier;
+        }
+    }
+
     Ok(public_links)
 }
 

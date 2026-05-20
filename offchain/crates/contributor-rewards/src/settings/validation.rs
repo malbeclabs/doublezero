@@ -51,6 +51,16 @@ pub fn validate_config(settings: &Settings) -> Result<()> {
         bail!("Demand shred_kind must be non-zero");
     }
 
+    // Validate input settings
+    if !settings.input.public_latency_multiplier.is_finite()
+        || settings.input.public_latency_multiplier <= 0.0
+    {
+        bail!(
+            "Input public_latency_multiplier must be finite and positive, got {}",
+            settings.input.public_latency_multiplier
+        );
+    }
+
     // Validate RPC settings
     if settings.rpc.dz_url.is_empty() {
         bail!("DZ RPC URL cannot be empty");
@@ -199,8 +209,8 @@ mod tests {
 
     use super::*;
     use crate::settings::{
-        DemandSettings, InetLookbackSettings, MetricsSettings, PrefixSettings, ProgramSettings,
-        RpcSettings, SchedulerSettings, ShapleySettings, TelemetryDefaultSettings,
+        DemandSettings, InetLookbackSettings, InputSettings, MetricsSettings, PrefixSettings,
+        ProgramSettings, RpcSettings, SchedulerSettings, ShapleySettings, TelemetryDefaultSettings,
         aws::{AwsSettings, StorageBackend},
         network::Network,
     };
@@ -215,6 +225,7 @@ mod tests {
                 demand_multiplier: 1.2,
             },
             demand: DemandSettings::default(),
+            input: InputSettings::default(),
             rpc: RpcSettings {
                 dz_url: "https://api.mainnet-beta.solana.com".to_string(),
                 solana_read_url: "https://api.mainnet-beta.solana.com".to_string(),
@@ -302,6 +313,25 @@ mod tests {
 
         config = create_valid_config();
         config.demand.shred_kind = 0;
+        assert!(validate_config(&config).is_err());
+    }
+
+    #[test]
+    fn test_invalid_input_settings() {
+        let mut config = create_valid_config();
+        config.input.public_latency_multiplier = 0.0;
+        assert!(validate_config(&config).is_err());
+
+        config = create_valid_config();
+        config.input.public_latency_multiplier = -0.1;
+        assert!(validate_config(&config).is_err());
+
+        config = create_valid_config();
+        config.input.public_latency_multiplier = f64::INFINITY;
+        assert!(validate_config(&config).is_err());
+
+        config = create_valid_config();
+        config.input.public_latency_multiplier = f64::NAN;
         assert!(validate_config(&config).is_err());
     }
 

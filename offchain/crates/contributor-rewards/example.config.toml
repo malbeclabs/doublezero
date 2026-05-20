@@ -49,6 +49,14 @@ contiguity_bonus = 5.0
 # Increases rewards in high-demand areas
 demand_multiplier = 1.2
 
+# ========== Shapley Input Parameters ==========
+# All fields can be overridden via environment variables:
+#   DZ__INPUT__PUBLIC_LATENCY_MULTIPLIER
+[input]
+# Multiplier applied to public internet latency inputs.
+# 1.25 inflates single-packet public latency measurements by 25%.
+public_latency_multiplier = 1.25
+
 # ========== Demand Generation Parameters ==========
 # All fields can be overridden via environment variables:
 #   DZ__DEMAND__TRAFFIC
@@ -63,7 +71,7 @@ traffic = 0.15
 
 # Priority for IBRL validator-to-validator demands
 # Shred demand priority remains derived from metro price
-priority = 0.0
+priority = 20.0
 
 # Demand kind/type values written into Shapley demand rows
 kind = 1

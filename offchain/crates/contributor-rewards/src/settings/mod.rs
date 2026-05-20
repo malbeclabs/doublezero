@@ -24,6 +24,9 @@ pub struct Settings {
     /// Demand generation parameters
     #[serde(default)]
     pub demand: DemandSettings,
+    /// Shapley input preparation parameters
+    #[serde(default)]
+    pub input: InputSettings,
     /// RPC endpoint configuration
     pub rpc: RpcSettings,
     /// Solana program IDs
@@ -86,6 +89,22 @@ impl Default for DemandSettings {
             multicast_enabled: false,
             shred_kind: 2,
             shred_multicast_enabled: true,
+        }
+    }
+}
+
+/// Shapley input preparation parameters
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct InputSettings {
+    /// Multiplier applied to public internet latency inputs
+    pub public_latency_multiplier: f64,
+}
+
+impl Default for InputSettings {
+    fn default() -> Self {
+        Self {
+            public_latency_multiplier: 1.0,
         }
     }
 }
@@ -289,6 +308,7 @@ impl fmt::Display for Settings {
              \tDemand Multicast Enabled: {}\n\
              \tDemand Shred Kind: {}\n\
              \tDemand Shred Multicast Enabled: {}\n\
+             \tInput Public Latency Multiplier: {}\n\
              }}",
             self.network,
             self.log_level,
@@ -305,6 +325,7 @@ impl fmt::Display for Settings {
             self.demand.multicast_enabled,
             self.demand.shred_kind,
             self.demand.shred_multicast_enabled,
+            self.input.public_latency_multiplier,
         )
     }
 }
@@ -324,6 +345,7 @@ mod tests {
         "DZ__DEMAND__SHRED_KIND",
         "DZ__DEMAND__MULTICAST_ENABLED",
         "DZ__DEMAND__SHRED_MULTICAST_ENABLED",
+        "DZ__INPUT__PUBLIC_LATENCY_MULTIPLIER",
     ];
 
     struct DemandEnvCleanup;
@@ -413,6 +435,35 @@ storage_backend = "local-file"
     }
 
     #[test]
+    fn input_settings_default_when_section_missing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        let path = write_config(&base_config(""));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.input, InputSettings::default());
+    }
+
+    #[test]
+    fn input_settings_toml_section() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        let path = write_config(&base_config(
+            r#"
+[input]
+public_latency_multiplier = 1.25
+"#,
+        ));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.input.public_latency_multiplier, 1.25);
+    }
+
+    #[test]
     fn demand_settings_partial_section_uses_defaults() {
         let _guard = ENV_LOCK.lock().unwrap();
         clear_demand_env();
@@ -457,5 +508,25 @@ kind = 3
 
         assert_eq!(settings.demand.priority, 4.25);
         assert_eq!(settings.demand.kind, 9);
+    }
+
+    #[test]
+    fn input_settings_env_overrides_toml() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        unsafe {
+            std::env::set_var("DZ__INPUT__PUBLIC_LATENCY_MULTIPLIER", "1.25");
+        }
+        let path = write_config(&base_config(
+            r#"
+[input]
+public_latency_multiplier = 1.0
+"#,
+        ));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.input.public_latency_multiplier, 1.25);
     }
 }

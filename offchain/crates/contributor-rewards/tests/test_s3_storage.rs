@@ -5,7 +5,7 @@ use doublezero_contributor_rewards::{
     cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
     ingestor::types::FetchData,
     settings::{
-        DemandSettings, Settings,
+        DemandSettings, InputSettings, Settings,
         aws::{AwsSettings, StorageBackend},
         network::Network,
     },
@@ -47,6 +47,7 @@ fn create_test_settings(
             demand_multiplier: 1.2,
         },
         demand: DemandSettings::default(),
+        input: InputSettings::default(),
         rpc: doublezero_contributor_rewards::settings::RpcSettings {
             dz_url: "https://test.com".to_string(),
             solana_read_url: "https://test.com".to_string(),

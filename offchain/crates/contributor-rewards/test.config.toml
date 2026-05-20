@@ -23,10 +23,14 @@ operator_uptime = 0.98
 contiguity_bonus = 5.0
 demand_multiplier = 1.2
 
+# ========== Shapley Input Parameters ==========
+[input]
+public_latency_multiplier = 1.25
+
 # ========== Demand Generation Parameters ==========
 [demand]
 traffic = 0.15
-priority = 0.0
+priority = 20.0
 kind = 1
 shred_kind = 2
 multicast_enabled = false

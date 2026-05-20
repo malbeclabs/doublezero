@@ -105,6 +105,7 @@ fn test_settings() -> settings::Settings {
             demand_multiplier: 1.2,
         },
         demand: settings::DemandSettings::default(),
+        input: settings::InputSettings::default(),
         rpc: settings::RpcSettings {
             dz_url: "https://test.com".to_string(),
             solana_read_url: "https://test.com".to_string(),

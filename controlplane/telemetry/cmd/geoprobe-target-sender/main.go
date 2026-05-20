@@ -115,7 +115,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	sender, err := signed.NewSender(ctx, "", localAddr, remoteAddr, signer, remotePubkey)
+	sender, err := signed.NewSender(ctx, "", localAddr, remoteAddr, signer, remotePubkey, false)
 	if err != nil {
 		log.Error("failed to create sender", "error", err)
 		os.Exit(1)

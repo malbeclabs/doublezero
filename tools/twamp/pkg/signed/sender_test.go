@@ -44,7 +44,7 @@ func TestSender_Linux(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		sender, err := signed.NewLinuxSender(t.Context(), "", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())}, senderSigner, reflectorPubKey)
+		sender, err := signed.NewLinuxSender(t.Context(), "", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())}, senderSigner, reflectorPubKey, false)
 		require.NoError(t, err)
 		defer sender.Close()
 
@@ -66,7 +66,7 @@ func TestSender_Linux(t *testing.T) {
 		var remotePubkey [32]byte
 
 		addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 19999}
-		sender, err := signed.NewLinuxSender(t.Context(), "", nil, addr, senderSigner, remotePubkey)
+		sender, err := signed.NewLinuxSender(t.Context(), "", nil, addr, senderSigner, remotePubkey, false)
 		require.NoError(t, err)
 		defer sender.Close()
 
@@ -101,7 +101,7 @@ func TestSender_Linux(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		sender, err := signed.NewLinuxSender(t.Context(), "", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())}, senderSigner, reflectorPubKey)
+		sender, err := signed.NewLinuxSender(t.Context(), "", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())}, senderSigner, reflectorPubKey, false)
 		require.NoError(t, err)
 		defer sender.Close()
 
@@ -140,7 +140,7 @@ func TestSender_Linux(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		sender, err := signed.NewLinuxSender(t.Context(), "", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())}, senderSigner, reflectorPubKey)
+		sender, err := signed.NewLinuxSender(t.Context(), "", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())}, senderSigner, reflectorPubKey, false)
 		require.NoError(t, err)
 		defer sender.Close()
 
@@ -157,6 +157,82 @@ func TestSender_Linux(t *testing.T) {
 		assert.True(t, result.Reply1.Verify())
 		assert.NotEqual(t, uint64(0), result.Reply0.SinceLastRxNs, "reply 0 should carry nonce in SinceLastRxNs")
 		assert.Greater(t, result.Reply1.SinceLastRxNs, uint64(0), "reply 1 should have non-zero SinceLastRxNs")
+	})
+
+	t.Run("ProbePair challenged mode", func(t *testing.T) {
+		t.Parallel()
+
+		senderPub, senderSigner := newTestSigner(t)
+		reflectorPub, reflectorSigner := newTestSigner(t)
+		geoprobePub, _ := newTestSigner(t)
+
+		var senderPubKey [32]byte
+		copy(senderPubKey[:], senderPub)
+		var reflectorPubKey [32]byte
+		copy(reflectorPubKey[:], reflectorPub)
+		var geoprobePubKey [32]byte
+		copy(geoprobePubKey[:], geoprobePub)
+
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, geoprobePubKey, [][32]byte{senderPubKey}, 0)
+		require.NoError(t, err)
+		defer reflector.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		go func() {
+			_ = reflector.Run(ctx)
+		}()
+
+		time.Sleep(10 * time.Millisecond)
+
+		sender, err := signed.NewLinuxSender(t.Context(), "", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())}, senderSigner, reflectorPubKey, true)
+		require.NoError(t, err)
+		defer sender.Close()
+
+		result, err := sender.ProbePair(ctx)
+		require.NoError(t, err)
+
+		assert.True(t, result.Reply1.Challenged, "expected Reply 1 to be flagged Challenged in challenged mode")
+		assert.NotEqual(t, uint64(0), result.Reply0.SinceLastRxNs, "expected non-zero Reply 0 SinceLastRxNs (nonce)")
+		assert.Greater(t, result.Reply1.SinceLastRxNs, uint64(0), "expected non-zero Reply 1 SinceLastRxNs (Tx-to-Rx interval)")
+	})
+
+	t.Run("ProbePair unchallenged mode is still unchallenged", func(t *testing.T) {
+		t.Parallel()
+
+		senderPub, senderSigner := newTestSigner(t)
+		reflectorPub, reflectorSigner := newTestSigner(t)
+		geoprobePub, _ := newTestSigner(t)
+
+		var senderPubKey [32]byte
+		copy(senderPubKey[:], senderPub)
+		var reflectorPubKey [32]byte
+		copy(reflectorPubKey[:], reflectorPub)
+		var geoprobePubKey [32]byte
+		copy(geoprobePubKey[:], geoprobePub)
+
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, geoprobePubKey, [][32]byte{senderPubKey}, 0)
+		require.NoError(t, err)
+		defer reflector.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		go func() {
+			_ = reflector.Run(ctx)
+		}()
+
+		time.Sleep(10 * time.Millisecond)
+
+		sender, err := signed.NewLinuxSender(t.Context(), "", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())}, senderSigner, reflectorPubKey, false)
+		require.NoError(t, err)
+		defer sender.Close()
+
+		result, err := sender.ProbePair(ctx)
+		require.NoError(t, err)
+
+		assert.False(t, result.Reply1.Challenged, "expected Reply 1 NOT to be flagged Challenged in unchallenged mode")
 	})
 
 	t.Run("multiple sequential probes", func(t *testing.T) {
@@ -183,7 +259,7 @@ func TestSender_Linux(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		sender, err := signed.NewLinuxSender(t.Context(), "", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())}, senderSigner, reflectorPubKey)
+		sender, err := signed.NewLinuxSender(t.Context(), "", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())}, senderSigner, reflectorPubKey, false)
 		require.NoError(t, err)
 		defer sender.Close()
 

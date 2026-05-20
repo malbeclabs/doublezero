@@ -33,6 +33,7 @@ type LinuxSender struct {
 	oob          []byte
 	mu           sync.Mutex
 	logger       *slog.Logger
+	challenged   bool
 }
 
 func (s *LinuxSender) SetLogger(logger *slog.Logger) {
@@ -40,7 +41,8 @@ func (s *LinuxSender) SetLogger(logger *slog.Logger) {
 }
 
 // NewLinuxSender creates a signed TWAMP sender. Only local.Port is used; any IP is ignored.
-func NewLinuxSender(ctx context.Context, iface string, local *net.UDPAddr, remote *net.UDPAddr, signer Signer, remotePubkey [32]byte) (*LinuxSender, error) {
+// When challenged is true, ProbePair uses the challenge-response flow.
+func NewLinuxSender(ctx context.Context, iface string, local *net.UDPAddr, remote *net.UDPAddr, signer Signer, remotePubkey [32]byte, challenged bool) (*LinuxSender, error) {
 	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_NONBLOCK, unix.IPPROTO_UDP)
 	if err != nil {
 		return nil, fmt.Errorf("socket: %w", err)
@@ -99,6 +101,7 @@ func NewLinuxSender(ctx context.Context, iface string, local *net.UDPAddr, remot
 		cancel:       cancel,
 		buf:          make([]byte, 1500),
 		oob:          make([]byte, 512),
+		challenged:   challenged,
 	}
 
 	return s, nil
@@ -121,12 +124,20 @@ func (s *LinuxSender) Probe(ctx context.Context) (time.Duration, *ReplyPacket, e
 	return s.sendAndRecv(ctx, buf[:], probe, true, 0)
 }
 
-// ProbePair sends two probes in quick succession. Both probe packets are
+// ProbePair dispatches to the unchallenged or challenged path based on s.challenged.
+func (s *LinuxSender) ProbePair(ctx context.Context) (ProbePairResult, error) {
+	if s.challenged {
+		return s.probePairChallenged(ctx)
+	}
+	return s.probePairUnchallenged(ctx)
+}
+
+// probePairUnchallenged sends two probes in quick succession. Both probe packets are
 // pre-created and pre-signed before any network I/O. When reply 0 arrives,
 // probe 1 is fired immediately after a 4-byte seq check — before any
 // parsing — to minimize the target turnaround that inflates the reflector's
 // Tx-to-Rx measurement.
-func (s *LinuxSender) ProbePair(ctx context.Context) (ProbePairResult, error) {
+func (s *LinuxSender) probePairUnchallenged(ctx context.Context) (ProbePairResult, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -297,6 +308,52 @@ func (s *LinuxSender) ProbePair(ctx context.Context) (ProbePairResult, error) {
 			}, nil
 		}
 	}
+}
+
+// probePairChallenged sends Probe 0, fully parses Reply 0 to extract the
+// nonce, builds and signs Probe 1 with the nonce in Sec/Frac, sends it,
+// then awaits Reply 1. The added sender-side compute time between Reply 0
+// arrival and Probe 1 transmission inflates Reply 1.SinceLastRxNs by that
+// amount; this is the documented trade-off (RFC16, Challenge-Response
+// Inbound Probing).
+func (s *LinuxSender) probePairChallenged(ctx context.Context) (ProbePairResult, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.seq++
+	probe0 := NewProbePacket(s.seq, s.signer)
+	var buf0 [ProbePacketSize]byte
+	if err := probe0.Marshal(buf0[:]); err != nil {
+		return ProbePairResult{}, fmt.Errorf("marshal probe 0: %w", err)
+	}
+
+	rtt0, reply0, err := s.sendAndRecv(ctx, buf0[:], probe0, true, busyPollWindow)
+	if err != nil {
+		return ProbePairResult{}, fmt.Errorf("probe 0: %w", err)
+	}
+
+	s.seq++
+	nonce := reply0.SinceLastRxNs
+	probe1 := newChallengedProbePacket(s.seq, s.signer, nonce)
+	var buf1 [ProbePacketSize]byte
+	if err := probe1.Marshal(buf1[:]); err != nil {
+		return ProbePairResult{}, fmt.Errorf("marshal probe 1: %w", err)
+	}
+
+	rtt1, reply1, err := s.sendAndRecv(ctx, buf1[:], probe1, true, busyPollWindow)
+	if err != nil {
+		return ProbePairResult{}, fmt.Errorf("probe 1: %w", err)
+	}
+
+	return ProbePairResult{
+		RTT0:   rtt0,
+		RTT1:   rtt1,
+		Reply0: reply0,
+		Reply1: reply1,
+	}, nil
 }
 
 // sendAndRecv sends a probe and waits for the matching reply.

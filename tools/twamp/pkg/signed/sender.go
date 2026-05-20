@@ -24,6 +24,8 @@ type Sender interface {
 }
 
 // NewSender creates a signed TWAMP sender. Only localAddr.Port is used; any IP is ignored.
-func NewSender(ctx context.Context, iface string, localAddr, remoteAddr *net.UDPAddr, signer Signer, remotePubkey [32]byte) (Sender, error) {
-	return NewLinuxSender(ctx, iface, localAddr, remoteAddr, signer, remotePubkey)
+// When challenged is true, ProbePair uses the challenge-response flow: Probe 1 is signed
+// with the nonce echoed from Reply 0 rather than an NTP timestamp.
+func NewSender(ctx context.Context, iface string, localAddr, remoteAddr *net.UDPAddr, signer Signer, remotePubkey [32]byte, challenged bool) (Sender, error) {
+	return NewLinuxSender(ctx, iface, localAddr, remoteAddr, signer, remotePubkey, challenged)
 }

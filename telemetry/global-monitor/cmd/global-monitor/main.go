@@ -12,8 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
-	influxdb2api "github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/jonboulle/clockwork"
 	"github.com/lmittmann/tint"
 	"github.com/malbeclabs/doublezero/config"
@@ -215,20 +213,6 @@ func run() error {
 	defer ledgerRPC.Close()
 	serviceabilityRPC := serviceability.New(ledgerRPC, dzNetworkConfig.ServiceabilityProgramID)
 
-	// InfluxDB configuration.
-	influxUrl := os.Getenv("INFLUX_URL")
-	influxToken := os.Getenv("INFLUX_TOKEN")
-	influxOrg := os.Getenv("INFLUX_ORG")
-	influxBucket := os.Getenv("INFLUX_BUCKET")
-	influxEnabled := influxUrl != "" && influxToken != "" && influxOrg != "" && influxBucket != ""
-	var influxAPI influxdb2api.WriteAPI
-	if influxEnabled {
-		client := influxdb2.NewClient(influxUrl, influxToken)
-		defer client.Close()
-		influxAPI = client.WriteAPI(influxOrg, influxBucket)
-		defer influxAPI.Flush()
-	}
-
 	// ClickHouse configuration.
 	chAddr := os.Getenv("CLICKHOUSE_ADDR")
 	chDatabase := os.Getenv("CLICKHOUSE_DATABASE")
@@ -299,9 +283,6 @@ func run() error {
 			Metro:          *sourceMetroFlag,
 			MetroNames:     sourceMetroNames,
 		},
-
-		// InfluxDB configuration.
-		InfluxAPI: influxAPI,
 
 		// ClickHouse configuration.
 		ClickHouseWriter: clickHouseWriter,

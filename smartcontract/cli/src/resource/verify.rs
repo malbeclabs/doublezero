@@ -72,6 +72,9 @@ pub struct VerifyResourceResult {
     pub link_ids_checked: usize,
     pub multicast_group_block_checked: usize,
     pub multicast_publisher_block_checked: usize,
+    /// Pubkey → human-readable code, populated for devices and links so the
+    /// display layer can print `code (pubkey)` instead of raw pubkeys.
+    pub pubkey_labels: HashMap<Pubkey, String>,
 }
 
 impl VerifyResourceResult {
@@ -222,7 +225,10 @@ impl VerifyResourceCliCommand {
                         writeln!(
                             out,
                             "  {} = {} (used by {} {})",
-                            resource_type, value, account_type, account_pubkey
+                            resource_type,
+                            value,
+                            account_type,
+                            format_pubkey(account_pubkey, &result.pubkey_labels)
                         )?;
                     }
                 }
@@ -249,7 +255,9 @@ impl VerifyResourceCliCommand {
                         writeln!(
                             out,
                             "  {} (allocator={}, associated_with={})",
-                            pubkey, allocator_kind, associated_with
+                            pubkey,
+                            allocator_kind,
+                            format_pubkey(associated_with, &result.pubkey_labels)
                         )?;
                     }
                 }
@@ -280,7 +288,9 @@ impl VerifyResourceCliCommand {
                     {
                         let owners = accounts
                             .iter()
-                            .map(|(pk, ty)| format!("{} {}", ty, pk))
+                            .map(|(pk, ty)| {
+                                format!("{} {}", ty, format_pubkey(pk, &result.pubkey_labels))
+                            })
                             .collect::<Vec<_>>()
                             .join(", ");
                         writeln!(
@@ -372,7 +382,9 @@ impl VerifyResourceCliCommand {
                         {
                             let owners = accounts
                                 .iter()
-                                .map(|(pk, ty)| format!("{} {}", ty, pk))
+                                .map(|(pk, ty)| {
+                                    format!("{} {}", ty, format_pubkey(pk, &result.pubkey_labels))
+                                })
                                 .collect::<Vec<_>>()
                                 .join(", ");
                             writeln!(
@@ -591,6 +603,19 @@ fn verify_resources<C: CliCommand>(client: &C) -> eyre::Result<VerifyResourceRes
     }
 
     let mut result = VerifyResourceResult::default();
+
+    // Build pubkey → code labels so the display layer can annotate device and
+    // link pubkeys with their human-readable codes.
+    for (pk, device) in &devices {
+        if !device.code.is_empty() {
+            result.pubkey_labels.insert(*pk, device.code.clone());
+        }
+    }
+    for (pk, link) in &links {
+        if !link.code.is_empty() {
+            result.pubkey_labels.insert(*pk, link.code.clone());
+        }
+    }
 
     // Verify UserTunnelBlock
     verify_user_tunnel_block(&program_id, &users, &resource_extensions, &mut result);
@@ -1121,6 +1146,14 @@ fn verify_multicast_publisher_block(
     }
 
     check_discrepancies(resource_type, &allocated, &in_use, result);
+}
+
+/// Format a pubkey for display, prefixing the device/link code when known.
+fn format_pubkey(pk: &Pubkey, labels: &HashMap<Pubkey, String>) -> String {
+    match labels.get(pk) {
+        Some(code) => format!("{} ({})", code, pk),
+        None => pk.to_string(),
+    }
 }
 
 /// Append a resource usage to the in_use map. Duplicates are detected later in
@@ -2402,6 +2435,59 @@ mod tests {
             dup_entries
         );
         assert_eq!(dup_entries[0].len(), 3);
+    }
+
+    #[test]
+    fn test_output_includes_device_and_link_codes() {
+        // A duplicate-usage on a SegmentRoutingId across two devices with
+        // codes "dz1" and "dz2" should show both codes alongside their
+        // pubkeys in the rendered "Duplicate usage" section.
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+        let sr = make_segment_routing_ext(&program_id, &[42]);
+        accounts.insert(
+            Box::new(sr.0),
+            Box::new(AccountData::ResourceExtension(sr.1)),
+        );
+
+        let dev_a_pk = Pubkey::new_unique();
+        let dev_b_pk = Pubkey::new_unique();
+        for (pk, code) in [(dev_a_pk, "dz1"), (dev_b_pk, "dz2")] {
+            let device = Device {
+                code: code.to_string(),
+                interfaces: vec![make_vpnv4_loopback("Loopback0", 42, vec![])],
+                ..Device::default()
+            };
+            accounts.insert(Box::new(pk), Box::new(AccountData::Device(device)));
+        }
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let cmd = VerifyResourceCliCommand { fix: false };
+        let mut output = Cursor::new(Vec::new());
+        cmd.execute(&mock_client, &mut output).unwrap();
+        let output_str = String::from_utf8(output.into_inner()).unwrap();
+
+        assert!(
+            output_str.contains(&format!("dz1 ({})", dev_a_pk)),
+            "expected `dz1 ({})` in output, got:\n{}",
+            dev_a_pk,
+            output_str
+        );
+        assert!(
+            output_str.contains(&format!("dz2 ({})", dev_b_pk)),
+            "expected `dz2 ({})` in output, got:\n{}",
+            dev_b_pk,
+            output_str
+        );
     }
 
     #[test]

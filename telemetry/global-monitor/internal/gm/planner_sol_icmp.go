@@ -7,8 +7,6 @@ import (
 	"strconv"
 
 	"github.com/gagliardetto/solana-go"
-	influxdb2api "github.com/influxdata/influxdb-client-go/v2/api"
-	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	chwriter "github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/clickhouse"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/dz"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/netlink"
@@ -17,18 +15,16 @@ import (
 )
 
 type SolanaValidatorICMPPlanner struct {
-	log       *slog.Logger
-	influxAPI influxdb2api.WriteAPI
-	chWriter  chwriter.ProbeWriter
-	geoIP     geoip.Resolver
+	log      *slog.Logger
+	chWriter chwriter.ProbeWriter
+	geoIP    geoip.Resolver
 }
 
-func NewSolanaValidatorICMPPlanner(log *slog.Logger, influxAPI influxdb2api.WriteAPI, chWriter chwriter.ProbeWriter, geoIP geoip.Resolver) *SolanaValidatorICMPPlanner {
+func NewSolanaValidatorICMPPlanner(log *slog.Logger, chWriter chwriter.ProbeWriter, geoIP geoip.Resolver) *SolanaValidatorICMPPlanner {
 	return &SolanaValidatorICMPPlanner{
-		log:       log,
-		influxAPI: influxAPI,
-		chWriter:  chWriter,
-		geoIP:     geoIP,
+		log:      log,
+		chWriter: chWriter,
+		geoIP:    geoIP,
 	}
 }
 
@@ -238,8 +234,6 @@ func (p *SolanaValidatorICMPPlanner) recordResult(source *Source, val *sol.Valid
 		fields["target_geoip_longitude"] = val.GeoIP.Longitude
 	}
 
-	point := write.NewPoint(string(InfluxTableSolanaValidatorICMPProbe), tags, fields, result.Timestamp)
-
 	switch result.FailReason {
 	case "":
 		// No failure. Proceed to record probe success.
@@ -247,11 +241,6 @@ func (p *SolanaValidatorICMPPlanner) recordResult(source *Source, val *sol.Valid
 		// Probe not ready. Skip recording probe result.
 		return
 	default:
-		point.AddField("probe_ok", false)
-		point.AddField("probe_fail_reason", result.FailReason)
-		if p.influxAPI != nil {
-			p.influxAPI.WritePoint(point)
-		}
 		p.recordClickHouseRow(tags, fields, result, false, string(result.FailReason), nil)
 		return
 	}
@@ -262,19 +251,6 @@ func (p *SolanaValidatorICMPPlanner) recordResult(source *Source, val *sol.Valid
 	}
 	stats := result.Stats
 
-	point.AddField("probe_ok", true)
-	point.AddField("probe_rtt_avg_ms", float64(stats.RTTAvg.Milliseconds()))
-	point.AddField("probe_rtt_latest_ms", float64(stats.RTTAvg.Milliseconds()))
-	point.AddField("probe_rtt_min_ms", float64(stats.RTTMin.Milliseconds()))
-	point.AddField("probe_rtt_dev_ms", float64(stats.RTTStdDev.Milliseconds()))
-	point.AddField("probe_packets_sent", int64(stats.PacketsSent))
-	point.AddField("probe_packets_recv", int64(stats.PacketsRecv))
-	point.AddField("probe_packets_lost", int64(stats.PacketsLost))
-	point.AddField("probe_loss_ratio", float64(stats.LossRatio))
-
-	if p.influxAPI != nil {
-		p.influxAPI.WritePoint(point)
-	}
 	p.recordClickHouseRow(tags, fields, result, true, "", stats)
 }
 

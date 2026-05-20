@@ -7,8 +7,6 @@ import (
 	"strconv"
 
 	"github.com/gagliardetto/solana-go"
-	influxdb2api "github.com/influxdata/influxdb-client-go/v2/api"
-	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	chwriter "github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/clickhouse"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/dz"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/netlink"
@@ -17,18 +15,16 @@ import (
 )
 
 type DoubleZeroUserICMPPlanner struct {
-	log       *slog.Logger
-	influxAPI influxdb2api.WriteAPI
-	chWriter  chwriter.ProbeWriter
-	geoIP     geoip.Resolver
+	log      *slog.Logger
+	chWriter chwriter.ProbeWriter
+	geoIP    geoip.Resolver
 }
 
-func NewDoubleZeroUserICMPPlanner(log *slog.Logger, influxAPI influxdb2api.WriteAPI, chWriter chwriter.ProbeWriter, geoIP geoip.Resolver) *DoubleZeroUserICMPPlanner {
+func NewDoubleZeroUserICMPPlanner(log *slog.Logger, chWriter chwriter.ProbeWriter, geoIP geoip.Resolver) *DoubleZeroUserICMPPlanner {
 	return &DoubleZeroUserICMPPlanner{
-		log:       log,
-		influxAPI: influxAPI,
-		chWriter:  chWriter,
-		geoIP:     geoIP,
+		log:      log,
+		chWriter: chWriter,
+		geoIP:    geoIP,
 	}
 }
 
@@ -273,8 +269,6 @@ func (p *DoubleZeroUserICMPPlanner) recordResult(source *Source, user *dz.User, 
 		fields["target_ip_in_solana_gossip_as_tpuquic"] = ok
 	}
 
-	point := write.NewPoint(string(InfluxTableDoubleZeroUserICMPProbe), tags, fields, res.Timestamp)
-
 	switch res.FailReason {
 	case "":
 		// No failure. Proceed to record probe success.
@@ -282,11 +276,6 @@ func (p *DoubleZeroUserICMPPlanner) recordResult(source *Source, user *dz.User, 
 		// Probe not ready. Skip recording probe result.
 		return
 	default:
-		point.AddField("probe_ok", false)
-		point.AddField("probe_fail_reason", res.FailReason)
-		if p.influxAPI != nil {
-			p.influxAPI.WritePoint(point)
-		}
 		p.recordClickHouseRow(tags, fields, res, false, string(res.FailReason), nil)
 		return
 	}
@@ -297,19 +286,6 @@ func (p *DoubleZeroUserICMPPlanner) recordResult(source *Source, user *dz.User, 
 	}
 	stats := res.Stats
 
-	point.AddField("probe_ok", true)
-	point.AddField("probe_rtt_avg_ms", float64(stats.RTTAvg.Milliseconds()))
-	point.AddField("probe_rtt_latest_ms", float64(stats.RTTAvg.Milliseconds()))
-	point.AddField("probe_rtt_min_ms", float64(stats.RTTMin.Milliseconds()))
-	point.AddField("probe_rtt_dev_ms", float64(stats.RTTStdDev.Milliseconds()))
-	point.AddField("probe_packets_sent", int64(stats.PacketsSent))
-	point.AddField("probe_packets_recv", int64(stats.PacketsRecv))
-	point.AddField("probe_packets_lost", int64(stats.PacketsLost))
-	point.AddField("probe_loss_ratio", float64(stats.LossRatio))
-
-	if p.influxAPI != nil {
-		p.influxAPI.WritePoint(point)
-	}
 	p.recordClickHouseRow(tags, fields, res, true, "", stats)
 }
 

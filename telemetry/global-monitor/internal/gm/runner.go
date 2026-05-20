@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"time"
 
-	influxdb2api "github.com/influxdata/influxdb-client-go/v2/api"
 	"github.com/jonboulle/clockwork"
 	chwriter "github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/clickhouse"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/dz"
@@ -17,14 +16,6 @@ import (
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/netlink"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/sol"
 	"github.com/malbeclabs/doublezero/tools/maxmind/pkg/geoip"
-)
-
-type InfluxTable string
-
-const (
-	InfluxTableSolanaValidatorTPUQUICProbe InfluxTable = "solana_validator_tpuquic_probe"
-	InfluxTableSolanaValidatorICMPProbe    InfluxTable = "solana_validator_icmp_probe"
-	InfluxTableDoubleZeroUserICMPProbe     InfluxTable = "doublezero_user_icmp_probe"
 )
 
 type ProbeType string
@@ -59,9 +50,6 @@ type RunnerConfig struct {
 
 	// Source configuration.
 	Source *SourceConfig
-
-	// InfluxDB configuration.
-	InfluxAPI influxdb2api.WriteAPI
 
 	// ClickHouse configuration.
 	ClickHouseWriter *chwriter.Writer
@@ -191,9 +179,6 @@ func (r *Runner) Run(ctx context.Context) error {
 		"sourceDZIP", source.User.DZIP,
 		"sourceUserPubKey", source.User.PubKey,
 	)
-	if r.cfg.InfluxAPI == nil {
-		r.log.Warn("runner: influx api is not set, skipping influx telemetry")
-	}
 	if r.cfg.ClickHouseWriter == nil {
 		r.log.Warn("runner: clickhouse writer is not set, skipping clickhouse telemetry")
 	}
@@ -263,7 +248,7 @@ func (r *Runner) tick(ctx context.Context) {
 	allPlans := make([]ProbePlan, 0, 4096)
 
 	// Build solana validator ICMP plans and deduped targets.
-	valICMPPlanner := NewSolanaValidatorICMPPlanner(r.log, r.cfg.InfluxAPI, r.cfg.ClickHouseWriter, r.cfg.GeoIP)
+	valICMPPlanner := NewSolanaValidatorICMPPlanner(r.log, r.cfg.ClickHouseWriter, r.cfg.GeoIP)
 	_, valICMPPlans, valICMPTargetsDedup, err := valICMPPlanner.BuildPlans(validators, svcData, source, routes)
 	if err != nil {
 		r.log.Error("runner: failed to get solana validator ICMP targets", "error", err)
@@ -274,7 +259,7 @@ func (r *Runner) tick(ctx context.Context) {
 	allPlans = append(allPlans, valICMPPlans...)
 
 	// Build solana validator TPUQUIC plans and deduped targets.
-	valTPUQUICPlanner := NewSolanaValidatorTPUQUICPlanner(r.log, r.cfg.InfluxAPI, r.cfg.ClickHouseWriter, r.cfg.MaxIdleTimeout, r.cfg.HandshakeIdleTimeout, r.cfg.KeepAlivePeriod)
+	valTPUQUICPlanner := NewSolanaValidatorTPUQUICPlanner(r.log, r.cfg.ClickHouseWriter, r.cfg.MaxIdleTimeout, r.cfg.HandshakeIdleTimeout, r.cfg.KeepAlivePeriod)
 	_, valTPUPlans, valTPUTargetsDedup, err := valTPUQUICPlanner.BuildPlans(validators, svcData, source, routes)
 	if err != nil {
 		r.log.Error("runner: failed to get solana validator TPUQUIC targets", "error", err)
@@ -285,7 +270,7 @@ func (r *Runner) tick(ctx context.Context) {
 	allPlans = append(allPlans, valTPUPlans...)
 
 	// Build doublezero user ICMP plans and deduped targets.
-	userPlanner := NewDoubleZeroUserICMPPlanner(r.log, r.cfg.InfluxAPI, r.cfg.ClickHouseWriter, r.cfg.GeoIP)
+	userPlanner := NewDoubleZeroUserICMPPlanner(r.log, r.cfg.ClickHouseWriter, r.cfg.GeoIP)
 	_, userPlans, userTargetsDedup, err := userPlanner.BuildPlans(svcData, source, routes, gossipNodes, validators)
 	if err != nil {
 		r.log.Error("runner: failed to get doublezero user ICMP targets", "error", err)
@@ -308,7 +293,7 @@ func (r *Runner) tick(ctx context.Context) {
 	}
 
 	// Log if telemetry backends are not configured.
-	if r.cfg.InfluxAPI == nil && r.cfg.ClickHouseWriter == nil {
+	if r.cfg.ClickHouseWriter == nil {
 		r.log.Warn("runner: no telemetry backends configured, skipping telemetry")
 	}
 

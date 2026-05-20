@@ -405,7 +405,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			if !linkFound || (link.Status != serviceability.LinkStatusActivated && link.Status != serviceability.LinkStatusSoftDrained && link.Status != serviceability.LinkStatusHardDrained) {
 				d.Interfaces[i].IsLink = false
 				d.Interfaces[i].Metric = 0
-				d.Interfaces[i].LinkStatus = serviceability.LinkStatusPending
+				d.Interfaces[i].LinkStatus = linkStatusUnknown
 				continue
 			}
 

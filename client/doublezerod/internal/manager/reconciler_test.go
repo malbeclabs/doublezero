@@ -271,13 +271,13 @@ func TestReconcile_IgnoresNonActivatedStatuses(t *testing.T) {
 	clientIP := net.IPv4(1, 2, 3, 4).To4()
 
 	statuses := []serviceability.UserStatus{
-		serviceability.UserStatusPending,
+		serviceability.UserStatusPendingDeprecated,
 		serviceability.UserStatusSuspendedDeprecated,
 		serviceability.UserStatusDeleted,
-		serviceability.UserStatusRejected,
-		serviceability.UserStatusPendingBan,
+		serviceability.UserStatusRejectedDeprecated,
+		serviceability.UserStatusPendingBanDeprecated,
 		serviceability.UserStatusBanned,
-		serviceability.UserStatusUpdating,
+		serviceability.UserStatusUpdatingDeprecated,
 	}
 
 	for _, status := range statuses {

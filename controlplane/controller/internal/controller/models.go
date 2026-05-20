@@ -12,6 +12,13 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
+// linkStatusUnknown is a controller-local sentinel for the in-memory
+// Interface.LinkStatus field when an interface is not mapped to an
+// activated/soft-drained/hard-drained link. It is intentionally outside
+// the range of onchain LinkStatus discriminants (0–8) and never written
+// to chain.
+const linkStatusUnknown serviceability.LinkStatus = 255
+
 type InterfaceType uint8
 
 const (

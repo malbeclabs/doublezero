@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-feat(contributor-rewards): add configurable public latency multiplier
+- docs(contributor-rewards): document reward calculation methodology ([#370](https://github.com/doublezerofoundation/doublezero-offchain/pull/370))
+- feat(contributor-rewards): add configurable public latency multiplier ([#369](https://github.com/doublezerofoundation/doublezero-offchain/pull/369))
 
 ## [0.5.4](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.5.4) - 2026-05-18
 

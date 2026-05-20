@@ -11,6 +11,35 @@ An off-chain rewards calculation system for the DoubleZero network that uses Sha
 
 This ensures that network participants are rewarded proportionally to their actual contribution to network performance and reliability.
 
+## Reward calculation methodology
+
+For each DoubleZero epoch, contributor rewards are calculated by turning the observed network state into a `network-shapley` model, computing each contributor's marginal value, and publishing the resulting reward shares for on-chain distribution.
+
+The rewarder prepares the following inputs:
+
+- **Devices:** serviceability devices are mapped to Shapley device IDs by metro and assigned to their contributor owners. Device edge capacity comes from physical interface bandwidth.
+- **Private links:** activated DoubleZero links are modeled with measured P95 latency, bandwidth, and observed uptime. The `network-shapley` library applies the uptime penalty when it converts private links into effective capacity.
+- **Public links:** public internet telemetry is aggregated into city-pair latencies. These links form the public-internet counterfactual against which DoubleZero paths are valued.
+- **Demands:** demand rows describe traffic that should be served between cities, including receiver count, traffic per receiver, priority/value, traffic kind, and whether the demand is multicast.
+- **City weights:** per-city weights are derived from Solana leader-schedule slot counts for validators in each metro. Per-city Shapley results are aggregated using these weights.
+
+There are two demand classes:
+
+1. **Validator-to-validator IBRL traffic.** IBRL demands are generated between validator metros, excluding same-city pairs. The receiver count is the destination city's validator count, traffic per receiver comes from `demand.traffic`, and the priority/value input is `demand.priority`. In production this priority is set to **$20**. This gives validator-to-validator traffic non-zero value even though it generates no immediate revenue, unlike multicast shreds, which generate roughly $30-100 per seat. The value reflects non-monetary protocol benefits such as validator acquisition and a foundation for future business models.
+2. **Multicast shred traffic.** Shred demands are generated from validator metros to metros with multicast subscribers and non-zero metro prices. The receiver count is the subscriber count, traffic per receiver comes from `demand.traffic`, and priority comes from the destination metro price.
+
+For each source city, the rewarder runs `network-shapley` with the full network topology and that city's demands. `network-shapley` validates and consolidates the inputs, adds public-internet nodes and crossovers between private and public paths, builds a flow optimization problem, and solves that problem for every coalition of contributors. Each contributor's Shapley value is its average marginal improvement across coalitions. The rewarder then aggregates per-city values using the city weights, normalizes them into final proportions, converts those proportions into fixed-point reward shares, stores the Shapley output, and posts a Merkle root for distribution.
+
+### Public internet counterfactual
+
+All measured public latencies are multiplied by **1.25** to better reflect actual public latencies for meaningful traffic loads. In the current system, public latencies are measured using single-packet pings. In practice, validators send 50-150 Mbps of traffic, which would encounter queuing over the public internet at such volumes, so single-packet pings are measured too low for the true public internet counterfactual. DoubleZero does not face the same problem on its own links because those links are dedicated.
+
+The protocol cannot yet reliably estimate public internet latencies for large traffic loads directly given the costs of doing so, so it extrapolates from individual pings using a multiplier. We model the loaded-to-baseline latency multiplier on a public-internet path as an independent M/M/1 queue at each router. The queueing-component multiplier is `1 + p/(1-p)` at bottleneck utilization `p`, where `p` ranges between 0 and 1. Ahmed et al. (ICNP 2017) estimates an implied `p` of between 0.3 and 0.5 based on queueing delays in a 510K-client / 33-IXP CDN study. To be conservative for now in the absence of direct DoubleZero evidence — and given that Koneva et al. (2024) validate the M/M/1 envelope as an upper bound on real IXP packet-size distributions — we use `p = 0.2`, i.e. a 1.25x multiplier.
+
+[1] Ahmed, Shafiq, Bedi, Khakpour. "Peering vs. Transit." ICNP 2017.
+
+[2] Koneva et al. arXiv:2406.16452, 2024.
+
 ## Fetching snapshots from S3
 
 Replace `<num>` with DZ Epoch (50, 51, .. etc)

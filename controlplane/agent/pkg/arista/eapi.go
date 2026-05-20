@@ -291,6 +291,8 @@ func (e *EAPIClient) commitOrCancelSession(ctx context.Context, sessionName, dif
 		return fmt.Errorf("error running '%s': %s", commitCommand, resp.Response.ErrorMessage)
 	}
 
+	log.Printf("Configuration session finalized with command '%s'", commitCommand)
+
 	return nil
 }
 

@@ -35,8 +35,8 @@ import (
 // bump onchain.
 
 var globalMinVersions = map[string]string{
-	"mainnet-beta": "0.12.0",
-	"testnet":      "0.12.0",
+	"mainnet-beta": "0.14.1",
+	"testnet":      "0.14.1",
 }
 
 // =============================================================================

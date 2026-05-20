@@ -442,13 +442,3 @@ Suspends a user, disabling their access without deleting the account. Returns th
 Resumes a previously suspended user. Returns the transaction signature.
 - `pubkey: Pubkey` — Pubkey
 
-### CloseAccountUserCommand
-Closes the user account, releasing its resources. Returns the transaction signature.
-- `pubkey: Pubkey` — Pubkey
-- `owner: Pubkey` — Owner public key
-
-### RejectUserCommand
-Rejects a user, providing a reason. Returns the transaction signature.
-- `pubkey: Pubkey` — Pubkey
-- `reason: String` — Rejection reason
-

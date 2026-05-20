@@ -85,9 +85,8 @@ use crate::processors::{
         create::TopologyCreateArgs, delete::TopologyDeleteArgs,
     },
     user::{
-        activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
-        closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
-        create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs, reject::UserRejectArgs,
+        check_access_pass::CheckUserAccessPassArgs, create::UserCreateArgs,
+        create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs,
         requestban::UserRequestBanArgs, set_bgp_status::SetUserBGPStatusArgs,
         update::UserUpdateArgs,
     },
@@ -141,16 +140,21 @@ pub enum DoubleZeroInstruction {
     DeleteLink(LinkDeleteArgs),             // variant 34
     CloseAccountLink(LinkCloseAccountArgs), // variant 35
 
-    CreateUser(UserCreateArgs),             // variant 36
-    ActivateUser(UserActivateArgs),         // variant 37
-    RejectUser(UserRejectArgs),             // variant 38
-    UpdateUser(UserUpdateArgs),             // variant 39
-    SuspendUser(),                          // variant 40
-    ResumeUser(),                           // variant 41
-    DeleteUser(UserDeleteArgs),             // variant 42
-    CloseAccountUser(UserCloseAccountArgs), // variant 43
-    RequestBanUser(UserRequestBanArgs),     // variant 44
-    BanUser(UserBanArgs),                   // variant 45
+    CreateUser(UserCreateArgs), // variant 36
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. Variant kept
+    /// so the borsh discriminant for variant 37 stays stable. See #3622.
+    ActivateUser(), // variant 37
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3622.
+    RejectUser(), // variant 38
+    UpdateUser(UserUpdateArgs), // variant 39
+    SuspendUser(),              // variant 40
+    ResumeUser(),               // variant 41
+    DeleteUser(UserDeleteArgs), // variant 42
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3622.
+    CloseAccountUser(), // variant 43
+    RequestBanUser(UserRequestBanArgs), // variant 44
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3622.
+    BanUser(), // variant 45
 
     CreateMulticastGroup(MulticastGroupCreateArgs), // variant 46
     ActivateMulticastGroup(MulticastGroupActivateArgs), // variant 47
@@ -291,15 +295,15 @@ impl DoubleZeroInstruction {
             35 => Ok(Self::CloseAccountLink(LinkCloseAccountArgs::try_from(rest).unwrap())),
 
             36 => Ok(Self::CreateUser(UserCreateArgs::try_from(rest).unwrap())),
-            37 => Ok(Self::ActivateUser(UserActivateArgs::try_from(rest).unwrap())),
-            38 => Ok(Self::RejectUser(UserRejectArgs::try_from(rest).unwrap())),
+            37 => Ok(Self::ActivateUser()),
+            38 => Ok(Self::RejectUser()),
             39 => Ok(Self::UpdateUser(UserUpdateArgs::try_from(rest).unwrap())),
             40 => Ok(Self::SuspendUser()),
             41 => Ok(Self::ResumeUser()),
             42 => Ok(Self::DeleteUser(UserDeleteArgs::try_from(rest).unwrap())),
-            43 => Ok(Self::CloseAccountUser(UserCloseAccountArgs::try_from(rest).unwrap())),
+            43 => Ok(Self::CloseAccountUser()),
             44 => Ok(Self::RequestBanUser(UserRequestBanArgs::try_from(rest).unwrap())),
-            45 => Ok(Self::BanUser(UserBanArgs::try_from(rest).unwrap())),
+            45 => Ok(Self::BanUser()),
 
 
             46 => Ok(Self::CreateMulticastGroup(MulticastGroupCreateArgs::try_from(rest).unwrap())),
@@ -426,16 +430,16 @@ impl DoubleZeroInstruction {
             Self::CloseAccountLink(_) => "CloseAccountLink".to_string(), // variant 35
 
             Self::CreateUser(_) => "CreateUser".to_string(), // variant 36
-            Self::ActivateUser(_) => "ActivateUser".to_string(), // variant 37
-            Self::RejectUser(_) => "RejectUser".to_string(), // variant 38
+            Self::ActivateUser() => "ActivateUser".to_string(), // variant 37
+            Self::RejectUser() => "RejectUser".to_string(),  // variant 38
             Self::UpdateUser(_) => "UpdateUser".to_string(), // variant 39
             Self::SuspendUser() => "SuspendUser".to_string(), // variant 40
             Self::ResumeUser() => "ResumeUser".to_string(),  // variant 41
             Self::DeleteUser(_) => "DeleteUser".to_string(), // variant 42
-            Self::CloseAccountUser(_) => "CloseAccountUser".to_string(), // variant 43
+            Self::CloseAccountUser() => "CloseAccountUser".to_string(), // variant 43
 
             Self::RequestBanUser(_) => "RequestBanUser".to_string(), // variant 44
-            Self::BanUser(_) => "BanUser".to_string(),               // variant 45
+            Self::BanUser() => "BanUser".to_string(),                // variant 45
 
             Self::CreateMulticastGroup(_) => "CreateMulticastGroup".to_string(), // variant 46
             Self::ActivateMulticastGroup(_) => "ActivateMulticastGroup".to_string(), // variant 47
@@ -568,16 +572,16 @@ impl DoubleZeroInstruction {
             Self::CloseAccountLink(args) => format!("{args:?}"), // variant 35
 
             Self::CreateUser(args) => format!("{args:?}"), // variant 36
-            Self::ActivateUser(args) => format!("{args:?}"), // variant 37
-            Self::RejectUser(args) => format!("{args:?}"), // variant 38
+            Self::ActivateUser() => "".to_string(),        // variant 37
+            Self::RejectUser() => "".to_string(),          // variant 38
             Self::UpdateUser(args) => format!("{args:?}"), // variant 39
             Self::SuspendUser() => "".to_string(),         // variant 40
             Self::ResumeUser() => "".to_string(),          // variant 41
             Self::DeleteUser(args) => format!("{args:?}"), // variant 42
-            Self::CloseAccountUser(args) => format!("{args:?}"), // variant 43
+            Self::CloseAccountUser() => "".to_string(),    // variant 43
 
             Self::RequestBanUser(args) => format!("{args:?}"), // variant 44
-            Self::BanUser(args) => format!("{args:?}"),        // variant 45
+            Self::BanUser() => "".to_string(),                 // variant 45
 
             Self::CreateMulticastGroup(args) => format!("{args:?}"), // variant 46
             Self::ActivateMulticastGroup(args) => format!("{args:?}"), // variant 47
@@ -878,16 +882,7 @@ mod tests {
             }),
             "CreateUser",
         );
-        test_instruction(
-            DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-                tunnel_id: 1,
-                tunnel_net: "1.2.3.4/1".parse().unwrap(),
-                dz_ip: [1, 2, 3, 4].into(),
-                dz_prefix_count: 0,
-                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            }),
-            "ActivateUser",
-        );
+        test_instruction(DoubleZeroInstruction::ActivateUser(), "ActivateUser");
         test_instruction(
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
                 user_type: Some(UserType::IBRL),
@@ -923,10 +918,7 @@ mod tests {
             "CloseAccountLink",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-                dz_prefix_count: 0,
-                multicast_publisher_count: 0,
-            }),
+            DoubleZeroInstruction::CloseAccountUser(),
             "CloseAccountUser",
         );
         test_instruction(
@@ -941,12 +933,7 @@ mod tests {
             }),
             "RejectLink",
         );
-        test_instruction(
-            DoubleZeroInstruction::RejectUser(UserRejectArgs {
-                reason: "test".to_string(),
-            }),
-            "RejectUser",
-        );
+        test_instruction(DoubleZeroInstruction::RejectUser(), "RejectUser");
         test_instruction(
             DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
                 pubkey: Pubkey::new_unique(),
@@ -991,7 +978,7 @@ mod tests {
             DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs::default()),
             "RequestBanUser",
         );
-        test_instruction(DoubleZeroInstruction::BanUser(UserBanArgs {}), "BanUser");
+        test_instruction(DoubleZeroInstruction::BanUser(), "BanUser");
 
         test_instruction(
             DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {

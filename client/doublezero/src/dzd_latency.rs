@@ -66,7 +66,7 @@ pub fn select_tunnel_endpoint(
         return device_public_ip;
     }
 
-    // No suitable endpoint found; let the activator pick one
+    // No suitable endpoint found; return UNSPECIFIED and let the caller decide.
     Ipv4Addr::UNSPECIFIED
 }
 

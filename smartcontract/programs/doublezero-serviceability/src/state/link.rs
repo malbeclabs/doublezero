@@ -53,12 +53,12 @@ impl fmt::Display for LinkLinkType {
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LinkStatus {
-    PendingDeprecated = 0, // activator-only; unreachable for new accounts
+    PendingDeprecated = 0, // deprecated; unreachable for new accounts
     #[default]
     Activated = 1,
     //Suspended = 2, // The suspended status is no longer used
     Deleting = 3,
-    RejectedDeprecated = 4, // activator-only; unreachable for new accounts
+    RejectedDeprecated = 4, // deprecated; unreachable for new accounts
     Requested = 5,
     HardDrained = 6,
     SoftDrained = 7,

@@ -51,7 +51,7 @@ class AccountTypeEnum(IntEnum):
 
 
 class LocationStatus(IntEnum):
-    PENDING_DEPRECATED = 0  # activator-only; unreachable for new accounts
+    PENDING_DEPRECATED = 0  # deprecated; unreachable for new accounts
     ACTIVATED = 1
     SUSPENDED = 2
 
@@ -61,7 +61,7 @@ class LocationStatus(IntEnum):
 
 
 class ExchangeStatus(IntEnum):
-    PENDING_DEPRECATED = 0  # activator-only; unreachable for new accounts
+    PENDING_DEPRECATED = 0  # deprecated; unreachable for new accounts
     ACTIVATED = 1
     SUSPENDED = 2
 
@@ -81,10 +81,10 @@ class DeviceDeviceType(IntEnum):
 
 
 class DeviceStatus(IntEnum):
-    PENDING_DEPRECATED = 0  # activator-only; unreachable for new accounts
+    PENDING_DEPRECATED = 0  # deprecated; unreachable for new accounts
     ACTIVATED = 1
     DELETING = 2
-    REJECTED_DEPRECATED = 3  # activator-only; unreachable for new accounts
+    REJECTED_DEPRECATED = 3  # deprecated; unreachable for new accounts
     DRAINED = 4
     DEVICE_PROVISIONING = 5
     LINK_PROVISIONING = 6
@@ -222,10 +222,10 @@ class LinkLinkType(IntEnum):
 
 
 class LinkStatus(IntEnum):
-    PENDING_DEPRECATED = 0  # activator-only; unreachable for new accounts
+    PENDING_DEPRECATED = 0  # deprecated; unreachable for new accounts
     ACTIVATED = 1
     DELETING = 3
-    REJECTED_DEPRECATED = 4  # activator-only; unreachable for new accounts
+    REJECTED_DEPRECATED = 4  # deprecated; unreachable for new accounts
     REQUESTED = 5
     HARD_DRAINED = 6
     SOFT_DRAINED = 7
@@ -315,13 +315,13 @@ class CyoaType(IntEnum):
 
 
 class UserStatus(IntEnum):
-    PENDING_DEPRECATED = 0  # activator-only; unreachable for new accounts
+    PENDING_DEPRECATED = 0  # deprecated; unreachable for new accounts
     ACTIVATED = 1
     DELETING = 3
-    REJECTED_DEPRECATED = 4  # activator-only; unreachable for new accounts
-    PENDING_BAN_DEPRECATED = 5  # activator-only
+    REJECTED_DEPRECATED = 4  # deprecated; unreachable for new accounts
+    PENDING_BAN_DEPRECATED = 5  # deprecated
     BANNED = 6
-    UPDATING_DEPRECATED = 7  # activator-only intermediate state
+    UPDATING_DEPRECATED = 7  # deprecated intermediate state
     OUT_OF_CREDITS = 8
 
     def __str__(self) -> str:
@@ -349,11 +349,11 @@ class BGPStatus(IntEnum):
 
 
 class MulticastGroupStatus(IntEnum):
-    PENDING_DEPRECATED = 0  # activator-only; unreachable for new accounts
+    PENDING_DEPRECATED = 0  # deprecated; unreachable for new accounts
     ACTIVATED = 1
     SUSPENDED = 2
     DELETING = 3
-    REJECTED_DEPRECATED = 4  # activator-only; unreachable for new accounts
+    REJECTED_DEPRECATED = 4  # deprecated; unreachable for new accounts
 
     def __str__(self) -> str:
         _names = {

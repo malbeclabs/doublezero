@@ -683,7 +683,7 @@ impl CreateValidatorMulticastPublishersCommand {
                     nearest_device: nearest,
                     device_ip,
                     tunnel_endpoint: if tunnel_endpoint == Ipv4Addr::UNSPECIFIED {
-                        "(activator-assigned)".to_string()
+                        "(legacy-assigned)".to_string()
                     } else {
                         tunnel_endpoint.to_string()
                     },
@@ -851,9 +851,9 @@ impl CreateValidatorMulticastPublishersCommand {
 /// Build the set of tunnel endpoints already in use by users at `client_ip`.
 ///
 /// For users with an explicit `tunnel_endpoint` onchain, use that value.
-/// For legacy users where `tunnel_endpoint == UNSPECIFIED`, the activator
-/// implicitly routes their tunnel through the device's `public_ip`, so
-/// resolve it from `device_infos` rather than dropping the entry.
+/// For legacy users where `tunnel_endpoint == UNSPECIFIED`, the tunnel is
+/// implicitly routed through the device's `public_ip`, so resolve it from
+/// `device_infos` rather than dropping the entry.
 fn tunnel_exclude_ips(
     users: &[DzUser],
     client_ip: Ipv4Addr,

@@ -747,8 +747,8 @@ async fn test_create_subscribe_user_ignores_expired_epoch() {
 
 /// CheckUserAccessPass keeps multicast users Activated when the access-pass is Expired.
 ///
-/// Regression test: the activator's periodic re-check must not transition multicast users
-/// to OutOfCredits based on `last_access_epoch`, since multicast access is gated by
+/// Regression test: the periodic CheckUserAccessPass re-check must not transition multicast
+/// users to OutOfCredits based on `last_access_epoch`, since multicast access is gated by
 /// mgroup_*_allowlist, not by epoch.
 #[tokio::test]
 async fn test_check_access_pass_multicast_stays_activated() {

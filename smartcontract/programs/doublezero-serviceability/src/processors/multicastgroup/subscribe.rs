@@ -49,7 +49,7 @@ pub struct SubscribeUserResult {
     pub mgroup: MulticastGroup,
     /// True if the publisher list transitioned between empty and non-empty
     /// (gained first publisher or lost last publisher). Callers that need to
-    /// trigger activator reprocessing should check this flag.
+    /// trigger downstream reprocessing should check this flag.
     pub publisher_list_transitioned: bool,
 }
 

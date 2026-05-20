@@ -112,7 +112,7 @@ impl DeleteTenantCliCommand {
                 spinner.finish_with_message("Done cleaning up access passes");
             }
 
-            // 3. Wait for activator to process close accounts (reference_count reaches 0)
+            // 3. Wait for account closures to be processed (reference_count reaches 0)
             if !tenant_users.is_empty() {
                 let spinner = ProgressBar::new_spinner();
                 spinner.set_style(
@@ -122,7 +122,7 @@ impl DeleteTenantCliCommand {
                         .tick_strings(&["-", "\\", "|", "/"]),
                 );
                 spinner.enable_steady_tick(Duration::from_millis(100));
-                spinner.set_message("Waiting for activator to process account closures...");
+                spinner.set_message("Waiting for account closures to be processed...");
 
                 // Poll tenant reference_count with exponential backoff
                 let max_attempts = 8; // 1+2+4+8+16+32+32+32 = 127 seconds max
@@ -152,7 +152,7 @@ impl DeleteTenantCliCommand {
                     delay = (delay * 2).min(max_delay);
                 }
 
-                spinner.finish_with_message("Activator processing complete");
+                spinner.finish_with_message("Account closure processing complete");
             }
         } else {
             // When not cascading user deletion, still clean up access passes

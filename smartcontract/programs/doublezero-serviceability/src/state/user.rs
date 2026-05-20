@@ -95,15 +95,15 @@ impl fmt::Display for UserCYOA {
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UserStatus {
-    PendingDeprecated = 0, // activator-only; unreachable for new accounts
+    PendingDeprecated = 0, // deprecated; unreachable for new accounts
     #[default]
     Activated = 1,
     SuspendedDeprecated = 2,
     Deleting = 3,
-    RejectedDeprecated = 4,   // activator-only; unreachable for new accounts
-    PendingBanDeprecated = 5, // activator-only
+    RejectedDeprecated = 4,   // deprecated; unreachable for new accounts
+    PendingBanDeprecated = 5, // deprecated
     Banned = 6,
-    UpdatingDeprecated = 7, // activator-only intermediate state
+    UpdatingDeprecated = 7, // deprecated intermediate state
     OutOfCredits = 8,
 }
 

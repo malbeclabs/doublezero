@@ -85,7 +85,7 @@ Users access the DoubleZero network by establishing a GRE (Generic Routing Encap
 
 ## Contributor Automation Process
 
-DoubleZero is composed of six main components, each playing a specific role in enabling the operation of a decentralized, performance-aware network. Together, they provide the interface, control logic, automation, and monitoring required for contributors and users to participate in the system.
+DoubleZero is composed of five main components, each playing a specific role in enabling the operation of a decentralized, performance-aware network. Together, they provide the interface, control logic, automation, and monitoring required for contributors and users to participate in the system.
 
 ```mermaid
 flowchart TD
@@ -99,7 +99,6 @@ flowchart TD
     end
 
     subgraph Off-chain
-        ACT[Activator]
         CTRL[Controller]
     end
 
@@ -112,8 +111,6 @@ flowchart TD
     end
 
     CLI -->|Submit signed requests| SC
-    SC -->|Trigger validation| ACT
-    ACT -->|Allocate resources| SC
     SC -->|Resources| CTRL
     CTRL -->|Push config| AGENT
     AGENT -->|Submit signed metrics| LAT
@@ -121,7 +118,7 @@ flowchart TD
     LAT--> REWARDS[Rewards Process]
 
     classDef component fill:#f8fafc,stroke:#334155,stroke-width:1px;
-    class CLI,SC,LAT,ACT,CTRL,AGENT,THIRD component;
+    class CLI,SC,LAT,CTRL,AGENT,THIRD component;
 ```
 
 ### 1. **CLI (Command Line Interface)**
@@ -130,21 +127,17 @@ The CLI is the main user-facing tool for interacting with the DoubleZero network
 
 ### 2. **Serviceability Smart Contract**
 
-The Serviceability smart contract acts as the on-chain source of truth for the DoubleZero network. It securely stores all relevant metadata, including contributors, devices, and links, as well as state transitions such as pending, activated, or suspended. It also holds governance-related configurations. This contract enforces protocol-level rules, validates signatures from network participants, and ensures that all changes are transparent and auditable.
+The Serviceability smart contract acts as the on-chain source of truth for the DoubleZero network. It securely stores all relevant metadata, including contributors, devices, and links, as well as state transitions such as activated or suspended. It also holds governance-related configurations and is responsible for allocating resources (IP blocks, tunnel indices, GRE segments) at entity-creation time. This contract enforces protocol-level rules, validates signatures from network participants, and ensures that all changes are transparent and auditable.
 
-### 3. **Activator**
-
-The Activator is an off-chain guardian process responsible for validating and activating the various entities submitted by contributors. It plays a central role in approving Devices, Links, and Users after performing validation checks, and in allocating critical resources such as IP blocks, tunnel indices, and GRE segments. By bridging operational requirements with on-chain governance, the Activator ensures that only properly configured and compliant participants are allowed to operate within the network.
-
-### 4. **Controller**
+### 3. **Controller**
 
 The Controller is responsible for generating and applying network configuration to the physical or devices registered in the DoubleZero system. It uses the declarations stored on-chain to push routing rules, GRE tunnel definitions, and peering configurations to the appropriate devices. Its role is to ensure that all devices are provisioned correctly and are ready to forward traffic securely and efficiently. The Controller relies on the Agent to execute these actions on the hardware itself.
 
-### 5. **Agent**
+### 4. **Agent**
 
 The Agent runs on or near each physical device and serves as the telemetry and operations interface at the edge of the network. It is responsible for collecting performance metrics such as latency, availability, and throughput, and for signing and submitting this telemetry data back to the network. By providing accurate, real-time measurements, the Agent plays a critical role in supporting DoubleZero’s performance-based reward model and in maintaining the health and accountability of the infrastructure.
 
-### 6. Telemetry **Smart Contract**
+### 5. Telemetry **Smart Contract**
 
 The Latency Smart Contract functions as the on-chain registry for all network latency and performance metrics. It accepts signed reports from both internal agents and authorized third-party measurement providers, and supports measurements between DoubleZero devices as well as from external observation points. By storing this data immutably and transparently, the contract enables precise performance auditing and ensures that contributors are rewarded based on the actual quality of service they provide.
 
@@ -186,25 +179,18 @@ Additionally, the public key `metrics-publisher` is authorized to sign and submi
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Pending
-    Pending --> Activated: approve
-    Pending --> Rejected: reject
+    [*] --> Activated
     Activated --> Suspended: suspend
-    Activated --> Deleting: delete
     Suspended --> Activated: resume
-    Suspended --> Deleting: delete
-    Rejected --> [*]
-    Deleting --> [*]
+    Activated --> [*]: close
+    Suspended --> [*]: close
 
 ```
 
-In the DoubleZero system, each Device follows a defined lifecycle that ensures it is properly validated and provisioned before it becomes active in the network. The diagram above illustrates the possible states a Device can transition through:
+In the DoubleZero system, each Device follows a defined lifecycle. The diagram above illustrates the possible states a Device can transition through:
 
-- **Pending**: This is the initial state when a contributor creates a device. At this stage, the device's information is registered on-chain but it is not yet active or usable. It is awaiting review and approval by the activator process to change it to Activated. But if it fails the approval process, the Activator can change the state to Rejected.
-- **Activated**: Once a Device is approved—by an off-chain oracle process known as the *Activator*—it transitions to the `Activated` state. During this step, the Activator allocates the necessary resources (such as GRE configurations, IP allocations, and controller settings) and registers the device so it can begin serving users. While in this state, an actor can change the device's state to Suspended or Deleting.
-- **Rejected**: If the device fails validation or is not approved, the Activator transitions the device to the `Rejected` state. This state indicates that the device will not be used in the network and will not proceed further. The device can only be deleted once in this state.
-- **Suspended**: A contributor can suspend an activated device temporarily due to performance issues. In this state, the device is effectively paused and does not participate in routing. The contributor can then call the resume instruction to change the device state back to Activated.
-- **Deleting**: A network contributor can delete his own device. Devices that are no longer needed or have been decommissioned enter the `Deleting` state. This is a terminal phase that leads to complete removal from the network. The Activator will close the device account and lamports will be sent back to the contributor.
+- **Activated**: Devices are created directly in the `Activated` state. The Serviceability program allocates the necessary resources (GRE configurations, IP allocations, controller settings) at create time so the device can begin serving users immediately. While in this state, an admin/operator can move the device to Suspended or close the account.
+- **Suspended**: A contributor can suspend an activated device temporarily due to performance issues. In this state, the device is effectively paused and does not participate in routing. The contributor can then call the resume instruction to change the device state back to Activated, or close the account to remove the device from the network.
 
 We can retrieve a list of all devices that have been created and inspect the details of each, including the unique public key (Pubkey) that was generated during their registration. This Pubkey serves as the definitive on-chain identifier for the device and is used internally by the network to validate actions and ownership.
 
@@ -251,25 +237,18 @@ When the command is executed, DoubleZero records the link on‑chain, validates 
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Pending
-    Pending --> Activated: approve
-    Pending --> Rejected: reject
+    [*] --> Activated
     Activated --> Suspended: suspend
-    Activated --> Deleting: delete
     Suspended --> Activated: resume
-    Suspended --> Deleting: delete
-    Rejected --> [*]
-    Deleting --> [*]
+    Activated --> [*]: close
+    Suspended --> [*]: close
 
 ```
 
-In the DoubleZero system, each Link follows a defined lifecycle that ensures it is properly validated and provisioned before it becomes active in the network. The diagram above illustrates the possible states a Link can transition through:
+In the DoubleZero system, each Link follows a defined lifecycle. The diagram above illustrates the possible states a Link can transition through:
 
-- **Pending**: This is the initial state when a contributor creates a link. At this stage, the link information is registered on-chain but it is not yet active or usable. It is awaiting review and approval by the activator process to change it to Activated. But if it fails the approval process, the Activator can change the state to Rejected.
-- **Activated**: Once a Link is approved—by an off-chain oracle process known as the *Activator*—it transitions to the `Activated` state. During this step, the Activator allocates the necessary resources (such as GRE configurations, IP allocations, and controller settings) and registers the device so it can begin serving users. While in this state, an actor can change the link’s state to Suspended or Deleting.
-- **Rejected**: If the link fails validation or is not approved, the Activator transitions the device to the `Rejected` state. This state indicates that the link will not be used in the network and will not proceed further. The link can only be deleted once in this state.
-- **Suspended**: **This link state is not used for anything currently.** A contributor can suspend an activated link temporarily due to performance issues. In this state, the device is effectively paused and does not participate in routing. The contributor can then call the resume instruction to change the device state back to Activated.
-- **Deleting**: A network contributor can delete his own link. Links that are no longer needed or have been decommissioned enter the `Deleting` state. This is a terminal phase that leads to complete removal from the network. The Activator will close the device account and lamports will be sent back to the contributor.
+- **Activated**: Links are created directly in the `Activated` state. The Serviceability program allocates the necessary resources (GRE configurations, IP allocations, controller settings) at create time. While in this state, an admin/operator can move the link to Suspended or close the account.
+- **Suspended**: **This link state is not used for anything currently.** A contributor can suspend an activated link temporarily due to performance issues. In this state, the link is effectively paused and does not participate in routing. The contributor can then call the resume instruction to change the link state back to Activated, or close the account to remove the link from the network.
 
 ### As a contributor, I want to suspend a Device so that I can perform maintenance without allowing users to connect to it.
 
@@ -291,7 +270,7 @@ In the **Suspended** state:
 - The Agent may continue collecting telemetry, but the data is not used for active performance evaluation.
 - Links associated with the Device may also be disabled or marked as inactive depending on network policy.
 
-The suspension is processed as an on-chain transaction, ensuring transparency and accountability. Once the maintenance is completed, the contributor or the Activator can resume the Device using a similar command, triggering a transition back to the **Activated** state. This allows the Device to safely rejoin the network without requiring a full reinitialization.
+The suspension is processed as an on-chain transaction, ensuring transparency and accountability. Once the maintenance is completed, the contributor can resume the Device using a similar command, triggering a transition back to the **Activated** state. This allows the Device to safely rejoin the network without requiring a full reinitialization.
 
 To bring a previously suspended device back into service, the contributor can use the `doublezero device resume` command. This operation signals to the network that the device is once again ready to operate, and should be returned to the **Activated** state.
 
@@ -357,58 +336,44 @@ This process ensures that once DoubleZero is connected, traffic to validators th
 
 Additionally, this setup provides an automatic fallback mechanism: if the BGP session is disconnected, the daemon removes the static routes from the kernel’s routing table, allowing traffic to seamlessly continue flowing over the internet without interruption.
 
-To orchestrate this entire flow, the CLI is responsible for creating the user account on the smart contract, waiting for the Activator to validate and assign the necessary resources, and then initiating the connection process through the DoubleZero Daemon, which handles the tunnel setup and route provisioning.
+To orchestrate this entire flow, the CLI is responsible for creating the user account on the smart contract — which allocates network resources (such as a dedicated IP address) on-chain at create time — and then initiating the connection process through the DoubleZero Daemon, which handles the tunnel setup and route provisioning.
 
 ## User account lifecycle
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Pending
-    Pending --> Activated: approve
-    Pending --> Rejected: reject
+    [*] --> Activated
     Activated --> Suspended: suspend
-    Activated --> PendingBan: request_ban
-    Activated --> Deleting: delete
     Suspended --> Activated: resume
-    Suspended --> Deleting: delete
-    PendingBan --> Banned: ban
-    PendingBan --> Activated: reject_ban
+    Activated --> Banned: ban
+    Activated --> [*]: close
+    Suspended --> [*]: close
     Banned --> [*]
-    Deleting --> [*]
-    Rejected --> [*]
 ```
 
-The user account lifecycle in DoubleZero follows a stateful process that ensures all user registrations and terminations are validated, controlled, and auditable. The transitions between states are governed by a combination of user actions and decisions made by the network's Activator or governance entities.
+The user account lifecycle in DoubleZero follows a stateful process that ensures all user registrations and terminations are auditable.
 
 ### **User Account Flow Description**
 
-1. **Pending**
-    
-    When a user runs the `doublezero connect` command, a new user account is created on the smart contract in the **Pending** state. At this stage, the user is not yet active in the network. The request awaits validation and approval by the **Activator**, which checks the configuration and assigns necessary network resources (like IP addresses).
-    
-2. **Activated**
-    
-    If the Activator approves the user, the account transitions to the **Activated** state. The user is now officially part of the DoubleZero network, and GRE tunneling and BGP sessions. The user’s validator benefits from improved network connectivity at this point.
-    
-3. **Rejected**
-    
-    If the Activator finds the request invalid or non-compliant, the user is moved to the **Rejected** state. The account is discarded and cannot be used unless re-created.
-    
-4. **Suspended**
-    
+1. **Activated**
+
+    When a user runs the `doublezero connect` command, a new user account is created directly in the **Activated** state. The Serviceability program allocates the necessary network resources (such as a dedicated IP address from the contributor’s IP block) at create time, and the user is officially part of the DoubleZero network. The user’s validator benefits from improved network connectivity at this point.
+
+2. **Suspended**
+
     A user in the Activated state can temporarily **suspend** their connection, for instance, to perform maintenance or stop routing traffic through DoubleZero. This can be initiated by the user themselves. Suspended users are not eligible for routing or performance rewards until they resume.
-    
-5. **Resume**
-    
+
+3. **Resume**
+
     A previously suspended user can transition back to the Activated state by using the `doublezero resume` command, which restores routing and re-establishes connectivity.
-    
-6. **Deleting**
-    
-    When a user decides to permanently leave the network, they can initiate a **delete** operation. This sets the account to the **Deleting** state. The **Activator** then performs the cleanup (revoking resources, tearing down tunnels) and finalizes the deletion by removing the user account from the smart contract.
-    
-7. **Banning**
-    
-    In certain cases, such as policy violations or abuse, someone from the **DoubleZero Foundation** can initiate a **ban request**. This moves the user to the **PendingBan** state. After review, if the ban is confirmed, the account transitions to **Banned**, and the user is forcibly disconnected from the network. Banned users are considered permanently disallowed from rejoining.
+
+4. **Close**
+
+    When a user decides to permanently leave the network, they can close the account. This revokes resources and removes the user account from the smart contract.
+
+5. **Banning**
+
+    In certain cases, such as policy violations or abuse, someone from the **DoubleZero Foundation** can ban a user. This moves the user to the **Banned** state, where the user is forcibly disconnected from the network. Banned users are considered permanently disallowed from rejoining.
     
 
 ## As a user, I want to be able to connect to the DoubleZero network from my server so that I can improve the connectivity of my Solana validator.
@@ -423,11 +388,9 @@ This command initiates a full connection workflow managed by the CLI and the Dou
 
 When the `connect` command is executed, the CLI queries the list of Devices along with the latest latency results. It then **automatically selects the optimal Device** based on the lowest measured latency, ensuring that the user is connected through the most performant entry point in the network.
 
-Once the best Device is selected, the CLI proceeds to **create a new User account** on the **Serviceability smart contract**, which includes the identity of the server and its selected Device. This request is signed and submitted on-chain.
+Once the best Device is selected, the CLI proceeds to **create a new User account** on the **Serviceability smart contract**, which includes the identity of the server and its selected Device. This request is signed and submitted on-chain. The Serviceability program assigns the necessary network resources (such as a dedicated IP address from the contributor’s IP block, if required) at create time.
 
-The **Activator** then picks up this pending User, validates the request, and—if all conditions are met—**approves the user and assigns a network resource**, such as a dedicated IP address from the contributor’s IP block, if required.
-
-Once the account is approved and provisioned, the **daemon finalizes the connection**, establishing a GRE tunnel to the selected Device and exchanging BGP routes. From this point forward, the user’s server routes traffic to known Solana validators through the optimized DoubleZero mesh, significantly improving latency, packet delivery, and overall validator performance—without requiring manual network reconfiguration or restarts.
+Once the account is provisioned, the **daemon finalizes the connection**, establishing a GRE tunnel to the selected Device and exchanging BGP routes. From this point forward, the user’s server routes traffic to known Solana validators through the optimized DoubleZero mesh, significantly improving latency, packet delivery, and overall validator performance—without requiring manual network reconfiguration or restarts.
 
 ### **Usage**
 
@@ -458,7 +421,7 @@ doublezero connect [OPTIONS] <COMMAND>
     
     (Optional) Specifies the **IPv4 address** of the user's server.
     
-    If not provided, the client attempts to detect the IP automatically. This IP is used for tunnel source validation and helps the Activator assign the appropriate GRE configuration.
+    If not provided, the client attempts to detect the IP automatically. This IP is used for tunnel source validation and is recorded on-chain when the GRE configuration is assigned.
     
 - `--device <DEVICE>`
     

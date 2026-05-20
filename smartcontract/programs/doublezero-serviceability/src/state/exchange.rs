@@ -12,7 +12,7 @@ pub const BGP_COMMUNITY_MAX: u16 = 10999;
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExchangeStatus {
-    PendingDeprecated = 0, // activator-only; unreachable for new accounts
+    PendingDeprecated = 0, // deprecated; unreachable for new accounts
     #[default]
     Activated = 1,
     Suspended = 2,

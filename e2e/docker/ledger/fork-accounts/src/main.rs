@@ -126,7 +126,7 @@ fn cmd_fetch(args: &[String]) {
     }
 }
 
-/// Patch a GlobalState account's foundation_allowlist and activator_authority_pk.
+/// Patch a GlobalState account's foundation_allowlist and legacy authority key.
 fn cmd_patch_globalstate(args: &[String]) {
     if args.len() < 2 {
         eprintln!("Usage: fork-accounts patch-globalstate <accounts-dir> <authority-pubkey>");
@@ -177,7 +177,7 @@ fn cmd_patch_globalstate(args: &[String]) {
         let prev_len = global_state.foundation_allowlist.len();
         global_state.foundation_allowlist.push(authority);
 
-        // Set activator_authority_pk to the same authority.
+        // Set the legacy authority key to the same authority.
         global_state.activator_authority_pk = authority;
 
         // Re-serialize and write back.
@@ -193,7 +193,7 @@ fn cmd_patch_globalstate(args: &[String]) {
         fs::write(&path, json).expect("failed to write account file");
 
         eprintln!(
-            "Patched GlobalState account {}: added authority to foundation_allowlist (now {} entries) and set activator_authority_pk",
+            "Patched GlobalState account {}: added authority to foundation_allowlist (now {} entries) and set legacy authority key",
             path.file_stem().unwrap().to_str().unwrap(),
             prev_len + 1
         );

@@ -33,7 +33,7 @@ impl ActivateLinkCommand {
         .execute(client)
         .map_err(|_err| eyre::eyre!("Link not found"))?;
 
-        if link.status != LinkStatus::Pending {
+        if link.status != LinkStatus::PendingDeprecated {
             return Err(eyre::eyre!("Link is not in Pending status"));
         }
 
@@ -124,7 +124,7 @@ mod tests {
             delay_ns: 1000000,
             delay_override_ns: 0,
             jitter_ns: 100000,
-            status: LinkStatus::Pending,
+            status: LinkStatus::PendingDeprecated,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: vec![],
             link_flags: 0,
@@ -195,7 +195,7 @@ mod tests {
             delay_ns: 1000000,
             delay_override_ns: 0,
             jitter_ns: 100000,
-            status: LinkStatus::Pending,
+            status: LinkStatus::PendingDeprecated,
             desired_status: LinkDesiredStatus::Activated,
             link_topologies: vec![],
             link_flags: 0,

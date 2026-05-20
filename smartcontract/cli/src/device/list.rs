@@ -857,14 +857,14 @@ mod tests {
             index: 2,
             bump_seed: 3,
             reference_count: 0,
-            code: "device2_pending".to_string(),
+            code: "device2_drained".to_string(),
             contributor_pk,
             location_pk: location1_pubkey,
             exchange_pk: exchange1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [5, 6, 7, 8].into(),
             dz_prefixes: "5.6.7.8/32".parse().unwrap(),
-            status: DeviceStatus::Pending,
+            status: DeviceStatus::Drained,
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
             mgmt_vrf: "default".to_string(),
@@ -908,7 +908,7 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("device1_activated"));
-        assert!(!output_str.contains("device2_pending"));
+        assert!(!output_str.contains("device2_drained"));
     }
 
     #[test]

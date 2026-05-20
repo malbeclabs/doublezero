@@ -191,7 +191,7 @@ pub fn process_create_link(
     let status = if value.link_type == LinkLinkType::DZX {
         LinkStatus::Requested
     } else {
-        LinkStatus::Pending
+        LinkStatus::Activated
     };
 
     contributor.reference_count += 1;

@@ -11,8 +11,8 @@ use std::fmt;
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LocationStatus {
+    PendingDeprecated = 0, // activator-only; unreachable for new accounts
     #[default]
-    Pending = 0,
     Activated = 1,
     Suspended = 2,
 }
@@ -20,10 +20,10 @@ pub enum LocationStatus {
 impl From<u8> for LocationStatus {
     fn from(value: u8) -> Self {
         match value {
-            0 => LocationStatus::Pending,
+            0 => LocationStatus::PendingDeprecated,
             1 => LocationStatus::Activated,
             2 => LocationStatus::Suspended,
-            _ => LocationStatus::Pending,
+            _ => LocationStatus::PendingDeprecated,
         }
     }
 }
@@ -31,7 +31,7 @@ impl From<u8> for LocationStatus {
 impl fmt::Display for LocationStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LocationStatus::Pending => write!(f, "pending"),
+            LocationStatus::PendingDeprecated => write!(f, "pending (deprecated)"),
             LocationStatus::Activated => write!(f, "activated"),
             LocationStatus::Suspended => write!(f, "suspended"),
         }

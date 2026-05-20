@@ -63,7 +63,7 @@ pub fn process_ban_user(
     }
 
     let mut user: User = User::try_from(user_account)?;
-    if user.status != UserStatus::PendingBan {
+    if user.status != UserStatus::PendingBanDeprecated {
         return Err(DoubleZeroError::NotAllowed.into());
     }
     user.status = UserStatus::Banned;

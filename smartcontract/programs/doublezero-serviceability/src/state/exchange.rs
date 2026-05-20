@@ -12,8 +12,8 @@ pub const BGP_COMMUNITY_MAX: u16 = 10999;
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExchangeStatus {
+    PendingDeprecated = 0, // activator-only; unreachable for new accounts
     #[default]
-    Pending = 0,
     Activated = 1,
     Suspended = 2,
 }
@@ -21,10 +21,10 @@ pub enum ExchangeStatus {
 impl From<u8> for ExchangeStatus {
     fn from(value: u8) -> Self {
         match value {
-            0 => ExchangeStatus::Pending,
+            0 => ExchangeStatus::PendingDeprecated,
             1 => ExchangeStatus::Activated,
             2 => ExchangeStatus::Suspended,
-            _ => ExchangeStatus::Pending,
+            _ => ExchangeStatus::PendingDeprecated,
         }
     }
 }
@@ -32,7 +32,7 @@ impl From<u8> for ExchangeStatus {
 impl fmt::Display for ExchangeStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ExchangeStatus::Pending => write!(f, "pending"),
+            ExchangeStatus::PendingDeprecated => write!(f, "pending (deprecated)"),
             ExchangeStatus::Activated => write!(f, "activated"),
             ExchangeStatus::Suspended => write!(f, "suspended"),
         }

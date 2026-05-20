@@ -71,11 +71,11 @@ pub fn process_reject_device(
 
     let mut device: Device = Device::try_from(device_account)?;
 
-    if device.status != DeviceStatus::Pending {
+    if device.status != DeviceStatus::PendingDeprecated {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    device.status = DeviceStatus::Rejected;
+    device.status = DeviceStatus::RejectedDeprecated;
     msg!("Reason: {:?}", value.reason);
 
     try_acc_write(&device, device_account, payer_account, accounts)?;

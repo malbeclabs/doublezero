@@ -78,7 +78,7 @@ pub fn process_activate_multicastgroup(
 
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
 
-    if multicastgroup.status != MulticastGroupStatus::Pending {
+    if multicastgroup.status != MulticastGroupStatus::PendingDeprecated {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 

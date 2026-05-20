@@ -76,7 +76,7 @@ pub fn process_activate_device(
 
     let mut device: Device = Device::try_from(device_account)?;
 
-    if device.status != DeviceStatus::Pending {
+    if device.status != DeviceStatus::PendingDeprecated {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 

@@ -136,9 +136,9 @@ async fn test_create_geo_probe_invalid_code_length() {
 #[tokio::test]
 async fn test_create_geo_probe_exchange_not_activated() {
     let (mut banks_client, program_id, recent_blockhash, payer, exchange_pubkey) =
-        setup_test_with_exchange(ExchangeStatus::Pending).await;
+        setup_test_with_exchange(ExchangeStatus::Suspended).await;
 
-    let code = "probe-pending";
+    let code = "probe-suspended";
     let (probe_pda, _) = get_geo_probe_pda(&program_id, code);
     let program_config_pda = doublezero_geolocation::pda::get_program_config_pda(&program_id).0;
     let serviceability_globalstate_pda =

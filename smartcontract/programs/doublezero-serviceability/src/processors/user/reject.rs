@@ -65,14 +65,15 @@ pub fn process_reject_user(
 
     let mut user: User = User::try_from(user_account)?;
 
-    if user.status != UserStatus::Pending && user.status != UserStatus::Updating {
+    if user.status != UserStatus::PendingDeprecated && user.status != UserStatus::UpdatingDeprecated
+    {
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
     user.tunnel_id = 0;
     user.tunnel_net = NetworkV4::default();
     user.dz_ip = std::net::Ipv4Addr::UNSPECIFIED;
-    user.status = UserStatus::Rejected;
+    user.status = UserStatus::RejectedDeprecated;
     msg!("Reason: {:?}", value.reason);
 
     try_acc_write(&user, user_account, payer_account, accounts)?;

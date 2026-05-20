@@ -1,4 +1,4 @@
-use std::{collections::HashSet, time::Duration};
+use std::collections::HashSet;
 
 use crate::{
     commands::{
@@ -7,11 +7,9 @@ use crate::{
         multicastgroup::{
             list::ListMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
         },
-        user::get::GetUserCommand,
     },
-    DoubleZeroClient, UserStatus,
+    DoubleZeroClient,
 };
-use backon::{BlockingRetryable, ExponentialBuilder};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
     processors::user::requestban::UserRequestBanArgs, resource::ResourceType,
@@ -55,33 +53,6 @@ impl RequestBanUserCommand {
                 }
                 .execute(client)?;
             }
-        }
-
-        if !user.publishers.is_empty() || !user.subscribers.is_empty() {
-            let builder = ExponentialBuilder::new()
-                .with_max_times(8)
-                .with_min_delay(Duration::from_secs(1))
-                .with_max_delay(Duration::from_secs(32));
-
-            let get_user = || match (GetUserCommand {
-                pubkey: self.pubkey,
-            })
-            .execute(client)
-            {
-                Ok((_, user)) => {
-                    if user.status == UserStatus::Updating {
-                        Err(())
-                    } else {
-                        Ok(user)
-                    }
-                }
-                Err(_) => Err(()),
-            };
-
-            let _ = get_user
-                .retry(builder)
-                .call()
-                .map_err(|_| eyre::eyre!("Timeout waiting for user multicast unsubscribe"))?;
         }
 
         let (_, device) = GetDeviceCommand {

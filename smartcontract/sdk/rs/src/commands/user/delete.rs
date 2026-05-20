@@ -1,4 +1,4 @@
-use std::{collections::HashSet, net::Ipv4Addr, time::Duration};
+use std::{collections::HashSet, net::Ipv4Addr};
 
 use crate::{
     commands::{
@@ -8,11 +8,9 @@ use crate::{
         multicastgroup::{
             list::ListMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
         },
-        user::get::GetUserCommand,
     },
-    DoubleZeroClient, UserStatus,
+    DoubleZeroClient,
 };
-use backon::{BlockingRetryable, ExponentialBuilder};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
     processors::user::delete::UserDeleteArgs, resource::ResourceType,
@@ -56,35 +54,6 @@ impl DeleteUserCommand {
                 }
                 .execute(client)?;
             }
-        }
-
-        if !user.publishers.is_empty() || !user.subscribers.is_empty() {
-            // timings are set to handle expected worst case activator reactions
-            let builder = ExponentialBuilder::new()
-                .with_max_times(8) // 1+2+4+8+16+32+32+32 = 127 seconds max
-                .with_min_delay(Duration::from_secs(1))
-                .with_max_delay(Duration::from_secs(32));
-
-            // need to wait until activator is done and changes status from Updating
-            let get_user = || match (GetUserCommand {
-                pubkey: self.pubkey,
-            })
-            .execute(client)
-            {
-                Ok((_, user)) => {
-                    if user.status == UserStatus::Updating {
-                        Err(())
-                    } else {
-                        Ok(user)
-                    }
-                }
-                Err(_) => Err(()),
-            };
-
-            let _ = get_user
-                .retry(builder)
-                .call()
-                .map_err(|_| eyre::eyre!("Timeout waiting for user multicast unsubscribe"))?;
         }
 
         let (accesspass_pk, _) = GetAccessPassCommand {
@@ -200,7 +169,7 @@ mod tests {
     use std::net::Ipv4Addr;
 
     #[test]
-    fn test_delete_multicast_user_retries_until_status_activated() {
+    fn test_delete_multicast_user_unsubscribes_then_deletes() {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
@@ -210,7 +179,7 @@ mod tests {
         let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
-        // User with one subscriber - triggers the retry logic
+        // User with one subscriber - delete must unsubscribe first.
         let user_activated_with_sub = User {
             account_type: AccountType::User,
             owner: client.get_payer(),
@@ -234,20 +203,6 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-        };
-
-        // User with Updating status (returned by first retry call)
-        let user_updating = User {
-            status: UserStatus::Updating,
-            subscribers: vec![], // After unsubscribe, empty
-            ..user_activated_with_sub.clone()
-        };
-
-        // User with Activated status (returned by second retry call)
-        let user_activated_final = User {
-            status: UserStatus::Activated,
-            subscribers: vec![],
-            ..user_activated_with_sub.clone()
         };
 
         let mgroup = MulticastGroup {
@@ -365,25 +320,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        // Call 6: First retry GetUserCommand - returns Updating (triggers retry)
-        let user_updating_clone = user_updating.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(user_pubkey))
-            .times(1)
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(AccountData::User(user_updating_clone.clone())));
-
-        // Call 7: Second retry GetUserCommand - returns Activated (success)
-        let user_final_clone = user_activated_final.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(user_pubkey))
-            .times(1)
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(AccountData::User(user_final_clone.clone())));
-
-        // Call 8: AccessPass fetch for DeleteUserCommand
+        // Call 6: AccessPass fetch for DeleteUserCommand
         let accesspass_clone2 = accesspass.clone();
         client
             .expect_get()
@@ -392,7 +329,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone2.clone())));
 
-        // Call 9: Device fetch for DeleteUserCommand
+        // Call 7: Device fetch for DeleteUserCommand
         let device = Device {
             account_type: AccountType::Device,
             dz_prefixes: "10.0.0.0/24".parse().unwrap(),
@@ -482,20 +419,6 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-        };
-
-        let user_updating = User {
-            status: UserStatus::Updating,
-            publishers: vec![],
-            subscribers: vec![],
-            ..user_activated.clone()
-        };
-
-        let user_activated_final = User {
-            status: UserStatus::Activated,
-            publishers: vec![],
-            subscribers: vec![],
-            ..user_activated.clone()
         };
 
         let mgroup = MulticastGroup {
@@ -609,23 +532,6 @@ mod tests {
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_, _| Ok(Signature::new_unique()));
-
-        // Wait for activator: Updating -> Activated
-        let user_updating_clone = user_updating.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(user_pubkey))
-            .times(1)
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(AccountData::User(user_updating_clone.clone())));
-
-        let user_final_clone = user_activated_final.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(user_pubkey))
-            .times(1)
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(AccountData::User(user_final_clone.clone())));
 
         // AccessPass fetch for DeleteUser
         let accesspass_clone2 = accesspass.clone();
@@ -882,16 +788,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(|_, _| Ok(Signature::new_unique()));
 
-        // Call 7: Wait-loop GetUserCommand — returns Activated immediately (no Updating)
-        let user_final_clone = user_activated_final.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(user_pubkey))
-            .times(1)
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(AccountData::User(user_final_clone.clone())));
-
-        // Call 8a: UNSPECIFIED AccessPass lookup fails (fallback path) — DeleteUserCommand
+        // Call 7a: UNSPECIFIED AccessPass lookup fails (fallback path) — DeleteUserCommand
         let user_clone_fallback2 = user_activated_final.clone();
         client
             .expect_get()
@@ -900,7 +797,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::User(user_clone_fallback2.clone())));
 
-        // Call 8b: AccessPass fetch via client_ip fallback — keyed to (client_ip, user_owner)
+        // Call 7b: AccessPass fetch via client_ip fallback — keyed to (client_ip, user_owner)
         let accesspass_clone2 = accesspass.clone();
         client
             .expect_get()
@@ -909,7 +806,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone2.clone())));
 
-        // Call 8c: Device fetch for DeleteUserCommand
+        // Call 7c: Device fetch for DeleteUserCommand
         let device = Device {
             account_type: AccountType::Device,
             dz_prefixes: "10.0.0.0/24".parse().unwrap(),
@@ -931,7 +828,7 @@ mod tests {
         let (dz_prefix_ext, _, _) =
             get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
 
-        // Call 9: Execute DeleteUser transaction
+        // Call 8: Execute DeleteUser transaction
         client
             .expect_execute_transaction()
             .with(

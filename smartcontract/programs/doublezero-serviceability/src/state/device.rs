@@ -62,12 +62,12 @@ impl FromStr for DeviceType {
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DeviceStatus {
+    PendingDeprecated = 0, // activator-only; unreachable for new accounts
     #[default]
-    Pending = 0,
     Activated = 1,
     //Suspended = 2, // The suspended status is no longer used
     Deleting = 3,
-    Rejected = 4,
+    RejectedDeprecated = 4, // activator-only; unreachable for new accounts
     Drained = 5,
     DeviceProvisioning = 6,
     LinkProvisioning = 7,
@@ -76,14 +76,14 @@ pub enum DeviceStatus {
 impl From<u8> for DeviceStatus {
     fn from(value: u8) -> Self {
         match value {
-            0 => DeviceStatus::Pending,
+            0 => DeviceStatus::PendingDeprecated,
             1 => DeviceStatus::Activated,
             3 => DeviceStatus::Deleting,
-            4 => DeviceStatus::Rejected,
+            4 => DeviceStatus::RejectedDeprecated,
             5 => DeviceStatus::Drained,
             6 => DeviceStatus::DeviceProvisioning,
             7 => DeviceStatus::LinkProvisioning,
-            _ => DeviceStatus::Pending,
+            _ => DeviceStatus::PendingDeprecated,
         }
     }
 }
@@ -91,10 +91,10 @@ impl From<u8> for DeviceStatus {
 impl fmt::Display for DeviceStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DeviceStatus::Pending => write!(f, "pending"),
+            DeviceStatus::PendingDeprecated => write!(f, "pending (deprecated)"),
             DeviceStatus::Activated => write!(f, "activated"),
             DeviceStatus::Deleting => write!(f, "deleting"),
-            DeviceStatus::Rejected => write!(f, "rejected"),
+            DeviceStatus::RejectedDeprecated => write!(f, "rejected (deprecated)"),
             DeviceStatus::Drained => write!(f, "drained"),
             DeviceStatus::DeviceProvisioning => write!(f, "device-provisioning"),
             DeviceStatus::LinkProvisioning => write!(f, "link-provisioning"),
@@ -107,10 +107,10 @@ impl FromStr for DeviceStatus {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "pending" => Ok(DeviceStatus::Pending),
+            "pending" | "pending (deprecated)" => Ok(DeviceStatus::PendingDeprecated),
             "activated" => Ok(DeviceStatus::Activated),
             "deleting" => Ok(DeviceStatus::Deleting),
-            "rejected" => Ok(DeviceStatus::Rejected),
+            "rejected" | "rejected (deprecated)" => Ok(DeviceStatus::RejectedDeprecated),
             "drained" => Ok(DeviceStatus::Drained),
             "device-provisioning" => Ok(DeviceStatus::DeviceProvisioning),
             "link-provisioning" => Ok(DeviceStatus::LinkProvisioning),
@@ -300,7 +300,7 @@ impl Default for Device {
             exchange_pk: Pubkey::default(),
             device_type: DeviceType::Hybrid,
             public_ip: Ipv4Addr::new(0, 0, 0, 0),
-            status: DeviceStatus::Pending,
+            status: DeviceStatus::Activated,
             code: String::new(),
             dz_prefixes: Vec::new().into(),
             metrics_publisher_pk: Pubkey::default(),
@@ -763,15 +763,6 @@ mod tests {
         assert!(!device.is_device_eligible_for_provisioning());
 
         let device = Device {
-            status: DeviceStatus::Pending,
-            device_type: DeviceType::Hybrid,
-            users_count: 2,
-            max_users: 5,
-            ..Device::default()
-        };
-        assert!(!device.is_device_eligible_for_provisioning());
-
-        let device = Device {
             status: DeviceStatus::Activated,
             device_type: DeviceType::Hybrid,
             users_count: 5,
@@ -806,7 +797,7 @@ mod tests {
         assert_eq!(val.location_pk, Pubkey::default());
         assert_eq!(val.exchange_pk, Pubkey::default());
         assert_eq!(val.public_ip, Ipv4Addr::new(0, 0, 0, 0));
-        assert_eq!(val.status, DeviceStatus::Pending);
+        assert_eq!(val.status, DeviceStatus::Activated);
         assert_eq!(val.device_type, DeviceType::Hybrid);
         assert_eq!(val.metrics_publisher_pk, Pubkey::default());
         assert_eq!(val.contributor_pk, Pubkey::default());

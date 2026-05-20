@@ -53,12 +53,12 @@ impl fmt::Display for LinkLinkType {
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LinkStatus {
+    PendingDeprecated = 0, // activator-only; unreachable for new accounts
     #[default]
-    Pending = 0,
     Activated = 1,
     //Suspended = 2, // The suspended status is no longer used
     Deleting = 3,
-    Rejected = 4,
+    RejectedDeprecated = 4, // activator-only; unreachable for new accounts
     Requested = 5,
     HardDrained = 6,
     SoftDrained = 7,
@@ -68,15 +68,15 @@ pub enum LinkStatus {
 impl From<u8> for LinkStatus {
     fn from(value: u8) -> Self {
         match value {
-            0 => LinkStatus::Pending,
+            0 => LinkStatus::PendingDeprecated,
             1 => LinkStatus::Activated,
             3 => LinkStatus::Deleting,
-            4 => LinkStatus::Rejected,
+            4 => LinkStatus::RejectedDeprecated,
             5 => LinkStatus::Requested,
             6 => LinkStatus::HardDrained,
             7 => LinkStatus::SoftDrained,
             8 => LinkStatus::Provisioning,
-            _ => LinkStatus::Pending,
+            _ => LinkStatus::PendingDeprecated,
         }
     }
 }
@@ -86,10 +86,10 @@ impl FromStr for LinkStatus {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "pending" => Ok(LinkStatus::Pending),
+            "pending" | "pending (deprecated)" => Ok(LinkStatus::PendingDeprecated),
             "activated" => Ok(LinkStatus::Activated),
             "deleting" => Ok(LinkStatus::Deleting),
-            "rejected" => Ok(LinkStatus::Rejected),
+            "rejected" | "rejected (deprecated)" => Ok(LinkStatus::RejectedDeprecated),
             "requested" => Ok(LinkStatus::Requested),
             "hard-drained" => Ok(LinkStatus::HardDrained),
             "soft-drained" => Ok(LinkStatus::SoftDrained),
@@ -102,10 +102,10 @@ impl FromStr for LinkStatus {
 impl fmt::Display for LinkStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LinkStatus::Pending => write!(f, "pending"),
+            LinkStatus::PendingDeprecated => write!(f, "pending (deprecated)"),
             LinkStatus::Activated => write!(f, "activated"),
             LinkStatus::Deleting => write!(f, "deleting"),
-            LinkStatus::Rejected => write!(f, "rejected"),
+            LinkStatus::RejectedDeprecated => write!(f, "rejected (deprecated)"),
             LinkStatus::Requested => write!(f, "requested"),
             LinkStatus::HardDrained => write!(f, "hard-drained"),
             LinkStatus::SoftDrained => write!(f, "soft-drained"),
@@ -298,7 +298,7 @@ impl Default for Link {
             jitter_ns: 0,
             tunnel_id: 0,
             tunnel_net: NetworkV4::default(),
-            status: LinkStatus::Pending,
+            status: LinkStatus::Activated,
             code: String::new(),
             contributor_pk: Pubkey::default(),
             side_a_iface_name: String::new(),
@@ -373,12 +373,9 @@ impl Validate for Link {
         if self.account_type != AccountType::Link {
             return Err(DoubleZeroError::InvalidAccountType);
         }
-        // Tunnel network must be private
-        if self.status != LinkStatus::Requested
-            && self.status != LinkStatus::Pending
-            && self.status != LinkStatus::Rejected
-            && !self.tunnel_net.ip().is_private()
-        {
+        // Tunnel network must be private (Requested links are awaiting accept and
+        // have not yet been allocated a tunnel_net).
+        if self.status != LinkStatus::Requested && !self.tunnel_net.ip().is_private() {
             msg!("Invalid tunnel_net: {}", self.tunnel_net);
             return Err(DoubleZeroError::InvalidTunnelNet);
         }
@@ -664,38 +661,6 @@ mod tests {
         let err = val.validate();
         assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidTunnelNet);
-    }
-
-    #[test]
-    fn test_state_link_validate_ok_rejected_ignores_tunnel_net() {
-        let val = Link {
-            account_type: AccountType::Link,
-            owner: Pubkey::new_unique(),
-            index: 123,
-            bump_seed: 1,
-            contributor_pk: Pubkey::new_unique(),
-            side_a_pk: Pubkey::new_unique(),
-            side_z_pk: Pubkey::new_unique(),
-            link_type: LinkLinkType::WAN,
-            bandwidth: 10_000_000_000,
-            mtu: 1566,
-            delay_ns: 1_000_000,
-            jitter_ns: 1_000_000,
-            tunnel_id: 1,
-            tunnel_net: "8.8.8.8/25".parse().unwrap(),
-            code: "test-123".to_string(),
-            status: LinkStatus::Rejected,
-            side_a_iface_name: "eth0".to_string(),
-            side_z_iface_name: "eth1".to_string(),
-            delay_override_ns: 0,
-            link_health: LinkHealth::ReadyForService,
-            desired_status: LinkDesiredStatus::Activated,
-            link_topologies: Vec::new(),
-            link_flags: 0,
-        };
-
-        // For Rejected status, tunnel_net is not validated and should succeed
-        val.validate().unwrap();
     }
 
     #[test]

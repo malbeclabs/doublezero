@@ -1035,46 +1035,16 @@ impl ServiceabilityProgramHelper {
         )
         .await?;
 
-        // CreateDevice now atomically activates the device (status=Activated). To preserve
-        // the legacy contract of `create_device` (which left the device non-activated until
-        // `set_device_ready_for_users` was invoked), demote it back to Pending here.
-        // Tests that need an activated device call `create_and_activate_device`, which
-        // re-activates after this step.
-        self.execute_transaction(
-            DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                status: Some(doublezero_serviceability::state::device::DeviceStatus::Pending),
-                ..Default::default()
-            }),
-            vec![
-                AccountMeta::new(device_pk, false),
-                AccountMeta::new(contributor_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
-            ],
-        )
-        .await?;
-
         Ok(device_pk)
     }
 
     pub async fn set_device_ready_for_users(
         &mut self,
         device_pk: Pubkey,
-        contributor_pk: Pubkey,
+        _contributor_pk: Pubkey,
     ) -> Result<(), BanksClientError> {
-        // Bring the device back to Activated (create_device demoted it to Pending) and set
-        // the health oracle status. Foundation members may set any status.
-        self.execute_transaction(
-            DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                status: Some(doublezero_serviceability::state::device::DeviceStatus::Activated),
-                ..Default::default()
-            }),
-            vec![
-                AccountMeta::new(device_pk, false),
-                AccountMeta::new(contributor_pk, false),
-                AccountMeta::new(self.global_state_pubkey, false),
-            ],
-        )
-        .await?;
+        // CreateDevice atomically activates the device; only the health oracle status
+        // needs to be set explicitly to mark it ready for users.
         self.execute_transaction(
             DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
                 health: DeviceHealth::ReadyForUsers,

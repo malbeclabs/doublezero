@@ -181,7 +181,7 @@ impl ProvisioningCliCommand {
         spinner: &ProgressBar,
     ) -> eyre::Result<()> {
         // Look for user
-        let (user_pubkey, user) = self
+        let (_user_pubkey, user) = self
             .find_or_create_user(client, controller, &client_ip, spinner, user_type, tenant)
             .await?;
 
@@ -191,7 +191,6 @@ impl ProvisioningCliCommand {
                 self.user_activated(controller, user_type, spinner).await;
                 Ok(())
             }
-            UserStatus::Rejected => self.user_rejected(client, &user_pubkey, spinner).await,
             _ => eyre::bail!("User status not expected"),
         }
     }
@@ -234,7 +233,7 @@ impl ProvisioningCliCommand {
         }
 
         // Look for user and subscribe to all groups
-        let (user_pubkey, user) = self
+        let (_user_pubkey, user) = self
             .find_or_create_user_and_subscribe(
                 client,
                 controller,
@@ -251,7 +250,6 @@ impl ProvisioningCliCommand {
                     .await;
                 Ok(())
             }
-            UserStatus::Rejected => self.user_rejected(client, &user_pubkey, spinner).await,
             _ => eyre::bail!("User status not expected"),
         }
     }
@@ -422,7 +420,7 @@ impl ProvisioningCliCommand {
                 spinner.println(format!(
                     "    An account already exists with Pubkey: {pubkey}"
                 ));
-                if user.status == UserStatus::PendingBan || user.status == UserStatus::Banned {
+                if user.status == UserStatus::Banned {
                     spinner.println("❌  The user is banned.");
                     eyre::bail!("User is banned.");
                 }
@@ -906,29 +904,6 @@ impl ProvisioningCliCommand {
         }
 
         eyre::bail!("timed out waiting for daemon to provision tunnel")
-    }
-
-    async fn user_rejected(
-        &self,
-        client: &dyn CliCommand,
-        user_pubkey: &Pubkey,
-        spinner: &ProgressBar,
-    ) -> eyre::Result<()> {
-        spinner.println(format!("    {}", "User rejected"));
-
-        spinner.set_message("Reading logs...");
-        std::thread::sleep(std::time::Duration::from_secs(10));
-        let msgs = client
-            .get_logs(user_pubkey)
-            .map_err(|_| eyre::eyre!("Unable to get logs"))?;
-
-        for mut msg in msgs {
-            if msg.starts_with("Program log: Error: ") {
-                spinner.println(format!("    {}", msg.split_off(20)));
-            }
-        }
-
-        Ok(())
     }
 }
 

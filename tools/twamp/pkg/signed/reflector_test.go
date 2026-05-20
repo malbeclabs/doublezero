@@ -75,7 +75,7 @@ func TestReflector_Linux(t *testing.T) {
 		assert.Empty(t, reply.Offsets)
 		assert.True(t, reply.Probe.Verify())
 		assert.True(t, reply.Verify())
-		assert.Equal(t, uint64(0), reply.SinceLastRxNs, "first probe should have zero SinceLastRxNs")
+		assert.NotEqual(t, uint64(0), reply.SinceLastRxNs, "first probe should carry nonce in SinceLastRxNs")
 	})
 
 	t.Run("reject unauthorized pubkey", func(t *testing.T) {
@@ -457,7 +457,7 @@ func TestReflector_Linux(t *testing.T) {
 		require.NoError(t, err, "probe 0 should receive reply")
 		reply0, err := signed.UnmarshalReplyPacket(replyBuf[:n])
 		require.NoError(t, err)
-		assert.Equal(t, uint64(0), reply0.SinceLastRxNs, "probe 0 should have zero SinceLastRxNs")
+		assert.NotEqual(t, uint64(0), reply0.SinceLastRxNs, "probe 0 should carry nonce in SinceLastRxNs")
 
 		// Simulate probe 1 loss: wait for stalePairTimeout to expire.
 		time.Sleep(6 * time.Second)
@@ -473,7 +473,7 @@ func TestReflector_Linux(t *testing.T) {
 		require.NoError(t, err, "next probe 0 should receive reply")
 		nextReply0, err := signed.UnmarshalReplyPacket(replyBuf[:n])
 		require.NoError(t, err)
-		assert.Equal(t, uint64(0), nextReply0.SinceLastRxNs, "after stale reset, probe 0 should have zero SinceLastRxNs")
+		assert.NotEqual(t, uint64(0), nextReply0.SinceLastRxNs, "after stale reset, probe 0 should carry nonce in SinceLastRxNs")
 
 		// Probe 1: pair should work correctly after recovery.
 		nextProbe1 := signed.NewProbePacket(11, senderSigner)
@@ -487,6 +487,104 @@ func TestReflector_Linux(t *testing.T) {
 		nextReply1, err := signed.UnmarshalReplyPacket(replyBuf[:n])
 		require.NoError(t, err)
 		assert.Greater(t, nextReply1.SinceLastRxNs, uint64(0), "probe 1 should have non-zero SinceLastRxNs after recovery")
+	})
+
+	t.Run("Reply0 contains non-zero nonce in SinceLastRxNs", func(t *testing.T) {
+		t.Parallel()
+
+		senderPub, senderSigner := newTestSigner(t)
+		_, reflectorSigner := newTestSigner(t)
+
+		var senderPubKey [32]byte
+		copy(senderPubKey[:], senderPub)
+
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, [][32]byte{senderPubKey}, 0)
+		require.NoError(t, err)
+		defer reflector.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		go func() { _ = reflector.Run(ctx) }()
+		time.Sleep(10 * time.Millisecond)
+
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
+		require.NoError(t, err)
+		defer conn.Close()
+
+		probe := signed.NewProbePacket(1, senderSigner)
+		var buf [signed.ProbePacketSize]byte
+		require.NoError(t, probe.Marshal(buf[:]))
+		_, err = conn.Write(buf[:])
+		require.NoError(t, err)
+
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+		replyBuf := make([]byte, signed.MaxReplyPacketSize)
+		n, err := conn.Read(replyBuf)
+		require.NoError(t, err)
+
+		reply, err := signed.UnmarshalReplyPacket(replyBuf[:n])
+		require.NoError(t, err)
+		if reply.SinceLastRxNs == 0 {
+			t.Fatalf("expected non-zero nonce in Reply0.SinceLastRxNs, got 0")
+		}
+	})
+
+	t.Run("Reply0 nonce varies across pairs from same sender", func(t *testing.T) {
+		if testing.Short() {
+			t.Skip("relies on 6s stale-pair timeout")
+		}
+		t.Parallel()
+
+		senderPub, senderSigner := newTestSigner(t)
+		_, reflectorSigner := newTestSigner(t)
+
+		var senderPubKey [32]byte
+		copy(senderPubKey[:], senderPub)
+
+		// verifyInterval=0 so no rate limiting; stale timeout resets the pair.
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, [][32]byte{senderPubKey}, 0)
+		require.NoError(t, err)
+		defer reflector.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		go func() { _ = reflector.Run(ctx) }()
+		time.Sleep(10 * time.Millisecond)
+
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
+		require.NoError(t, err)
+		defer conn.Close()
+
+		sendAndReadReply := func(seq uint32) *signed.ReplyPacket {
+			t.Helper()
+			probe := signed.NewProbePacket(seq, senderSigner)
+			var buf [signed.ProbePacketSize]byte
+			require.NoError(t, probe.Marshal(buf[:]))
+			_, err = conn.Write(buf[:])
+			require.NoError(t, err)
+			require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+			replyBuf := make([]byte, signed.MaxReplyPacketSize)
+			n, err := conn.Read(replyBuf)
+			require.NoError(t, err)
+			reply, err := signed.UnmarshalReplyPacket(replyBuf[:n])
+			require.NoError(t, err)
+			return reply
+		}
+
+		// Pair A: probe 0 only (pair 1 never arrives; stale timeout resets state).
+		replyA := sendAndReadReply(1)
+
+		// Wait for stalePairTimeout (5s) to expire so the next probe starts a fresh pair.
+		time.Sleep(6 * time.Second)
+
+		// Pair B: probe 0 of a new pair.
+		replyB := sendAndReadReply(2)
+
+		if replyA.SinceLastRxNs == replyB.SinceLastRxNs {
+			t.Fatalf("expected distinct nonces across pairs, both = 0x%x", replyA.SinceLastRxNs)
+		}
 	})
 
 	t.Run("pair-based rate limiting", func(t *testing.T) {
@@ -529,7 +627,7 @@ func TestReflector_Linux(t *testing.T) {
 
 		reply1, err := signed.UnmarshalReplyPacket(replyBuf[:n])
 		require.NoError(t, err)
-		assert.Equal(t, uint64(0), reply1.SinceLastRxNs, "first probe should have zero SinceLastRxNs")
+		assert.NotEqual(t, uint64(0), reply1.SinceLastRxNs, "first probe should carry nonce in SinceLastRxNs")
 
 		// Probe 2: should get reply (second of pair).
 		probe2 := signed.NewProbePacket(2, senderSigner)

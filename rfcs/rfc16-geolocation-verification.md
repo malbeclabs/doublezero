@@ -160,7 +160,7 @@ _Inbound Measurement Flow_
 4. **Probe Caches Offset:** Probe verifies DZD signature, caches Offset, and updates the signed TWAMP reflector's embedded offsets with the best cached offset
 5. **Target Sends Probe 0:** Target sends a signed probe packet (containing its Pubkey and Ed25519 signature). Paired probing is needed because TEEs cannot perform time measurements; the probe-side inter-arrival time serves as a proxy RTT.
 6. **Probe Sends Reply 0:** Reflector checks that the sender's Pubkey is registered (it does not verify the probe's Ed25519 signature — the pubkey allowlist is sufficient). Reply 0 embeds the original probe, the reflector's signing key, geoprobe identity, location data derived from its best cached DZD offset (`Lat`, `Lng`, `MeasurementSlot`, `RttNs`), the opaque DZD offset blobs, and an Ed25519 signature over the whole packet. Reply 0's `SinceLastRxNs` is 0 (no previous arrival from this sender).
-7. **Target Sends Probe 1:** Both probe packets are pre-signed before any network I/O. After receiving reply 0, target immediately sends the pre-signed probe 1 with no signing delay.
+7. **Target Sends Probe 1:** Senders not using challenged inbound probing (see "Challenge-Response Inbound Probing" below) pre-sign both probes before any network I/O and fire Probe 1 the moment Reply 0 arrives, with no signing delay. Challenged senders defer signing Probe 1 until they have parsed the Reply 0 nonce; see that section for the trade-off.
 8. **Probe Sends Reply 1:** Same structure as reply 0, but `SinceLastRxNs` now contains the time between the reflector's reply 0 Tx and probe 1 Rx — this approximates the network RTT by excluding processing overhead on both sides. `RttNs` = DZD offset's `RttNs` + `SinceLastRxNs`. The reflector allows 2 probes per rate-limit window per sender, then drops until the window resets.
 9. **Target Verifies Replies:** Target verifies both replies, then derives two RTT measurements: "Probe-Measured RTT" = `reply1.SinceLastRxNs` (Tx-to-Rx interval at the reflector), and "Target-Measured RTT" = `min(rtt0, rtt1)` (lower of the two sender-side RTTs). Forwards to Client Oracle.
 10. **Client Oracle Computes Location:** Client Oracle uses the reply's location fields (`Lat`/`Lng` + `RttNs`) along with the Target's reported probe RTT to compute location. The embedded offset blobs can be cross-checked against the DZ ledger for additional assurance.
@@ -354,8 +354,8 @@ The mechanism extends DoubleZero's existing TWAMP-light implementation (`tools/t
 ```go
 type SignedProbePacket struct {
     Seq          uint32    // Bytes 0-3: Sequence number (big-endian)
-    Sec          uint32    // Bytes 4-7: NTP timestamp seconds
-    Frac         uint32    // Bytes 8-11: NTP timestamp fractional
+    Sec          uint32    // Bytes 4-7: NTP timestamp seconds; on challenged Probe 1, upper 4 bytes of echoed nonce
+    Frac         uint32    // Bytes 8-11: NTP timestamp fractional; on challenged Probe 1, lower 4 bytes of echoed nonce
     SenderPubkey [32]byte  // Bytes 12-43: Target's Ed25519 public key
     Signature    [64]byte  // Bytes 44-107: Ed25519 signature over bytes 0-43
 }
@@ -375,15 +375,15 @@ type SignedReplyPacket struct {
     MeasurementSlot uint64            // Bytes 172-179: DoubleZero slot from reference offset
     Lat             float64           // Bytes 180-187: Reference point latitude (WGS84)
     Lng             float64           // Bytes 188-195: Reference point longitude (WGS84)
-    SinceLastRxNs   uint64            // Bytes 196-203: Nanoseconds between reflector Tx (reply N-1) and Rx (probe N)
+    SinceLastRxNs   uint64            // Bytes 196-203: On Reply 0, the geoprobe-issued challenge nonce; on Reply 1, nanoseconds between reflector Tx of Reply 0 and Rx of Probe 1
     RttNs           uint64            // Bytes 204-211: Accumulated RTT from Lat/Lng in nanoseconds
-    NumOffsets      uint8             // Byte 212: Number of LocationOffset blobs (0-5)
+    NumOffsets      uint8             // Byte 212: Bit 7 = Challenged flag; bits 0-6 = number of LocationOffset blobs (0-5)
     Offsets         [][]byte          // Bytes 213-...: N × LocationOffset blobs (each 169 bytes)
     Signature       [64]byte          // Last 64 bytes: Ed25519 signature over all preceding bytes
 }
 ```
 
-`AuthorityPubkey` is the key used to sign and verify the reply. `GeoprobePubkey` identifies the specific geoprobe. `MeasurementSlot`, `Lat`, `Lng`, and `RttNs` are derived from the probe's best cached DZD offset. `SinceLastRxNs` measures from the reflector's reply Tx to the next probe's Rx, approximating the network RTT by excluding processing overhead. The target pre-signs both probes before any I/O and uses `SinceLastRxNs` from the second reply as the probe-measured RTT (analogous to `MeasuredRttNs` in a LocationOffset). `RttNs` = DZD offset's `RttNs` + `SinceLastRxNs`. `Offsets` carries 0–5 Borsh-encoded `LocationOffset` structs from the probe's parent DZDs (each with no references).
+`AuthorityPubkey` is the key used to sign and verify the reply. `GeoprobePubkey` identifies the specific geoprobe. `MeasurementSlot`, `Lat`, `Lng`, and `RttNs` are derived from the probe's best cached DZD offset. `SinceLastRxNs` measures from the reflector's reply Tx to the next probe's Rx, approximating the network RTT by excluding processing overhead. Unchallenged targets pre-sign both probes before any I/O; challenged targets defer Probe 1 signing until they have extracted the nonce from Reply 0. Either way, the target uses `SinceLastRxNs` from the second reply as the probe-measured RTT (analogous to `MeasuredRttNs` in a LocationOffset). `RttNs` = DZD offset's `RttNs` + `SinceLastRxNs`. `Offsets` carries 0–5 Borsh-encoded `LocationOffset` structs from the probe's parent DZDs (each with no references).
 The probe's signature covers all preceding bytes.
 
 #### Interfaces
@@ -408,6 +408,23 @@ type SignedReflector interface {
 `SignedSender.Probe()` returns both the measured RTT and the `SignedReplyPacket`.
 
 `SignedReflector.SetOffsets()` allows the geoprobe agent to inject its current best `LocationOffset` blobs into every reply. The reflector deep-copies the provided slices and updates them under a write lock, so offset updates from the offset listener are thread-safe with concurrent probe handling.
+
+### Challenge-Response Inbound Probing
+
+To prove a target sender actually received Reply 0 before sending Probe 1 — and was not pre-emitting Probe 1 to manufacture a falsely-small SinceLastRxNs — the geoprobe and sender perform an optional nonce handshake.
+
+**Flow:**
+
+1. On receipt of Probe 0, the geoprobe generates a fresh 8-byte cryptographically-random nonce, stores it in per-sender state keyed by `SenderPubkey`, and places it in the `SinceLastRxNs` field of Reply 0 (which was previously always 0).
+2. On receipt of Reply 0, a challenge-aware sender extracts the nonce from `SinceLastRxNs` and writes those 8 bytes into the `Sec` (upper 4) and `Frac` (lower 4) fields of Probe 1 before signing.
+3. On receipt of Probe 1, the geoprobe reads `Sec || Frac` and compares with the stored nonce. If equal, the geoprobe sets the most-significant bit (bit 7) of `NumOffsets` in Reply 1 to 1 — flagging the measurement as a "challenged inbound". If unequal (legacy sender), bit 7 stays 0 and the measurement is reported as "unchallenged inbound".
+4. The reported `SinceLastRxNs` in Reply 1 is the actual reflector Tx-to-Rx interval as before.
+
+**Why unchallenged inbound is still permitted:** Adding the nonce echo forces the sender to wait for Reply 0, parse it, rewrite Probe 1, and re-sign before transmission. That added delay inflates `SinceLastRxNs` by the sender's compute time, polluting the wire-time estimate. Senders running inside a Trusted Execution Environment do not need the challenge to be trustworthy, so they can skip it and preserve the unbiased timing measurement. Non-TEE senders accept the timing penalty in exchange for the security guarantee.
+
+**Backwards compatibility:** Bit 7 of `NumOffsets` is only set when the geoprobe observed a matching nonce echo. Legacy senders that do not echo the nonce will never trigger the flag bit, so the existing `NumOffsets ≤ 5` decoder check at the sender still holds. Likewise, legacy senders ignore `Reply0.SinceLastRxNs` (it was always 0 before), so populating it with a nonce is invisible to them.
+
+**Beyond TEE — wallet-bound inbound probing:** The mechanism above replaces the TEE gating model with a key-proximity model: whoever signs Probe 1 must hold the private key and be in the timing loop. When the target's signing key is a high-value onchain identity — for example, the target's Solana wallet — copying it to a proxy machine isn't "spoofing", it *is* the wallet. This enables compliance use cases such as proving a registered wallet's private key was present in a particular jurisdiction at probe time, without requiring a TEE.
 
 ### Component Implementation
 
@@ -682,14 +699,6 @@ Trusted code inside the TEE **gates probe 1 on receiving a valid reply 0**. Even
 > **Requires TEE trust.** The TEE ensures the key cannot be extracted and that probe 1 is only sent after a valid reply 0. Without a TEE, the operator can send both pre-signed probes from a proxy without waiting — defeating the gating mechanism entirely.
 
 ## Future Work
-
-### Challenge-Response Inbound Probing
-
-Extend inbound probing so that reply 0 includes a random nonce that must be signed into probe 1. This creates a cryptographic dependency on reply 0, replacing the TEE gating requirement with a key-proximity requirement: whoever signs probe 1 must have the private key and be in the timing loop.
-
-Without a TEE, the target operator can copy the key to a proxy near the probe. This is a meaningful defense when the signing key is high-value — specifically, when the `target_pk` is the user's **onchain wallet address**. Putting a wallet private key on a proxy machine means the wallet *is* at that location. A "proxy" holding the wallet key isn't spoofing — it's the wallet.
-
-**Use case:** A customer needs to verify that a blockchain user is in a particular jurisdiction for compliance. The customer registers the user's wallet pubkey as the inbound target. The user's machine signs probe 1 with the wallet key after receiving the challenge nonce. This proves the wallet's private key was present in the expected geography — regardless of VPNs (latency-based, not IP-based) and without requiring a TEE.
 
 ### Store Measurements to DZ Ledger
 

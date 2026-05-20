@@ -186,7 +186,7 @@ Creates a new exchange with the specified parameters. Returns the transaction si
 - `name: String` — Exchange name
 - `lat: f64` — Latitude
 - `lng: f64` — Longitude
-- `bgp_community: Option<u32>` — Optional BGP community (auto-assigned by activator)
+- `bgp_community: Option<u32>` — Optional BGP community (auto-assigned at create time)
 
 ### UpdateExchangeCommand
 Updates the parameters of an existing exchange. Returns the transaction signature.

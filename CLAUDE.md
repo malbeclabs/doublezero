@@ -11,7 +11,6 @@ DoubleZero is a decentralized high-performance network built on Solana. Contribu
 | Component        | Language                                            | Purpose                                                                                      |
 | ---------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `smartcontract/` | Rust                                                | Solana programs (serviceability, telemetry, revenue distribution) + CLI                      |
-| `activator/`     | Rust                                                | Offchain validator — approves/rejects entities, allocates resources (IPs, tunnel IDs)        |
 | `client/`        | Rust (`doublezero` CLI) + Go (`doublezerod` daemon) | End-user connectivity — GRE tunnels, BGP sessions                                            |
 | `controlplane/`  | Go                                                  | Controller pushes configs to devices; agent runs on Arista EOS; funder, monitor, admin tools |
 | `telemetry/`     | Go                                                  | Flow ingestion (NetFlow/IPFIX), gNMI writer, global monitor → ClickHouse/InfluxDB            |
@@ -19,7 +18,7 @@ DoubleZero is a decentralized high-performance network built on Solana. Contribu
 | `sdk/`           | Go, Python, TypeScript                              | Read-only account deserialization for serviceability, telemetry, revenue distribution        |
 | `e2e/`           | Go                                                  | End-to-end tests using testcontainers-go with Arista cEOS devices                            |
 
-**Onchain state lifecycle:** Pending → Activated/Rejected → Suspended/Deleting. The activator drives all transitions.
+**Onchain state lifecycle:** Created in `Activated`; admin/operator instructions drive subsequent transitions.
 
 **Serialization:** Borsh for onchain accounts, Protobuf for gRPC (controller↔agent), JSON for APIs.
 

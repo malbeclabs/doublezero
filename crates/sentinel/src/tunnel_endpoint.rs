@@ -29,8 +29,8 @@ impl Default for DeviceEndpoints {
 /// `exclude_ips` is skipped — these are the endpoints already used by other
 /// user accounts at the same `client_ip`.
 ///
-/// Returns `Ipv4Addr::UNSPECIFIED` when no endpoint is available; the activator
-/// will then reject the create.
+/// Returns `Ipv4Addr::UNSPECIFIED` when no endpoint is available; the caller
+/// is expected to abort the create.
 pub fn select_tunnel_endpoint(
     public_ip: Ipv4Addr,
     user_tunnel_endpoints: &[Ipv4Addr],
@@ -53,9 +53,9 @@ pub fn select_tunnel_endpoint(
 /// at the same `client_ip`.
 ///
 /// A user with `tunnel_endpoint == UNSPECIFIED` is a legacy account from
-/// before the field was populated onchain; the activator implicitly routes
-/// its tunnel through the device's `public_ip`, so resolve it from
-/// `device_endpoints` rather than dropping the user.
+/// before the field was populated onchain; its tunnel is implicitly routed
+/// through the device's `public_ip`, so resolve it from `device_endpoints`
+/// rather than dropping the user.
 pub fn in_use_tunnel_endpoints<'a, I>(
     users: I,
     client_ip: Ipv4Addr,
@@ -193,8 +193,8 @@ mod tests {
     #[test]
     fn in_use_tunnel_endpoints_resolves_legacy_unspecified_via_device_public_ip() {
         // A legacy user predating the tunnel_endpoint field stores UNSPECIFIED
-        // onchain; the activator implicitly routes its tunnel through the
-        // device's public_ip, so we must add that to the in-use set.
+        // onchain; its tunnel is implicitly routed through the device's
+        // public_ip, so we must add that to the in-use set.
         let ip_a = [10, 0, 0, 1];
         let device_a = Pubkey::new_unique();
         let public_ip_a = Ipv4Addr::new(1, 1, 1, 1);

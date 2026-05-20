@@ -5,9 +5,7 @@ else
 	COMMIT_ID=$(git rev-parse HEAD)
 fi
 for tag in $(git tag --contains $COMMIT_ID) ; do
-	if [[ $tag == activator/* ]] ; then
-		ACTIVATOR_VERSION=$(echo $tag | cut -f2 -d/)
-	elif [[ $tag == controller/* ]] ; then
+	if [[ $tag == controller/* ]] ; then
 		CONTROLLER_VERSION=$(echo $tag | cut -f2 -d/)
 	elif [[ $tag == agent/* ]] ; then
 		AGENT_VERSION=$(echo $tag | cut -f2 -d/)
@@ -18,7 +16,6 @@ for tag in $(git tag --contains $COMMIT_ID) ; do
 	fi
 done
 
-echo ACTIVATOR_VERSION=$ACTIVATOR_VERSION
 echo CONTROLLER_VERSION=$CONTROLLER_VERSION
 echo AGENT_VERSION=$AGENT_VERSION
 echo DEVICE_TELEMETRY_AGENT_VERSION=$DEVICE_TELEMETRY_AGENT_VERSION

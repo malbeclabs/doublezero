@@ -57,7 +57,7 @@ impl DeleteTenantCommand {
                 .execute(client)?;
             }
 
-            // 3. Wait for activator to process close accounts (reference_count reaches 0)
+            // 3. Wait for account closures to be processed (reference_count reaches 0)
             if !tenant_users.is_empty() {
                 let tenant_pubkey = self.tenant_pubkey;
                 let builder = ExponentialBuilder::new()

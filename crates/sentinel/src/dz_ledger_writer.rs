@@ -88,8 +88,8 @@ pub fn build_create_multicast_publisher_instructions(
     //
     // When dz_prefix_count > 0 we append the ResourceExtension accounts so the contract takes
     // the atomic create+allocate+activate path. Without those accounts the user is created
-    // Pending and — with no activator — never reaches Activated, so the next poll cycle would
-    // re-attempt creation and trip AccountAlreadyInitialized.
+    // Pending and never reaches Activated, so the next poll cycle would re-attempt creation
+    // and trip AccountAlreadyInitialized.
     let (user_pda, _) = get_user_pda(program_id, &user.client_ip, SvcUserType::Multicast);
     let mut create_user_accounts = vec![
         AccountMeta::new(user_pda, false),

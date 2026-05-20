@@ -52,7 +52,7 @@ The required image (`ghcr.io/malbeclabs/ceos:4.33.1F`) will be pulled automatica
 
 ### Running end-to-end tests
 
-End-to-end tests exercise the full DoubleZero stack — smartcontracts, controller, activator, client, and device agents — all running in isolated Docker containers.
+End-to-end tests exercise the full DoubleZero stack — smartcontracts, controller, client, and device agents — all running in isolated Docker containers.
 
 ```bash
 # Run a specific test
@@ -85,7 +85,7 @@ make e2e-test
 
 ### Running the local devnet
 
-This starts a full DoubleZero devnet in Docker, including the controller, activator, and DZ ledger with deployed Serviceability and Telemetry programs.
+This starts a full DoubleZero devnet in Docker, including the controller and DZ ledger with deployed Serviceability and Telemetry programs.
 
 The example below walks through creating a small two-device network with two clients and establishing connectivity between them:
 

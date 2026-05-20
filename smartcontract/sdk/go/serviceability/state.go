@@ -33,7 +33,7 @@ const (
 type LocationStatus uint8
 
 const (
-	LocationStatusPendingDeprecated LocationStatus = 0 // activator-only; unreachable for new accounts
+	LocationStatusPendingDeprecated LocationStatus = 0 // deprecated; unreachable for new accounts
 	LocationStatusActivated         LocationStatus = 1
 	LocationStatusSuspended         LocationStatus = 2
 )
@@ -105,7 +105,7 @@ type Location struct {
 type ExchangeStatus uint8
 
 const (
-	ExchangeStatusPendingDeprecated ExchangeStatus = 0 // activator-only; unreachable for new accounts
+	ExchangeStatusPendingDeprecated ExchangeStatus = 0 // deprecated; unreachable for new accounts
 	ExchangeStatusActivated         ExchangeStatus = 1
 	ExchangeStatusSuspended         ExchangeStatus = 2
 )
@@ -159,10 +159,10 @@ func (d DeviceDeviceType) String() string {
 type DeviceStatus uint8
 
 const (
-	DeviceStatusPendingDeprecated  DeviceStatus = 0 // activator-only; unreachable for new accounts
+	DeviceStatusPendingDeprecated  DeviceStatus = 0 // deprecated; unreachable for new accounts
 	DeviceStatusActivated          DeviceStatus = 1
 	DeviceStatusDeleting           DeviceStatus = 3
-	DeviceStatusRejectedDeprecated DeviceStatus = 4 // activator-only; unreachable for new accounts
+	DeviceStatusRejectedDeprecated DeviceStatus = 4 // deprecated; unreachable for new accounts
 	DeviceStatusDrained            DeviceStatus = 5
 	DeviceStatusDeviceProvisioning DeviceStatus = 6
 	DeviceStatusLinkProvisioning   DeviceStatus = 7
@@ -553,10 +553,10 @@ func (l LinkLinkType) MarshalJSON() ([]byte, error) {
 type LinkStatus uint8
 
 const (
-	LinkStatusPendingDeprecated  LinkStatus = 0 // activator-only; unreachable for new accounts
+	LinkStatusPendingDeprecated  LinkStatus = 0 // deprecated; unreachable for new accounts
 	LinkStatusActivated          LinkStatus = 1
 	LinkStatusDeleting           LinkStatus = 3
-	LinkStatusRejectedDeprecated LinkStatus = 4 // activator-only; unreachable for new accounts
+	LinkStatusRejectedDeprecated LinkStatus = 4 // deprecated; unreachable for new accounts
 	LinkStatusRequested          LinkStatus = 5
 	LinkStatusHardDrained        LinkStatus = 6
 	LinkStatusSoftDrained        LinkStatus = 7
@@ -915,14 +915,14 @@ func (c CyoaType) MarshalJSON() ([]byte, error) {
 type UserStatus uint8
 
 const (
-	UserStatusPendingDeprecated    UserStatus = 0 // activator-only; unreachable for new accounts
+	UserStatusPendingDeprecated    UserStatus = 0 // deprecated; unreachable for new accounts
 	UserStatusActivated            UserStatus = 1
 	UserStatusSuspendedDeprecated  UserStatus = 2
 	UserStatusDeleted              UserStatus = 3
-	UserStatusRejectedDeprecated   UserStatus = 4 // activator-only; unreachable for new accounts
-	UserStatusPendingBanDeprecated UserStatus = 5 // activator-only
+	UserStatusRejectedDeprecated   UserStatus = 4 // deprecated; unreachable for new accounts
+	UserStatusPendingBanDeprecated UserStatus = 5 // deprecated
 	UserStatusBanned               UserStatus = 6
-	UserStatusUpdatingDeprecated   UserStatus = 7 // activator-only intermediate state
+	UserStatusUpdatingDeprecated   UserStatus = 7 // deprecated intermediate state
 	UserStatusOutOfCredits         UserStatus = 8
 )
 
@@ -1037,11 +1037,11 @@ func (u User) MarshalJSON() ([]byte, error) {
 type MulticastGroupStatus uint8
 
 const (
-	MulticastGroupStatusPendingDeprecated  MulticastGroupStatus = 0 // activator-only; unreachable for new accounts
+	MulticastGroupStatusPendingDeprecated  MulticastGroupStatus = 0 // deprecated; unreachable for new accounts
 	MulticastGroupStatusActivated          MulticastGroupStatus = 1
 	MulticastGroupStatusSuspended          MulticastGroupStatus = 2
 	MulticastGroupStatusDeleting           MulticastGroupStatus = 3
-	MulticastGroupStatusRejectedDeprecated MulticastGroupStatus = 4 // activator-only; unreachable for new accounts
+	MulticastGroupStatusRejectedDeprecated MulticastGroupStatus = 4 // deprecated; unreachable for new accounts
 )
 
 func (m MulticastGroupStatus) String() string {

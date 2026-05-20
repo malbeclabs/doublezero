@@ -26,7 +26,7 @@ The CHANGELOG uses this format — entries are grouped by component with sub-bul
   - Description of change
 ```
 
-Common component names used in this project: CLI, Client, Onchain programs, Smartcontract, SDK, Telemetry, Activator, Device controller, Device agents, E2E tests, CI, Monitor, Funder, Tools, RFCs.
+Common component names used in this project: CLI, Client, Onchain programs, Smartcontract, SDK, Telemetry, Device controller, Device agents, E2E tests, CI, Monitor, Funder, Tools, RFCs.
 
 Guidelines:
 - Add entries under the existing `## Unreleased` / `### Changes` section, do not create a new section

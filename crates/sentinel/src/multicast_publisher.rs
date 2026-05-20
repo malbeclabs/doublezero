@@ -1252,7 +1252,7 @@ mod tests {
         // Device has one UTE; the IBRL user already occupies it AND the
         // device's public_ip is also excluded (via a second user with matching
         // client_ip). No endpoint left — sentinel should skip rather than
-        // send UNSPECIFIED for a guaranteed activator rejection.
+        // send UNSPECIFIED for a guaranteed rejection.
         let group = Pubkey::new_unique();
         let ip = [10, 0, 0, 1];
         let device = Pubkey::new_unique();
@@ -1300,9 +1300,9 @@ mod tests {
     #[tokio::test]
     async fn legacy_unspecified_tunnel_endpoint_excludes_device_public_ip() {
         // An IBRL user predating the tunnel_endpoint field stores UNSPECIFIED
-        // onchain; the activator implicitly put its tunnel on the device's
-        // public_ip. The multicast publisher must therefore skip the public_ip
-        // and land on a UTE.
+        // onchain; its tunnel was implicitly placed on the device's public_ip.
+        // The multicast publisher must therefore skip the public_ip and land
+        // on a UTE.
         let group = Pubkey::new_unique();
         let ip = [10, 0, 0, 1];
         let device = Pubkey::new_unique();

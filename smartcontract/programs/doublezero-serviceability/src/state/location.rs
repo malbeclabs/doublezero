@@ -11,7 +11,7 @@ use std::fmt;
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LocationStatus {
-    PendingDeprecated = 0, // activator-only; unreachable for new accounts
+    PendingDeprecated = 0, // deprecated; unreachable for new accounts
     #[default]
     Activated = 1,
     Suspended = 2,

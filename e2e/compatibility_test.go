@@ -34,9 +34,16 @@ import (
 // given environment and you don't want to wait for a min_compatible_version
 // bump onchain.
 
+// Note on v0.14.1: the `client/v0.14.1` git tag was a patch release built from
+// a commit whose workspace Cargo version was still "0.14.0", so the v0.14.1 CLI
+// binary self-reports its embedded version as 0.14.0. Its startup version check
+// compares that embedded version against ProgramConfig.MinCompatVersion, so
+// once the program's min_compat is at 0.14.1 the v0.14.1 binary rejects every
+// command up front. The first release whose internal version actually
+// satisfies a 0.14.1 gate is v0.15.0, so we floor there.
 var globalMinVersions = map[string]string{
-	"mainnet-beta": "0.14.1",
-	"testnet":      "0.14.1",
+	"mainnet-beta": "0.15.0",
+	"testnet":      "0.15.0",
 }
 
 // =============================================================================

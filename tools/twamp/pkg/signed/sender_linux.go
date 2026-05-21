@@ -330,7 +330,13 @@ func (s *LinuxSender) probePairChallenged(ctx context.Context) (ProbePairResult,
 		return ProbePairResult{}, fmt.Errorf("marshal probe 0: %w", err)
 	}
 
-	rtt0, reply0, err := s.sendAndRecv(ctx, buf0[:], probe0, true, busyPollWindow)
+	// Reply 0: verify=false to match probePairUnchallenged, which returns Reply 0
+	// to the caller regardless of signature validity. The caller's .Verify() then
+	// surfaces sig failures as reply0_sig_valid=false in the per-pair log,
+	// distinguishing "bogus reply" from "no reply at all". A spoofed Reply 0 just
+	// produces a bogus nonce — the legitimate reflector will never recognize it,
+	// so Reply 1 either won't arrive or won't be flagged Challenged.
+	rtt0, reply0, err := s.sendAndRecv(ctx, buf0[:], probe0, false, busyPollWindow)
 	if err != nil {
 		return ProbePairResult{}, fmt.Errorf("probe 0: %w", err)
 	}
@@ -343,6 +349,8 @@ func (s *LinuxSender) probePairChallenged(ctx context.Context) (ProbePairResult,
 		return ProbePairResult{}, fmt.Errorf("marshal probe 1: %w", err)
 	}
 
+	// Reply 1: verify=true matches probePairUnchallenged's Reply 1. Bad-sig Reply 1
+	// is silently dropped and the caller sees a timeout — symmetric across paths.
 	rtt1, reply1, err := s.sendAndRecv(ctx, buf1[:], probe1, true, busyPollWindow)
 	if err != nil {
 		return ProbePairResult{}, fmt.Errorf("probe 1: %w", err)

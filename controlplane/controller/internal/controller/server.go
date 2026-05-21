@@ -38,15 +38,12 @@ const (
 
 	bgpCommunityMinValid = 10000
 	bgpCommunityMaxValid = 10999
-
-	// maxUserTunnelSlotsHardCap is the Arista EOS hard cap on user tunnel slots.
-	maxUserTunnelSlotsHardCap = 1024
 )
 
 var (
 	ErrServiceabilityRequired    = errors.New("serviceability program client is required")
 	ErrLoggerRequired            = errors.New("logger is required")
-	ErrInvalidMaxUserTunnelSlots = errors.New("max user tunnel slots out of range")
+	ErrInvalidMaxUserTunnelSlots = errors.New("max user tunnel slots must be positive")
 )
 
 type ServiceabilityProgramClient interface {
@@ -93,8 +90,8 @@ func NewController(options ...Option) (*Controller, error) {
 	for _, o := range options {
 		o(controller)
 	}
-	if controller.maxUserTunnelSlots < 1 || controller.maxUserTunnelSlots > maxUserTunnelSlotsHardCap {
-		return nil, fmt.Errorf("%w: got %d, want 1..%d", ErrInvalidMaxUserTunnelSlots, controller.maxUserTunnelSlots, maxUserTunnelSlotsHardCap)
+	if controller.maxUserTunnelSlots < 1 {
+		return nil, fmt.Errorf("%w: got %d", ErrInvalidMaxUserTunnelSlots, controller.maxUserTunnelSlots)
 	}
 	if controller.listener == nil {
 		lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 443))
@@ -180,11 +177,6 @@ func WithFeaturesConfig(cfg *FeaturesConfig) Option {
 	}
 }
 
-// WithMaxUserTunnelSlots overrides the per-device user-tunnel slot count.
-// Validation happens once in NewController after all options are applied; the
-// value must be in [1, 1024] (Arista EOS hard cap) or NewController returns
-// ErrInvalidMaxUserTunnelSlots. Do not read this field during option
-// application — it is unvalidated until NewController completes.
 func WithMaxUserTunnelSlots(n int) Option {
 	return func(c *Controller) {
 		c.maxUserTunnelSlots = n

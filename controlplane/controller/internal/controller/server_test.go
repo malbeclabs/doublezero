@@ -1824,7 +1824,7 @@ func TestMaxUserTunnelSlotsOption(t *testing.T) {
 			wantSize: config.DefaultMaxUserTunnelSlots,
 		},
 		{
-			name:     "valid_max_eos_hard_cap",
+			name:     "valid_large",
 			opts:     []Option{WithMaxUserTunnelSlots(1024)},
 			wantErr:  nil,
 			wantSize: 1024,
@@ -1837,11 +1837,6 @@ func TestMaxUserTunnelSlotsOption(t *testing.T) {
 		{
 			name:    "invalid_negative",
 			opts:    []Option{WithMaxUserTunnelSlots(-1)},
-			wantErr: ErrInvalidMaxUserTunnelSlots,
-		},
-		{
-			name:    "invalid_above_hard_cap",
-			opts:    []Option{WithMaxUserTunnelSlots(1025)},
 			wantErr: ErrInvalidMaxUserTunnelSlots,
 		},
 	}

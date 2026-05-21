@@ -130,7 +130,7 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.StringVar(&c.tlsKeyFile, "tls-key", "", "path to tls key file")
 	c.fs.BoolVar(&c.enablePprof, "enable-pprof", false, "enable pprof server")
 	c.fs.StringVar(&c.tlsListenPort, "tls-listen-port", "", "listening port for controller grpc server")
-	c.fs.IntVar(&c.maxUserTunnelSlots, "max-user-tunnel-slots", controllerconfig.DefaultMaxUserTunnelSlots, "per-device user tunnel slot count (1-1024)")
+	c.fs.IntVar(&c.maxUserTunnelSlots, "max-user-tunnel-slots", controllerconfig.DefaultMaxUserTunnelSlots, "per-device user tunnel slot count (must be positive)")
 	return c
 }
 

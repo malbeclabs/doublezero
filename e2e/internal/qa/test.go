@@ -87,86 +87,17 @@ func (t *Test) Devices() map[string]*Device {
 	return t.devices
 }
 
-// DeviceUserType identifies which per-type user slot bucket to check against
-// a device's capacity. The onchain device tracks three independent counters —
-// unicast, multicast publisher, multicast subscriber — each with its own max.
-type DeviceUserType int
-
-const (
-	DeviceUserTypeUnicast DeviceUserType = iota
-	DeviceUserTypeMulticastPublisher
-	DeviceUserTypeMulticastSubscriber
-)
-
-func (d DeviceUserType) String() string {
-	switch d {
-	case DeviceUserTypeUnicast:
-		return "unicast"
-	case DeviceUserTypeMulticastPublisher:
-		return "multicast_publisher"
-	case DeviceUserTypeMulticastSubscriber:
-		return "multicast_subscriber"
-	default:
-		return fmt.Sprintf("unknown(%d)", int(d))
-	}
-}
-
-// capacityFor returns the (current, max) counters for the requested user type.
-func (d *Device) capacityFor(userType DeviceUserType) (current, max int) {
-	switch userType {
-	case DeviceUserTypeUnicast:
-		return d.UnicastUsersCount, d.MaxUnicastUsers
-	case DeviceUserTypeMulticastPublisher:
-		return d.MulticastPublishersCount, d.MaxMulticastPublishers
-	case DeviceUserTypeMulticastSubscriber:
-		return d.MulticastSubscribersCount, d.MaxMulticastSubscribers
-	default:
-		return 0, 0
-	}
-}
-
-// ValidDevices returns devices that pass filtering criteria for the given
-// user type. A device is considered valid when it has at least minCapacity
-// free slots in the aggregate users bucket. The type-specific bucket
-// (e.g. unicast) is also checked, but only when its onchain max is non-zero —
-// onchain, a per-type max of 0 means the cap is unenforced (see
-// smartcontract/programs/doublezero-serviceability/src/processors/user/create_core.rs).
-//
-// If skipCapacityCheck is true (e.g., when using a QA identity that bypasses
-// on-chain capacity checks), devices are not filtered by available capacity.
-func (t *Test) ValidDevices(userType DeviceUserType, minCapacity int, skipCapacityCheck bool) []*Device {
+// ValidDevices returns all activated devices except those whose code contains
+// "test" (typically not real hardware). Capacity is not checked here — the QA
+// user pubkey should be on the onchain qa_allowlist so that the smart contract
+// bypasses capacity limits for QA connections.
+func (t *Test) ValidDevices() []*Device {
 	devices := make([]*Device, 0, len(t.devices))
 
 	for _, device := range t.Devices() {
-		// Skip devices with "test" in the code as these are typically not real hardware
 		if strings.Contains(strings.ToLower(device.Code), "test") {
 			t.log.Debug("Skipping test device", "device", device.Code)
 			continue
-		}
-
-		// Skip capacity check if using QA identity (bypasses on-chain max_users check)
-		if !skipCapacityCheck {
-			typeCount, typeMax := device.capacityFor(userType)
-			// Mirror the onchain semantic: the per-type cap is only enforced
-			// when max > 0. A max of 0 means "no per-type cap" and we fall
-			// through to the aggregate check.
-			if typeMax > 0 && typeMax-typeCount < minCapacity {
-				t.log.Debug("Skipping device with insufficient type-specific capacity",
-					"device", device.Code,
-					"userType", userType,
-					"count", typeCount,
-					"max", typeMax,
-				)
-				continue
-			}
-			if device.MaxUsers-device.UsersCount < minCapacity {
-				t.log.Debug("Skipping device with insufficient aggregate capacity",
-					"device", device.Code,
-					"users", device.UsersCount,
-					"maxUsers", device.MaxUsers,
-				)
-				continue
-			}
 		}
 		devices = append(devices, device)
 	}

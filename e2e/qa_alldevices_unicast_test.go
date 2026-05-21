@@ -24,7 +24,6 @@ import (
 var (
 	devicesFlag           = flag.String("devices", "", "comma separated list of devices to run tests against")
 	allocateAddrHosts     = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
-	skipCapacityCheckFlag = flag.Bool("skip-capacity-check", false, "skip device capacity checks (use when running with QA identity that bypasses on-chain max_users)")
 )
 
 func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
@@ -53,11 +52,9 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 2, "At least 2 clients are required for connectivity testing")
 
-	// Filter devices to only include those with sufficient unicast capacity and skip test devices
-	// When using a QA identity (--skip-capacity-check), all devices are included regardless of capacity
-	devices := test.ValidDevices(qa.DeviceUserTypeUnicast, 2, *skipCapacityCheckFlag)
+	devices := test.ValidDevices()
 	if len(devices) == 0 {
-		t.Skip("No valid devices found with sufficient capacity")
+		t.Skip("No valid devices found")
 	}
 
 	// Filter out transit devices - they don't participate in unicast connectivity tests

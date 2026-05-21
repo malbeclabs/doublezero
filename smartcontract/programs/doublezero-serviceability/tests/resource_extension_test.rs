@@ -18,13 +18,9 @@ use doublezero_serviceability::{
     processors::{
         contributor::create::ContributorCreateArgs,
         device::{
-            closeaccount::DeviceCloseAccountArgs,
             create::DeviceCreateArgs,
             delete::DeviceDeleteArgs,
-            interface::{
-                activate::DeviceInterfaceActivateArgs, create::DeviceInterfaceCreateArgs,
-                delete::DeviceInterfaceDeleteArgs, remove::DeviceInterfaceRemoveArgs,
-            },
+            interface::{create::DeviceInterfaceCreateArgs, delete::DeviceInterfaceDeleteArgs},
             update::DeviceUpdateArgs,
         },
         exchange::create::ExchangeCreateArgs,
@@ -1065,7 +1061,7 @@ async fn close_device(
     payer: &solana_sdk::signature::Keypair,
     program_id: Pubkey,
     globalstate_pubkey: Pubkey,
-    globalconfig_pubkey: Pubkey,
+    _globalconfig_pubkey: Pubkey,
     device_pubkey: Pubkey,
     owner_pubkey: Pubkey,
     location_pubkey: Pubkey,
@@ -1093,41 +1089,26 @@ async fn close_device(
     )
     .await;
 
+    // Atomic DeleteDevice: closes device + resource accounts in one call.
+    let resource_count = (resource_pdas.len() / 2) as u8;
     execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs::default()),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {
-            resource_count: resource_pdas.len() / 2,
-        }),
+        DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs { resource_count }),
         [
             vec![
                 AccountMeta::new(device_pubkey, false),
-                AccountMeta::new(owner_pubkey, false),
                 AccountMeta::new(contributor_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
                 AccountMeta::new(location_pubkey, false),
                 AccountMeta::new(exchange_pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-                AccountMeta::new(globalconfig_pubkey, false),
             ],
             resource_pdas
                 .iter()
                 .map(|pk| AccountMeta::new(*pk, false))
                 .collect::<Vec<_>>(),
+            vec![AccountMeta::new(owner_pubkey, false)],
         ]
         .concat(),
         payer,
@@ -1403,45 +1384,6 @@ async fn create_loopback_interface(
     .await;
 }
 
-/// Helper to activate a loopback interface with on-chain allocation
-#[allow(clippy::too_many_arguments)]
-#[allow(dead_code)]
-async fn activate_loopback_interface_onchain(
-    banks_client: &mut BanksClient,
-    payer: &solana_sdk::signature::Keypair,
-    program_id: Pubkey,
-    globalstate_pubkey: Pubkey,
-    device_pubkey: Pubkey,
-    name: &str,
-) {
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (segment_routing_ids_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
-            name: name.to_string(),
-            ip_net: Default::default(), // Ignored for on-chain allocation
-            node_segment_idx: 0,        // Ignored for on-chain allocation
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-            // Providing these two accounts enables on-chain allocation
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
-        ],
-        payer,
-    )
-    .await;
-}
-
 /// Helper to delete (mark for deletion) a device interface
 #[allow(clippy::too_many_arguments)]
 #[allow(dead_code)]
@@ -1476,43 +1418,6 @@ async fn delete_device_interface(
                 get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds).0,
                 false,
             ),
-        ],
-        payer,
-    )
-    .await;
-}
-
-/// Helper to remove a device interface with on-chain deallocation
-#[allow(clippy::too_many_arguments)]
-#[allow(dead_code)]
-async fn remove_loopback_interface_onchain(
-    banks_client: &mut BanksClient,
-    payer: &solana_sdk::signature::Keypair,
-    program_id: Pubkey,
-    globalstate_pubkey: Pubkey,
-    device_pubkey: Pubkey,
-    name: &str,
-) {
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (segment_routing_ids_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::RemoveDeviceInterface(DeviceInterfaceRemoveArgs {
-            name: name.to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-            // Providing these two accounts enables on-chain deallocation
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
         ],
         payer,
     )

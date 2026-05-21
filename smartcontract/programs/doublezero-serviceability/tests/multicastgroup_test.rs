@@ -2,8 +2,8 @@ use doublezero_serviceability::{
     instructions::*,
     pda::*,
     processors::multicastgroup::{
-        closeaccount::MulticastGroupDeactivateArgs, create::*, delete::*,
-        reactivate::MulticastGroupReactivateArgs, suspend::MulticastGroupSuspendArgs, update::*,
+        create::*, delete::*, reactivate::MulticastGroupReactivateArgs,
+        suspend::MulticastGroupSuspendArgs, update::*,
     },
     resource::ResourceType,
     state::multicastgroup::*,
@@ -211,81 +211,6 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
     println!("✅ Correct index accepted and stored properly");
 
     println!("🟢  End test_multicastgroup_create_with_wrong_index_fails");
-}
-
-/// DeactivateMulticastGroup (closeaccount) requires status == Deleting.
-/// Calling it directly on an Activated mgroup must fail with InvalidStatus.
-#[tokio::test]
-async fn test_multicastgroup_deactivate_fails_when_not_deleting() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
-
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-
-    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
-
-    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
-
-    // Atomic create+activate via onchain allocation.
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
-            code: "la".to_string(),
-            max_bandwidth: 1000,
-            owner: Pubkey::new_unique(),
-            use_onchain_allocation: true,
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(
-                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
-                false,
-            ),
-        ],
-        &payer,
-    )
-    .await;
-
-    let mgroup = get_account_data(&mut banks_client, multicastgroup_pubkey)
-        .await
-        .unwrap()
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(mgroup.status, MulticastGroupStatus::Activated);
-
-    // DeactivateMulticastGroup on an Activated (non-Deleting) mgroup must fail.
-    let result = try_execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
-            use_onchain_deallocation: true,
-        }),
-        vec![
-            AccountMeta::new(multicastgroup_pubkey, false),
-            AccountMeta::new(mgroup.owner, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(
-                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
-                false,
-            ),
-        ],
-        &payer,
-    )
-    .await;
-
-    assert!(
-        result.is_err(),
-        "deactivate should reject non-Deleting status"
-    );
-    let err = format!("{:?}", result.unwrap_err());
-    assert!(
-        err.contains("Custom(7)"),
-        "Expected InvalidStatus (Custom(7)), got: {err}"
-    );
 }
 
 /// ReactivateMulticastGroup requires status == Suspended. From Activated

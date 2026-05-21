@@ -7,24 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- relax ownership constraint so that a user can manage their connection but oracle is ultimately the authority
-- align `shreds validator-client-rewards init-holding` with on-chain `shred-subscription/v0.6.6` rename: `InitializeClaimHoldingAccount` → `InitializeClaimHolding` (discriminator string `dz::ix::initialize_claim_holding_account` → `dz::ix::initialize_claim_holding`). Required to unbreak `init-holding` after the on-chain redeploy on 2026-05-15
-- `shreds validator-client-rewards`: relocate existing `set-proportion` behavior into a subcommand group (hidden); preparation for `claim`, `init-holding`, `show`
-- `shreds validator-client-rewards init-holding`: new permissionless command to initialize claim holding accounts for one or more `(subscription_epoch, mint)` pairs under a `ValidatorClientRewards` PDA
-- `shreds validator-client-rewards claim`: new manager-signed command to drain claim holdings into a destination token account. Defaults destination to ATA(manager, mint); override with `--destination-token-account`. Reads `program_config.shred_oracle_key` to set the on-chain rent beneficiary
-- `shreds validator-client-rewards show`: new read-only command. With just `--client-id`, prints the VCR PDA, manager, description, and claim holding count. With `--rewards-token-mint --subscription-epoch <e>...`, also lists per-epoch holding balances (or `(not initialized)`)
-- Add `shreds publisher-rewards` subcommands for validators to configure their on-chain `ValidatorPublisherRewards` (rewards token mint + destination owner):
+## [0.5.5](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.5)
+
+- uptick crate to v0.5.5 (#372)
+- relax ownership constraint so that a user can manage their connection but oracle is ultimately the authority (#367)
+- align `shreds validator-client-rewards init-holding` with on-chain `shred-subscription/v0.6.6` rename: `InitializeClaimHoldingAccount` → `InitializeClaimHolding` (discriminator string `dz::ix::initialize_claim_holding_account` → `dz::ix::initialize_claim_holding`). Required to unbreak `init-holding` after the on-chain redeploy on 2026-05-15 (#365)
+- `shreds validator-client-rewards`: relocate existing `set-proportion` behavior into a subcommand group (hidden); preparation for `claim`, `init-holding`, `show` (#365)
+- `shreds validator-client-rewards init-holding`: new permissionless command to initialize claim holding accounts for one or more `(subscription_epoch, mint)` pairs under a `ValidatorClientRewards` PDA (#365)
+- `shreds validator-client-rewards claim`: new manager-signed command to drain claim holdings into a destination token account. Defaults destination to ATA(manager, mint); override with `--destination-token-account`. Reads `program_config.shred_oracle_key` to set the on-chain rent beneficiary (#365)
+- `shreds validator-client-rewards show`: new read-only command. With just `--client-id`, prints the VCR PDA, manager, description, and claim holding count. With `--rewards-token-mint --subscription-epoch <e>...`, also lists per-epoch holding balances (or `(not initialized)`) (#365)
+- Add `shreds publisher-rewards` subcommands for validators to configure their on-chain `ValidatorPublisherRewards` (rewards token mint + destination owner) (#360):
   - `init` — permissionless creation of the VPR PDA seeded by validator node identity.
   - `prepare-offchain-message` — print the hex blob to be signed via `solana sign-offchain-message` (with `--json` for scripting and `--valid-for <DURATION>` / `--deadline-slot <ABS>` for the expiry).
   - `configure` — submit the on-chain configure transaction. Two auth paths: direct (`--validator-identity-keypair` signs the tx) or offchain (`--signature <BASE58> --deadline-slot <ABS>` carries an ed25519 sig). Auto-inits the VPR PDA if missing. Pre-flights that the rewards token mint is a registered, enabled `ShredRewardToken`. Idempotently creates the rewards ATA (`--rewards-token-owner` over `--rewards-token-mint`) in the same transaction so payouts are immediately deliverable.
   - `show` — print the current VPR fields and the resolved ATA (`get_associated_token_address(owner, mint)`); reports ATA existence as a status line rather than erroring.
-- `shreds payments`: extend instruction-data match to cover the new `InitializeValidatorPublisherRewards` and `ConfigureValidatorPublisherRewards` SDK variants (no-op for escrow event accounting)
-- `shreds pay`: integrate prorated instant seat allocation — when the onchain `is_prorated_service_enabled` flag is set, skip the client-side min-price check and suppress the late-epoch warning; legacy behavior preserved when the flag is unset
-- `shreds withdraw`: use `RequestProratedInstantSeatWithdrawal` to receive a prorated USDC refund when the onchain flag is set and the seat has a recorded `last_usdc_price_dollars`; falls back to the legacy instruction when the flag is unset or the seat pre-dates the prorated rollout
-- `shreds withdraw`: bail with a clear error when an instant seat allocation request is in flight for the seat, rather than submitting a transaction that would be rejected onchain
-- `shreds validator-client-rewards show`: when `--rewards-token-mint` is supplied without `--subscription-epoch`, print the manager's ATA address and balance (previously silently no-op)
-- `shreds validator-client-rewards claim`: print per-holding drained breakdown and re-fetch the VCR to report the remaining `claim_holding_count` after the claim transaction lands
-- `shreds validator-client-rewards claim`: split "wrong owner" and "wrong mint" pre-flight checks into distinct error messages so a non-SPL holding is no longer mislabeled as a wrong-mint holding
+- `shreds payments`: extend instruction-data match to cover the new `InitializeValidatorPublisherRewards` and `ConfigureValidatorPublisherRewards` SDK variants (no-op for escrow event accounting) (#360)
+- `shreds pay`: integrate prorated instant seat allocation — when the onchain `is_prorated_service_enabled` flag is set, suppress the late-epoch warning; legacy behavior preserved when the flag is unset (#350)
+- `shreds pay`: run the client-side min-amount preflight uniformly (previously bypassed in prorated mode); matches the onchain `FundPaymentEscrowUsdc` minimum which is enforced regardless of proration (#368)
+- `shreds withdraw`: use `RequestProratedInstantSeatWithdrawal` to receive a prorated USDC refund when the onchain flag is set and the seat has a recorded `last_usdc_price_dollars`; falls back to the legacy instruction when the flag is unset or the seat pre-dates the prorated rollout (#351)
+- `shreds withdraw`: bail with a clear error when an instant seat allocation request is in flight for the seat, rather than submitting a transaction that would be rejected onchain (#357)
+- `shreds validator-client-rewards show`: when `--rewards-token-mint` is supplied without `--subscription-epoch`, print the manager's ATA address and balance (previously silently no-op) (#365)
+- `shreds validator-client-rewards claim`: print per-holding drained breakdown and re-fetch the VCR to report the remaining `claim_holding_count` after the claim transaction lands (#365)
+- `shreds validator-client-rewards claim`: split "wrong owner" and "wrong mint" pre-flight checks into distinct error messages so a non-SPL holding is no longer mislabeled as a wrong-mint holding (#365)
 
 ## [0.5.3](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.3)
 

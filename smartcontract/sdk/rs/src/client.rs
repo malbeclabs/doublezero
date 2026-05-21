@@ -14,7 +14,10 @@ use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     pubsub_client::PubsubClient,
     rpc_client::RpcClient,
-    rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
+    rpc_config::{
+        RpcAccountInfoConfig, RpcProgramAccountsConfig, RpcSendTransactionConfig,
+        RpcTransactionConfig,
+    },
     rpc_filter::{Memcmp, MemcmpEncodedBytes, RpcFilterType},
 };
 use solana_rpc_client_api::client_error::{Error as ClientError, ErrorKind as ClientErrorKind};
@@ -176,30 +179,78 @@ impl DZClient {
         let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
         transaction.sign(&[&payer], blockhash);
 
-        debug!("Simulating transaction: {transaction:?}");
+        debug!("Sending transaction: {transaction:?}");
 
-        let result = self.client.simulate_transaction(&transaction)?;
-        let program_logs = result.value.logs.unwrap_or_default();
+        let signature = transaction.signatures[0];
+        let send_config = RpcSendTransactionConfig {
+            skip_preflight: true,
+            ..RpcSendTransactionConfig::default()
+        };
 
-        if let Some(ref err) = result.value.err {
-            if quiet {
-                // Return structured errors with logs attached for the caller to handle
-                if let TransactionError::InstructionError(
-                    _index,
-                    InstructionError::Custom(number),
-                ) = err
-                {
-                    return Err(eyre!(SimulationError {
-                        source: DoubleZeroError::from(*number),
-                        program_logs,
-                    }));
-                } else {
+        match self
+            .client
+            .send_and_confirm_transaction_with_spinner_and_config(
+                &transaction,
+                self.client.commitment(),
+                send_config,
+            ) {
+            Ok(sig) => Ok(sig),
+            Err(client_err) => {
+                let tx_err = match &client_err.kind {
+                    ClientErrorKind::TransactionError(e) => Some(e.clone()),
+                    ClientErrorKind::RpcError(
+                        solana_rpc_client_api::request::RpcError::RpcResponseError {
+                            data:
+                                solana_rpc_client_api::request::RpcResponseErrorData::SendTransactionPreflightFailure(
+                                    res,
+                                ),
+                            ..
+                        },
+                    ) => res.err.clone(),
+                    _ => None,
+                };
+
+                let Some(err) = tx_err else {
+                    return Err(eyre!(client_err));
+                };
+
+                // The tx may have landed onchain (skip_preflight=true means failing
+                // txs still land). Fetch logs from the confirmed tx if available.
+                let program_logs = self
+                    .client
+                    .get_transaction_with_config(
+                        &signature,
+                        RpcTransactionConfig {
+                            encoding: Some(UiTransactionEncoding::Base64),
+                            commitment: Some(self.client.commitment()),
+                            max_supported_transaction_version: Some(0),
+                        },
+                    )
+                    .ok()
+                    .and_then(|tx| tx.transaction.meta)
+                    .and_then(|meta| match meta.log_messages {
+                        OptionSerializer::Some(logs) => Some(logs),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+
+                if quiet {
+                    if let TransactionError::InstructionError(
+                        _index,
+                        InstructionError::Custom(number),
+                    ) = err
+                    {
+                        return Err(eyre!(SimulationError {
+                            source: DoubleZeroError::from(number),
+                            program_logs,
+                        }));
+                    }
                     return Err(eyre!(SimulationTransactionError {
-                        source: err.clone(),
+                        source: err,
                         program_logs,
                     }));
                 }
-            } else {
+
                 eprintln!("Program Logs:");
                 for log in &program_logs {
                     eprintln!("{log}");
@@ -210,16 +261,11 @@ impl DZClient {
                     InstructionError::Custom(number),
                 ) = err
                 {
-                    return Err(eyre!(DoubleZeroError::from(*number)));
-                } else {
-                    return Err(eyre!(err.clone()));
+                    return Err(eyre!(DoubleZeroError::from(number)));
                 }
+                Err(eyre!(err))
             }
         }
-
-        self.client
-            .send_and_confirm_transaction(&transaction)
-            .map_err(|e| eyre!(e))
     }
 
     /// Returns true for transient network errors that are worth retrying.

@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - SDK (Rust)
   - Delete the now-dead `{Activate,Reject,CloseAccount}DeviceCommand`, `{Activate,Reject,CloseAccount}LinkCommand`, `{Activate,Reject,Deactivate}MulticastGroupCommand`, and `{Activate,Reject,Remove,Unlink}DeviceInterfaceCommand` wrappers and the corresponding orphaned trait methods on `DoubleZeroProgram` — none are reachable from any live caller ([#3623](https://github.com/malbeclabs/doublezero/issues/3623))
   - Delete the now-dead `ActivateUserCommand`, `RejectUserCommand`, `CloseAccountUserCommand`, and `BanUserCommand` wrappers — none are reachable from any live caller. `RequestBanUserCommand` (operator-driven, atomic) is unaffected ([#3622](https://github.com/malbeclabs/doublezero/issues/3622))
+  - Unconditionally request the protocol maximum compute (1,400,000 CU) and heap frame (256 KiB) on every serviceability transaction sent through `DZClient`. Removes `DoubleZeroClient::execute_transaction_with_compute_unit_limit` and the per-instruction `SET_GLOBAL_CONFIG_COMPUTE_UNIT_LIMIT` / `ASSIGN_TOPOLOGY_NODE_SEGMENTS_COMPUTE_UNIT_LIMIT` constants — serviceability runs on a dedicated private Solana cluster, so raising every transaction to the protocol max is free ([#3742](https://github.com/malbeclabs/doublezero/pull/3742))
 - SDK (Go/TS/Python)
   - Add the `bgp_rtt_ns` field to the `User` deserializer in all three SDKs; the Go executor builder accepts and serializes the new field via a 10-byte instruction payload.
 - Telemetry

@@ -226,7 +226,7 @@ mod tests {
             });
 
         client
-            .expect_execute_transaction_with_compute_unit_limit()
+            .expect_execute_transaction()
             .times(1)
             .in_sequence(&mut seq)
             .with(
@@ -241,9 +241,8 @@ mod tests {
                     AccountMeta::new_readonly(globalstate_pubkey, false),
                     AccountMeta::new(vpnv4_device_pk, false),
                 ]),
-                predicate::eq(1_400_000),
             )
-            .returning(|_, _, _| Ok(Signature::new_unique()));
+            .returning(|_, _| Ok(Signature::new_unique()));
 
         let res = CreateTopologyCommand {
             name: "algo128".to_string(),

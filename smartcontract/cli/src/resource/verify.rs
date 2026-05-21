@@ -365,13 +365,16 @@ impl VerifyResourceCliCommand {
                     }
                 }
 
-                // Step 2: Warn about duplicate usages but don't block
-                // Collect duplicate (resource_type, value) pairs to exclude from fixes
-                let mut duplicate_values: Vec<(ResourceType, IdOrIp)> = Vec::new();
+                // Step 2: Warn about duplicate usages. The duplicate itself must
+                // be resolved manually (by changing one of the conflicting
+                // accounts), but the underlying allocation state is still
+                // corrected below: the shared value stays reserved in the
+                // extension so it cannot be handed out to a third account
+                // before the conflict is resolved.
                 if !fix_duplicate_usages.is_empty() {
                     writeln!(
                         out,
-                        "Warning: skipping duplicate usages (must be resolved manually):"
+                        "Warning: duplicate usages detected (must be resolved manually):"
                     )?;
                     for d in &fix_duplicate_usages {
                         if let ResourceDiscrepancy::DuplicateUsage {
@@ -395,47 +398,16 @@ impl VerifyResourceCliCommand {
                                 accounts.len(),
                                 owners
                             )?;
-                            duplicate_values.push((*resource_type, value.clone()));
                         }
                     }
                     writeln!(out)?;
                 }
 
-                // Step 3: Fix allocate/deallocate discrepancies (excluding duplicates)
-                let fixable_allocated_not_used: Vec<_> = fix_allocated_not_used
-                    .iter()
-                    .filter(|d| {
-                        if let ResourceDiscrepancy::AllocatedButNotUsed {
-                            resource_type,
-                            value,
-                        } = d
-                        {
-                            !duplicate_values
-                                .iter()
-                                .any(|(rt, v)| rt == resource_type && v == value)
-                        } else {
-                            true
-                        }
-                    })
-                    .collect();
-
-                let fixable_used_not_allocated: Vec<_> = fix_used_not_allocated
-                    .iter()
-                    .filter(|d| {
-                        if let ResourceDiscrepancy::UsedButNotAllocated {
-                            resource_type,
-                            value,
-                            ..
-                        } = d
-                        {
-                            !duplicate_values
-                                .iter()
-                                .any(|(rt, v)| rt == resource_type && v == value)
-                        } else {
-                            true
-                        }
-                    })
-                    .collect();
+                // Step 3: Fix allocate/deallocate discrepancies. Values flagged
+                // as DuplicateUsage are not excluded — a shared value still
+                // belongs in the allocated set.
+                let fixable_allocated_not_used: Vec<_> = fix_allocated_not_used.iter().collect();
+                let fixable_used_not_allocated: Vec<_> = fix_used_not_allocated.iter().collect();
 
                 if !fixable_allocated_not_used.is_empty()
                     || !fixable_used_not_allocated.is_empty()

@@ -367,8 +367,9 @@ func (d *Device) Start(ctx context.Context) error {
 	}
 	d.log.Debug("--> Created device onchain", "code", spec.Code, "cyoaNetworkIP", cyoaNetworkIP, "dzPrefix", dzPrefix, "devicePK", devicePK)
 
-	// MaxUserTunnelSlots is now a constant from config package
-	d.log.Debug("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
+	// User tunnel slot count is a per-device default in the controller's config package
+	// and can be overridden at runtime via the controller's --max-user-tunnel-slots flag.
+	d.log.Debug("--> Using DefaultMaxUserTunnelSlots", "maxUsers", controllerconfig.DefaultMaxUserTunnelSlots)
 
 	// Create interfaces onchain.
 	for name, ifaceType := range spec.Interfaces {
@@ -868,8 +869,9 @@ func (d *Device) setState(ctx context.Context, containerID string) error {
 	d.ID = onchainID
 	d.CYOANetworkIP = ip
 
-	// MaxUserTunnelSlots is now a constant from config package
-	d.log.Debug("--> Using MaxUserTunnelSlots constant", "maxUsers", controllerconfig.MaxUserTunnelSlots)
+	// User tunnel slot count is a per-device default in the controller's config package
+	// and can be overridden at runtime via the controller's --max-user-tunnel-slots flag.
+	d.log.Debug("--> Using DefaultMaxUserTunnelSlots", "maxUsers", controllerconfig.DefaultMaxUserTunnelSlots)
 
 	return nil
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
+	controllerconfig "github.com/malbeclabs/doublezero/controlplane/controller/config"
 	"github.com/malbeclabs/doublezero/controlplane/controller/internal/controller"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -129,24 +130,26 @@ func NewControllerCommand() *ControllerCommand {
 	c.fs.StringVar(&c.tlsKeyFile, "tls-key", "", "path to tls key file")
 	c.fs.BoolVar(&c.enablePprof, "enable-pprof", false, "enable pprof server")
 	c.fs.StringVar(&c.tlsListenPort, "tls-listen-port", "", "listening port for controller grpc server")
+	c.fs.IntVar(&c.maxUserTunnelSlots, "max-user-tunnel-slots", controllerconfig.DefaultMaxUserTunnelSlots, "per-device user tunnel slot count (1-1024)")
 	return c
 }
 
 type ControllerCommand struct {
-	fs             *flag.FlagSet
-	description    string
-	listenAddr     string
-	listenPort     string
-	env            string
-	programID      string
-	rpcEndpoint    string
-	deviceLocalASN uint64
-	noHardware     bool
-	showVersion    bool
-	tlsCertFile    string
-	tlsKeyFile     string
-	tlsListenPort  string
-	enablePprof    bool
+	fs                 *flag.FlagSet
+	description        string
+	listenAddr         string
+	listenPort         string
+	env                string
+	programID          string
+	rpcEndpoint        string
+	deviceLocalASN     uint64
+	noHardware         bool
+	showVersion        bool
+	tlsCertFile        string
+	tlsKeyFile         string
+	tlsListenPort      string
+	enablePprof        bool
+	maxUserTunnelSlots int
 }
 
 func (c *ControllerCommand) Fs() *flag.FlagSet {
@@ -226,6 +229,7 @@ func (c *ControllerCommand) Run() error {
 	defer ledgerRPCClient.Close()
 
 	options = append(options, controller.WithDeviceLocalASN(deviceLocalASN))
+	options = append(options, controller.WithMaxUserTunnelSlots(c.maxUserTunnelSlots))
 
 	const defaultFeaturesConfigPath = "/etc/doublezero-controller/features.yaml"
 	if f, err := os.Open(defaultFeaturesConfigPath); err == nil {

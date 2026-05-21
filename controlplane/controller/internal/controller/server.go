@@ -18,6 +18,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/malbeclabs/doublezero/config"
+	controllerconfig "github.com/malbeclabs/doublezero/controlplane/controller/config"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -37,11 +38,15 @@ const (
 
 	bgpCommunityMinValid = 10000
 	bgpCommunityMaxValid = 10999
+
+	// maxUserTunnelSlotsHardCap is the Arista EOS hard cap on user tunnel slots.
+	maxUserTunnelSlotsHardCap = 1024
 )
 
 var (
-	ErrServiceabilityRequired = errors.New("serviceability program client is required")
-	ErrLoggerRequired         = errors.New("logger is required")
+	ErrServiceabilityRequired    = errors.New("serviceability program client is required")
+	ErrLoggerRequired            = errors.New("logger is required")
+	ErrInvalidMaxUserTunnelSlots = fmt.Errorf("max user tunnel slots must be between 1 and %d", maxUserTunnelSlotsHardCap)
 )
 
 type ServiceabilityProgramClient interface {
@@ -63,28 +68,33 @@ type stateCache struct {
 type Controller struct {
 	pb.UnimplementedControllerServer
 
-	log            *slog.Logger
-	cache          stateCache
-	mu             sync.RWMutex
-	serviceability ServiceabilityProgramClient
-	listener       net.Listener
-	noHardware     bool
-	updateDone     chan struct{}
-	tlsConfig      *tls.Config
-	environment    string
-	deviceLocalASN uint32
-	clickhouse     *ClickhouseWriter
-	featuresConfig *FeaturesConfig
+	log                *slog.Logger
+	cache              stateCache
+	mu                 sync.RWMutex
+	serviceability     ServiceabilityProgramClient
+	listener           net.Listener
+	noHardware         bool
+	updateDone         chan struct{}
+	tlsConfig          *tls.Config
+	environment        string
+	deviceLocalASN     uint32
+	clickhouse         *ClickhouseWriter
+	featuresConfig     *FeaturesConfig
+	maxUserTunnelSlots int
 }
 
 type Option func(*Controller)
 
 func NewController(options ...Option) (*Controller, error) {
 	controller := &Controller{
-		cache: stateCache{},
+		cache:              stateCache{},
+		maxUserTunnelSlots: controllerconfig.DefaultMaxUserTunnelSlots,
 	}
 	for _, o := range options {
 		o(controller)
+	}
+	if controller.maxUserTunnelSlots < 1 || controller.maxUserTunnelSlots > maxUserTunnelSlotsHardCap {
+		return nil, ErrInvalidMaxUserTunnelSlots
 	}
 	if controller.listener == nil {
 		lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 443))
@@ -167,6 +177,15 @@ func WithClickhouse(cw *ClickhouseWriter) Option {
 func WithFeaturesConfig(cfg *FeaturesConfig) Option {
 	return func(c *Controller) {
 		c.featuresConfig = cfg
+	}
+}
+
+// WithMaxUserTunnelSlots overrides the per-device user-tunnel slot count.
+// NewController validates the value is between 1 and the Arista EOS hard cap
+// of 1024, and returns ErrInvalidMaxUserTunnelSlots otherwise.
+func WithMaxUserTunnelSlots(n int) Option {
+	return func(c *Controller) {
+		c.maxUserTunnelSlots = n
 	}
 }
 
@@ -315,7 +334,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		}
 
 		devicePubKey := base58.Encode(device.PubKey[:])
-		d := NewDevice(ip, devicePubKey)
+		d := NewDevice(ip, devicePubKey, c.maxUserTunnelSlots)
 
 		d.MgmtVrf = device.MgmtVrf
 		d.Code = device.Code

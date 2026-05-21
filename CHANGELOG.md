@@ -73,6 +73,8 @@ All notable changes to this project will be documented in this file.
   - Switch geolocation invocations to `doublezero geolocation ...` and `doublezero init-geolocation-config`
 - Agent: log after Arista eapi commit
 - Agent: log received config size in bytes and expose `doublezero_agent_config_size_in_lines` and `doublezero_agent_config_size_in_bytes` Prometheus gauges ([#3741](https://github.com/malbeclabs/doublezero/issues/3741))
+- Controller
+  - Add `--max-user-tunnel-slots` flag to override the per-device user-tunnel slot count at runtime (default `128`, validated `1 <= n <= 1024`). The Arista EOS hard cap is `1024`; the previous `MaxUserTunnelSlots` package constant is renamed `DefaultMaxUserTunnelSlots` and only supplies the default. Enables the GRE Tunnel Capacity Study stress controller without changing production defaults ([#3745](https://github.com/malbeclabs/doublezero/issues/3745))
 
 ## [v0.23.0](https://github.com/malbeclabs/doublezero/compare/client/v0.22.0...client/v0.23.0) - 2026-05-15
 

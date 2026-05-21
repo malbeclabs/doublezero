@@ -207,10 +207,10 @@ type Device struct {
 	LocationCode    string
 }
 
-func NewDevice(ip net.IP, publicKey string) *Device {
-	tunnels := []*Tunnel{}
+func NewDevice(ip net.IP, publicKey string, tunnelSlots int) *Device {
+	tunnels := make([]*Tunnel, 0, tunnelSlots)
 	devicePathologies := []string{}
-	for i := 0; i < config.MaxUserTunnelSlots; i++ {
+	for i := 0; i < tunnelSlots; i++ {
 		id := config.StartUserTunnelNum + i
 		tunnel := &Tunnel{
 			Id:        id,
@@ -222,7 +222,7 @@ func NewDevice(ip net.IP, publicKey string) *Device {
 		PublicIP:          ip,
 		PubKey:            publicKey,
 		Tunnels:           tunnels,
-		TunnelSlots:       config.MaxUserTunnelSlots,
+		TunnelSlots:       tunnelSlots,
 		DevicePathologies: devicePathologies,
 	}
 }

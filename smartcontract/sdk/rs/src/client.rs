@@ -53,6 +53,13 @@ use crate::{
     AccountData,
 };
 
+// Serviceability runs on a dedicated private Solana cluster, so every
+// transaction requests the protocol-max compute and heap budget. Values mirror
+// `solana-compute-budget`'s `MAX_COMPUTE_UNIT_LIMIT` and `MAX_HEAP_FRAME_BYTES`,
+// which are not re-exported through `solana-sdk`.
+const MAX_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
+const MAX_HEAP_FRAME_BYTES: u32 = 256 * 1024;
+
 pub struct DZClient {
     rpc_url: String,
     client: RpcClient,
@@ -138,7 +145,6 @@ impl DZClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
         quiet: bool,
-        compute_unit_limit: Option<u32>,
     ) -> eyre::Result<Signature> {
         let payer = self
             .payer
@@ -159,13 +165,11 @@ impl DZClient {
             .concat(),
         );
 
-        let instructions: Vec<Instruction> = match compute_unit_limit {
-            Some(limit) => vec![
-                ComputeBudgetInstruction::set_compute_unit_limit(limit),
-                main_ix,
-            ],
-            None => vec![main_ix],
-        };
+        let instructions: Vec<Instruction> = vec![
+            ComputeBudgetInstruction::set_compute_unit_limit(MAX_COMPUTE_UNIT_LIMIT),
+            ComputeBudgetInstruction::request_heap_frame(MAX_HEAP_FRAME_BYTES),
+            main_ix,
+        ];
 
         let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
 
@@ -481,7 +485,7 @@ impl DoubleZeroClient for DZClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature> {
-        self.execute_transaction_inner(instruction, accounts, false, None)
+        self.execute_transaction_inner(instruction, accounts, false)
     }
 
     fn execute_transaction_quiet(
@@ -489,16 +493,7 @@ impl DoubleZeroClient for DZClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature> {
-        self.execute_transaction_inner(instruction, accounts, true, None)
-    }
-
-    fn execute_transaction_with_compute_unit_limit(
-        &self,
-        instruction: DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-        compute_unit_limit: u32,
-    ) -> eyre::Result<Signature> {
-        self.execute_transaction_inner(instruction, accounts, false, Some(compute_unit_limit))
+        self.execute_transaction_inner(instruction, accounts, true)
     }
 
     fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>> {

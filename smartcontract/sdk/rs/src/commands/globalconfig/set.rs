@@ -9,8 +9,6 @@ use doublezero_serviceability::{
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
-pub const SET_GLOBAL_CONFIG_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetGlobalConfigCommand {
     pub local_asn: Option<u32>,
@@ -51,7 +49,7 @@ impl SetGlobalConfigCommand {
         let (admin_group_bits_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::AdminGroupBits);
 
-        client.execute_transaction_with_compute_unit_limit(
+        client.execute_transaction(
             DoubleZeroInstruction::SetGlobalConfig(set_config_args),
             vec![
                 AccountMeta::new(pda_pubkey, false),
@@ -65,7 +63,6 @@ impl SetGlobalConfigCommand {
                 AccountMeta::new(vrf_ids_pda, false),
                 AccountMeta::new(admin_group_bits_pda, false),
             ],
-            SET_GLOBAL_CONFIG_COMPUTE_UNIT_LIMIT,
         )
     }
 
@@ -126,14 +123,14 @@ impl SetGlobalConfigCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::{SetGlobalConfigCommand, SET_GLOBAL_CONFIG_COMPUTE_UNIT_LIMIT};
+    use super::SetGlobalConfigCommand;
     use crate::{tests::utils::create_test_client, DoubleZeroClient};
     use doublezero_serviceability::pda::get_globalconfig_pda;
     use mockall::predicate;
     use solana_sdk::signature::Signature;
 
     #[test]
-    fn test_commands_setglobalconfig_uses_compute_unit_limit() {
+    fn test_commands_setglobalconfig_executes() {
         let mut client = create_test_client();
 
         // GetGlobalConfigCommand fetches the globalconfig PDA; return an error so
@@ -145,10 +142,9 @@ mod tests {
             .returning(|_| Err(eyre::eyre!("not initialized")));
 
         client
-            .expect_execute_transaction_with_compute_unit_limit()
-            .withf(|_, _, limit| *limit == SET_GLOBAL_CONFIG_COMPUTE_UNIT_LIMIT)
+            .expect_execute_transaction()
             .times(1)
-            .returning(|_, _, _| Ok(Signature::new_unique()));
+            .returning(|_, _| Ok(Signature::new_unique()));
 
         let res = SetGlobalConfigCommand {
             local_asn: Some(65000),

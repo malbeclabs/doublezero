@@ -12,8 +12,6 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 /// appended by the client) we stay well under that limit at 4.
 pub const BACKFILL_BATCH_SIZE: usize = 4;
 
-pub const ASSIGN_TOPOLOGY_NODE_SEGMENTS_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct AssignTopologyNodeSegmentsCommand {
     pub name: String,
@@ -43,12 +41,11 @@ impl AssignTopologyNodeSegmentsCommand {
                 accounts.push(AccountMeta::new(*device_pk, false));
             }
 
-            let sig = client.execute_transaction_with_compute_unit_limit(
+            let sig = client.execute_transaction(
                 DoubleZeroInstruction::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs {
                     name: self.name.clone(),
                 }),
                 accounts,
-                ASSIGN_TOPOLOGY_NODE_SEGMENTS_COMPUTE_UNIT_LIMIT,
             )?;
             signatures.push(sig);
         }
@@ -59,7 +56,6 @@ impl AssignTopologyNodeSegmentsCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::ASSIGN_TOPOLOGY_NODE_SEGMENTS_COMPUTE_UNIT_LIMIT;
     use crate::{
         commands::topology::assign_node_segments::{
             AssignTopologyNodeSegmentsCommand, BACKFILL_BATCH_SIZE,
@@ -101,7 +97,7 @@ mod tests {
         let device2 = Pubkey::new_unique();
 
         client
-            .expect_execute_transaction_with_compute_unit_limit()
+            .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::AssignTopologyNodeSegments(
                     AssignTopologyNodeSegmentsArgs {
@@ -115,9 +111,8 @@ mod tests {
                     AccountMeta::new(device1, false),
                     AccountMeta::new(device2, false),
                 ]),
-                predicate::eq(ASSIGN_TOPOLOGY_NODE_SEGMENTS_COMPUTE_UNIT_LIMIT),
             )
-            .returning(|_, _, _| Ok(Signature::new_unique()));
+            .returning(|_, _| Ok(Signature::new_unique()));
 
         let res = AssignTopologyNodeSegmentsCommand {
             name: "algo128".to_string(),
@@ -157,15 +152,14 @@ mod tests {
                 expected_accounts.push(AccountMeta::new(*device_pk, false));
             }
             client
-                .expect_execute_transaction_with_compute_unit_limit()
+                .expect_execute_transaction()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(
                     predicate::eq(expected_args.clone()),
                     predicate::eq(expected_accounts),
-                    predicate::eq(ASSIGN_TOPOLOGY_NODE_SEGMENTS_COMPUTE_UNIT_LIMIT),
                 )
-                .returning(|_, _, _| Ok(Signature::new_unique()));
+                .returning(|_, _| Ok(Signature::new_unique()));
         }
 
         let res = AssignTopologyNodeSegmentsCommand {

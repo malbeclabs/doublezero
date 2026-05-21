@@ -4,13 +4,13 @@
 
 **Status: `Draft`**
 
-This RFC defines the development standard for command-line tools in the DoubleZero project. Every module that exposes CLI functionality ships a Rust library crate that conforms to this standard. A single top-level `doublezero` binary composes those library crates at compile time and presents them to users and operators as one executable. The standard covers the module contract, argument and output conventions, the shared execution context, and the canonical backend client patterns for transacting against the DoubleZero sidechain, Solana L1, the local daemon, and remote DoubleZero services.
+This RFC defines the development standard for command-line tools in the DoubleZero project. Every module that exposes CLI functionality ships a Rust library crate that conforms to this standard. A single top-level `doublezero` binary composes those library crates at compile time and presents them to users and operators as one executable. The standard covers the module contract, argument and output conventions, the shared execution context, and the canonical backend client patterns for transacting against the DoubleZero ledger, Solana L1, the local daemon, and remote DoubleZero services.
 
 All new CLI work in the project follows this standard.
 
 ## Motivation
 
-DoubleZero is a multi-module system: a sidechain of Solana programs, controllers and agents, a local user-side daemon, telemetry collectors, and SDKs in multiple languages. Each module exposes a CLI surface for operators, end users, or both. Without a written standard, every module reinvents argument naming, output formatting, error handling, and backend wiring, and the project ends up with multiple binaries that look and behave differently.
+DoubleZero is a multi-module system: a ledger of Solana programs, controllers and agents, a local user-side daemon, telemetry collectors, and SDKs in multiple languages. Each module exposes a CLI surface for operators, end users, or both. Without a written standard, every module reinvents argument naming, output formatting, error handling, and backend wiring, and the project ends up with multiple binaries that look and behave differently.
 
 A single standard delivers three concrete benefits:
 
@@ -26,7 +26,7 @@ The standard is restrictive on purpose. Most of its rules are not technically ne
 - **CLI binary**: the single `doublezero` executable that composes all CLI modules at compile time.
 - **CLI core**: a shared crate providing the execution context, validators, formatters, output helpers, and preflight checks that every module reuses.
 - **CliContext**: the runtime value the binary passes to every command. Carries the environment, resolved backend URLs and program IDs, signer, daemon socket, remote service endpoints, and an output format hint.
-- **Backend client**: the typed client a command uses to perform its work. Four canonical kinds: DZ sidechain, Solana L1, local daemon, and remote service API.
+- **Backend client**: the typed client a command uses to perform its work. Four canonical kinds: DZ ledger, Solana L1, local daemon, and remote service API.
 - **Verb**: a single user-facing action (`create`, `list`, `get`, `update`, `delete`, `connect`, `status`, ...).
 - **Resource**: a noun a verb acts on (`device`, `link`, `user`, ...).
 
@@ -34,7 +34,7 @@ The standard is restrictive on purpose. Most of its rules are not technically ne
 
 1. **Per-module binaries with a shared style guide.** Each module ships its own binary; the standard governs only conventions. Rejected: forces users to install and remember multiple binaries, and conventions invariably drift because nothing forces convergence.
 
-2. **Mandatory grouped namespace** such as `doublezero sidechain device create` and `doublezero daemon status` enforced for every module. Rejected: a flat top-level namespace is shorter for daily use and is the chosen default. Grouping remains available as a per-module choice (see Namespace and command organization); the rejection is of *forced* grouping for all modules.
+2. **Mandatory grouped namespace** such as `doublezero ledger device create` and `doublezero daemon status` enforced for every module. Rejected: a flat top-level namespace is shorter for daily use and is the chosen default. Grouping remains available as a per-module choice (see Namespace and command organization); the rejection is of *forced* grouping for all modules.
 
 3. **Polyglot binary linked via cgo or FFI.** Compile Go modules to c-archives and link from Rust. Rejected: cgo and FFI add toolchain complexity and slow build times for marginal benefit. Go-backed functionality is consumed by thin Rust clients over HTTP or gRPC.
 
@@ -78,12 +78,12 @@ A verb interacts with exactly one of four backend patterns. A module MAY use mul
 
 | Pattern | Transport | Configuration | Typical uses |
 | ------- | --------- | ------------- | ------------ |
-| DZ sidechain | Solana RPC over HTTPS plus WebSocket | `--env` resolves URL, WS, and program IDs; `--url`, `--ws`, `--program-id`, `--geo-program-id` override per field | Transacting against DoubleZero programs |
+| DZ ledger | Solana RPC over HTTPS plus WebSocket | `--env` resolves URL, WS, and program IDs; `--url`, `--ws`, `--program-id`, `--geo-program-id` override per field | Transacting against DoubleZero programs |
 | Solana L1 | Solana RPC over HTTPS | `--env` resolves the Solana L1 URL; `--solana-url` overrides | Generic Solana queries (account, balance, USDC, oracle reads) |
 | Local daemon | HTTP over Unix domain socket | `--sock-file` overrides the default socket path | Controlling a local user-side daemon |
 | Remote service API | HTTP or gRPC over TCP | `--env` resolves the default endpoint; module-owned `--<service>-url` overrides | Querying remote DoubleZero services (telemetry, controller, oracle) |
 
-The DZ sidechain and Solana L1 patterns are distinct backends and use separate override flags. The local daemon and remote service patterns are mechanically similar typed HTTP clients constructed from a URL or path in `CliContext`.
+The DZ ledger and Solana L1 patterns are distinct backends and use separate override flags. The local daemon and remote service patterns are mechanically similar typed HTTP clients constructed from a URL or path in `CliContext`.
 
 ### CliContext
 
@@ -102,7 +102,7 @@ The DZ sidechain and Solana L1 patterns are distinct backends and use separate o
 
 Modules MUST NOT mutate `CliContext` and MUST NOT re-resolve any value from `--env` themselves.
 
-`CliContext` carries resolved configuration only: URLs, paths, identifiers, the signer, and the format hint. It does NOT expose typed backend clients (no `ctx.sidechain_client()`, `ctx.daemon_client()`, etc.). Each module constructs its own typed clients from the values in `CliContext`. This keeps the CLI core crate a small utility library that depends only on clap, the logging facade, and the project's `config` crate; the Solana SDK, the daemon's HTTP stack, and any remote-service transports live with the modules that use them.
+`CliContext` carries resolved configuration only: URLs, paths, identifiers, the signer, and the format hint. It does NOT expose typed backend clients (no `ctx.ledger_client()`, `ctx.daemon_client()`, etc.). Each module constructs its own typed clients from the values in `CliContext`. This keeps the CLI core crate a small utility library that depends only on clap, the logging facade, and the project's `config` crate; the Solana SDK, the daemon's HTTP stack, and any remote-service transports live with the modules that use them.
 
 ### Argument conventions
 
@@ -136,7 +136,7 @@ Modules MUST NOT mutate `CliContext` and MUST NOT re-resolve any value from `--e
 
 Diagnostic output is separate from user-facing output and goes to standard error through the shared logging facade in the CLI core crate. Modules use the standard log macros (`debug!`, `info!`, `warn!`, `error!`, and `trace!` when finer granularity is justified) for anything that explains what a verb is doing internally: backend requests issued, retries, resolution of pubkey-or-code arguments, polling progress, and similar.
 
-The binary configures the global log level from `--verbose`: silent (warnings and errors only) by default, `debug` when `--verbose` is set, and `trace` when `-vv` is set. Modules MUST NOT set or override the log level themselves and MUST NOT use `println!` or `eprintln!` for diagnostics. JSON output remains parseable regardless of `--verbose` because diagnostic logs go to stderr and the user-facing writer goes to stdout.
+The binary configures the global log level from `--verbose`: warnings and errors only by default, `debug` when `--verbose` is set, and `trace` when `-vv` is set. Modules MUST NOT set or override the log level themselves and MUST NOT use `println!` or `eprintln!` for diagnostics. JSON output remains parseable regardless of `--verbose` because diagnostic logs go to stderr and the user-facing writer goes to stdout.
 
 ### Environments and configuration resolution
 
@@ -191,7 +191,7 @@ The top-level namespace is flat by default. Modules own their verbs and hoist th
 
 Each module decides whether to expose its commands flat at the top level or grouped under a single parent command. The default and preferred shape is flat. Grouping is permitted when it serves the module's users or avoids collisions with another module.
 
-- **Flat exposure (default).** The module's subcommand enum is mounted flat, hoisting every variant to the top level. A sidechain module contributes `device`, `link`, `user`, ... directly as top-level commands.
+- **Flat exposure (default).** The module's subcommand enum is mounted flat, hoisting every variant to the top level. A ledger module contributes `device`, `link`, `user`, ... directly as top-level commands.
 
 - **Grouped exposure.** The module's subcommand enum is mounted as a single named subcommand. A telemetry module that owns its own `device`, `agent`, and `link` views may mount itself as `telemetry`, so users invoke `doublezero telemetry device list`.
 
@@ -255,6 +255,17 @@ This RFC defines the target standard, not a migration mandate. Existing CLI surf
 - **Daemon socket.** The Unix socket used for daemon communication is a local-only attack surface. Modules MUST honor the existing socket permission model.
 
 - **JSON output as a contract.** When `--json` is set, downstream tooling is likely to parse the output programmatically. Modules MUST treat the JSON schema for each command as a public interface and version it accordingly.
+
+## Backward Compatibility
+
+This RFC is additive at the codebase level and non-breaking at the user-facing level.
+
+- **Existing `doublezero` invocations continue to work.** The unified binary, its global flags, and its current subcommands are already the shape this RFC standardizes. No command name, flag name, output format, or exit-code semantics changes as a direct consequence of adopting this standard.
+- **Existing user scripts are unaffected.** Operators and validators who script against `doublezero` today see no change in behavior until an individual module is migrated, and migrations preserve existing flag and output contracts (see *Migration of existing CLI surfaces* under Impact).
+- **Pre-standard modules are grandfathered.** Modules that predate this RFC keep their current shape until they are touched for unrelated work. The standard imposes no retroactive version bump, deprecation, or forced cutover.
+- **`--json` output is treated as a stable contract going forward.** Display types in migrated modules MUST NOT change in breaking ways without a JSON schema version bump; the mechanism for that bump is deferred to the follow-up RFC tracked in Open Questions.
+- **External CLI module crates.** Third-party operators who maintain their own `doublezero` builds remain source-compatible with current module crates. Conforming to the module contract is required only for new modules and rewrites; existing external modules are unaffected until rebuilt against the standardized CLI core crate.
+- **No on-disk, on-wire, or onchain state changes.** This RFC governs CLI ergonomics and Rust crate layout only. It does not change keypair files, daemon socket protocol, ledger account layouts, RPC schemas, or environment names; `--env testnet` resolves to the same network before and after adoption.
 
 ## Open Questions
 

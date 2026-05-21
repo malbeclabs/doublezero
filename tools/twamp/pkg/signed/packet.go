@@ -67,8 +67,8 @@ func ntpTimestamp(t time.Time) (uint32, uint32) {
 // ProbePacket is sent from Target to Probe in the inbound probing flow.
 type ProbePacket struct {
 	Seq          uint32   // Bytes 0-3: Sequence number (big-endian)
-	Sec          uint32   // Bytes 4-7: NTP timestamp seconds
-	Frac         uint32   // Bytes 8-11: NTP timestamp fractional
+	Sec          uint32   // Bytes 4-7: NTP timestamp seconds; on challenged Probe 1, upper 4 bytes of echoed Reply 0 nonce
+	Frac         uint32   // Bytes 8-11: NTP timestamp fractional; on challenged Probe 1, lower 4 bytes of echoed Reply 0 nonce
 	SenderPubkey [32]byte // Bytes 12-43: Target's Ed25519 public key
 	Signature    [64]byte // Bytes 44-107: Ed25519 signature over bytes 0-43
 }

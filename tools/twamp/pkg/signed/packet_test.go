@@ -570,19 +570,19 @@ func TestReplyPacket_Challenged_RoundTrip(t *testing.T) {
 
 	r, err := signed.NewReplyPacket(probe, signer, gpk, nil, 1234, 51.5, -0.1, 0xDEADBEEFCAFEBABE, 999, true)
 	require.NoError(t, err)
-	require.True(t, r.Challenged, "Challenged not set on constructed reply")
+	assert.True(t, r.Challenged, "Challenged not set on constructed reply")
 
 	buf := make([]byte, signed.MaxReplyPacketSize)
 	n, err := r.Marshal(buf)
 	require.NoError(t, err)
-	require.NotZero(t, buf[212]&0x80, "expected NumOffsets challenged bit set, got 0x%02x", buf[212])
-	require.Zero(t, buf[212]&0x7F, "expected 0 offsets in count, got %d", buf[212]&0x7F)
+	assert.NotZero(t, buf[212]&0x80, "expected NumOffsets challenged bit set, got 0x%02x", buf[212])
+	assert.Zero(t, buf[212]&0x7F, "expected 0 offsets in count, got %d", buf[212]&0x7F)
 
 	r2, err := signed.UnmarshalReplyPacket(buf[:n])
 	require.NoError(t, err)
-	require.True(t, r2.Challenged, "Challenged flag lost in round-trip")
-	require.Equal(t, uint64(0xDEADBEEFCAFEBABE), r2.SinceLastRxNs)
-	require.True(t, r2.Verify(), "signature did not verify")
+	assert.True(t, r2.Challenged, "Challenged flag lost in round-trip")
+	assert.Equal(t, uint64(0xDEADBEEFCAFEBABE), r2.SinceLastRxNs)
+	assert.True(t, r2.Verify(), "signature did not verify")
 }
 
 func TestReplyPacket_Challenged_FalseRoundTrip(t *testing.T) {
@@ -597,11 +597,11 @@ func TestReplyPacket_Challenged_FalseRoundTrip(t *testing.T) {
 	buf := make([]byte, signed.MaxReplyPacketSize)
 	n, err := r.Marshal(buf)
 	require.NoError(t, err)
-	require.Equal(t, byte(0), buf[212], "expected NumOffsets byte=0")
+	assert.Equal(t, byte(0), buf[212], "expected NumOffsets byte=0")
 
 	r2, err := signed.UnmarshalReplyPacket(buf[:n])
 	require.NoError(t, err)
-	require.False(t, r2.Challenged, "Challenged flag spuriously set")
+	assert.False(t, r2.Challenged, "Challenged flag spuriously set")
 }
 
 func TestReplyPacket_Challenged_WithOffsets_RoundTrip(t *testing.T) {
@@ -629,17 +629,17 @@ func TestReplyPacket_Challenged_WithOffsets_RoundTrip(t *testing.T) {
 	n, err := r.Marshal(buf)
 	require.NoError(t, err)
 
-	require.NotZero(t, buf[212]&0x80, "expected NumOffsets challenged bit set, got 0x%02x", buf[212])
-	require.Equal(t, byte(2), buf[212]&0x7F, "expected offset count 2 in lower 7 bits, got %d (full byte 0x%02x)", buf[212]&0x7F, buf[212])
+	assert.NotZero(t, buf[212]&0x80, "expected NumOffsets challenged bit set, got 0x%02x", buf[212])
+	assert.Equal(t, byte(2), buf[212]&0x7F, "expected offset count 2 in lower 7 bits, got %d (full byte 0x%02x)", buf[212]&0x7F, buf[212])
 
 	r2, err := signed.UnmarshalReplyPacket(buf[:n])
 	require.NoError(t, err)
-	require.True(t, r2.Challenged, "Challenged flag lost in round-trip")
+	assert.True(t, r2.Challenged, "Challenged flag lost in round-trip")
 	require.Len(t, r2.Offsets, 2, "expected 2 offsets after round-trip")
 	for i := range offsets {
-		require.Equal(t, offsets[i], r2.Offsets[i], "offset %d differs after round-trip", i)
+		assert.Equal(t, offsets[i], r2.Offsets[i], "offset %d differs after round-trip", i)
 	}
-	require.True(t, r2.Verify(), "signature did not verify")
+	assert.True(t, r2.Verify(), "signature did not verify")
 }
 
 func TestParseOffsetInfo(t *testing.T) {

@@ -526,9 +526,7 @@ func TestReflector_Linux(t *testing.T) {
 
 		reply, err := signed.UnmarshalReplyPacket(replyBuf[:n])
 		require.NoError(t, err)
-		if reply.SinceLastRxNs == 0 {
-			t.Fatalf("expected non-zero nonce in Reply0.SinceLastRxNs, got 0")
-		}
+		assert.NotEqual(t, uint64(0), reply.SinceLastRxNs, "expected non-zero nonce in Reply0.SinceLastRxNs")
 	})
 
 	t.Run("Reply0 nonce varies across pairs from same sender", func(t *testing.T) {
@@ -583,9 +581,7 @@ func TestReflector_Linux(t *testing.T) {
 		// Pair B: probe 0 of a new pair.
 		replyB := sendAndReadReply(2)
 
-		if replyA.SinceLastRxNs == replyB.SinceLastRxNs {
-			t.Fatalf("expected distinct nonces across pairs, both = 0x%x", replyA.SinceLastRxNs)
-		}
+		assert.NotEqual(t, replyA.SinceLastRxNs, replyB.SinceLastRxNs, "expected distinct nonces across pairs")
 	})
 
 	t.Run("Reply1 challenged when nonce matches", func(t *testing.T) {
@@ -634,12 +630,8 @@ func TestReflector_Linux(t *testing.T) {
 		overwriteProbeSecFracAndResign(t, probe1, nonce, senderSigner)
 		reply1 := sendAndReadReply(probe1)
 
-		if !reply1.Challenged {
-			t.Fatalf("expected Reply 1 to be flagged Challenged after nonce echo")
-		}
-		if reply1.SinceLastRxNs == 0 {
-			t.Fatalf("expected non-zero Reply 1 SinceLastRxNs (Tx-to-Rx interval)")
-		}
+		assert.True(t, reply1.Challenged, "Reply 1 should be flagged Challenged after nonce echo")
+		assert.NotEqual(t, uint64(0), reply1.SinceLastRxNs, "Reply 1 should carry the Tx-to-Rx interval")
 	})
 
 	t.Run("Reply1 unchallenged when nonce mismatches", func(t *testing.T) {

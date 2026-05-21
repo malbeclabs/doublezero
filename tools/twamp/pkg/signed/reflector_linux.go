@@ -281,7 +281,9 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 				if state.nonce != 0 && presentedNonce == state.nonce {
 					challenged = true
 				}
-				state.nonce = 0 // pair complete; field invariant says nonce is 0 outside a live pair
+				// pair complete; field invariant says nonce is 0 outside a live pair.
+				// lastTxTime intentionally preserved; overwritten on next Reply Tx.
+				state.nonce = 0
 				if !state.lastTxTime.IsZero() {
 					sinceLastRxNs = uint64(now.Sub(state.lastTxTime).Nanoseconds())
 				}

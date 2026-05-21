@@ -207,6 +207,10 @@ type Device struct {
 	LocationCode    string
 }
 
+// NewDevice constructs a Device with tunnelSlots user-tunnel entries pre-allocated.
+// Callers are expected to pass a positive tunnelSlots — the controller validates
+// the value through NewController before calling this; passing zero or negative
+// produces a Device with no usable tunnel slots.
 func NewDevice(ip net.IP, publicKey string, tunnelSlots int) *Device {
 	tunnels := make([]*Tunnel, 0, tunnelSlots)
 	devicePathologies := []string{}

@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log"
 	"log/slog"
@@ -1854,11 +1855,14 @@ func TestMaxUserTunnelSlotsOption(t *testing.T) {
 			}
 			opts = append(opts, test.opts...)
 			c, err := NewController(opts...)
-			if err != test.wantErr {
-				t.Fatalf("expected error %v, got %v", test.wantErr, err)
-			}
 			if test.wantErr != nil {
+				if !errors.Is(err, test.wantErr) {
+					t.Fatalf("expected error %v, got %v", test.wantErr, err)
+				}
 				return
+			}
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
 			}
 			if c.maxUserTunnelSlots != test.wantSize {
 				t.Errorf("expected maxUserTunnelSlots=%d, got %d", test.wantSize, c.maxUserTunnelSlots)

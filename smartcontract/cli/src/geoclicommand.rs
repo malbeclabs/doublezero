@@ -1,6 +1,9 @@
 use doublezero_geolocation::state::{geo_probe::GeoProbe, geolocation_user::GeolocationUser};
 use doublezero_sdk::{
-    commands::{device::get::GetDeviceCommand, exchange::get::GetExchangeCommand},
+    commands::{
+        device::get::GetDeviceCommand,
+        exchange::{get::GetExchangeCommand, list::ListExchangeCommand},
+    },
     geolocation::{
         geo_probe::{
             add_parent_device::AddParentDeviceCommand, create::CreateGeoProbeCommand,
@@ -17,7 +20,7 @@ use doublezero_sdk::{
         },
         programconfig::init::InitProgramConfigCommand,
     },
-    DoubleZeroClient,
+    DoubleZeroClient, Exchange,
 };
 use mockall::automock;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -62,6 +65,7 @@ pub trait GeoCliCommand {
 
     fn resolve_exchange_pk(&self, pubkey_or_code: String) -> eyre::Result<Pubkey>;
     fn resolve_device_pk(&self, pubkey_or_code: String) -> eyre::Result<Pubkey>;
+    fn list_exchanges(&self) -> eyre::Result<HashMap<Pubkey, Exchange>>;
 }
 
 pub struct GeoCliCommandImpl<'a> {
@@ -183,5 +187,9 @@ impl GeoCliCommand for GeoCliCommandImpl<'_> {
     fn resolve_device_pk(&self, pubkey_or_code: String) -> eyre::Result<Pubkey> {
         let (pk, _) = GetDeviceCommand { pubkey_or_code }.execute(self.svc_client)?;
         Ok(pk)
+    }
+
+    fn list_exchanges(&self) -> eyre::Result<HashMap<Pubkey, Exchange>> {
+        ListExchangeCommand.execute(self.svc_client)
     }
 }

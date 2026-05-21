@@ -2,6 +2,8 @@ package signed
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"log/slog"
 	"net"
@@ -26,6 +28,7 @@ type senderState struct {
 	pairCount    int
 	pairStart    time.Time
 	pairSourceIP [4]byte
+	nonce        uint64 // challenge nonce issued in Reply 0 of the current pair; 0 outside a pair
 }
 
 type LinuxReflector struct {
@@ -231,12 +234,14 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 						continue
 					}
 					state.pairCount = 0
+					state.nonce = 0
 				}
 			}
 
 			// If probe 1 never arrived, reset so the next probe starts a fresh pair.
 			if state.pairCount == 1 && !state.lastTxTime.IsZero() && now.Sub(state.lastTxTime) > stalePairTimeout {
 				state.pairCount = 0
+				state.nonce = 0
 			}
 
 			// Pair integrity: both probes must come from the same source IP.
@@ -258,14 +263,30 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 				continue
 			}
 
-			// SinceLastRxNs: Tx-to-Rx interval (reply 0 Tx → probe 1 Rx).
-			// Zero for the first probe in a pair.
+			// Probe 0: generate nonce; Probe 1: compute actual Tx-to-Rx interval.
 			var sinceLastRxNs uint64
-			if !state.lastTxTime.IsZero() && state.pairCount > 0 {
-				sinceLastRxNs = uint64(now.Sub(state.lastTxTime).Nanoseconds())
-			}
-			if state.pairCount == 0 {
+			isProbe0 := state.pairCount == 0
+			challenged := false
+			if isProbe0 {
 				state.pairStart = now
+				state.nonce = randomNonce()
+				if state.nonce == 0 && r.logger != nil {
+					r.logger.Error("randomNonce returned 0; challenged inbound will fail to authenticate for this pair")
+				}
+				sinceLastRxNs = state.nonce
+			} else {
+				// Variable-time compare is fine: the nonce is a freshness check, not a secret.
+				// Its full value is published in cleartext in Reply 0 to the legitimate sender.
+				presentedNonce := (uint64(probe.Sec) << 32) | uint64(probe.Frac)
+				if state.nonce != 0 && presentedNonce == state.nonce {
+					challenged = true
+				}
+				// pair complete; field invariant says nonce is 0 outside a live pair.
+				// lastTxTime intentionally preserved; overwritten on next Reply Tx.
+				state.nonce = 0
+				if !state.lastTxTime.IsZero() {
+					sinceLastRxNs = uint64(now.Sub(state.lastTxTime).Nanoseconds())
+				}
 			}
 			state.pairCount++
 
@@ -286,7 +307,11 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 				}
 			}
 
-			reply, err := NewReplyPacket(probe, r.signer, r.geoprobePubkey, currentOffsets, slot, lat, lng, sinceLastRxNs, dzdRttNs+sinceLastRxNs)
+			rttNs := dzdRttNs
+			if !isProbe0 {
+				rttNs += sinceLastRxNs
+			}
+			reply, err := NewReplyPacket(probe, r.signer, r.geoprobePubkey, currentOffsets, slot, lat, lng, sinceLastRxNs, rttNs, challenged)
 			if err != nil {
 				continue
 			}
@@ -311,6 +336,18 @@ func (r *LinuxReflector) Close() error {
 		<-r.closed
 		return nil
 	}
+}
+
+// randomNonce returns a cryptographically random uint64 for use as the
+// challenge nonce in Reply 0's SinceLastRxNs slot. Returns 0 on failure
+// (should never happen on Linux); the resulting reply will fail challenge
+// verification on the probe sender's side.
+func randomNonce() uint64 {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return 0
+	}
+	return binary.BigEndian.Uint64(b[:])
 }
 
 // kernelTimestamp extracts the SO_TIMESTAMPNS kernel receive timestamp from

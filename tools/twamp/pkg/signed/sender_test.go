@@ -155,7 +155,7 @@ func TestSender_Linux(t *testing.T) {
 		assert.True(t, result.Reply0.Verify())
 		assert.True(t, result.Reply1.Probe.Verify())
 		assert.True(t, result.Reply1.Verify())
-		assert.Equal(t, uint64(0), result.Reply0.SinceLastRxNs, "reply 0 should have zero SinceLastRxNs")
+		assert.NotEqual(t, uint64(0), result.Reply0.SinceLastRxNs, "reply 0 should carry nonce in SinceLastRxNs")
 		assert.Greater(t, result.Reply1.SinceLastRxNs, uint64(0), "reply 1 should have non-zero SinceLastRxNs")
 	})
 

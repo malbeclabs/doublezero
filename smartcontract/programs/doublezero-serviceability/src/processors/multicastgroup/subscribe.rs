@@ -74,12 +74,20 @@ pub fn update_user_multicastgroup_roles(
 
     // Check allowlists for additions
     if publisher && !accesspass.mgroup_pub_allowlist.contains(mgroup_account.key) {
-        msg!("{:?}", accesspass);
-        return Err(DoubleZeroError::NotAllowed.into());
+        msg!(
+            "Multicast group {} not in AccessPass mgroup_pub_allowlist {:?}",
+            mgroup_account.key,
+            accesspass.mgroup_pub_allowlist
+        );
+        return Err(DoubleZeroError::MulticastPubGroupNotInAccessPassAllowlist.into());
     }
     if subscriber && !accesspass.mgroup_sub_allowlist.contains(mgroup_account.key) {
-        msg!("{:?}", accesspass);
-        return Err(DoubleZeroError::NotAllowed.into());
+        msg!(
+            "Multicast group {} not in AccessPass mgroup_sub_allowlist {:?}",
+            mgroup_account.key,
+            accesspass.mgroup_sub_allowlist
+        );
+        return Err(DoubleZeroError::MulticastSubGroupNotInAccessPassAllowlist.into());
     }
 
     let mut publisher_list_transitioned = false;

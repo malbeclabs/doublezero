@@ -232,6 +232,45 @@ impl ProvisioningCliCommand {
             sub_group_pks.push(*pk);
         }
 
+        // Pre-flight: confirm every requested group is in the right AccessPass allowlist
+        // before submitting any transactions. Without this the user would see the generic
+        // overloaded on-chain error and have no idea which group was rejected.
+        let accesspass = client
+            .get_accesspass(GetAccessPassCommand {
+                client_ip,
+                user_payer: client.get_payer(),
+            })?
+            .map(|(_, ap)| ap)
+            .ok_or_else(|| {
+                eyre::eyre!(
+                    "No valid AccessPass found for IP: {} user_payer: {}",
+                    client_ip,
+                    client.get_payer()
+                )
+            })?;
+
+        let mut violations: Vec<String> = Vec::new();
+        for (code, pk) in pub_groups.iter().zip(pub_group_pks.iter()) {
+            if !accesspass.mgroup_pub_allowlist.contains(pk) {
+                violations.push(format!(
+                    "- {code}: not in publisher allowlist (mgroup_pub_allowlist)"
+                ));
+            }
+        }
+        for (code, pk) in sub_groups.iter().zip(sub_group_pks.iter()) {
+            if !accesspass.mgroup_sub_allowlist.contains(pk) {
+                violations.push(format!(
+                    "- {code}: not in subscriber allowlist (mgroup_sub_allowlist)"
+                ));
+            }
+        }
+        if !violations.is_empty() {
+            eyre::bail!(
+                "AccessPass does not allow the requested multicast group(s):\n    {}\n    Ask your access-pass administrator to add the missing group(s).",
+                violations.join("\n    "),
+            );
+        }
+
         // Look for user and subscribe to all groups
         let (_user_pubkey, user) = self
             .find_or_create_user_and_subscribe(
@@ -1356,6 +1395,11 @@ mod tests {
                 subscriber_count: 0,
             };
             mcast_groups.insert(pk, group.clone());
+            // Authorize the group in both allowlists by default — most tests assume the
+            // happy path. Negative tests clear the allowlists explicitly.
+            let mut ap = self.accesspass.lock().unwrap();
+            ap.mgroup_pub_allowlist.push(pk);
+            ap.mgroup_sub_allowlist.push(pk);
             (pk, group)
         }
 
@@ -2357,6 +2401,98 @@ mod tests {
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
         assert!(result.is_ok());
+    }
+
+    /// Pre-flight check: connecting as a subscriber to a multicast group that is not in
+    /// mgroup_sub_allowlist must fail with a clear, code-named error before any tx is sent.
+    #[tokio::test]
+    async fn test_connect_command_multicast_subscriber_not_in_sub_allowlist_fails_preflight() {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, _mcast_group) =
+            fixture.add_multicast_group("edge-solana-shreds", "239.0.0.1");
+        let (_device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+        // Revoke subscriber permission for the group; publisher allowlist still has it.
+        fixture
+            .accesspass
+            .lock()
+            .unwrap()
+            .mgroup_sub_allowlist
+            .retain(|pk| *pk != mcast_group_pk);
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: Some(MulticastMode::Subscriber),
+                multicast_groups: vec!["edge-solana-shreds".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+
+        let err = result.expect_err("pre-flight should reject this connect");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("edge-solana-shreds"),
+            "error must name the requested group: {msg}"
+        );
+        assert!(
+            msg.contains("subscriber allowlist"),
+            "error must say subscriber allowlist: {msg}"
+        );
+    }
+
+    /// Pre-flight check: connecting as a publisher to a multicast group that is not in
+    /// mgroup_pub_allowlist must fail with a clear, code-named error before any tx is sent.
+    #[tokio::test]
+    async fn test_connect_command_multicast_publisher_not_in_pub_allowlist_fails_preflight() {
+        let mut fixture = TestFixture::new();
+
+        let (mcast_group_pk, _mcast_group) =
+            fixture.add_multicast_group("edge-solana-shreds", "239.0.0.1");
+        let (_device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+        // Revoke publisher permission for the group; subscriber allowlist still has it.
+        fixture
+            .accesspass
+            .lock()
+            .unwrap()
+            .mgroup_pub_allowlist
+            .retain(|pk| *pk != mcast_group_pk);
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: Some(MulticastMode::Publisher),
+                multicast_groups: vec!["edge-solana-shreds".to_string()],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: Some("1.2.3.4".to_string()),
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+
+        let err = result.expect_err("pre-flight should reject this connect");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("edge-solana-shreds"),
+            "error must name the requested group: {msg}"
+        );
+        assert!(
+            msg.contains("publisher allowlist"),
+            "error must say publisher allowlist: {msg}"
+        );
     }
 
     #[tokio::test]

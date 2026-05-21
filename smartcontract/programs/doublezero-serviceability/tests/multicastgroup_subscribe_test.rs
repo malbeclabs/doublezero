@@ -8,8 +8,14 @@ use doublezero_serviceability::{
         device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
         multicastgroup::{
             allowlist::{
-                publisher::add::AddMulticastGroupPubAllowlistArgs,
-                subscriber::add::AddMulticastGroupSubAllowlistArgs,
+                publisher::{
+                    add::AddMulticastGroupPubAllowlistArgs,
+                    remove::RemoveMulticastGroupPubAllowlistArgs,
+                },
+                subscriber::{
+                    add::AddMulticastGroupSubAllowlistArgs,
+                    remove::RemoveMulticastGroupSubAllowlistArgs,
+                },
             },
             create::MulticastGroupCreateArgs,
             subscribe::UpdateMulticastGroupRolesArgs,
@@ -601,6 +607,158 @@ async fn test_subscribe_unauthorized_payer_rejected() {
             InstructionError::Custom(22),
         ))) => {}
         _ => panic!("Expected Unauthorized error (Custom(22)), got {:?}", result),
+    }
+}
+
+/// Subscribing to a multicast group that is NOT in the AccessPass's mgroup_sub_allowlist
+/// must fail with MulticastSubGroupNotInAccessPassAllowlist (Custom(89)), not the
+/// overloaded NotAllowed (Custom(8)).
+#[tokio::test]
+async fn test_subscribe_subscriber_group_not_in_sub_allowlist_rejected() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        globalstate_pubkey,
+        _user_ip: user_ip,
+        ..
+    } = f;
+
+    // Remove mgroup1 from the sub allowlist so the subsequent subscribe must be rejected.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(
+            RemoveMulticastGroupSubAllowlistArgs {
+                client_ip: user_ip,
+                user_payer: payer.pubkey(),
+            },
+        ),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(89),
+        ))) => {}
+        _ => panic!(
+            "Expected MulticastSubGroupNotInAccessPassAllowlist (Custom(89)), got {:?}",
+            result
+        ),
+    }
+}
+
+/// Publishing to a multicast group that is NOT in the AccessPass's mgroup_pub_allowlist
+/// must fail with MulticastPubGroupNotInAccessPassAllowlist (Custom(88)), not the
+/// overloaded NotAllowed (Custom(8)).
+#[tokio::test]
+async fn test_subscribe_publisher_group_not_in_pub_allowlist_rejected() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        globalstate_pubkey,
+        _user_ip: user_ip,
+        ..
+    } = f;
+
+    // Remove mgroup1 from the pub allowlist so the subsequent publish must be rejected.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RemoveMulticastGroupPubAllowlist(
+            RemoveMulticastGroupPubAllowlistArgs {
+                client_ip: user_ip,
+                user_payer: payer.pubkey(),
+            },
+        ),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: user_ip,
+            publisher: true,
+            subscriber: false,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(88),
+        ))) => {}
+        _ => panic!(
+            "Expected MulticastPubGroupNotInAccessPassAllowlist (Custom(88)), got {:?}",
+            result
+        ),
     }
 }
 

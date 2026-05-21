@@ -215,6 +215,7 @@ func (e *EAPIClient) startLock(ctx context.Context, maxLockAge int) error {
 func (e *EAPIClient) startConfigSession(ctx context.Context, config string) ([]string, string, error) {
 	configSlice := strings.Split(config, "\n")
 	log.Printf("Received %d lines of configuration from controller", len(configSlice))
+	log.Printf("Received %d bytes of configuration from controller", len(config))
 	sessionName := fmt.Sprintf("doublezero-agent-%s", getEosConfigurationSessionDistinguisher())
 	configSlice = append([]string{fmt.Sprintf("configure session %s", sessionName)}, configSlice...)
 	cmd := &aristapb.RunConfigCmdsRequest{

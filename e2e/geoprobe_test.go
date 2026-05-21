@@ -262,6 +262,9 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 		dn.Manager.GeolocationProgramID, dn.Manager.ServiceabilityProgramID,
 		&geoprobeAgentOpts{
 			probeInterval: 5 * time.Second,
+			// Short verify-interval so the two sequential target-sender runs
+			// (unchallenged then challenged) aren't rate-limited.
+			verifyInterval: 1 * time.Second,
 		})
 	log.Debug("==> Geoprobe agent started", "pubkey", agent.agentPubkey)
 
@@ -280,15 +283,27 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 	verifyClickhouseOffsets(t, chContainerID)
 	log.Debug("==> ClickHouse verification passed")
 
-	// --- Inbound flow ---
+	// --- Inbound flow (unchallenged) ---
 	// Run target-sender from the target container to send signed TWAMP probes to the agent.
 	// The agent should reply with cached DZD offsets embedded in signed replies.
-	log.Debug("==> Running target-sender for inbound probing")
-	runTargetSender(t, targetContainerID, geoprobeIPStr, agent.agentPubkey, senderKeypairPath)
+	log.Debug("==> Running target-sender for inbound probing (unchallenged)")
+	const unchallengedLog = "/tmp/target-sender-unchallenged.log"
+	runTargetSender(t, targetContainerID, geoprobeIPStr, agent.agentPubkey, senderKeypairPath, unchallengedLog, false)
 
-	log.Debug("==> Waiting for successful inbound probe with offsets")
-	waitForInboundProbeSuccess(t, targetContainerID, 120*time.Second)
-	log.Debug("==> Inbound probing verified")
+	log.Debug("==> Waiting for successful unchallenged inbound probe with offsets")
+	waitForInboundProbeSuccess(t, targetContainerID, unchallengedLog, false, 120*time.Second)
+	log.Debug("==> Unchallenged inbound probing verified")
+
+	// --- Inbound flow (challenged) ---
+	// Re-run target-sender with --challenged so the sender echoes the Reply 0 nonce
+	// into Probe 1 (RFC16 challenge-response). The agent should flag Reply 1.Challenged=true.
+	log.Debug("==> Running target-sender for inbound probing (challenged)")
+	const challengedLog = "/tmp/target-sender-challenged.log"
+	runTargetSender(t, targetContainerID, geoprobeIPStr, agent.agentPubkey, senderKeypairPath, challengedLog, true)
+
+	log.Debug("==> Waiting for successful challenged inbound probe with offsets")
+	waitForInboundProbeSuccess(t, targetContainerID, challengedLog, true, 120*time.Second)
+	log.Debug("==> Challenged inbound probing verified")
 }
 
 // getExchangePK retrieves the onchain PK for an exchange by its code.
@@ -365,8 +380,9 @@ func addGeoprobeParent(t *testing.T, dn *devnet.Devnet, code, devicePK string) {
 }
 
 type geoprobeAgentOpts struct {
-	probeInterval time.Duration
-	capNetRaw     bool // Add CAP_NET_RAW for ICMP probing.
+	probeInterval  time.Duration
+	verifyInterval time.Duration // Rate-limit window for inbound probing (0 = agent default).
+	capNetRaw      bool          // Add CAP_NET_RAW for ICMP probing.
 }
 
 // geoprobeAgentResult holds the container ID and generated pubkeys from starting a geoprobe agent.
@@ -405,6 +421,9 @@ func startGeoprobeAgent(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoaI
 	}
 	if opts != nil && opts.probeInterval > 0 {
 		cmd = append(cmd, "-probe-interval", opts.probeInterval.String())
+	}
+	if opts != nil && opts.verifyInterval > 0 {
+		cmd = append(cmd, "-verify-interval", opts.verifyInterval.String())
 	}
 
 	req := testcontainers.ContainerRequest{
@@ -624,14 +643,20 @@ func waitForTargetOffsetReceived(t *testing.T, containerID string, timeout time.
 	}, timeout, 5*time.Second, "Expected geoprobe-target to log 'received LocationOffset' with 'signature_valid=true'")
 }
 
-// runTargetSender starts geoprobe-target-sender in the target container, sending
-// signed TWAMP probes to the agent's reflector. It runs with --count 3 so it
-// exits after 3 probe pairs.
-func runTargetSender(t *testing.T, containerID, agentIP, agentPubkey, keypairPath string) {
+// runTargetSender runs geoprobe-target-sender in the target container to send 3
+// signed TWAMP probe pairs to the agent's reflector, blocking until the process
+// exits. Writes JSON output to logPath; pass challenged=true to exercise the
+// RFC16 nonce-echo path.
+func runTargetSender(t *testing.T, containerID, agentIP, agentPubkey, keypairPath, logPath string, challenged bool) {
 	t.Helper()
 
+	challengedFlag := ""
+	if challenged {
+		challengedFlag = "-challenged "
+	}
+
 	cmd := fmt.Sprintf(
-		"nohup doublezero-geoprobe-target-sender "+
+		"doublezero-geoprobe-target-sender "+
 			"-probe-ip %s "+
 			"-probe-port 8924 "+
 			"-probe-pk %s "+
@@ -640,8 +665,9 @@ func runTargetSender(t *testing.T, containerID, agentIP, agentPubkey, keypairPat
 			"-interval 5s "+
 			"-log-format json "+
 			"-verbose "+
-			"> /tmp/target-sender.log 2>&1 &",
-		agentIP, agentPubkey, keypairPath,
+			"%s"+
+			"> %s 2>&1",
+		agentIP, agentPubkey, keypairPath, challengedFlag, logPath,
 	)
 	_, err := docker.Exec(t.Context(), dockerClient, containerID, []string{"bash", "-c", cmd})
 	require.NoError(t, err)
@@ -653,10 +679,10 @@ func runTargetSender(t *testing.T, containerID, agentIP, agentPubkey, keypairPat
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		output, err := docker.Exec(ctx, dockerClient, containerID, []string{
-			"bash", "-c", "cat /tmp/target-sender.log 2>/dev/null || echo 'no log file'",
+			"bash", "-c", fmt.Sprintf("cat %s 2>/dev/null || echo 'no log file'", logPath),
 		})
 		if err == nil {
-			fmt.Fprintf(os.Stderr, "\n--- Target-sender log ---\n%s\n", string(output))
+			fmt.Fprintf(os.Stderr, "\n--- Target-sender log (%s) ---\n%s\n", logPath, string(output))
 		}
 	})
 }
@@ -1001,21 +1027,23 @@ func verifyClickhouseOffsets(t *testing.T, chContainerID string) {
 	}, 60*time.Second, 5*time.Second, "Expected location_offsets to contain rows with valid signatures and non-zero rtt_ns")
 }
 
-// waitForInboundProbeSuccess polls the target-sender log for a successful probe pair
-// where reply signatures are valid and DZD offset data is present.
-func waitForInboundProbeSuccess(t *testing.T, containerID string, timeout time.Duration) {
+// waitForInboundProbeSuccess polls the target-sender log at logPath for a successful
+// probe pair where reply signatures are valid, DZD offset data is present, and the
+// challenged flag matches wantChallenged.
+func waitForInboundProbeSuccess(t *testing.T, containerID, logPath string, wantChallenged bool, timeout time.Duration) {
 	t.Helper()
 
 	require.Eventually(t, func() bool {
 		output, err := docker.Exec(t.Context(), dockerClient, containerID, []string{
-			"bash", "-c", "cat /tmp/target-sender.log 2>/dev/null",
+			"bash", "-c", fmt.Sprintf("cat %s 2>/dev/null", logPath),
 		})
 		if err != nil {
 			return false
 		}
 		logStr := string(output)
 
-		// Look for a JSON line with valid reply signatures and non-empty offsets.
+		// Look for a JSON line with valid reply signatures, non-empty offsets, and
+		// the expected challenged flag.
 		for _, line := range strings.Split(logStr, "\n") {
 			line = strings.TrimSpace(line)
 			if !strings.HasPrefix(line, "{") {
@@ -1023,6 +1051,7 @@ func waitForInboundProbeSuccess(t *testing.T, containerID string, timeout time.D
 			}
 			var result struct {
 				Reply1SigValid bool `json:"reply1_sig_valid"`
+				Challenged     bool `json:"challenged"`
 				Offsets        []struct {
 					SigValid bool `json:"sig_valid"`
 				} `json:"offsets"`
@@ -1034,12 +1063,15 @@ func waitForInboundProbeSuccess(t *testing.T, containerID string, timeout time.D
 			if result.Error != "" || !result.Reply1SigValid {
 				continue
 			}
+			if result.Challenged != wantChallenged {
+				continue
+			}
 			if len(result.Offsets) > 0 && result.Offsets[0].SigValid {
 				return true
 			}
 		}
 		return false
-	}, timeout, 5*time.Second, "Expected target-sender log to contain a successful probe pair with valid signatures and offsets")
+	}, timeout, 5*time.Second, "Expected target-sender log at %s to contain a successful probe pair with challenged=%v, valid signatures, and offsets", logPath, wantChallenged)
 }
 
 // TestE2E_GeoprobeResultDestination verifies that composite offsets are routed to a

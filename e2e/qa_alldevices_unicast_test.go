@@ -24,7 +24,8 @@ import (
 var (
 	devicesFlag      = flag.String("devices", "", "comma separated list of devices to run tests against")
 	allocateAddrHosts = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
-	failureThreshold = flag.Float64("failure-threshold", 0.2, "maximum allowed failure rate (0.0-1.0) before the test is marked as failed, applied both globally and per-host")
+	failureThreshold        = flag.Float64("failure-threshold", 0.1, "maximum allowed overall device failure rate (0.0-1.0) before the test is marked as failed")
+	perHostFailureThreshold = flag.Float64("per-host-failure-threshold", 0.2, "maximum allowed per-host device failure rate (0.0-1.0) before the test is marked as failed")
 )
 
 func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
@@ -258,10 +259,10 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			"total", stats.total,
 			"rate", fmt.Sprintf("%.1f%%", hostRate*100),
 		)
-		if hostRate > *failureThreshold {
+		if hostRate > *perHostFailureThreshold {
 			slices.Sort(stats.failedDevices)
 			t.Errorf("Host %s failure rate %.1f%% (%d/%d) exceeds threshold %.1f%%. Failed devices: %s",
-				host, hostRate*100, stats.failed, stats.total, *failureThreshold*100,
+				host, hostRate*100, stats.failed, stats.total, *perHostFailureThreshold*100,
 				strings.Join(stats.failedDevices, ", "))
 		}
 	}

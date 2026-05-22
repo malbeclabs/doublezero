@@ -117,30 +117,61 @@ async fn main() -> eyre::Result<()> {
         tracing::info!(keypair = %keypair.display(), "using keypair");
     }
 
-    let (url, ws, program_id) = if let Some(env) = app.env {
-        let config = match env.parse::<Environment>() {
-            Ok(env) => match env.config() {
-                Ok(config) => config,
-                Err(e) => {
-                    eprintln!("Error: {e}");
-                    std::process::exit(1);
-                }
-            },
-            Err(e) => {
-                eprintln!("Error: {e}");
-                std::process::exit(1);
-            }
-        };
-        (
-            Some(config.ledger_public_rpc_url),
-            Some(config.ledger_public_ws_rpc_url),
-            Some(config.serviceability_program_id.to_string()),
-        )
-    } else {
-        (app.url, app.ws, app.program_id)
+    // Resolve global configuration into a CliContext per RFC-20 (§CliContext).
+    // The binary populates it once at startup; future verbs read from it.
+    let env_explicit = app.env.is_some();
+    let env = match app.env.as_deref() {
+        Some(s) => s.parse::<Environment>().unwrap_or_else(|e| {
+            doublezero_cli_core::error::render_eyre(&e);
+            std::process::exit(1);
+        }),
+        None => Environment::default(),
     };
+    let mut ctx_builder = doublezero_cli_core::CliContextBuilder::new().with_env(env);
+    if let Some(u) = app.url.clone() {
+        ctx_builder = ctx_builder.with_ledger_rpc_url(u);
+    }
+    if let Some(w) = app.ws.clone() {
+        ctx_builder = ctx_builder.with_ledger_ws_rpc_url(w);
+    }
+    if let Some(s) = app.solana_url.clone() {
+        ctx_builder = ctx_builder.with_solana_l1_rpc_url(s);
+    }
+    if let Some(k) = app.keypair.clone() {
+        ctx_builder = ctx_builder.with_keypair_path(k);
+    }
+    if let Some(s) = app.sock_file.clone() {
+        ctx_builder = ctx_builder.with_daemon_socket_path(s);
+    }
+    let ctx = ctx_builder.build().unwrap_or_else(|e| {
+        doublezero_cli_core::error::render_eyre(&e);
+        std::process::exit(1);
+    });
 
-    let dzclient = DZClient::new(url.clone(), ws, program_id, app.keypair.clone())?;
+    // Bridge to the legacy `DZClient::new(Option<String>, ...)` signature.
+    // When neither `--env` nor a per-field override is set, forward `None`
+    // so `DZClient` keeps falling back to the user's
+    // `~/.config/solana/cli/config.yml`. As verbs migrate to construct typed
+    // clients from `CliContext` directly, this bridge shrinks.
+    let url = if env_explicit || app.url.is_some() {
+        Some(ctx.ledger_rpc_url.clone())
+    } else {
+        None
+    };
+    let ws = if env_explicit || app.ws.is_some() {
+        Some(ctx.ledger_ws_rpc_url.clone())
+    } else {
+        None
+    };
+    let program_id = app.program_id.clone().or_else(|| {
+        if env_explicit {
+            Some(ctx.serviceability_program_id.to_string())
+        } else {
+            None
+        }
+    });
+
+    let dzclient = DZClient::new(url.clone(), ws, program_id, ctx.keypair_path.clone())?;
     let client = CliCommandImpl::new(&dzclient);
 
     let stdout = std::io::stdout();
@@ -447,7 +478,7 @@ async fn main() -> eyre::Result<()> {
     match res {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Error: {e}");
+            doublezero_cli_core::error::render_eyre(&e);
             std::process::exit(1);
         }
     };

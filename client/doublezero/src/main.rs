@@ -10,26 +10,30 @@ mod requirements;
 mod servicecontroller;
 use crate::cli::{
     command::Command,
-    config::ConfigCommands,
-    device::{DeviceCommands, InterfaceCommands},
-    exchange::ExchangeCommands,
     geolocation::{
         probe::ProbeCommands, user::UserCommands as GeoUserCommands, GeolocationCommands,
     },
-    globalconfig::{
-        AirdropCommands, AuthorityCommands, FeatureFlagsCommands, FoundationAllowlistCommands,
-        GlobalConfigCommands, QaAllowlistCommands,
-    },
-    link::{LinkCommands, TopologyCommands},
-    location::LocationCommands,
-    user::UserCommands,
 };
 use doublezero_cli_core::LogLevel;
 use doublezero_sdk::{geolocation::client::GeoClient, DZClient, ProgramVersion};
 use doublezero_serviceability::pda::get_globalstate_pda;
 use doublezero_serviceability_cli::{
-    checkversion::check_version, doublezerocommand::CliCommandImpl,
-    geoclicommand::GeoCliCommandImpl, version::VersionCliCommand,
+    checkversion::check_version,
+    cli::{
+        config::ConfigCommands,
+        device::{DeviceCommands, InterfaceCommands},
+        exchange::ExchangeCommands,
+        globalconfig::{
+            AirdropCommands, AuthorityCommands, FeatureFlagsCommands, FoundationAllowlistCommands,
+            GlobalConfigCommands, QaAllowlistCommands,
+        },
+        link::{LinkCommands, TopologyCommands},
+        location::LocationCommands,
+        user::UserCommands,
+    },
+    doublezerocommand::CliCommandImpl,
+    geoclicommand::GeoCliCommandImpl,
+    version::VersionCliCommand,
 };
 use servicecontroller::ServiceControllerImpl;
 
@@ -332,37 +336,37 @@ async fn main() -> eyre::Result<()> {
             ExchangeCommands::Delete(args) => args.execute(&client, &mut handle),
         },
         Command::Contributor(command) => match command.command {
-            cli::contributor::ContributorCommands::Create(args) => {
+            doublezero_serviceability_cli::cli::contributor::ContributorCommands::Create(args) => {
                 args.execute(&client, &mut handle)
             }
-            cli::contributor::ContributorCommands::Update(args) => {
+            doublezero_serviceability_cli::cli::contributor::ContributorCommands::Update(args) => {
                 args.execute(&client, &mut handle)
             }
-            cli::contributor::ContributorCommands::List(args) => args.execute(&client, &mut handle),
-            cli::contributor::ContributorCommands::Get(args) => args.execute(&client, &mut handle),
-            cli::contributor::ContributorCommands::Delete(args) => {
+            doublezero_serviceability_cli::cli::contributor::ContributorCommands::List(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::contributor::ContributorCommands::Get(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::contributor::ContributorCommands::Delete(args) => {
                 args.execute(&client, &mut handle)
             }
         },
         Command::Permission(command) => match command.command {
-            cli::permission::PermissionCommands::Set(args) => args.execute(&client, &mut handle),
-            cli::permission::PermissionCommands::Suspend(args) => {
+            doublezero_serviceability_cli::cli::permission::PermissionCommands::Set(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::permission::PermissionCommands::Suspend(args) => {
                 args.execute(&client, &mut handle)
             }
-            cli::permission::PermissionCommands::Resume(args) => args.execute(&client, &mut handle),
-            cli::permission::PermissionCommands::Delete(args) => args.execute(&client, &mut handle),
-            cli::permission::PermissionCommands::Get(args) => args.execute(&client, &mut handle),
-            cli::permission::PermissionCommands::List(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::permission::PermissionCommands::Resume(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::permission::PermissionCommands::Delete(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::permission::PermissionCommands::Get(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::permission::PermissionCommands::List(args) => args.execute(&client, &mut handle),
         },
         Command::Tenant(command) => match command.command {
-            cli::tenant::TenantCommands::Create(args) => args.execute(&client, &mut handle),
-            cli::tenant::TenantCommands::Update(args) => args.execute(&client, &mut handle),
-            cli::tenant::TenantCommands::List(args) => args.execute(&client, &mut handle),
-            cli::tenant::TenantCommands::Get(args) => args.execute(&client, &mut handle),
-            cli::tenant::TenantCommands::Delete(args) => args.execute(&client, &mut handle),
-            cli::tenant::TenantCommands::Administrator(command) => match command.command {
-                cli::tenant::AdministratorCommands::Add(args) => args.execute(&client, &mut handle),
-                cli::tenant::AdministratorCommands::Remove(args) => {
+            doublezero_serviceability_cli::cli::tenant::TenantCommands::Create(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::tenant::TenantCommands::Update(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::tenant::TenantCommands::List(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::tenant::TenantCommands::Get(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::tenant::TenantCommands::Delete(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::tenant::TenantCommands::Administrator(command) => match command.command {
+                doublezero_serviceability_cli::cli::tenant::AdministratorCommands::Add(args) => args.execute(&client, &mut handle),
+                doublezero_serviceability_cli::cli::tenant::AdministratorCommands::Remove(args) => {
                     args.execute(&client, &mut handle)
                 }
             },
@@ -384,8 +388,8 @@ async fn main() -> eyre::Result<()> {
         },
         Command::Link(command) => match command.command {
             LinkCommands::Create(args) => match args.command {
-                cli::link::CreateLinkCommands::Wan(args) => args.execute(&client, &mut handle),
-                cli::link::CreateLinkCommands::Dzx(args) => args.execute(&client, &mut handle),
+                doublezero_serviceability_cli::cli::link::CreateLinkCommands::Wan(args) => args.execute(&client, &mut handle),
+                doublezero_serviceability_cli::cli::link::CreateLinkCommands::Dzx(args) => args.execute(&client, &mut handle),
             },
             LinkCommands::Accept(args) => args.execute(&client, &mut handle),
             LinkCommands::Update(args) => args.execute(&client, &mut handle),
@@ -403,14 +407,14 @@ async fn main() -> eyre::Result<()> {
             },
         },
         Command::AccessPass(command) => match command.command {
-            cli::accesspass::AccessPassCommands::Set(args) => args.execute(&client, &mut handle),
-            cli::accesspass::AccessPassCommands::Close(args) => args.execute(&client, &mut handle),
-            cli::accesspass::AccessPassCommands::List(args) => args.execute(&client, &mut handle),
-            cli::accesspass::AccessPassCommands::Get(args) => args.execute(&client, &mut handle),
-            cli::accesspass::AccessPassCommands::UserBalances(args) => {
+            doublezero_serviceability_cli::cli::accesspass::AccessPassCommands::Set(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::accesspass::AccessPassCommands::Close(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::accesspass::AccessPassCommands::List(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::accesspass::AccessPassCommands::Get(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::accesspass::AccessPassCommands::UserBalances(args) => {
                 args.execute(&client, &mut handle)
             }
-            cli::accesspass::AccessPassCommands::Fund(args) => {
+            doublezero_serviceability_cli::cli::accesspass::AccessPassCommands::Fund(args) => {
                 args.execute(&client, &mut handle, &mut std::io::stdin().lock())
             }
         },
@@ -426,49 +430,49 @@ async fn main() -> eyre::Result<()> {
         },
         Command::Multicast(args) => match args.command {
             cli::multicast::MulticastCommands::Group(args) => match args.command {
-                cli::multicastgroup::MulticastGroupCommands::Allowlist(args) => {
+                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCommands::Allowlist(args) => {
                     match args.command {
-                        cli::multicastgroup::MulticastGroupAllowlistCommands::Publisher(args) => {
+                        doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupAllowlistCommands::Publisher(args) => {
                             match args.command {
-                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::List(
+                                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupPubAllowlistCommands::List(
                                     args,
                                 ) => args.execute(&client, &mut handle),
-                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::Add(
+                                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupPubAllowlistCommands::Add(
                                     args,
                                 ) => args.execute(&client, &mut handle),
-                                cli::multicastgroup::MulticastGroupPubAllowlistCommands::Remove(
+                                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupPubAllowlistCommands::Remove(
                                     args,
                                 ) => args.execute(&client, &mut handle),
                             }
                         }
-                        cli::multicastgroup::MulticastGroupAllowlistCommands::Subscriber(args) => {
+                        doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupAllowlistCommands::Subscriber(args) => {
                             match args.command {
-                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::List(
+                                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupSubAllowlistCommands::List(
                                     args,
                                 ) => args.execute(&client, &mut handle),
-                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::Add(
+                                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupSubAllowlistCommands::Add(
                                     args,
                                 ) => args.execute(&client, &mut handle),
-                                cli::multicastgroup::MulticastGroupSubAllowlistCommands::Remove(
+                                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupSubAllowlistCommands::Remove(
                                     args,
                                 ) => args.execute(&client, &mut handle),
                             }
                         }
                     }
                 }
-                cli::multicastgroup::MulticastGroupCommands::Create(args) => {
+                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCommands::Create(args) => {
                     args.execute(&client, &mut handle)
                 }
-                cli::multicastgroup::MulticastGroupCommands::Update(args) => {
+                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCommands::Update(args) => {
                     args.execute(&client, &mut handle)
                 }
-                cli::multicastgroup::MulticastGroupCommands::List(args) => {
+                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCommands::List(args) => {
                     args.execute(&client, &mut handle)
                 }
-                cli::multicastgroup::MulticastGroupCommands::Get(args) => {
+                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCommands::Get(args) => {
                     args.execute(&client, &mut handle)
                 }
-                cli::multicastgroup::MulticastGroupCommands::Delete(args) => {
+                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCommands::Delete(args) => {
                     args.execute(&client, &mut handle)
                 }
             },
@@ -511,12 +515,12 @@ async fn main() -> eyre::Result<()> {
         }
 
         Command::Resource(command) => match command.command {
-            cli::resource::ResourceCommands::Allocate(args) => args.execute(&client, &mut handle),
-            cli::resource::ResourceCommands::Create(args) => args.execute(&client, &mut handle),
-            cli::resource::ResourceCommands::Deallocate(args) => args.execute(&client, &mut handle),
-            cli::resource::ResourceCommands::Get(args) => args.execute(&client, &mut handle),
-            cli::resource::ResourceCommands::Close(args) => args.execute(&client, &mut handle),
-            cli::resource::ResourceCommands::Verify(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::resource::ResourceCommands::Allocate(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::resource::ResourceCommands::Create(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::resource::ResourceCommands::Deallocate(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::resource::ResourceCommands::Get(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::resource::ResourceCommands::Close(args) => args.execute(&client, &mut handle),
+            doublezero_serviceability_cli::cli::resource::ResourceCommands::Verify(args) => args.execute(&client, &mut handle),
         },
 
         Command::Export(args) => args.execute(&client, &mut handle),

@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand};
 
-use doublezero_serviceability_cli::multicastgroup::{
+use crate::multicastgroup::{
     allowlist::{
         publisher::{
             add::AddMulticastGroupPubAllowlistCliCommand,

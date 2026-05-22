@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand};
 
-use super::multicastgroup::MulticastGroupCliCommand;
+use doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCliCommand;
 
 #[derive(Args, Debug)]
 pub struct MulticastCliCommand {

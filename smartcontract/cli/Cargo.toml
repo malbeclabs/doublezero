@@ -34,6 +34,7 @@ solana-rpc-client-api.workspace = true
 solana-sdk.workspace = true
 tabled.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 
 # Dependencies from this workspace
 doublezero-cli-core.workspace = true

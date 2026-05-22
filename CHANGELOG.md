@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- e2e/qa: remove client-side capacity pre-filtering from `ValidDevices`, because the QA user pubkey bypasses capacity limits using the serviceability global-config qa-allowlist. Individual device failures no longer fail the test; instead, overall and per-host failure rates are evaluated after all batches and the test only fails if either exceeds `--failure-threshold` (default 10%) or `--per-host-failure-threshold` (default 20%).
+
 ## [v0.24.0](https://github.com/malbeclabs/doublezero/compare/client/v0.23.0...client/v0.24.0) - 2026-05-22
 
 ### Breaking

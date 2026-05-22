@@ -100,6 +100,13 @@ make generate-fixtures   # Regenerate .bin/.json fixtures from Rust
 
 - When asked if a doc is up to date, evaluate it against its intended purpose and scope — not against whatever was most recently worked on. Implementation bug fixes and edge-case handling are not design decisions. Don't inflate docs with implementation details just because they're fresh in context.
 
+## CLI Standard (RFC-20)
+
+- New CLI verbs and module crates follow RFC-20 (`rfcs/rfc20-cli-standardization.md`). A contributor-facing summary lives at `docs/cli-standard.md`, with `smartcontract/cli/src/location/get.rs` as the reference verb.
+- Shared CLI utilities (`CliContext`, validators, formatters, `RequirementCheck`, `init_logging`) live in `crates/doublezero-cli-core/`. Verbs MUST consume the shared validators and route diagnostic output through `tracing`. The `doublezero` binary owns global flags (`--env`, `--url`, `--ws`, `--solana-url`, `--keypair`, `--program-id`, `--geo-program-id`, `--sock-file`, `--verbose`, `--version`); modules MUST NOT redeclare them.
+- The serviceability module crate is named `doublezero-serviceability-cli` (crate path `smartcontract/cli/`, import path `doublezero_serviceability_cli`).
+- Migration is opportunistic. Existing verbs are grandfathered; new verbs conform from day one.
+
 ## Style & Terminology
 
 - Use "onchain" (one word, no hyphen), never "on-chain"

@@ -10,6 +10,8 @@
 pub mod accesspass;
 pub mod command;
 pub mod config;
+
+pub use command::ServiceabilityCommand;
 pub mod contributor;
 pub mod device;
 pub mod exchange;

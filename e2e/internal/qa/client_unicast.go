@@ -65,10 +65,17 @@ func (c *Client) ConnectUserUnicast(ctx context.Context, deviceCode string, wait
 		ClientIp:   c.ClientIP,
 	})
 	if err != nil {
+		if isCapacityError(err.Error()) {
+			return fmt.Errorf("failed to connect on host %s: %w — this may mean the QA user pubkey is not on the onchain qa-allowlist; verify with 'doublezero global-config qa-allowlist list'", c.Host, err)
+		}
 		return fmt.Errorf("failed to connect on host %s: %w", c.Host, err)
 	}
 	if !resp.GetSuccess() {
-		return fmt.Errorf("connection failed on host %s: %s", c.Host, resp.GetOutput())
+		output := strings.Join(resp.GetOutput(), "\n")
+		if isCapacityError(output) {
+			return fmt.Errorf("connection failed on host %s: %s — this may mean the QA user pubkey is not on the onchain qa-allowlist; verify with 'doublezero global-config qa-allowlist list'", c.Host, output)
+		}
+		return fmt.Errorf("connection failed on host %s: %s", c.Host, output)
 	}
 	c.log.Debug("Unicast user connected", "host", c.Host, "device", deviceCode)
 
@@ -280,6 +287,14 @@ type Hop struct {
 	Num  int
 	Loss float64
 	Raw  string
+}
+
+func isCapacityError(s string) bool {
+	return strings.Contains(s, "user limit") ||
+		strings.Contains(s, "MaxUsersExceeded") ||
+		strings.Contains(s, "MaxUnicastUsersExceeded") ||
+		strings.Contains(s, "MaxMulticastPublishersExceeded") ||
+		strings.Contains(s, "MaxMulticastSubscribersExceeded")
 }
 
 func parseMTR(input string) ([]Hop, error) {

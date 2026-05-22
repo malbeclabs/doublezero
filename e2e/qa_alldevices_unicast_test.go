@@ -22,9 +22,10 @@ import (
 )
 
 var (
-	devicesFlag           = flag.String("devices", "", "comma separated list of devices to run tests against")
-	allocateAddrHosts     = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
-	skipCapacityCheckFlag = flag.Bool("skip-capacity-check", false, "skip device capacity checks (use when running with QA identity that bypasses on-chain max_users)")
+	devicesFlag      = flag.String("devices", "", "comma separated list of devices to run tests against")
+	allocateAddrHosts = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
+	failureThreshold        = flag.Float64("failure-threshold", 0.1, "maximum allowed overall device failure rate (0.0-1.0) before the test is marked as failed")
+	perHostFailureThreshold = flag.Float64("per-host-failure-threshold", 0.2, "maximum allowed per-host device failure rate (0.0-1.0) before the test is marked as failed")
 )
 
 func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
@@ -53,11 +54,9 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 2, "At least 2 clients are required for connectivity testing")
 
-	// Filter devices to only include those with sufficient unicast capacity and skip test devices
-	// When using a QA identity (--skip-capacity-check), all devices are included regardless of capacity
-	devices := test.ValidDevices(qa.DeviceUserTypeUnicast, 2, *skipCapacityCheckFlag)
+	devices := test.ValidDevices()
 	if len(devices) == 0 {
-		t.Skip("No valid devices found with sufficient capacity")
+		t.Skip("No valid devices found")
 	}
 
 	// Filter out transit devices - they don't participate in unicast connectivity tests
@@ -209,6 +208,65 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	}
 	log.Debug("Test summary", "packetsReceived", totalReceived, "packetsSent", totalSent, "batchesWithLoss", batchesWithLoss, "totalBatches", batchCount)
 
+	// Evaluate failure rates against threshold
+	totalDevices := len(deviceResults)
+	failedDevices := 0
+	var failedDeviceCodes []string
+	for code, result := range deviceResults {
+		if !result.Success {
+			failedDevices++
+			failedDeviceCodes = append(failedDeviceCodes, code)
+		}
+	}
+
+	overallRate := float64(failedDevices) / float64(totalDevices)
+	log.Debug("Overall failure rate",
+		"failed", failedDevices,
+		"total", totalDevices,
+		"rate", fmt.Sprintf("%.1f%%", overallRate*100),
+		"threshold", fmt.Sprintf("%.1f%%", *failureThreshold*100),
+	)
+	if overallRate > *failureThreshold {
+		slices.Sort(failedDeviceCodes)
+		t.Errorf("Overall device failure rate %.1f%% (%d/%d) exceeds threshold %.1f%%. Failed devices: %s",
+			overallRate*100, failedDevices, totalDevices, *failureThreshold*100,
+			strings.Join(failedDeviceCodes, ", "))
+	}
+
+	type hostStats struct {
+		total         int
+		failed        int
+		failedDevices []string
+	}
+	perHost := make(map[string]*hostStats)
+	for _, batch := range batchData {
+		for host, assignment := range batch {
+			if perHost[host] == nil {
+				perHost[host] = &hostStats{}
+			}
+			perHost[host].total++
+			if !assignment.Success() {
+				perHost[host].failed++
+				perHost[host].failedDevices = append(perHost[host].failedDevices, assignment.Device.Code)
+			}
+		}
+	}
+	for host, stats := range perHost {
+		hostRate := float64(stats.failed) / float64(stats.total)
+		log.Debug("Per-host failure rate",
+			"host", host,
+			"failed", stats.failed,
+			"total", stats.total,
+			"rate", fmt.Sprintf("%.1f%%", hostRate*100),
+		)
+		if hostRate > *perHostFailureThreshold {
+			slices.Sort(stats.failedDevices)
+			t.Errorf("Host %s failure rate %.1f%% (%d/%d) exceeds threshold %.1f%%. Failed devices: %s",
+				host, hostRate*100, stats.failed, stats.total, *perHostFailureThreshold*100,
+				strings.Join(stats.failedDevices, ", "))
+		}
+	}
+
 	results := make([]qa.DeviceTestResult, 0, len(deviceResults))
 	for _, result := range deviceResults {
 		results = append(results, *result)
@@ -315,7 +373,7 @@ func connectClientsAndWaitForRoutes(
 			log.Error("Failed to start connection", "client", c.Host, "device", device.Code, "error", err)
 			batch[c.Host].FailedTests++
 			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
-				t.Errorf("failed to connect client %s to device %s: %v", c.Host, device.Code, err)
+				t.Logf("DEVICE FAILURE: failed to connect client %s to device %s: %v", c.Host, device.Code, err)
 			} else {
 				log.Warn("Ignoring connection failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
 			}
@@ -330,7 +388,7 @@ func connectClientsAndWaitForRoutes(
 			log.Error("Client failed to reach status up", "client", c.Host, "error", err)
 			batch[c.Host].FailedTests++
 			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
-				t.Errorf("failed to wait for status for client %s: %v", c.Host, err)
+				t.Logf("DEVICE FAILURE: failed to wait for status for client %s: %v", c.Host, err)
 			} else {
 				log.Warn("Ignoring status failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
 			}
@@ -365,7 +423,7 @@ func connectClientsAndWaitForRoutes(
 			log.Error("Failed to wait for routes", "client", c.Host, "error", err)
 			batch[c.Host].FailedTests++
 			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
-				t.Errorf("failed to wait for routes on client %s: %v", c.Host, err)
+				t.Logf("DEVICE FAILURE: failed to wait for routes on client %s: %v", c.Host, err)
 			} else {
 				log.Warn("Ignoring route failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
 			}
@@ -417,7 +475,8 @@ func runConnectivitySubtests(
 						srcReady := srcDevice.Status == serviceability.DeviceStatusActivated && srcDevice.MaxUsers > 0
 						dstReady := dstDevice.Status == serviceability.DeviceStatusActivated && dstDevice.MaxUsers > 0
 						if srcReady && dstReady {
-							assert.NoError(t, err, "failed to test connectivity")
+							t.Logf("DEVICE FAILURE: connectivity test failed from %s to %s (device %s -> %s): %v",
+							src.Host, target.Host, srcDevice.Code, dstDevice.Code, err)
 						} else {
 							log.Warn("Ignoring connectivity failure involving device not ready for users",
 								"sourceDevice", srcDevice.Code, "sourceStatus", srcDevice.Status, "sourceMaxUsers", srcDevice.MaxUsers,

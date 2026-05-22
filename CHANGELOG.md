@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.24.0](https://github.com/malbeclabs/doublezero/compare/client/v0.23.0...client/v0.24.0) - 2026-05-22
+
+### Breaking
+
+### Changes
+
 - Smartcontract
   - Deprecate the 13 contributor-side program instructions whose only client was the now-deleted activator: `ActivateDevice` (21), `RejectDevice` (22), `CloseAccountDevice` (27), `ActivateLink` (29), `RejectLink` (30), `CloseAccountLink` (35), `ActivateMulticastGroup` (47), `RejectMulticastGroup` (48), `DeactivateMulticastGroup` (53), `ActivateDeviceInterface` (72), `RemoveDeviceInterface` (75), `UnlinkDeviceInterface` (77), and `RejectDeviceInterface` (78). Dispatch arms now short-circuit to `DoubleZeroError::Deprecated` (custom code 67); processor files and argument structs are removed. Borsh variant tags are preserved (unit variants) so the wire format is unchanged — old clients receive a deterministic deprecation error rather than an unknown-instruction decode failure. Bumps `MIN_COMPATIBLE_VERSION` to `0.15.0` (the `client/v0.14.1` git tag was a patch release built from a commit whose workspace Cargo version was still `0.14.0`, so the v0.14.1 binary self-reports as 0.14.0 in its startup version check; v0.15.0 is the first release whose embedded version actually satisfies the intended ≥ 0.14.1 gate). Gated on onchain `ProgramConfig.min_compatible_version ≥ 0.15.0` ([#3623](https://github.com/malbeclabs/doublezero/issues/3623))
   - Deprecate the `ActivateUser`, `RejectUser`, `CloseAccountUser`, and `BanUser` user-lifecycle program instructions: dispatch arms now return `DoubleZeroError::Deprecated` (custom code 67), and the processor files / argument structs are removed. Borsh variant tags 37/38/43/45 are preserved so the wire format is unchanged. The activator was the only client of all four — `CreateUser` has been atomic-to-`Activated` since RFC-11, `closeaccount` was activator-driven only, and `RequestBanUser` is now atomic. Gated on onchain `min_compatible_version ≥ 0.12.0` ([#3622](https://github.com/malbeclabs/doublezero/issues/3622))

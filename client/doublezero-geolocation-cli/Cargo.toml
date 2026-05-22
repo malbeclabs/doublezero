@@ -22,5 +22,5 @@ solana-sdk.workspace = true
 doublezero-config.workspace = true
 doublezero-geolocation.workspace = true
 doublezero-serviceability.workspace = true
-doublezero_cli.workspace = true
+doublezero-serviceability-cli.workspace = true
 doublezero_sdk.workspace = true

@@ -1,5 +1,5 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::{
+use doublezero_serviceability_cli::{
     link::{
         accept::AcceptLinkCliCommand, delete::*, dzx_create::CreateDZXLinkCliCommand, get::*,
         latency::LinkLatencyCliCommand, list::*, sethealth::SetLinkHealthCliCommand, update::*,

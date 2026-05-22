@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand};
 
-use doublezero_cli::exchange::{
+use doublezero_serviceability_cli::exchange::{
     create::*, delete::*, get::*, list::*, setdevice::SetDeviceExchangeCliCommand, update::*,
 };
 

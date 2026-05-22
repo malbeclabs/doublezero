@@ -24,13 +24,13 @@ use crate::cli::{
     location::LocationCommands,
     user::UserCommands,
 };
-use doublezero_cli::{
-    checkversion::check_version, doublezerocommand::CliCommandImpl,
-    geoclicommand::GeoCliCommandImpl, version::VersionCliCommand,
-};
 use doublezero_cli_core::LogLevel;
 use doublezero_sdk::{geolocation::client::GeoClient, DZClient, ProgramVersion};
 use doublezero_serviceability::pda::get_globalstate_pda;
+use doublezero_serviceability_cli::{
+    checkversion::check_version, doublezerocommand::CliCommandImpl,
+    geoclicommand::GeoCliCommandImpl, version::VersionCliCommand,
+};
 use servicecontroller::ServiceControllerImpl;
 
 #[derive(Parser, Debug)]

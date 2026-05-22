@@ -1,5 +1,12 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::{
+use doublezero_sdk::{
+    commands::{
+        device::{list::ListDeviceCommand, update::UpdateDeviceCommand},
+        user::list::ListUserCommand,
+    },
+    UserStatus, UserType,
+};
+use doublezero_serviceability_cli::{
     device::{
         create::CreateDeviceCliCommand,
         delete::DeleteDeviceCliCommand,
@@ -13,13 +20,6 @@ use doublezero_cli::{
         update::UpdateDeviceCliCommand,
     },
     doublezerocommand::CliCommand,
-};
-use doublezero_sdk::{
-    commands::{
-        device::{list::ListDeviceCommand, update::UpdateDeviceCommand},
-        user::list::ListUserCommand,
-    },
-    UserStatus, UserType,
 };
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, io::Write};
@@ -280,9 +280,9 @@ impl MigrateUnicastCountsCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use doublezero_cli::tests::utils::create_test_client;
     use doublezero_sdk::{Device, DeviceStatus, DeviceType, User, UserCYOA, UserStatus, UserType};
     use doublezero_serviceability::state::device::{DeviceDesiredStatus, DeviceHealth};
+    use doublezero_serviceability_cli::tests::utils::create_test_client;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::collections::HashMap;
 

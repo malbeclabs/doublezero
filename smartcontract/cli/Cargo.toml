@@ -1,5 +1,5 @@
 [package]
-name = "doublezero_cli"
+name = "doublezero-serviceability-cli"
 
 # Workspace inherited keys
 version.workspace = true
@@ -10,7 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [lib]
-name = "doublezero_cli"
+name = "doublezero_serviceability_cli"
 
 [dependencies]
 anyhow.workspace = true

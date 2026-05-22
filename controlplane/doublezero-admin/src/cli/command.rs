@@ -7,7 +7,7 @@ use crate::cli::{
 };
 use clap::{Args, Subcommand};
 use clap_complete::Shell;
-use doublezero_cli::{
+use doublezero_serviceability_cli::{
     account::GetAccountCliCommand, accounts::GetAccountsCliCommand, address::AddressCliCommand,
     balance::BalanceCliCommand, export::ExportCliCommand, init::InitCliCommand,
     keygen::KeyGenCliCommand, logcommand::LogCliCommand,

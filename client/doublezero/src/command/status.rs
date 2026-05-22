@@ -7,7 +7,7 @@ use crate::{
 };
 use backon::{ExponentialBuilder, Retryable};
 use clap::Args;
-use doublezero_cli::{doublezerocommand::CliCommand, helpers::print_error};
+use doublezero_serviceability_cli::{doublezerocommand::CliCommand, helpers::print_error};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tabled::Tabled;
@@ -159,7 +159,7 @@ mod tests {
     use crate::servicecontroller::{
         DoubleZeroStatus, MockServiceController, MulticastGroups, V2ServiceStatus, V2StatusResponse,
     };
-    use doublezero_cli::doublezerocommand::MockCliCommand;
+    use doublezero_serviceability_cli::doublezerocommand::MockCliCommand;
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,

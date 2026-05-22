@@ -1,5 +1,5 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::geolocation::probe::{
+use doublezero_serviceability_cli::geolocation::probe::{
     add_parent::AddParentGeoProbeCliCommand, create::CreateGeoProbeCliCommand,
     delete::DeleteGeoProbeCliCommand, get::GetGeoProbeCliCommand, list::ListGeoProbeCliCommand,
     remove_parent::RemoveParentGeoProbeCliCommand, update::UpdateGeoProbeCliCommand,

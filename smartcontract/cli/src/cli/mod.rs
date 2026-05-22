@@ -8,6 +8,7 @@
 //! unified `doublezero` binary via `#[command(flatten)]`.
 
 pub mod accesspass;
+pub mod command;
 pub mod config;
 pub mod contributor;
 pub mod device;

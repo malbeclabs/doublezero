@@ -62,6 +62,7 @@ impl Environment {
             Environment::MainnetBeta => NetworkConfig {
                 ledger_public_rpc_url: ENV_MAINNET_BETA_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
                 ledger_public_ws_rpc_url: ENV_MAINNET_BETA_DOUBLEZERO_LEDGER_WS_RPC_URL.to_string(),
+                solana_l1_rpc_url: ENV_MAINNET_BETA_SOLANA_L1_RPC_URL.to_string(),
                 serviceability_program_id: ENV_MAINNET_BETA_SERVICEABILITY_PUBKEY,
                 telemetry_program_id: ENV_MAINNET_BETA_TELEMETRY_PUBKEY,
                 internet_latency_collector_pk: ENV_MAINNET_BETA_INTERNET_LATENCY_COLLECTOR_PUBKEY,
@@ -70,6 +71,7 @@ impl Environment {
             Environment::Testnet => NetworkConfig {
                 ledger_public_rpc_url: ENV_TESTNET_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
                 ledger_public_ws_rpc_url: ENV_TESTNET_DOUBLEZERO_LEDGER_WS_RPC_URL.to_string(),
+                solana_l1_rpc_url: ENV_TESTNET_SOLANA_L1_RPC_URL.to_string(),
                 serviceability_program_id: ENV_TESTNET_SERVICEABILITY_PUBKEY,
                 telemetry_program_id: ENV_TESTNET_TELEMETRY_PUBKEY,
                 internet_latency_collector_pk: ENV_TESTNET_INTERNET_LATENCY_COLLECTOR_PUBKEY,
@@ -78,6 +80,7 @@ impl Environment {
             Environment::Devnet => NetworkConfig {
                 ledger_public_rpc_url: ENV_DEVNET_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
                 ledger_public_ws_rpc_url: ENV_LEDGER_DOUBLEZERO_DEVNET_WS_RPC_URL.to_string(),
+                solana_l1_rpc_url: ENV_DEVNET_SOLANA_L1_RPC_URL.to_string(),
                 serviceability_program_id: ENV_DEVNET_SERVICEABILITY_PUBKEY,
                 telemetry_program_id: ENV_DEVNET_TELEMETRY_PUBKEY,
                 internet_latency_collector_pk: ENV_DEVNET_INTERNET_LATENCY_COLLECTOR_PUBKEY,
@@ -86,6 +89,7 @@ impl Environment {
             Environment::Local => NetworkConfig {
                 ledger_public_rpc_url: ENV_LOCAL_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
                 ledger_public_ws_rpc_url: ENV_LOCAL_DOUBLEZERO_LEDGER_WS_RPC_URL.to_string(),
+                solana_l1_rpc_url: ENV_LOCAL_SOLANA_L1_RPC_URL.to_string(),
                 serviceability_program_id: ENV_LOCAL_SERVICEABILITY_PUBKEY,
                 telemetry_program_id: ENV_LOCAL_TELEMETRY_PUBKEY,
                 internet_latency_collector_pk: ENV_LOCAL_INTERNET_LATENCY_COLLECTOR_PUBKEY,
@@ -99,6 +103,9 @@ impl Environment {
         if std::env::var("DZ_LEDGER_WS_RPC_URL").is_ok() {
             config.ledger_public_ws_rpc_url = std::env::var("DZ_LEDGER_WS_RPC_URL").unwrap();
         }
+        if std::env::var("DZ_SOLANA_RPC_URL").is_ok() {
+            config.solana_l1_rpc_url = std::env::var("DZ_SOLANA_RPC_URL").unwrap();
+        }
 
         Ok(config)
     }
@@ -108,6 +115,10 @@ impl Environment {
 pub struct NetworkConfig {
     pub ledger_public_rpc_url: String,
     pub ledger_public_ws_rpc_url: String,
+    /// Solana L1 RPC URL. Distinct from the DZ ledger transport: per RFC-20
+    /// (§Backend client patterns), the DZ ledger and Solana L1 are separate
+    /// backends with separate override flags (`--url` vs `--solana-url`).
+    pub solana_l1_rpc_url: String,
     pub serviceability_program_id: Pubkey,
     pub telemetry_program_id: Pubkey,
     pub internet_latency_collector_pk: Pubkey,
@@ -248,6 +259,38 @@ mod tests {
         // reset the values in the environment when complete
         std::env::remove_var("DZ_LEDGER_RPC_URL");
         std::env::remove_var("DZ_LEDGER_WS_RPC_URL");
+    }
+
+    #[test]
+    #[serial]
+    fn test_network_config_solana_l1_urls() {
+        assert_eq!(
+            Environment::MainnetBeta.config().unwrap().solana_l1_rpc_url,
+            "https://api.mainnet-beta.solana.com",
+        );
+        assert_eq!(
+            Environment::Testnet.config().unwrap().solana_l1_rpc_url,
+            "https://api.testnet.solana.com",
+        );
+        // Devnet intentionally points at Solana testnet, matching RFC-20
+        // §Environments.
+        assert_eq!(
+            Environment::Devnet.config().unwrap().solana_l1_rpc_url,
+            "https://api.testnet.solana.com",
+        );
+        assert_eq!(
+            Environment::Local.config().unwrap().solana_l1_rpc_url,
+            "http://localhost:8899",
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_network_config_solana_url_env_override() {
+        std::env::set_var("DZ_SOLANA_RPC_URL", "https://custom-solana.example/");
+        let config = Environment::MainnetBeta.config().unwrap();
+        assert_eq!(config.solana_l1_rpc_url, "https://custom-solana.example/");
+        std::env::remove_var("DZ_SOLANA_RPC_URL");
     }
 
     #[test]

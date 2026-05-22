@@ -36,6 +36,7 @@ tabled.workspace = true
 tokio.workspace = true
 
 # Dependencies from this workspace
+doublezero-cli-core.workspace = true
 doublezero-config.workspace = true
 doublezero-geolocation = { workspace = true, features = ["no-entrypoint"] }
 doublezero-program-common.workspace = true

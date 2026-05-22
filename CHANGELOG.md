@@ -35,6 +35,7 @@ All notable changes to this project will be documented in this file.
 - E2E
   - Switch geolocation invocations to `doublezero geolocation ...` and `doublezero init-geolocation-config`
 - Agent: log after Arista eapi commit
+- Agent: log received config size in bytes and expose `doublezero_agent_config_size_in_lines` and `doublezero_agent_config_size_in_bytes` Prometheus gauges ([#3741](https://github.com/malbeclabs/doublezero/issues/3741))
 
 ## [v0.23.0](https://github.com/malbeclabs/doublezero/compare/client/v0.22.0...client/v0.23.0) - 2026-05-15
 

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -55,6 +56,13 @@ func pollControllerAndConfigureDevice(ctx context.Context, dzclient pb.Controlle
 		agent.ErrorsGetConfig.Inc()
 		return err
 	}
+
+	configLines := 0
+	if configText != "" {
+		configLines = strings.Count(configText, "\n") + 1
+	}
+	agent.ConfigSizeInLines.Set(float64(configLines))
+	agent.ConfigSizeInBytes.Set(float64(len(configText)))
 
 	if *verbose {
 		log.Printf("controller returned the following config: '%s'", configText)

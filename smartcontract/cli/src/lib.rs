@@ -5,6 +5,7 @@ pub mod address;
 pub mod allowlist;
 pub mod balance;
 pub mod checkversion;
+pub mod cli;
 pub mod config;
 pub mod contributor;
 pub mod device;

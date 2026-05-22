@@ -1,12 +1,5 @@
-use super::multicast::MulticastCliCommand;
 use crate::{
-    cli::{
-        accesspass::AccessPassCliCommand, config::ConfigCliCommand,
-        contributor::ContributorCliCommand, device::DeviceCliCommand, exchange::ExchangeCliCommand,
-        geolocation::GeolocationCliCommand, globalconfig::GlobalConfigCliCommand,
-        link::LinkCliCommand, location::LocationCliCommand, permission::PermissionCliCommand,
-        resource::ResourceCliCommand, tenant::TenantCliCommand, user::UserCliCommand,
-    },
+    cli::{geolocation::GeolocationCliCommand, multicast::MulticastCliCommand},
     command::{
         connect::ProvisioningCliCommand, disable::DisableCliCommand,
         disconnect::DecommissioningCliCommand, enable::EnableCliCommand,
@@ -16,10 +9,23 @@ use crate::{
 use clap::{Args, Subcommand};
 use clap_complete::Shell;
 use doublezero_serviceability_cli::{
-    account::GetAccountCliCommand, accounts::GetAccountsCliCommand, address::AddressCliCommand,
-    balance::BalanceCliCommand, export::ExportCliCommand,
-    geolocation::programconfig::init::InitProgramConfigCliCommand, init::InitCliCommand,
-    keygen::KeyGenCliCommand, logcommand::LogCliCommand, migrate::MigrateCliCommand,
+    account::GetAccountCliCommand,
+    accounts::GetAccountsCliCommand,
+    address::AddressCliCommand,
+    balance::BalanceCliCommand,
+    cli::{
+        accesspass::AccessPassCliCommand, config::ConfigCliCommand,
+        contributor::ContributorCliCommand, device::DeviceCliCommand, exchange::ExchangeCliCommand,
+        globalconfig::GlobalConfigCliCommand, link::LinkCliCommand, location::LocationCliCommand,
+        permission::PermissionCliCommand, resource::ResourceCliCommand, tenant::TenantCliCommand,
+        user::UserCliCommand,
+    },
+    export::ExportCliCommand,
+    geolocation::programconfig::init::InitProgramConfigCliCommand,
+    init::InitCliCommand,
+    keygen::KeyGenCliCommand,
+    logcommand::LogCliCommand,
+    migrate::MigrateCliCommand,
 };
 
 #[derive(Subcommand, Debug)]

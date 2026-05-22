@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand};
 
-use doublezero_serviceability_cli::location::{create::*, delete::*, get::*, list::*, update::*};
+use crate::location::{create::*, delete::*, get::*, list::*, update::*};
 
 #[derive(Args, Debug)]
 pub struct LocationCliCommand {

@@ -1,5 +1,4 @@
-use clap::{Args, Subcommand};
-use doublezero_serviceability_cli::{
+use crate::{
     allowlist::{
         foundation::{
             add::AddFoundationAllowlistCliCommand, list::ListFoundationAllowlistCliCommand,
@@ -16,6 +15,7 @@ use doublezero_serviceability_cli::{
         setversion::SetVersionCliCommand,
     },
 };
+use clap::{Args, Subcommand};
 
 #[derive(Args, Debug)]
 pub struct GlobalConfigCliCommand {

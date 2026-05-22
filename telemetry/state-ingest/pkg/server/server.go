@@ -89,7 +89,9 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	}()
 
 	err := httpSrv.Serve(listener)
-	if errors.Is(err, http.ErrServerClosed) {
+	// net.ErrClosed occurs when the listener is closed out from under Serve
+	// during shutdown (racing httpSrv.Shutdown), which is benign.
+	if errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed) {
 		return nil
 	}
 	return err

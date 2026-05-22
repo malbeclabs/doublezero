@@ -320,7 +320,7 @@ async fn main() -> eyre::Result<()> {
             LocationCommands::Create(args) => args.execute(&client, &mut handle),
             LocationCommands::Update(args) => args.execute(&client, &mut handle),
             LocationCommands::List(args) => args.execute(&client, &mut handle),
-            LocationCommands::Get(args) => args.execute(&client, &mut handle),
+            LocationCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
             LocationCommands::Delete(args) => args.execute(&client, &mut handle),
         },
         Command::Exchange(command) => match command.command {

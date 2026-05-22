@@ -57,6 +57,10 @@ async fn main() -> eyre::Result<()> {
         println!("using keypair: {}", keypair.display());
     }
 
+    let env_for_ctx = match app.env.as_deref() {
+        Some(s) => s.parse::<Environment>()?,
+        None => Environment::default(),
+    };
     let (url, ws, program_id) = if let Some(env) = app.env {
         let config = env.parse::<Environment>()?.config()?;
         (
@@ -70,6 +74,9 @@ async fn main() -> eyre::Result<()> {
 
     let dzclient = DZClient::new(url, ws, program_id, app.keypair)?;
     let client = CliCommandImpl::new(&dzclient);
+    let ctx = doublezero_cli_core::CliContextBuilder::new()
+        .with_env(env_for_ctx)
+        .build()?;
 
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
@@ -107,7 +114,7 @@ async fn main() -> eyre::Result<()> {
             LocationCommands::Create(args) => args.execute(&client, &mut handle),
             LocationCommands::Update(args) => args.execute(&client, &mut handle),
             LocationCommands::List(args) => args.execute(&client, &mut handle),
-            LocationCommands::Get(args) => args.execute(&client, &mut handle),
+            LocationCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
             LocationCommands::Delete(args) => args.execute(&client, &mut handle),
         },
         Command::Exchange(command) => match command.command {

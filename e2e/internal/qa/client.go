@@ -476,6 +476,33 @@ func (c *Client) WaitForStatusDisconnected(ctx context.Context) error {
 	return nil
 }
 
+// WaitForMulticastStatusDisconnected polls until the Multicast status entry is
+// either absent from the status list or has session status disconnected.
+// Prefer this over WaitForStatusDisconnected in multi-tunnel contexts where
+// other tunnel types (e.g. IBRL) remain up after a multicast seat is withdrawn.
+func (c *Client) WaitForMulticastStatusDisconnected(ctx context.Context) error {
+	return c.waitForUserTypeStatusDisconnected(ctx, "Multicast", FindMulticastStatus)
+}
+
+// waitForUserTypeStatusDisconnected polls until find returns nil or a status
+// whose session is disconnected. userType is used only for log context.
+func (c *Client) waitForUserTypeStatusDisconnected(ctx context.Context, userType string, find func([]*pb.Status) *pb.Status) error {
+	c.log.Debug("Waiting for status to be disconnected", "host", c.Host, "userType", userType)
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
+		if err != nil {
+			return false, err
+		}
+		s := find(resp.Status)
+		return s == nil || s.SessionStatus == UserStatusDisconnected, nil
+	}, waitForStatusDisconnectedTimeout, waitInterval)
+	if err != nil {
+		return fmt.Errorf("failed to wait for %s status to be disconnected on host %s: %w", userType, c.Host, err)
+	}
+	c.log.Debug("Confirmed status is disconnected", "host", c.Host, "userType", userType)
+	return nil
+}
+
 func (c *Client) WaitForRoutes(ctx context.Context, expectedIPs []net.IP) error {
 	c.log.Debug("Waiting for routes to be installed", "host", c.Host, "expectedIPs", expectedIPs)
 	err := poll.Until(ctx, func() (bool, error) {

@@ -49,6 +49,9 @@ struct App {
     /// DZ ledger WebSocket URL
     #[arg(long, value_name = "WEBSOCKET_URL", global = true)]
     ws: Option<String>,
+    /// Solana L1 RPC URL override (does not affect the DZ ledger)
+    #[arg(long, value_name = "SOLANA_RPC_URL", global = true)]
+    solana_url: Option<String>,
     /// DZ program ID (testnet or devnet)
     #[arg(long, value_name = "PROGRAM_ID", global = true)]
     program_id: Option<String>,
@@ -70,6 +73,13 @@ struct App {
     /// Suppress version warning output
     #[arg(long, global = true)]
     no_version_warning: bool,
+    /// Increase diagnostic logging verbosity. Repeat for higher levels:
+    /// `--log-verbose` raises to debug, `--log-verbose --log-verbose` to trace.
+    /// Renamed from `--verbose` to avoid colliding with the per-subcommand
+    /// `--verbose` flags inherited from earlier releases of `doublezero
+    /// connect` / `disconnect`.
+    #[arg(long = "log-verbose", action = clap::ArgAction::Count, global = true)]
+    log_verbosity: u8,
     /// Print version information
     #[arg(short = 'V', long = "version", action = clap::ArgAction::SetTrue)]
     version: bool,
@@ -83,12 +93,14 @@ async fn main() -> eyre::Result<()> {
 
     let app = App::parse();
 
+    doublezero_cli_core::init_logging(app.log_verbosity);
+
     if let Some(sock_file) = &app.sock_file {
         ServiceControllerImpl::set_global_socket_path(sock_file.to_string_lossy());
     }
 
     if let Some(keypair) = &app.keypair {
-        println!("using keypair: {}", keypair.display());
+        tracing::info!(keypair = %keypair.display(), "using keypair");
     }
 
     let (url, ws, program_id) = if let Some(env) = app.env {

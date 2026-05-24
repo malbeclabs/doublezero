@@ -61,8 +61,12 @@ mocked client.
 - Long names in kebab-case.
 - Short aliases on booleans only.
 - Identifiers that reference an onchain entity use `validate_pubkey_or_code`
-  and accept either a pubkey or the entity's code. The literal `"me"`
-  resolves to the current payer.
+  and accept either a pubkey or the entity's code. Where a flag denotes a
+  signer or payer-scoped entity (for example `--administrator`,
+  `--user-payer`, `--contributor`), the verb MAY also accept the literal
+  `"me"` and resolve it to the current payer's pubkey at execution time.
+  `"me"` resolution is a verb-level responsibility, not a validator
+  behavior; verbs that do not opt in will treat `"me"` as a literal code.
 - Repeatable inputs use one flag per value (`--add a --add b`), not comma
   lists.
 - No env-var reads at the verb level. Anything an operator might set in
@@ -96,7 +100,7 @@ The binary owns these globals; modules MUST NOT redeclare them:
 | `--geo-program-id` | Geolocation program ID override. |
 | `--sock-file` | Daemon Unix socket path override. |
 | `--no-version-warning` | Suppress version-check banner. |
-| `--verbose`, `-v` | Diagnostic logging at debug (`-v`) or trace (`-vv`). |
+| `--log-verbose` | Diagnostic logging. Repeat for higher levels: once raises to `debug`, twice raises to `trace`. No short alias because `connect`/`disconnect` still own `-v`/`--verbose` for their own flags. |
 | `--version`, `-V` | Print version and exit. |
 
 `--env` resolves through `doublezero-config`. Recognized values are

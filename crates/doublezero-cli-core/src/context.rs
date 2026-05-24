@@ -138,16 +138,27 @@ impl CliContextBuilder {
     /// value is sourced from the `doublezero-config` `NetworkConfig` for that
     /// environment. If `env` is unset, the caller must supply every URL and
     /// program-ID field explicitly.
+    ///
+    /// When the caller supplies `ledger_rpc_url` but not `ledger_ws_rpc_url`,
+    /// the WebSocket URL is derived from the RPC URL by scheme swap
+    /// (`https → wss`, `http → ws`) so that a custom RPC override is not
+    /// silently paired with a stale env-default WS URL.
     pub fn build(self) -> eyre::Result<CliContext> {
         let env = self.env.unwrap_or_default();
         let config = env.config()?;
 
+        let ledger_rpc_url_override = self.ledger_rpc_url.is_some();
+        let ledger_rpc_url = self.ledger_rpc_url.unwrap_or(config.ledger_public_rpc_url);
+        let ledger_ws_rpc_url = match self.ledger_ws_rpc_url {
+            Some(ws) => ws,
+            None if ledger_rpc_url_override => derive_ws_from_rpc(&ledger_rpc_url),
+            None => config.ledger_public_ws_rpc_url,
+        };
+
         Ok(CliContext {
             env,
-            ledger_rpc_url: self.ledger_rpc_url.unwrap_or(config.ledger_public_rpc_url),
-            ledger_ws_rpc_url: self
-                .ledger_ws_rpc_url
-                .unwrap_or(config.ledger_public_ws_rpc_url),
+            ledger_rpc_url,
+            ledger_ws_rpc_url,
             solana_l1_rpc_url: self.solana_l1_rpc_url.unwrap_or(config.solana_l1_rpc_url),
             serviceability_program_id: self
                 .serviceability_program_id
@@ -163,6 +174,16 @@ impl CliContextBuilder {
             output_format: self.output_format,
         })
     }
+}
+
+fn derive_ws_from_rpc(rpc: &str) -> String {
+    if let Some(rest) = rpc.strip_prefix("https://") {
+        return format!("wss://{rest}");
+    }
+    if let Some(rest) = rpc.strip_prefix("http://") {
+        return format!("ws://{rest}");
+    }
+    rpc.to_string()
 }
 
 #[cfg(test)]
@@ -193,6 +214,58 @@ mod tests {
             .with_ledger_rpc_url("https://custom-rpc.example/")
             .build()
             .unwrap();
+        // Per-field overrides win over env. Binaries are free to forbid this
+        // combination at the CLI layer (see `client/doublezero`); the builder
+        // itself stays permissive so library callers can mix env-derived
+        // defaults with targeted overrides.
         assert_eq!(ctx.ledger_rpc_url, "https://custom-rpc.example/");
+        // The WS URL is derived from the custom RPC, not left at devnet's
+        // default — otherwise the resolved context would be inconsistent.
+        assert_eq!(ctx.ledger_ws_rpc_url, "wss://custom-rpc.example/");
+    }
+
+    #[test]
+    #[serial]
+    fn builder_derives_wss_from_https_rpc_override() {
+        let ctx = CliContextBuilder::new()
+            .with_ledger_rpc_url("https://custom-rpc.example/")
+            .build()
+            .unwrap();
+        assert_eq!(ctx.ledger_rpc_url, "https://custom-rpc.example/");
+        assert_eq!(ctx.ledger_ws_rpc_url, "wss://custom-rpc.example/");
+    }
+
+    #[test]
+    #[serial]
+    fn builder_derives_ws_from_http_rpc_override() {
+        let ctx = CliContextBuilder::new()
+            .with_ledger_rpc_url("http://localhost:8899/")
+            .build()
+            .unwrap();
+        assert_eq!(ctx.ledger_rpc_url, "http://localhost:8899/");
+        assert_eq!(ctx.ledger_ws_rpc_url, "ws://localhost:8899/");
+    }
+
+    #[test]
+    #[serial]
+    fn builder_explicit_ws_wins_over_derivation() {
+        let ctx = CliContextBuilder::new()
+            .with_ledger_rpc_url("https://custom-rpc.example/")
+            .with_ledger_ws_rpc_url("wss://other-ws.example/")
+            .build()
+            .unwrap();
+        assert_eq!(ctx.ledger_ws_rpc_url, "wss://other-ws.example/");
+    }
+
+    #[test]
+    #[serial]
+    fn builder_env_only_uses_network_config_ws() {
+        let env_ctx = CliContextBuilder::new()
+            .with_env(Environment::Devnet)
+            .build()
+            .unwrap();
+        let cfg = Environment::Devnet.config().unwrap();
+        assert_eq!(env_ctx.ledger_rpc_url, cfg.ledger_public_rpc_url);
+        assert_eq!(env_ctx.ledger_ws_rpc_url, cfg.ledger_public_ws_rpc_url);
     }
 }

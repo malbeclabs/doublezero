@@ -151,25 +151,17 @@ async fn main() -> eyre::Result<()> {
     // Bridge to the legacy `DZClient::new(Option<String>, ...)` signature.
     // When neither `--env` nor a per-field override is set, forward `None`
     // so `DZClient` keeps falling back to the user's
-    // `~/.config/solana/cli/config.yml`. As verbs migrate to construct typed
-    // clients from `CliContext` directly, this bridge shrinks.
-    let url = if env_explicit || app.url.is_some() {
-        Some(ctx.ledger_rpc_url.clone())
-    } else {
-        None
-    };
-    let ws = if env_explicit || app.ws.is_some() {
-        Some(ctx.ledger_ws_rpc_url.clone())
-    } else {
-        None
-    };
-    let program_id = app.program_id.clone().or_else(|| {
-        if env_explicit {
-            Some(ctx.serviceability_program_id.to_string())
-        } else {
-            None
-        }
-    });
+    // `~/.config/doublezero/cli/config.yml`. As verbs migrate to construct
+    // typed clients from `CliContext` directly, this bridge shrinks.
+    //
+    // `CliContextBuilder::build` derives WS from RPC when only `--url` is
+    // overridden, so `ctx.ledger_ws_rpc_url` stays consistent with
+    // `ctx.ledger_rpc_url` on every path that reaches here.
+    let any_url_explicit = env_explicit || app.url.is_some() || app.ws.is_some();
+    let url = any_url_explicit.then(|| ctx.ledger_rpc_url.clone());
+    let ws = any_url_explicit.then(|| ctx.ledger_ws_rpc_url.clone());
+    let program_id = (env_explicit || app.program_id.is_some())
+        .then(|| ctx.serviceability_program_id.to_string());
 
     let dzclient = DZClient::new(url.clone(), ws, program_id, ctx.keypair_path.clone())?;
     let client = CliCommandImpl::new(&dzclient);

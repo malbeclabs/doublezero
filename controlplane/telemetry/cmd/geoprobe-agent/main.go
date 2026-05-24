@@ -41,6 +41,7 @@ const (
 	defaultVerifyInterval             = 29 * time.Second
 	discoveryInterval                 = 60 * time.Second
 	defaultDeliveryDNSRefreshInterval = 5 * time.Minute
+	defaultDeliveryDNSTTL             = defaultDeliveryDNSRefreshInterval * 5 / 2
 )
 
 var (
@@ -613,7 +614,7 @@ func main() {
 
 	// Run main measurement loop. This runs regardless of whether trusted parents
 	// are configured at startup, since they may be added dynamically at runtime.
-	deliveryDNS := geoprobe.NewDeliveryDNSRefresher(log, defaultDeliveryDNSRefreshInterval)
+	deliveryDNS := geoprobe.NewDeliveryDNSRefresher(log, defaultDeliveryDNSTTL)
 	go deliveryDNS.Start(ctx, defaultDeliveryDNSRefreshInterval)
 
 	go func() {

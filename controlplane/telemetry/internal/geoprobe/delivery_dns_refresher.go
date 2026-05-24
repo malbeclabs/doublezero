@@ -11,7 +11,7 @@ import (
 // DeliveryDNSRefresher runs periodic DNS resolution for result-destination host:port
 // strings off the measurement loop. The hot path uses DNSCache.LookupDeliveryUDPAddr
 // only (no DNS). Refreshes run at startup, when the desired set changes, and on a
-// fixed ticker (aligned with DNS cache TTL).
+// fixed ticker (shorter than cache TTL so entries are refreshed before expiry).
 type DeliveryDNSRefresher struct {
 	cache   *DNSCache
 	log     *slog.Logger
@@ -32,11 +32,6 @@ func NewDeliveryDNSRefresher(log *slog.Logger, ttl time.Duration) *DeliveryDNSRe
 		desired: make(map[string]struct{}),
 		trigger: make(chan struct{}, 1),
 	}
-}
-
-// Cache returns the underlying DNS cache for tests.
-func (r *DeliveryDNSRefresher) Cache() *DNSCache {
-	return r.cache
 }
 
 // Lookup resolves delivery addresses without blocking on DNS for hostnames.

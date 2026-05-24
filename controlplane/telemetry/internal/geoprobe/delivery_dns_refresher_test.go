@@ -12,7 +12,7 @@ import (
 func TestDeliveryDNSRefresher_StartupRefresh(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	r := NewDeliveryDNSRefresher(log, 5*time.Minute)
-	r.Cache().lookup = func(host string) ([]string, error) {
+	r.cache.lookup = func(host string) ([]string, error) {
 		if host == "results.example.com" {
 			return []string{"93.184.216.34"}, nil
 		}
@@ -78,7 +78,7 @@ func TestDeliveryDNSRefresher_SetDesiredTriggersRefresh(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	r := NewDeliveryDNSRefresher(log, 5*time.Minute)
 	lookupCalls := 0
-	r.Cache().lookup = func(host string) ([]string, error) {
+	r.cache.lookup = func(host string) ([]string, error) {
 		lookupCalls++
 		return []string{"93.184.216.34"}, nil
 	}

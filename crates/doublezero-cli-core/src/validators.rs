@@ -1,11 +1,19 @@
 //! Shared `clap` value-parser validators.
 //!
-//! Per RFC-20 (§Argument conventions): "Identifiers accept both pubkey and
+//! Per RFC-20 (§Argument conventions): identifiers accept both pubkey and
 //! code. Any flag that references an onchain entity MUST accept either a
 //! Solana pubkey or the entity's human-readable code via the shared
-//! validator. The magic value `\"me\"` resolves to the current payer's pubkey
-//! at execution time." Module crates re-export and consume these helpers
-//! rather than re-implementing them.
+//! validator. Module crates re-export and consume these helpers rather than
+//! re-implementing them.
+//!
+//! Resolution of the literal `"me"` to the current payer's pubkey is a
+//! verb-level responsibility, performed in the verb's `execute` path using
+//! the payer pubkey from `CliContext`. The validators here only enforce
+//! grammar; they do not perform runtime resolution. `validate_pubkey`
+//! short-circuits `"me"` because pubkey-only fields have no code fallback;
+//! `validate_pubkey_or_code` admits `"me"` as a syntactically valid code,
+//! and verbs that opt in to payer resolution check for the literal
+//! themselves.
 
 use doublezero_program_common::{types::parse_utils::bandwidth_parse, validate_account_code};
 use solana_sdk::pubkey::Pubkey;

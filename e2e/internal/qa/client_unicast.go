@@ -47,9 +47,19 @@ func (c *Client) ConnectUserUnicast_NoWait(ctx context.Context, deviceCode strin
 func (c *Client) ConnectUserUnicast(ctx context.Context, deviceCode string, waitForStatus bool) error {
 	c.doubleZeroIP = nil // Clear stale IP before connecting
 
-	err := c.DisconnectUser(ctx, true, true)
+	// Submit the disconnect RPC without waiting for all-tunnel disconnected
+	// status or all-user-deletion onchain: a stale Multicast tunnel (e.g. from
+	// a shred-subscription seat that cannot be withdrawn) keeps an oracle-owned
+	// multicast user account alive that `doublezero disconnect` skips and the
+	// daemon's multicast tunnel stays BGP-up. Waiting on either condition would
+	// block the entire unicast suite. Wait only for the IBRL tunnel to be down
+	// before reconnecting.
+	err := c.DisconnectUser(ctx, false, false)
 	if err != nil {
 		return fmt.Errorf("failed to ensure disconnected on host %s: %w", c.Host, err)
+	}
+	if err := c.WaitForIBRLStatusDisconnected(ctx); err != nil {
+		return fmt.Errorf("failed to ensure IBRL disconnected on host %s: %w", c.Host, err)
 	}
 
 	c.log.Debug("Connecting unicast user", "host", c.Host, "device", deviceCode, "allocateAddr", c.AllocateAddr)

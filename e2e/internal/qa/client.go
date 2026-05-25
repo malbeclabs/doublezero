@@ -484,6 +484,35 @@ func (c *Client) WaitForMulticastStatusDisconnected(ctx context.Context) error {
 	return c.waitForUserTypeStatusDisconnected(ctx, "Multicast", FindMulticastStatus)
 }
 
+// WaitForIBRLStatusDisconnected polls until no IBRL (or IBRLWithAllocatedIP)
+// status entry remains with a non-disconnected session. Non-IBRL tunnel types
+// (e.g. Multicast) are ignored. Prefer this over WaitForStatusDisconnected in
+// multi-tunnel contexts where a Multicast tunnel can persist independently of
+// the unicast lifecycle — e.g. when a stale shred-subscription seat cannot be
+// withdrawn and its multicast tunnel stays up. Walks the status list directly
+// rather than reusing FindIBRLStatus, which has a single-status fallback that
+// would misclassify a lone Multicast entry as IBRL.
+func (c *Client) WaitForIBRLStatusDisconnected(ctx context.Context) error {
+	c.log.Debug("Waiting for IBRL status to be disconnected", "host", c.Host)
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
+		if err != nil {
+			return false, err
+		}
+		for _, s := range resp.Status {
+			if IsIBRLStatus(s) && s.SessionStatus != UserStatusDisconnected {
+				return false, nil
+			}
+		}
+		return true, nil
+	}, waitForStatusDisconnectedTimeout, waitInterval)
+	if err != nil {
+		return fmt.Errorf("failed to wait for IBRL status to be disconnected on host %s: %w", c.Host, err)
+	}
+	c.log.Debug("Confirmed IBRL status is disconnected", "host", c.Host)
+	return nil
+}
+
 // waitForUserTypeStatusDisconnected polls until find returns nil or a status
 // whose session is disconnected. userType is used only for log context.
 func (c *Client) waitForUserTypeStatusDisconnected(ctx context.Context, userType string, find func([]*pb.Status) *pb.Status) error {

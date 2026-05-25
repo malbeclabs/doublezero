@@ -239,3 +239,137 @@ impl ServiceabilityCommand {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Parse-level parity tests for `ServiceabilityCommand`.
+    //!
+    //! Once the unified `doublezero` binary mounts this enum via
+    //! `#[command(flatten)]`, the variant tree below becomes the user-facing
+    //! parse tree for every serviceability verb. A wrong `Subcommand` attribute
+    //! or a misrouted nested enum here would land directly in production, so we
+    //! pin the representative chains to specific variants.
+    //!
+    //! The tests cover parse-time routing only - they do not invoke `execute`.
+    //! Per-verb behavior is covered by inline tests next to each leaf command.
+    use super::*;
+    use crate::cli::{device::InterfaceCliCommand, link::CreateLinkCommand};
+    use clap::Parser;
+
+    #[derive(Parser, Debug)]
+    struct TestCli {
+        #[command(subcommand)]
+        command: ServiceabilityCommand,
+    }
+
+    /// The system program id: a syntactically valid 32-byte base58 pubkey.
+    /// Used wherever a verb takes an identifier validated by
+    /// `validate_pubkey_or_code`.
+    const TEST_PUBKEY: &str = "11111111111111111111111111111111";
+
+    #[test]
+    fn parses_location_get() {
+        let parsed =
+            TestCli::try_parse_from(["test", "location", "get", "--code", TEST_PUBKEY]).unwrap();
+        assert!(matches!(
+            parsed.command,
+            ServiceabilityCommand::Location(LocationCliCommand {
+                command: LocationCommands::Get(_),
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_device_interface_get() {
+        let parsed = TestCli::try_parse_from([
+            "test",
+            "device",
+            "interface",
+            "get",
+            TEST_PUBKEY,
+            "Ethernet1",
+        ])
+        .unwrap();
+        assert!(matches!(
+            parsed.command,
+            ServiceabilityCommand::Device(DeviceCliCommand {
+                command: DeviceCommands::Interface(InterfaceCliCommand {
+                    command: InterfaceCommands::Get(_),
+                }),
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_link_create_wan() {
+        let parsed = TestCli::try_parse_from([
+            "test",
+            "link",
+            "create",
+            "wan",
+            "--code",
+            "test-link",
+            "--contributor",
+            TEST_PUBKEY,
+            "--side-a",
+            TEST_PUBKEY,
+            "--side-a-interface",
+            "Ethernet1",
+            "--side-z",
+            TEST_PUBKEY,
+            "--side-z-interface",
+            "Ethernet2",
+            "--bandwidth",
+            "1Gbps",
+            "--delay-ms",
+            "5",
+            "--jitter-ms",
+            "1",
+        ])
+        .unwrap();
+        assert!(matches!(
+            parsed.command,
+            ServiceabilityCommand::Link(LinkCliCommand {
+                command: LinkCommands::Create(CreateLinkCommand {
+                    command: CreateLinkCommands::Wan(_),
+                }),
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_access_pass_fund() {
+        let parsed = TestCli::try_parse_from(["test", "access-pass", "fund"]).unwrap();
+        assert!(matches!(
+            parsed.command,
+            ServiceabilityCommand::AccessPass(AccessPassCliCommand {
+                command: AccessPassCommands::Fund(_),
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_resource_verify() {
+        let parsed = TestCli::try_parse_from(["test", "resource", "verify"]).unwrap();
+        assert!(matches!(
+            parsed.command,
+            ServiceabilityCommand::Resource(ResourceCliCommand {
+                command: ResourceCommands::Verify(_),
+            })
+        ));
+    }
+
+    // `hide = true` must not gate parsing - operators and automation rely on
+    // these verbs being reachable even though they do not appear in --help.
+    #[test]
+    fn parses_hidden_init() {
+        let parsed = TestCli::try_parse_from(["test", "init"]).unwrap();
+        assert!(matches!(parsed.command, ServiceabilityCommand::Init(_)));
+    }
+
+    #[test]
+    fn parses_hidden_migrate() {
+        let parsed = TestCli::try_parse_from(["test", "migrate"]).unwrap();
+        assert!(matches!(parsed.command, ServiceabilityCommand::Migrate(_)));
+    }
+}

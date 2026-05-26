@@ -119,15 +119,66 @@ async fn main() -> eyre::Result<()> {
 
     // Resolve global configuration into a CliContext per RFC-20 (§CliContext).
     // The binary populates it once at startup; future verbs read from it.
+    //
+    // Precedence (highest wins): CLI flag > persisted `config.yml` > env-derived
+    // default. File reads happen here in the binary; module crates only read
+    // resolved values from `CliContext` (RFC-20 §67).
+    let (persisted_path, persisted) =
+        doublezero_sdk::read_doublezero_config().unwrap_or_else(|_| {
+            (
+                std::path::PathBuf::new(),
+                doublezero_sdk::ClientConfig::default(),
+            )
+        });
+    let persisted_exists = persisted_path.is_file();
+
     let env_explicit = app.env.is_some();
     let env = match app.env.as_deref() {
         Some(s) => s.parse::<Environment>().unwrap_or_else(|e| {
             doublezero_cli_core::error::render_eyre(&e);
             std::process::exit(1);
         }),
+        None if persisted_exists => persisted
+            .program_id
+            .as_deref()
+            .and_then(|pid| Environment::from_program_id(pid).ok())
+            .unwrap_or_default(),
         None => Environment::default(),
     };
+
     let mut ctx_builder = doublezero_cli_core::CliContextBuilder::new().with_env(env);
+
+    // Layer the persisted config when the file exists. When the user is
+    // selecting an environment wholesale via `--env`, skip persisted URL and
+    // program-ID values so we never mix environments; the keypair path is
+    // orthogonal to env and stays.
+    if persisted_exists {
+        if !env_explicit {
+            ctx_builder = ctx_builder.with_ledger_rpc_url(persisted.json_rpc_url.clone());
+            if let Some(ws) = persisted.websocket_url.clone() {
+                ctx_builder = ctx_builder.with_ledger_ws_rpc_url(ws);
+            }
+            if let Some(pid) = persisted
+                .program_id
+                .as_deref()
+                .and_then(|s| s.parse::<solana_sdk::pubkey::Pubkey>().ok())
+            {
+                ctx_builder = ctx_builder.with_serviceability_program_id(pid);
+            }
+            if let Some(pid) = persisted
+                .geo_program_id
+                .as_deref()
+                .and_then(|s| s.parse::<solana_sdk::pubkey::Pubkey>().ok())
+            {
+                ctx_builder = ctx_builder.with_geolocation_program_id(pid);
+            }
+        }
+        ctx_builder = ctx_builder.with_keypair_path(persisted.keypair_path.clone());
+    }
+
+    // CLI-flag overrides win. `--env` is mutually exclusive with the per-field
+    // URL and program-ID flags at the clap layer, so at most one branch of each
+    // pair fires per invocation.
     if let Some(u) = app.url.clone() {
         ctx_builder = ctx_builder.with_ledger_rpc_url(u);
     }
@@ -136,6 +187,20 @@ async fn main() -> eyre::Result<()> {
     }
     if let Some(s) = app.solana_url.clone() {
         ctx_builder = ctx_builder.with_solana_l1_rpc_url(s);
+    }
+    if let Some(pid) = app
+        .program_id
+        .as_deref()
+        .and_then(|s| s.parse::<solana_sdk::pubkey::Pubkey>().ok())
+    {
+        ctx_builder = ctx_builder.with_serviceability_program_id(pid);
+    }
+    if let Some(pid) = app
+        .geo_program_id
+        .as_deref()
+        .and_then(|s| s.parse::<solana_sdk::pubkey::Pubkey>().ok())
+    {
+        ctx_builder = ctx_builder.with_geolocation_program_id(pid);
     }
     if let Some(k) = app.keypair.clone() {
         ctx_builder = ctx_builder.with_keypair_path(k);
@@ -149,19 +214,11 @@ async fn main() -> eyre::Result<()> {
     });
 
     // Bridge to the legacy `DZClient::new(Option<String>, ...)` signature.
-    // When neither `--env` nor a per-field override is set, forward `None`
-    // so `DZClient` keeps falling back to the user's
-    // `~/.config/doublezero/cli/config.yml`. As verbs migrate to construct
-    // typed clients from `CliContext` directly, this bridge shrinks.
-    //
-    // `CliContextBuilder::build` derives WS from RPC when only `--url` is
-    // overridden, so `ctx.ledger_ws_rpc_url` stays consistent with
-    // `ctx.ledger_rpc_url` on every path that reaches here.
-    let any_url_explicit = env_explicit || app.url.is_some() || app.ws.is_some();
-    let url = any_url_explicit.then(|| ctx.ledger_rpc_url.clone());
-    let ws = any_url_explicit.then(|| ctx.ledger_ws_rpc_url.clone());
-    let program_id = (env_explicit || app.program_id.is_some())
-        .then(|| ctx.serviceability_program_id.to_string());
+    // CliContext now carries the fully resolved values, so we forward them
+    // directly. Legacy and conforming verbs agree on what they are talking to.
+    let url = Some(ctx.ledger_rpc_url.clone());
+    let ws = Some(ctx.ledger_ws_rpc_url.clone());
+    let program_id = Some(ctx.serviceability_program_id.to_string());
 
     let dzclient = DZClient::new(url.clone(), ws, program_id, ctx.keypair_path.clone())?;
     let client = CliCommandImpl::new(&dzclient);

@@ -28,6 +28,7 @@ use doublezero_cli::{
     checkversion::check_version, doublezerocommand::CliCommandImpl,
     geoclicommand::GeoCliCommandImpl, version::VersionCliCommand,
 };
+use doublezero_cli_core::LogLevel;
 use doublezero_sdk::{geolocation::client::GeoClient, DZClient, ProgramVersion};
 use doublezero_serviceability::pda::get_globalstate_pda;
 use servicecontroller::ServiceControllerImpl;
@@ -84,13 +85,15 @@ struct App {
     /// Suppress version warning output
     #[arg(long, global = true)]
     no_version_warning: bool,
-    /// Increase diagnostic logging verbosity. Repeat for higher levels:
-    /// `--log-verbose` raises to debug, `--log-verbose --log-verbose` to trace.
-    /// Renamed from `--verbose` to avoid colliding with the per-subcommand
-    /// `--verbose` flags inherited from earlier releases of `doublezero
-    /// connect` / `disconnect`.
-    #[arg(long = "log-verbose", action = clap::ArgAction::Count, global = true)]
-    log_verbosity: u8,
+    /// Diagnostic logging level. One of: `off`, `error`, `warn` (default), `info`, `debug`, `trace`.
+    #[arg(
+        long = "log-level",
+        value_name = "LEVEL",
+        value_enum,
+        default_value_t = LogLevel::default(),
+        global = true,
+    )]
+    log_level: LogLevel,
     /// Print version information
     #[arg(short = 'V', long = "version", action = clap::ArgAction::SetTrue)]
     version: bool,
@@ -104,7 +107,7 @@ async fn main() -> eyre::Result<()> {
 
     let app = App::parse();
 
-    doublezero_cli_core::init_logging(app.log_verbosity);
+    doublezero_cli_core::init_logging(app.log_level);
 
     if let Some(sock_file) = &app.sock_file {
         ServiceControllerImpl::set_global_socket_path(sock_file.to_string_lossy());

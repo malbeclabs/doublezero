@@ -144,7 +144,9 @@ impl CliContextBuilder {
     /// (`https → wss`, `http → ws`) so that a custom RPC override is not
     /// silently paired with a stale env-default WS URL.
     pub fn build(self) -> eyre::Result<CliContext> {
-        let env = self.env.unwrap_or_default();
+        let Some(env) = self.env else {
+            return self.build_without_env();
+        };
         let config = env.config()?;
 
         let ledger_rpc_url_override = self.ledger_rpc_url.is_some();
@@ -169,6 +171,40 @@ impl CliContextBuilder {
             telemetry_program_id: self
                 .telemetry_program_id
                 .unwrap_or(config.telemetry_program_id),
+            keypair_path: self.keypair_path,
+            daemon_socket_path: self.daemon_socket_path,
+            output_format: self.output_format,
+        })
+    }
+
+    fn build_without_env(self) -> eyre::Result<CliContext> {
+        let ledger_rpc_url = self
+            .ledger_rpc_url
+            .ok_or_else(|| eyre::eyre!("ledger_rpc_url is required when env is unset"))?;
+        let ledger_ws_rpc_url = self
+            .ledger_ws_rpc_url
+            .unwrap_or_else(|| derive_ws_from_rpc(&ledger_rpc_url));
+        let solana_l1_rpc_url = self
+            .solana_l1_rpc_url
+            .ok_or_else(|| eyre::eyre!("solana_l1_rpc_url is required when env is unset"))?;
+        let serviceability_program_id = self.serviceability_program_id.ok_or_else(|| {
+            eyre::eyre!("serviceability_program_id is required when env is unset")
+        })?;
+        let geolocation_program_id = self
+            .geolocation_program_id
+            .ok_or_else(|| eyre::eyre!("geolocation_program_id is required when env is unset"))?;
+        let telemetry_program_id = self
+            .telemetry_program_id
+            .ok_or_else(|| eyre::eyre!("telemetry_program_id is required when env is unset"))?;
+
+        Ok(CliContext {
+            env: Environment::default(),
+            ledger_rpc_url,
+            ledger_ws_rpc_url,
+            solana_l1_rpc_url,
+            serviceability_program_id,
+            geolocation_program_id,
+            telemetry_program_id,
             keypair_path: self.keypair_path,
             daemon_socket_path: self.daemon_socket_path,
             output_format: self.output_format,
@@ -228,6 +264,7 @@ mod tests {
     #[serial]
     fn builder_derives_wss_from_https_rpc_override() {
         let ctx = CliContextBuilder::new()
+            .with_env(Environment::Devnet)
             .with_ledger_rpc_url("https://custom-rpc.example/")
             .build()
             .unwrap();
@@ -239,6 +276,7 @@ mod tests {
     #[serial]
     fn builder_derives_ws_from_http_rpc_override() {
         let ctx = CliContextBuilder::new()
+            .with_env(Environment::Devnet)
             .with_ledger_rpc_url("http://localhost:8899/")
             .build()
             .unwrap();
@@ -250,6 +288,7 @@ mod tests {
     #[serial]
     fn builder_explicit_ws_wins_over_derivation() {
         let ctx = CliContextBuilder::new()
+            .with_env(Environment::Devnet)
             .with_ledger_rpc_url("https://custom-rpc.example/")
             .with_ledger_ws_rpc_url("wss://other-ws.example/")
             .build()
@@ -267,5 +306,32 @@ mod tests {
         let cfg = Environment::Devnet.config().unwrap();
         assert_eq!(env_ctx.ledger_rpc_url, cfg.ledger_public_rpc_url);
         assert_eq!(env_ctx.ledger_ws_rpc_url, cfg.ledger_public_ws_rpc_url);
+    }
+
+    #[test]
+    #[serial]
+    fn builder_without_env_requires_all_fields() {
+        let pk = solana_sdk::pubkey::Pubkey::new_unique();
+        let ctx = CliContextBuilder::new()
+            .with_ledger_rpc_url("https://custom-rpc.example/")
+            .with_solana_l1_rpc_url("https://custom-l1.example/")
+            .with_serviceability_program_id(pk)
+            .with_geolocation_program_id(pk)
+            .with_telemetry_program_id(pk)
+            .build()
+            .unwrap();
+        assert_eq!(ctx.ledger_rpc_url, "https://custom-rpc.example/");
+        assert_eq!(ctx.ledger_ws_rpc_url, "wss://custom-rpc.example/");
+        assert_eq!(ctx.solana_l1_rpc_url, "https://custom-l1.example/");
+    }
+
+    #[test]
+    #[serial]
+    fn builder_without_env_fails_when_field_missing() {
+        let err = CliContextBuilder::new()
+            .with_ledger_rpc_url("https://custom-rpc.example/")
+            .build()
+            .unwrap_err();
+        assert!(err.to_string().contains("solana_l1_rpc_url is required"));
     }
 }

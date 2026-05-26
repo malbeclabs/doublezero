@@ -16,6 +16,6 @@ pub mod testing;
 pub mod validators;
 
 pub use context::{CliContext, CliContextBuilder, OutputFormat};
-pub use error::{render_error, CliError, Result};
+pub use error::{render_error, render_eyre, CliError, Result};
 pub use logging::init_logging;
 pub use requirements::RequirementCheck;

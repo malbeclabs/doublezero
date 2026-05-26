@@ -31,11 +31,7 @@ pub fn validate_pubkey_or_code(val: &str) -> Result<String, String> {
 }
 
 pub fn validate_parse_bandwidth(val: &str) -> Result<u64, String> {
-    if bandwidth_parse(val).is_ok() {
-        bandwidth_parse(val)
-    } else {
-        Err(String::from("invalid bandwidth format"))
-    }
+    bandwidth_parse(val).map_err(|_| String::from("invalid bandwidth format"))
 }
 
 pub fn validate_parse_delay_ms(val: &str) -> Result<f64, String> {

@@ -40,7 +40,7 @@ pub const ENV_TESTNET_INTERNET_LATENCY_COLLECTOR_PUBKEY: Pubkey =
 pub const ENV_TESTNET_GEOLOCATION_PUBKEY: Pubkey =
     Pubkey::from_str_const("3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4");
 
-// Constants related to DoubleZero devnet configuration.
+// Constants related to DoubleZero devnet configuration
 //
 // Devnet intentionally points at Solana testnet for L1 access, matching the
 // existing config-crate mapping documented in RFC-20 (§Environments).

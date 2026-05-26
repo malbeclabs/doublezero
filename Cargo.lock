@@ -1480,6 +1480,7 @@ dependencies = [
  "clap_complete",
  "console",
  "ctor",
+ "doublezero-cli-core",
  "doublezero-config",
  "doublezero-program-common",
  "doublezero-serviceability",
@@ -1506,6 +1507,7 @@ dependencies = [
  "tabled",
  "tempfile",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

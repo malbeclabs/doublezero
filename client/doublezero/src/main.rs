@@ -28,6 +28,7 @@ use doublezero_cli::{
     checkversion::check_version, doublezerocommand::CliCommandImpl,
     geoclicommand::GeoCliCommandImpl, version::VersionCliCommand,
 };
+use doublezero_cli_core::LogLevel;
 use doublezero_sdk::{geolocation::client::GeoClient, DZClient, ProgramVersion};
 use doublezero_serviceability::pda::get_globalstate_pda;
 use servicecontroller::ServiceControllerImpl;
@@ -40,8 +41,19 @@ use servicecontroller::ServiceControllerImpl;
 struct App {
     #[command(subcommand)]
     command: Option<Command>,
-    /// DZ env (testnet, devnet, or mainnet-beta)
-    #[arg(short, long, value_name = "ENV", global = true)]
+    /// DZ env (testnet, devnet, or mainnet-beta).
+    ///
+    /// Mutually exclusive with the per-field URL and program-ID overrides
+    /// (`--url`, `--ws`, `--solana-url`, `--program-id`, `--geo-program-id`).
+    /// Pass `--env` to use a network's defaults wholesale, or pass the
+    /// individual overrides; combining the two yields an error from clap.
+    #[arg(
+        short,
+        long,
+        value_name = "ENV",
+        global = true,
+        conflicts_with_all = ["url", "ws", "solana_url", "program_id", "geo_program_id"],
+    )]
     env: Option<String>,
     /// DZ ledger RPC URL
     #[arg(long, value_name = "RPC_URL", global = true)]
@@ -49,6 +61,9 @@ struct App {
     /// DZ ledger WebSocket URL
     #[arg(long, value_name = "WEBSOCKET_URL", global = true)]
     ws: Option<String>,
+    /// Solana L1 RPC URL override (does not affect the DZ ledger)
+    #[arg(long, value_name = "SOLANA_RPC_URL", global = true)]
+    solana_url: Option<String>,
     /// DZ program ID (testnet or devnet)
     #[arg(long, value_name = "PROGRAM_ID", global = true)]
     program_id: Option<String>,
@@ -70,6 +85,15 @@ struct App {
     /// Suppress version warning output
     #[arg(long, global = true)]
     no_version_warning: bool,
+    /// Diagnostic logging level. One of: `off`, `error`, `warn` (default), `info`, `debug`, `trace`.
+    #[arg(
+        long = "log-level",
+        value_name = "LEVEL",
+        value_enum,
+        default_value_t = LogLevel::default(),
+        global = true,
+    )]
+    log_level: LogLevel,
     /// Print version information
     #[arg(short = 'V', long = "version", action = clap::ArgAction::SetTrue)]
     version: bool,
@@ -83,12 +107,14 @@ async fn main() -> eyre::Result<()> {
 
     let app = App::parse();
 
+    doublezero_cli_core::init_logging(app.log_level);
+
     if let Some(sock_file) = &app.sock_file {
         ServiceControllerImpl::set_global_socket_path(sock_file.to_string_lossy());
     }
 
     if let Some(keypair) = &app.keypair {
-        println!("using keypair: {}", keypair.display());
+        tracing::info!(keypair = %keypair.display(), "using keypair");
     }
 
     let (url, ws, program_id) = if let Some(env) = app.env {
@@ -427,4 +453,67 @@ async fn main() -> eyre::Result<()> {
     };
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::App;
+    use clap::{error::ErrorKind, Parser};
+
+    fn parse_err(args: &[&str]) -> clap::Error {
+        App::try_parse_from(args).expect_err("expected clap to reject these arguments")
+    }
+
+    #[test]
+    fn env_conflicts_with_url() {
+        let err = parse_err(&[
+            "doublezero",
+            "--env",
+            "devnet",
+            "--url",
+            "https://x.invalid/",
+        ]);
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn env_conflicts_with_ws() {
+        let err = parse_err(&["doublezero", "--env", "devnet", "--ws", "wss://x.invalid/"]);
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn env_conflicts_with_solana_url() {
+        let err = parse_err(&[
+            "doublezero",
+            "--env",
+            "devnet",
+            "--solana-url",
+            "https://x.invalid/",
+        ]);
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn env_conflicts_with_program_id() {
+        let err = parse_err(&[
+            "doublezero",
+            "--env",
+            "devnet",
+            "--program-id",
+            "11111111111111111111111111111111",
+        ]);
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn env_alone_parses() {
+        App::try_parse_from(["doublezero", "--env", "devnet"]).expect("--env alone should parse");
+    }
+
+    #[test]
+    fn url_alone_parses() {
+        App::try_parse_from(["doublezero", "--url", "https://x.invalid/"])
+            .expect("--url alone should parse");
+    }
 }

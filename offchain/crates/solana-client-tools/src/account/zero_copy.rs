@@ -41,3 +41,71 @@ impl<T: Pod + PrecomputedDiscriminator> TryFrom<Account> for ZeroCopyAccountOwne
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bytemuck::Zeroable;
+    use doublezero_program_tools::Discriminator;
+
+    use super::*;
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Pod, Zeroable)]
+    struct TestState {
+        value: u64,
+    }
+
+    impl PrecomputedDiscriminator for TestState {
+        const DISCRIMINATOR: Discriminator<8> = Discriminator::new([1, 2, 3, 4, 5, 6, 7, 8]);
+    }
+
+    fn account_with_data(data: Vec<u8>) -> Account {
+        Account {
+            data,
+            ..Default::default()
+        }
+    }
+
+    fn well_formed_bytes(state: &TestState) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(TestState::discriminator_slice());
+        bytes.extend_from_slice(bytemuck::bytes_of(state));
+        bytes
+    }
+
+    #[test]
+    fn test_from_account_returns_some_for_well_formed_data() {
+        let state = TestState { value: 42 };
+        let account = account_with_data(well_formed_bytes(&state));
+
+        let parsed = ZeroCopyAccountOwnedData::<TestState>::from_account(&account).unwrap();
+        assert_eq!(*parsed.mucked_data, state);
+        assert!(parsed.remaining_data.is_empty());
+    }
+
+    #[test]
+    fn test_from_account_returns_none_for_wrong_discriminator() {
+        let state = TestState { value: 42 };
+        let mut bytes = well_formed_bytes(&state);
+        bytes[0] ^= 0xff;
+
+        let account = account_with_data(bytes);
+        assert!(ZeroCopyAccountOwnedData::<TestState>::from_account(&account).is_none());
+    }
+
+    #[test]
+    fn test_from_account_returns_none_for_too_short_data() {
+        let state = TestState { value: 42 };
+        let mut bytes = well_formed_bytes(&state);
+        bytes.pop();
+
+        let account = account_with_data(bytes);
+        assert!(ZeroCopyAccountOwnedData::<TestState>::from_account(&account).is_none());
+    }
+
+    #[test]
+    fn test_from_account_returns_none_for_empty_data() {
+        let account = account_with_data(vec![]);
+        assert!(ZeroCopyAccountOwnedData::<TestState>::from_account(&account).is_none());
+    }
+}

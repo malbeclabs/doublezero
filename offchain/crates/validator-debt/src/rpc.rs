@@ -333,6 +333,7 @@ pub async fn try_fetch_debt_records_and_distributions(
         .try_fetch_multiple_zero_copy_data::<Distribution>(&distribution_keys)
         .await?
         .into_iter()
+        .flatten()
         .filter(|distribution| {
             distribution.solana_validator_debt_merkle_root != Default::default()
                 && distribution.is_debt_calculation_finalized()

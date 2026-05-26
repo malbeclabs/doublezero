@@ -1547,6 +1547,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-cli-core"
+version = "0.24.0"
+dependencies = [
+ "bitflags",
+ "clap",
+ "doublezero-config",
+ "doublezero-program-common",
+ "eyre",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "solana-sdk",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "doublezero-config"
 version = "0.24.0"
 dependencies = [
@@ -1703,6 +1722,7 @@ dependencies = [
  "chrono",
  "clap",
  "console",
+ "doublezero-cli-core",
  "doublezero-config",
  "doublezero-geolocation",
  "doublezero-program-common",

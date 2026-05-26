@@ -15,6 +15,7 @@ pub const ENV_MAINNET_BETA_DOUBLEZERO_LEDGER_RPC_URL: &str =
     "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab";
 pub const ENV_MAINNET_BETA_DOUBLEZERO_LEDGER_WS_RPC_URL: &str =
     "wss://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab";
+pub const ENV_MAINNET_BETA_SOLANA_L1_RPC_URL: &str = "https://api.mainnet-beta.solana.com";
 pub const ENV_MAINNET_BETA_SERVICEABILITY_PUBKEY: Pubkey =
     Pubkey::from_str_const("ser2VaTMAcYTaauMrTSfSrxBaUDq7BLNs2xfUugTAGv");
 pub const ENV_MAINNET_BETA_TELEMETRY_PUBKEY: Pubkey =
@@ -29,6 +30,7 @@ pub const ENV_TESTNET_DOUBLEZERO_LEDGER_RPC_URL: &str =
     "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16";
 pub const ENV_TESTNET_DOUBLEZERO_LEDGER_WS_RPC_URL: &str =
     "wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig";
+pub const ENV_TESTNET_SOLANA_L1_RPC_URL: &str = "https://api.testnet.solana.com";
 pub const ENV_TESTNET_SERVICEABILITY_PUBKEY: Pubkey =
     Pubkey::from_str_const("DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb");
 pub const ENV_TESTNET_TELEMETRY_PUBKEY: Pubkey =
@@ -39,10 +41,14 @@ pub const ENV_TESTNET_GEOLOCATION_PUBKEY: Pubkey =
     Pubkey::from_str_const("3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4");
 
 // Constants related to DoubleZero devnet configuration
+//
+// Devnet intentionally points at Solana testnet for L1 access, matching the
+// existing config-crate mapping documented in RFC-20 (§Environments).
 pub const ENV_DEVNET_DOUBLEZERO_LEDGER_RPC_URL: &str =
     "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16";
 pub const ENV_LEDGER_DOUBLEZERO_DEVNET_WS_RPC_URL: &str =
     "wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig";
+pub const ENV_DEVNET_SOLANA_L1_RPC_URL: &str = "https://api.testnet.solana.com";
 pub const ENV_DEVNET_SERVICEABILITY_PUBKEY: Pubkey =
     Pubkey::from_str_const("GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah");
 pub const ENV_DEVNET_TELEMETRY_PUBKEY: Pubkey =
@@ -55,6 +61,7 @@ pub const ENV_DEVNET_GEOLOCATION_PUBKEY: Pubkey =
 // Constants related to DoubleZero localnet configuration
 pub const ENV_LOCAL_DOUBLEZERO_LEDGER_RPC_URL: &str = "http://localhost:8899";
 pub const ENV_LOCAL_DOUBLEZERO_LEDGER_WS_RPC_URL: &str = "ws://localhost:8899";
+pub const ENV_LOCAL_SOLANA_L1_RPC_URL: &str = "http://localhost:8899";
 pub const ENV_LOCAL_SERVICEABILITY_PUBKEY: Pubkey =
     Pubkey::from_str_const("7CTniUa88iJKUHTrCkB4TjAoG6TD7AMivhQeuqN2LPtX");
 pub const ENV_LOCAL_TELEMETRY_PUBKEY: Pubkey =

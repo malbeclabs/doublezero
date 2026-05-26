@@ -214,13 +214,18 @@ async fn main() -> eyre::Result<()> {
     });
 
     // Bridge to the legacy `DZClient::new(Option<String>, ...)` signature.
-    // CliContext now carries the fully resolved values, so we forward them
-    // directly. Legacy and conforming verbs agree on what they are talking to.
+    // CliContext now carries the fully resolved values for URL/WS/program-ID,
+    // so we forward them directly. The keypair argument is an exception: it
+    // must reflect only the `--keypair` CLI flag so that `DZClient::new`'s
+    // internal `load_keypair` precedence chain (CLI flag > `DOUBLEZERO_KEYPAIR`
+    // env var > stdin > persisted config) is preserved. Passing the layered
+    // ctx value here would mask the env var, which the e2e contributor-auth
+    // suite relies on for negative-authz checks.
     let url = Some(ctx.ledger_rpc_url.clone());
     let ws = Some(ctx.ledger_ws_rpc_url.clone());
     let program_id = Some(ctx.serviceability_program_id.to_string());
 
-    let dzclient = DZClient::new(url.clone(), ws, program_id, ctx.keypair_path.clone())?;
+    let dzclient = DZClient::new(url.clone(), ws, program_id, app.keypair.clone())?;
     let client = CliCommandImpl::new(&dzclient);
 
     let stdout = std::io::stdout();

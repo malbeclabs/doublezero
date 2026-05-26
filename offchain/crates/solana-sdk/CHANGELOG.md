@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - add `InitializeClaimHoldingAccounts` builder for the `InitializeClaimHolding` instruction
 - add `ClaimValidatorClientRewardsAccounts` builder for the `ClaimValidatorClientRewards` instruction (6 fixed + N holding accounts)
 - add shred-subscription publisher-rewards SDK surface for offchain consumers:
-  - `state::find_validator_publisher_rewards_address`, `state::find_shred_reward_token_address`, plus byte-offset constants and `parse_validator_publisher_rewards` / `parse_shred_reward_token` parsers.
+  - `ValidatorPublisherRewards` and `ShredRewardToken` `Pod` types with `PrecomputedDiscriminator` impls, plus `state::find_validator_publisher_rewards_address` and `state::find_shred_reward_token_address` PDA helpers.
   - `instruction::ShredSubscriptionInstructionData::{InitializeValidatorPublisherRewards, ConfigureValidatorPublisherRewards}` variants with discriminators and Borsh round-trip.
   - `instruction::account::{InitializeValidatorPublisherRewardsAccounts, ConfigureValidatorPublisherRewardsAccounts}` account-list builders.
   - `instruction::ValidatorOffchainAuthorization` envelope carrying an ed25519 signature + deadline-slot for the offchain auth path.

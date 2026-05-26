@@ -207,6 +207,15 @@ impl PaymentsCommand {
                         Ok(ShredSubscriptionInstructionData::ClosePaymentEscrow) => {}
                         // These instructions touch the escrow account but don't
                         // move funds — they appear in the same tx as fund/close.
+                        //
+                        // NOTE: the `InitializeValidatorPublisherRewards` and
+                        // `ConfigureValidatorPublisherRewards` variants were
+                        // previously listed here, but their account lists do
+                        // not reference the escrow PDA so the `touches_escrow`
+                        // pre-filter above already excludes them. A sibling
+                        // task audits the rest of this listing for the same
+                        // reason — the wildcard arm below makes the match
+                        // robust to future variants in either direction.
                         Ok(
                             ShredSubscriptionInstructionData::InitializePaymentEscrow
                             | ShredSubscriptionInstructionData::InitializeClientSeat { .. }
@@ -218,14 +227,9 @@ impl PaymentsCommand {
                             )
                             | ShredSubscriptionInstructionData::InitializeClaimHolding(_)
                             | ShredSubscriptionInstructionData::ClaimValidatorClientRewards(_)
-                            | ShredSubscriptionInstructionData::InitializeValidatorPublisherRewards(
-                                _,
-                            )
-                            | ShredSubscriptionInstructionData::ConfigureValidatorPublisherRewards {
-                                ..
-                            }
                             | ShredSubscriptionInstructionData::CheckCliVersion { .. },
                         ) => {}
+                        Ok(_) => {}
                         // TODO: oracle instructions (BatchAllocateSeats,
                         // InstantAllocateSeat) debit the escrow. Their
                         // discriminators are not in the offchain SDK. The debit

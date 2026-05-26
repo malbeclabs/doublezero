@@ -25,6 +25,7 @@ doublezero-solana-client-tools.workspace = true
 doublezero-solana-sdk.workspace = true
 doublezero-solana-validator-debt.workspace = true
 doublezero_sdk.workspace = true
+humantime.workspace = true
 itertools.workspace = true
 libc.workspace = true
 reqwest.workspace = true
@@ -46,6 +47,7 @@ tracing-subscriber.workspace = true
 url.workspace = true
 
 [dev-dependencies]
+bytemuck.workspace = true
 wiremock = "0.6"
 
 [[bin]]

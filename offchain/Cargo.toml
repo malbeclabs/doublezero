@@ -49,6 +49,7 @@ futures = "0.3"
 governor = "0.6"
 hex = "0.4"
 home = "0.5"
+humantime = "2"
 indexmap = { version = "2", features = ["serde"] }
 itertools = "0.14"
 libc = "0.2"

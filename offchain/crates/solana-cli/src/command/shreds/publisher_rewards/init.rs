@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::Args;
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
 use doublezero_solana_sdk::{
@@ -28,13 +28,16 @@ pub struct InitCommand {
 
 impl InitCommand {
     pub async fn try_into_execute(self) -> Result<()> {
+        if self.node_id == Pubkey::default() {
+            bail!("--node-id must not be the default pubkey");
+        }
+
         let dz_connection = self
             .solana_payer_options
             .connection_options
             .clone()
             .into_shred_subscription_connection();
-        let mut wallet = Wallet::try_from(self.solana_payer_options)?;
-        wallet.connection = dz_connection;
+        let wallet = Wallet::try_new(self.solana_payer_options, Some(dz_connection))?;
         let wallet_key = wallet.pubkey();
 
         println!("Shred subscription - Initialize Validator Publisher Rewards");

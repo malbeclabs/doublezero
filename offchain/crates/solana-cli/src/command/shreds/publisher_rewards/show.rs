@@ -1,9 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use doublezero_solana_client_tools::{
-    account::zero_copy::ZeroCopyAccountOwnedData,
-    rpc::{SolanaConnection, SolanaConnectionOptions},
-};
+use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
 use doublezero_solana_sdk::{
     Pubkey,
     shred_subscription::state::{
@@ -28,18 +25,19 @@ pub struct ShowCommand {
 impl ShowCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         let connection: SolanaConnection = self.connection_options.into();
+        let commitment = connection.0.commitment();
         let pda = find_validator_publisher_rewards_address(&self.node_id).0;
 
-        let account = connection.0.get_account(&pda).await.with_context(|| {
-            format!(
-                "no validator publisher rewards account found for node {} (PDA {pda})",
-                self.node_id
-            )
-        })?;
-
-        let vpr: ZeroCopyAccountOwnedData<ValidatorPublisherRewards> =
-            account.try_into().with_context(|| {
-                format!("validator publisher rewards account at {pda} is malformed")
+        // Distinguish RPC failure (propagated `?`) from absent account
+        // ("Failed to fetch account {pda}").
+        let vpr = connection
+            .try_fetch_zero_copy_data_with_commitment::<ValidatorPublisherRewards>(&pda, commitment)
+            .await
+            .with_context(|| {
+                format!(
+                    "failed to read validator publisher rewards for node {} (PDA {pda})",
+                    self.node_id
+                )
             })?;
         let owner = vpr.rewards_token_owner_key;
         let mint = vpr.rewards_token_mint_key;
@@ -51,10 +49,18 @@ impl ShowCommand {
         println!("Resolved ATA:   {ata}");
 
         // Rewards won't be distributed unless the ATA exists. `configure`
-        // creates it idempotently, so this is just a status readout.
-        match connection.0.get_account(&ata).await {
-            Ok(_) => println!("ATA status:     exists"),
-            Err(_) => println!(
+        // creates it idempotently, so this is a status line (None) rather
+        // than an error. RPC failures propagate so a transient network blip
+        // is not silently reported as "missing".
+        let ata_account = connection
+            .0
+            .get_account_with_commitment(&ata, commitment)
+            .await
+            .with_context(|| format!("failed to query ATA {ata} status"))?
+            .value;
+        match ata_account {
+            Some(_) => println!("ATA status:     exists"),
+            None => println!(
                 "ATA status:     missing — rewards won't be distributed until it's created. \
                  Re-run `doublezero-solana shreds publisher-rewards configure` to create it, \
                  or run `spl-token create-account {mint} --owner {owner}` manually."

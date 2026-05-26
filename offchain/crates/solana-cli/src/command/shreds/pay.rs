@@ -183,8 +183,7 @@ impl PayCommand {
             .connection_options
             .clone()
             .into_shred_subscription_connection();
-        let mut wallet = Wallet::try_from(self.solana_payer_options)?;
-        wallet.connection = dz_connection;
+        let wallet = Wallet::try_new(self.solana_payer_options, Some(dz_connection))?;
         let wallet_key = wallet.pubkey();
 
         println!("Shred subscription - Pay");

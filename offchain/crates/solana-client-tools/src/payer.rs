@@ -81,6 +81,50 @@ pub struct Wallet {
 }
 
 impl Wallet {
+    /// Build a `Wallet` from CLI options, optionally overriding the default
+    /// `SolanaConnection` derived from `opts.connection_options`. Pass
+    /// `Some(connection)` when the wallet talks to a non-Solana endpoint such
+    /// as the DZ Ledger (`into_shred_subscription_connection()`) so callers
+    /// cannot forget the override after construction.
+    pub fn try_new(opts: SolanaPayerOptions, connection: Option<SolanaConnection>) -> Result<Self> {
+        let SolanaPayerOptions {
+            connection_options,
+            signer_options:
+                SolanaSignerOptions {
+                    keypair_path,
+                    with_compute_unit_price,
+                    verbose,
+                    fee_payer_path,
+                    dry_run,
+                },
+        } = opts;
+
+        let signer = try_load_keypair(keypair_path.map(Into::into))?;
+
+        let fee_payer = match fee_payer_path {
+            Some(path) => {
+                let payer_signer = try_load_specified_keypair(&PathBuf::from(path))?;
+                ensure!(
+                    payer_signer.pubkey() != signer.pubkey(),
+                    "Specify fee payer if it differs from the main keypair"
+                );
+
+                Some(payer_signer)
+            }
+            None => None,
+        };
+
+        Ok(Wallet {
+            connection: connection.unwrap_or_else(|| connection_options.into()),
+            signer,
+            compute_unit_price_ix: with_compute_unit_price
+                .map(ComputeBudgetInstruction::set_compute_unit_price),
+            verbose,
+            fee_payer,
+            dry_run,
+        })
+    }
+
     pub fn pubkey(&self) -> Pubkey {
         self.signer.pubkey()
     }
@@ -309,42 +353,7 @@ impl TryFrom<SolanaPayerOptions> for Wallet {
     type Error = anyhow::Error;
 
     fn try_from(opts: SolanaPayerOptions) -> Result<Wallet> {
-        let SolanaPayerOptions {
-            connection_options,
-            signer_options:
-                SolanaSignerOptions {
-                    keypair_path,
-                    with_compute_unit_price,
-                    verbose,
-                    fee_payer_path,
-                    dry_run,
-                },
-        } = opts;
-
-        let signer = try_load_keypair(keypair_path.map(Into::into))?;
-
-        let fee_payer = match fee_payer_path {
-            Some(path) => {
-                let payer_signer = try_load_specified_keypair(&PathBuf::from(path))?;
-                ensure!(
-                    payer_signer.pubkey() != signer.pubkey(),
-                    "Specify fee payer if it differs from the main keypair"
-                );
-
-                Some(payer_signer)
-            }
-            None => None,
-        };
-
-        Ok(Wallet {
-            connection: connection_options.into(),
-            signer,
-            compute_unit_price_ix: with_compute_unit_price
-                .map(ComputeBudgetInstruction::set_compute_unit_price),
-            verbose,
-            fee_payer,
-            dry_run,
-        })
+        Wallet::try_new(opts, None)
     }
 }
 

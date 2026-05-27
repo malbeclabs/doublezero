@@ -1520,6 +1520,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "console",
+ "doublezero-cli-core",
  "doublezero-config",
  "doublezero-program-common",
  "doublezero-sentinel",
@@ -1729,6 +1730,7 @@ dependencies = [
  "temp-env",
  "tempfile",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

@@ -28,6 +28,7 @@ use doublezero_cli::{
     checkversion::check_version, doublezerocommand::CliCommandImpl,
     geoclicommand::GeoCliCommandImpl, version::VersionCliCommand,
 };
+use doublezero_cli_core::LogLevel;
 use doublezero_sdk::{geolocation::client::GeoClient, DZClient, ProgramVersion};
 use doublezero_serviceability::pda::get_globalstate_pda;
 use servicecontroller::ServiceControllerImpl;
@@ -40,8 +41,19 @@ use servicecontroller::ServiceControllerImpl;
 struct App {
     #[command(subcommand)]
     command: Option<Command>,
-    /// DZ env (testnet, devnet, or mainnet-beta)
-    #[arg(short, long, value_name = "ENV", global = true)]
+    /// DZ env (testnet, devnet, or mainnet-beta).
+    ///
+    /// Mutually exclusive with the per-field URL and program-ID overrides
+    /// (`--url`, `--ws`, `--solana-url`, `--program-id`, `--geo-program-id`).
+    /// Pass `--env` to use a network's defaults wholesale, or pass the
+    /// individual overrides; combining the two yields an error from clap.
+    #[arg(
+        short,
+        long,
+        value_name = "ENV",
+        global = true,
+        conflicts_with_all = ["url", "ws", "solana_url", "program_id", "geo_program_id"],
+    )]
     env: Option<String>,
     /// DZ ledger RPC URL
     #[arg(long, value_name = "RPC_URL", global = true)]
@@ -49,6 +61,9 @@ struct App {
     /// DZ ledger WebSocket URL
     #[arg(long, value_name = "WEBSOCKET_URL", global = true)]
     ws: Option<String>,
+    /// Solana L1 RPC URL override (does not affect the DZ ledger)
+    #[arg(long, value_name = "SOLANA_RPC_URL", global = true)]
+    solana_url: Option<String>,
     /// DZ program ID (testnet or devnet)
     #[arg(long, value_name = "PROGRAM_ID", global = true)]
     program_id: Option<String>,
@@ -70,6 +85,15 @@ struct App {
     /// Suppress version warning output
     #[arg(long, global = true)]
     no_version_warning: bool,
+    /// Diagnostic logging level. One of: `off`, `error`, `warn` (default), `info`, `debug`, `trace`.
+    #[arg(
+        long = "log-level",
+        value_name = "LEVEL",
+        value_enum,
+        default_value_t = LogLevel::default(),
+        global = true,
+    )]
+    log_level: LogLevel,
     /// Print version information
     #[arg(short = 'V', long = "version", action = clap::ArgAction::SetTrue)]
     version: bool,
@@ -83,36 +107,123 @@ async fn main() -> eyre::Result<()> {
 
     let app = App::parse();
 
+    doublezero_cli_core::init_logging(app.log_level);
+
     if let Some(sock_file) = &app.sock_file {
         ServiceControllerImpl::set_global_socket_path(sock_file.to_string_lossy());
     }
 
     if let Some(keypair) = &app.keypair {
-        println!("using keypair: {}", keypair.display());
+        tracing::info!(keypair = %keypair.display(), "using keypair");
     }
 
-    let (url, ws, program_id) = if let Some(env) = app.env {
-        let config = match env.parse::<Environment>() {
-            Ok(env) => match env.config() {
-                Ok(config) => config,
-                Err(e) => {
-                    eprintln!("Error: {e}");
-                    std::process::exit(1);
-                }
-            },
-            Err(e) => {
-                eprintln!("Error: {e}");
-                std::process::exit(1);
-            }
-        };
-        (
-            Some(config.ledger_public_rpc_url),
-            Some(config.ledger_public_ws_rpc_url),
-            Some(config.serviceability_program_id.to_string()),
-        )
-    } else {
-        (app.url, app.ws, app.program_id)
+    // Resolve global configuration into a CliContext per RFC-20 (§CliContext).
+    // The binary populates it once at startup; future verbs read from it.
+    //
+    // Precedence (highest wins): CLI flag > persisted `config.yml` > env-derived
+    // default. File reads happen here in the binary; module crates only read
+    // resolved values from `CliContext` (RFC-20 §67).
+    let (persisted_path, persisted) =
+        doublezero_sdk::read_doublezero_config().unwrap_or_else(|_| {
+            (
+                std::path::PathBuf::new(),
+                doublezero_sdk::ClientConfig::default(),
+            )
+        });
+    let persisted_exists = persisted_path.is_file();
+
+    let env_explicit = app.env.is_some();
+    let env = match app.env.as_deref() {
+        Some(s) => s.parse::<Environment>().unwrap_or_else(|e| {
+            doublezero_cli_core::error::render_eyre(&e);
+            std::process::exit(1);
+        }),
+        None if persisted_exists => persisted
+            .program_id
+            .as_deref()
+            .and_then(|pid| Environment::from_program_id(pid).ok())
+            .unwrap_or_default(),
+        None => Environment::default(),
     };
+
+    let mut ctx_builder = doublezero_cli_core::CliContextBuilder::new().with_env(env);
+
+    // Layer the persisted config when the file exists. When the user is
+    // selecting an environment wholesale via `--env`, skip persisted URL and
+    // program-ID values so we never mix environments; the keypair path is
+    // orthogonal to env and stays.
+    if persisted_exists {
+        if !env_explicit {
+            ctx_builder = ctx_builder.with_ledger_rpc_url(persisted.json_rpc_url.clone());
+            if let Some(ws) = persisted.websocket_url.clone() {
+                ctx_builder = ctx_builder.with_ledger_ws_rpc_url(ws);
+            }
+            if let Some(pid) = persisted
+                .program_id
+                .as_deref()
+                .and_then(|s| s.parse::<solana_sdk::pubkey::Pubkey>().ok())
+            {
+                ctx_builder = ctx_builder.with_serviceability_program_id(pid);
+            }
+            if let Some(pid) = persisted
+                .geo_program_id
+                .as_deref()
+                .and_then(|s| s.parse::<solana_sdk::pubkey::Pubkey>().ok())
+            {
+                ctx_builder = ctx_builder.with_geolocation_program_id(pid);
+            }
+        }
+        ctx_builder = ctx_builder.with_keypair_path(persisted.keypair_path.clone());
+    }
+
+    // CLI-flag overrides win. `--env` is mutually exclusive with the per-field
+    // URL and program-ID flags at the clap layer, so at most one branch of each
+    // pair fires per invocation.
+    if let Some(u) = app.url.clone() {
+        ctx_builder = ctx_builder.with_ledger_rpc_url(u);
+    }
+    if let Some(w) = app.ws.clone() {
+        ctx_builder = ctx_builder.with_ledger_ws_rpc_url(w);
+    }
+    if let Some(s) = app.solana_url.clone() {
+        ctx_builder = ctx_builder.with_solana_l1_rpc_url(s);
+    }
+    if let Some(pid) = app
+        .program_id
+        .as_deref()
+        .and_then(|s| s.parse::<solana_sdk::pubkey::Pubkey>().ok())
+    {
+        ctx_builder = ctx_builder.with_serviceability_program_id(pid);
+    }
+    if let Some(pid) = app
+        .geo_program_id
+        .as_deref()
+        .and_then(|s| s.parse::<solana_sdk::pubkey::Pubkey>().ok())
+    {
+        ctx_builder = ctx_builder.with_geolocation_program_id(pid);
+    }
+    if let Some(k) = app.keypair.clone() {
+        ctx_builder = ctx_builder.with_keypair_path(k);
+    }
+    if let Some(s) = app.sock_file.clone() {
+        ctx_builder = ctx_builder.with_daemon_socket_path(s);
+    }
+    let ctx = ctx_builder.build().unwrap_or_else(|e| {
+        doublezero_cli_core::error::render_eyre(&e);
+        std::process::exit(1);
+    });
+
+    // Bridge to the legacy `DZClient::new(Option<String>, ...)` signature.
+    // CliContext now carries the fully resolved values for URL/WS/program-ID,
+    // so we forward them directly. The keypair argument is an exception: it
+    // must reflect only the `--keypair` CLI flag so that `DZClient::new`'s
+    // internal `load_keypair` precedence chain (CLI flag > `DOUBLEZERO_KEYPAIR`
+    // env var > stdin > persisted config) is preserved. Passing the layered
+    // ctx value here would mask the env var, which the e2e contributor-auth
+    // suite relies on for negative-authz checks.
+    let url = Some(ctx.ledger_rpc_url.clone());
+    let ws = Some(ctx.ledger_ws_rpc_url.clone());
+    let program_id = Some(ctx.serviceability_program_id.to_string());
 
     let dzclient = DZClient::new(url.clone(), ws, program_id, app.keypair.clone())?;
     let client = CliCommandImpl::new(&dzclient);
@@ -421,10 +532,73 @@ async fn main() -> eyre::Result<()> {
     match res {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Error: {e}");
+            doublezero_cli_core::error::render_eyre(&e);
             std::process::exit(1);
         }
     };
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::App;
+    use clap::{error::ErrorKind, Parser};
+
+    fn parse_err(args: &[&str]) -> clap::Error {
+        App::try_parse_from(args).expect_err("expected clap to reject these arguments")
+    }
+
+    #[test]
+    fn env_conflicts_with_url() {
+        let err = parse_err(&[
+            "doublezero",
+            "--env",
+            "devnet",
+            "--url",
+            "https://x.invalid/",
+        ]);
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn env_conflicts_with_ws() {
+        let err = parse_err(&["doublezero", "--env", "devnet", "--ws", "wss://x.invalid/"]);
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn env_conflicts_with_solana_url() {
+        let err = parse_err(&[
+            "doublezero",
+            "--env",
+            "devnet",
+            "--solana-url",
+            "https://x.invalid/",
+        ]);
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn env_conflicts_with_program_id() {
+        let err = parse_err(&[
+            "doublezero",
+            "--env",
+            "devnet",
+            "--program-id",
+            "11111111111111111111111111111111",
+        ]);
+        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn env_alone_parses() {
+        App::try_parse_from(["doublezero", "--env", "devnet"]).expect("--env alone should parse");
+    }
+
+    #[test]
+    fn url_alone_parses() {
+        App::try_parse_from(["doublezero", "--url", "https://x.invalid/"])
+            .expect("--url alone should parse");
+    }
 }

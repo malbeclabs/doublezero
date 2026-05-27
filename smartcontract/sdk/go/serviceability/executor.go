@@ -220,6 +220,8 @@ func (e *Executor) CreateUser(ctx context.Context, args UserCreateArgs) (solana.
 // DeleteUser submits a DeleteUser instruction (variant 42) and waits for the user
 // PDA to disappear from chain. The function reads the user account first so it
 // can derive the device-dependent PDAs and the multicast-publisher flag.
+// NOTE: this function does not unsubscribe multicast groups first. That should be
+// handled externally./
 func (e *Executor) DeleteUser(ctx context.Context, userPubkey solana.PublicKey) (solana.Signature, error) {
 	if e.signer == nil {
 		return solana.Signature{}, ErrNoPrivateKey

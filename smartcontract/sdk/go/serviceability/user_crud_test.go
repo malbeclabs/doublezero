@@ -98,7 +98,7 @@ func TestBuildCreateUserInstruction_WithTenant(t *testing.T) {
 	assert.True(t, tenantSlot.IsWritable)
 }
 
-func TestBuildCreateUserInstruction_RejectsZeroDzPrefix(t *testing.T) {
+func TestCreateUserInstruction_RejectsZeroDzPrefix(t *testing.T) {
 	t.Parallel()
 
 	rpc := &mockRPCClient{}
@@ -111,6 +111,172 @@ func TestBuildCreateUserInstruction_RejectsZeroDzPrefix(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "DzPrefixCount must be > 0")
+}
+
+func TestCreateUserValidation(t *testing.T) {
+	t.Parallel()
+
+	validArgs := func() UserCreateArgs {
+		return UserCreateArgs{
+			UserType:      UserTypeIBRL,
+			CyoaType:      CyoaTypeGREOverDIA,
+			ClientIP:      [4]byte{10, 0, 0, 1},
+			DzPrefixCount: 1,
+			DevicePubkey:  solana.NewWallet().PublicKey(),
+		}
+	}
+
+	t.Run("returns ErrNoPrivateKey when signer is nil", func(t *testing.T) {
+		t.Parallel()
+		programID := solana.NewWallet().PublicKey()
+		executor := NewExecutor(slog.Default(), &mockRPCClient{}, nil, programID)
+
+		_, _, err := executor.CreateUser(context.Background(), validArgs())
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrNoPrivateKey)
+	})
+
+	t.Run("returns ErrNoProgramID when program ID is zero", func(t *testing.T) {
+		t.Parallel()
+		signer := solana.NewWallet().PrivateKey
+		executor := NewExecutor(slog.Default(), &mockRPCClient{}, &signer, solana.PublicKey{})
+
+		_, _, err := executor.CreateUser(context.Background(), validArgs())
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrNoProgramID)
+	})
+
+	t.Run("rejects zero DevicePubkey", func(t *testing.T) {
+		t.Parallel()
+		executor, _ := newTestExecutor(t, &mockRPCClient{})
+		args := validArgs()
+		args.DevicePubkey = solana.PublicKey{}
+
+		_, _, err := executor.CreateUser(context.Background(), args)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "DevicePubkey is required")
+	})
+}
+
+func TestCreateUserReturnsPDAOnSendFailure(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+	args := UserCreateArgs{
+		UserType:      UserTypeIBRL,
+		CyoaType:      CyoaTypeGREOverDIA,
+		ClientIP:      [4]byte{10, 0, 0, 9},
+		DzPrefixCount: 1,
+		DevicePubkey:  solana.NewWallet().PublicKey(),
+	}
+	expectedPDA, _, err := GetUserPDA(programID, args.ClientIP, args.UserType)
+	require.NoError(t, err)
+
+	rpc := &mockRPCClient{
+		sendTransactionFunc: func(ctx context.Context, transaction *solana.Transaction, opts solanarpc.TransactionOpts) (solana.Signature, error) {
+			return solana.Signature{}, errors.New("send failed")
+		},
+	}
+	executor := NewExecutor(slog.Default(), rpc, &signer, programID)
+
+	_, userPDA, err := executor.CreateUser(context.Background(), args)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to send transaction")
+	// PDA is still derived and returned so callers can correlate even on failure.
+	assert.Equal(t, expectedPDA, userPDA)
+}
+
+func TestDeleteUserValidation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns ErrNoPrivateKey when signer is nil", func(t *testing.T) {
+		t.Parallel()
+		programID := solana.NewWallet().PublicKey()
+		executor := NewExecutor(slog.Default(), &mockRPCClient{}, nil, programID)
+
+		_, err := executor.DeleteUser(context.Background(), solana.NewWallet().PublicKey())
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrNoPrivateKey)
+	})
+
+	t.Run("returns ErrNoProgramID when program ID is zero", func(t *testing.T) {
+		t.Parallel()
+		signer := solana.NewWallet().PrivateKey
+		executor := NewExecutor(slog.Default(), &mockRPCClient{}, &signer, solana.PublicKey{})
+
+		_, err := executor.DeleteUser(context.Background(), solana.NewWallet().PublicKey())
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrNoProgramID)
+	})
+}
+
+func TestDeleteUserRejectsBadAccount(t *testing.T) {
+	t.Parallel()
+
+	userPubkey := solana.NewWallet().PublicKey()
+
+	t.Run("propagates GetAccountInfo error", func(t *testing.T) {
+		t.Parallel()
+		signer := solana.NewWallet().PrivateKey
+		programID := solana.NewWallet().PublicKey()
+		rpc := &mockRPCClient{
+			getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+				return nil, errors.New("rpc down")
+			},
+		}
+		executor := NewExecutor(slog.Default(), rpc, &signer, programID)
+
+		_, err := executor.DeleteUser(context.Background(), userPubkey)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "fetch user account")
+	})
+
+	t.Run("rejects account with empty data", func(t *testing.T) {
+		t.Parallel()
+		signer := solana.NewWallet().PrivateKey
+		programID := solana.NewWallet().PublicKey()
+		rpc := &mockRPCClient{
+			getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+				return &solanarpc.GetAccountInfoResult{
+					Value: &solanarpc.Account{
+						Owner: programID,
+						Data:  solanarpc.DataBytesOrJSONFromBytes(nil),
+					},
+				}, nil
+			},
+		}
+		executor := NewExecutor(slog.Default(), rpc, &signer, programID)
+
+		_, err := executor.DeleteUser(context.Background(), userPubkey)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "empty data")
+	})
+
+	t.Run("rejects account that is not a User", func(t *testing.T) {
+		t.Parallel()
+		signer := solana.NewWallet().PrivateKey
+		programID := solana.NewWallet().PublicKey()
+
+		// Same body layout as a User, but with a Device account-type discriminant.
+		notUser := makeMinimalUserBytes(solana.NewWallet().PublicKey(), solana.NewWallet().PublicKey(), [4]byte{10, 0, 0, 5})
+		notUser[0] = byte(DeviceType)
+		rpc := &mockRPCClient{
+			getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+				return &solanarpc.GetAccountInfoResult{
+					Value: &solanarpc.Account{
+						Owner: programID,
+						Data:  solanarpc.DataBytesOrJSONFromBytes(notUser),
+					},
+				}, nil
+			},
+		}
+		executor := NewExecutor(slog.Default(), rpc, &signer, programID)
+
+		_, err := executor.DeleteUser(context.Background(), userPubkey)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "is not a User")
+	})
 }
 
 func TestBuildDeleteUserInstruction(t *testing.T) {

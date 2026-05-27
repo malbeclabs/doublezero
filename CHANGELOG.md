@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - SDK (Go)
-  - Add `CreateUser` (instruction variant 36) and `DeleteUser` (variant 42) to the serviceability executor. Account ordering mirrors the Rust SDK at `smartcontract/sdk/rs/src/commands/user/{create,delete}.rs`; the borsh-encoded payload matches Rust's `UserCreateArgs` / `UserDeleteArgs` exactly. Both methods wait for the user PDA to become visible (or disappear) on-chain after finalization so callers can record a meaningful `t_activate` against the operation. `UserCreateArgs` bundles the borsh-encoded fields with `DevicePubkey` / optional `TenantPubkey` for account derivation. Introduces `GetUserPDA`, `GetAccessPassPDA`, `GetTunnelIdsPDA`, `GetDzPrefixBlockPDA` helpers in `pda.go`. Adds a pure `PlanReconcile(current, target, ownerFilter)` planner that filters by user owner and returns a deterministic create/delete delta (ClientIp-ascending with PubKey tiebreak), used by the upcoming device-stress orchestrator to drive sweeps. Cross-language wire format is locked down by new Rust-generated `user_create_args.{bin,json}` and `user_delete_args.{bin,json}` fixtures that the Go tests load via the existing fixture pipeline ([#3770](https://github.com/malbeclabs/doublezero/issues/3770)).
+  - Add CreateUser / DeleteUser to the serviceability executor with cross-language wire-format fixtures and four new PDA helpers (GetUserPDA, GetAccessPassPDA, GetTunnelIdsPDA, GetDzPrefixBlockPDA)
 
 ## [v0.25.0](https://github.com/malbeclabs/doublezero/compare/client/v0.24.0...client/v0.25.0) - 2026-05-29
 

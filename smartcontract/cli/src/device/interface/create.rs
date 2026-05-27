@@ -37,7 +37,7 @@ pub struct CreateDeviceInterfaceCliCommand {
     #[arg(long)]
     pub ip_net: Option<NetworkV4>,
     /// Bandwidth. Accepts values in Kbps, Mbps, or Gbps.
-    #[arg(long, value_parser = validate_parse_bandwidth)]
+    #[arg(long, value_parser = validate_parse_bandwidth, default_value = "0bps")]
     pub bandwidth: u64,
     /// Committed Information Rate. Accepts values in Kbps, Mbps, or Gbps.
     #[arg(long, value_parser = validate_parse_bandwidth, default_value = "0bps")]
@@ -549,5 +549,37 @@ mod tests {
             res.unwrap_err().to_string(),
             "CYOA/DIA interfaces must have MTU of 1500"
         );
+    }
+
+    #[test]
+    fn test_cli_device_interface_create_bandwidth_is_optional() {
+        use clap::Parser;
+
+        #[derive(Parser, Debug)]
+        struct TestCli {
+            #[command(subcommand)]
+            command: TestCommand,
+        }
+
+        #[derive(clap::Subcommand, Debug)]
+        enum TestCommand {
+            Create(CreateDeviceInterfaceCliCommand),
+        }
+
+        let device_pk = Pubkey::new_unique().to_string();
+        let args = vec!["test", "create", device_pk.as_str(), "Loopback0"];
+
+        let result = TestCli::try_parse_from(args);
+        assert!(
+            result.is_ok(),
+            "expected --bandwidth to be optional, but parsing failed: {:?}",
+            result.err()
+        );
+
+        let TestCli {
+            command: TestCommand::Create(cmd),
+        } = result.unwrap();
+        assert_eq!(cmd.bandwidth, 0, "bandwidth should default to 0");
+        assert_eq!(cmd.cir, 0, "cir should default to 0");
     }
 }

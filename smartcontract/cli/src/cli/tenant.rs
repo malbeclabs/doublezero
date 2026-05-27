@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand};
 
-use doublezero_serviceability_cli::tenant::{
+use crate::tenant::{
     add_administrator::*, create::*, delete::*, get::*, list::*, remove_administrator::*, update::*,
 };
 

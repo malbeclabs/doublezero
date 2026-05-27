@@ -1,5 +1,4 @@
-use clap::{Args, Subcommand};
-use doublezero_serviceability_cli::{
+use crate::{
     link::{
         accept::AcceptLinkCliCommand, delete::*, dzx_create::CreateDZXLinkCliCommand, get::*,
         latency::LinkLatencyCliCommand, list::*, sethealth::SetLinkHealthCliCommand, update::*,
@@ -11,6 +10,7 @@ use doublezero_serviceability_cli::{
         list::ListTopologyCliCommand,
     },
 };
+use clap::{Args, Subcommand};
 
 #[derive(Args, Debug)]
 pub struct LinkCliCommand {

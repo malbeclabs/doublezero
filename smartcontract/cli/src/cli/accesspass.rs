@@ -1,9 +1,9 @@
-use clap::{Args, Subcommand};
-use doublezero_serviceability_cli::accesspass::{
+use crate::accesspass::{
     close::CloseAccessPassCliCommand, fund::FundAccessPassCliCommand, get::GetAccessPassCliCommand,
     list::ListAccessPassCliCommand, set::SetAccessPassCliCommand,
     user_balances::UserBalancesAccessPassCliCommand,
 };
+use clap::{Args, Subcommand};
 
 #[derive(Args, Debug)]
 pub struct AccessPassCliCommand {

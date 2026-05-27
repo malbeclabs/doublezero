@@ -1,9 +1,9 @@
-use clap::{Args, Subcommand};
-use doublezero_serviceability_cli::resource::{
+use crate::resource::{
     allocate::AllocateResourceCliCommand, close::CloseResourceCliCommand,
     create::CreateResourceCliCommand, deallocate::DeallocateResourceCliCommand,
     get::GetResourceCliCommand, verify::VerifyResourceCliCommand,
 };
+use clap::{Args, Subcommand};
 
 #[derive(Args, Debug)]
 pub struct ResourceCliCommand {

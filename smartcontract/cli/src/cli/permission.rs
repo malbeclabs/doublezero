@@ -1,8 +1,6 @@
 use clap::{Args, Subcommand};
 
-use doublezero_serviceability_cli::permission::{
-    delete::*, get::*, list::*, resume::*, set::*, suspend::*,
-};
+use crate::permission::{delete::*, get::*, list::*, resume::*, set::*, suspend::*};
 
 #[derive(Args, Debug)]
 pub struct PermissionCliCommand {

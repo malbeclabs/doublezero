@@ -1,5 +1,4 @@
-use clap::{Args, Subcommand};
-use doublezero_serviceability_cli::device::{
+use crate::device::{
     create::CreateDeviceCliCommand,
     delete::DeleteDeviceCliCommand,
     get::GetDeviceCliCommand,
@@ -12,6 +11,7 @@ use doublezero_serviceability_cli::device::{
     sethealth::SetDeviceHealthCliCommand,
     update::UpdateDeviceCliCommand,
 };
+use clap::{Args, Subcommand};
 
 #[derive(Debug, Subcommand)]
 pub enum InterfaceCommands {

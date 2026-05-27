@@ -17,6 +17,9 @@ use borsh::BorshSerialize;
 
 use doublezero_serviceability::id_allocator::IdAllocator;
 use doublezero_serviceability::ip_allocator::IpAllocator;
+use doublezero_serviceability::processors::user::{
+    create::UserCreateArgs, delete::UserDeleteArgs,
+};
 use doublezero_serviceability::programversion::ProgramVersion;
 use doublezero_serviceability::state::{
     accesspass::{AccessPass, AccessPassStatus, AccessPassType},
@@ -95,9 +98,63 @@ fn main() {
     generate_tenant(&fixtures_dir);
     generate_resource_extension_id(&fixtures_dir);
     generate_resource_extension_ip(&fixtures_dir);
+    generate_user_create_args(&fixtures_dir);
+    generate_user_delete_args(&fixtures_dir);
 
     println!("
 all fixtures generated in {}", fixtures_dir.display());
+}
+
+/// Borsh-encoded `UserCreateArgs` (the body of instruction variant 36, without the
+/// 1-byte discriminant). Field order: user_type, cyoa_type, client_ip, tunnel_endpoint,
+/// dz_prefix_count. Non-default IP octets make endianness mistakes detectable.
+fn generate_user_create_args(dir: &Path) {
+    let val = UserCreateArgs {
+        user_type: UserType::IBRL,
+        cyoa_type: UserCYOA::GREOverDIA,
+        client_ip: Ipv4Addr::new(10, 11, 12, 13),
+        tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
+        dz_prefix_count: 2,
+    };
+
+    let data = borsh::to_vec(&val).unwrap();
+
+    let meta = FixtureMeta {
+        name: "UserCreateArgs".into(),
+        // Not an account; account_type=0 since this is an instruction-args fixture.
+        account_type: 0,
+        fields: vec![
+            FieldValue { name: "UserType".into(), value: "0".into(), typ: "u8".into() },
+            FieldValue { name: "CyoaType".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "ClientIp".into(), value: "10.11.12.13".into(), typ: "ipv4".into() },
+            FieldValue { name: "TunnelEndpoint".into(), value: "192.168.1.2".into(), typ: "ipv4".into() },
+            FieldValue { name: "DzPrefixCount".into(), value: "2".into(), typ: "u8".into() },
+        ],
+    };
+
+    write_fixture(dir, "user_create_args", &data, &meta);
+}
+
+/// Borsh-encoded `UserDeleteArgs` (the body of instruction variant 42, without the
+/// 1-byte discriminant). Field order: dz_prefix_count, multicast_publisher_count.
+fn generate_user_delete_args(dir: &Path) {
+    let val = UserDeleteArgs {
+        dz_prefix_count: 3,
+        multicast_publisher_count: 1,
+    };
+
+    let data = borsh::to_vec(&val).unwrap();
+
+    let meta = FixtureMeta {
+        name: "UserDeleteArgs".into(),
+        account_type: 0,
+        fields: vec![
+            FieldValue { name: "DzPrefixCount".into(), value: "3".into(), typ: "u8".into() },
+            FieldValue { name: "MulticastPublisherCount".into(), value: "1".into(), typ: "u8".into() },
+        ],
+    };
+
+    write_fixture(dir, "user_delete_args", &data, &meta);
 }
 
 fn generate_global_state(dir: &Path) {

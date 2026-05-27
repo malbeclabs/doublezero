@@ -7,6 +7,10 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - ci(e2e): add trusted fork PR e2e dispatch ([#3777](https://github.com/malbeclabs/doublezero/pull/3777))
+- Smartcontract (Serviceability)
+  - Enforce non-zero bandwidth on CYOA/DIA interfaces in `process_create_device_interface` and `process_update_device_interface`. On update the rule fires only when the transaction is changing CYOA, DIA, or bandwidth, so legacy zero-bandwidth CYOA/DIA interfaces already onchain can still be updated for unrelated fields without first being repaired. Enforce `side_a_iface.bandwidth >= link.bandwidth` (and `side_z_iface.bandwidth >= link.bandwidth` for WAN; DZX side Z is external) in `process_create_link`. All rejections surface as `DoubleZeroError::InvalidBandwidth` (`Custom(31)`).
+- CLI
+  - Validate CYOA/DIA interfaces have non-zero `--bandwidth` in `doublezero device interface create` and `doublezero device interface update`, and validate `interface[a|z].bandwidth >= link.bandwidth` in `doublezero link wan-create` and `doublezero link dzx-create` (DZX checks side A only). Mirrors the new onchain enforcement so misconfigured commands fail before submitting a transaction.
 - SDK (Rust)
   - Drop the pre-submit `simulate_transaction` call in `DZClient::execute_transaction_inner` and submit with `skip_preflight: true`, eliminating the redundant double-simulation (the explicit simulate plus `send_and_confirm_transaction`'s default preflight) on the happy path. Program logs are now recovered from `get_transaction` on the failure path so `SimulationError` / `SimulationTransactionError` and `DoubleZeroError` mapping in CLI output are unchanged. Trade-off: failing transactions now land onchain and burn fees instead of failing for free at simulation ([#3750](https://github.com/malbeclabs/doublezero/pull/3750))
 - CLI

@@ -162,6 +162,10 @@ pub fn process_create_link(
         return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
     }
 
+    if side_a_iface.bandwidth < value.bandwidth {
+        return Err(DoubleZeroError::InvalidBandwidth.into());
+    }
+
     let side_z_iface_name = value.side_z_iface_name.clone().unwrap_or_default();
     if let Some(ref z_name) = value.side_z_iface_name {
         let side_z_iface = side_z_dev
@@ -178,6 +182,10 @@ pub fn process_create_link(
             || side_z_iface.interface_dia != InterfaceDIA::None
         {
             return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
+        }
+
+        if side_z_iface.bandwidth < value.bandwidth {
+            return Err(DoubleZeroError::InvalidBandwidth.into());
         }
     }
     if value.link_type == LinkLinkType::DZX && value.side_z_iface_name.is_some() {

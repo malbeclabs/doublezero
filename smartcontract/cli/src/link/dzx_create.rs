@@ -132,6 +132,13 @@ impl CreateDZXLinkCliCommand {
             ));
         }
 
+        if side_a_iface.bandwidth < self.bandwidth {
+            return Err(eyre!(
+                "Interface '{}' on side A device has bandwidth {} which is less than link bandwidth {}",
+                self.side_a_interface, side_a_iface.bandwidth, self.bandwidth
+            ));
+        }
+
         if self.mtu != 9000 {
             return Err(eyre!("Link MTU must be 9000"));
         }
@@ -234,6 +241,7 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
                 mtu: 9000,
+                bandwidth: 1_000_000_000,
                 ..Default::default()
             }],
             max_users: 255,
@@ -279,6 +287,7 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
                 mtu: 9000,
+                bandwidth: 1_000_000_000,
                 ..Default::default()
             }],
             max_users: 255,
@@ -567,6 +576,108 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("CYOA or DIA assignment"),);
+    }
+
+    #[test]
+    fn test_cli_dzx_link_create_rejects_insufficient_interface_bandwidth() {
+        let mut client = create_test_client();
+
+        let (pda_pubkey, _bump_seed) = get_device_pda(&client.get_program_id(), 1);
+
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let device1_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 255,
+            reference_count: 0,
+            code: "test".to_string(),
+            contributor_pk,
+            location_pk: Pubkey::default(),
+            exchange_pk: Pubkey::default(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [10, 0, 0, 1].into(),
+            dz_prefixes: "10.1.0.0/16".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            status: DeviceStatus::Activated,
+            owner: pda_pubkey,
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![Interface {
+                status: InterfaceStatus::Unlinked,
+                name: "Ethernet1/1".to_string(),
+                interface_type: InterfaceType::Physical,
+                loopback_type: LoopbackType::None,
+                mtu: 9000,
+                bandwidth: 500_000_000,
+                vlan_id: 16,
+                ip_net: "10.2.0.1/24".parse().unwrap(),
+                node_segment_idx: 0,
+                user_tunnel_endpoint: true,
+                ..Default::default()
+            }],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_subscribers_count: 0,
+            multicast_publishers_count: 0,
+            max_unicast_users: 0,
+            max_multicast_subscribers: 0,
+            max_multicast_publishers: 0,
+            reserved_seats: 0,
+            ..Default::default()
+        };
+        let device2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf");
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: device1_pk.to_string(),
+            }))
+            .returning(move |_| Ok((device1_pk, device1.clone())));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: device2_pk.to_string(),
+            }))
+            .returning(move |_| {
+                Ok((
+                    device2_pk,
+                    Device {
+                        account_type: AccountType::Device,
+                        code: "z".to_string(),
+                        ..Default::default()
+                    },
+                ))
+            });
+
+        let mut output = Vec::new();
+        let res = CreateDZXLinkCliCommand {
+            code: "test".to_string(),
+            contributor: contributor_pk.to_string(),
+            desired_status: None,
+            side_a: device1_pk.to_string(),
+            side_z: device2_pk.to_string(),
+            bandwidth: 1_000_000_000,
+            mtu: 9000,
+            delay_ms: 10000.0,
+            jitter_ms: 5000.0,
+            side_a_interface: "Ethernet1/1".to_string(),
+            wait: false,
+        }
+        .execute(&client, &mut output);
+
+        assert!(res.is_err());
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "Interface 'Ethernet1/1' on side A device has bandwidth 500000000 which is less than link bandwidth 1000000000"
+        );
     }
 
     #[test]

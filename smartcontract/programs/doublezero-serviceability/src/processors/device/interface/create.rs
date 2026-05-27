@@ -173,6 +173,9 @@ pub fn process_create_device_interface(
         if value.mtu != CYOA_DIA_INTERFACE_MTU {
             return Err(DoubleZeroError::InvalidMtu.into());
         }
+        if value.bandwidth == 0 {
+            return Err(DoubleZeroError::InvalidBandwidth.into());
+        }
     } else if value.mtu != INTERFACE_MTU {
         return Err(DoubleZeroError::InvalidMtu.into());
     }

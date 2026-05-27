@@ -1098,7 +1098,7 @@ impl ServiceabilityProgramHelper {
                 interface_dia: InterfaceDIA::None,
                 loopback_type: LoopbackType::None,
                 interface_cyoa: InterfaceCYOA::None,
-                bandwidth: 0,
+                bandwidth: 100_000_000_000,
                 cir: 0,
                 ip_net: None,
                 mtu: 9000,

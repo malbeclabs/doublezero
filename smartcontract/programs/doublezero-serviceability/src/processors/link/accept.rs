@@ -159,6 +159,15 @@ pub fn process_accept_link(
         return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
     }
 
+    // Mirror the create-time invariant: each bound interface must have at least
+    // the link's bandwidth. Side A was validated at create, but a contributor can
+    // lower an interface's bandwidth via UpdateDeviceInterface between create and
+    // accept, so re-check at the activation boundary. Side Z is checked here for
+    // the first time (DZX side Z is unknown at create).
+    if side_a_iface.bandwidth < link.bandwidth || side_z_iface.bandwidth < link.bandwidth {
+        return Err(DoubleZeroError::InvalidBandwidth.into());
+    }
+
     // Allocate resources (validates ResourceExtension PDAs internally)
     validate_and_allocate_link_resources(
         program_id,

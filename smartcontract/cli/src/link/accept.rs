@@ -42,6 +42,31 @@ impl AcceptLinkCliCommand {
             pubkey_or_code: pubkey.to_string(),
         })?;
 
+        let (_, device_a) = client.get_device(GetDeviceCommand {
+            pubkey_or_code: link.side_a_pk.to_string(),
+        })?;
+
+        let side_a_iface = device_a
+            .interfaces
+            .iter()
+            .find(|i| i.name.to_lowercase() == link.side_a_iface_name.to_lowercase())
+            .ok_or_else(|| {
+                eyre!(
+                    "Interface '{}' not found on side A device",
+                    link.side_a_iface_name
+                )
+            })?;
+
+        // Re-validate side A bandwidth at accept time. It was checked at link create,
+        // but a contributor may have lowered it via device interface update between
+        // create and accept; the same invariant is enforced onchain.
+        if side_a_iface.bandwidth < link.bandwidth {
+            return Err(eyre!(
+                "Interface '{}' on side A device has bandwidth {} which is less than link bandwidth {}",
+                link.side_a_iface_name, side_a_iface.bandwidth, link.bandwidth
+            ));
+        }
+
         let (_, device_z) = client.get_device(GetDeviceCommand {
             pubkey_or_code: link.side_z_pk.to_string(),
         })?;
@@ -71,6 +96,13 @@ impl AcceptLinkCliCommand {
             ));
         }
 
+        if side_z_iface.bandwidth < link.bandwidth {
+            return Err(eyre!(
+                "Interface '{}' on side Z device has bandwidth {} which is less than link bandwidth {}",
+                self.side_z_interface, side_z_iface.bandwidth, link.bandwidth
+            ));
+        }
+
         let signature = client.accept_link(AcceptLinkCommand {
             link_pubkey: pubkey,
             side_z_iface_name: self.side_z_interface.clone(),
@@ -89,7 +121,7 @@ impl AcceptLinkCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        doublezerocommand::CliCommand,
+        doublezerocommand::{CliCommand, MockCliCommand},
         link::accept::AcceptLinkCliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
@@ -103,12 +135,27 @@ mod tests {
         get_link_pda, AccountType, Contributor, ContributorStatus, Device, DeviceStatus,
         DeviceType, Interface, InterfaceStatus, Link, LinkLinkType, LinkStatus,
     };
-    use doublezero_serviceability::state::interface::{InterfaceType, LoopbackType};
+    use doublezero_serviceability::state::interface::InterfaceType;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-    #[test]
-    fn test_cli_link_accept() {
+    const SIDE_A_IFACE: &str = "Ethernet1/1";
+    const SIDE_Z_IFACE: &str = "Ethernet1/2";
+
+    struct AcceptFixture {
+        client: MockCliCommand,
+        link_pubkey: Pubkey,
+    }
+
+    /// Build a mock CLI client wired up for `link accept`, with configurable
+    /// side A / side Z interface bandwidths and link bandwidth. The link is in
+    /// `Requested` status. Callers that want to exercise the happy path must
+    /// also set `expect_accept_link` on the returned client.
+    fn make_accept_fixture(
+        side_a_bandwidth: u64,
+        side_z_bandwidth: u64,
+        link_bandwidth: u64,
+    ) -> AcceptFixture {
         let mut client = create_test_client();
 
         let contributor_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcd");
@@ -122,53 +169,28 @@ mod tests {
             code: "co01".to_string(),
             ops_manager_pk: Pubkey::default(),
         };
-        let (pda_pubkey, _bump_seed) = get_link_pda(&client.get_program_id(), 1);
-        let signature = Signature::from([
-            120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
-            82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
-            139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
-            100, 221, 20, 137, 4, 5,
-        ]);
+        let (link_pubkey, _bump) = get_link_pda(&client.get_program_id(), 1);
 
         let device1_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb");
         let device1 = Device {
             account_type: AccountType::Device,
-            owner: Pubkey::default(),
-            bump_seed: 255,
-            index: 1,
-            reference_count: 0,
-            location_pk: Pubkey::default(),
-            exchange_pk: Pubkey::default(),
             code: "dev01".to_string(),
-
             interfaces: vec![Interface {
-                name: "Ethernet1/1".to_string(),
+                name: SIDE_A_IFACE.to_string(),
                 status: InterfaceStatus::Unlinked,
                 interface_type: InterfaceType::Physical,
+                bandwidth: side_a_bandwidth,
                 ..Default::default()
             }],
             device_type: DeviceType::Hybrid,
             public_ip: "127.0.0.1".parse().unwrap(),
             status: DeviceStatus::Activated,
             dz_prefixes: "10.0.0.1/32".parse().unwrap(),
-            metrics_publisher_pk: Pubkey::default(),
             contributor_pk,
             mgmt_vrf: "default".to_string(),
             max_users: 255,
-            users_count: 0,
-            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
-            desired_status:
-                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
-            unicast_users_count: 0,
-            multicast_subscribers_count: 0,
-            max_unicast_users: 0,
-            max_multicast_subscribers: 0,
-            reserved_seats: 0,
-            multicast_publishers_count: 0,
-            max_multicast_publishers: 0,
             ..Default::default()
         };
-
         client
             .expect_get_device()
             .with(predicate::eq(GetDeviceCommand {
@@ -179,46 +201,24 @@ mod tests {
         let device2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf");
         let device2 = Device {
             account_type: AccountType::Device,
-            owner: Pubkey::default(),
-            bump_seed: 255,
-            index: 2,
-            reference_count: 0,
             code: "dev02".to_string(),
             interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
-                name: "Ethernet1/2".to_string(),
+                name: SIDE_Z_IFACE.to_string(),
                 interface_type: InterfaceType::Physical,
-                loopback_type: LoopbackType::None,
-                vlan_id: 0,
+                bandwidth: side_z_bandwidth,
                 ip_net: "10.0.0.1/32".parse().unwrap(),
-                node_segment_idx: 0,
-                user_tunnel_endpoint: false,
                 ..Default::default()
             }],
-            location_pk: Pubkey::default(),
-            exchange_pk: Pubkey::default(),
-            device_type: doublezero_sdk::DeviceType::Hybrid,
+            device_type: DeviceType::Hybrid,
             public_ip: "127.0.0.1".parse().unwrap(),
             status: DeviceStatus::Activated,
             dz_prefixes: "10.0.0.1/32".parse().unwrap(),
-            metrics_publisher_pk: Pubkey::default(),
             contributor_pk,
             mgmt_vrf: "default".to_string(),
             max_users: 255,
-            users_count: 0,
-            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
-            desired_status:
-                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
-            unicast_users_count: 0,
-            multicast_subscribers_count: 0,
-            max_unicast_users: 0,
-            max_multicast_subscribers: 0,
-            reserved_seats: 0,
-            multicast_publishers_count: 0,
-            max_multicast_publishers: 0,
             ..Default::default()
         };
-
         client
             .expect_get_device()
             .with(predicate::eq(GetDeviceCommand {
@@ -235,7 +235,7 @@ mod tests {
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
-            bandwidth: 1000000000,
+            bandwidth: link_bandwidth,
             mtu: 9000,
             delay_ns: 10000000000,
             jitter_ns: 5000000000,
@@ -243,9 +243,9 @@ mod tests {
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
             status: LinkStatus::Requested,
-            owner: pda_pubkey,
-            side_a_iface_name: "Ethernet1/1".to_string(),
-            side_z_iface_name: "Ethernet1/2".to_string(),
+            owner: link_pubkey,
+            side_a_iface_name: SIDE_A_IFACE.to_string(),
+            side_z_iface_name: SIDE_Z_IFACE.to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
             link_topologies: vec![],
@@ -265,29 +265,98 @@ mod tests {
         client
             .expect_get_link()
             .with(predicate::eq(GetLinkCommand {
-                pubkey_or_code: pda_pubkey.to_string(),
+                pubkey_or_code: link_pubkey.to_string(),
             }))
-            .returning(move |_| Ok((pda_pubkey, tunnel.clone())));
+            .returning(move |_| Ok((link_pubkey, tunnel.clone())));
+
+        AcceptFixture {
+            client,
+            link_pubkey,
+        }
+    }
+
+    #[test]
+    fn test_cli_link_accept() {
+        // Both interfaces at 10 Gbps, link at 1 Gbps -> accept succeeds.
+        let AcceptFixture {
+            mut client,
+            link_pubkey,
+        } = make_accept_fixture(10_000_000_000, 10_000_000_000, 1_000_000_000);
+
+        let signature = Signature::from([
+            120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
+            82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
+            139, 130, 217, 227, 214, 9, 242, 141, 223, 94, 29, 184, 110, 62, 32, 87, 137, 63, 139,
+            100, 221, 20, 137, 4, 5,
+        ]);
         client
             .expect_accept_link()
             .with(predicate::eq(AcceptLinkCommand {
-                link_pubkey: pda_pubkey,
-                side_z_iface_name: "Ethernet1/2".to_string(),
+                link_pubkey,
+                side_z_iface_name: SIDE_Z_IFACE.to_string(),
             }))
             .returning(move |_| Ok(signature));
 
-        /*****************************************************************************************************/
         let mut output = Vec::new();
         let res = AcceptLinkCliCommand {
-            code: pda_pubkey.to_string(),
-            side_z_interface: "Ethernet1/2".to_string(),
+            code: link_pubkey.to_string(),
+            side_z_interface: SIDE_Z_IFACE.to_string(),
             wait: false,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok(), "Error: {}", res.unwrap_err());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
-            output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
+            output_str,
+            "Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
+        );
+    }
+
+    #[test]
+    fn test_cli_link_accept_rejects_insufficient_side_a_bandwidth() {
+        // Side A interface at 500 Mbps cannot accept a 1 Gbps link.
+        let AcceptFixture {
+            client,
+            link_pubkey,
+            ..
+        } = make_accept_fixture(500_000_000, 10_000_000_000, 1_000_000_000);
+
+        let mut output = Vec::new();
+        let res = AcceptLinkCliCommand {
+            code: link_pubkey.to_string(),
+            side_z_interface: SIDE_Z_IFACE.to_string(),
+            wait: false,
+        }
+        .execute(&client, &mut output);
+
+        let err = res.unwrap_err().to_string();
+        assert_eq!(
+            err,
+            "Interface 'Ethernet1/1' on side A device has bandwidth 500000000 which is less than link bandwidth 1000000000"
+        );
+    }
+
+    #[test]
+    fn test_cli_link_accept_rejects_insufficient_side_z_bandwidth() {
+        // Side Z interface at 500 Mbps cannot accept a 1 Gbps link.
+        let AcceptFixture {
+            client,
+            link_pubkey,
+            ..
+        } = make_accept_fixture(10_000_000_000, 500_000_000, 1_000_000_000);
+
+        let mut output = Vec::new();
+        let res = AcceptLinkCliCommand {
+            code: link_pubkey.to_string(),
+            side_z_interface: SIDE_Z_IFACE.to_string(),
+            wait: false,
+        }
+        .execute(&client, &mut output);
+
+        let err = res.unwrap_err().to_string();
+        assert_eq!(
+            err,
+            "Interface 'Ethernet1/2' on side Z device has bandwidth 500000000 which is less than link bandwidth 1000000000"
         );
     }
 }

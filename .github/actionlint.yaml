@@ -1,0 +1,5 @@
+self-hosted-runner:
+  labels:
+    - doublezero-k8s-ci
+    - ubuntu-24.04-16c-64gb
+config-variables: null

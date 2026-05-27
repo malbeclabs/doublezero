@@ -3,6 +3,17 @@ on:
   push:
     branches: [ main, 'hotfix/**' ]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to test
+        required: true
+      head_sha:
+        description: Expected PR head SHA
+        required: true
+      image_tag:
+        description: GHCR image tag for this trusted run
+        required: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
@@ -12,19 +23,19 @@ env:
   SHARD_COUNT: "4"
   # Use registry-qualified image names so we can push/pull between jobs
   DZ_IMAGE_REPO: ghcr.io/malbeclabs/dz-e2e
-  DZ_IMAGE_TAG: ${{ github.sha }}
+  DZ_IMAGE_TAG: ${{ github.event.inputs.image_tag || github.sha }}
   # Individual image refs for the e2e tests
-  DZ_BASE_IMAGE: ghcr.io/malbeclabs/dz-e2e/base:${{ github.sha }}
-  DZ_LEDGER_IMAGE: ghcr.io/malbeclabs/dz-e2e/ledger:${{ github.sha }}
-  DZ_CONTROLLER_IMAGE: ghcr.io/malbeclabs/dz-e2e/controller:${{ github.sha }}
-  DZ_MANAGER_IMAGE: ghcr.io/malbeclabs/dz-e2e/manager:${{ github.sha }}
-  DZ_FUNDER_IMAGE: ghcr.io/malbeclabs/dz-e2e/funder:${{ github.sha }}
-  DZ_DEVICE_IMAGE: ghcr.io/malbeclabs/dz-e2e/device:${{ github.sha }}
-  DZ_CLIENT_IMAGE: ghcr.io/malbeclabs/dz-e2e/client:${{ github.sha }}
-  DZ_DEVICE_HEALTH_ORACLE_IMAGE: ghcr.io/malbeclabs/dz-e2e/device-health-oracle:${{ github.sha }}
-  DZ_GEOPROBE_IMAGE: ghcr.io/malbeclabs/dz-e2e/geoprobe:${{ github.sha }}
-  DZ_SENTINEL_IMAGE: ghcr.io/malbeclabs/dz-e2e/sentinel:${{ github.sha }}
-  DZ_VALIDATOR_METADATA_SERVICE_MOCK_IMAGE: ghcr.io/malbeclabs/dz-e2e/validator-metadata-service-mock:${{ github.sha }}
+  DZ_BASE_IMAGE: ghcr.io/malbeclabs/dz-e2e/base:${{ github.event.inputs.image_tag || github.sha }}
+  DZ_LEDGER_IMAGE: ghcr.io/malbeclabs/dz-e2e/ledger:${{ github.event.inputs.image_tag || github.sha }}
+  DZ_CONTROLLER_IMAGE: ghcr.io/malbeclabs/dz-e2e/controller:${{ github.event.inputs.image_tag || github.sha }}
+  DZ_MANAGER_IMAGE: ghcr.io/malbeclabs/dz-e2e/manager:${{ github.event.inputs.image_tag || github.sha }}
+  DZ_FUNDER_IMAGE: ghcr.io/malbeclabs/dz-e2e/funder:${{ github.event.inputs.image_tag || github.sha }}
+  DZ_DEVICE_IMAGE: ghcr.io/malbeclabs/dz-e2e/device:${{ github.event.inputs.image_tag || github.sha }}
+  DZ_CLIENT_IMAGE: ghcr.io/malbeclabs/dz-e2e/client:${{ github.event.inputs.image_tag || github.sha }}
+  DZ_DEVICE_HEALTH_ORACLE_IMAGE: ghcr.io/malbeclabs/dz-e2e/device-health-oracle:${{ github.event.inputs.image_tag || github.sha }}
+  DZ_GEOPROBE_IMAGE: ghcr.io/malbeclabs/dz-e2e/geoprobe:${{ github.event.inputs.image_tag || github.sha }}
+  DZ_SENTINEL_IMAGE: ghcr.io/malbeclabs/dz-e2e/sentinel:${{ github.event.inputs.image_tag || github.sha }}
+  DZ_VALIDATOR_METADATA_SERVICE_MOCK_IMAGE: ghcr.io/malbeclabs/dz-e2e/validator-metadata-service-mock:${{ github.event.inputs.image_tag || github.sha }}
 
 jobs:
   setup:
@@ -33,25 +44,60 @@ jobs:
       packages: write
       contents: read
     outputs:
+      run-e2e: ${{ steps.gate.outputs.run-e2e }}
       matrix: ${{ steps.shard.outputs.matrix }}
     steps:
+      - name: Decide whether privileged e2e can run
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "run-e2e=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping privileged e2e on an external fork PR. A maintainer can comment /run-e2e to start a trusted run."
+            {
+              echo "### Privileged e2e skipped"
+              echo
+              echo "This pull request comes from an external fork, so GitHub only grants a read-only token and no secrets."
+              echo "A maintainer can comment \`/run-e2e\` to dispatch trusted e2e for this PR head SHA."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "run-e2e=true" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
+        if: steps.gate.outputs.run-e2e == 'true' && github.event_name != 'workflow_dispatch'
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run-e2e == 'true' && github.event_name == 'workflow_dispatch'
+        with:
+          ref: refs/pull/${{ github.event.inputs.pr_number }}/merge
+          fetch-depth: 2
+      - name: Validate trusted PR head
+        if: steps.gate.outputs.run-e2e == 'true' && github.event_name == 'workflow_dispatch'
+        run: |
+          actual_head="$(git rev-parse HEAD^2)"
+          if [ "$actual_head" != "${{ github.event.inputs.head_sha }}" ]; then
+            echo "::error::PR head SHA changed: expected ${{ github.event.inputs.head_sha }}, got $actual_head"
+            exit 1
+          fi
       - uses: actions/setup-go@v5
+        if: steps.gate.outputs.run-e2e == 'true'
         with:
           go-version-file: go.mod
           cache: true
       - name: Login to GHCR
+        if: steps.gate.outputs.run-e2e == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Install make
+        if: steps.gate.outputs.run-e2e == 'true'
         run: sudo apt-get update && sudo apt-get install -y make
       - name: Build images
+        if: steps.gate.outputs.run-e2e == 'true'
         working-directory: e2e/
         run: go run ./cmd/dzctl/main.go build
       - name: Push images to registry
+        if: steps.gate.outputs.run-e2e == 'true'
         run: |
           docker push ${{ env.DZ_IMAGE_REPO }}/base:${{ env.DZ_IMAGE_TAG }}
           docker push ${{ env.DZ_IMAGE_REPO }}/ledger:${{ env.DZ_IMAGE_TAG }}
@@ -65,11 +111,12 @@ jobs:
           docker push ${{ env.DZ_IMAGE_REPO }}/sentinel:${{ env.DZ_IMAGE_TAG }}
           docker push ${{ env.DZ_IMAGE_REPO }}/validator-metadata-service-mock:${{ env.DZ_IMAGE_TAG }}
       - name: Discover tests and distribute across shards
+        if: steps.gate.outputs.run-e2e == 'true'
         id: shard
         working-directory: e2e/
         run: |
           # Find files with exactly the e2e build tag (excludes compound tags like "e2e && stress")
-          tests=$(grep -rl '^//go:build e2e$' *_test.go \
+          tests=$(grep -rl '^//go:build e2e$' ./*_test.go \
             | xargs grep -h '^func TestE2E_' \
             | sed 's/func \(TestE2E_[a-zA-Z0-9_]*\).*/\1/' \
             | sort)
@@ -87,16 +134,16 @@ jobs:
           # Distribute remaining tests round-robin across shards
           declare -a shards
           for ((i=0; i<SHARD_COUNT; i++)); do
-            shards[$i]=""
+            shards[i]=""
           done
 
           i=0
           while IFS= read -r test; do
             idx=$((i % SHARD_COUNT))
-            if [ -n "${shards[$idx]}" ]; then
-              shards[$idx]="${shards[$idx]}|${test}"
+            if [ -n "${shards[idx]}" ]; then
+              shards[idx]="${shards[idx]}|${test}"
             else
-              shards[$idx]="$test"
+              shards[idx]="$test"
             fi
             i=$((i + 1))
           done <<< "$remaining"
@@ -104,7 +151,7 @@ jobs:
           # Build JSON matrix: shard 1 = BackwardCompatibility, shards 2+ = round-robin
           matrix="[{\"shard\":1,\"run\":\"^(${dedicated})$\"}"
           for ((i=0; i<SHARD_COUNT; i++)); do
-            matrix="${matrix},{\"shard\":$((i + 2)),\"run\":\"^(${shards[$i]})$\"}"
+            matrix="${matrix},{\"shard\":$((i + 2)),\"run\":\"^(${shards[i]})$\"}"
           done
           matrix="${matrix}]"
 
@@ -114,6 +161,7 @@ jobs:
   e2e:
     name: e2e (shard ${{ matrix.shard }})
     needs: setup
+    if: needs.setup.outputs.run-e2e == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -128,6 +176,20 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        if: github.event_name != 'workflow_dispatch'
+      - uses: actions/checkout@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          ref: refs/pull/${{ github.event.inputs.pr_number }}/merge
+          fetch-depth: 2
+      - name: Validate trusted PR head
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          actual_head="$(git rev-parse HEAD^2)"
+          if [ "$actual_head" != "${{ github.event.inputs.head_sha }}" ]; then
+            echo "::error::PR head SHA changed: expected ${{ github.event.inputs.head_sha }}, got $actual_head"
+            exit 1
+          fi
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod

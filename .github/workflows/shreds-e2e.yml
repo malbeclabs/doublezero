@@ -3,20 +3,31 @@ on:
   push:
     branches: [main, 'hotfix/**']
   pull_request:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to test
+        required: true
+      head_sha:
+        description: Expected PR head SHA
+        required: true
+      image_tag:
+        description: GHCR image tag for this trusted run
+        required: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  DZ_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  DZ_SHA: ${{ github.event.inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
   SHRED_IMAGE_REPO: ghcr.io/malbeclabs/dz-shreds-e2e
-  SHRED_IMAGE_TAG: ${{ github.event.pull_request.head.sha || github.sha }}
-  SHRED_BASE_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/base:${{ github.event.pull_request.head.sha || github.sha }}
-  SHRED_LEDGER_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/ledger:${{ github.event.pull_request.head.sha || github.sha }}
-  SHRED_MANAGER_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/manager:${{ github.event.pull_request.head.sha || github.sha }}
-  SHRED_ORACLE_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/oracle:${{ github.event.pull_request.head.sha || github.sha }}
-  SHRED_CLIENT_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/client:${{ github.event.pull_request.head.sha || github.sha }}
+  SHRED_IMAGE_TAG: ${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
+  SHRED_BASE_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/base:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
+  SHRED_LEDGER_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/ledger:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
+  SHRED_MANAGER_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/manager:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
+  SHRED_ORACLE_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/oracle:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
+  SHRED_CLIENT_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/client:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   setup:
@@ -26,35 +37,57 @@ jobs:
       packages: write
       contents: read
     outputs:
+      run-e2e: ${{ steps.gate.outputs.run-e2e }}
       shreds-sha: ${{ steps.checkout-shreds.outputs.commit }}
       matrix: ${{ steps.shard.outputs.matrix }}
     steps:
+      - name: Decide whether privileged shreds e2e can run
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "run-e2e=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping privileged shreds e2e on an external fork PR. A maintainer can comment /run-e2e to start a trusted run."
+            {
+              echo "### Privileged shreds e2e skipped"
+              echo
+              echo "This pull request comes from an external fork, so GitHub withholds repository secrets."
+              echo "A maintainer can comment \`/run-e2e\` to dispatch trusted shreds e2e for this PR head SHA."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "run-e2e=true" >> "$GITHUB_OUTPUT"
       - name: Checkout doublezero-shreds
+        if: steps.gate.outputs.run-e2e == 'true'
         id: checkout-shreds
         uses: actions/checkout@v4
         with:
           repository: malbeclabs/doublezero-shreds
           token: ${{ secrets.MALBEC_INFRA_RO }}
       - uses: actions/setup-go@v5
+        if: steps.gate.outputs.run-e2e == 'true'
         with:
           go-version-file: go.mod
           cache: true
       - name: Login to GHCR
+        if: steps.gate.outputs.run-e2e == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Override doublezero SHA
+        if: steps.gate.outputs.run-e2e == 'true'
         run: |
           echo "Using doublezero SHA: $DZ_SHA"
           jq --arg sha "$DZ_SHA" '.doublezero = $sha' e2e/.dep-shas.json > e2e/.dep-shas.json.tmp
           mv e2e/.dep-shas.json.tmp e2e/.dep-shas.json
           cat e2e/.dep-shas.json
       - name: Build images
+        if: steps.gate.outputs.run-e2e == 'true'
         working-directory: e2e/
         run: go run -tags=e2e ./cmd/devnet build -v
       - name: Push images to registry
+        if: steps.gate.outputs.run-e2e == 'true'
         run: |
           docker push ${{ env.SHRED_IMAGE_REPO }}/base:${{ env.SHRED_IMAGE_TAG }}
           docker push ${{ env.SHRED_IMAGE_REPO }}/ledger:${{ env.SHRED_IMAGE_TAG }}
@@ -62,11 +95,12 @@ jobs:
           docker push ${{ env.SHRED_IMAGE_REPO }}/oracle:${{ env.SHRED_IMAGE_TAG }}
           docker push ${{ env.SHRED_IMAGE_REPO }}/client:${{ env.SHRED_IMAGE_TAG }}
       - name: Discover tests and distribute across shards
+        if: steps.gate.outputs.run-e2e == 'true'
         id: shard
         working-directory: e2e/
         run: |
           # Find all TestE2E_* functions in files with the e2e build tag.
-          tests=$(grep -rl '^//go:build e2e$' *_test.go \
+          tests=$(grep -rl '^//go:build e2e$' ./*_test.go \
             | xargs grep -h '^func TestE2E_' \
             | sed 's/func \(TestE2E_[a-zA-Z0-9_]*\).*/\1/' \
             | sort)
@@ -96,14 +130,14 @@ jobs:
 
           ROUND_ROBIN_SHARDS=2
           declare -a shards
-          for ((i=0; i<ROUND_ROBIN_SHARDS; i++)); do shards[$i]=""; done
+          for ((i=0; i<ROUND_ROBIN_SHARDS; i++)); do shards[i]=""; done
           i=0
           while IFS= read -r test; do
             idx=$((i % ROUND_ROBIN_SHARDS))
-            if [ -n "${shards[$idx]}" ]; then
-              shards[$idx]="${shards[$idx]}|${test}"
+            if [ -n "${shards[idx]}" ]; then
+              shards[idx]="${shards[idx]}|${test}"
             else
-              shards[$idx]="$test"
+              shards[idx]="$test"
             fi
             i=$((i + 1))
           done <<< "$remaining"
@@ -112,7 +146,7 @@ jobs:
           matrix="[{\"shard\":1,\"run\":\"^(${pinned_1})$\"}"
           matrix="${matrix},{\"shard\":2,\"run\":\"^(${pinned_2})$\"}"
           for ((i=0; i<ROUND_ROBIN_SHARDS; i++)); do
-            matrix="${matrix},{\"shard\":$((i + 3)),\"run\":\"^(${shards[$i]})$\"}"
+            matrix="${matrix},{\"shard\":$((i + 3)),\"run\":\"^(${shards[i]})$\"}"
           done
           matrix="${matrix}]"
 
@@ -122,6 +156,7 @@ jobs:
   shard-e2e:
     name: shard-e2e (shard ${{ matrix.shard }})
     needs: setup
+    if: needs.setup.outputs.run-e2e == 'true'
     strategy:
       fail-fast: false
       matrix:

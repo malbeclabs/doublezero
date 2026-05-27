@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- ci(e2e): add trusted fork PR e2e dispatch ([#3777](https://github.com/malbeclabs/doublezero/pull/3777))
 - SDK (Rust)
   - Drop the pre-submit `simulate_transaction` call in `DZClient::execute_transaction_inner` and submit with `skip_preflight: true`, eliminating the redundant double-simulation (the explicit simulate plus `send_and_confirm_transaction`'s default preflight) on the happy path. Program logs are now recovered from `get_transaction` on the failure path so `SimulationError` / `SimulationTransactionError` and `DoubleZeroError` mapping in CLI output are unchanged. Trade-off: failing transactions now land onchain and burn fees instead of failing for free at simulation ([#3750](https://github.com/malbeclabs/doublezero/pull/3750))
 - e2e/qa: remove client-side capacity pre-filtering from `ValidDevices`, because the QA user pubkey bypasses capacity limits using the serviceability global-config qa-allowlist. Individual device failures no longer fail the test; instead, overall and per-host failure rates are evaluated after all batches and the test only fails if either exceeds `--failure-threshold` (default 10%) or `--per-host-failure-threshold` (default 20%).
@@ -22,7 +23,6 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 ### Changes
-
 
 - Smartcontract
   - Deprecate the 13 contributor-side program instructions whose only client was the now-deleted activator: `ActivateDevice` (21), `RejectDevice` (22), `CloseAccountDevice` (27), `ActivateLink` (29), `RejectLink` (30), `CloseAccountLink` (35), `ActivateMulticastGroup` (47), `RejectMulticastGroup` (48), `DeactivateMulticastGroup` (53), `ActivateDeviceInterface` (72), `RemoveDeviceInterface` (75), `UnlinkDeviceInterface` (77), and `RejectDeviceInterface` (78). Dispatch arms now short-circuit to `DoubleZeroError::Deprecated` (custom code 67); processor files and argument structs are removed. Borsh variant tags are preserved (unit variants) so the wire format is unchanged — old clients receive a deterministic deprecation error rather than an unknown-instruction decode failure. Bumps `MIN_COMPATIBLE_VERSION` to `0.15.0` (the `client/v0.14.1` git tag was a patch release built from a commit whose workspace Cargo version was still `0.14.0`, so the v0.14.1 binary self-reports as 0.14.0 in its startup version check; v0.15.0 is the first release whose embedded version actually satisfies the intended ≥ 0.14.1 gate). Gated on onchain `ProgramConfig.min_compatible_version ≥ 0.15.0` ([#3623](https://github.com/malbeclabs/doublezero/issues/3623))
@@ -79,7 +79,7 @@ All notable changes to this project will be documented in this file.
 - SDK
   - Drop V3 handling from the Go, Python, and TypeScript serviceability readers: remove `DeserializeInterfaceV3` (Go) and the `version === 3` / `version == 3` legacy-slot branches (Python/TS); remove the `TestDeserializeInterfaceV3CrossLanguage` Go test. The forward-compat trailing `interfaces` vec continues to carry `flex_algo_node_segments` via the size-prefixed body — that path is unchanged ([#3664](https://github.com/malbeclabs/doublezero/issues/3664))
   - Let side-Z contributors update a link's `status` / `desired_status` / `delay_override_ns` via `UpdateLinkCommand`; the Rust SDK now auto-detects the signer's side and builds the 4-account side-Z preamble the on-chain processor expects, instead of always sending the side-A layout ([#3702](https://github.com/malbeclabs/doublezero/issues/3702))
-- Controller: 
+- Controller:
   - Enforce interface MTU during config render from interface role (CYOA/DIA → 1500, fabric → 9000) instead of trusting onchain `Interface.Mtu` / `Link.Mtu`; render each parent interface exactly once with `max` of its subinterface MTUs; change the `tunnel.tmpl` fallback from `2048` to `9000`. Guards against stale V1 onchain interfaces (`Mtu = 0`) and duplicate parent blocks that previously caused silent IS-IS adjacency failures ([#3696](https://github.com/malbeclabs/doublezero/pull/3696))
 - E2E tests
   - Make multicast QA failures self-explanatory: require a `Multicast`-typed status entry after multicast connect (instead of accepting a stale IBRL one), retry `MulticastJoin` briefly on "interface not found" to absorb the daemon/kernel race, snapshot host state once after 30s of zero packets, and heartbeat the publisher's tunnel status during send windows to catch silent regressions

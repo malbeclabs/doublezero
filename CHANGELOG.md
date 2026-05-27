@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 - SDK (Rust)
   - Drop the pre-submit `simulate_transaction` call in `DZClient::execute_transaction_inner` and submit with `skip_preflight: true`, eliminating the redundant double-simulation (the explicit simulate plus `send_and_confirm_transaction`'s default preflight) on the happy path. Program logs are now recovered from `get_transaction` on the failure path so `SimulationError` / `SimulationTransactionError` and `DoubleZeroError` mapping in CLI output are unchanged. Trade-off: failing transactions now land onchain and burn fees instead of failing for free at simulation ([#3750](https://github.com/malbeclabs/doublezero/pull/3750))
+- CLI
+  - Restore the default value for `doublezero device interface create --bandwidth` so it is optional again. [#3077](https://github.com/malbeclabs/doublezero/pull/3077) dropped `default_value` from the clap attribute on `bandwidth`; because the field is `u64` (not `Option<u64>`), clap then treated omission as a missing required argument, even though the PR description stated `--bandwidth` was now optional ([#3775](https://github.com/malbeclabs/doublezero/pull/3775))
 - e2e/qa: remove client-side capacity pre-filtering from `ValidDevices`, because the QA user pubkey bypasses capacity limits using the serviceability global-config qa-allowlist. Individual device failures no longer fail the test; instead, overall and per-host failure rates are evaluated after all batches and the test only fails if either exceeds `--failure-threshold` (default 10%) or `--per-host-failure-threshold` (default 20%).
 
 ## [v0.24.0](https://github.com/malbeclabs/doublezero/compare/client/v0.23.0...client/v0.24.0) - 2026-05-22

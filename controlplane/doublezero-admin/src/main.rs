@@ -17,8 +17,8 @@ use crate::cli::{
     tenant::TenantCommands,
     user::UserCommands,
 };
-use doublezero_cli::doublezerocommand::CliCommandImpl;
 use doublezero_sdk::DZClient;
+use doublezero_serviceability_cli::doublezerocommand::CliCommandImpl;
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]

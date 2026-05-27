@@ -9,7 +9,7 @@ use crate::{
     requirements::check_doublezero,
     servicecontroller::{ServiceController, ServiceControllerImpl},
 };
-use doublezero_cli::{
+use doublezero_serviceability_cli::{
     doublezerocommand::CliCommand,
     helpers::init_command,
     requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
@@ -469,8 +469,8 @@ mod tests {
 
     // --- delete_users tests ---
 
-    use doublezero_cli::tests::utils::create_test_client;
     use doublezero_sdk::{AccountType, User, UserCYOA, UserStatus};
+    use doublezero_serviceability_cli::tests::utils::create_test_client;
     use std::collections::HashMap;
 
     fn make_test_user(client_ip: Ipv4Addr, owner: Pubkey, user_type: UserType) -> User {

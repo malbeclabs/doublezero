@@ -1,6 +1,6 @@
 use super::{config::ConfigCliCommand, probe::ProbeCliCommand, user::UserCliCommand};
 use clap::Subcommand;
-use doublezero_cli::geolocation::programconfig::init::InitProgramConfigCliCommand;
+use doublezero_serviceability_cli::geolocation::programconfig::init::InitProgramConfigCliCommand;
 
 #[derive(Subcommand, Debug)]
 pub enum Command {

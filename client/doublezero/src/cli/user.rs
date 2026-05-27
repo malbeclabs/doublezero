@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand};
 
-use doublezero_cli::user::{
+use doublezero_serviceability_cli::user::{
     create::CreateUserCliCommand, create_subscribe::CreateSubscribeUserCliCommand,
     delete::DeleteUserCliCommand, get::GetUserCliCommand, list::ListUserCliCommand,
     request_ban::RequestBanUserCliCommand, subscribe::SubscribeUserCliCommand,

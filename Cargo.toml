@@ -107,7 +107,7 @@ tokio = { version = "1", default-features = false, features = [
 doublezero-cli-core = { path = "crates/doublezero-cli-core" }
 doublezero-config = { path = "config" }
 doublezero-sentinel = { path = "crates/sentinel" }
-doublezero_cli = { path = "smartcontract/cli" }
+doublezero-serviceability-cli = { path = "smartcontract/cli" }
 doublezero-program-common = { path = "smartcontract/programs/common" }
 doublezero_sdk = { path = "smartcontract/sdk/rs" }
 

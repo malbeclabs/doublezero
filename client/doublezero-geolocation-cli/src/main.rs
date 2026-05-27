@@ -3,10 +3,10 @@ use std::path::PathBuf;
 
 mod cli;
 use cli::{command::Command, config::ConfigCommands, probe::ProbeCommands, user::UserCommands};
-use doublezero_cli::geoclicommand::GeoCliCommandImpl;
 use doublezero_config::Environment;
 use doublezero_sdk::{geolocation::client::GeoClient, DZClient};
 use doublezero_serviceability::pda::get_globalstate_pda;
+use doublezero_serviceability_cli::geoclicommand::GeoCliCommandImpl;
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]

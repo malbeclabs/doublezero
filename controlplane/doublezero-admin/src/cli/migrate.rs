@@ -1,5 +1,4 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::doublezerocommand::CliCommand;
 use doublezero_sdk::commands::{
     device::list::ListDeviceCommand,
     link::{list::ListLinkCommand, update::UpdateLinkCommand},
@@ -8,6 +7,7 @@ use doublezero_sdk::commands::{
     },
 };
 use doublezero_serviceability::{pda::get_topology_pda, state::interface::LoopbackType};
+use doublezero_serviceability_cli::doublezerocommand::CliCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 

@@ -1,5 +1,5 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::resource::{
+use doublezero_serviceability_cli::resource::{
     allocate::AllocateResourceCliCommand, close::CloseResourceCliCommand,
     create::CreateResourceCliCommand, deallocate::DeallocateResourceCliCommand,
     get::GetResourceCliCommand, verify::VerifyResourceCliCommand,

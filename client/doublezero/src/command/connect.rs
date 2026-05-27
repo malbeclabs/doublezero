@@ -5,11 +5,6 @@ use crate::{
 };
 use backon::{BlockingRetryable, ExponentialBuilder};
 use clap::{Args, Subcommand, ValueEnum};
-use doublezero_cli::{
-    doublezerocommand::CliCommand,
-    helpers::init_command,
-    requirements::{check_accesspass, check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
-};
 use doublezero_sdk::{
     commands::{
         accesspass::get::GetAccessPassCommand,
@@ -24,6 +19,11 @@ use doublezero_sdk::{
         },
     },
     Device, User, UserCYOA, UserStatus, UserType,
+};
+use doublezero_serviceability_cli::{
+    doublezerocommand::CliCommand,
+    helpers::init_command,
+    requirements::{check_accesspass, check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
 };
 use eyre;
 use indicatif::ProgressBar;
@@ -936,7 +936,6 @@ mod tests {
         DoubleZeroStatus, LatencyRecord, LatencyResponse, MockServiceController, StatusResponse,
         V2StatusResponse,
     };
-    use doublezero_cli::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
     use doublezero_config::Environment;
     use doublezero_sdk::{
         commands::accesspass::get::GetAccessPassCommand, tests::utils::create_temp_config,
@@ -952,6 +951,9 @@ mod tests {
             multicastgroup::{MulticastGroup, MulticastGroupStatus},
             tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
         },
+    };
+    use doublezero_serviceability_cli::{
+        doublezerocommand::MockCliCommand, tests::utils::create_test_client,
     };
     use mockall::predicate;
     use solana_sdk::signature::Signature;

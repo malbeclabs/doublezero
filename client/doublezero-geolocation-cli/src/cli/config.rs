@@ -1,5 +1,5 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::geolocation::config::{
+use doublezero_serviceability_cli::geolocation::config::{
     get::GetGeoConfigCliCommand, set::SetGeoConfigCliCommand,
 };
 

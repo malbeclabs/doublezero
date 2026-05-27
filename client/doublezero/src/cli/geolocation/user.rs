@@ -1,5 +1,5 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::geolocation::user::{
+use doublezero_serviceability_cli::geolocation::user::{
     add_target::AddTargetCliCommand, create::CreateGeolocationUserCliCommand,
     delete::DeleteGeolocationUserCliCommand, get::GetGeolocationUserCliCommand,
     list::ListGeolocationUserCliCommand, remove_target::RemoveTargetCliCommand,

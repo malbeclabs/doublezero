@@ -1,5 +1,5 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::device::{
+use doublezero_serviceability_cli::device::{
     create::CreateDeviceCliCommand,
     delete::DeleteDeviceCliCommand,
     get::GetDeviceCliCommand,

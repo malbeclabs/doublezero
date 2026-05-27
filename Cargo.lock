@@ -1484,7 +1484,7 @@ dependencies = [
  "doublezero-config",
  "doublezero-program-common",
  "doublezero-serviceability",
- "doublezero_cli",
+ "doublezero-serviceability-cli",
  "doublezero_sdk",
  "eyre",
  "futures",
@@ -1524,7 +1524,7 @@ dependencies = [
  "doublezero-program-common",
  "doublezero-sentinel",
  "doublezero-serviceability",
- "doublezero_cli",
+ "doublezero-serviceability-cli",
  "doublezero_sdk",
  "eyre",
  "futures",
@@ -1605,7 +1605,7 @@ dependencies = [
  "doublezero-config",
  "doublezero-geolocation",
  "doublezero-serviceability",
- "doublezero_cli",
+ "doublezero-serviceability-cli",
  "doublezero_sdk",
  "eyre",
  "libc",
@@ -1696,28 +1696,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "doublezero-telemetry"
-version = "0.24.0"
-dependencies = [
- "bincode 2.0.1",
- "borsh 1.5.7",
- "borsh-incremental",
- "ctor",
- "doublezero-config",
- "doublezero-program-common",
- "doublezero-serviceability",
- "env_logger",
- "log",
- "serde",
- "serde_bytes",
- "solana-program",
- "solana-program-test",
- "solana-sdk",
- "solana-system-interface",
-]
-
-[[package]]
-name = "doublezero_cli"
+name = "doublezero-serviceability-cli"
 version = "0.24.0"
 dependencies = [
  "anyhow",
@@ -1750,6 +1729,27 @@ dependencies = [
  "temp-env",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "doublezero-telemetry"
+version = "0.24.0"
+dependencies = [
+ "bincode 2.0.1",
+ "borsh 1.5.7",
+ "borsh-incremental",
+ "ctor",
+ "doublezero-config",
+ "doublezero-program-common",
+ "doublezero-serviceability",
+ "env_logger",
+ "log",
+ "serde",
+ "serde_bytes",
+ "solana-program",
+ "solana-program-test",
+ "solana-sdk",
+ "solana-system-interface",
 ]
 
 [[package]]

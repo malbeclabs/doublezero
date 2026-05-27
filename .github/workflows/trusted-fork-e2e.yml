@@ -1,0 +1,122 @@
+name: trusted-fork-e2e
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to test
+        required: true
+      suites:
+        description: 'Which suite to run: all, e2e, or shreds-e2e'
+        required: false
+        default: all
+
+concurrency:
+  group: trusted-fork-e2e-${{ github.event.issue.number || github.event.inputs.pr_number }}
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  dispatch:
+    # Keep this workflow gated: only /run-e2e comments on PRs, or manual runs.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.pull_request &&
+       (github.event.comment.body == '/run-e2e' || startsWith(github.event.comment.body, '/run-e2e ')))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch trusted e2e workflows
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const allowedPermissions = new Set(['admin', 'maintain', 'write']);
+            const { owner, repo } = context.repo;
+            const isManual = context.eventName === 'workflow_dispatch';
+            const inputs = context.payload.inputs || {};
+            const prNumber = Number(isManual ? inputs.pr_number : context.payload.issue.number);
+
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              throw new Error(`Invalid pull request number: ${isManual ? inputs.pr_number : context.payload.issue.number}`);
+            }
+
+            const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner,
+              repo,
+              username: context.actor,
+            });
+
+            if (!allowedPermissions.has(permission.permission)) {
+              throw new Error(`@${context.actor} has ${permission.permission} permission; trusted e2e requires write, maintain, or admin.`);
+            }
+
+            const suiteToken = (isManual
+              ? (inputs.suites || 'all')
+              : (context.payload.comment.body.trim().split(/\s+/)[1] || 'all'))
+              .toLowerCase();
+
+            const suites = new Map([
+              ['all', ['e2e.yml', 'shreds-e2e.yml']],
+              ['e2e', ['e2e.yml']],
+              ['core', ['e2e.yml']],
+              ['shreds', ['shreds-e2e.yml']],
+              ['shreds-e2e', ['shreds-e2e.yml']],
+            ]);
+
+            const workflows = suites.get(suiteToken);
+            if (!workflows) {
+              throw new Error(`Unknown suite '${suiteToken}'. Use one of: all, e2e, shreds-e2e.`);
+            }
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: prNumber,
+            });
+
+            if (pr.state !== 'open') {
+              throw new Error(`Pull request #${prNumber} is ${pr.state}; trusted e2e only runs for open PRs.`);
+            }
+
+            const headSha = pr.head.sha;
+            const imageTag = `trusted-pr-${prNumber}-${headSha}`;
+            const dispatched = [];
+
+            for (const workflow_id of workflows) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner,
+                repo,
+                workflow_id,
+                ref: pr.base.ref,
+                inputs: {
+                  pr_number: String(prNumber),
+                  head_sha: headSha,
+                  image_tag: imageTag,
+                },
+              });
+              dispatched.push(workflow_id);
+            }
+
+            const links = dispatched
+              .map((workflow) => `- [${workflow}](https://github.com/${owner}/${repo}/actions/workflows/${workflow})`)
+              .join('\n');
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: prNumber,
+              body: [
+                `Trusted e2e requested by @${context.actor} for \`${headSha}\`.`,
+                '',
+                `Image tag: \`${imageTag}\``,
+                '',
+                'Dispatched workflows:',
+                links,
+              ].join('\n'),
+            });

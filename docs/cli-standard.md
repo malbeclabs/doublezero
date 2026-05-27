@@ -82,7 +82,7 @@ mocked client.
 - Commands MAY additionally expose `--json-compact` for single-line JSON.
   The flag name is fixed.
 - Mutating commands print the transaction signature and post-confirmation
-  status; they MAY accept `-w` / `--wait` to poll for activation.
+  status.
 - All user-facing output flows through the writer passed to `execute`.
 
 ## Global flags

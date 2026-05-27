@@ -44,6 +44,7 @@ type orchestratorConfig struct {
 	DUTPubkey       string `json:"dut_pubkey"`
 	DUTSSHHost      string `json:"dut_ssh_host"`
 	DUTSSHKey       string `json:"dut_ssh_key"`
+	DUTSSHUser      string `json:"dut_ssh_user"`
 	RPCURL          string `json:"rpc_url"`
 	ProgramID       string `json:"program_id"`
 	KeypairPath     string `json:"keypair"`
@@ -53,6 +54,7 @@ type orchestratorConfig struct {
 	ClientIPBase    string `json:"client_ip_base"`
 	TunnelEndpoint  string `json:"tunnel_endpoint"`
 	TenantPubkey    string `json:"tenant_pubkey,omitempty"`
+	NoAgent         bool   `json:"no_agent"`
 }
 
 func main() {
@@ -82,6 +84,8 @@ func run() error {
 		runID           = flag.String("run-id", "", "Run identifier written into every runlog row; auto-generated if empty.")
 		logLevel        = flag.String("log-level", "info", "slog level: debug|info|warn|error.")
 		dryRun          = flag.Bool("dry-run", false, "Validate flags and dump orchestrator-config.json without contacting the RPC.")
+		dutSSHUser      = flag.String("dut-ssh-user", "admin", "SSH user for the DUT.")
+		noAgent         = flag.Bool("no-agent", false, "Use the no-op AgentRunner even when SSH flags are set (offline testing).")
 	)
 	flag.Parse()
 
@@ -117,6 +121,7 @@ func run() error {
 		DUTPubkey:       *dutPubkey,
 		DUTSSHHost:      *dutSSHHost,
 		DUTSSHKey:       *dutSSHKey,
+		DUTSSHUser:      *dutSSHUser,
 		RPCURL:          *rpcURL,
 		ProgramID:       *programID,
 		KeypairPath:     *keypairPath,
@@ -126,6 +131,7 @@ func run() error {
 		ClientIPBase:    *clientIPBase,
 		TunnelEndpoint:  *tunnelEndpoint,
 		TenantPubkey:    *tenantPubkey,
+		NoAgent:         *noAgent,
 	}
 	// Validate required flags before writing anything, so a bad invocation
 	// doesn't leave a config file behind. A dry-run is exempt: its whole job is
@@ -180,6 +186,7 @@ func run() error {
 	liveExec, err := exec.New(exec.Config{
 		Client:         client,
 		Executor:       executor,
+		RPC:            rpc,
 		DevicePubkey:   dutPK,
 		TenantPubkey:   tenantPK,
 		ClientIPBase:   baseIP,
@@ -206,6 +213,8 @@ func run() error {
 	ctx, abortCancel := abort.Watch(rootCtx, *abortFile, abort.DefaultPollInterval, logger)
 	defer abortCancel()
 
+	agentRunner := selectAgentRunner(*noAgent, *dutSSHHost, *dutSSHKey, *dutSSHUser, *controllerAddr, *workingDir, logger)
+
 	cfg := sweep.Config{
 		RunID:         *runID,
 		Target:        *targetUserCount,
@@ -213,7 +222,7 @@ func run() error {
 		Hold:          time.Duration(*holdSeconds) * time.Second,
 		OwnerFilter:   signer.PublicKey(),
 		Executor:      liveExec,
-		Agent:         agent.NewNoop(logger),
+		Agent:         agentRunner,
 		Runlog:        rlw,
 		Clock:         sweep.RealClock{},
 		Logger:        logger,
@@ -274,6 +283,39 @@ func requireFlags(required map[string]string) error {
 		return fmt.Errorf("missing required flag(s): %v", missing)
 	}
 	return nil
+}
+
+// selectAgentRunner picks between the SSH-backed runner and the no-op, based
+// on the CLI flags:
+//
+//   - --no-agent → noop (operator opted out)
+//   - --dut-ssh-host + --dut-ssh-key set → SSH runner (default for live runs)
+//   - otherwise → noop with a warning (operator forgot the flags)
+//
+// The SSH runner tees remote stdout/stderr into <working-dir>/orchestrator.agent.log.
+// The exec'd command appends --controller iff the operator passed --controller.
+func selectAgentRunner(noAgent bool, sshHost, sshKey, sshUser, controllerAddr, workingDir string, logger *slog.Logger) agent.Runner {
+	if noAgent {
+		logger.Info("agent: --no-agent set; using no-op runner")
+		return agent.NewNoop(logger)
+	}
+	if sshHost == "" || sshKey == "" {
+		logger.Warn("agent: --dut-ssh-host and --dut-ssh-key not both set; falling back to no-op runner (pre_commit_log / applied events will not be recorded)")
+		return agent.NewNoop(logger)
+	}
+
+	cmd := "doublezero-agent -verbose"
+	if controllerAddr != "" {
+		cmd = fmt.Sprintf("doublezero-agent -verbose -controller %s", controllerAddr)
+	}
+	return agent.NewSSH(agent.SSHConfig{
+		Host:    sshHost,
+		User:    sshUser,
+		KeyPath: sshKey,
+		Command: cmd,
+		LogPath: filepath.Join(workingDir, "orchestrator.agent.log"),
+		Logger:  logger,
+	})
 }
 
 func parseIPv4(s string) ([4]byte, error) {

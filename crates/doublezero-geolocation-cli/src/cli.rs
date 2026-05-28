@@ -56,7 +56,7 @@ impl GeolocationCommand {
                 ProbeCommands::RemoveParent(args) => args.execute(ctx, client, out).await,
             },
             Self::User(cmd) => match cmd.command {
-                UserCommands::Create(args) => args.execute(client, out),
+                UserCommands::Create(args) => args.execute(ctx, client, out).await,
                 UserCommands::Update(args) => args.execute(client, out),
                 UserCommands::Delete(args) => args.execute(client, out),
                 UserCommands::Get(args) => args.execute(client, out),

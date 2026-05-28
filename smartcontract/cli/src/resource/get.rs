@@ -74,7 +74,7 @@ impl GetResourceCliCommand {
 mod tests {
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
-    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{AccountType, ResourceType as SdkResourceType};
     use doublezero_serviceability::{
         id_allocator::IdAllocator,
@@ -82,15 +82,6 @@ mod tests {
     };
     use solana_program::pubkey::Pubkey;
     use std::io::Cursor;
-    use tokio::runtime::Builder;
-
-    fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(f)
-    }
 
     #[test]
     fn test_from_cli_to_command() {

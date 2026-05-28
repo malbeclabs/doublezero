@@ -188,21 +188,12 @@ impl FundAccessPassCliCommand {
 mod tests {
     use super::*;
     use crate::tests::utils::create_test_client;
-    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::AccountType;
     use doublezero_serviceability::state::accesspass::{
         AccessPass, AccessPassStatus, AccessPassType,
     };
     use solana_sdk::{account::Account, pubkey::Pubkey};
-    use tokio::runtime::Builder;
-
-    fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(f)
-    }
 
     const RENT_PER_USER: u64 = 1_000_000;
     // needs_rent for 1 remaining slot = 1_000_000 + 250_000 = 1_250_000

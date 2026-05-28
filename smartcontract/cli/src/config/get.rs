@@ -45,9 +45,8 @@ impl GetConfigCliCommand {
 mod tests {
     use serial_test::serial;
     use tempfile::TempDir;
-    use tokio::runtime::Builder;
 
-    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{create_new_pubkey_user, write_doublezero_config, ClientConfig};
 
     use crate::tests::utils::create_test_client;
@@ -56,14 +55,6 @@ mod tests {
     use super::*;
 
     const CONFIG_ENV_VAR: &str = "DOUBLEZERO_CONFIG_FILE";
-
-    fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(f)
-    }
 
     #[test]
     #[serial]

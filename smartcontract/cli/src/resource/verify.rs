@@ -1198,7 +1198,7 @@ fn check_discrepancies(
 mod tests {
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
-    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_program_common::types::NetworkV4;
     use doublezero_sdk::AccountType;
     use doublezero_serviceability::{
@@ -1207,15 +1207,6 @@ mod tests {
         state::resource_extension::{Allocator, ResourceExtensionOwned},
     };
     use std::io::Cursor;
-    use tokio::runtime::Builder;
-
-    fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(f)
-    }
 
     fn create_resource_extension_ip(
         program_id: &Pubkey,

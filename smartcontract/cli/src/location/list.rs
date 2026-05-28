@@ -1,11 +1,12 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::{render_collection, CliContext, OutputFormat};
 use doublezero_program_common::serializer;
 use doublezero_sdk::{commands::location::list::ListLocationCommand, LocationStatus};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct ListLocationCliCommand {
@@ -32,7 +33,12 @@ pub struct LocationDisplay {
 }
 
 impl ListLocationCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let locations = client.list_location(ListLocationCommand)?;
 
         let mut location_displays: Vec<LocationDisplay> = locations
@@ -51,19 +57,11 @@ impl ListLocationCliCommand {
 
         location_displays.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.code.cmp(&b.code)));
 
-        let res = if self.json {
-            serde_json::to_string_pretty(&location_displays)?
-        } else if self.json_compact {
-            serde_json::to_string(&location_displays)?
-        } else {
-            Table::new(location_displays)
-                .with(Style::psql().remove_horizontals())
-                .to_string()
-        };
-
-        writeln!(out, "{res}")?;
-
-        Ok(())
+        render_collection(
+            out,
+            location_displays,
+            OutputFormat::from_flags(self.json, self.json_compact),
+        )
     }
 }
 
@@ -73,9 +71,19 @@ mod tests {
         location::list::{ListLocationCliCommand, LocationStatus::Activated},
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_sdk::{AccountType, Location};
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     #[test]
     fn test_cli_location_list() {
@@ -102,22 +110,28 @@ mod tests {
             Ok(locations)
         });
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = ListLocationCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListLocationCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, " account                                   | code      | name      | country      | lat | lng | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | some country | 15  | 15  | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
-        let res = ListLocationCliCommand {
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListLocationCliCommand {
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();

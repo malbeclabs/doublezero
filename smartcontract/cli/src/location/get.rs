@@ -1,5 +1,5 @@
 use clap::Args;
-use doublezero_cli_core::CliContext;
+use doublezero_cli_core::{render_record, CliContext, OutputFormat};
 use doublezero_sdk::commands::location::get::GetLocationCommand;
 use serde::Serialize;
 use std::io::Write;
@@ -70,19 +70,7 @@ impl GetLocationCliCommand {
             owner: location.owner.to_string(),
         };
 
-        if self.json {
-            let json = serde_json::to_string_pretty(&display)?;
-            writeln!(out, "{json}")?;
-        } else {
-            let headers = LocationDisplay::headers();
-            let fields = display.fields();
-            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
-            for (header, value) in headers.iter().zip(fields.iter()) {
-                writeln!(out, " {header:<max_len$} | {value}")?;
-            }
-        }
-
-        Ok(())
+        render_record(out, &display, OutputFormat::from_flags(self.json, false))
     }
 }
 

@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use chrono::{TimeZone, Utc};
+use doublezero_sdk::commands::location::get::GetLocationCommand;
 use std::{
     io::{Read, Write},
     str,
@@ -33,6 +34,22 @@ pub fn parse_pubkey(input: &str) -> Option<Pubkey> {
     }
 
     Pubkey::from_str(input).ok()
+}
+
+/// Resolve a `--pubkey`/`--code` argument to the location's on-chain pubkey.
+///
+/// Update and delete verbs accept either a base58 pubkey or a location code.
+/// In both cases the backend is queried for the account so the verb can
+/// reuse the returned pubkey on the mutating call without having to parse
+/// the input itself.
+pub fn resolve_location_pk<C: CliCommand>(
+    client: &C,
+    pubkey_or_code: &str,
+) -> eyre::Result<Pubkey> {
+    let (pubkey, _) = client.get_location(GetLocationCommand {
+        pubkey_or_code: pubkey_or_code.to_string(),
+    })?;
+    Ok(pubkey)
 }
 
 pub fn print_error(e: eyre::Report) {

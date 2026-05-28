@@ -1,10 +1,11 @@
 use crate::{
     doublezerocommand::CliCommand,
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    helpers::resolve_location_pk,
     validators::{validate_code, validate_pubkey_or_code},
 };
 use clap::Args;
-use doublezero_sdk::commands::location::{get::GetLocationCommand, update::UpdateLocationCommand};
+use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
+use doublezero_sdk::commands::location::update::UpdateLocationCommand;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -33,13 +34,18 @@ pub struct UpdateLocationCliCommand {
 }
 
 impl UpdateLocationCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
-        let (pubkey, _) = client.get_location(GetLocationCommand {
-            pubkey_or_code: self.pubkey,
-        })?;
+        let pubkey = resolve_location_pk(client, &self.pubkey)?;
 
         let signature = client.update_location(UpdateLocationCommand {
             pubkey,
@@ -51,9 +57,7 @@ impl UpdateLocationCliCommand {
             loc_id: self.loc_id,
         })?;
 
-        writeln!(out, "Signature: {signature}",)?;
-
-        Ok(())
+        print_signature(out, &signature)
     }
 }
 
@@ -65,12 +69,22 @@ mod tests {
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_sdk::{
         commands::location::update::UpdateLocationCommand, get_location_pda, AccountType,
         GetLocationCommand, Location, LocationStatus,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     #[test]
     fn test_cli_location_update() {
@@ -124,18 +138,20 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(signature));
 
-        // Expected success
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdateLocationCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: Some("test".to_string()),
-            name: Some("Test Location".to_string()),
-            country: Some("Test Country".to_string()),
-            lat: Some(12.34),
-            lng: Some(56.78),
-            loc_id: Some(1),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateLocationCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: Some("test".to_string()),
+                name: Some("Test Location".to_string()),
+                country: Some("Test Country".to_string()),
+                lat: Some(12.34),
+                lng: Some(56.78),
+                loc_id: Some(1),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

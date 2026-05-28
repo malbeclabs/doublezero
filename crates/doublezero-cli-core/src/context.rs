@@ -27,6 +27,22 @@ pub enum OutputFormat {
     JsonCompact,
 }
 
+impl OutputFormat {
+    /// Resolve the per-verb `--json` / `--json-compact` boolean flags to a
+    /// single [`OutputFormat`]. `json` wins over `json_compact` when both are
+    /// set, matching the pre-refactor `if json {...} else if json_compact {...}`
+    /// branching order used by every list verb.
+    pub fn from_flags(json: bool, json_compact: bool) -> Self {
+        if json {
+            Self::Json
+        } else if json_compact {
+            Self::JsonCompact
+        } else {
+            Self::Table
+        }
+    }
+}
+
 /// Resolved configuration carried from the binary into every module verb.
 #[derive(Debug, Clone)]
 pub struct CliContext {

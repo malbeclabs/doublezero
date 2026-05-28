@@ -85,8 +85,9 @@ pub enum ServiceabilityCommand {
 impl ServiceabilityCommand {
     /// Dispatch a serviceability verb to its implementation.
     ///
-    /// `ctx` is forwarded to verbs that consume it (today only
-    /// `location get` per RFC-20 PR 5; other verbs are sync and ignore it).
+    /// `ctx` is forwarded to every verb whose signature accepts it. As more
+    /// verbs migrate to the RFC-20 `async fn execute(self, ctx, client, out)`
+    /// shape, additional arms below await their futures directly.
     pub async fn execute<C, W>(self, ctx: &CliContext, client: &C, out: &mut W) -> eyre::Result<()>
     where
         C: CliCommand,
@@ -133,11 +134,11 @@ impl ServiceabilityCommand {
             },
 
             Self::Location(cmd) => match cmd.command {
-                LocationCommands::Create(args) => args.execute(client, out),
-                LocationCommands::Update(args) => args.execute(client, out),
-                LocationCommands::List(args) => args.execute(client, out),
+                LocationCommands::Create(args) => args.execute(ctx, client, out).await,
+                LocationCommands::Update(args) => args.execute(ctx, client, out).await,
+                LocationCommands::List(args) => args.execute(ctx, client, out).await,
                 LocationCommands::Get(args) => args.execute(ctx, client, out).await,
-                LocationCommands::Delete(args) => args.execute(client, out),
+                LocationCommands::Delete(args) => args.execute(ctx, client, out).await,
             },
             Self::Exchange(cmd) => match cmd.command {
                 ExchangeCommands::Create(args) => args.execute(client, out),

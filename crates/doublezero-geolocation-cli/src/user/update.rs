@@ -1,6 +1,6 @@
 use crate::client::GeoCliCommand;
 use clap::Args;
-use doublezero_cli_core::validators::validate_pubkey_or_code;
+use doublezero_cli_core::{validators::validate_pubkey_or_code, CliContext};
 use doublezero_sdk::geolocation::geolocation_user::{
     get::GetGeolocationUserCommand, update::UpdateGeolocationUserCommand,
 };
@@ -18,7 +18,14 @@ pub struct UpdateGeolocationUserCliCommand {
 }
 
 impl UpdateGeolocationUserCliCommand {
-    pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: GeoCliCommand, W: Write>(
+        self,
+        ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        tracing::debug!(env = %ctx.env, user = %self.user, "geolocation user update");
+
         let (_, resolved_user) = client.get_geolocation_user(GetGeolocationUserCommand {
             pubkey_or_code: self.user,
         })?;
@@ -38,6 +45,7 @@ impl UpdateGeolocationUserCliCommand {
 mod tests {
     use super::*;
     use crate::client::MockGeoCliCommand;
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_geolocation::state::{
         accounttype::AccountType,
         geolocation_user::{
@@ -47,6 +55,15 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::signature::Signature;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     fn make_user(token_account: Pubkey) -> GeolocationUser {
         GeolocationUser {
@@ -90,12 +107,15 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdateGeolocationUserCliCommand {
-            user: "geo-user-01".to_string(),
-            token_account: new_token,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateGeolocationUserCliCommand {
+                user: "geo-user-01".to_string(),
+                token_account: new_token,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));

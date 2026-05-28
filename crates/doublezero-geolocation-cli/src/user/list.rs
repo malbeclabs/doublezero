@@ -1,4 +1,4 @@
-use crate::geoclicommand::GeoCliCommand;
+use crate::client::GeoCliCommand;
 use clap::Args;
 use doublezero_program_common::serializer;
 use doublezero_sdk::geolocation::geolocation_user::list::ListGeolocationUserCommand;
@@ -66,7 +66,7 @@ impl ListGeolocationUserCliCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geoclicommand::MockGeoCliCommand;
+    use crate::client::MockGeoCliCommand;
     use doublezero_geolocation::state::{
         accounttype::AccountType,
         geolocation_user::{

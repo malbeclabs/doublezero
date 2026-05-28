@@ -1,11 +1,24 @@
+pub mod add_target;
+pub mod create;
+pub mod delete;
+pub mod get;
+pub mod list;
+pub mod remove_target;
+pub mod set_result_destination;
+pub mod update;
+pub mod update_payment_status;
+
 use clap::{Args, Subcommand};
-use doublezero_serviceability_cli::geolocation::user::{
-    add_target::AddTargetCliCommand, create::CreateGeolocationUserCliCommand,
-    delete::DeleteGeolocationUserCliCommand, get::GetGeolocationUserCliCommand,
-    list::ListGeolocationUserCliCommand, remove_target::RemoveTargetCliCommand,
-    set_result_destination::SetResultDestinationCliCommand,
-    update::UpdateGeolocationUserCliCommand, update_payment_status::UpdatePaymentStatusCliCommand,
-};
+
+use add_target::AddTargetCliCommand;
+use create::CreateGeolocationUserCliCommand;
+use delete::DeleteGeolocationUserCliCommand;
+use get::GetGeolocationUserCliCommand;
+use list::ListGeolocationUserCliCommand;
+use remove_target::RemoveTargetCliCommand;
+use set_result_destination::SetResultDestinationCliCommand;
+use update::UpdateGeolocationUserCliCommand;
+use update_payment_status::UpdatePaymentStatusCliCommand;
 
 #[derive(Args, Debug)]
 pub struct UserCliCommand {

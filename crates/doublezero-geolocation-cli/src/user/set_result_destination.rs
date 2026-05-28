@@ -1,5 +1,6 @@
-use crate::{geoclicommand::GeoCliCommand, validators::validate_code};
+use crate::client::GeoCliCommand;
 use clap::Args;
+use doublezero_cli_core::validators::validate_code;
 use doublezero_geolocation::validation::validate_public_ip;
 use doublezero_sdk::geolocation::geolocation_user::{
     get::GetGeolocationUserCommand, set_result_destination::SetResultDestinationCommand,
@@ -115,7 +116,7 @@ impl SetResultDestinationCliCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geoclicommand::MockGeoCliCommand;
+    use crate::client::MockGeoCliCommand;
     use doublezero_geolocation::state::{
         accounttype::AccountType,
         geolocation_user::{

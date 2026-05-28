@@ -41,6 +41,7 @@ tokio.workspace = true
 
 # Dependencies from this workspace
 doublezero_sdk.workspace = true
+doublezero-geolocation-cli.workspace = true
 doublezero-serviceability-cli.workspace = true
 doublezero-cli-core.workspace = true
 doublezero-config.workspace = true

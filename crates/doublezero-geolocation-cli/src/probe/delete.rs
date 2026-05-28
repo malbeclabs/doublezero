@@ -1,59 +1,43 @@
-use crate::{
-    geoclicommand::GeoCliCommand,
-    validators::{validate_pubkey, validate_pubkey_or_code},
-};
+use crate::client::GeoCliCommand;
 use clap::Args;
+use doublezero_cli_core::validators::validate_pubkey_or_code;
 use doublezero_sdk::geolocation::geo_probe::{
-    get::GetGeoProbeCommand, update::UpdateGeoProbeCommand,
+    delete::DeleteGeoProbeCommand, get::GetGeoProbeCommand,
 };
-use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, net::Ipv4Addr};
+use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct UpdateGeoProbeCliCommand {
-    /// Probe pubkey or code to update
+pub struct DeleteGeoProbeCliCommand {
+    /// Probe pubkey or code to delete
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub probe: String,
-    /// Updated public IPv4 address
-    #[arg(long)]
-    pub public_ip: Option<Ipv4Addr>,
-    /// Updated UDP listen port for location offsets
-    #[arg(long)]
-    pub port: Option<u16>,
-    /// Updated signing public key
-    #[arg(long, value_parser = validate_pubkey)]
-    pub signing_pubkey: Option<String>,
+    /// Skip confirmation prompt
+    #[arg(long, default_value_t = false)]
+    pub yes: bool,
 }
 
-impl UpdateGeoProbeCliCommand {
+impl DeleteGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        if self.public_ip.is_none() && self.port.is_none() && self.signing_pubkey.is_none() {
-            return Err(eyre::eyre!(
-                "At least one of --public-ip, --port, or --signing-pubkey is required"
-            ));
-        }
-
         let (_, resolved_probe) = client.get_geo_probe(GetGeoProbeCommand {
             pubkey_or_code: self.probe,
         })?;
         let code = resolved_probe.code;
 
-        let metrics_publisher_pk = self
-            .signing_pubkey
-            .map(|mp| {
-                mp.parse::<Pubkey>()
-                    .map_err(|_| eyre::eyre!("invalid signing pubkey: {mp}"))
-            })
-            .transpose()?;
+        if !self.yes {
+            eprint!("Delete probe '{code}'? [y/N]: ");
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            if !input.trim().eq_ignore_ascii_case("y") {
+                writeln!(out, "Aborted.")?;
+                return Ok(());
+            }
+        }
 
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
-        let sig = client.update_geo_probe(UpdateGeoProbeCommand {
+        let sig = client.delete_geo_probe(DeleteGeoProbeCommand {
             code,
             serviceability_globalstate_pk,
-            public_ip: self.public_ip,
-            location_offset_port: self.port,
-            metrics_publisher_pk,
         })?;
 
         writeln!(out, "Signature: {sig}")?;
@@ -65,13 +49,14 @@ impl UpdateGeoProbeCliCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geoclicommand::MockGeoCliCommand;
+    use crate::client::MockGeoCliCommand;
     use doublezero_geolocation::state::{accounttype::AccountType, geo_probe::GeoProbe};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use std::net::Ipv4Addr;
 
     #[test]
-    fn test_cli_geo_probe_update() {
+    fn test_cli_geo_probe_delete() {
         let mut client = MockGeoCliCommand::new();
 
         let svc_gs_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -110,22 +95,17 @@ mod tests {
             .returning(move || svc_gs_pk);
 
         client
-            .expect_update_geo_probe()
-            .with(predicate::eq(UpdateGeoProbeCommand {
+            .expect_delete_geo_probe()
+            .with(predicate::eq(DeleteGeoProbeCommand {
                 code: "ams-probe-01".to_string(),
                 serviceability_globalstate_pk: svc_gs_pk,
-                public_ip: Some(Ipv4Addr::new(192, 168, 1, 1)),
-                location_offset_port: None,
-                metrics_publisher_pk: None,
             }))
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
-        let res = UpdateGeoProbeCliCommand {
+        let res = DeleteGeoProbeCliCommand {
             probe: "ams-probe-01".to_string(),
-            public_ip: Some(Ipv4Addr::new(192, 168, 1, 1)),
-            port: None,
-            signing_pubkey: None,
+            yes: true,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

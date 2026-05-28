@@ -1482,6 +1482,7 @@ dependencies = [
  "ctor",
  "doublezero-cli-core",
  "doublezero-config",
+ "doublezero-geolocation-cli",
  "doublezero-program-common",
  "doublezero-serviceability",
  "doublezero-serviceability-cli",
@@ -1601,6 +1602,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-geolocation-cli"
+version = "0.24.0"
+dependencies = [
+ "clap",
+ "doublezero-cli-core",
+ "doublezero-geolocation",
+ "doublezero-program-common",
+ "doublezero_sdk",
+ "eyre",
+ "mockall",
+ "serde",
+ "serde_json",
+ "solana-sdk",
+ "tabled",
+ "tracing",
+]
+
+[[package]]
 name = "doublezero-program-common"
 version = "0.24.0"
 dependencies = [
@@ -1693,7 +1712,6 @@ dependencies = [
  "console",
  "doublezero-cli-core",
  "doublezero-config",
- "doublezero-geolocation",
  "doublezero-program-common",
  "doublezero-serviceability",
  "doublezero_sdk",

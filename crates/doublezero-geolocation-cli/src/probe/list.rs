@@ -1,4 +1,4 @@
-use crate::geoclicommand::GeoCliCommand;
+use crate::client::GeoCliCommand;
 use clap::Args;
 use doublezero_program_common::serializer;
 use doublezero_sdk::geolocation::geo_probe::list::ListGeoProbeCommand;
@@ -90,7 +90,7 @@ impl ListGeoProbeCliCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geoclicommand::MockGeoCliCommand;
+    use crate::client::MockGeoCliCommand;
     use doublezero_geolocation::state::{accounttype::AccountType, geo_probe::GeoProbe};
     use doublezero_sdk::{AccountType as SvcAccountType, Exchange, ExchangeStatus};
     use solana_sdk::pubkey::Pubkey;

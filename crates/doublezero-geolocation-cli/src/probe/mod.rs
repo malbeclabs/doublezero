@@ -1,9 +1,20 @@
+pub mod add_parent;
+pub mod create;
+pub mod delete;
+pub mod get;
+pub mod list;
+pub mod remove_parent;
+pub mod update;
+
 use clap::{Args, Subcommand};
-use doublezero_serviceability_cli::geolocation::probe::{
-    add_parent::AddParentGeoProbeCliCommand, create::CreateGeoProbeCliCommand,
-    delete::DeleteGeoProbeCliCommand, get::GetGeoProbeCliCommand, list::ListGeoProbeCliCommand,
-    remove_parent::RemoveParentGeoProbeCliCommand, update::UpdateGeoProbeCliCommand,
-};
+
+use add_parent::AddParentGeoProbeCliCommand;
+use create::CreateGeoProbeCliCommand;
+use delete::DeleteGeoProbeCliCommand;
+use get::GetGeoProbeCliCommand;
+use list::ListGeoProbeCliCommand;
+use remove_parent::RemoveParentGeoProbeCliCommand;
+use update::UpdateGeoProbeCliCommand;
 
 #[derive(Args, Debug)]
 pub struct ProbeCliCommand {

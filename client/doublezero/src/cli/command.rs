@@ -1,12 +1,13 @@
 use clap::{Args, Subcommand};
 use clap_complete::Shell;
+use doublezero_geolocation_cli::GeolocationArgs;
 use doublezero_serviceability_cli::{
     account::GetAccountCliCommand, accounts::GetAccountsCliCommand, cli::ServiceabilityCommand,
-    geolocation::programconfig::init::InitProgramConfigCliCommand, logcommand::LogCliCommand,
+    logcommand::LogCliCommand,
 };
 
 use crate::{
-    cli::{geolocation::GeolocationCliCommand, multicast::MulticastCliCommand},
+    cli::multicast::MulticastCliCommand,
     command::{
         connect::ProvisioningCliCommand, disable::DisableCliCommand,
         disconnect::DecommissioningCliCommand, enable::EnableCliCommand,
@@ -19,11 +20,11 @@ use crate::{
 /// Per RFC-20 §Module contract item 2, the serviceability verbs live in
 /// `doublezero_serviceability_cli::cli::ServiceabilityCommand` and are hoisted
 /// to the top level here via `#[command(flatten)]`. The binary retains the
-/// daemon-control verbs, the binary-local geolocation tree, the raw-`DZClient`
-/// diagnostics (`Account`, `Accounts`, `Log`), the geolocation program-config
-/// init, the binary-only `Completion` generator, and `Multicast` (whose
-/// `Subscribe`/`Unsubscribe`/`Publish`/`Unpublish` arms depend on binary-local
-/// daemon-control infrastructure).
+/// daemon-control verbs, the `doublezero-geolocation-cli` module crate's
+/// geolocation subtree (via `GeolocationArgs`), the raw-`DZClient` diagnostics
+/// (`Account`, `Accounts`, `Log`), the binary-only `Completion` generator, and
+/// `Multicast` (whose `Subscribe`/`Unsubscribe`/`Publish`/`Unpublish` arms
+/// depend on binary-local daemon-control infrastructure).
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// Connect your server to a doublezero device
@@ -49,10 +50,8 @@ pub enum Command {
     /// Get logs
     Log(LogCliCommand),
 
-    #[command(hide = true)]
-    InitGeolocationConfig(InitProgramConfigCliCommand),
     /// Manage geolocation probes and users
-    Geolocation(GeolocationCliCommand),
+    Geolocation(GeolocationArgs),
 
     /// Manage multicast
     Multicast(MulticastCliCommand),

@@ -1,5 +1,6 @@
-use crate::{geoclicommand::GeoCliCommand, validators::validate_pubkey_or_code};
+use crate::client::GeoCliCommand;
 use clap::Args;
+use doublezero_cli_core::validators::validate_pubkey_or_code;
 use doublezero_sdk::geolocation::geolocation_user::{
     delete::DeleteGeolocationUserCommand, get::GetGeolocationUserCommand,
 };
@@ -48,7 +49,7 @@ impl DeleteGeolocationUserCliCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geoclicommand::MockGeoCliCommand;
+    use crate::client::MockGeoCliCommand;
     use doublezero_geolocation::state::{
         accounttype::AccountType,
         geolocation_user::{

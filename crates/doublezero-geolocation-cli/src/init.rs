@@ -1,4 +1,4 @@
-use crate::geoclicommand::GeoCliCommand;
+use crate::client::GeoCliCommand;
 use clap::Args;
 use doublezero_sdk::geolocation::programconfig::init::InitProgramConfigCommand;
 use std::io::Write;
@@ -33,7 +33,7 @@ impl InitProgramConfigCliCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geoclicommand::MockGeoCliCommand;
+    use crate::client::MockGeoCliCommand;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 

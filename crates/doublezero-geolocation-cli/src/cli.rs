@@ -60,7 +60,7 @@ impl GeolocationCommand {
                 UserCommands::Update(args) => args.execute(ctx, client, out).await,
                 UserCommands::Delete(args) => args.execute(ctx, client, out).await,
                 UserCommands::Get(args) => args.execute(ctx, client, out).await,
-                UserCommands::List(args) => args.execute(client, out),
+                UserCommands::List(args) => args.execute(ctx, client, out).await,
                 UserCommands::AddTarget(args) => args.execute(client, out),
                 UserCommands::RemoveTarget(args) => args.execute(client, out),
                 UserCommands::SetResultDestination(args) => args.execute(client, out),

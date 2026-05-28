@@ -1,5 +1,6 @@
 use crate::client::GeoCliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::geolocation::geolocation_user::list::ListGeolocationUserCommand;
 use serde::Serialize;
@@ -30,7 +31,14 @@ pub struct GeolocationUserDisplay {
 }
 
 impl ListGeolocationUserCliCommand {
-    pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: GeoCliCommand, W: Write>(
+        self,
+        ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        tracing::debug!(env = %ctx.env, "geolocation user list");
+
         let users = client.list_geolocation_users(ListGeolocationUserCommand)?;
 
         let mut displays: Vec<GeolocationUserDisplay> = users
@@ -67,6 +75,7 @@ impl ListGeolocationUserCliCommand {
 mod tests {
     use super::*;
     use crate::client::MockGeoCliCommand;
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_geolocation::state::{
         accounttype::AccountType,
         geolocation_user::{
@@ -76,6 +85,15 @@ mod tests {
     };
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     fn make_user(code: &str) -> GeolocationUser {
         GeolocationUser {
@@ -104,12 +122,15 @@ mod tests {
             .expect_list_geolocation_users()
             .returning(move |_| Ok(users.clone()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListGeolocationUserCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListGeolocationUserCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("geo-user-01"));
@@ -130,12 +151,15 @@ mod tests {
             .expect_list_geolocation_users()
             .returning(move |_| Ok(users.clone()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListGeolocationUserCliCommand {
-            json: true,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListGeolocationUserCliCommand {
+                json: true,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let parsed: Vec<serde_json::Value> = serde_json::from_str(output_str.trim()).unwrap();
@@ -152,12 +176,15 @@ mod tests {
             .expect_list_geolocation_users()
             .returning(|_| Ok(HashMap::new()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListGeolocationUserCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListGeolocationUserCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
     }
 }

@@ -27,3 +27,6 @@ doublezero-cli-core.workspace = true
 doublezero-geolocation = { workspace = true, features = ["no-entrypoint"] }
 doublezero-program-common.workspace = true
 doublezero_sdk.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

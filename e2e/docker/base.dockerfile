@@ -92,7 +92,6 @@ RUN --mount=type=cache,id=cargo-${CARGO_LOCK_HASH},target=/cargo \
     RUSTFLAGS="-C link-arg=-fuse-ld=mold" cargo build --workspace --release --exclude doublezero-serviceability --exclude doublezero-telemetry && \
     cp /target/release/doublezero ${BIN_DIR}/ && \
     cp /target/release/doublezero-admin ${BIN_DIR}/ && \
-    cp /target/release/doublezero-geolocation ${BIN_DIR}/ && \
     cp /target/release/doublezero-sentinel ${BIN_DIR}/ && \
     cp /target/release/fork-accounts ${BIN_DIR}/
 

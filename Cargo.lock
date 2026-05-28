@@ -1599,21 +1599,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "doublezero-geolocation-cli"
-version = "0.24.0"
-dependencies = [
- "clap",
- "doublezero-config",
- "doublezero-geolocation",
- "doublezero-serviceability",
- "doublezero-serviceability-cli",
- "doublezero_sdk",
- "eyre",
- "libc",
- "solana-sdk",
-]
-
-[[package]]
 name = "doublezero-program-common"
 version = "0.24.0"
 dependencies = [

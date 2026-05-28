@@ -3,6 +3,7 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::globalconfig::set::SetGlobalConfigCommand, BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN,
@@ -35,7 +36,12 @@ pub struct SetGlobalConfigCliCommand {
 }
 
 impl SetGlobalConfigCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -67,6 +73,17 @@ impl SetGlobalConfigCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{
         globalconfig::set::SetGlobalConfigCliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -107,16 +124,19 @@ mod tests {
         /*****************************************************************************************************/
         // Set all global config; reflects initializing global config or updating all config values
         let mut output1 = Vec::new();
-        let res = SetGlobalConfigCliCommand {
-            local_asn: Some(1234),
-            remote_asn: Some(5678),
-            device_tunnel_block: "10.20.0.0/16".parse().ok(),
-            user_tunnel_block: "10.10.0.0/16".parse().ok(),
-            multicastgroup_block: "224.2.0.0/4".parse().ok(),
-            multicast_publisher_block: None,
-            next_bgp_community: None,
-        }
-        .execute(&client, &mut output1);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SetGlobalConfigCliCommand {
+                local_asn: Some(1234),
+                remote_asn: Some(5678),
+                device_tunnel_block: "10.20.0.0/16".parse().ok(),
+                user_tunnel_block: "10.10.0.0/16".parse().ok(),
+                multicastgroup_block: "224.2.0.0/4".parse().ok(),
+                multicast_publisher_block: None,
+                next_bgp_community: None,
+            }
+            .execute(&ctx, &client, &mut output1),
+        );
         assert!(res.is_ok());
         let output_str1 = String::from_utf8(output1).unwrap();
         assert_eq!(
@@ -137,16 +157,18 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
         let mut output2 = Vec::new();
-        let res = SetGlobalConfigCliCommand {
-            local_asn: Some(9876),
-            remote_asn: Some(5432),
-            device_tunnel_block: None,
-            user_tunnel_block: None,
-            multicastgroup_block: None,
-            multicast_publisher_block: None,
-            next_bgp_community: None,
-        }
-        .execute(&client, &mut output2);
+        let res = block_on(
+            SetGlobalConfigCliCommand {
+                local_asn: Some(9876),
+                remote_asn: Some(5432),
+                device_tunnel_block: None,
+                user_tunnel_block: None,
+                multicastgroup_block: None,
+                multicast_publisher_block: None,
+                next_bgp_community: None,
+            }
+            .execute(&ctx, &client, &mut output2),
+        );
         assert!(res.is_ok());
         let output_str2 = String::from_utf8(output2).unwrap();
         assert_eq!(
@@ -180,16 +202,19 @@ mod tests {
             });
 
         let mut output = vec![];
-        let res = SetGlobalConfigCliCommand {
-            local_asn: None,
-            remote_asn: None,
-            device_tunnel_block: None,
-            user_tunnel_block: None,
-            multicastgroup_block: None,
-            multicast_publisher_block: None,
-            next_bgp_community: None,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SetGlobalConfigCliCommand {
+                local_asn: None,
+                remote_asn: None,
+                device_tunnel_block: None,
+                user_tunnel_block: None,
+                multicastgroup_block: None,
+                multicast_publisher_block: None,
+                next_bgp_community: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
     }
 }

@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::GetGlobalStateCommand;
 use doublezero_serviceability::state::feature_flags::enabled_flags;
 use std::io::Write;
@@ -8,7 +9,12 @@ use std::io::Write;
 pub struct GetFeatureFlagsCliCommand;
 
 impl GetFeatureFlagsCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (_, gstate) = client.get_globalstate(GetGlobalStateCommand)?;
 
         let flags = enabled_flags(gstate.feature_flags);
@@ -35,6 +41,17 @@ impl GetFeatureFlagsCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{
         globalconfig::featureflags::get::GetFeatureFlagsCliCommand,
         tests::utils::create_test_client,
@@ -71,7 +88,8 @@ mod tests {
             .returning(move |_| Ok((gstate_pubkey, globalstate.clone())));
 
         let mut output = Vec::new();
-        let res = GetFeatureFlagsCliCommand.execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(GetFeatureFlagsCliCommand.execute(&ctx, &client, &mut output));
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("onchain-allocation"));
@@ -106,7 +124,8 @@ mod tests {
             .returning(move |_| Ok((gstate_pubkey, globalstate.clone())));
 
         let mut output = Vec::new();
-        let res = GetFeatureFlagsCliCommand.execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(GetFeatureFlagsCliCommand.execute(&ctx, &client, &mut output));
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("No feature flags enabled"));

@@ -4,6 +4,7 @@ use crate::{
     validators::{validate_code, validate_pubkey},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::multicastgroup::allowlist::subscriber::add::AddMulticastGroupSubAllowlistCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr, str::FromStr};
@@ -22,7 +23,12 @@ pub struct AddMulticastGroupSubAllowlistCliCommand {
 }
 
 impl AddMulticastGroupSubAllowlistCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -48,6 +54,17 @@ impl AddMulticastGroupSubAllowlistCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{
         multicastgroup::allowlist::subscriber::add::AddMulticastGroupSubAllowlistCliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -86,12 +103,15 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = AddMulticastGroupSubAllowlistCliCommand {
-            code: "test_code".to_string(),
-            client_ip,
-            user_payer: pubkey.to_string(),
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            AddMulticastGroupSubAllowlistCliCommand {
+                code: "test_code".to_string(),
+                client_ip,
+                user_payer: pubkey.to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

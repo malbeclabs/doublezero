@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::allowlist::qa::list::ListQaAllowlistCommand;
 use std::io::Write;
 
@@ -14,7 +15,12 @@ pub struct ListQaCliCommand {
 }
 
 impl ListQaCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let list = client.list_qa_allowlist(ListQaAllowlistCommand)?;
 
         if self.json || self.json_compact {
@@ -44,6 +50,17 @@ impl ListQaCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{allowlist::qa::list::ListQaCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::commands::allowlist::qa::list::ListQaAllowlistCommand;
     use mockall::predicate;
@@ -64,11 +81,14 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = ListQaCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListQaCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -76,11 +96,13 @@ mod tests {
         );
 
         let mut output = Vec::new();
-        let res = ListQaCliCommand {
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListQaCliCommand {
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

@@ -1,5 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::{serializer, types::parse_utils::bandwidth_to_string};
 use doublezero_sdk::commands::{
     accesspass::list::ListAccessPassCommand, device::list::ListDeviceCommand,
@@ -71,7 +72,12 @@ struct MulticastGroupOutput {
 }
 
 impl GetMulticastGroupCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (mgroup_pubkey, mgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
             pubkey_or_code: self.code,
         })?;
@@ -212,6 +218,17 @@ impl GetMulticastGroupCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{
         doublezerocommand::CliCommand, multicastgroup::get::GetMulticastGroupCliCommand,
         tests::utils::create_test_client,
@@ -416,20 +433,25 @@ mod tests {
 
         // Expected failure
         let mut output = Vec::new();
-        let res = GetMulticastGroupCliCommand {
-            code: Pubkey::new_unique().to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            GetMulticastGroupCliCommand {
+                code: Pubkey::new_unique().to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err(), "I shouldn't find anything.");
 
         // Expected success by pubkey (table)
         let mut output = Vec::new();
-        let res = GetMulticastGroupCliCommand {
-            code: mgroup_pubkey.to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetMulticastGroupCliCommand {
+                code: mgroup_pubkey.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -454,11 +476,13 @@ mod tests {
 
         // Expected success by code (JSON)
         let mut output = Vec::new();
-        let res = GetMulticastGroupCliCommand {
-            code: "test".to_string(),
-            json: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetMulticastGroupCliCommand {
+                code: "test".to_string(),
+                json: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by code");
         let json: serde_json::Value =
             serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();

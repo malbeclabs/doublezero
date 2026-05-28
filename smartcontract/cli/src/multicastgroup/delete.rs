@@ -4,6 +4,7 @@ use crate::{
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::{
     accesspass::list::ListAccessPassCommand,
     multicastgroup::{
@@ -32,7 +33,12 @@ struct RemovalFailure {
 }
 
 impl DeleteMulticastGroupCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -188,6 +194,17 @@ impl DeleteMulticastGroupCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{
         doublezerocommand::CliCommand,
         multicastgroup::delete::DeleteMulticastGroupCliCommand,
@@ -346,10 +363,13 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = DeleteMulticastGroupCliCommand {
-            pubkey: mgroup_pubkey.to_string(),
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            DeleteMulticastGroupCliCommand {
+                pubkey: mgroup_pubkey.to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "Expected delete to succeed: {:?}", res);
 
         // Verify output contains the expected messages

@@ -1,6 +1,7 @@
 use crate::doublezerocommand::CliCommand;
 use ::serde::Serialize;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
     accesspass::list::ListAccessPassCommand, multicastgroup::get::GetMulticastGroupCommand,
@@ -33,7 +34,12 @@ pub struct MulticastAllowlistDisplay {
 }
 
 impl ListMulticastGroupPubAllowlistCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (mgroup_pubkey, mgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
             pubkey_or_code: self.code.clone(),
         })?;
@@ -69,6 +75,17 @@ impl ListMulticastGroupPubAllowlistCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use std::collections::HashMap;
 
     use crate::{
@@ -165,12 +182,15 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = ListMulticastGroupPubAllowlistCliCommand {
-            code: "test".to_string(),
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListMulticastGroupPubAllowlistCliCommand {
+                code: "test".to_string(),
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -178,12 +198,14 @@ mod tests {
         );
 
         let mut output = Vec::new();
-        let res = ListMulticastGroupPubAllowlistCliCommand {
-            code: "test".to_string(),
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListMulticastGroupPubAllowlistCliCommand {
+                code: "test".to_string(),
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

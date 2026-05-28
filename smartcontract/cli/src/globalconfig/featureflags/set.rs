@@ -3,6 +3,7 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
     commands::globalstate::setfeatureflags::SetFeatureFlagsCommand, GetGlobalStateCommand,
 };
@@ -21,7 +22,12 @@ pub struct SetFeatureFlagsCliCommand {
 }
 
 impl SetFeatureFlagsCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         if self.enable.is_empty() && self.disable.is_empty() {
             return Err(eyre::eyre!(
                 "at least one of --enable or --disable must be provided"
@@ -54,6 +60,17 @@ impl SetFeatureFlagsCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{
         globalconfig::featureflags::set::SetFeatureFlagsCliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -114,11 +131,14 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
-        let res = SetFeatureFlagsCliCommand {
-            enable: vec!["onchain-allocation-deprecated".to_string()],
-            disable: vec![],
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SetFeatureFlagsCliCommand {
+                enable: vec!["onchain-allocation-deprecated".to_string()],
+                disable: vec![],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.starts_with("Signature: "));
@@ -144,11 +164,14 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
-        let res = SetFeatureFlagsCliCommand {
-            enable: vec![],
-            disable: vec!["onchain-allocation-deprecated".to_string()],
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SetFeatureFlagsCliCommand {
+                enable: vec![],
+                disable: vec!["onchain-allocation-deprecated".to_string()],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.starts_with("Signature: "));
@@ -176,11 +199,14 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
-        let res = SetFeatureFlagsCliCommand {
-            enable: vec![],
-            disable: vec!["onchain-allocation-deprecated".to_string()],
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SetFeatureFlagsCliCommand {
+                enable: vec![],
+                disable: vec!["onchain-allocation-deprecated".to_string()],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
     }
 
@@ -189,11 +215,14 @@ mod tests {
         let client = create_test_client();
 
         let mut output = Vec::new();
-        let res = SetFeatureFlagsCliCommand {
-            enable: vec![],
-            disable: vec![],
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SetFeatureFlagsCliCommand {
+                enable: vec![],
+                disable: vec![],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert!(res
             .unwrap_err()
@@ -216,11 +245,14 @@ mod tests {
             .returning(move |_| Ok((gstate_pubkey, test_globalstate(0))));
 
         let mut output = Vec::new();
-        let res = SetFeatureFlagsCliCommand {
-            enable: vec!["unknown-flag".to_string()],
-            disable: vec![],
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SetFeatureFlagsCliCommand {
+                enable: vec!["unknown-flag".to_string()],
+                disable: vec![],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
     }
 }

@@ -106,30 +106,32 @@ impl ServiceabilityCommand {
                 ConfigCommands::Set(args) => args.execute(ctx, client, out).await,
             },
             Self::GlobalConfig(cmd) => match cmd.command {
-                GlobalConfigCommands::Set(args) => args.execute(client, out),
-                GlobalConfigCommands::Get(args) => args.execute(client, out),
+                GlobalConfigCommands::Set(args) => args.execute(ctx, client, out).await,
+                GlobalConfigCommands::Get(args) => args.execute(ctx, client, out).await,
                 GlobalConfigCommands::Airdrop(c) => match c.command {
-                    AirdropCommands::Set(args) => args.execute(client, out),
-                    AirdropCommands::Get(args) => args.execute(client, out),
+                    AirdropCommands::Set(args) => args.execute(ctx, client, out).await,
+                    AirdropCommands::Get(args) => args.execute(ctx, client, out).await,
                 },
                 GlobalConfigCommands::Authority(c) => match c.command {
-                    AuthorityCommands::Set(args) => args.execute(client, out),
-                    AuthorityCommands::Get(args) => args.execute(client, out),
+                    AuthorityCommands::Set(args) => args.execute(ctx, client, out).await,
+                    AuthorityCommands::Get(args) => args.execute(ctx, client, out).await,
                 },
                 GlobalConfigCommands::Allowlist(c) => match c.command {
-                    FoundationAllowlistCommands::List(args) => args.execute(client, out),
-                    FoundationAllowlistCommands::Add(args) => args.execute(client, out),
-                    FoundationAllowlistCommands::Remove(args) => args.execute(client, out),
+                    FoundationAllowlistCommands::List(args) => args.execute(ctx, client, out).await,
+                    FoundationAllowlistCommands::Add(args) => args.execute(ctx, client, out).await,
+                    FoundationAllowlistCommands::Remove(args) => {
+                        args.execute(ctx, client, out).await
+                    }
                 },
                 GlobalConfigCommands::QaAllowlist(c) => match c.command {
-                    QaAllowlistCommands::List(args) => args.execute(client, out),
-                    QaAllowlistCommands::Add(args) => args.execute(client, out),
-                    QaAllowlistCommands::Remove(args) => args.execute(client, out),
+                    QaAllowlistCommands::List(args) => args.execute(ctx, client, out).await,
+                    QaAllowlistCommands::Add(args) => args.execute(ctx, client, out).await,
+                    QaAllowlistCommands::Remove(args) => args.execute(ctx, client, out).await,
                 },
-                GlobalConfigCommands::SetVersion(args) => args.execute(client, out),
+                GlobalConfigCommands::SetVersion(args) => args.execute(ctx, client, out).await,
                 GlobalConfigCommands::FeatureFlags(c) => match c.command {
-                    FeatureFlagsCommands::Get(args) => args.execute(client, out),
-                    FeatureFlagsCommands::Set(args) => args.execute(client, out),
+                    FeatureFlagsCommands::Get(args) => args.execute(ctx, client, out).await,
+                    FeatureFlagsCommands::Set(args) => args.execute(ctx, client, out).await,
                 },
             },
 
@@ -223,14 +225,14 @@ impl ServiceabilityCommand {
                 }
             },
             Self::User(cmd) => match cmd.command {
-                UserCommands::Create(args) => args.execute(client, out),
-                UserCommands::CreateSubscribe(args) => args.execute(client, out),
-                UserCommands::Subscribe(args) => args.execute(client, out),
-                UserCommands::Update(args) => args.execute(client, out),
-                UserCommands::List(args) => args.execute(client, out),
-                UserCommands::Get(args) => args.execute(client, out),
-                UserCommands::Delete(args) => args.execute(client, out),
-                UserCommands::RequestBan(args) => args.execute(client, out),
+                UserCommands::Create(args) => args.execute(ctx, client, out).await,
+                UserCommands::CreateSubscribe(args) => args.execute(ctx, client, out).await,
+                UserCommands::Subscribe(args) => args.execute(ctx, client, out).await,
+                UserCommands::Update(args) => args.execute(ctx, client, out).await,
+                UserCommands::List(args) => args.execute(ctx, client, out).await,
+                UserCommands::Get(args) => args.execute(ctx, client, out).await,
+                UserCommands::Delete(args) => args.execute(ctx, client, out).await,
+                UserCommands::RequestBan(args) => args.execute(ctx, client, out).await,
             },
             Self::Resource(cmd) => match cmd.command {
                 ResourceCommands::Allocate(args) => args.execute(ctx, client, out).await,

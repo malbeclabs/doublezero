@@ -3,6 +3,7 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::globalstate::setauthority::SetAuthorityCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
@@ -27,7 +28,12 @@ pub struct SetAuthorityCliCommand {
 }
 
 impl SetAuthorityCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -90,6 +96,17 @@ impl SetAuthorityCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{
         globalconfig::authority::set::SetAuthorityCliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -132,13 +149,16 @@ mod tests {
         /*****************************************************************************************************/
         // Set all global config; reflects initializing global config or updating all config values
         let mut output1 = Vec::new();
-        let res = SetAuthorityCliCommand {
-            activator_authority: Some(activator_authority_pk.to_string()),
-            sentinel_authority: Some(sentinel_authority_pk.to_string()),
-            health_oracle: Some(health_oracle_pk.to_string()),
-            feed_authority: Some(feed_authority_pk.to_string()),
-        }
-        .execute(&client, &mut output1);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SetAuthorityCliCommand {
+                activator_authority: Some(activator_authority_pk.to_string()),
+                sentinel_authority: Some(sentinel_authority_pk.to_string()),
+                health_oracle: Some(health_oracle_pk.to_string()),
+                feed_authority: Some(feed_authority_pk.to_string()),
+            }
+            .execute(&ctx, &client, &mut output1),
+        );
         assert!(res.is_ok());
         let output_str1 = String::from_utf8(output1).unwrap();
         assert_eq!(

@@ -280,7 +280,9 @@ async fn main() -> eyre::Result<()> {
         // (Subscribe/Unsubscribe/Publish/Unpublish) stay binary-local because
         // they depend on `ServiceControllerImpl` and `resolve_client_ip`.
         Command::Multicast(args) => match args.command {
-            MulticastCommands::Group(args) => args.command.execute(&client, &mut handle),
+            MulticastCommands::Group(args) => {
+                args.command.execute(&ctx, &client, &mut handle).await
+            }
             MulticastCommands::Subscribe(args) => args.execute(&client).await,
             MulticastCommands::Unsubscribe(args) => args.execute(&client).await,
             MulticastCommands::Publish(args) => args.execute(&client).await,

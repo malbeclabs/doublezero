@@ -5,6 +5,7 @@ use crate::{
     validators::{validate_pubkey, validate_pubkey_or_code},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::commands::{tenant::get::GetTenantCommand, user::update::UpdateUserCommand};
 use solana_sdk::pubkey::Pubkey;
@@ -36,7 +37,12 @@ pub struct UpdateUserCliCommand {
 }
 
 impl UpdateUserCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -79,6 +85,17 @@ impl UpdateUserCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{
         doublezerocommand::CliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -162,16 +179,19 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = UpdateUserCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            dz_ip: Some([2, 3, 4, 5].into()),
-            tunnel_id: Some(1),
-            tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
-            validator_pubkey: None,
-            tunnel_endpoint: Some([1, 2, 3, 4].into()),
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            UpdateUserCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                dz_ip: Some([2, 3, 4, 5].into()),
+                tunnel_id: Some(1),
+                tunnel_net: Some("10.2.2.3/24".parse().unwrap()),
+                validator_pubkey: None,
+                tunnel_endpoint: Some([1, 2, 3, 4].into()),
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -212,16 +232,19 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
-        let res = UpdateUserCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            dz_ip: None,
-            tunnel_id: None,
-            tunnel_net: None,
-            validator_pubkey: None,
-            tunnel_endpoint: None,
-            tenant: Some(tenant_pubkey.to_string()),
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            UpdateUserCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                dz_ip: None,
+                tunnel_id: None,
+                tunnel_net: None,
+                validator_pubkey: None,
+                tunnel_endpoint: None,
+                tenant: Some(tenant_pubkey.to_string()),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
     }
 }

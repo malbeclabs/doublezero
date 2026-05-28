@@ -91,22 +91,30 @@ async fn main() -> eyre::Result<()> {
             ConfigCommands::Set(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::GlobalConfig(command) => match command.command {
-            GlobalConfigCommands::Set(args) => args.execute(&client, &mut handle),
-            GlobalConfigCommands::Get(args) => args.execute(&client, &mut handle),
+            GlobalConfigCommands::Set(args) => args.execute(&ctx, &client, &mut handle).await,
+            GlobalConfigCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
             GlobalConfigCommands::Airdrop(command) => match command.command {
-                AirdropCommands::Set(args) => args.execute(&client, &mut handle),
-                AirdropCommands::Get(args) => args.execute(&client, &mut handle),
+                AirdropCommands::Set(args) => args.execute(&ctx, &client, &mut handle).await,
+                AirdropCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
             },
             GlobalConfigCommands::Authority(command) => match command.command {
-                AuthorityCommands::Set(args) => args.execute(&client, &mut handle),
-                AuthorityCommands::Get(args) => args.execute(&client, &mut handle),
+                AuthorityCommands::Set(args) => args.execute(&ctx, &client, &mut handle).await,
+                AuthorityCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
             },
             GlobalConfigCommands::Allowlist(command) => match command.command {
-                FoundationAllowlistCommands::List(args) => args.execute(&client, &mut handle),
-                FoundationAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
-                FoundationAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
+                FoundationAllowlistCommands::List(args) => {
+                    args.execute(&ctx, &client, &mut handle).await
+                }
+                FoundationAllowlistCommands::Add(args) => {
+                    args.execute(&ctx, &client, &mut handle).await
+                }
+                FoundationAllowlistCommands::Remove(args) => {
+                    args.execute(&ctx, &client, &mut handle).await
+                }
             },
-            GlobalConfigCommands::SetVersion(args) => args.execute(&client, &mut handle),
+            GlobalConfigCommands::SetVersion(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
         },
         Command::Account(args) => args.execute(&dzclient, &mut handle),
         Command::Accounts(args) => args.execute(&dzclient, &mut handle),
@@ -216,14 +224,14 @@ async fn main() -> eyre::Result<()> {
             PermissionCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::User(command) => match command.command {
-            UserCommands::Create(args) => args.execute(&client, &mut handle),
-            UserCommands::CreateSubscribe(args) => args.execute(&client, &mut handle),
-            UserCommands::Subscribe(args) => args.execute(&client, &mut handle),
-            UserCommands::Update(args) => args.execute(&client, &mut handle),
-            UserCommands::List(args) => args.execute(&client, &mut handle),
-            UserCommands::Get(args) => args.execute(&client, &mut handle),
-            UserCommands::Delete(args) => args.execute(&client, &mut handle),
-            UserCommands::RequestBan(args) => args.execute(&client, &mut handle),
+            UserCommands::Create(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::CreateSubscribe(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::Subscribe(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::RequestBan(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::Multicast(args) => match args.command {
             cli::multicast::MulticastCommands::Group(args) => match args.command {
@@ -233,44 +241,44 @@ async fn main() -> eyre::Result<()> {
                             match args.command {
                                 cli::multicastgroup::MulticastGroupPubAllowlistCommands::List(
                                     args,
-                                ) => args.execute(&client, &mut handle),
+                                ) => args.execute(&ctx, &client, &mut handle).await,
                                 cli::multicastgroup::MulticastGroupPubAllowlistCommands::Add(
                                     args,
-                                ) => args.execute(&client, &mut handle),
+                                ) => args.execute(&ctx, &client, &mut handle).await,
                                 cli::multicastgroup::MulticastGroupPubAllowlistCommands::Remove(
                                     args,
-                                ) => args.execute(&client, &mut handle),
+                                ) => args.execute(&ctx, &client, &mut handle).await,
                             }
                         }
                         cli::multicastgroup::MulticastGroupAllowlistCommands::Subscriber(args) => {
                             match args.command {
                                 cli::multicastgroup::MulticastGroupSubAllowlistCommands::List(
                                     args,
-                                ) => args.execute(&client, &mut handle),
+                                ) => args.execute(&ctx, &client, &mut handle).await,
                                 cli::multicastgroup::MulticastGroupSubAllowlistCommands::Add(
                                     args,
-                                ) => args.execute(&client, &mut handle),
+                                ) => args.execute(&ctx, &client, &mut handle).await,
                                 cli::multicastgroup::MulticastGroupSubAllowlistCommands::Remove(
                                     args,
-                                ) => args.execute(&client, &mut handle),
+                                ) => args.execute(&ctx, &client, &mut handle).await,
                             }
                         }
                     }
                 }
                 cli::multicastgroup::MulticastGroupCommands::Create(args) => {
-                    args.execute(&client, &mut handle)
+                    args.execute(&ctx, &client, &mut handle).await
                 }
                 cli::multicastgroup::MulticastGroupCommands::Update(args) => {
-                    args.execute(&client, &mut handle)
+                    args.execute(&ctx, &client, &mut handle).await
                 }
                 cli::multicastgroup::MulticastGroupCommands::List(args) => {
-                    args.execute(&client, &mut handle)
+                    args.execute(&ctx, &client, &mut handle).await
                 }
                 cli::multicastgroup::MulticastGroupCommands::Get(args) => {
-                    args.execute(&client, &mut handle)
+                    args.execute(&ctx, &client, &mut handle).await
                 }
                 cli::multicastgroup::MulticastGroupCommands::Delete(args) => {
-                    args.execute(&client, &mut handle)
+                    args.execute(&ctx, &client, &mut handle).await
                 }
             },
         },

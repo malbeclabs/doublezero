@@ -5,6 +5,7 @@ use crate::{
     validators::{validate_pubkey, validate_pubkey_or_code},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::{
     multicastgroup::{get::GetMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand},
     user::get::GetUserCommand,
@@ -31,7 +32,12 @@ pub struct SubscribeUserCliCommand {
 }
 
 impl SubscribeUserCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -86,6 +92,17 @@ impl SubscribeUserCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{
         doublezerocommand::CliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -188,14 +205,17 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = SubscribeUserCliCommand {
-            user: user_pubkey.to_string(),
-            groups: vec![mgroup_pubkey.to_string()],
-            publisher: false,
-            subscriber: true,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SubscribeUserCliCommand {
+                user: user_pubkey.to_string(),
+                groups: vec![mgroup_pubkey.to_string()],
+                publisher: false,
+                subscriber: true,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let sig_str = signature.to_string();
@@ -302,14 +322,17 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = SubscribeUserCliCommand {
-            user: user_pubkey.to_string(),
-            groups: vec![mgroup_pubkey1.to_string(), mgroup_pubkey2.to_string()],
-            publisher: false,
-            subscriber: true,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SubscribeUserCliCommand {
+                user: user_pubkey.to_string(),
+                groups: vec![mgroup_pubkey1.to_string(), mgroup_pubkey2.to_string()],
+                publisher: false,
+                subscriber: true,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let sig_str = signature.to_string();

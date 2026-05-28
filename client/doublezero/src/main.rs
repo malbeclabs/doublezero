@@ -19,17 +19,8 @@ use doublezero_cli_core::LogLevel;
 use doublezero_sdk::{geolocation::client::GeoClient, DZClient, ProgramVersion};
 use doublezero_serviceability::pda::get_globalstate_pda;
 use doublezero_serviceability_cli::{
-    checkversion::check_version,
-    cli::{
-        multicastgroup::{
-            MulticastGroupAllowlistCommands, MulticastGroupCommands,
-            MulticastGroupPubAllowlistCommands, MulticastGroupSubAllowlistCommands,
-        },
-        ServiceabilityCommand,
-    },
-    doublezerocommand::CliCommandImpl,
-    geoclicommand::GeoCliCommandImpl,
-    version::VersionCliCommand,
+    checkversion::check_version, cli::ServiceabilityCommand, doublezerocommand::CliCommandImpl,
+    geoclicommand::GeoCliCommandImpl, version::VersionCliCommand,
 };
 use servicecontroller::ServiceControllerImpl;
 
@@ -320,40 +311,12 @@ async fn main() -> eyre::Result<()> {
             }
         }
 
-        // Multicast (Group dispatched here; Subscribe/Unsubscribe/Publish/Unpublish
-        // are binary-local async verbs depending on daemon-control helpers).
+        // Multicast: the `Group` subtree is module-crate business and dispatched by
+        // `MulticastGroupCommands::execute`; the daemon-coupled async verbs
+        // (Subscribe/Unsubscribe/Publish/Unpublish) stay binary-local because
+        // they depend on `ServiceControllerImpl` and `resolve_client_ip`.
         Command::Multicast(args) => match args.command {
-            MulticastCommands::Group(args) => match args.command {
-                MulticastGroupCommands::Allowlist(args) => match args.command {
-                    MulticastGroupAllowlistCommands::Publisher(args) => match args.command {
-                        MulticastGroupPubAllowlistCommands::List(args) => {
-                            args.execute(&client, &mut handle)
-                        }
-                        MulticastGroupPubAllowlistCommands::Add(args) => {
-                            args.execute(&client, &mut handle)
-                        }
-                        MulticastGroupPubAllowlistCommands::Remove(args) => {
-                            args.execute(&client, &mut handle)
-                        }
-                    },
-                    MulticastGroupAllowlistCommands::Subscriber(args) => match args.command {
-                        MulticastGroupSubAllowlistCommands::List(args) => {
-                            args.execute(&client, &mut handle)
-                        }
-                        MulticastGroupSubAllowlistCommands::Add(args) => {
-                            args.execute(&client, &mut handle)
-                        }
-                        MulticastGroupSubAllowlistCommands::Remove(args) => {
-                            args.execute(&client, &mut handle)
-                        }
-                    },
-                },
-                MulticastGroupCommands::Create(args) => args.execute(&client, &mut handle),
-                MulticastGroupCommands::Update(args) => args.execute(&client, &mut handle),
-                MulticastGroupCommands::List(args) => args.execute(&client, &mut handle),
-                MulticastGroupCommands::Get(args) => args.execute(&client, &mut handle),
-                MulticastGroupCommands::Delete(args) => args.execute(&client, &mut handle),
-            },
+            MulticastCommands::Group(args) => args.command.execute(&client, &mut handle),
             MulticastCommands::Subscribe(args) => args.execute(&client).await,
             MulticastCommands::Unsubscribe(args) => args.execute(&client).await,
             MulticastCommands::Publish(args) => args.execute(&client).await,

@@ -1,23 +1,28 @@
+use std::io::Write;
+
 use clap::{Args, Subcommand};
 
-use crate::multicastgroup::{
-    allowlist::{
-        publisher::{
-            add::AddMulticastGroupPubAllowlistCliCommand,
-            list::ListMulticastGroupPubAllowlistCliCommand,
-            remove::RemoveMulticastGroupPubAllowlistCliCommand,
+use crate::{
+    doublezerocommand::CliCommand,
+    multicastgroup::{
+        allowlist::{
+            publisher::{
+                add::AddMulticastGroupPubAllowlistCliCommand,
+                list::ListMulticastGroupPubAllowlistCliCommand,
+                remove::RemoveMulticastGroupPubAllowlistCliCommand,
+            },
+            subscriber::{
+                add::AddMulticastGroupSubAllowlistCliCommand,
+                list::ListMulticastGroupSubAllowlistCliCommand,
+                remove::RemoveMulticastGroupSubAllowlistCliCommand,
+            },
         },
-        subscriber::{
-            add::AddMulticastGroupSubAllowlistCliCommand,
-            list::ListMulticastGroupSubAllowlistCliCommand,
-            remove::RemoveMulticastGroupSubAllowlistCliCommand,
-        },
+        create::CreateMulticastGroupCliCommand,
+        delete::DeleteMulticastGroupCliCommand,
+        get::GetMulticastGroupCliCommand,
+        list::ListMulticastGroupCliCommand,
+        update::UpdateMulticastGroupCliCommand,
     },
-    create::CreateMulticastGroupCliCommand,
-    delete::DeleteMulticastGroupCliCommand,
-    get::GetMulticastGroupCliCommand,
-    list::ListMulticastGroupCliCommand,
-    update::UpdateMulticastGroupCliCommand,
 };
 
 #[derive(Args, Debug)]
@@ -100,4 +105,34 @@ pub enum MulticastGroupSubAllowlistCommands {
     /// Remove a subscriber from the allowlist
     #[clap()]
     Remove(RemoveMulticastGroupSubAllowlistCliCommand),
+}
+
+impl MulticastGroupCommands {
+    /// Dispatch a multicast-group verb to its implementation.
+    ///
+    /// Lives in the module crate so the binary's `Multicast` arm only forwards
+    /// daemon-coupled async verbs (`Subscribe` / `Unsubscribe` / `Publish` /
+    /// `Unpublish`) and delegates the non-daemon group tree here. Mirrors the
+    /// per-resource dispatch pattern in `ServiceabilityCommand::execute`.
+    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+        match self {
+            Self::Create(args) => args.execute(client, out),
+            Self::Update(args) => args.execute(client, out),
+            Self::List(args) => args.execute(client, out),
+            Self::Get(args) => args.execute(client, out),
+            Self::Delete(args) => args.execute(client, out),
+            Self::Allowlist(cmd) => match cmd.command {
+                MulticastGroupAllowlistCommands::Publisher(c) => match c.command {
+                    MulticastGroupPubAllowlistCommands::List(args) => args.execute(client, out),
+                    MulticastGroupPubAllowlistCommands::Add(args) => args.execute(client, out),
+                    MulticastGroupPubAllowlistCommands::Remove(args) => args.execute(client, out),
+                },
+                MulticastGroupAllowlistCommands::Subscriber(c) => match c.command {
+                    MulticastGroupSubAllowlistCommands::List(args) => args.execute(client, out),
+                    MulticastGroupSubAllowlistCommands::Add(args) => args.execute(client, out),
+                    MulticastGroupSubAllowlistCommands::Remove(args) => args.execute(client, out),
+                },
+            },
+        }
+    }
 }

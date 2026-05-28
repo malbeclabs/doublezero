@@ -67,19 +67,10 @@ mod tests {
         contributor::list::{ContributorStatus::Activated, ListContributorCliCommand},
         tests::utils::create_test_client,
     };
-    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{AccountType, Contributor};
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
-    use tokio::runtime::Builder;
-
-    fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(f)
-    }
 
     #[test]
     fn test_cli_contributor_list() {

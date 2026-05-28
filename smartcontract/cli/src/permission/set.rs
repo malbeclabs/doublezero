@@ -1,9 +1,9 @@
 use crate::{
     doublezerocommand::CliCommand,
     permission::flags::{bitmask_to_names, names_to_bitmask, PermissionName},
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::Args;
+use doublezero_cli_core::{require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::permission::{
     create::CreatePermissionCommand, get::GetPermissionCommand, update::UpdatePermissionCommand,
 };
@@ -25,14 +25,22 @@ pub struct SetPermissionCliCommand {
 }
 
 impl SetPermissionCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         if self.add.is_empty() && self.remove.is_empty() {
             return Err(eyre::eyre!(
                 "at least one --add or --remove flag is required"
             ));
         }
 
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
         let user_payer = Pubkey::from_str(&self.user_payer)
             .map_err(|e| eyre::eyre!("invalid user_payer pubkey: {e}"))?;
@@ -48,7 +56,6 @@ impl SetPermissionCliCommand {
 
         let (signature, new_permissions) = match existing {
             None => {
-                // Account does not exist — create it.
                 if !self.remove.is_empty() {
                     return Err(eyre::eyre!(
                         "cannot --remove permissions from an account that does not exist yet"
@@ -62,7 +69,6 @@ impl SetPermissionCliCommand {
                 (sig, permissions)
             }
             Some(_) => {
-                // Account exists — apply incremental delta atomically via the program.
                 let add = names_to_bitmask(&self.add);
                 let remove = names_to_bitmask(&self.remove);
                 let sig = client.update_permission(UpdatePermissionCommand {
@@ -77,6 +83,9 @@ impl SetPermissionCliCommand {
             }
         };
 
+        // Two-line bespoke output (aligned "Signature:" + "Permissions:") rather
+        // than the canonical `print_signature` so the permission summary stays
+        // visually paired with the signature line.
         writeln!(out, "Signature:   {signature}")?;
         writeln!(
             out,
@@ -96,16 +105,25 @@ mod tests {
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_serviceability::state::{
         accounttype::AccountType,
         permission::{permission_flags, Permission, PermissionStatus},
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use tokio::runtime::Builder;
 
-    // Fixed program_id set by create_test_client().
     const TEST_PROGRAM_ID: Pubkey =
         Pubkey::from_str_const("GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah");
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     fn make_permission(permissions: u128) -> Permission {
         Permission {
@@ -117,8 +135,6 @@ mod tests {
             permissions,
         }
     }
-
-    // ── create path ──────────────────────────────────────────────────────────
 
     #[test]
     fn test_set_creates_when_account_absent() {
@@ -145,13 +161,16 @@ mod tests {
             }))
             .returning(move |_| Ok((Signature::new_unique(), permission_pda)));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetPermissionCliCommand {
-            user_payer: user_payer.to_string(),
-            add: vec![PermissionName::NetworkAdmin, PermissionName::UserAdmin],
-            remove: vec![],
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetPermissionCliCommand {
+                user_payer: user_payer.to_string(),
+                add: vec![PermissionName::NetworkAdmin, PermissionName::UserAdmin],
+                remove: vec![],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let out = String::from_utf8(output).unwrap();
@@ -177,13 +196,16 @@ mod tests {
             }))
             .returning(|_| Err(eyre::eyre!("not found")));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetPermissionCliCommand {
-            user_payer: user_payer.to_string(),
-            add: vec![PermissionName::NetworkAdmin],
-            remove: vec![PermissionName::UserAdmin],
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetPermissionCliCommand {
+                user_payer: user_payer.to_string(),
+                add: vec![PermissionName::NetworkAdmin],
+                remove: vec![PermissionName::UserAdmin],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         assert!(res
@@ -191,8 +213,6 @@ mod tests {
             .to_string()
             .contains("cannot --remove permissions from an account that does not exist yet"));
     }
-
-    // ── update path ──────────────────────────────────────────────────────────
 
     #[test]
     fn test_set_updates_when_account_exists_add() {
@@ -230,13 +250,16 @@ mod tests {
             .once()
             .returning(move |_| Ok((permission_pda, make_permission(updated))));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetPermissionCliCommand {
-            user_payer: user_payer.to_string(),
-            add: vec![PermissionName::Sentinel],
-            remove: vec![],
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetPermissionCliCommand {
+                user_payer: user_payer.to_string(),
+                add: vec![PermissionName::Sentinel],
+                remove: vec![],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let out = String::from_utf8(output).unwrap();
@@ -280,13 +303,16 @@ mod tests {
             .once()
             .returning(move |_| Ok((permission_pda, make_permission(updated))));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetPermissionCliCommand {
-            user_payer: user_payer.to_string(),
-            add: vec![],
-            remove: vec![PermissionName::UserAdmin],
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetPermissionCliCommand {
+                user_payer: user_payer.to_string(),
+                add: vec![],
+                remove: vec![PermissionName::UserAdmin],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let out = String::from_utf8(output).unwrap();
@@ -330,13 +356,16 @@ mod tests {
             .once()
             .returning(move |_| Ok((permission_pda, make_permission(updated))));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetPermissionCliCommand {
-            user_payer: user_payer.to_string(),
-            add: vec![PermissionName::Sentinel],
-            remove: vec![PermissionName::UserAdmin],
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetPermissionCliCommand {
+                user_payer: user_payer.to_string(),
+                add: vec![PermissionName::Sentinel],
+                remove: vec![PermissionName::UserAdmin],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
     }
@@ -346,13 +375,16 @@ mod tests {
         let client = create_test_client();
         let user_payer = Pubkey::new_unique();
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetPermissionCliCommand {
-            user_payer: user_payer.to_string(),
-            add: vec![],
-            remove: vec![],
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetPermissionCliCommand {
+                user_payer: user_payer.to_string(),
+                add: vec![],
+                remove: vec![],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         assert!(res

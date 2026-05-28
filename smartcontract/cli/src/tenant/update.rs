@@ -1,9 +1,8 @@
 use crate::{
-    doublezerocommand::CliCommand,
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::validate_pubkey_or_code,
+    doublezerocommand::CliCommand, helpers::resolve_tenant_pk, validators::validate_pubkey_or_code,
 };
 use clap::Args;
+use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
 use doublezero_sdk::{
     commands::tenant::{get::GetTenantCommand, update::UpdateTenantCommand},
     get_topology_pda,
@@ -38,12 +37,22 @@ pub struct UpdateTenantCliCommand {
 }
 
 impl UpdateTenantCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
+        // Resolve the pubkey first, then re-fetch the full tenant so the
+        // billing_rate path can reuse the existing dz_epoch.
+        let tenant_pubkey = resolve_tenant_pk(client, &self.pubkey)?;
         let (tenant_pubkey, tenant) = client.get_tenant(GetTenantCommand {
-            pubkey_or_code: self.pubkey,
+            pubkey_or_code: tenant_pubkey.to_string(),
         })?;
 
         let token_account = self
@@ -92,9 +101,7 @@ impl UpdateTenantCliCommand {
             include_topologies,
         })?;
 
-        writeln!(out, "Signature: {signature}")?;
-
-        Ok(())
+        print_signature(out, &signature)
     }
 }
 
@@ -105,6 +112,7 @@ mod tests {
         tenant::update::UpdateTenantCliCommand,
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_sdk::{
         commands::tenant::{get::GetTenantCommand, update::UpdateTenantCommand},
         AccountType,
@@ -114,6 +122,15 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     #[test]
     fn test_cli_tenant_update() {
@@ -147,12 +164,13 @@ mod tests {
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
+        let tenant_cloned = tenant.clone();
         client
             .expect_get_tenant()
             .with(predicate::eq(GetTenantCommand {
                 pubkey_or_code: tenant_pubkey.to_string(),
             }))
-            .returning(move |_| Ok((tenant_pubkey, tenant.clone())));
+            .returning(move |_| Ok((tenant_pubkey, tenant_cloned.clone())));
         client
             .expect_update_tenant()
             .with(predicate::eq(UpdateTenantCommand {
@@ -166,18 +184,20 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdateTenantCliCommand {
-            pubkey: tenant_pubkey.to_string(),
-            vrf_id: Some(200),
-            token_account: None,
-            metro_routing: Some(true),
-            route_liveness: None,
-            billing_rate: None,
-            include_topologies: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateTenantCliCommand {
+                pubkey: tenant_pubkey.to_string(),
+                vrf_id: Some(200),
+                token_account: None,
+                metro_routing: Some(true),
+                route_liveness: None,
+                billing_rate: None,
+                include_topologies: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

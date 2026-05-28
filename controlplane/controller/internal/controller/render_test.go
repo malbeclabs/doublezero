@@ -12,6 +12,49 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
+func TestRenderGNMIManagementProvider(t *testing.T) {
+	data := templateData{
+		Strings:                  StringsHelper{},
+		MulticastGroupBlock:      "239.0.0.0/24",
+		TelemetryTWAMPListenPort: 862,
+		LocalASN:                 65342,
+		UnicastVrfs:              []uint16{1},
+		Device: &Device{
+			PublicIP:        net.IP{7, 7, 7, 7},
+			Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+			IsisNet:         "49.0000.0e0e.0e0e.0000.00",
+			ExchangeCode:    "tst",
+			BgpCommunity:    10050,
+			Interfaces:      []Interface{},
+		},
+	}
+
+	got, err := renderConfig(data)
+	if err != nil {
+		t.Fatalf("renderConfig() error: %v", err)
+	}
+
+	want := `management api gnmi
+   provider eos-native
+!`
+	if count := strings.Count(got, "management api gnmi"); count != 1 {
+		t.Fatalf("rendered %d gNMI management blocks; want 1\nconfig:\n%s", count, got)
+	}
+	if !strings.Contains(got, want) {
+		t.Fatalf("rendered config missing gNMI provider block %q\nconfig:\n%s", want, got)
+	}
+	for _, forbidden := range []string{
+		"   85 permit tcp any any eq 57400",
+		"transport grpc",
+		"port 57400",
+		"listen-addresses",
+	} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("rendered remote gNMI server config %q; want only local eos-native provider\nconfig:\n%s", forbidden, got)
+		}
+	}
+}
+
 func TestRenderConfig(t *testing.T) {
 	tests := []struct {
 		Name        string

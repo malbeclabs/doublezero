@@ -48,6 +48,7 @@ doublezero-serviceability = { workspace = true, features = ["serde"] }
 default-mainnet-beta = ["doublezero_sdk/default-mainnet-beta"]
 
 [dev-dependencies]
+doublezero-cli-core = { workspace = true, features = ["testing"] }
 serial_test.workspace = true
 temp-env.workspace = true
 tempfile.workspace = true

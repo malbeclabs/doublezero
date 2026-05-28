@@ -1,5 +1,5 @@
 use clap::Args;
-use doublezero_cli_core::CliContext;
+use doublezero_cli_core::{render_record, CliContext, OutputFormat};
 use doublezero_sdk::commands::location::get::GetLocationCommand;
 use serde::Serialize;
 use std::io::Write;
@@ -70,40 +70,18 @@ impl GetLocationCliCommand {
             owner: location.owner.to_string(),
         };
 
-        if self.json {
-            let json = serde_json::to_string_pretty(&display)?;
-            writeln!(out, "{json}")?;
-        } else {
-            let headers = LocationDisplay::headers();
-            let fields = display.fields();
-            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
-            for (header, value) in headers.iter().zip(fields.iter()) {
-                writeln!(out, " {header:<max_len$} | {value}")?;
-            }
-        }
-
-        Ok(())
+        render_record(out, &display, OutputFormat::from_flags(self.json, false))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use crate::{location::get::GetLocationCliCommand, tests::utils::create_test_client};
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{AccountType, GetLocationCommand, Location, LocationStatus};
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use std::{collections::HashMap, str::FromStr};
-    use tokio::runtime::Builder;
-
-    use crate::{location::get::GetLocationCliCommand, tests::utils::create_test_client};
-
-    fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(f)
-    }
 
     #[test]
     fn test_cli_location_get() {

@@ -48,6 +48,35 @@ impl From<RequirementCheck> for u8 {
     }
 }
 
+/// Run preflight checks at the top of a verb's `execute` body.
+///
+/// The macro expands to a single call to `$client.check_requirements(bits)?`
+/// where `bits` is the `u8` projection of `$flags`. This keeps verb bodies to
+/// one line and lets the existing module trait method (which today takes a
+/// `u8`) stay unchanged through the migration described by RFC-20: when the
+/// trait method is later flipped to accept `RequirementCheck` directly, only
+/// this macro changes.
+///
+/// `$flags` MUST evaluate to a [`RequirementCheck`]. A type annotation in the
+/// expansion enforces this at the call site instead of silently coercing
+/// integer literals.
+///
+/// ```ignore
+/// use doublezero_cli_core::{require, RequirementCheck};
+/// # struct Client;
+/// # impl Client { fn check_requirements(&self, _: u8) -> eyre::Result<()> { Ok(()) } }
+/// # fn body(client: &Client) -> eyre::Result<()> {
+/// require!(client, RequirementCheck::KEYPAIR | RequirementCheck::BALANCE);
+/// # Ok(()) }
+/// ```
+#[macro_export]
+macro_rules! require {
+    ($client:expr, $flags:expr) => {{
+        let __dz_flags: $crate::RequirementCheck = $flags;
+        $client.check_requirements(__dz_flags.bits())?
+    }};
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

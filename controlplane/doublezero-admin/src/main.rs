@@ -111,11 +111,11 @@ async fn main() -> eyre::Result<()> {
         Command::Account(args) => args.execute(&dzclient, &mut handle),
         Command::Accounts(args) => args.execute(&dzclient, &mut handle),
         Command::Location(command) => match command.command {
-            LocationCommands::Create(args) => args.execute(&client, &mut handle),
-            LocationCommands::Update(args) => args.execute(&client, &mut handle),
-            LocationCommands::List(args) => args.execute(&client, &mut handle),
+            LocationCommands::Create(args) => args.execute(&ctx, &client, &mut handle).await,
+            LocationCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+            LocationCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
             LocationCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
-            LocationCommands::Delete(args) => args.execute(&client, &mut handle),
+            LocationCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::Exchange(command) => match command.command {
             ExchangeCommands::Create(args) => args.execute(&client, &mut handle),

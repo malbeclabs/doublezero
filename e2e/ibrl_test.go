@@ -73,7 +73,7 @@ func checkIbgpMsdpPeerRemoved(t *testing.T, dn *TestDevnet, device *devnet.Devic
 			dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
 				"DeviceIP":    device.CYOANetworkIP,
 				"StartTunnel": controllerconfig.StartUserTunnelNum,
-				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.DefaultMaxUserTunnelSlots - 1,
 			}))
 		require.NoError(t, err, "error reading agent configuration fixture for peer removal")
 		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -101,7 +101,7 @@ func checkDeviceDrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
 			dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
 				"DeviceIP":    device.CYOANetworkIP,
 				"StartTunnel": controllerconfig.StartUserTunnelNum,
-				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.DefaultMaxUserTunnelSlots - 1,
 			}))
 		require.NoError(t, err, "error reading drained config fixture")
 		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -131,7 +131,7 @@ func checkDeviceUndrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
 			dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
 				"DeviceIP":    device.CYOANetworkIP,
 				"StartTunnel": controllerconfig.StartUserTunnelNum,
-				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.DefaultMaxUserTunnelSlots - 1,
 			}))
 		require.NoError(t, err, "error reading undrained config fixture")
 		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -157,7 +157,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 					"ClientIP":    client.CYOANetworkIP,
 					"DeviceIP":    device.CYOANetworkIP,
 					"StartTunnel": controllerconfig.StartUserTunnelNum,
-					"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+					"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.DefaultMaxUserTunnelSlots - 1,
 				}))
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -327,7 +327,7 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 				dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
 					"DeviceIP":    device.CYOANetworkIP,
 					"StartTunnel": controllerconfig.StartUserTunnelNum,
-					"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+					"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.DefaultMaxUserTunnelSlots - 1,
 				}))
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))

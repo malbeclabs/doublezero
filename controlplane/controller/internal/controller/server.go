@@ -18,6 +18,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/malbeclabs/doublezero/config"
+	controllerconfig "github.com/malbeclabs/doublezero/controlplane/controller/config"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -40,8 +41,9 @@ const (
 )
 
 var (
-	ErrServiceabilityRequired = errors.New("serviceability program client is required")
-	ErrLoggerRequired         = errors.New("logger is required")
+	ErrServiceabilityRequired    = errors.New("serviceability program client is required")
+	ErrLoggerRequired            = errors.New("logger is required")
+	ErrInvalidMaxUserTunnelSlots = errors.New("max user tunnel slots must be positive")
 )
 
 type ServiceabilityProgramClient interface {
@@ -63,28 +65,33 @@ type stateCache struct {
 type Controller struct {
 	pb.UnimplementedControllerServer
 
-	log            *slog.Logger
-	cache          stateCache
-	mu             sync.RWMutex
-	serviceability ServiceabilityProgramClient
-	listener       net.Listener
-	noHardware     bool
-	updateDone     chan struct{}
-	tlsConfig      *tls.Config
-	environment    string
-	deviceLocalASN uint32
-	clickhouse     *ClickhouseWriter
-	featuresConfig *FeaturesConfig
+	log                *slog.Logger
+	cache              stateCache
+	mu                 sync.RWMutex
+	serviceability     ServiceabilityProgramClient
+	listener           net.Listener
+	noHardware         bool
+	updateDone         chan struct{}
+	tlsConfig          *tls.Config
+	environment        string
+	deviceLocalASN     uint32
+	clickhouse         *ClickhouseWriter
+	featuresConfig     *FeaturesConfig
+	maxUserTunnelSlots int
 }
 
 type Option func(*Controller)
 
 func NewController(options ...Option) (*Controller, error) {
 	controller := &Controller{
-		cache: stateCache{},
+		cache:              stateCache{},
+		maxUserTunnelSlots: controllerconfig.DefaultMaxUserTunnelSlots,
 	}
 	for _, o := range options {
 		o(controller)
+	}
+	if controller.maxUserTunnelSlots < 1 {
+		return nil, fmt.Errorf("%w: got %d", ErrInvalidMaxUserTunnelSlots, controller.maxUserTunnelSlots)
 	}
 	if controller.listener == nil {
 		lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 443))
@@ -167,6 +174,12 @@ func WithClickhouse(cw *ClickhouseWriter) Option {
 func WithFeaturesConfig(cfg *FeaturesConfig) Option {
 	return func(c *Controller) {
 		c.featuresConfig = cfg
+	}
+}
+
+func WithMaxUserTunnelSlots(n int) Option {
+	return func(c *Controller) {
+		c.maxUserTunnelSlots = n
 	}
 }
 
@@ -315,7 +328,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		}
 
 		devicePubKey := base58.Encode(device.PubKey[:])
-		d := NewDevice(ip, devicePubKey)
+		d := NewDevice(ip, devicePubKey, c.maxUserTunnelSlots)
 
 		d.MgmtVrf = device.MgmtVrf
 		d.Code = device.Code

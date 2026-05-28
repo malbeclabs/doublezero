@@ -949,7 +949,7 @@ func TestRenderConfig(t *testing.T) {
 			if strings.HasSuffix(test.Want, ".tmpl") {
 				templateData := map[string]int{
 					"StartTunnel": config.StartUserTunnelNum,
-					"EndTunnel":   config.StartUserTunnelNum + config.MaxUserTunnelSlots - 1,
+					"EndTunnel":   config.StartUserTunnelNum + config.DefaultMaxUserTunnelSlots - 1,
 				}
 				rendered, err := renderTemplateFile(test.Want, templateData)
 				if err != nil {

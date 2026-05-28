@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log"
 	"log/slog"
@@ -27,7 +28,7 @@ import (
 )
 
 // helper that creates a slice of Tunnel structs with sequential IDs. We can use this to populate
-// a list of tunnel slots so we don't have to update tests by hand when MaxUserTunnelSlots changes.
+// a list of tunnel slots so we don't have to update tests by hand when DefaultMaxUserTunnelSlots changes.
 func generateEmptyTunnelSlots(startID, count int) []*Tunnel {
 	tunnels := make([]*Tunnel, count)
 	for i := 0; i < count; i++ {
@@ -573,7 +574,7 @@ func TestGetConfig(t *testing.T) {
 			if strings.HasSuffix(test.Want, ".tmpl") {
 				templateData := map[string]int{
 					"StartTunnel": config.StartUserTunnelNum,
-					"EndTunnel":   config.StartUserTunnelNum + config.MaxUserTunnelSlots - 1,
+					"EndTunnel":   config.StartUserTunnelNum + config.DefaultMaxUserTunnelSlots - 1,
 				}
 				rendered, err := renderTemplateFile(test.Want, templateData)
 				if err != nil {
@@ -981,8 +982,8 @@ func TestStateCache(t *testing.T) {
 									{239, 0, 0, 1},
 								},
 							},
-						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+2, config.MaxUserTunnelSlots-2)...),
-						TunnelSlots: config.MaxUserTunnelSlots,
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+2, config.DefaultMaxUserTunnelSlots-2)...),
+						TunnelSlots: config.DefaultMaxUserTunnelSlots,
 						Interfaces: []Interface{
 							{
 								InterfaceType: InterfaceTypePhysical,
@@ -1117,8 +1118,8 @@ func TestStateCache(t *testing.T) {
 								MetroRouting:  true,
 								TenantPubKey:  "11111111111111111111111111111111",
 							},
-						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
-						TunnelSlots: config.MaxUserTunnelSlots,
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.DefaultMaxUserTunnelSlots-1)...),
+						TunnelSlots: config.DefaultMaxUserTunnelSlots,
 					},
 				},
 			},
@@ -1231,8 +1232,8 @@ func TestStateCache(t *testing.T) {
 								MetroRouting:  true,
 								TenantPubKey:  "11111111111111111111111111111111",
 							},
-						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
-						TunnelSlots: config.MaxUserTunnelSlots,
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.DefaultMaxUserTunnelSlots-1)...),
+						TunnelSlots: config.DefaultMaxUserTunnelSlots,
 					},
 				},
 			},
@@ -1384,8 +1385,8 @@ func TestStateCache(t *testing.T) {
 								MetroRouting:  true,
 								TenantPubKey:  "11111111111111111111111111111111",
 							},
-						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+2, config.MaxUserTunnelSlots-2)...),
-						TunnelSlots: config.MaxUserTunnelSlots,
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+2, config.DefaultMaxUserTunnelSlots-2)...),
+						TunnelSlots: config.DefaultMaxUserTunnelSlots,
 					},
 				},
 			},
@@ -1558,8 +1559,8 @@ func TestStateCache(t *testing.T) {
 								MetroRouting:  true,
 								TenantPubKey:  "7fTN12qMUn1gSUuTMxNCdjndcxwJu45kosXuqJiXMeT9",
 							},
-						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+3, config.MaxUserTunnelSlots-3)...),
-						TunnelSlots: config.MaxUserTunnelSlots,
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+3, config.DefaultMaxUserTunnelSlots-3)...),
+						TunnelSlots: config.DefaultMaxUserTunnelSlots,
 						Interfaces: []Interface{
 							{
 								InterfaceType:  InterfaceTypeLoopback,
@@ -1786,6 +1787,93 @@ func TestServiceabilityProgramClientArg(t *testing.T) {
 			_, err := NewController(opts...)
 			if err != test.wantErr {
 				t.Fatalf("expected error %v, got %v", test.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestMaxUserTunnelSlotsOption(t *testing.T) {
+	mockClient := &mockServiceabilityProgramClient{
+		ProgramIDFunc: func() solana.PublicKey {
+			return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+		},
+	}
+
+	tests := []struct {
+		name     string
+		opts     []Option
+		wantErr  error
+		wantSize int
+	}{
+		{
+			name:     "default_when_option_omitted",
+			opts:     nil,
+			wantErr:  nil,
+			wantSize: config.DefaultMaxUserTunnelSlots,
+		},
+		{
+			name:     "valid_min",
+			opts:     []Option{WithMaxUserTunnelSlots(1)},
+			wantErr:  nil,
+			wantSize: 1,
+		},
+		{
+			name:     "valid_default",
+			opts:     []Option{WithMaxUserTunnelSlots(config.DefaultMaxUserTunnelSlots)},
+			wantErr:  nil,
+			wantSize: config.DefaultMaxUserTunnelSlots,
+		},
+		{
+			name:     "valid_large",
+			opts:     []Option{WithMaxUserTunnelSlots(1024)},
+			wantErr:  nil,
+			wantSize: 1024,
+		},
+		{
+			name:    "invalid_zero",
+			opts:    []Option{WithMaxUserTunnelSlots(0)},
+			wantErr: ErrInvalidMaxUserTunnelSlots,
+		},
+		{
+			name:    "invalid_negative",
+			opts:    []Option{WithMaxUserTunnelSlots(-1)},
+			wantErr: ErrInvalidMaxUserTunnelSlots,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			opts := []Option{
+				WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+				WithListener(bufconn.Listen(1024 * 1024)),
+				WithServiceabilityProgramClient(mockClient),
+			}
+			opts = append(opts, test.opts...)
+			c, err := NewController(opts...)
+			if test.wantErr != nil {
+				if !errors.Is(err, test.wantErr) {
+					t.Fatalf("expected error %v, got %v", test.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if c.maxUserTunnelSlots != test.wantSize {
+				t.Errorf("expected maxUserTunnelSlots=%d, got %d", test.wantSize, c.maxUserTunnelSlots)
+			}
+			d := NewDevice(net.IPv4(1, 2, 3, 4), "pk", c.maxUserTunnelSlots)
+			if len(d.Tunnels) != test.wantSize {
+				t.Errorf("expected %d tunnel slots on device, got %d", test.wantSize, len(d.Tunnels))
+			}
+			if d.TunnelSlots != test.wantSize {
+				t.Errorf("expected device.TunnelSlots=%d, got %d", test.wantSize, d.TunnelSlots)
+			}
+			if d.Tunnels[0].Id != config.StartUserTunnelNum {
+				t.Errorf("expected first tunnel id=%d, got %d", config.StartUserTunnelNum, d.Tunnels[0].Id)
+			}
+			if d.Tunnels[test.wantSize-1].Id != config.StartUserTunnelNum+test.wantSize-1 {
+				t.Errorf("expected last tunnel id=%d, got %d", config.StartUserTunnelNum+test.wantSize-1, d.Tunnels[test.wantSize-1].Id)
 			}
 		})
 	}
@@ -2283,7 +2371,7 @@ func TestEndToEnd(t *testing.T) {
 			if strings.HasSuffix(test.Want, ".tmpl") {
 				templateData := map[string]int{
 					"StartTunnel": config.StartUserTunnelNum,
-					"EndTunnel":   config.StartUserTunnelNum + config.MaxUserTunnelSlots - 1,
+					"EndTunnel":   config.StartUserTunnelNum + config.DefaultMaxUserTunnelSlots - 1,
 				}
 				rendered, err := renderTemplateFile(test.Want, templateData)
 				if err != nil {

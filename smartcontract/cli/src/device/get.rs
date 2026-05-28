@@ -1,5 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::{serializer, types::parse_utils::bandwidth_to_string};
 use doublezero_sdk::{
     commands::{
@@ -112,7 +113,12 @@ struct DeviceDisplay {
 }
 
 impl GetDeviceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (pubkey, device) = client.get_device(GetDeviceCommand {
             pubkey_or_code: self.code,
         })?;
@@ -195,6 +201,17 @@ impl GetDeviceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{device::get::GetDeviceCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{
         commands::{
@@ -321,21 +338,26 @@ mod tests {
             .returning(move |_| Ok((exchange_pk, exchange.clone())));
 
         // Expected failure
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = GetDeviceCliCommand {
-            code: Pubkey::new_unique().to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetDeviceCliCommand {
+                code: Pubkey::new_unique().to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err(), "I shouldn't find anything.");
 
         // Expected success (table)
         let mut output = Vec::new();
-        let res = GetDeviceCliCommand {
-            code: device1_pubkey.to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetDeviceCliCommand {
+                code: device1_pubkey.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -355,11 +377,13 @@ mod tests {
 
         // Expected success by pubkey (JSON)
         let mut output = Vec::new();
-        let res = GetDeviceCliCommand {
-            code: device1_pubkey.to_string(),
-            json: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetDeviceCliCommand {
+                code: device1_pubkey.to_string(),
+                json: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(
             res.is_ok(),
             "I should find a device by pubkey with JSON output"

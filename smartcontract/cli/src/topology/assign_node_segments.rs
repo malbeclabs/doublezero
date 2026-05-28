@@ -3,6 +3,7 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::topology::assign_node_segments::AssignTopologyNodeSegmentsCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
@@ -18,7 +19,12 @@ pub struct AssignTopologyNodeSegmentsCliCommand {
 }
 
 impl AssignTopologyNodeSegmentsCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         if self.device_pubkeys.is_empty() {
@@ -45,6 +51,17 @@ impl AssignTopologyNodeSegmentsCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
     use doublezero_sdk::commands::topology::assign_node_segments::AssignTopologyNodeSegmentsCommand;
@@ -69,8 +86,9 @@ mod tests {
             name: "unicast-default".to_string(),
             device_pubkeys: vec![device1],
         };
+        let ctx = cli_context_default_for_tests();
         let mut out = Cursor::new(Vec::new());
-        let result = cmd.execute(&mock, &mut out);
+        let result = block_on(cmd.execute(&ctx, &mock, &mut out));
         assert!(result.is_ok());
         let output = String::from_utf8(out.into_inner()).unwrap();
         assert!(output.contains(
@@ -87,8 +105,9 @@ mod tests {
             name: "unicast-default".to_string(),
             device_pubkeys: vec![],
         };
+        let ctx = cli_context_default_for_tests();
         let mut out = Cursor::new(Vec::new());
-        let result = cmd.execute(&mock, &mut out);
+        let result = block_on(cmd.execute(&ctx, &mock, &mut out));
         assert!(result.is_err());
         assert!(result
             .unwrap_err()

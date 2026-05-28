@@ -1,5 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::device::{get::GetDeviceCommand, list::ListDeviceCommand},
@@ -47,7 +48,12 @@ pub struct DeviceInterfaceDisplay {
 }
 
 impl ListDeviceInterfaceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let iface_displays: Vec<DeviceInterfaceDisplay> = if let Some(device) = self.device {
             let (_, device) = client
                 .get_device(GetDeviceCommand {
@@ -112,6 +118,17 @@ fn build_display(iface: &Interface, device_code: &str) -> DeviceInterfaceDisplay
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{
         device::interface::list::ListDeviceInterfaceCliCommand, tests::utils::create_test_client,
     };
@@ -211,24 +228,30 @@ mod tests {
             .expect_get_device()
             .returning(move |_| Err(eyre::eyre!("not found")));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = ListDeviceInterfaceCliCommand {
-            device: Some(device1_pubkey.to_string()),
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceInterfaceCliCommand {
+                device: Some(device1_pubkey.to_string()),
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, " device       | name | interface_type | loopback_type | interface_cyoa | interface_dia | bandwidth | cir    | mtu  | routing_mode | vlan_id | ip_net      | node_segment_idx | user_tunnel_endpoint | status    \n device1_code | eth0 | physical       | none          | none           | none          | 1Kbps     | 500bps | 9000 | static       | 0       | 10.0.0.1/24 | 12               | true                 | activated \n device1_code | lo0  | loopback       | vpnv4         | none           | none          | 100bps    | 50bps  | 1400 | static       | 16      | 10.0.1.1/24 | 13               | false                | activated \n");
 
         let mut output = Vec::new();
-        let res = ListDeviceInterfaceCliCommand {
-            device: Some(device1_pubkey.to_string()),
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceInterfaceCliCommand {
+                device: Some(device1_pubkey.to_string()),
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "[{\"device\":\"device1_code\",\"name\":\"eth0\",\"interface_type\":\"Physical\",\"loopback_type\":\"None\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":1000,\"cir\":500,\"mtu\":9000,\"routing_mode\":\"Static\",\"vlan_id\":0,\"ip_net\":\"10.0.0.1/24\",\"node_segment_idx\":12,\"user_tunnel_endpoint\":true,\"status\":\"activated\"},{\"device\":\"device1_code\",\"name\":\"lo0\",\"interface_type\":\"Loopback\",\"loopback_type\":\"Vpnv4\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":100,\"cir\":50,\"mtu\":1400,\"routing_mode\":\"Static\",\"vlan_id\":16,\"ip_net\":\"10.0.1.1/24\",\"node_segment_idx\":13,\"user_tunnel_endpoint\":false,\"status\":\"activated\"}]\n");

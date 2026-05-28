@@ -156,31 +156,35 @@ async fn main() -> eyre::Result<()> {
             }
         },
         Command::Device(command) => match command.command {
-            DeviceCommands::Create(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Update(args) => args.execute(&client, &mut handle),
-            DeviceCommands::List(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Get(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Delete(args) => args.execute(&client, &mut handle),
+            DeviceCommands::Create(args) => args.execute(&ctx, &client, &mut handle).await,
+            DeviceCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+            DeviceCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
+            DeviceCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            DeviceCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
             DeviceCommands::MigrateMulticastCounts(args) => args.execute(&client, &mut handle),
             DeviceCommands::MigrateUnicastCounts(args) => args.execute(&client, &mut handle),
             DeviceCommands::Interface(command) => match command.command {
-                InterfaceCommands::Create(args) => args.execute(&client, &mut handle),
-                InterfaceCommands::Update(args) => args.execute(&client, &mut handle),
-                InterfaceCommands::List(args) => args.execute(&client, &mut handle),
-                InterfaceCommands::Get(args) => args.execute(&client, &mut handle),
-                InterfaceCommands::Delete(args) => args.execute(&client, &mut handle),
+                InterfaceCommands::Create(args) => args.execute(&ctx, &client, &mut handle).await,
+                InterfaceCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+                InterfaceCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
+                InterfaceCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+                InterfaceCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
             },
         },
         Command::Link(command) => match command.command {
             LinkCommands::Create(args) => match args.command {
-                cli::link::CreateLinkCommands::Wan(args) => args.execute(&client, &mut handle),
-                cli::link::CreateLinkCommands::Dzx(args) => args.execute(&client, &mut handle),
+                cli::link::CreateLinkCommands::Wan(args) => {
+                    args.execute(&ctx, &client, &mut handle).await
+                }
+                cli::link::CreateLinkCommands::Dzx(args) => {
+                    args.execute(&ctx, &client, &mut handle).await
+                }
             },
-            LinkCommands::Accept(args) => args.execute(&client, &mut handle),
-            LinkCommands::Update(args) => args.execute(&client, &mut handle),
-            LinkCommands::List(args) => args.execute(&client, &mut handle),
-            LinkCommands::Get(args) => args.execute(&client, &mut handle),
-            LinkCommands::Delete(args) => args.execute(&client, &mut handle),
+            LinkCommands::Accept(args) => args.execute(&ctx, &client, &mut handle).await,
+            LinkCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+            LinkCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
+            LinkCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            LinkCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::AccessPass(command) => match command.command {
             cli::accesspass::AccessPassCommands::Set(args) => {

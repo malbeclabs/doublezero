@@ -6,6 +6,7 @@ use crate::{
     validators::{validate_parse_bandwidth, validate_pubkey_or_code},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::{types::network_v4::NetworkV4, validate_iface};
 use doublezero_sdk::commands::device::{
     get::GetDeviceCommand, interface::update::UpdateDeviceInterfaceCommand, list::ListDeviceCommand,
@@ -70,7 +71,12 @@ pub struct UpdateDeviceInterfaceCliCommand {
 }
 
 impl UpdateDeviceInterfaceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -218,6 +224,17 @@ impl UpdateDeviceInterfaceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use super::*;
     use crate::tests::utils::create_test_client;
     use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType, Interface};
@@ -342,26 +359,29 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         // Expected success
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdateDeviceInterfaceCliCommand {
-            pubkey_or_code: device1_pubkey.to_string(),
-            name: "Loopback0".to_string(),
-            loopback_type: Some(types::LoopbackType::Ipv4),
-            interface_cyoa: None,
-            interface_dia: None,
-            bandwidth: None,
-            cir: None,
-            mtu: None,
-            routing_mode: None,
-            vlan_id: Some(20),
-            user_tunnel_endpoint: None,
-            status: Some(InterfaceStatus::Activated.to_string()),
-            ip_net: Some("10.0.1.1/24".to_string()),
-            node_segment_idx: None,
-            topologies: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateDeviceInterfaceCliCommand {
+                pubkey_or_code: device1_pubkey.to_string(),
+                name: "Loopback0".to_string(),
+                loopback_type: Some(types::LoopbackType::Ipv4),
+                interface_cyoa: None,
+                interface_dia: None,
+                bandwidth: None,
+                cir: None,
+                mtu: None,
+                routing_mode: None,
+                vlan_id: Some(20),
+                user_tunnel_endpoint: None,
+                status: Some(InterfaceStatus::Activated.to_string()),
+                ip_net: Some("10.0.1.1/24".to_string()),
+                node_segment_idx: None,
+                topologies: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "{}", res.err().unwrap());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, format!("Signature: {signature}\n"));
@@ -482,26 +502,30 @@ mod tests {
             .expect_list_device()
             .returning(move |_| Ok(devices.clone()));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = UpdateDeviceInterfaceCliCommand {
-            pubkey_or_code: device1_pubkey.to_string(),
-            name: "Loopback0".to_string(),
-            loopback_type: None,
-            interface_cyoa: None,
-            interface_dia: None,
-            bandwidth: None,
-            cir: None,
-            mtu: None,
-            routing_mode: None,
-            vlan_id: None,
-            user_tunnel_endpoint: None,
-            status: None,
-            ip_net: Some("185.189.47.80/32".to_string()),
-            node_segment_idx: None,
-            topologies: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateDeviceInterfaceCliCommand {
+                pubkey_or_code: device1_pubkey.to_string(),
+                name: "Loopback0".to_string(),
+                loopback_type: None,
+                interface_cyoa: None,
+                interface_dia: None,
+                bandwidth: None,
+                cir: None,
+                mtu: None,
+                routing_mode: None,
+                vlan_id: None,
+                user_tunnel_endpoint: None,
+                status: None,
+                ip_net: Some("185.189.47.80/32".to_string()),
+                node_segment_idx: None,
+                topologies: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         let err = res.unwrap_err().to_string();
@@ -579,26 +603,30 @@ mod tests {
             }))
             .returning(move |_| Ok((device1_pubkey, device1.clone())));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = UpdateDeviceInterfaceCliCommand {
-            pubkey_or_code: device1_pubkey.to_string(),
-            name: "Ethernet0".to_string(),
-            loopback_type: None,
-            interface_cyoa: Some(types::InterfaceCYOA::GREOverDIA),
-            interface_dia: None,
-            bandwidth: None,
-            cir: None,
-            mtu: None,
-            routing_mode: None,
-            vlan_id: None,
-            user_tunnel_endpoint: None,
-            status: None,
-            ip_net: None,
-            node_segment_idx: None,
-            topologies: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateDeviceInterfaceCliCommand {
+                pubkey_or_code: device1_pubkey.to_string(),
+                name: "Ethernet0".to_string(),
+                loopback_type: None,
+                interface_cyoa: Some(types::InterfaceCYOA::GREOverDIA),
+                interface_dia: None,
+                bandwidth: None,
+                cir: None,
+                mtu: None,
+                routing_mode: None,
+                vlan_id: None,
+                user_tunnel_endpoint: None,
+                status: None,
+                ip_net: None,
+                node_segment_idx: None,
+                topologies: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
@@ -670,26 +698,30 @@ mod tests {
             }))
             .returning(move |_| Ok((device1_pubkey, device1.clone())));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = UpdateDeviceInterfaceCliCommand {
-            pubkey_or_code: device1_pubkey.to_string(),
-            name: "Ethernet0".to_string(),
-            loopback_type: None,
-            interface_cyoa: None,
-            interface_dia: None,
-            bandwidth: Some(0),
-            cir: None,
-            mtu: None,
-            routing_mode: None,
-            vlan_id: None,
-            user_tunnel_endpoint: None,
-            status: None,
-            ip_net: None,
-            node_segment_idx: None,
-            topologies: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateDeviceInterfaceCliCommand {
+                pubkey_or_code: device1_pubkey.to_string(),
+                name: "Ethernet0".to_string(),
+                loopback_type: None,
+                interface_cyoa: None,
+                interface_dia: None,
+                bandwidth: Some(0),
+                cir: None,
+                mtu: None,
+                routing_mode: None,
+                vlan_id: None,
+                user_tunnel_endpoint: None,
+                status: None,
+                ip_net: None,
+                node_segment_idx: None,
+                topologies: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
@@ -761,26 +793,30 @@ mod tests {
             }))
             .returning(move |_| Ok((device1_pubkey, device1.clone())));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = UpdateDeviceInterfaceCliCommand {
-            pubkey_or_code: device1_pubkey.to_string(),
-            name: "Ethernet0".to_string(),
-            loopback_type: None,
-            interface_cyoa: None,
-            interface_dia: None,
-            bandwidth: None,
-            cir: None,
-            mtu: Some(2048),
-            routing_mode: None,
-            vlan_id: None,
-            user_tunnel_endpoint: None,
-            status: None,
-            ip_net: None,
-            node_segment_idx: None,
-            topologies: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateDeviceInterfaceCliCommand {
+                pubkey_or_code: device1_pubkey.to_string(),
+                name: "Ethernet0".to_string(),
+                loopback_type: None,
+                interface_cyoa: None,
+                interface_dia: None,
+                bandwidth: None,
+                cir: None,
+                mtu: Some(2048),
+                routing_mode: None,
+                vlan_id: None,
+                user_tunnel_endpoint: None,
+                status: None,
+                ip_net: None,
+                node_segment_idx: None,
+                topologies: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),

@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::{link::list::ListLinkCommand, topology::list::ListTopologyCommand};
 use serde::Serialize;
 use std::io::Write;
@@ -22,7 +23,12 @@ pub struct TopologyDisplay {
 }
 
 impl ListTopologyCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let topologies = client.list_topology(ListTopologyCommand)?;
 
         if topologies.is_empty() {
@@ -78,6 +84,17 @@ impl ListTopologyCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use super::*;
     use crate::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{get_topology_pda, Link, LinkLinkType, LinkStatus};
@@ -98,8 +115,9 @@ mod tests {
             .returning(|_| Ok(HashMap::new()));
 
         let cmd = ListTopologyCliCommand { json: false };
+        let ctx = cli_context_default_for_tests();
         let mut out = Cursor::new(Vec::new());
-        let result = cmd.execute(&mock, &mut out);
+        let result = block_on(cmd.execute(&ctx, &mock, &mut out));
         assert!(result.is_ok());
         let output = String::from_utf8(out.into_inner()).unwrap();
         assert!(output.contains("No topologies found."));
@@ -135,8 +153,9 @@ mod tests {
         client.expect_list_link().returning(|_| Ok(HashMap::new()));
 
         let cmd = ListTopologyCliCommand { json: false };
+        let ctx = cli_context_default_for_tests();
         let mut out = Cursor::new(Vec::new());
-        let result = cmd.execute(&client, &mut out);
+        let result = block_on(cmd.execute(&ctx, &client, &mut out));
         assert!(result.is_ok());
         let output = String::from_utf8(out.into_inner()).unwrap();
         assert!(output.contains("unicast-default"));
@@ -204,8 +223,9 @@ mod tests {
         });
 
         let cmd = ListTopologyCliCommand { json: false };
+        let ctx = cli_context_default_for_tests();
         let mut out = Cursor::new(Vec::new());
-        let result = cmd.execute(&client, &mut out);
+        let result = block_on(cmd.execute(&ctx, &client, &mut out));
         assert!(result.is_ok());
         let output = String::from_utf8(out.into_inner()).unwrap();
         assert!(
@@ -244,8 +264,9 @@ mod tests {
         client.expect_list_link().returning(|_| Ok(HashMap::new()));
 
         let cmd = ListTopologyCliCommand { json: true };
+        let ctx = cli_context_default_for_tests();
         let mut out = Cursor::new(Vec::new());
-        let result = cmd.execute(&client, &mut out);
+        let result = block_on(cmd.execute(&ctx, &client, &mut out));
         assert!(result.is_ok());
         let output = String::from_utf8(out.into_inner()).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&output).expect("valid JSON");

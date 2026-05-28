@@ -1,5 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::link::latency::LatencyLinkCommand;
 use std::io::Write;
 use tabled::{
@@ -49,7 +50,12 @@ pub struct LinkLatencyCliCommand {
 }
 
 impl LinkLatencyCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let env = client.get_environment();
         let config = env.config()?;
 
@@ -149,6 +155,17 @@ impl LinkLatencyCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{
         doublezerocommand::CliCommand, link::latency::LinkLatencyCliCommand,
         tests::utils::create_test_client,
@@ -246,13 +263,17 @@ mod tests {
             }))
             .returning(move |_| Ok(vec![stats.clone()]));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = LinkLatencyCliCommand {
-            code: Some("nyc-lax".to_string()),
-            p: "p99".to_string(),
-            epoch: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            LinkLatencyCliCommand {
+                code: Some("nyc-lax".to_string()),
+                p: "p99".to_string(),
+                epoch: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok(), "Should succeed");
         let output_str = String::from_utf8(output).unwrap();
@@ -310,13 +331,17 @@ mod tests {
             .expect_latency_link()
             .returning(move |_| Ok(vec![stats.clone()]));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = LinkLatencyCliCommand {
-            code: Some("nyc-lax".to_string()),
-            p: "p50".to_string(),
-            epoch: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            LinkLatencyCliCommand {
+                code: Some("nyc-lax".to_string()),
+                p: "p50".to_string(),
+                epoch: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok(), "Should succeed");
         let output_str = String::from_utf8(output).unwrap();
@@ -374,13 +399,17 @@ mod tests {
             .expect_latency_link()
             .returning(move |_| Ok(vec![stats.clone()]));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = LinkLatencyCliCommand {
-            code: Some("nyc-lax".to_string()),
-            p: "mean".to_string(),
-            epoch: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            LinkLatencyCliCommand {
+                code: Some("nyc-lax".to_string()),
+                p: "mean".to_string(),
+                epoch: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok(), "Should succeed");
         let output_str = String::from_utf8(output).unwrap();
@@ -438,13 +467,17 @@ mod tests {
             .expect_latency_link()
             .returning(move |_| Ok(vec![stats.clone()]));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = LinkLatencyCliCommand {
-            code: Some("nyc-lax".to_string()),
-            p: "all".to_string(),
-            epoch: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            LinkLatencyCliCommand {
+                code: Some("nyc-lax".to_string()),
+                p: "all".to_string(),
+                epoch: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok(), "Should succeed");
         let output_str = String::from_utf8(output).unwrap();
@@ -491,13 +524,17 @@ mod tests {
             }))
             .returning(move |_| Ok(vec![stats.clone()]));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = LinkLatencyCliCommand {
-            code: Some("nyc-lax".to_string()),
-            p: "p99".to_string(),
-            epoch: Some(12345),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            LinkLatencyCliCommand {
+                code: Some("nyc-lax".to_string()),
+                p: "p99".to_string(),
+                epoch: Some(12345),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok(), "Should succeed with epoch");
         let output_str = String::from_utf8(output).unwrap();
@@ -535,13 +572,17 @@ mod tests {
             .expect_latency_link()
             .returning(|_| Err(eyre::eyre!("Link not found")));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = LinkLatencyCliCommand {
-            code: Some("nonexistent".to_string()),
-            p: "p99".to_string(),
-            epoch: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            LinkLatencyCliCommand {
+                code: Some("nonexistent".to_string()),
+                p: "p99".to_string(),
+                epoch: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err(), "Should fail when link not found");
     }
@@ -561,13 +602,17 @@ mod tests {
             .expect_latency_link()
             .returning(move |_| Ok(vec![stats.clone()]));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = LinkLatencyCliCommand {
-            code: Some("nyc-lax".to_string()),
-            p: "invalid".to_string(),
-            epoch: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            LinkLatencyCliCommand {
+                code: Some("nyc-lax".to_string()),
+                p: "invalid".to_string(),
+                epoch: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err(), "Should fail with invalid percentile");
         let err = res.unwrap_err();
@@ -647,13 +692,17 @@ mod tests {
             }))
             .returning(move |_| Ok(vec![stats1.clone(), stats2.clone()]));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = LinkLatencyCliCommand {
-            code: None, // Query all links
-            p: "all".to_string(),
-            epoch: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            LinkLatencyCliCommand {
+                code: None, // Query all links
+                p: "all".to_string(),
+                epoch: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok(), "Should succeed");
         let output_str = String::from_utf8(output).unwrap();

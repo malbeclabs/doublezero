@@ -1,5 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::validate_iface;
 use doublezero_sdk::commands::{
     device::get::GetDeviceCommand, topology::list::ListTopologyCommand,
@@ -40,7 +41,12 @@ struct InterfaceDisplay {
 }
 
 impl GetDeviceInterfaceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (device_pk, device) = client.get_device(GetDeviceCommand {
             pubkey_or_code: self.device,
         })?;
@@ -119,6 +125,17 @@ impl GetDeviceInterfaceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{
         device::interface::get::GetDeviceInterfaceCliCommand, tests::utils::create_test_client,
     };
@@ -202,23 +219,28 @@ mod tests {
             .returning(move |_| Err(eyre::eyre!("not found")));
 
         // Expected failure
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = GetDeviceInterfaceCliCommand {
-            device: Pubkey::new_unique().to_string(),
-            name: "Eth0".to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetDeviceInterfaceCliCommand {
+                device: Pubkey::new_unique().to_string(),
+                name: "Eth0".to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err(), "I shouldn't find anything.");
 
         // Expected success (table)
         let mut output = Vec::new();
-        let res = GetDeviceInterfaceCliCommand {
-            device: device1_pubkey.to_string(),
-            name: "eth0".to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetDeviceInterfaceCliCommand {
+                device: device1_pubkey.to_string(),
+                name: "eth0".to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -351,13 +373,17 @@ mod tests {
             Ok(m)
         });
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = GetDeviceInterfaceCliCommand {
-            device: device_pubkey.to_string(),
-            name: "Loopback256".to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetDeviceInterfaceCliCommand {
+                device: device_pubkey.to_string(),
+                name: "Loopback256".to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "{:?}", res.err());
         let output_str = String::from_utf8(output).unwrap();
         assert!(

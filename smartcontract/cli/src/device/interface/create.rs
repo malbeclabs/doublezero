@@ -6,6 +6,7 @@ use crate::{
     validators::{validate_parse_bandwidth, validate_pubkey_or_code},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::{types::network_v4::NetworkV4, validate_iface};
 use doublezero_sdk::commands::{
     device::{
@@ -60,7 +61,12 @@ pub struct CreateDeviceInterfaceCliCommand {
 }
 
 impl CreateDeviceInterfaceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -161,6 +167,17 @@ impl CreateDeviceInterfaceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use super::*;
     use crate::tests::utils::create_test_client;
     use doublezero_sdk::{
@@ -272,23 +289,27 @@ mod tests {
             .expect_list_device()
             .returning(move |_| Ok(devices.clone()));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateDeviceInterfaceCliCommand {
-            device: device1_pubkey.to_string(),
-            name: "Loopback100".to_string(),
-            loopback_type: Some(types::LoopbackType::Ipv4),
-            interface_cyoa: None,
-            interface_dia: None,
-            ip_net: Some("185.189.47.80/32".parse().unwrap()),
-            bandwidth: 0,
-            cir: 0,
-            mtu: None,
-            routing_mode: types::RoutingMode::Static,
-            vlan_id: 0,
-            user_tunnel_endpoint: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDeviceInterfaceCliCommand {
+                device: device1_pubkey.to_string(),
+                name: "Loopback100".to_string(),
+                loopback_type: Some(types::LoopbackType::Ipv4),
+                interface_cyoa: None,
+                interface_dia: None,
+                ip_net: Some("185.189.47.80/32".parse().unwrap()),
+                bandwidth: 0,
+                cir: 0,
+                mtu: None,
+                routing_mode: types::RoutingMode::Static,
+                vlan_id: 0,
+                user_tunnel_endpoint: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         let err = res.unwrap_err().to_string();
@@ -390,23 +411,27 @@ mod tests {
             .times(1)
             .returning(move |_| Ok((signature, device1_pubkey)));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateDeviceInterfaceCliCommand {
-            device: device1_pubkey.to_string(),
-            name: "Loopback0".to_string(),
-            loopback_type: Some(types::LoopbackType::Ipv4),
-            interface_cyoa: Some(types::InterfaceCYOA::GREOverDIA),
-            interface_dia: Some(types::InterfaceDIA::DIA),
-            ip_net: None,
-            bandwidth: 1_000_000_000,
-            cir: 0,
-            mtu: None,
-            routing_mode: types::RoutingMode::Static,
-            vlan_id: 20,
-            user_tunnel_endpoint: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDeviceInterfaceCliCommand {
+                device: device1_pubkey.to_string(),
+                name: "Loopback0".to_string(),
+                loopback_type: Some(types::LoopbackType::Ipv4),
+                interface_cyoa: Some(types::InterfaceCYOA::GREOverDIA),
+                interface_dia: Some(types::InterfaceDIA::DIA),
+                ip_net: None,
+                bandwidth: 1_000_000_000,
+                cir: 0,
+                mtu: None,
+                routing_mode: types::RoutingMode::Static,
+                vlan_id: 20,
+                user_tunnel_endpoint: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, format!("Signature: {signature}\n"));
@@ -460,23 +485,27 @@ mod tests {
             }))
             .returning(move |_| Ok((device1_pubkey, device1.clone())));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateDeviceInterfaceCliCommand {
-            device: device1_pubkey.to_string(),
-            name: "Ethernet1".to_string(),
-            loopback_type: None,
-            interface_cyoa: None,
-            interface_dia: None,
-            ip_net: None,
-            bandwidth: 1000,
-            cir: 0,
-            mtu: Some(2048),
-            routing_mode: types::RoutingMode::Static,
-            vlan_id: 0,
-            user_tunnel_endpoint: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDeviceInterfaceCliCommand {
+                device: device1_pubkey.to_string(),
+                name: "Ethernet1".to_string(),
+                loopback_type: None,
+                interface_cyoa: None,
+                interface_dia: None,
+                ip_net: None,
+                bandwidth: 1000,
+                cir: 0,
+                mtu: Some(2048),
+                routing_mode: types::RoutingMode::Static,
+                vlan_id: 0,
+                user_tunnel_endpoint: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
@@ -532,23 +561,27 @@ mod tests {
             }))
             .returning(move |_| Ok((device1_pubkey, device1.clone())));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateDeviceInterfaceCliCommand {
-            device: device1_pubkey.to_string(),
-            name: "Ethernet1".to_string(),
-            loopback_type: None,
-            interface_cyoa: Some(types::InterfaceCYOA::GREOverDIA),
-            interface_dia: None,
-            ip_net: None,
-            bandwidth: 1000,
-            cir: 0,
-            mtu: Some(2048),
-            routing_mode: types::RoutingMode::Static,
-            vlan_id: 0,
-            user_tunnel_endpoint: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDeviceInterfaceCliCommand {
+                device: device1_pubkey.to_string(),
+                name: "Ethernet1".to_string(),
+                loopback_type: None,
+                interface_cyoa: Some(types::InterfaceCYOA::GREOverDIA),
+                interface_dia: None,
+                ip_net: None,
+                bandwidth: 1000,
+                cir: 0,
+                mtu: Some(2048),
+                routing_mode: types::RoutingMode::Static,
+                vlan_id: 0,
+                user_tunnel_endpoint: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
@@ -604,23 +637,27 @@ mod tests {
             }))
             .returning(move |_| Ok((device1_pubkey, device1.clone())));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateDeviceInterfaceCliCommand {
-            device: device1_pubkey.to_string(),
-            name: "Ethernet1".to_string(),
-            loopback_type: None,
-            interface_cyoa: Some(types::InterfaceCYOA::GREOverDIA),
-            interface_dia: None,
-            ip_net: None,
-            bandwidth: 0,
-            cir: 0,
-            mtu: None,
-            routing_mode: types::RoutingMode::Static,
-            vlan_id: 0,
-            user_tunnel_endpoint: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDeviceInterfaceCliCommand {
+                device: device1_pubkey.to_string(),
+                name: "Ethernet1".to_string(),
+                loopback_type: None,
+                interface_cyoa: Some(types::InterfaceCYOA::GREOverDIA),
+                interface_dia: None,
+                ip_net: None,
+                bandwidth: 0,
+                cir: 0,
+                mtu: None,
+                routing_mode: types::RoutingMode::Static,
+                vlan_id: 0,
+                user_tunnel_endpoint: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
@@ -676,23 +713,27 @@ mod tests {
             }))
             .returning(move |_| Ok((device1_pubkey, device1.clone())));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateDeviceInterfaceCliCommand {
-            device: device1_pubkey.to_string(),
-            name: "Ethernet1".to_string(),
-            loopback_type: None,
-            interface_cyoa: None,
-            interface_dia: Some(types::InterfaceDIA::DIA),
-            ip_net: None,
-            bandwidth: 0,
-            cir: 0,
-            mtu: None,
-            routing_mode: types::RoutingMode::Static,
-            vlan_id: 0,
-            user_tunnel_endpoint: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDeviceInterfaceCliCommand {
+                device: device1_pubkey.to_string(),
+                name: "Ethernet1".to_string(),
+                loopback_type: None,
+                interface_cyoa: None,
+                interface_dia: Some(types::InterfaceDIA::DIA),
+                ip_net: None,
+                bandwidth: 0,
+                cir: 0,
+                mtu: None,
+                routing_mode: types::RoutingMode::Static,
+                vlan_id: 0,
+                user_tunnel_endpoint: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),

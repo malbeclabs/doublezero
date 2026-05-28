@@ -4,6 +4,7 @@ use crate::{
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::validate_iface;
 use doublezero_sdk::{
     commands::device::{get::GetDeviceCommand, interface::delete::DeleteDeviceInterfaceCommand},
@@ -22,7 +23,12 @@ pub struct DeleteDeviceInterfaceCliCommand {
 }
 
 impl DeleteDeviceInterfaceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -60,6 +66,17 @@ impl DeleteDeviceInterfaceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use super::*;
     use crate::tests::utils::create_test_client;
     use doublezero_program_common::types::NetworkV4List;
@@ -164,12 +181,16 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = DeleteDeviceInterfaceCliCommand {
-            device: device_pk.to_string(),
-            name: "Ethernet0".to_string(),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            DeleteDeviceInterfaceCliCommand {
+                device: device_pk.to_string(),
+                name: "Ethernet0".to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "Error: {}", res.unwrap_err());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, format!("Signature: {signature}\n"));

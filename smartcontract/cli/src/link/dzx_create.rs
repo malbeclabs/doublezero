@@ -9,6 +9,7 @@ use crate::{
     },
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::validate_iface;
 use doublezero_sdk::{
     commands::{
@@ -63,7 +64,12 @@ pub struct CreateDZXLinkCliCommand {
 }
 
 impl CreateDZXLinkCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -180,6 +186,17 @@ impl CreateDZXLinkCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     use crate::{
         doublezerocommand::CliCommand,
         link::dzx_create::CreateDZXLinkCliCommand,
@@ -424,21 +441,24 @@ mod tests {
             .returning(move |_| Ok((signature, pda_pubkey)));
 
         /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = CreateDZXLinkCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            desired_status: None,
-            side_a: device1_pk.to_string(),
-            side_z: device2_pk.to_string(),
-            bandwidth: 1000000000,
-            mtu: 9000,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
-            side_a_interface: "Ethernet1/1".to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDZXLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device1_pk.to_string(),
+                side_z: device2_pk.to_string(),
+                bandwidth: 1000000000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/1".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "Error: {}", res.unwrap_err());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -453,20 +473,22 @@ mod tests {
             .returning(move |_| Ok((Pubkey::default(), link.clone())));
 
         let mut output = Vec::new();
-        let res = CreateDZXLinkCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            desired_status: None,
-            side_a: device2_pk.to_string(),
-            side_z: device3_pk.to_string(),
-            bandwidth: 1000000000,
-            mtu: 9000,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
-            side_a_interface: "Ethernet1/2".to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDZXLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device2_pk.to_string(),
+                side_z: device3_pk.to_string(),
+                bandwidth: 1000000000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/2".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert_eq!(
             res.unwrap_err().to_string(),
             "Link with code 'test' already exists"
@@ -555,21 +577,25 @@ mod tests {
                 ))
             });
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateDZXLinkCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            desired_status: None,
-            side_a: device1_pk.to_string(),
-            side_z: device2_pk.to_string(),
-            bandwidth: 1000000000,
-            mtu: 9000,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
-            side_a_interface: "Ethernet1/1".to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDZXLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device1_pk.to_string(),
+                side_z: device2_pk.to_string(),
+                bandwidth: 1000000000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/1".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         assert!(res
@@ -657,21 +683,25 @@ mod tests {
                 ))
             });
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateDZXLinkCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            desired_status: None,
-            side_a: device1_pk.to_string(),
-            side_z: device2_pk.to_string(),
-            bandwidth: 1_000_000_000,
-            mtu: 9000,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
-            side_a_interface: "Ethernet1/1".to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDZXLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device1_pk.to_string(),
+                side_z: device2_pk.to_string(),
+                bandwidth: 1_000_000_000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/1".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         assert_eq!(
@@ -758,21 +788,25 @@ mod tests {
                 ))
             });
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateDZXLinkCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            desired_status: None,
-            side_a: device1_pk.to_string(),
-            side_z: device2_pk.to_string(),
-            bandwidth: 1000000000,
-            mtu: 9000,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
-            side_a_interface: "Ethernet1/1".to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDZXLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device1_pk.to_string(),
+                side_z: device2_pk.to_string(),
+                bandwidth: 1000000000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/1".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         assert_eq!(

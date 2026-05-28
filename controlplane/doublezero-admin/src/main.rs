@@ -118,12 +118,12 @@ async fn main() -> eyre::Result<()> {
             LocationCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::Exchange(command) => match command.command {
-            ExchangeCommands::Create(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::SetDevice(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::Update(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::List(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::Get(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::Delete(args) => args.execute(&client, &mut handle),
+            ExchangeCommands::Create(args) => args.execute(&ctx, &client, &mut handle).await,
+            ExchangeCommands::SetDevice(args) => args.execute(&ctx, &client, &mut handle).await,
+            ExchangeCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+            ExchangeCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
+            ExchangeCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            ExchangeCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::Contributor(command) => match command.command {
             cli::contributor::ContributorCommands::Create(args) => {

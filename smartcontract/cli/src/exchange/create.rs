@@ -1,9 +1,6 @@
-use crate::{
-    doublezerocommand::CliCommand,
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::validate_code,
-};
+use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
+use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::exchange::create::CreateExchangeCommand;
 use std::io::Write;
 
@@ -24,20 +21,26 @@ pub struct CreateExchangeCliCommand {
 }
 
 impl CreateExchangeCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
         let (signature, _pubkey) = client.create_exchange(CreateExchangeCommand {
-            code: self.code.clone(),
-            name: self.name.clone(),
+            code: self.code,
+            name: self.name,
             lat: self.lat,
             lng: self.lng,
-            bgp_community: None, // Always auto-assign
+            bgp_community: None,
         })?;
-        writeln!(out, "Signature: {signature}",)?;
 
-        Ok(())
+        print_signature(out, &signature)
     }
 }
 
@@ -49,9 +52,19 @@ mod tests {
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_sdk::{commands::exchange::create::CreateExchangeCommand, get_exchange_pda};
     use mockall::predicate;
     use solana_sdk::signature::Signature;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     #[test]
     fn test_cli_exchange_create() {
@@ -80,14 +93,17 @@ mod tests {
             }))
             .returning(move |_| Ok((signature, pda_pubkey)));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = CreateExchangeCliCommand {
-            code: "test".to_string(),
-            name: "Test Exchange".to_string(),
-            lat: 0.0,
-            lng: 0.0,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateExchangeCliCommand {
+                code: "test".to_string(),
+                name: "Test Exchange".to_string(),
+                lat: 0.0,
+                lng: 0.0,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

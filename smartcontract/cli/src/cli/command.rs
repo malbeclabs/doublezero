@@ -141,12 +141,12 @@ impl ServiceabilityCommand {
                 LocationCommands::Delete(args) => args.execute(ctx, client, out).await,
             },
             Self::Exchange(cmd) => match cmd.command {
-                ExchangeCommands::Create(args) => args.execute(client, out),
-                ExchangeCommands::SetDevice(args) => args.execute(client, out),
-                ExchangeCommands::Update(args) => args.execute(client, out),
-                ExchangeCommands::List(args) => args.execute(client, out),
-                ExchangeCommands::Get(args) => args.execute(client, out),
-                ExchangeCommands::Delete(args) => args.execute(client, out),
+                ExchangeCommands::Create(args) => args.execute(ctx, client, out).await,
+                ExchangeCommands::SetDevice(args) => args.execute(ctx, client, out).await,
+                ExchangeCommands::Update(args) => args.execute(ctx, client, out).await,
+                ExchangeCommands::List(args) => args.execute(ctx, client, out).await,
+                ExchangeCommands::Get(args) => args.execute(ctx, client, out).await,
+                ExchangeCommands::Delete(args) => args.execute(ctx, client, out).await,
             },
             Self::Contributor(cmd) => match cmd.command {
                 ContributorCommands::Create(args) => args.execute(client, out),

@@ -58,7 +58,7 @@ impl GeolocationCommand {
             Self::User(cmd) => match cmd.command {
                 UserCommands::Create(args) => args.execute(ctx, client, out).await,
                 UserCommands::Update(args) => args.execute(ctx, client, out).await,
-                UserCommands::Delete(args) => args.execute(client, out),
+                UserCommands::Delete(args) => args.execute(ctx, client, out).await,
                 UserCommands::Get(args) => args.execute(client, out),
                 UserCommands::List(args) => args.execute(client, out),
                 UserCommands::AddTarget(args) => args.execute(client, out),

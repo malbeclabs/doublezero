@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::commands::resource::{
     allocate::AllocateResourceCommand, closeaccount::CloseResourceByPubkeyCommand,
@@ -91,7 +92,12 @@ pub struct VerifyResourceCliCommand {
 }
 
 impl VerifyResourceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let result = verify_resources(client)?;
 
         // Print summary
@@ -1192,6 +1198,7 @@ fn check_discrepancies(
 mod tests {
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_program_common::types::NetworkV4;
     use doublezero_sdk::AccountType;
     use doublezero_serviceability::{
@@ -1200,6 +1207,15 @@ mod tests {
         state::resource_extension::{Allocator, ResourceExtensionOwned},
     };
     use std::io::Cursor;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     fn create_resource_extension_ip(
         program_id: &Pubkey,
@@ -1520,8 +1536,9 @@ mod tests {
             .returning(move || Ok(accounts.clone()));
 
         let cmd = VerifyResourceCliCommand { fix: false };
+        let ctx = cli_context_default_for_tests();
         let mut output = Cursor::new(Vec::new());
-        let result = cmd.execute(&mock_client, &mut output);
+        let result = block_on(cmd.execute(&ctx, &mock_client, &mut output));
         assert!(result.is_ok());
 
         let output_str = String::from_utf8(output.into_inner()).unwrap();
@@ -1603,8 +1620,9 @@ mod tests {
             .returning(move || Ok(accounts.clone()));
 
         let cmd = VerifyResourceCliCommand { fix: false };
+        let ctx = cli_context_default_for_tests();
         let mut output = Cursor::new(Vec::new());
-        let result = cmd.execute(&mock_client, &mut output);
+        let result = block_on(cmd.execute(&ctx, &mock_client, &mut output));
         assert!(result.is_ok());
 
         let output_str = String::from_utf8(output.into_inner()).unwrap();
@@ -2096,8 +2114,9 @@ mod tests {
             .returning(move || Ok(accounts.clone()));
 
         let cmd = VerifyResourceCliCommand { fix: false };
+        let ctx = cli_context_default_for_tests();
         let mut output = Cursor::new(Vec::new());
-        cmd.execute(&mock_client, &mut output).unwrap();
+        block_on(cmd.execute(&ctx, &mock_client, &mut output)).unwrap();
         let output_str = String::from_utf8(output.into_inner()).unwrap();
         assert!(output_str.contains("Orphaned resource extensions"));
         assert!(output_str.contains(&orphan_pda.to_string()));
@@ -2444,8 +2463,9 @@ mod tests {
             .returning(move || Ok(accounts.clone()));
 
         let cmd = VerifyResourceCliCommand { fix: false };
+        let ctx = cli_context_default_for_tests();
         let mut output = Cursor::new(Vec::new());
-        cmd.execute(&mock_client, &mut output).unwrap();
+        block_on(cmd.execute(&ctx, &mock_client, &mut output)).unwrap();
         let output_str = String::from_utf8(output.into_inner()).unwrap();
 
         assert!(

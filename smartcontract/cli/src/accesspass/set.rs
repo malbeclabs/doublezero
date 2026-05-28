@@ -3,6 +3,7 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::{Args, ValueEnum};
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::accesspass::set::SetAccessPassCommand;
 use doublezero_serviceability::{
     pda::{get_accesspass_pda, get_tenant_pda},
@@ -55,7 +56,12 @@ pub struct SetAccessPassCliCommand {
 }
 
 impl SetAccessPassCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -135,6 +141,7 @@ mod tests {
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_sdk::commands::accesspass::set::SetAccessPassCommand;
     use doublezero_serviceability::{
         pda::{get_accesspass_pda, get_tenant_pda},
@@ -142,8 +149,17 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use tokio::runtime::Builder;
 
     use super::*;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     #[test]
     fn test_cli_accesspass_set_prepaid() {
@@ -178,20 +194,23 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::Prepaid,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "max".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::Prepaid,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "max".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -213,20 +232,23 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::SolanaValidator,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::SolanaValidator,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "1".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.err().unwrap().to_string(),
@@ -269,20 +291,23 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::SolanaValidator,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: Some(solana_validator),
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::SolanaValidator,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "1".into(),
+                solana_validator: Some(solana_validator),
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -324,20 +349,23 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::SolanaRPC,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::SolanaRPC,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "1".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
     }
 
@@ -376,20 +404,23 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::SolanaRPC,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: Some(solana_validator),
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::SolanaRPC,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "1".into(),
+                solana_validator: Some(solana_validator),
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -411,20 +442,23 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::Others,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::Others,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "1".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.err().unwrap().to_string(),
@@ -445,20 +479,23 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::Others,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: Some("custom-name".to_string()),
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::Others,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "1".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: Some("custom-name".to_string()),
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.err().unwrap().to_string(),
@@ -502,20 +539,23 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::Others,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: Some("custom-name".to_string()),
-            others_key: Some("custom-key".to_string()),
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::Others,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "1".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: Some("custom-name".to_string()),
+                others_key: Some("custom-key".to_string()),
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -534,20 +574,23 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::Prepaid,
-            client_ip: Some([100, 0, 0, 1].into()),
-            user_payer: "not-a-valid-pubkey".to_string(),
-            epochs: "max".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::Prepaid,
+                client_ip: Some([100, 0, 0, 1].into()),
+                user_payer: "not-a-valid-pubkey".to_string(),
+                epochs: "max".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
     }
 
@@ -561,21 +604,24 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::Prepaid,
-            client_ip: Some([100, 0, 0, 1].into()),
-            user_payer: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB")
-                .to_string(),
-            epochs: "not-a-number".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::Prepaid,
+                client_ip: Some([100, 0, 0, 1].into()),
+                user_payer: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB")
+                    .to_string(),
+                epochs: "not-a-number".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
     }
 
@@ -590,21 +636,24 @@ mod tests {
             .returning(|_| Ok(()));
 
         let too_long = "a".repeat(33);
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::Prepaid,
-            client_ip: Some([100, 0, 0, 1].into()),
-            user_payer: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB")
-                .to_string(),
-            epochs: "max".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: Some(too_long.clone()),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::Prepaid,
+                client_ip: Some([100, 0, 0, 1].into()),
+                user_payer: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB")
+                    .to_string(),
+                epochs: "max".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: Some(too_long.clone()),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.err().unwrap().to_string(),
@@ -637,20 +686,23 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::Prepaid,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "max".into(),
-            solana_validator: None,
-            allow_multiple_ip: true,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::Prepaid,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "max".into(),
+                solana_validator: None,
+                allow_multiple_ip: true,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
     }
 
@@ -681,20 +733,23 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::Prepaid,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "max".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: Some("acme".to_string()),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::Prepaid,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "max".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: Some("acme".to_string()),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
     }
 
@@ -722,20 +777,23 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::Prepaid,
-            client_ip: None,
-            user_payer: payer.to_string(),
-            epochs: "max".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::Prepaid,
+                client_ip: None,
+                user_payer: payer.to_string(),
+                epochs: "max".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
     }
 
@@ -764,20 +822,23 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::Prepaid,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "0".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::Prepaid,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "0".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
     }
 
@@ -807,20 +868,23 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::Prepaid,
-            client_ip: Some(client_ip),
-            user_payer: "me".to_string(),
-            epochs: "max".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::Prepaid,
+                client_ip: Some(client_ip),
+                user_payer: "me".to_string(),
+                epochs: "max".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
     }
 
@@ -837,20 +901,23 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::EdgeSeat,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: None,
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::EdgeSeat,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "1".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: None,
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.err().unwrap().to_string(),
@@ -893,20 +960,23 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetAccessPassCliCommand {
-            accesspass_type: CliAccessPassType::EdgeSeat,
-            client_ip: Some(client_ip),
-            user_payer: payer.to_string(),
-            epochs: "1".into(),
-            solana_validator: None,
-            allow_multiple_ip: false,
-            others_name: None,
-            others_key: None,
-            seat: Some(seat_pk),
-            tenant: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::EdgeSeat,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "1".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                others_name: None,
+                others_key: None,
+                seat: Some(seat_pk),
+                tenant: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

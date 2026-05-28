@@ -1,6 +1,7 @@
 use crate::doublezerocommand::CliCommand;
 use clap::{Args, ValueEnum};
 use console::style;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::{
     commands::{accesspass::list::ListAccessPassCommand, user::list::ListUserCommand},
@@ -96,7 +97,12 @@ pub struct UserBalanceDisplay {
 }
 
 impl UserBalancesAccessPassCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let access_passes = client.list_accesspass(ListAccessPassCommand)?;
         let users = client.list_user(ListUserCommand {})?;
         let rent_per_ip = client.get_minimum_balance_for_rent_exemption(USER_RENT_BYTES)?;

@@ -94,16 +94,16 @@ impl ServiceabilityCommand {
         W: Write,
     {
         match self {
-            Self::Init(args) => args.execute(client, out),
-            Self::Migrate(args) => args.execute(client, out),
-            Self::Address(args) => args.execute(client, out),
-            Self::Balance(args) => args.execute(client, out),
-            Self::Export(args) => args.execute(client, out),
-            Self::Keygen(args) => args.execute(client, out),
+            Self::Init(args) => args.execute(ctx, client, out).await,
+            Self::Migrate(args) => args.execute(ctx, client, out).await,
+            Self::Address(args) => args.execute(ctx, client, out).await,
+            Self::Balance(args) => args.execute(ctx, client, out).await,
+            Self::Export(args) => args.execute(ctx, client, out).await,
+            Self::Keygen(args) => args.execute(ctx, client, out).await,
 
             Self::Config(cmd) => match cmd.command {
-                ConfigCommands::Get(args) => args.execute(client, out),
-                ConfigCommands::Set(args) => args.execute(client, out),
+                ConfigCommands::Get(args) => args.execute(ctx, client, out).await,
+                ConfigCommands::Set(args) => args.execute(ctx, client, out).await,
             },
             Self::GlobalConfig(cmd) => match cmd.command {
                 GlobalConfigCommands::Set(args) => args.execute(client, out),
@@ -210,13 +210,14 @@ impl ServiceabilityCommand {
                 },
             },
             Self::AccessPass(cmd) => match cmd.command {
-                AccessPassCommands::Set(args) => args.execute(client, out),
-                AccessPassCommands::Close(args) => args.execute(client, out),
-                AccessPassCommands::List(args) => args.execute(client, out),
-                AccessPassCommands::Get(args) => args.execute(client, out),
-                AccessPassCommands::UserBalances(args) => args.execute(client, out),
+                AccessPassCommands::Set(args) => args.execute(ctx, client, out).await,
+                AccessPassCommands::Close(args) => args.execute(ctx, client, out).await,
+                AccessPassCommands::List(args) => args.execute(ctx, client, out).await,
+                AccessPassCommands::Get(args) => args.execute(ctx, client, out).await,
+                AccessPassCommands::UserBalances(args) => args.execute(ctx, client, out).await,
                 AccessPassCommands::Fund(args) => {
-                    args.execute(client, out, &mut std::io::stdin().lock())
+                    args.execute(ctx, client, out, &mut std::io::stdin().lock())
+                        .await
                 }
             },
             Self::User(cmd) => match cmd.command {
@@ -230,12 +231,12 @@ impl ServiceabilityCommand {
                 UserCommands::RequestBan(args) => args.execute(client, out),
             },
             Self::Resource(cmd) => match cmd.command {
-                ResourceCommands::Allocate(args) => args.execute(client, out),
-                ResourceCommands::Create(args) => args.execute(client, out),
-                ResourceCommands::Deallocate(args) => args.execute(client, out),
-                ResourceCommands::Get(args) => args.execute(client, out),
-                ResourceCommands::Close(args) => args.execute(client, out),
-                ResourceCommands::Verify(args) => args.execute(client, out),
+                ResourceCommands::Allocate(args) => args.execute(ctx, client, out).await,
+                ResourceCommands::Create(args) => args.execute(ctx, client, out).await,
+                ResourceCommands::Deallocate(args) => args.execute(ctx, client, out).await,
+                ResourceCommands::Get(args) => args.execute(ctx, client, out).await,
+                ResourceCommands::Close(args) => args.execute(ctx, client, out).await,
+                ResourceCommands::Verify(args) => args.execute(ctx, client, out).await,
             },
         }
     }

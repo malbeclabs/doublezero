@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
     commands::{accesspass::list::ListAccessPassCommand, user::list::ListUserCommand},
     UserType,
@@ -31,8 +32,9 @@ pub struct FundAccessPassCliCommand {
 }
 
 impl FundAccessPassCliCommand {
-    pub fn execute<C: CliCommand, W: Write, R: BufRead>(
+    pub async fn execute<C: CliCommand, W: Write, R: BufRead>(
         self,
+        _ctx: &CliContext,
         client: &C,
         out: &mut W,
         input: &mut R,
@@ -186,11 +188,21 @@ impl FundAccessPassCliCommand {
 mod tests {
     use super::*;
     use crate::tests::utils::create_test_client;
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_sdk::AccountType;
     use doublezero_serviceability::state::accesspass::{
         AccessPass, AccessPassStatus, AccessPassType,
     };
     use solana_sdk::{account::Account, pubkey::Pubkey};
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     const RENT_PER_USER: u64 = 1_000_000;
     // needs_rent for 1 remaining slot = 1_000_000 + 250_000 = 1_250_000
@@ -246,9 +258,14 @@ mod tests {
         // balance > required (wallet_rent_min + needs_rent = 1_000_000 + 1_250_000 = 2_250_000)
         let client = setup_client_with_balance(payer, 2_500_000);
 
+        let ctx = cli_context_default_for_tests();
         let mut out = Vec::new();
-        let res =
-            FundAccessPassCliCommand::default().execute(&client, &mut out, &mut "".as_bytes());
+        let res = block_on(FundAccessPassCliCommand::default().execute(
+            &ctx,
+            &client,
+            &mut out,
+            &mut "".as_bytes(),
+        ));
 
         assert!(res.is_ok());
         assert_eq!(
@@ -263,12 +280,15 @@ mod tests {
         // balance = 500_000 < required (wallet_rent_min + needs_rent = 1_000_000 + 1_250_000 = 2_250_000), deficit = 1_750_000
         let client = setup_client_with_balance(payer, 500_000);
 
+        let ctx = cli_context_default_for_tests();
         let mut out = Vec::new();
-        let res = FundAccessPassCliCommand {
-            dry_run: true,
-            ..Default::default()
-        }
-        .execute(&client, &mut out, &mut "".as_bytes());
+        let res = block_on(
+            FundAccessPassCliCommand {
+                dry_run: true,
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut out, &mut "".as_bytes()),
+        );
 
         assert!(res.is_ok());
         let output = String::from_utf8(out).unwrap();
@@ -287,9 +307,14 @@ mod tests {
             .expect_transfer_sol()
             .returning(|_, _| Ok(solana_sdk::signature::Signature::default()));
 
+        let ctx = cli_context_default_for_tests();
         let mut out = Vec::new();
-        let res =
-            FundAccessPassCliCommand::default().execute(&client, &mut out, &mut "y\n".as_bytes());
+        let res = block_on(FundAccessPassCliCommand::default().execute(
+            &ctx,
+            &client,
+            &mut out,
+            &mut "y\n".as_bytes(),
+        ));
 
         assert!(res.is_ok());
         let output = String::from_utf8(out).unwrap();
@@ -302,9 +327,14 @@ mod tests {
         let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
         let client = setup_client_with_balance(payer, 500_000);
 
+        let ctx = cli_context_default_for_tests();
         let mut out = Vec::new();
-        let res =
-            FundAccessPassCliCommand::default().execute(&client, &mut out, &mut "n\n".as_bytes());
+        let res = block_on(FundAccessPassCliCommand::default().execute(
+            &ctx,
+            &client,
+            &mut out,
+            &mut "n\n".as_bytes(),
+        ));
 
         assert!(res.is_ok());
         let output = String::from_utf8(out).unwrap();
@@ -320,13 +350,16 @@ mod tests {
         // required = wallet_rent_min + max(needs_rent, min_balance) = 1_000_000 + max(1_250_000, 2_000_000) = 3_000_000, deficit = 1_500_000
         let client = setup_client_with_balance(payer, 1_500_000);
 
+        let ctx = cli_context_default_for_tests();
         let mut out = Vec::new();
-        let res = FundAccessPassCliCommand {
-            min_balance: Some(0.002), // 2_000_000 lamports
-            dry_run: true,
-            ..Default::default()
-        }
-        .execute(&client, &mut out, &mut "".as_bytes());
+        let res = block_on(
+            FundAccessPassCliCommand {
+                min_balance: Some(0.002), // 2_000_000 lamports
+                dry_run: true,
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut out, &mut "".as_bytes()),
+        );
 
         assert!(res.is_ok());
         let output = String::from_utf8(out).unwrap();
@@ -341,13 +374,16 @@ mod tests {
         // required = wallet_rent_min + max(needs_rent, min_balance) = 1_000_000 + max(1_250_000, 1) = 2_250_000, deficit = 1_750_000
         let client = setup_client_with_balance(payer, 500_000);
 
+        let ctx = cli_context_default_for_tests();
         let mut out = Vec::new();
-        let res = FundAccessPassCliCommand {
-            min_balance: Some(0.000000001),
-            dry_run: true,
-            ..Default::default()
-        }
-        .execute(&client, &mut out, &mut "".as_bytes());
+        let res = block_on(
+            FundAccessPassCliCommand {
+                min_balance: Some(0.000000001),
+                dry_run: true,
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut out, &mut "".as_bytes()),
+        );
 
         assert!(res.is_ok());
         let output = String::from_utf8(out).unwrap();
@@ -363,12 +399,15 @@ mod tests {
             .expect_transfer_sol()
             .returning(|_, _| Ok(solana_sdk::signature::Signature::default()));
 
+        let ctx = cli_context_default_for_tests();
         let mut out = Vec::new();
-        let res = FundAccessPassCliCommand {
-            force: true,
-            ..Default::default()
-        }
-        .execute(&client, &mut out, &mut "".as_bytes());
+        let res = block_on(
+            FundAccessPassCliCommand {
+                force: true,
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut out, &mut "".as_bytes()),
+        );
 
         assert!(res.is_ok());
         let output = String::from_utf8(out).unwrap();

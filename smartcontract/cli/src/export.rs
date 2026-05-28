@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::types::parse_utils::bandwidth_to_string;
 use doublezero_sdk::commands::{
     contributor, device::list::ListDeviceCommand, exchange::list::ListExchangeCommand,
@@ -94,7 +95,12 @@ struct UserData {
 }
 
 impl ExportCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let locations = client.list_location(ListLocationCommand)?;
         let exchanges = client.list_exchange(ListExchangeCommand)?;
 

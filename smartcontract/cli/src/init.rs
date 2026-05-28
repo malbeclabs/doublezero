@@ -1,8 +1,6 @@
-use crate::{
-    doublezerocommand::CliCommand,
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-};
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::globalstate::init::InitGlobalStateCommand;
 use std::io::Write;
 
@@ -10,12 +8,18 @@ use std::io::Write;
 pub struct InitCliCommand;
 
 impl InitCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
         let signature = client.init_globalstate(InitGlobalStateCommand)?;
-        writeln!(out, "Signature: {signature}",)?;
-
-        Ok(())
+        print_signature(out, &signature)
     }
 }

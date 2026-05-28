@@ -4,6 +4,7 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::resource::create::CreateResourceCommand;
 use std::io::Write;
 
@@ -33,7 +34,12 @@ impl From<CreateResourceCliCommand> for CreateResourceCommand {
 }
 
 impl CreateResourceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -52,10 +58,20 @@ impl CreateResourceCliCommand {
 mod tests {
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_sdk::{Device, ResourceType as SdkResourceType};
     use mockall::predicate::eq;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::io::Cursor;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     #[test]
     fn test_execute_success_dzprefixblock() {
@@ -85,8 +101,9 @@ mod tests {
             associated_pubkey: Some(device_pk.to_string()),
             index: Some(0),
         };
+        let ctx = cli_context_default_for_tests();
         let mut out = Cursor::new(Vec::new());
-        let result = cmd.execute(&mock, &mut out);
+        let result = block_on(cmd.execute(&ctx, &mock, &mut out));
         assert!(result.is_ok());
         let output = String::from_utf8(out.into_inner()).unwrap();
         assert!(output.contains("Signature:"));
@@ -112,8 +129,9 @@ mod tests {
             associated_pubkey: Some(device_pk.to_string()),
             index: Some(1),
         };
+        let ctx = cli_context_default_for_tests();
         let mut out = Cursor::new(Vec::new());
-        let result = cmd.execute(&mock, &mut out);
+        let result = block_on(cmd.execute(&ctx, &mock, &mut out));
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err().to_string(),

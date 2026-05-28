@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
     accesspass::list::ListAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
@@ -78,7 +79,12 @@ pub struct AccessPassDisplay {
 }
 
 impl ListAccessPassCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let epoch = client.get_epoch()?;
 
         let mgroups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
@@ -271,12 +277,22 @@ impl ListAccessPassCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{accesspass::list::ListAccessPassCliCommand, tests::utils::create_test_client};
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_sdk::AccountType;
     use doublezero_serviceability::state::accesspass::{
         AccessPass, AccessPassStatus, AccessPassType, IS_DYNAMIC,
     };
     use solana_sdk::pubkey::Pubkey;
     use std::{collections::HashMap, net::Ipv4Addr};
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     #[test]
     fn test_cli_accesspass_list() {
@@ -367,70 +383,79 @@ mod tests {
             Ok(access_passes)
         });
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListAccessPassCliCommand {
-            prepaid: false,
-            client_ip: None,
-            user_payer: None,
-            tenant: None,
-            solana_validator: false,
-            solana_identity: None,
-            edge_seat: false,
-            seat_pubkey: None,
-            multicast_group_publisher: None,
-            multicast_group_subscriber: None,
-            not_multicast_group_publisher: None,
-            not_multicast_group_subscriber: None,
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListAccessPassCliCommand {
+                prepaid: false,
+                client_ip: None,
+                user_payer: None,
+                tenant: None,
+                solana_validator: false,
+                solana_identity: None,
+                edge_seat: false,
+                seat_pubkey: None,
+                multicast_group_publisher: None,
+                multicast_group_subscriber: None,
+                not_multicast_group_publisher: None,
+                not_multicast_group_subscriber: None,
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, " account                                   | accesspass_type                                             | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags   | connections | status    | owner                                     \n 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  | solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 0.0.0.0   | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  |        | S:test    | 123               | 113             | dynamic | 0           | connected | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid                                                     | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |         | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | prepaid                                                     | 2.3.4.5   | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 |        | P:test    | 123               | 113             |         | 0           | connected | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
-        let res = ListAccessPassCliCommand {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            edge_seat: false,
-            seat_pubkey: None,
-            tenant: None,
-            json: false,
-            json_compact: true,
-            client_ip: None,
-            user_payer: None,
-            multicast_group_publisher: None,
-            multicast_group_subscriber: None,
-            not_multicast_group_publisher: None,
-            not_multicast_group_subscriber: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListAccessPassCliCommand {
+                prepaid: false,
+                solana_validator: false,
+                solana_identity: None,
+                edge_seat: false,
+                seat_pubkey: None,
+                tenant: None,
+                json: false,
+                json_compact: true,
+                client_ip: None,
+                user_payer: None,
+                multicast_group_publisher: None,
+                multicast_group_subscriber: None,
+                not_multicast_group_publisher: None,
+                not_multicast_group_subscriber: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "[{\"account\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"accesspass_type\":\"solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"client_ip\":\"0.0.0.0\",\"user_payer\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"tenant\":\"\",\"multicast\":\"S:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"dynamic\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\"},{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"tenant\":\"\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"},{\"account\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"2.3.4.5\",\"user_payer\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"tenant\":\"\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
 
         // Test filtering by client IP
         let mut output = Vec::new();
-        let res = ListAccessPassCliCommand {
-            client_ip: Some(Ipv4Addr::new(1, 2, 3, 4)),
-            ..Default::default()
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListAccessPassCliCommand {
+                client_ip: Some(Ipv4Addr::new(1, 2, 3, 4)),
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         // Test filtering by user payer
         let mut output = Vec::new();
-        let res = ListAccessPassCliCommand {
-            user_payer: Some(Pubkey::from_str_const(
-                "1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB",
-            )),
-            ..Default::default()
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListAccessPassCliCommand {
+                user_payer: Some(Pubkey::from_str_const(
+                    "1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB",
+                )),
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
@@ -536,12 +561,15 @@ mod tests {
     fn test_filter_multicast_group_publisher() {
         let (client, access1_pubkey, access2_pubkey, access3_pubkey) = setup_multicast_client();
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListAccessPassCliCommand {
-            multicast_group_publisher: Some("test".to_string()),
-            ..Default::default()
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListAccessPassCliCommand {
+                multicast_group_publisher: Some("test".to_string()),
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let out = String::from_utf8(output).unwrap();
@@ -556,12 +584,15 @@ mod tests {
     fn test_filter_multicast_group_subscriber() {
         let (client, access1_pubkey, access2_pubkey, access3_pubkey) = setup_multicast_client();
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListAccessPassCliCommand {
-            multicast_group_subscriber: Some("test".to_string()),
-            ..Default::default()
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListAccessPassCliCommand {
+                multicast_group_subscriber: Some("test".to_string()),
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let out = String::from_utf8(output).unwrap();
@@ -576,12 +607,15 @@ mod tests {
     fn test_filter_not_multicast_group_publisher() {
         let (client, access1_pubkey, access2_pubkey, access3_pubkey) = setup_multicast_client();
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListAccessPassCliCommand {
-            not_multicast_group_publisher: Some("test".to_string()),
-            ..Default::default()
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListAccessPassCliCommand {
+                not_multicast_group_publisher: Some("test".to_string()),
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let out = String::from_utf8(output).unwrap();
@@ -596,12 +630,15 @@ mod tests {
     fn test_filter_not_multicast_group_subscriber() {
         let (client, access1_pubkey, access2_pubkey, access3_pubkey) = setup_multicast_client();
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListAccessPassCliCommand {
-            not_multicast_group_subscriber: Some("test".to_string()),
-            ..Default::default()
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListAccessPassCliCommand {
+                not_multicast_group_subscriber: Some("test".to_string()),
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let out = String::from_utf8(output).unwrap();

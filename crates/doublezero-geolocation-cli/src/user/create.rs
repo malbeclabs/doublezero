@@ -1,7 +1,5 @@
-use crate::{
-    geoclicommand::GeoCliCommand,
-    validators::{validate_code, validate_pubkey},
-};
+use crate::client::GeoCliCommand;
+use doublezero_cli_core::validators::{validate_code, validate_pubkey};
 use clap::Args;
 use doublezero_sdk::geolocation::geolocation_user::create::CreateGeolocationUserCommand;
 use solana_sdk::pubkey::Pubkey;
@@ -35,7 +33,7 @@ impl CreateGeolocationUserCliCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geoclicommand::MockGeoCliCommand;
+    use crate::client::MockGeoCliCommand;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 

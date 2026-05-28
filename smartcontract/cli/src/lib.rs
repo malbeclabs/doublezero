@@ -13,8 +13,6 @@ pub mod doublezerocommand;
 pub mod exchange;
 pub mod export;
 pub mod formatters;
-pub mod geoclicommand;
-pub mod geolocation;
 pub mod globalconfig;
 pub mod helpers;
 pub mod init;

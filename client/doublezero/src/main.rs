@@ -8,19 +8,14 @@ mod routes;
 use doublezero_config::Environment;
 mod requirements;
 mod servicecontroller;
-use crate::cli::{
-    command::Command,
-    geolocation::{
-        probe::ProbeCommands, user::UserCommands as GeoUserCommands, GeolocationCommands,
-    },
-    multicast::MulticastCommands,
-};
+use crate::cli::{command::Command, multicast::MulticastCommands};
 use doublezero_cli_core::LogLevel;
 use doublezero_sdk::{geolocation::client::GeoClient, DZClient, ProgramVersion};
 use doublezero_serviceability::pda::get_globalstate_pda;
+use doublezero_geolocation_cli::GeoCliCommandImpl;
 use doublezero_serviceability_cli::{
     checkversion::check_version, cli::ServiceabilityCommand, doublezerocommand::CliCommandImpl,
-    geoclicommand::GeoCliCommandImpl, version::VersionCliCommand,
+    version::VersionCliCommand,
 };
 use servicecontroller::ServiceControllerImpl;
 
@@ -285,30 +280,7 @@ async fn main() -> eyre::Result<()> {
             let svc_program_id = *dzclient.get_program_id();
             let (globalstate_pk, _) = get_globalstate_pda(&svc_program_id);
             let geo_cli = GeoCliCommandImpl::new(&geo_client, &dzclient, globalstate_pk);
-            match command.command {
-                GeolocationCommands::Probe(command) => match command.command {
-                    ProbeCommands::Create(args) => args.execute(&geo_cli, &mut handle),
-                    ProbeCommands::Update(args) => args.execute(&geo_cli, &mut handle),
-                    ProbeCommands::Delete(args) => args.execute(&geo_cli, &mut handle),
-                    ProbeCommands::Get(args) => args.execute(&geo_cli, &mut handle),
-                    ProbeCommands::List(args) => args.execute(&geo_cli, &mut handle),
-                    ProbeCommands::AddParent(args) => args.execute(&geo_cli, &mut handle),
-                    ProbeCommands::RemoveParent(args) => args.execute(&geo_cli, &mut handle),
-                },
-                GeolocationCommands::User(command) => match command.command {
-                    GeoUserCommands::Create(args) => args.execute(&geo_cli, &mut handle),
-                    GeoUserCommands::Delete(args) => args.execute(&geo_cli, &mut handle),
-                    GeoUserCommands::Update(args) => args.execute(&geo_cli, &mut handle),
-                    GeoUserCommands::Get(args) => args.execute(&geo_cli, &mut handle),
-                    GeoUserCommands::List(args) => args.execute(&geo_cli, &mut handle),
-                    GeoUserCommands::AddTarget(args) => args.execute(&geo_cli, &mut handle),
-                    GeoUserCommands::RemoveTarget(args) => args.execute(&geo_cli, &mut handle),
-                    GeoUserCommands::SetResultDestination(args) => {
-                        args.execute(&geo_cli, &mut handle)
-                    }
-                    GeoUserCommands::UpdatePayment(args) => args.execute(&geo_cli, &mut handle),
-                },
-            }
+            command.command.execute(&geo_cli, &mut handle)
         }
 
         // Multicast: the `Group` subtree is module-crate business and dispatched by

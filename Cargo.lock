@@ -1482,6 +1482,7 @@ dependencies = [
  "ctor",
  "doublezero-cli-core",
  "doublezero-config",
+ "doublezero-geolocation-cli",
  "doublezero-program-common",
  "doublezero-serviceability",
  "doublezero-serviceability-cli",
@@ -1606,7 +1607,6 @@ dependencies = [
  "doublezero-cli-core",
  "doublezero-geolocation",
  "doublezero-program-common",
- "doublezero-serviceability",
  "doublezero_sdk",
  "eyre",
  "mockall",
@@ -1614,7 +1614,6 @@ dependencies = [
  "serde_json",
  "solana-sdk",
  "tabled",
- "tokio",
  "tracing",
 ]
 
@@ -1711,7 +1710,6 @@ dependencies = [
  "console",
  "doublezero-cli-core",
  "doublezero-config",
- "doublezero-geolocation",
  "doublezero-program-common",
  "doublezero-serviceability",
  "doublezero_sdk",

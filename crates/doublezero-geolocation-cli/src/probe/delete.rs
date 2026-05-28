@@ -1,33 +1,42 @@
-use crate::{geoclicommand::GeoCliCommand, validators::validate_pubkey_or_code};
+use crate::client::GeoCliCommand;
+use doublezero_cli_core::validators::validate_pubkey_or_code;
 use clap::Args;
 use doublezero_sdk::geolocation::geo_probe::{
-    get::GetGeoProbeCommand, remove_parent_device::RemoveParentDeviceCommand,
+    delete::DeleteGeoProbeCommand, get::GetGeoProbeCommand,
 };
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct RemoveParentGeoProbeCliCommand {
-    /// Probe pubkey or code
+pub struct DeleteGeoProbeCliCommand {
+    /// Probe pubkey or code to delete
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub probe: String,
-    /// Device pubkey or code to remove as parent
-    #[arg(long, value_name = "PARENT_DEVICE", value_parser = validate_pubkey_or_code)]
-    pub device: String,
+    /// Skip confirmation prompt
+    #[arg(long, default_value_t = false)]
+    pub yes: bool,
 }
 
-impl RemoveParentGeoProbeCliCommand {
+impl DeleteGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let (_, resolved_probe) = client.get_geo_probe(GetGeoProbeCommand {
             pubkey_or_code: self.probe,
         })?;
         let code = resolved_probe.code;
 
-        let device_pk = client.resolve_device_pk(self.device)?;
+        if !self.yes {
+            eprint!("Delete probe '{code}'? [y/N]: ");
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            if !input.trim().eq_ignore_ascii_case("y") {
+                writeln!(out, "Aborted.")?;
+                return Ok(());
+            }
+        }
+
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
-        let sig = client.remove_parent_device(RemoveParentDeviceCommand {
+        let sig = client.delete_geo_probe(DeleteGeoProbeCommand {
             code,
-            device_pk,
             serviceability_globalstate_pk,
         })?;
 
@@ -40,17 +49,16 @@ impl RemoveParentGeoProbeCliCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geoclicommand::MockGeoCliCommand;
+    use crate::client::MockGeoCliCommand;
     use doublezero_geolocation::state::{accounttype::AccountType, geo_probe::GeoProbe};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::net::Ipv4Addr;
 
     #[test]
-    fn test_cli_geo_probe_remove_parent() {
+    fn test_cli_geo_probe_delete() {
         let mut client = MockGeoCliCommand::new();
 
-        let device_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
         let svc_gs_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
@@ -83,27 +91,21 @@ mod tests {
             });
 
         client
-            .expect_resolve_device_pk()
-            .with(predicate::eq(device_pk.to_string()))
-            .returning(move |_| Ok(device_pk));
-
-        client
             .expect_get_serviceability_globalstate_pk()
             .returning(move || svc_gs_pk);
 
         client
-            .expect_remove_parent_device()
-            .with(predicate::eq(RemoveParentDeviceCommand {
+            .expect_delete_geo_probe()
+            .with(predicate::eq(DeleteGeoProbeCommand {
                 code: "ams-probe-01".to_string(),
-                device_pk,
                 serviceability_globalstate_pk: svc_gs_pk,
             }))
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
-        let res = RemoveParentGeoProbeCliCommand {
+        let res = DeleteGeoProbeCliCommand {
             probe: "ams-probe-01".to_string(),
-            device: device_pk.to_string(),
+            yes: true,
         }
         .execute(&client, &mut output);
         assert!(res.is_ok());

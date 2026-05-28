@@ -1,4 +1,5 @@
-use crate::{geoclicommand::GeoCliCommand, validators::validate_pubkey_or_code};
+use crate::client::GeoCliCommand;
+use doublezero_cli_core::validators::validate_pubkey_or_code;
 use clap::{Args, ValueEnum};
 use doublezero_geolocation::state::geolocation_user::GeolocationPaymentStatus;
 use doublezero_sdk::geolocation::geolocation_user::{
@@ -54,7 +55,7 @@ impl UpdatePaymentStatusCliCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geoclicommand::MockGeoCliCommand;
+    use crate::client::MockGeoCliCommand;
     use doublezero_geolocation::state::{
         accounttype::AccountType,
         geolocation_user::{

@@ -1,21 +1,22 @@
-use crate::{geoclicommand::GeoCliCommand, validators::validate_pubkey_or_code};
+use crate::client::GeoCliCommand;
+use doublezero_cli_core::validators::validate_pubkey_or_code;
 use clap::Args;
 use doublezero_sdk::geolocation::geo_probe::{
-    add_parent_device::AddParentDeviceCommand, get::GetGeoProbeCommand,
+    get::GetGeoProbeCommand, remove_parent_device::RemoveParentDeviceCommand,
 };
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct AddParentGeoProbeCliCommand {
+pub struct RemoveParentGeoProbeCliCommand {
     /// Probe pubkey or code
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub probe: String,
-    /// Device pubkey or code to add as parent
+    /// Device pubkey or code to remove as parent
     #[arg(long, value_name = "PARENT_DEVICE", value_parser = validate_pubkey_or_code)]
     pub device: String,
 }
 
-impl AddParentGeoProbeCliCommand {
+impl RemoveParentGeoProbeCliCommand {
     pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         let (_, resolved_probe) = client.get_geo_probe(GetGeoProbeCommand {
             pubkey_or_code: self.probe,
@@ -25,7 +26,7 @@ impl AddParentGeoProbeCliCommand {
         let device_pk = client.resolve_device_pk(self.device)?;
         let serviceability_globalstate_pk = client.get_serviceability_globalstate_pk();
 
-        let sig = client.add_parent_device(AddParentDeviceCommand {
+        let sig = client.remove_parent_device(RemoveParentDeviceCommand {
             code,
             device_pk,
             serviceability_globalstate_pk,
@@ -40,14 +41,14 @@ impl AddParentGeoProbeCliCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geoclicommand::MockGeoCliCommand;
+    use crate::client::MockGeoCliCommand;
     use doublezero_geolocation::state::{accounttype::AccountType, geo_probe::GeoProbe};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::net::Ipv4Addr;
 
     #[test]
-    fn test_cli_geo_probe_add_parent() {
+    fn test_cli_geo_probe_remove_parent() {
         let mut client = MockGeoCliCommand::new();
 
         let device_pk = Pubkey::from_str_const("GQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcc");
@@ -92,8 +93,8 @@ mod tests {
             .returning(move || svc_gs_pk);
 
         client
-            .expect_add_parent_device()
-            .with(predicate::eq(AddParentDeviceCommand {
+            .expect_remove_parent_device()
+            .with(predicate::eq(RemoveParentDeviceCommand {
                 code: "ams-probe-01".to_string(),
                 device_pk,
                 serviceability_globalstate_pk: svc_gs_pk,
@@ -101,7 +102,7 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
-        let res = AddParentGeoProbeCliCommand {
+        let res = RemoveParentGeoProbeCliCommand {
             probe: "ams-probe-01".to_string(),
             device: device_pk.to_string(),
         }

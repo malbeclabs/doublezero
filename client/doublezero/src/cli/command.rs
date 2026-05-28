@@ -1,8 +1,9 @@
 use clap::{Args, Subcommand};
 use clap_complete::Shell;
+use doublezero_geolocation_cli::init::InitProgramConfigCliCommand;
 use doublezero_serviceability_cli::{
     account::GetAccountCliCommand, accounts::GetAccountsCliCommand, cli::ServiceabilityCommand,
-    geolocation::programconfig::init::InitProgramConfigCliCommand, logcommand::LogCliCommand,
+    logcommand::LogCliCommand,
 };
 
 use crate::{

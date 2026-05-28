@@ -1,7 +1,5 @@
-use crate::{
-    geoclicommand::GeoCliCommand,
-    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
-};
+use crate::client::GeoCliCommand;
+use doublezero_cli_core::validators::{validate_code, validate_pubkey, validate_pubkey_or_code};
 use clap::Args;
 use doublezero_sdk::geolocation::geo_probe::create::CreateGeoProbeCommand;
 use solana_sdk::pubkey::Pubkey;
@@ -51,7 +49,7 @@ impl CreateGeoProbeCliCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geoclicommand::MockGeoCliCommand;
+    use crate::client::MockGeoCliCommand;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 

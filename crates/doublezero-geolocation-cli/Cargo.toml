@@ -20,7 +20,6 @@ serde.workspace = true
 serde_json.workspace = true
 solana-sdk.workspace = true
 tabled.workspace = true
-tokio.workspace = true
 tracing.workspace = true
 
 # Dependencies from this workspace
@@ -28,4 +27,3 @@ doublezero-cli-core.workspace = true
 doublezero-geolocation = { workspace = true, features = ["no-entrypoint"] }
 doublezero-program-common.workspace = true
 doublezero_sdk.workspace = true
-doublezero-serviceability = { workspace = true, features = ["serde"] }

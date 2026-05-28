@@ -1,6 +1,9 @@
 use crate::client::GeoCliCommand;
 use clap::{Args, ValueEnum};
-use doublezero_cli_core::validators::{validate_pubkey, validate_pubkey_or_code};
+use doublezero_cli_core::{
+    validators::{validate_pubkey, validate_pubkey_or_code},
+    CliContext,
+};
 use doublezero_geolocation::state::geolocation_user::GeoLocationTargetType;
 use doublezero_sdk::geolocation::{
     geo_probe::{get::GetGeoProbeCommand, list::ListGeoProbeCommand},
@@ -43,7 +46,14 @@ pub struct AddTargetCliCommand {
 }
 
 impl AddTargetCliCommand {
-    pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: GeoCliCommand, W: Write>(
+        self,
+        ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        tracing::debug!(env = %ctx.env, user = %self.user, "geolocation user add-target");
+
         let (target_type, ip_address, location_offset_port, target_pk) = match self.target_type {
             TargetType::Outbound => {
                 let ip = self
@@ -136,6 +146,7 @@ pub(super) fn resolve_probe<C: GeoCliCommand>(
 mod tests {
     use super::*;
     use crate::client::MockGeoCliCommand;
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_geolocation::state::{
         accounttype::AccountType,
         geo_probe::GeoProbe,
@@ -147,6 +158,15 @@ mod tests {
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::collections::HashMap;
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     fn mock_get_geolocation_user(client: &mut MockGeoCliCommand) {
         client.expect_get_geolocation_user().returning(move |cmd| {
@@ -215,17 +235,20 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = AddTargetCliCommand {
-            user: "geo-user-01".to_string(),
-            target_type: TargetType::Outbound,
-            target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
-            target_port: 8923,
-            target_signing_pubkey: None,
-            probe: Some("ams-probe-01".to_string()),
-            exchange: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            AddTargetCliCommand {
+                user: "geo-user-01".to_string(),
+                target_type: TargetType::Outbound,
+                target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
+                target_port: 8923,
+                target_signing_pubkey: None,
+                probe: Some("ams-probe-01".to_string()),
+                exchange: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));
@@ -262,17 +285,20 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = AddTargetCliCommand {
-            user: "geo-user-01".to_string(),
-            target_type: TargetType::Inbound,
-            target_ip: None,
-            target_port: 8923,
-            target_signing_pubkey: Some(target_pk.to_string()),
-            probe: Some(probe_pk.to_string()),
-            exchange: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            AddTargetCliCommand {
+                user: "geo-user-01".to_string(),
+                target_type: TargetType::Inbound,
+                target_ip: None,
+                target_port: 8923,
+                target_signing_pubkey: Some(target_pk.to_string()),
+                probe: Some(probe_pk.to_string()),
+                exchange: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));
@@ -313,17 +339,20 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = AddTargetCliCommand {
-            user: "geo-user-01".to_string(),
-            target_type: TargetType::Outbound,
-            target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
-            target_port: 8923,
-            target_signing_pubkey: None,
-            probe: None,
-            exchange: Some(exchange_pk.to_string()),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            AddTargetCliCommand {
+                user: "geo-user-01".to_string(),
+                target_type: TargetType::Outbound,
+                target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
+                target_port: 8923,
+                target_signing_pubkey: None,
+                probe: None,
+                exchange: Some(exchange_pk.to_string()),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));
@@ -364,17 +393,20 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = AddTargetCliCommand {
-            user: "geo-user-01".to_string(),
-            target_type: TargetType::Outbound,
-            target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
-            target_port: 8923,
-            target_signing_pubkey: None,
-            probe: None,
-            exchange: Some("xams".to_string()),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            AddTargetCliCommand {
+                user: "geo-user-01".to_string(),
+                target_type: TargetType::Outbound,
+                target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
+                target_port: 8923,
+                target_signing_pubkey: None,
+                probe: None,
+                exchange: Some("xams".to_string()),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));
@@ -410,17 +442,20 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = AddTargetCliCommand {
-            user: "geo-user-01".to_string(),
-            target_type: TargetType::OutboundIcmp,
-            target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
-            target_port: 8923,
-            target_signing_pubkey: None,
-            probe: Some("ams-probe-01".to_string()),
-            exchange: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            AddTargetCliCommand {
+                user: "geo-user-01".to_string(),
+                target_type: TargetType::OutboundIcmp,
+                target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
+                target_port: 8923,
+                target_signing_pubkey: None,
+                probe: Some("ams-probe-01".to_string()),
+                exchange: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));
@@ -430,17 +465,20 @@ mod tests {
     fn test_cli_add_target_outbound_icmp_missing_ip() {
         let client = MockGeoCliCommand::new();
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = AddTargetCliCommand {
-            user: "geo-user-01".to_string(),
-            target_type: TargetType::OutboundIcmp,
-            target_ip: None,
-            target_port: 8923,
-            target_signing_pubkey: None,
-            probe: Some("ams-probe-01".to_string()),
-            exchange: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            AddTargetCliCommand {
+                user: "geo-user-01".to_string(),
+                target_type: TargetType::OutboundIcmp,
+                target_ip: None,
+                target_port: 8923,
+                target_signing_pubkey: None,
+                probe: Some("ams-probe-01".to_string()),
+                exchange: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("--target-ip"));
     }
@@ -457,17 +495,20 @@ mod tests {
             .expect_get_geo_probe()
             .returning(move |_| Ok((probe_pk, probe.clone())));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = AddTargetCliCommand {
-            user: "geo-user-01".to_string(),
-            target_type: TargetType::Outbound,
-            target_ip: None,
-            target_port: 8923,
-            target_signing_pubkey: None,
-            probe: Some("ams-probe-01".to_string()),
-            exchange: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            AddTargetCliCommand {
+                user: "geo-user-01".to_string(),
+                target_type: TargetType::Outbound,
+                target_ip: None,
+                target_port: 8923,
+                target_signing_pubkey: None,
+                probe: Some("ams-probe-01".to_string()),
+                exchange: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("--target-ip"));
     }
@@ -476,17 +517,20 @@ mod tests {
     fn test_cli_add_target_inbound_missing_pk() {
         let client = MockGeoCliCommand::new();
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = AddTargetCliCommand {
-            user: "geo-user-01".to_string(),
-            target_type: TargetType::Inbound,
-            target_ip: None,
-            target_port: 8923,
-            target_signing_pubkey: None,
-            probe: Some("ams-probe-01".to_string()),
-            exchange: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            AddTargetCliCommand {
+                user: "geo-user-01".to_string(),
+                target_type: TargetType::Inbound,
+                target_ip: None,
+                target_port: 8923,
+                target_signing_pubkey: None,
+                probe: Some("ams-probe-01".to_string()),
+                exchange: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert!(res
             .unwrap_err()
@@ -517,17 +561,20 @@ mod tests {
             .expect_list_geo_probes()
             .returning(move |_| Ok(probes.clone()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = AddTargetCliCommand {
-            user: "geo-user-01".to_string(),
-            target_type: TargetType::Outbound,
-            target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
-            target_port: 8923,
-            target_signing_pubkey: None,
-            probe: None,
-            exchange: Some(exchange_pk.to_string()),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            AddTargetCliCommand {
+                user: "geo-user-01".to_string(),
+                target_type: TargetType::Outbound,
+                target_ip: Some(Ipv4Addr::new(8, 8, 8, 8)),
+                target_port: 8923,
+                target_signing_pubkey: None,
+                probe: None,
+                exchange: Some(exchange_pk.to_string()),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         let err = res.unwrap_err().to_string();
         assert!(

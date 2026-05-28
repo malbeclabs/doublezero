@@ -1,7 +1,8 @@
 use crate::doublezerocommand::CliCommand;
 use chrono::{TimeZone, Utc};
 use doublezero_sdk::commands::{
-    exchange::get::GetExchangeCommand, location::get::GetLocationCommand,
+    contributor::get::GetContributorCommand, exchange::get::GetExchangeCommand,
+    location::get::GetLocationCommand,
 };
 use std::{
     io::{Read, Write},
@@ -60,6 +61,17 @@ pub fn resolve_exchange_pk<C: CliCommand>(
     pubkey_or_code: &str,
 ) -> eyre::Result<Pubkey> {
     let (pubkey, _) = client.get_exchange(GetExchangeCommand {
+        pubkey_or_code: pubkey_or_code.to_string(),
+    })?;
+    Ok(pubkey)
+}
+
+/// Resolve a `--pubkey`/`--code` argument to the contributor's on-chain pubkey.
+pub fn resolve_contributor_pk<C: CliCommand>(
+    client: &C,
+    pubkey_or_code: &str,
+) -> eyre::Result<Pubkey> {
+    let (pubkey, _) = client.get_contributor(GetContributorCommand {
         pubkey_or_code: pubkey_or_code.to_string(),
     })?;
     Ok(pubkey)

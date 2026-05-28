@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::{render_collection, CliContext, OutputFormat};
 use doublezero_program_common::serializer;
 use doublezero_sdk::{
     commands::contributor::list::ListContributorCommand, Contributor, ContributorStatus,
@@ -7,7 +8,7 @@ use doublezero_sdk::{
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct ListContributorCliCommand {
@@ -30,7 +31,12 @@ pub struct ContributorDisplay {
 }
 
 impl ListContributorCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let contributors = client.list_contributor(ListContributorCommand {})?;
 
         let mut contributors: Vec<(Pubkey, Contributor)> = contributors.into_iter().collect();
@@ -47,19 +53,11 @@ impl ListContributorCliCommand {
             })
             .collect();
 
-        let res = if self.json {
-            serde_json::to_string_pretty(&contributor_displays)?
-        } else if self.json_compact {
-            serde_json::to_string(&contributor_displays)?
-        } else {
-            Table::new(contributor_displays)
-                .with(Style::psql().remove_horizontals())
-                .to_string()
-        };
-
-        writeln!(out, "{res}")?;
-
-        Ok(())
+        render_collection(
+            out,
+            contributor_displays,
+            OutputFormat::from_flags(self.json, self.json_compact),
+        )
     }
 }
 
@@ -69,6 +67,7 @@ mod tests {
         contributor::list::{ContributorStatus::Activated, ListContributorCliCommand},
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{AccountType, Contributor};
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
@@ -93,22 +92,27 @@ mod tests {
             .expect_list_contributor()
             .returning(move |_| Ok(HashMap::from([(contributor1_pubkey, contributor1.clone())])));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListContributorCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListContributorCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, " account                                   | code      | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
-        let res = ListContributorCliCommand {
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListContributorCliCommand {
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();

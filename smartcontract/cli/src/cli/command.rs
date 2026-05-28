@@ -149,11 +149,11 @@ impl ServiceabilityCommand {
                 ExchangeCommands::Delete(args) => args.execute(ctx, client, out).await,
             },
             Self::Contributor(cmd) => match cmd.command {
-                ContributorCommands::Create(args) => args.execute(client, out),
-                ContributorCommands::Update(args) => args.execute(client, out),
-                ContributorCommands::List(args) => args.execute(client, out),
-                ContributorCommands::Get(args) => args.execute(client, out),
-                ContributorCommands::Delete(args) => args.execute(client, out),
+                ContributorCommands::Create(args) => args.execute(ctx, client, out).await,
+                ContributorCommands::Update(args) => args.execute(ctx, client, out).await,
+                ContributorCommands::List(args) => args.execute(ctx, client, out).await,
+                ContributorCommands::Get(args) => args.execute(ctx, client, out).await,
+                ContributorCommands::Delete(args) => args.execute(ctx, client, out).await,
             },
             Self::Permission(cmd) => match cmd.command {
                 PermissionCommands::Set(args) => args.execute(client, out),

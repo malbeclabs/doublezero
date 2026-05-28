@@ -50,16 +50,7 @@ impl ListQaCliCommand {
 
 #[cfg(test)]
 mod tests {
-    use doublezero_cli_core::testing::cli_context_default_for_tests;
-    use tokio::runtime::Builder;
-
-    fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(f)
-    }
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
 
     use crate::{allowlist::qa::list::ListQaCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::commands::allowlist::qa::list::ListQaAllowlistCommand;

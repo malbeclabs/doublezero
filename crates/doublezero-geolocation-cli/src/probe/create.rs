@@ -1,6 +1,9 @@
 use crate::client::GeoCliCommand;
 use clap::Args;
-use doublezero_cli_core::validators::{validate_code, validate_pubkey, validate_pubkey_or_code};
+use doublezero_cli_core::{
+    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
+    CliContext,
+};
 use doublezero_sdk::geolocation::geo_probe::create::CreateGeoProbeCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
@@ -25,7 +28,14 @@ pub struct CreateGeoProbeCliCommand {
 }
 
 impl CreateGeoProbeCliCommand {
-    pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: GeoCliCommand, W: Write>(
+        self,
+        ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        tracing::debug!(env = %ctx.env, code = %self.code, "geolocation probe create");
+
         let exchange_pk = client.resolve_exchange_pk(self.exchange)?;
         let metrics_publisher_pk: Pubkey = self.signing_pubkey.parse().expect("validated by clap");
 
@@ -50,8 +60,18 @@ impl CreateGeoProbeCliCommand {
 mod tests {
     use super::*;
     use crate::client::MockGeoCliCommand;
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     #[test]
     fn test_cli_geo_probe_create() {
@@ -89,15 +109,18 @@ mod tests {
             }))
             .returning(move |_| Ok((signature, probe_pda)));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = CreateGeoProbeCliCommand {
-            code: "ams-probe-01".to_string(),
-            exchange: exchange_pk.to_string(),
-            public_ip: Ipv4Addr::new(10, 0, 0, 1),
-            port: 8923,
-            signing_pubkey: metrics_pk.to_string(),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateGeoProbeCliCommand {
+                code: "ams-probe-01".to_string(),
+                exchange: exchange_pk.to_string(),
+                public_ip: Ipv4Addr::new(10, 0, 0, 1),
+                port: 8923,
+                signing_pubkey: metrics_pk.to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));

@@ -1,5 +1,6 @@
 use crate::client::GeoCliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::geolocation::programconfig::init::InitProgramConfigCommand;
 use std::io::Write;
 
@@ -11,7 +12,14 @@ pub struct InitProgramConfigCliCommand {
 }
 
 impl InitProgramConfigCliCommand {
-    pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: GeoCliCommand, W: Write>(
+        self,
+        ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        tracing::debug!(env = %ctx.env, "geolocation init");
+
         if !self.yes {
             eprint!("Initialize geolocation program config? This is a one-time operation. [y/N]: ");
             let mut input = String::new();
@@ -34,6 +42,7 @@ impl InitProgramConfigCliCommand {
 mod tests {
     use super::*;
     use crate::client::MockGeoCliCommand;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -54,8 +63,10 @@ mod tests {
             .with(predicate::eq(InitProgramConfigCommand {}))
             .returning(move |_| Ok((signature, config_pda)));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = InitProgramConfigCliCommand { yes: true }.execute(&client, &mut output);
+        let res =
+            block_on(InitProgramConfigCliCommand { yes: true }.execute(&ctx, &client, &mut output));
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));

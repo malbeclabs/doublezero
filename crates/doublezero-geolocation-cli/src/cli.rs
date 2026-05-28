@@ -45,7 +45,7 @@ impl GeolocationCommand {
         out: &mut W,
     ) -> eyre::Result<()> {
         match self {
-            Self::Init(args) => args.execute(client, out),
+            Self::Init(args) => args.execute(ctx, client, out).await,
             Self::Probe(cmd) => match cmd.command {
                 ProbeCommands::Create(args) => args.execute(ctx, client, out).await,
                 ProbeCommands::Update(args) => args.execute(ctx, client, out).await,

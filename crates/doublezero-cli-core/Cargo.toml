@@ -26,6 +26,14 @@ tracing-subscriber.workspace = true
 doublezero-config.workspace = true
 doublezero-program-common.workspace = true
 
+tokio = { workspace = true, optional = true }
+
+[features]
+# Enables `testing` helpers that require an async runtime (e.g. `block_on`).
+# Module crates turn this on in their dev-dependencies; keeping tokio optional
+# preserves the dependency-light default build.
+testing = ["dep:tokio"]
+
 [dev-dependencies]
 serial_test.workspace = true
 tempfile.workspace = true

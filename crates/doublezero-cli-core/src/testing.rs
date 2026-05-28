@@ -42,6 +42,22 @@ pub fn cli_context_default_for_tests() -> CliContext {
         .expect("default test context must resolve")
 }
 
+/// Run an async future to completion on a fresh current-thread runtime.
+///
+/// CLI module crates only enable tokio's `rt-multi-thread`/`signal` features,
+/// not `macros`, so async verb tests cannot use `#[tokio::test]`. This helper
+/// gives them one shared `block_on` instead of re-rolling it per test module.
+/// Gated behind the `testing` feature so the async runtime stays out of the
+/// default build.
+#[cfg(feature = "testing")]
+pub fn block_on<F: std::future::Future>(f: F) -> F::Output {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("test runtime must build")
+        .block_on(f)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

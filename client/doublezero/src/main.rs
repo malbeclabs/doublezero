@@ -13,27 +13,14 @@ use crate::cli::{
     geolocation::{
         probe::ProbeCommands, user::UserCommands as GeoUserCommands, GeolocationCommands,
     },
+    multicast::MulticastCommands,
 };
 use doublezero_cli_core::LogLevel;
 use doublezero_sdk::{geolocation::client::GeoClient, DZClient, ProgramVersion};
 use doublezero_serviceability::pda::get_globalstate_pda;
 use doublezero_serviceability_cli::{
-    checkversion::check_version,
-    cli::{
-        config::ConfigCommands,
-        device::{DeviceCommands, InterfaceCommands},
-        exchange::ExchangeCommands,
-        globalconfig::{
-            AirdropCommands, AuthorityCommands, FeatureFlagsCommands, FoundationAllowlistCommands,
-            GlobalConfigCommands, QaAllowlistCommands,
-        },
-        link::{LinkCommands, TopologyCommands},
-        location::LocationCommands,
-        user::UserCommands,
-    },
-    doublezerocommand::CliCommandImpl,
-    geoclicommand::GeoCliCommandImpl,
-    version::VersionCliCommand,
+    checkversion::check_version, cli::ServiceabilityCommand, doublezerocommand::CliCommandImpl,
+    geoclicommand::GeoCliCommandImpl, version::VersionCliCommand,
 };
 use servicecontroller::ServiceControllerImpl;
 
@@ -249,16 +236,18 @@ async fn main() -> eyre::Result<()> {
         }
     };
 
-    // Skip version check for Status command to allow checking status of services when the program is running
+    // Skip version check for verbs that should always work even if the program is unavailable.
     let skip_version_check = matches!(
         &command,
         Command::Status(_)
             | Command::Enable(_)
             | Command::Disable(_)
-            | Command::Address(_)
-            | Command::Balance(_)
-            | Command::Export(_)
             | Command::Completion(_)
+            | Command::Serviceability(
+                ServiceabilityCommand::Address(_)
+                    | ServiceabilityCommand::Balance(_)
+                    | ServiceabilityCommand::Export(_),
+            )
     );
     if !app.no_version_warning && !skip_version_check {
         let stderr = std::io::stderr();
@@ -267,8 +256,7 @@ async fn main() -> eyre::Result<()> {
     }
 
     let res = match command {
-        Command::Address(args) => args.execute(&client, &mut handle),
-        Command::Balance(args) => args.execute(&client, &mut handle),
+        // Daemon-control verbs (binary-local)
         Command::Connect(args) => args.execute(&client).await,
         Command::Enable(args) => args.execute(&client).await,
         Command::Disable(args) => args.execute(&client).await,
@@ -277,8 +265,12 @@ async fn main() -> eyre::Result<()> {
         Command::Latency(args) => args.execute(&client).await,
         Command::Routes(args) => args.execute(&client).await,
 
-        Command::Init(args) => args.execute(&client, &mut handle),
-        Command::Migrate(args) => args.execute(&client, &mut handle),
+        // Raw-DZClient diagnostic verbs
+        Command::Account(args) => args.execute(&dzclient, &mut handle),
+        Command::Accounts(args) => args.execute(&dzclient, &mut handle),
+        Command::Log(args) => args.execute(&dzclient, &mut handle),
+
+        // Geolocation (binary-local; module crate deferred per RFC-20 scope)
         Command::InitGeolocationConfig(args) => {
             let geo_client =
                 GeoClient::new(url.clone(), app.geo_program_id.clone(), app.keypair.clone())?;
@@ -287,201 +279,6 @@ async fn main() -> eyre::Result<()> {
             let geo_cli = GeoCliCommandImpl::new(&geo_client, &dzclient, globalstate_pk);
             args.execute(&geo_cli, &mut handle)
         }
-        Command::Config(command) => match command.command {
-            ConfigCommands::Get(args) => args.execute(&client, &mut handle),
-            ConfigCommands::Set(args) => args.execute(&client, &mut handle),
-        },
-        Command::GlobalConfig(command) => match command.command {
-            GlobalConfigCommands::Set(args) => args.execute(&client, &mut handle),
-            GlobalConfigCommands::Get(args) => args.execute(&client, &mut handle),
-            GlobalConfigCommands::Airdrop(command) => match command.command {
-                AirdropCommands::Set(args) => args.execute(&client, &mut handle),
-                AirdropCommands::Get(args) => args.execute(&client, &mut handle),
-            },
-            GlobalConfigCommands::Authority(command) => match command.command {
-                AuthorityCommands::Set(args) => args.execute(&client, &mut handle),
-                AuthorityCommands::Get(args) => args.execute(&client, &mut handle),
-            },
-            GlobalConfigCommands::Allowlist(command) => match command.command {
-                FoundationAllowlistCommands::List(args) => args.execute(&client, &mut handle),
-                FoundationAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
-                FoundationAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
-            },
-            GlobalConfigCommands::QaAllowlist(command) => match command.command {
-                QaAllowlistCommands::List(args) => args.execute(&client, &mut handle),
-                QaAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
-                QaAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
-            },
-            GlobalConfigCommands::SetVersion(args) => args.execute(&client, &mut handle),
-            GlobalConfigCommands::FeatureFlags(command) => match command.command {
-                FeatureFlagsCommands::Get(args) => args.execute(&client, &mut handle),
-                FeatureFlagsCommands::Set(args) => args.execute(&client, &mut handle),
-            },
-        },
-        Command::Account(args) => args.execute(&dzclient, &mut handle),
-        Command::Accounts(args) => args.execute(&dzclient, &mut handle),
-        Command::Location(command) => match command.command {
-            LocationCommands::Create(args) => args.execute(&client, &mut handle),
-            LocationCommands::Update(args) => args.execute(&client, &mut handle),
-            LocationCommands::List(args) => args.execute(&client, &mut handle),
-            LocationCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
-            LocationCommands::Delete(args) => args.execute(&client, &mut handle),
-        },
-        Command::Exchange(command) => match command.command {
-            ExchangeCommands::Create(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::SetDevice(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::Update(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::List(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::Get(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::Delete(args) => args.execute(&client, &mut handle),
-        },
-        Command::Contributor(command) => match command.command {
-            doublezero_serviceability_cli::cli::contributor::ContributorCommands::Create(args) => {
-                args.execute(&client, &mut handle)
-            }
-            doublezero_serviceability_cli::cli::contributor::ContributorCommands::Update(args) => {
-                args.execute(&client, &mut handle)
-            }
-            doublezero_serviceability_cli::cli::contributor::ContributorCommands::List(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::contributor::ContributorCommands::Get(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::contributor::ContributorCommands::Delete(args) => {
-                args.execute(&client, &mut handle)
-            }
-        },
-        Command::Permission(command) => match command.command {
-            doublezero_serviceability_cli::cli::permission::PermissionCommands::Set(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::permission::PermissionCommands::Suspend(args) => {
-                args.execute(&client, &mut handle)
-            }
-            doublezero_serviceability_cli::cli::permission::PermissionCommands::Resume(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::permission::PermissionCommands::Delete(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::permission::PermissionCommands::Get(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::permission::PermissionCommands::List(args) => args.execute(&client, &mut handle),
-        },
-        Command::Tenant(command) => match command.command {
-            doublezero_serviceability_cli::cli::tenant::TenantCommands::Create(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::tenant::TenantCommands::Update(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::tenant::TenantCommands::List(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::tenant::TenantCommands::Get(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::tenant::TenantCommands::Delete(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::tenant::TenantCommands::Administrator(command) => match command.command {
-                doublezero_serviceability_cli::cli::tenant::AdministratorCommands::Add(args) => args.execute(&client, &mut handle),
-                doublezero_serviceability_cli::cli::tenant::AdministratorCommands::Remove(args) => {
-                    args.execute(&client, &mut handle)
-                }
-            },
-        },
-        Command::Device(command) => match command.command {
-            DeviceCommands::Create(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Update(args) => args.execute(&client, &mut handle),
-            DeviceCommands::List(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Get(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Delete(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Interface(command) => match command.command {
-                InterfaceCommands::Create(args) => args.execute(&client, &mut handle),
-                InterfaceCommands::Update(args) => args.execute(&client, &mut handle),
-                InterfaceCommands::List(args) => args.execute(&client, &mut handle),
-                InterfaceCommands::Get(args) => args.execute(&client, &mut handle),
-                InterfaceCommands::Delete(args) => args.execute(&client, &mut handle),
-            },
-            DeviceCommands::SetHealth(args) => args.execute(&client, &mut handle),
-        },
-        Command::Link(command) => match command.command {
-            LinkCommands::Create(args) => match args.command {
-                doublezero_serviceability_cli::cli::link::CreateLinkCommands::Wan(args) => args.execute(&client, &mut handle),
-                doublezero_serviceability_cli::cli::link::CreateLinkCommands::Dzx(args) => args.execute(&client, &mut handle),
-            },
-            LinkCommands::Accept(args) => args.execute(&client, &mut handle),
-            LinkCommands::Update(args) => args.execute(&client, &mut handle),
-            LinkCommands::List(args) => args.execute(&client, &mut handle),
-            LinkCommands::Get(args) => args.execute(&client, &mut handle),
-            LinkCommands::Latency(args) => args.execute(&client, &mut handle),
-            LinkCommands::Delete(args) => args.execute(&client, &mut handle),
-            LinkCommands::SetHealth(args) => args.execute(&client, &mut handle),
-            LinkCommands::Topology(args) => match args.command {
-                TopologyCommands::Create(args) => args.execute(&client, &mut handle),
-                TopologyCommands::Delete(args) => args.execute(&client, &mut handle),
-                TopologyCommands::Clear(args) => args.execute(&client, &mut handle),
-                TopologyCommands::AssignNodeSegments(args) => args.execute(&client, &mut handle),
-                TopologyCommands::List(args) => args.execute(&client, &mut handle),
-            },
-        },
-        Command::AccessPass(command) => match command.command {
-            doublezero_serviceability_cli::cli::accesspass::AccessPassCommands::Set(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::accesspass::AccessPassCommands::Close(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::accesspass::AccessPassCommands::List(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::accesspass::AccessPassCommands::Get(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::accesspass::AccessPassCommands::UserBalances(args) => {
-                args.execute(&client, &mut handle)
-            }
-            doublezero_serviceability_cli::cli::accesspass::AccessPassCommands::Fund(args) => {
-                args.execute(&client, &mut handle, &mut std::io::stdin().lock())
-            }
-        },
-        Command::User(command) => match command.command {
-            UserCommands::Create(args) => args.execute(&client, &mut handle),
-            UserCommands::CreateSubscribe(args) => args.execute(&client, &mut handle),
-            UserCommands::Subscribe(args) => args.execute(&client, &mut handle),
-            UserCommands::Update(args) => args.execute(&client, &mut handle),
-            UserCommands::List(args) => args.execute(&client, &mut handle),
-            UserCommands::Get(args) => args.execute(&client, &mut handle),
-            UserCommands::Delete(args) => args.execute(&client, &mut handle),
-            UserCommands::RequestBan(args) => args.execute(&client, &mut handle),
-        },
-        Command::Multicast(args) => match args.command {
-            cli::multicast::MulticastCommands::Group(args) => match args.command {
-                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCommands::Allowlist(args) => {
-                    match args.command {
-                        doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupAllowlistCommands::Publisher(args) => {
-                            match args.command {
-                                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupPubAllowlistCommands::List(
-                                    args,
-                                ) => args.execute(&client, &mut handle),
-                                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupPubAllowlistCommands::Add(
-                                    args,
-                                ) => args.execute(&client, &mut handle),
-                                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupPubAllowlistCommands::Remove(
-                                    args,
-                                ) => args.execute(&client, &mut handle),
-                            }
-                        }
-                        doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupAllowlistCommands::Subscriber(args) => {
-                            match args.command {
-                                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupSubAllowlistCommands::List(
-                                    args,
-                                ) => args.execute(&client, &mut handle),
-                                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupSubAllowlistCommands::Add(
-                                    args,
-                                ) => args.execute(&client, &mut handle),
-                                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupSubAllowlistCommands::Remove(
-                                    args,
-                                ) => args.execute(&client, &mut handle),
-                            }
-                        }
-                    }
-                }
-                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCommands::Create(args) => {
-                    args.execute(&client, &mut handle)
-                }
-                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCommands::Update(args) => {
-                    args.execute(&client, &mut handle)
-                }
-                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCommands::List(args) => {
-                    args.execute(&client, &mut handle)
-                }
-                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCommands::Get(args) => {
-                    args.execute(&client, &mut handle)
-                }
-                doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCommands::Delete(args) => {
-                    args.execute(&client, &mut handle)
-                }
-            },
-            cli::multicast::MulticastCommands::Subscribe(args) => args.execute(&client).await,
-            cli::multicast::MulticastCommands::Unsubscribe(args) => args.execute(&client).await,
-            cli::multicast::MulticastCommands::Publish(args) => args.execute(&client).await,
-            cli::multicast::MulticastCommands::Unpublish(args) => args.execute(&client).await,
-        },
-
         Command::Geolocation(command) => {
             let geo_client =
                 GeoClient::new(url.clone(), app.geo_program_id.clone(), app.keypair.clone())?;
@@ -514,23 +311,27 @@ async fn main() -> eyre::Result<()> {
             }
         }
 
-        Command::Resource(command) => match command.command {
-            doublezero_serviceability_cli::cli::resource::ResourceCommands::Allocate(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::resource::ResourceCommands::Create(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::resource::ResourceCommands::Deallocate(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::resource::ResourceCommands::Get(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::resource::ResourceCommands::Close(args) => args.execute(&client, &mut handle),
-            doublezero_serviceability_cli::cli::resource::ResourceCommands::Verify(args) => args.execute(&client, &mut handle),
+        // Multicast: the `Group` subtree is module-crate business and dispatched by
+        // `MulticastGroupCommands::execute`; the daemon-coupled async verbs
+        // (Subscribe/Unsubscribe/Publish/Unpublish) stay binary-local because
+        // they depend on `ServiceControllerImpl` and `resolve_client_ip`.
+        Command::Multicast(args) => match args.command {
+            MulticastCommands::Group(args) => args.command.execute(&client, &mut handle),
+            MulticastCommands::Subscribe(args) => args.execute(&client).await,
+            MulticastCommands::Unsubscribe(args) => args.execute(&client).await,
+            MulticastCommands::Publish(args) => args.execute(&client).await,
+            MulticastCommands::Unpublish(args) => args.execute(&client).await,
         },
 
-        Command::Export(args) => args.execute(&client, &mut handle),
-        Command::Keygen(args) => args.execute(&client, &mut handle),
-        Command::Log(args) => args.execute(&dzclient, &mut handle),
+        // Clap shell-completion generator (binary-local)
         Command::Completion(args) => {
             let mut cmd = App::command();
             generate(args.shell, &mut cmd, "doublezero", &mut std::io::stdout());
             Ok(())
         }
+
+        // Flattened serviceability module: single dispatch arm hoists 17 variants.
+        Command::Serviceability(cmd) => cmd.execute(&ctx, &client, &mut handle).await,
     };
 
     match res {

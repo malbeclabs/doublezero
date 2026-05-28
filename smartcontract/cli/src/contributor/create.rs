@@ -1,9 +1,9 @@
 use crate::{
     doublezerocommand::CliCommand,
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{validate_code, validate_pubkey_or_code},
 };
 use clap::Args;
+use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::contributor::{
     create::CreateContributorCommand, list::ListContributorCommand,
 };
@@ -21,9 +21,16 @@ pub struct CreateContributorCliCommand {
 }
 
 impl CreateContributorCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
         let contributors = client.list_contributor(ListContributorCommand {})?;
         if contributors.iter().any(|(_, d)| d.code == self.code) {
@@ -32,23 +39,19 @@ impl CreateContributorCliCommand {
                 self.code
             ));
         }
-        // Create contributor
-        let owner = {
-            if self.owner.eq_ignore_ascii_case("me") {
-                client.get_payer()
-            } else {
-                Pubkey::from_str(&self.owner)?
-            }
+
+        let owner = if self.owner.eq_ignore_ascii_case("me") {
+            client.get_payer()
+        } else {
+            Pubkey::from_str(&self.owner)?
         };
 
         let (signature, _pubkey) = client.create_contributor(CreateContributorCommand {
-            code: self.code.clone(),
+            code: self.code,
             owner,
         })?;
 
-        writeln!(out, "Signature: {signature}",)?;
-
-        Ok(())
+        print_signature(out, &signature)
     }
 }
 
@@ -60,12 +63,22 @@ mod tests {
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::cli_context_default_for_tests;
     use doublezero_sdk::{
         commands::contributor::{create::CreateContributorCommand, list::ListContributorCommand},
         get_contributor_pda, AccountType, Contributor, ContributorStatus,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use tokio::runtime::Builder;
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
 
     #[test]
     fn test_cli_contributor_create() {
@@ -112,21 +125,25 @@ mod tests {
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = CreateContributorCliCommand {
-            code: "test2".to_string(),
-            owner: Pubkey::default().to_string(),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateContributorCliCommand {
+                code: "test2".to_string(),
+                owner: Pubkey::default().to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
 
         let mut output = Vec::new();
-        let res = CreateContributorCliCommand {
-            code: "test".to_string(),
-            owner: Pubkey::default().to_string(),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateContributorCliCommand {
+                code: "test".to_string(),
+                owner: Pubkey::default().to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

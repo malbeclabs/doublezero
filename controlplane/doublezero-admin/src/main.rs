@@ -127,15 +127,19 @@ async fn main() -> eyre::Result<()> {
         },
         Command::Contributor(command) => match command.command {
             cli::contributor::ContributorCommands::Create(args) => {
-                args.execute(&client, &mut handle)
+                args.execute(&ctx, &client, &mut handle).await
             }
             cli::contributor::ContributorCommands::Update(args) => {
-                args.execute(&client, &mut handle)
+                args.execute(&ctx, &client, &mut handle).await
             }
-            cli::contributor::ContributorCommands::List(args) => args.execute(&client, &mut handle),
-            cli::contributor::ContributorCommands::Get(args) => args.execute(&client, &mut handle),
+            cli::contributor::ContributorCommands::List(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
+            cli::contributor::ContributorCommands::Get(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
             cli::contributor::ContributorCommands::Delete(args) => {
-                args.execute(&client, &mut handle)
+                args.execute(&ctx, &client, &mut handle).await
             }
         },
         Command::Tenant(command) => match command.command {

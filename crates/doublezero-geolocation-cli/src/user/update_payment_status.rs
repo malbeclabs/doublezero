@@ -1,6 +1,6 @@
 use crate::client::GeoCliCommand;
-use doublezero_cli_core::validators::validate_pubkey_or_code;
 use clap::{Args, ValueEnum};
+use doublezero_cli_core::validators::validate_pubkey_or_code;
 use doublezero_geolocation::state::geolocation_user::GeolocationPaymentStatus;
 use doublezero_sdk::geolocation::geolocation_user::{
     get::GetGeolocationUserCommand, update_payment_status::UpdatePaymentStatusCommand,

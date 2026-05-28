@@ -1,6 +1,6 @@
 use crate::client::GeoCliCommand;
-use doublezero_cli_core::validators::{validate_code, validate_pubkey};
 use clap::Args;
+use doublezero_cli_core::validators::{validate_code, validate_pubkey};
 use doublezero_sdk::geolocation::geolocation_user::create::CreateGeolocationUserCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;

@@ -8,5 +8,5 @@ pub mod init;
 pub mod probe;
 pub mod user;
 
-pub use cli::{GeolocationCliCommand, GeolocationCommand};
+pub use cli::{GeolocationArgs, GeolocationCommand};
 pub use client::{GeoCliCommand, GeoCliCommandImpl};

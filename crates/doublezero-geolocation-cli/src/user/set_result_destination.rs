@@ -1,6 +1,6 @@
 use crate::client::GeoCliCommand;
-use doublezero_cli_core::validators::validate_code;
 use clap::Args;
+use doublezero_cli_core::validators::validate_code;
 use doublezero_geolocation::validation::validate_public_ip;
 use doublezero_sdk::geolocation::geolocation_user::{
     get::GetGeolocationUserCommand, set_result_destination::SetResultDestinationCommand,

@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - Migrate `doublezero geolocation` subcommands into the new `doublezero-geolocation-cli` module crate per RFC-20. The `probe` and `user` subtrees and the hidden `init` verb are now owned by the crate; the binary mounts them via `GeolocationArgs` from `doublezero-geolocation-cli`. The hidden top-level `doublezero init-geolocation-config` alias is removed; use `doublezero geolocation init` instead.
 - ci(e2e): add trusted fork PR e2e dispatch ([#3777](https://github.com/malbeclabs/doublezero/pull/3777))
 - Smartcontract (Serviceability)
   - Enforce non-zero bandwidth on CYOA/DIA interfaces in `process_create_device_interface` and `process_update_device_interface`. On update the rule fires only when the transaction is changing CYOA, DIA, or bandwidth, so legacy zero-bandwidth CYOA/DIA interfaces already onchain can still be updated for unrelated fields without first being repaired. Enforce `side_a_iface.bandwidth >= link.bandwidth` (and `side_z_iface.bandwidth >= link.bandwidth` for WAN; DZX side Z is external) in `process_create_link`. Enforce the same rule for both side A and side Z in `process_accept_link` (the DZX accept path), so DZX side Z's bandwidth is validated when it is first bound and side A is re-validated in case it was lowered via `process_update_device_interface` between create and accept. All rejections surface as `DoubleZeroError::InvalidBandwidth` (`Custom(31)`).

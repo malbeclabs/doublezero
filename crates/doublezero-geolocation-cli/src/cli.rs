@@ -26,21 +26,18 @@ pub enum GeolocationCommand {
     User(UserCliCommand),
 }
 
-/// Wrapper retained for the migration period so the binary can mount
-/// `Command::Geolocation(GeolocationCliCommand)` while Task 3 lands.
-/// Remove once the binary mounts `GeolocationCommand` directly.
+/// Entry-point `Args` struct for the `doublezero geolocation` subtree.
+///
+/// Clap requires an `Args`-implementing struct to carry a nested `Subcommand`
+/// enum; the binary mounts this as `Command::Geolocation(GeolocationArgs)`.
 #[derive(Args, Debug)]
-pub struct GeolocationCliCommand {
+pub struct GeolocationArgs {
     #[command(subcommand)]
     pub command: GeolocationCommand,
 }
 
 impl GeolocationCommand {
-    pub fn execute<C: GeoCliCommand, W: Write>(
-        self,
-        client: &C,
-        out: &mut W,
-    ) -> eyre::Result<()> {
+    pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
         match self {
             Self::Init(args) => args.execute(client, out),
             Self::Probe(cmd) => match cmd.command {

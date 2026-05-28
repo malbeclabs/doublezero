@@ -10,9 +10,9 @@ mod requirements;
 mod servicecontroller;
 use crate::cli::{command::Command, multicast::MulticastCommands};
 use doublezero_cli_core::LogLevel;
+use doublezero_geolocation_cli::GeoCliCommandImpl;
 use doublezero_sdk::{geolocation::client::GeoClient, DZClient, ProgramVersion};
 use doublezero_serviceability::pda::get_globalstate_pda;
-use doublezero_geolocation_cli::GeoCliCommandImpl;
 use doublezero_serviceability_cli::{
     checkversion::check_version, cli::ServiceabilityCommand, doublezerocommand::CliCommandImpl,
     version::VersionCliCommand,
@@ -265,22 +265,14 @@ async fn main() -> eyre::Result<()> {
         Command::Accounts(args) => args.execute(&dzclient, &mut handle),
         Command::Log(args) => args.execute(&dzclient, &mut handle),
 
-        // Geolocation (binary-local; module crate deferred per RFC-20 scope)
-        Command::InitGeolocationConfig(args) => {
+        // Geolocation module crate (doublezero-geolocation-cli per RFC-20)
+        Command::Geolocation(args) => {
             let geo_client =
                 GeoClient::new(url.clone(), app.geo_program_id.clone(), app.keypair.clone())?;
             let svc_program_id = *dzclient.get_program_id();
             let (globalstate_pk, _) = get_globalstate_pda(&svc_program_id);
             let geo_cli = GeoCliCommandImpl::new(&geo_client, &dzclient, globalstate_pk);
-            args.execute(&geo_cli, &mut handle)
-        }
-        Command::Geolocation(command) => {
-            let geo_client =
-                GeoClient::new(url.clone(), app.geo_program_id.clone(), app.keypair.clone())?;
-            let svc_program_id = *dzclient.get_program_id();
-            let (globalstate_pk, _) = get_globalstate_pda(&svc_program_id);
-            let geo_cli = GeoCliCommandImpl::new(&geo_client, &dzclient, globalstate_pk);
-            command.command.execute(&geo_cli, &mut handle)
+            args.command.execute(&geo_cli, &mut handle)
         }
 
         // Multicast: the `Group` subtree is module-crate business and dispatched by

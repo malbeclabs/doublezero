@@ -1,6 +1,6 @@
 use crate::client::GeoCliCommand;
-use doublezero_cli_core::validators::{validate_pubkey, validate_pubkey_or_code};
 use clap::{Args, ValueEnum};
+use doublezero_cli_core::validators::{validate_pubkey, validate_pubkey_or_code};
 use doublezero_geolocation::state::geolocation_user::GeoLocationTargetType;
 use doublezero_sdk::geolocation::{
     geo_probe::{get::GetGeoProbeCommand, list::ListGeoProbeCommand},

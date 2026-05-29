@@ -62,6 +62,7 @@ All notable changes to this project will be documented in this file.
   - Reconcile the RFC-20 docs with the implemented global logging flag: `rfcs/rfc20-cli-standardization.md` and `docs/cli-standard.md` now describe `--log-level <off|error|warn|info|debug|trace>` (default `warn`) instead of the never-implemented repeatable `--log-verbose`. Documentation only; the binary is unchanged.
 - Telemetry
   - Replace the geoprobe `MinCache` best/backup eviction with a guarded-backup pattern: a backup is only collected while `best` is within its final `maxAge/2` ("guard") window, so on `best`'s expiry the promoted value is always a recent-window minimum rather than a stale fallback. A new record low resets `best` and clears `backup`, and expiry now promotes in a loop so a backup that is itself already expired cannot be promoted. `Best` / `BestRttNs` become pure read-through accessors returning the lower of the two non-expired slots without mutating or promoting.
+  - Add `ip-mroute`, `ip-mroute-count`, and the four MSDP show-commands (`ip-msdp-summary`, `ip-msdp-pim-sa-cache`, `ip-msdp-sa-cache`, `ip-msdp-sa-cache-rejected`) to the state-ingest server's default state-collect command list. Devices with `--state-collect-enable` will run each command via Arista eAPI and upload signed JSON snapshots to S3; downstream parsing into ClickHouse lands in separate `lake/indexer/pkg/dzingest` PRs (one per kind family).
 
 ## [v0.24.0](https://github.com/malbeclabs/doublezero/compare/client/v0.23.0...client/v0.24.0) - 2026-05-22
 

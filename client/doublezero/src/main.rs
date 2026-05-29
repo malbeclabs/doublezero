@@ -213,19 +213,15 @@ async fn main() -> eyre::Result<()> {
         std::process::exit(1);
     });
 
-    // Bridge to the legacy `DZClient::new(Option<String>, ...)` signature.
-    // CliContext now carries the fully resolved values for URL/WS/program-ID,
-    // so we forward them directly. The keypair argument is an exception: it
-    // must reflect only the `--keypair` CLI flag so that `DZClient::new`'s
-    // internal `load_keypair` precedence chain (CLI flag > `DOUBLEZERO_KEYPAIR`
-    // env var > stdin > persisted config) is preserved. Passing the layered
-    // ctx value here would mask the env var, which the e2e contributor-auth
-    // suite relies on for negative-authz checks.
-    let url = Some(ctx.ledger_rpc_url.clone());
-    let ws = Some(ctx.ledger_ws_rpc_url.clone());
-    let program_id = Some(ctx.serviceability_program_id.to_string());
-
-    let dzclient = DZClient::new(url.clone(), ws, program_id, app.keypair.clone())?;
+    // Build the SDK client directly from the resolved `CliContext`. The context
+    // already carries the fully resolved URL/WS/program-ID, so `from_context`
+    // consumes them verbatim (no config-file re-read, no moniker conversion).
+    // The keypair argument reflects only the `--keypair` CLI flag so that the
+    // SDK's `load_keypair` precedence chain (CLI flag > `DOUBLEZERO_KEYPAIR`
+    // env var > stdin > context keypair path > default) is preserved. Passing
+    // the layered ctx value as the CLI source would mask the env var, which the
+    // e2e contributor-auth suite relies on for negative-authz checks.
+    let dzclient = DZClient::from_context(&ctx, app.keypair.clone())?;
     let client = CliCommandImpl::new(&dzclient);
 
     let stdout = std::io::stdout();
@@ -281,8 +277,7 @@ async fn main() -> eyre::Result<()> {
 
         // Geolocation module crate (doublezero-geolocation-cli per RFC-20)
         Command::Geolocation(args) => {
-            let geo_client =
-                GeoClient::new(url.clone(), app.geo_program_id.clone(), app.keypair.clone())?;
+            let geo_client = GeoClient::from_context(&ctx, app.keypair.clone())?;
             let svc_program_id = *dzclient.get_program_id();
             let (globalstate_pk, _) = get_globalstate_pda(&svc_program_id);
             let geo_cli = GeoCliCommandImpl::new(&geo_client, &dzclient, globalstate_pk);

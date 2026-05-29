@@ -40,7 +40,7 @@ tabled.workspace = true
 tokio.workspace = true
 
 # Dependencies from this workspace
-doublezero_sdk.workspace = true
+doublezero_sdk = { workspace = true, features = ["cli-context"] }
 doublezero-geolocation-cli.workspace = true
 doublezero-serviceability-cli.workspace = true
 doublezero-cli-core.workspace = true

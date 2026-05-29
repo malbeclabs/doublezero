@@ -1772,6 +1772,7 @@ dependencies = [
  "chrono",
  "directories-next",
  "dirs-next",
+ "doublezero-cli-core",
  "doublezero-config",
  "doublezero-geolocation",
  "doublezero-program-common",

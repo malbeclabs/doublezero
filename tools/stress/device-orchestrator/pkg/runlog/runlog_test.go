@@ -15,7 +15,7 @@ import (
 func TestWriter_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.jsonl")
 	w, err := runlog.Open(path)
 	require.NoError(t, err)
 
@@ -50,7 +50,7 @@ func TestWriter_RoundTrip(t *testing.T) {
 func TestWriter_FillsMissingTimestamp(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.jsonl")
 	w, err := runlog.Open(path)
 	require.NoError(t, err)
 	defer w.Close()
@@ -68,7 +68,7 @@ func TestWriter_FillsMissingTimestamp(t *testing.T) {
 func TestWriter_RejectsAfterClose(t *testing.T) {
 	t.Parallel()
 
-	w, err := runlog.Open(filepath.Join(t.TempDir(), "orchestrator-runlog.json"))
+	w, err := runlog.Open(filepath.Join(t.TempDir(), "orchestrator-runlog.jsonl"))
 	require.NoError(t, err)
 	require.NoError(t, w.Close())
 
@@ -79,7 +79,7 @@ func TestWriter_RejectsAfterClose(t *testing.T) {
 func TestWriter_Truncates(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.jsonl")
 	require.NoError(t, os.WriteFile(path, []byte("stale\n"), 0o644))
 
 	w, err := runlog.Open(path)

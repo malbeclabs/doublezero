@@ -88,15 +88,13 @@ func (l *Live) CreateUser(ctx context.Context, idx int) (sweep.CreateResult, err
 	// account visibility; we don't get distinct stage timestamps today, so
 	// confirm and activate both anchor at the post-call wallclock. A future
 	// SDK refactor can split these.
-	tunnelID, err := l.fetchTunnelID(ctx, userPDA)
-	if err != nil {
-		// Surface the tunnel ID as 0; the sweep records the create as successful
-		// because the on-chain User already exists.
-		tunnelID = 0
-	}
+	//
+	// TunnelID is recorded as 0 for now: the SDK's CreateUser doesn't surface
+	// the assigned tunnel_id, and reading it back needs the User account bytes.
+	// Part 3 wires the per-account fetch here.
 	return sweep.CreateResult{
 		UserPDA:     userPDA,
-		TunnelID:    tunnelID,
+		TunnelID:    0,
 		ConfirmedAt: now,
 		ActivatedAt: now,
 	}, nil
@@ -112,18 +110,6 @@ func (l *Live) DeleteUser(ctx context.Context, userPDA solana.PublicKey) (sweep.
 		ConfirmedAt: now,
 		ActivatedAt: now,
 	}, nil
-}
-
-// fetchTunnelID reads the user account and returns its assigned TunnelId.
-// Used so the runlog records the kernel interface identifier the part-3
-// agent runner will key on.
-func (l *Live) fetchTunnelID(ctx context.Context, userPDA solana.PublicKey) (uint16, error) {
-	// We can't read the assigned tunnel_id without the User's on-chain bytes,
-	// which the SDK doesn't surface from CreateUser. Until a downstream
-	// helper is added, callers either skip this column (TunnelID = 0) or wire
-	// a per-account fetch in cmd/. The package signature is kept stable so
-	// part-3 can drop in the real fetch.
-	return 0, nil
 }
 
 // ipForIndex returns base shifted by idx, wrapping at the /16 boundary so the

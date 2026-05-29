@@ -63,6 +63,10 @@ type fakeExecutor struct {
 	// Optional hook to fail on the Nth create (1-based) — used by the abort test.
 	failCreateOnCall int
 	failErr          error
+
+	// Optional hook invoked after the Nth create completes (1-based), with the
+	// created count. The abort test uses it to cancel the sweep context.
+	afterCreate func(calls int)
 }
 
 func newFakeExecutor(owner solana.PublicKey) *fakeExecutor {
@@ -95,6 +99,10 @@ func (f *fakeExecutor) CreateUser(ctx context.Context, idx int) (sweep.CreateRes
 		PubKey:   pk,
 	})
 	f.mu.Unlock()
+
+	if f.afterCreate != nil {
+		f.afterCreate(calls)
+	}
 
 	now := time.Unix(1_700_000_000, int64(calls)*1_000_000) // micro-spaced timestamps
 	return sweep.CreateResult{
@@ -145,7 +153,7 @@ func TestRun_ProvisionsThenDeprovisionsInReverseOrder(t *testing.T) {
 
 	owner := solana.NewWallet().PublicKey()
 	exec := newFakeExecutor(owner)
-	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.jsonl")
 	w, err := runlog.Open(path)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = w.Close() })
@@ -205,7 +213,7 @@ func TestRun_HandlesZeroTarget(t *testing.T) {
 
 	owner := solana.NewWallet().PublicKey()
 	exec := newFakeExecutor(owner)
-	path := filepath.Join(t.TempDir(), "runlog.json")
+	path := filepath.Join(t.TempDir(), "runlog.jsonl")
 	w, err := runlog.Open(path)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = w.Close() })
@@ -234,13 +242,21 @@ func TestRun_AbortBetweenUsersStillCleansUp(t *testing.T) {
 
 	owner := solana.NewWallet().PublicKey()
 	exec := newFakeExecutor(owner)
-	exec.failCreateOnCall = 3
-	exec.failErr = context.Canceled
 
-	path := filepath.Join(t.TempDir(), "runlog.json")
+	path := filepath.Join(t.TempDir(), "runlog.jsonl")
 	w, err := runlog.Open(path)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = w.Close() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Cancel the sweep after the 2nd user is created, simulating an abort firing
+	// mid-sweep. The next provision iteration observes it at the boundary.
+	exec.afterCreate = func(calls int) {
+		if calls == 2 {
+			cancel()
+		}
+	}
 
 	cfg := sweep.Config{
 		RunID:         "run-abort",
@@ -252,14 +268,17 @@ func TestRun_AbortBetweenUsersStillCleansUp(t *testing.T) {
 		Runlog:        w,
 		Clock:         &fakeClock{now: time.Unix(1, 0)},
 	}
-	err = sweep.Run(context.Background(), cfg)
+	err = sweep.Run(ctx, cfg)
 	require.Error(t, err, "abort during provision should surface error")
+	assert.True(t, errors.Is(err, context.Canceled))
 
-	// Even on abort, deprovision should fire for the two users that were created.
+	// Even on abort, deprovision must run for the two users that were created —
+	// teardown uses an uncancellable context so the cancelled ctx doesn't leak state.
 	require.NoError(t, w.Close())
 	rows := readRows(t, path)
 
-	// 2 provisions × 3 events = 6; plus a submit event for the failed third; plus 2 deprovision sets.
+	assert.Equal(t, int32(2), exec.createN.Load(), "abort stops further creates at the boundary")
+	assert.Equal(t, int32(2), exec.deleteN.Load(), "both created users are deprovisioned")
 	deprovisionActivates := 0
 	for _, r := range rows {
 		if r.Event == runlog.EventDeprovisionActivate {
@@ -272,15 +291,17 @@ func TestRun_AbortBetweenUsersStillCleansUp(t *testing.T) {
 func TestRun_RejectsInvalidConfig(t *testing.T) {
 	t.Parallel()
 
+	owner := solana.NewWallet().PublicKey()
 	tests := []struct {
 		name string
 		cfg  sweep.Config
 	}{
-		{name: "negative target", cfg: sweep.Config{Target: -1, UsersPerBatch: 1, RunID: "r", Executor: &fakeExecutor{}, Runlog: &runlog.Writer{}}},
-		{name: "zero batch", cfg: sweep.Config{Target: 1, UsersPerBatch: 0, RunID: "r", Executor: &fakeExecutor{}, Runlog: &runlog.Writer{}}},
-		{name: "missing run id", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, Executor: &fakeExecutor{}, Runlog: &runlog.Writer{}}},
-		{name: "missing executor", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", Runlog: &runlog.Writer{}}},
-		{name: "missing runlog", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", Executor: &fakeExecutor{}}},
+		{name: "negative target", cfg: sweep.Config{Target: -1, UsersPerBatch: 1, RunID: "r", OwnerFilter: owner, Executor: &fakeExecutor{}, Runlog: &runlog.Writer{}}},
+		{name: "zero batch", cfg: sweep.Config{Target: 1, UsersPerBatch: 0, RunID: "r", OwnerFilter: owner, Executor: &fakeExecutor{}, Runlog: &runlog.Writer{}}},
+		{name: "missing run id", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, OwnerFilter: owner, Executor: &fakeExecutor{}, Runlog: &runlog.Writer{}}},
+		{name: "missing owner filter", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", Executor: &fakeExecutor{}, Runlog: &runlog.Writer{}}},
+		{name: "missing executor", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", OwnerFilter: owner, Runlog: &runlog.Writer{}}},
+		{name: "missing runlog", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", OwnerFilter: owner, Executor: &fakeExecutor{}}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -296,7 +317,7 @@ func TestRun_CancellationStopsBetweenUsers(t *testing.T) {
 
 	owner := solana.NewWallet().PublicKey()
 	exec := newFakeExecutor(owner)
-	path := filepath.Join(t.TempDir(), "runlog.json")
+	path := filepath.Join(t.TempDir(), "runlog.jsonl")
 	w, err := runlog.Open(path)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = w.Close() })

@@ -89,11 +89,20 @@ func (c *Config) validate() error {
 		return errors.New("sweep: Hold must be >= 0")
 	case c.RunID == "":
 		return errors.New("sweep: RunID is required")
+	case c.OwnerFilter.IsZero():
+		return errors.New("sweep: OwnerFilter is required")
 	case c.Executor == nil:
 		return errors.New("sweep: Executor is required")
 	case c.Runlog == nil:
 		return errors.New("sweep: Runlog is required")
 	}
+	return nil
+}
+
+// applyDefaults fills the optional dependencies with production implementations.
+// Kept separate from validate so validation stays free of mutation; Run calls
+// it before validate (Agent's default depends on the resolved Logger).
+func (c *Config) applyDefaults() {
 	if c.Clock == nil {
 		c.Clock = RealClock{}
 	}
@@ -103,7 +112,6 @@ func (c *Config) validate() error {
 	if c.Agent == nil {
 		c.Agent = agent.NewNoop(c.Logger)
 	}
-	return nil
 }
 
 // createdUser tracks an orchestrator-owned user so the deprovision phase can
@@ -118,9 +126,13 @@ type createdUser struct {
 // number of users actually created/deleted alongside the error (if any), so
 // callers can report partial progress on abort.
 func Run(ctx context.Context, cfg Config) error {
+	cfg.applyDefaults()
 	if err := cfg.validate(); err != nil {
 		return err
 	}
+	// Tag every sweep log line with the run ID.
+	cfg.Logger = cfg.Logger.With("run_id", cfg.RunID)
+
 	if err := cfg.Agent.Start(ctx); err != nil {
 		return fmt.Errorf("start agent runner: %w", err)
 	}
@@ -130,11 +142,12 @@ func Run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	// Always attempt deprovision so an abort during provision still cleans up
-	// what the sweep created. Use a fresh context for the deprovision phase if
-	// the original was cancelled, since the operator wants the tear-down to
-	// finish before exit. We respect the parent context's lifetime via the
-	// outer Run's error return — callers that want a hard stop pass a deadline.
-	depErr := deprovision(ctx, &cfg, created)
+	// what the sweep created. Teardown runs under a context derived with
+	// WithoutCancel: an abort/signal that cancelled ctx must not also abandon
+	// the users we already created, so deprovision ignores that cancellation
+	// (it still inherits ctx's values). Callers wanting a hard stop on teardown
+	// must enforce it out of band.
+	depErr := deprovision(context.WithoutCancel(ctx), &cfg, created)
 	if err != nil {
 		return err
 	}
@@ -182,7 +195,11 @@ func provision(ctx context.Context, cfg *Config) ([]createdUser, error) {
 				return created, err
 			}
 
-			res, err := cfg.Executor.CreateUser(ctx, idx)
+			// Don't let an abort interrupt an in-flight create. A cancelled
+			// CreateUser can return an error even after the transaction landed
+			// onchain, which would orphan a user the deprovision phase never
+			// learns about. Abort is observed at the iteration boundary above.
+			res, err := cfg.Executor.CreateUser(context.WithoutCancel(ctx), idx)
 			if err != nil {
 				return created, fmt.Errorf("create user idx=%d: %w", idx, err)
 			}
@@ -201,7 +218,10 @@ func provision(ctx context.Context, cfg *Config) ([]createdUser, error) {
 		if runningTarget >= cfg.Target {
 			break
 		}
-		if cfg.Hold > 0 {
+		// Only hold when this batch actually created users; a no-op batch
+		// (target already satisfied by pre-existing state) shouldn't burn the
+		// hold interval.
+		if plan.ToCreate > 0 && cfg.Hold > 0 {
 			select {
 			case <-cfg.Clock.After(cfg.Hold):
 			case <-ctx.Done():
@@ -213,13 +233,12 @@ func provision(ctx context.Context, cfg *Config) ([]createdUser, error) {
 }
 
 // deprovision walks the created slice in reverse, emitting deprovision_*
-// events for each.
+// events for each. It runs to completion regardless of ctx cancellation (Run
+// passes an uncancellable teardown context) so an aborted sweep never leaks
+// the users it created.
 func deprovision(ctx context.Context, cfg *Config, created []createdUser) error {
 	activeCount := len(created)
 	for i := len(created) - 1; i >= 0; i-- {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
 		u := created[i]
 		pkStr := u.pubkey.String()
 		submitAt := cfg.Clock.Now()

@@ -6,6 +6,7 @@ package agent
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -57,16 +58,21 @@ func NewNoop(log *slog.Logger) Runner {
 type noop struct {
 	log    *slog.Logger
 	events chan Event
+	once   sync.Once
 }
 
+// Start is idempotent: a second call is a no-op so the events channel is closed
+// exactly once (a double close would panic).
 func (n *noop) Start(ctx context.Context) error {
-	if n.log != nil {
-		n.log.Debug("agent: noop runner started (no events will be emitted)")
-	}
-	go func() {
-		<-ctx.Done()
-		close(n.events)
-	}()
+	n.once.Do(func() {
+		if n.log != nil {
+			n.log.Debug("agent: noop runner started (no events will be emitted)")
+		}
+		go func() {
+			<-ctx.Done()
+			close(n.events)
+		}()
+	})
 	return nil
 }
 

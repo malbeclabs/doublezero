@@ -1,5 +1,5 @@
 // Package runlog appends per-event rows to the orchestrator runlog file
-// (`orchestrator-runlog.json`). One row per line; line-delimited JSON so the
+// (`orchestrator-runlog.jsonl`). One row per line; line-delimited JSON so the
 // file can be tailed and downstream tooling can parse incrementally.
 //
 // Row schema (per #3746):
@@ -64,10 +64,9 @@ func Open(path string) (*Writer, error) {
 	return &Writer{w: f, path: path}, nil
 }
 
-// Path returns the file path the writer is appending to.
 func (w *Writer) Path() string { return w.path }
 
-// Append serializes row as JSON and writes a single line.
+// Append serializes row as a single line of JSON. Safe for concurrent use.
 func (w *Writer) Append(row Row) error {
 	if row.TNs == 0 {
 		row.TNs = time.Now().UnixNano()
@@ -88,7 +87,6 @@ func (w *Writer) Append(row Row) error {
 	return nil
 }
 
-// Close flushes and closes the underlying file.
 func (w *Writer) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()

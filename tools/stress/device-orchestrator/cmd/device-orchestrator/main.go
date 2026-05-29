@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"syscall"
 	"time"
 
@@ -74,7 +75,7 @@ func run() error {
 		keypairPath     = flag.String("keypair", "", "Path to the orchestrator's solana keypair JSON.")
 		controllerAddr  = flag.String("controller", "", "Controller IP:PORT, forwarded to the DUT agent in part 3.")
 		abortFile       = flag.String("abort-file", "", "Path to a sentinel file; when it appears the sweep finishes the current user and exits.")
-		workingDir      = flag.String("working-dir", ".", "Output directory for orchestrator-config.json / orchestrator-runlog.json.")
+		workingDir      = flag.String("working-dir", ".", "Output directory for orchestrator-config.json / orchestrator-runlog.jsonl.")
 		clientIPBase    = flag.String("client-ip-base", "100.64.0.0", "Starting IPv4 address; per-user IP is base + idx.")
 		tunnelEndpoint  = flag.String("tunnel-endpoint", "0.0.0.0", "Tunnel endpoint IP passed to UserCreateArgs; 0.0.0.0 lets the program fall back to the device's public IP.")
 		tenantPubkey    = flag.String("tenant-pubkey", "", "Optional tenant pubkey for UserCreateArgs.")
@@ -126,6 +127,20 @@ func run() error {
 		TunnelEndpoint:  *tunnelEndpoint,
 		TenantPubkey:    *tenantPubkey,
 	}
+	// Validate required flags before writing anything, so a bad invocation
+	// doesn't leave a config file behind. A dry-run is exempt: its whole job is
+	// to dump the resolved config without needing the live-RPC flags.
+	if !*dryRun {
+		if err := requireFlags(map[string]string{
+			"--dut-pubkey": *dutPubkey,
+			"--rpc-url":    *rpcURL,
+			"--program-id": *programID,
+			"--keypair":    *keypairPath,
+		}); err != nil {
+			return err
+		}
+	}
+
 	configPath := filepath.Join(*workingDir, "orchestrator-config.json")
 	if err := dumpJSON(configPath, resolved); err != nil {
 		return fmt.Errorf("write orchestrator-config.json: %w", err)
@@ -135,15 +150,6 @@ func run() error {
 	if *dryRun {
 		logger.Info("dry-run: skipping sweep")
 		return nil
-	}
-
-	if err := requireFlags(map[string]string{
-		"--dut-pubkey": *dutPubkey,
-		"--rpc-url":    *rpcURL,
-		"--program-id": *programID,
-		"--keypair":    *keypairPath,
-	}); err != nil {
-		return err
 	}
 
 	dutPK, err := solana.PublicKeyFromBase58(*dutPubkey)
@@ -186,13 +192,13 @@ func run() error {
 		return err
 	}
 
-	runlogPath := filepath.Join(*workingDir, "orchestrator-runlog.json")
+	runlogPath := filepath.Join(*workingDir, "orchestrator-runlog.jsonl")
 	rlw, err := runlog.Open(runlogPath)
 	if err != nil {
 		return err
 	}
 	defer rlw.Close()
-	logger.Info("orchestrator-runlog.json open", "path", runlogPath)
+	logger.Info("orchestrator-runlog.jsonl open", "path", runlogPath)
 
 	// Compose ctx: signal cancellation + abort-file cancellation.
 	rootCtx, rootCancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -238,12 +244,18 @@ func newLogger(level string) *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl}))
 }
 
-func dumpJSON(path string, v any) error {
+func dumpJSON(path string, v any) (err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	// Capture the Close error so a flush failure (e.g. a full filesystem) on the
+	// buffered JSON isn't swallowed.
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
@@ -257,6 +269,8 @@ func requireFlags(required map[string]string) error {
 		}
 	}
 	if len(missing) > 0 {
+		// Sort so the error is deterministic regardless of map iteration order.
+		sort.Strings(missing)
 		return fmt.Errorf("missing required flag(s): %v", missing)
 	}
 	return nil

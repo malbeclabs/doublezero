@@ -1,7 +1,7 @@
 pub use crate::config::{
-    convert_geo_program_moniker, create_new_pubkey_user, default_geolocation_program_id,
-    default_program_id, get_doublezero_pubkey, read_doublezero_config, write_doublezero_config,
-    ClientConfig,
+    convert_geo_program_moniker, create_new_pubkey_user, default_environment,
+    default_geolocation_program_id, default_program_id, get_doublezero_pubkey,
+    read_doublezero_config, write_doublezero_config, ClientConfig,
 };
 pub use doublezero_serviceability::{
     addresses::*,

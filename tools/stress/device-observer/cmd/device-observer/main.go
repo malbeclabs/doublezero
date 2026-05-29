@@ -112,7 +112,7 @@ func run() error {
 
 	collectors := []collector.Collector{
 		sample.NewSampler(client, *workingDir, *sampleInterval, logger),
-		promscrape.New(*agentMetricsURL, *workingDir),
+		promscrape.New(*agentMetricsURL, *workingDir, *sampleInterval, logger),
 		loggingtail.NewEOS(client, *workingDir),
 		loggingtail.NewAgent(*workingDir),
 		runlog.New(*workingDir),

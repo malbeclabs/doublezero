@@ -44,18 +44,9 @@ impl CreateGeolocationUserCliCommand {
 mod tests {
     use super::*;
     use crate::client::MockGeoCliCommand;
-    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
-    use tokio::runtime::Builder;
-
-    fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(f)
-    }
 
     #[test]
     fn test_cli_geolocation_user_create() {

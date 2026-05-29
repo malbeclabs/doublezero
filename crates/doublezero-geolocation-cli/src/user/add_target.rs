@@ -146,7 +146,7 @@ pub(super) fn resolve_probe<C: GeoCliCommand>(
 mod tests {
     use super::*;
     use crate::client::MockGeoCliCommand;
-    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_geolocation::state::{
         accounttype::AccountType,
         geo_probe::GeoProbe,
@@ -158,15 +158,6 @@ mod tests {
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::collections::HashMap;
-    use tokio::runtime::Builder;
-
-    fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(f)
-    }
 
     fn mock_get_geolocation_user(client: &mut MockGeoCliCommand) {
         client.expect_get_geolocation_user().returning(move |cmd| {

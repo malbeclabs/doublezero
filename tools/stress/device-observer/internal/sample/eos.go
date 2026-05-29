@@ -69,8 +69,19 @@ func (s *Sampler) tick(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		if err := s.runOne(c, ts); err != nil {
-			s.logger.Warn("sample command failed", "command", c.cmd, "err", err)
+		// Run each command in a goroutine so ctx cancellation can
+		// abandon the tick even though goeapi.RunCommands does not
+		// accept a context. The leaked goroutine finishes whenever
+		// the underlying HTTP call returns and does not block exit.
+		done := make(chan error, 1)
+		go func() { done <- s.runOne(c, ts) }()
+		select {
+		case <-ctx.Done():
+			return
+		case err := <-done:
+			if err != nil {
+				s.logger.Warn("sample command failed", "command", c.cmd, "err", err)
+			}
 		}
 	}
 }
@@ -92,7 +103,7 @@ func (s *Sampler) runOne(c commandSpec, ts time.Time) error {
 		body = []byte(text)
 	}
 	path := filepath.Join(s.workingDir, fmt.Sprintf("%s-%s.%s", c.slug, fileTimestamp(ts), ext))
-	if err := os.WriteFile(path, body, 0o644); err != nil {
+	if err := os.WriteFile(path, body, 0o640); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -65,13 +66,30 @@ func run() error {
 		flag.Usage()
 		return errors.New("--dut-host, --agent-metrics-url, and --working-dir are required")
 	}
+	if *sampleInterval <= 0 {
+		return errors.New("--sample-interval must be > 0")
+	}
 	if *abortFile == "" {
 		*abortFile = filepath.Join(*workingDir, "abort")
+	}
+	absWorking, err := filepath.Abs(*workingDir)
+	if err != nil {
+		return fmt.Errorf("resolve --working-dir: %w", err)
+	}
+	absAbort, err := filepath.Abs(*abortFile)
+	if err != nil {
+		return fmt.Errorf("resolve --abort-file: %w", err)
+	}
+	// Constrain --abort-file to live under --working-dir so the sentinel
+	// path PR #3796 will write to is bounded by the orchestrator's
+	// archive surface.
+	if !strings.HasPrefix(absAbort+string(os.PathSeparator), absWorking+string(os.PathSeparator)) {
+		return fmt.Errorf("--abort-file %q must be inside --working-dir %q", absAbort, absWorking)
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 
-	if err := os.MkdirAll(*workingDir, 0o755); err != nil {
+	if err := os.MkdirAll(*workingDir, 0o750); err != nil {
 		return fmt.Errorf("create working dir: %w", err)
 	}
 	if err := writeObserverConfig(*workingDir, observerConfig{
@@ -120,5 +138,5 @@ func writeObserverConfig(workingDir string, cfg observerConfig) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(workingDir, "observer-config.json"), body, 0o644)
+	return os.WriteFile(filepath.Join(workingDir, "observer-config.json"), body, 0o640)
 }

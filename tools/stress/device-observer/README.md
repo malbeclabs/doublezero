@@ -99,6 +99,18 @@ jq . /tmp/observer-out/observer-config.json
 jq . /tmp/observer-out/show-hardware-capacity-*.json
 ```
 
+## Known limitations
+
+- The eAPI client re-marshals the goeapi-decoded JSON response, so very
+  large integer counters (greater than 2^53) may lose precision and map
+  key ordering is not preserved. A follow-up will replace the goeapi call
+  path with a direct eAPI HTTP POST so the per-command JSON is captured
+  byte-for-byte.
+- `goeapi.RunCommands` does not accept a `context.Context`. The sampler
+  works around this with a goroutine + `select` on `ctx.Done()` so the
+  observer exits promptly on `SIGINT`/`SIGTERM`; however, an in-flight
+  eAPI request may still complete in the background after exit.
+
 ## Failure handling
 
 A failure on a single `show` command logs at WARN and continues to the

@@ -5,6 +5,7 @@
 //! `doublezero geolocation <subcommand>`.
 
 use clap::{Args, Subcommand};
+use doublezero_cli_core::CliContext;
 use std::io::Write;
 
 use crate::{
@@ -37,17 +38,22 @@ pub struct GeolocationArgs {
 }
 
 impl GeolocationCommand {
-    pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: GeoCliCommand, W: Write>(
+        self,
+        ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         match self {
             Self::Init(args) => args.execute(client, out),
             Self::Probe(cmd) => match cmd.command {
-                ProbeCommands::Create(args) => args.execute(client, out),
-                ProbeCommands::Update(args) => args.execute(client, out),
-                ProbeCommands::Delete(args) => args.execute(client, out),
-                ProbeCommands::Get(args) => args.execute(client, out),
-                ProbeCommands::List(args) => args.execute(client, out),
-                ProbeCommands::AddParent(args) => args.execute(client, out),
-                ProbeCommands::RemoveParent(args) => args.execute(client, out),
+                ProbeCommands::Create(args) => args.execute(ctx, client, out).await,
+                ProbeCommands::Update(args) => args.execute(ctx, client, out).await,
+                ProbeCommands::Delete(args) => args.execute(ctx, client, out).await,
+                ProbeCommands::Get(args) => args.execute(ctx, client, out).await,
+                ProbeCommands::List(args) => args.execute(ctx, client, out).await,
+                ProbeCommands::AddParent(args) => args.execute(ctx, client, out).await,
+                ProbeCommands::RemoveParent(args) => args.execute(ctx, client, out).await,
             },
             Self::User(cmd) => match cmd.command {
                 UserCommands::Create(args) => args.execute(client, out),

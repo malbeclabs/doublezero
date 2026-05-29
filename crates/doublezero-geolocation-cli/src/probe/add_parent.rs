@@ -1,6 +1,6 @@
 use crate::client::GeoCliCommand;
 use clap::Args;
-use doublezero_cli_core::validators::validate_pubkey_or_code;
+use doublezero_cli_core::{validators::validate_pubkey_or_code, CliContext};
 use doublezero_sdk::geolocation::geo_probe::{
     add_parent_device::AddParentDeviceCommand, get::GetGeoProbeCommand,
 };
@@ -17,7 +17,14 @@ pub struct AddParentGeoProbeCliCommand {
 }
 
 impl AddParentGeoProbeCliCommand {
-    pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: GeoCliCommand, W: Write>(
+        self,
+        ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        tracing::debug!(env = %ctx.env, probe = %self.probe, device = %self.device, "geolocation probe add-parent");
+
         let (_, resolved_probe) = client.get_geo_probe(GetGeoProbeCommand {
             pubkey_or_code: self.probe,
         })?;
@@ -42,6 +49,7 @@ impl AddParentGeoProbeCliCommand {
 mod tests {
     use super::*;
     use crate::client::MockGeoCliCommand;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_geolocation::state::{accounttype::AccountType, geo_probe::GeoProbe};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -101,12 +109,15 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = AddParentGeoProbeCliCommand {
-            probe: "ams-probe-01".to_string(),
-            device: device_pk.to_string(),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            AddParentGeoProbeCliCommand {
+                probe: "ams-probe-01".to_string(),
+                device: device_pk.to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));

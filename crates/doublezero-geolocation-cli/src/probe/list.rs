@@ -1,5 +1,6 @@
 use crate::client::GeoCliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::geolocation::geo_probe::list::ListGeoProbeCommand;
 use serde::{Serialize, Serializer};
@@ -43,7 +44,14 @@ pub struct GeoProbeDisplay {
 }
 
 impl ListGeoProbeCliCommand {
-    pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: GeoCliCommand, W: Write>(
+        self,
+        ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        tracing::debug!(env = %ctx.env, "geolocation probe list");
+
         let probes = client.list_geo_probes(ListGeoProbeCommand)?;
         let exchanges = client.list_exchanges()?;
 
@@ -91,6 +99,7 @@ impl ListGeoProbeCliCommand {
 mod tests {
     use super::*;
     use crate::client::MockGeoCliCommand;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_geolocation::state::{accounttype::AccountType, geo_probe::GeoProbe};
     use doublezero_sdk::{AccountType as SvcAccountType, Exchange, ExchangeStatus};
     use solana_sdk::pubkey::Pubkey;
@@ -149,12 +158,15 @@ mod tests {
             .expect_list_exchanges()
             .returning(move || Ok(exchanges.clone()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListGeoProbeCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListGeoProbeCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("ams-probe-01"));
@@ -194,12 +206,15 @@ mod tests {
             .expect_list_exchanges()
             .returning(|| Ok(HashMap::new()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListGeoProbeCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListGeoProbeCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains(&exchange_pk.to_string()));
@@ -240,12 +255,15 @@ mod tests {
             .expect_list_exchanges()
             .returning(move || Ok(exchanges.clone()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListGeoProbeCliCommand {
-            json: true,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListGeoProbeCliCommand {
+                json: true,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let parsed: Vec<serde_json::Value> = serde_json::from_str(output_str.trim()).unwrap();
@@ -270,12 +288,15 @@ mod tests {
             .expect_list_exchanges()
             .returning(|| Ok(HashMap::new()));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListGeoProbeCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListGeoProbeCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
     }
 }

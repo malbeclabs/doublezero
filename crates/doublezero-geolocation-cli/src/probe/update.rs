@@ -1,6 +1,9 @@
 use crate::client::GeoCliCommand;
 use clap::Args;
-use doublezero_cli_core::validators::{validate_pubkey, validate_pubkey_or_code};
+use doublezero_cli_core::{
+    validators::{validate_pubkey, validate_pubkey_or_code},
+    CliContext,
+};
 use doublezero_sdk::geolocation::geo_probe::{
     get::GetGeoProbeCommand, update::UpdateGeoProbeCommand,
 };
@@ -24,7 +27,14 @@ pub struct UpdateGeoProbeCliCommand {
 }
 
 impl UpdateGeoProbeCliCommand {
-    pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: GeoCliCommand, W: Write>(
+        self,
+        ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        tracing::debug!(env = %ctx.env, probe = %self.probe, "geolocation probe update");
+
         if self.public_ip.is_none() && self.port.is_none() && self.signing_pubkey.is_none() {
             return Err(eyre::eyre!(
                 "At least one of --public-ip, --port, or --signing-pubkey is required"
@@ -64,6 +74,7 @@ impl UpdateGeoProbeCliCommand {
 mod tests {
     use super::*;
     use crate::client::MockGeoCliCommand;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_geolocation::state::{accounttype::AccountType, geo_probe::GeoProbe};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -118,14 +129,17 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdateGeoProbeCliCommand {
-            probe: "ams-probe-01".to_string(),
-            public_ip: Some(Ipv4Addr::new(192, 168, 1, 1)),
-            port: None,
-            signing_pubkey: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateGeoProbeCliCommand {
+                probe: "ams-probe-01".to_string(),
+                public_ip: Some(Ipv4Addr::new(192, 168, 1, 1)),
+                port: None,
+                signing_pubkey: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));

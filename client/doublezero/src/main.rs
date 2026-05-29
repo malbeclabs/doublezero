@@ -272,7 +272,7 @@ async fn main() -> eyre::Result<()> {
             let svc_program_id = *dzclient.get_program_id();
             let (globalstate_pk, _) = get_globalstate_pda(&svc_program_id);
             let geo_cli = GeoCliCommandImpl::new(&geo_client, &dzclient, globalstate_pk);
-            args.command.execute(&geo_cli, &mut handle)
+            args.command.execute(&ctx, &geo_cli, &mut handle).await
         }
 
         // Multicast: the `Group` subtree is module-crate business and dispatched by

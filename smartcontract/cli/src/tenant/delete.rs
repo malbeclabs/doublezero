@@ -1,6 +1,4 @@
-use crate::{
-    doublezerocommand::CliCommand, helpers::resolve_tenant_pk, validators::validate_pubkey_or_code,
-};
+use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_cli_core::{require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::{
@@ -35,9 +33,10 @@ impl DeleteTenantCliCommand {
             RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
         );
 
-        let tenant_pubkey = resolve_tenant_pk(client, &self.pubkey)?;
+        // Fetch the tenant once; get_tenant accepts a pubkey or code and
+        // returns the canonical pubkey plus the full tenant.
         let (tenant_pubkey, tenant) = client.get_tenant(GetTenantCommand {
-            pubkey_or_code: tenant_pubkey.to_string(),
+            pubkey_or_code: self.pubkey.clone(),
         })?;
 
         if tenant.reference_count > 0 && !self.allow_delete_users {
@@ -416,11 +415,11 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
 
-        // First get_tenant call (via resolve_tenant_pk + re-fetch)
+        // Initial get_tenant call
         let tenant_cloned = tenant.clone();
         client
             .expect_get_tenant()
-            .times(2)
+            .times(1)
             .in_sequence(&mut seq)
             .with(predicate::eq(GetTenantCommand {
                 pubkey_or_code: tenant_pubkey.to_string(),

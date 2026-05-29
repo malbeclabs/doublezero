@@ -3,6 +3,7 @@ use crate::{
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
+use doublezero_cli_core::{render_record, CliContext, OutputFormat};
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::tenant::get::GetTenantCommand;
 use serde::Serialize;
@@ -39,7 +40,12 @@ struct TenantDisplay {
 }
 
 impl GetTenantCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (pubkey, tenant) = client.get_tenant(GetTenantCommand {
             pubkey_or_code: self.code,
         })?;
@@ -68,25 +74,14 @@ impl GetTenantCliCommand {
             owner: tenant.owner,
         };
 
-        if self.json {
-            let json = serde_json::to_string_pretty(&display)?;
-            writeln!(out, "{json}")?;
-        } else {
-            let headers = TenantDisplay::headers();
-            let fields = display.fields();
-            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
-            for (header, value) in headers.iter().zip(fields.iter()) {
-                writeln!(out, " {header:<max_len$} | {value}")?;
-            }
-        }
-
-        Ok(())
+        render_record(out, &display, OutputFormat::from_flags(self.json, false))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{tenant::get::GetTenantCliCommand, tests::utils::create_test_client};
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{commands::tenant::get::GetTenantCommand, AccountType};
     use doublezero_serviceability::state::tenant::{
         Tenant, TenantBillingConfig, TenantPaymentStatus,
@@ -137,23 +132,28 @@ mod tests {
             .expect_list_topology()
             .returning(|_| Ok(HashMap::new()));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
+
         // Expected failure
         let mut output = Vec::new();
-        let res = GetTenantCliCommand {
-            code: Pubkey::new_unique().to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetTenantCliCommand {
+                code: Pubkey::new_unique().to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err(), "I shouldn't find anything.");
 
         // Expected success by pubkey (table)
         let mut output = Vec::new();
-        let res = GetTenantCliCommand {
-            code: tenant_pubkey.to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetTenantCliCommand {
+                code: tenant_pubkey.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -181,11 +181,13 @@ mod tests {
 
         // Expected success by code (JSON)
         let mut output = Vec::new();
-        let res = GetTenantCliCommand {
-            code: "test-tenant".to_string(),
-            json: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetTenantCliCommand {
+                code: "test-tenant".to_string(),
+                json: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by code");
         let json: serde_json::Value =
             serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();

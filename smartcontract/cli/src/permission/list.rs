@@ -1,11 +1,12 @@
 use crate::{doublezerocommand::CliCommand, permission::flags::bitmask_to_names};
 use clap::Args;
+use doublezero_cli_core::{render_collection, CliContext, OutputFormat};
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::permission::list::ListPermissionCommand;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct ListPermissionCliCommand {
@@ -41,7 +42,12 @@ pub struct PermissionDisplay {
 }
 
 impl ListPermissionCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let permissions = client.list_permission(ListPermissionCommand {})?;
 
         let mut displays: Vec<PermissionDisplay> = permissions
@@ -57,25 +63,18 @@ impl ListPermissionCliCommand {
 
         displays.sort_by_key(|d| d.user_payer.to_string());
 
-        let res = if self.json {
-            serde_json::to_string_pretty(&displays)?
-        } else if self.json_compact {
-            serde_json::to_string(&displays)?
-        } else {
-            Table::new(displays)
-                .with(Style::psql().remove_horizontals())
-                .to_string()
-        };
-
-        writeln!(out, "{res}")?;
-
-        Ok(())
+        render_collection(
+            out,
+            displays,
+            OutputFormat::from_flags(self.json, self.json_compact),
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{permission::list::ListPermissionCliCommand, tests::utils::create_test_client};
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::AccountType;
     use doublezero_serviceability::state::permission::{
         permission_flags, Permission, PermissionStatus,
@@ -103,12 +102,15 @@ mod tests {
             .expect_list_permission()
             .returning(move |_| Ok(HashMap::from([(pda, p2.clone())])));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListPermissionCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListPermissionCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let out = String::from_utf8(output).unwrap();

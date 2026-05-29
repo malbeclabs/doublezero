@@ -1,9 +1,6 @@
-use crate::{
-    doublezerocommand::CliCommand,
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::validate_pubkey_or_code,
-};
+use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
+use doublezero_cli_core::{require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::{
     accesspass::{list::ListAccessPassCommand, set::SetAccessPassCommand},
     tenant::{delete::DeleteTenantCommand, get::GetTenantCommand},
@@ -25,10 +22,19 @@ pub struct DeleteTenantCliCommand {
 }
 
 impl DeleteTenantCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
+        // Fetch the tenant once; get_tenant accepts a pubkey or code and
+        // returns the canonical pubkey plus the full tenant.
         let (tenant_pubkey, tenant) = client.get_tenant(GetTenantCommand {
             pubkey_or_code: self.pubkey.clone(),
         })?;
@@ -64,7 +70,7 @@ impl DeleteTenantCliCommand {
                 spinner.println(format!("Deleting {} user(s)...", tenant_users.len()));
 
                 for user_pk in &tenant_users {
-                    spinner.set_message(format!("Deleting user {}", user_pk));
+                    spinner.set_message(format!("Deleting user {user_pk}"));
                     client.delete_user(DeleteUserCommand { pubkey: *user_pk })?;
                     spinner.inc(1);
                 }
@@ -196,7 +202,9 @@ impl DeleteTenantCliCommand {
             }
         }
 
-        // Execute the DeleteTenant transaction
+        // Execute the DeleteTenant transaction. The bespoke two-line output
+        // (header + indented signature) is preserved here rather than going
+        // through `print_signature`, which writes a single canonical line.
         let signature = client.delete_tenant(DeleteTenantCommand {
             tenant_pubkey,
             allow_delete_users: false, // We already handled deletion above
@@ -217,6 +225,7 @@ mod tests {
         tenant::delete::DeleteTenantCliCommand,
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
         commands::tenant::{delete::DeleteTenantCommand, get::GetTenantCommand},
         AccountType,
@@ -280,13 +289,15 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = DeleteTenantCliCommand {
-            pubkey: tenant_pubkey.to_string(),
-            allow_delete_users: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            DeleteTenantCliCommand {
+                pubkey: tenant_pubkey.to_string(),
+                allow_delete_users: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Tenant 'test' deleted successfully"));
@@ -326,13 +337,15 @@ mod tests {
             }))
             .returning(move |_| Ok((tenant_pubkey, tenant.clone())));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = DeleteTenantCliCommand {
-            pubkey: tenant_pubkey.to_string(),
-            allow_delete_users: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            DeleteTenantCliCommand {
+                pubkey: tenant_pubkey.to_string(),
+                allow_delete_users: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
     }
 
@@ -402,7 +415,7 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
 
-        // First get_tenant call
+        // Initial get_tenant call
         let tenant_cloned = tenant.clone();
         client
             .expect_get_tenant()
@@ -461,13 +474,15 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = DeleteTenantCliCommand {
-            pubkey: tenant_pubkey.to_string(),
-            allow_delete_users: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            DeleteTenantCliCommand {
+                pubkey: tenant_pubkey.to_string(),
+                allow_delete_users: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
     }
 }

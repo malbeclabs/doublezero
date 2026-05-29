@@ -1,5 +1,6 @@
 use crate::{doublezerocommand::CliCommand, topology::resolve_topology_names};
 use clap::Args;
+use doublezero_cli_core::{render_collection, CliContext, OutputFormat};
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
     tenant::list::ListTenantCommand, topology::list::ListTopologyCommand,
@@ -7,7 +8,7 @@ use doublezero_sdk::commands::{
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct ListTenantCliCommand {
@@ -33,7 +34,12 @@ pub struct TenantDisplay {
 }
 
 impl ListTenantCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let tenants = client.list_tenant(ListTenantCommand {})?;
         let topology_map = client
             .list_topology(ListTopologyCommand)
@@ -57,25 +63,18 @@ impl ListTenantCliCommand {
 
         tenant_displays.sort_by(|a, b| a.code.cmp(&b.code));
 
-        let res = if self.json {
-            serde_json::to_string_pretty(&tenant_displays)?
-        } else if self.json_compact {
-            serde_json::to_string(&tenant_displays)?
-        } else {
-            Table::new(tenant_displays)
-                .with(Style::psql().remove_horizontals())
-                .to_string()
-        };
-
-        writeln!(out, "{res}")?;
-
-        Ok(())
+        render_collection(
+            out,
+            tenant_displays,
+            OutputFormat::from_flags(self.json, self.json_compact),
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{tenant::list::ListTenantCliCommand, tests::utils::create_test_client};
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::AccountType;
     use doublezero_serviceability::state::tenant::{
         Tenant, TenantBillingConfig, TenantPaymentStatus,
@@ -111,13 +110,16 @@ mod tests {
             .expect_list_topology()
             .returning(|_| Ok(HashMap::new()));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = ListTenantCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListTenantCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -126,11 +128,13 @@ mod tests {
         );
 
         let mut output = Vec::new();
-        let res = ListTenantCliCommand {
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListTenantCliCommand {
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

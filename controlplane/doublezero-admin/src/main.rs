@@ -143,13 +143,17 @@ async fn main() -> eyre::Result<()> {
             }
         },
         Command::Tenant(command) => match command.command {
-            TenantCommands::Create(args) => args.execute(&client, &mut handle),
-            TenantCommands::Update(args) => args.execute(&client, &mut handle),
-            TenantCommands::List(args) => args.execute(&client, &mut handle),
-            TenantCommands::Get(args) => args.execute(&client, &mut handle),
-            TenantCommands::Delete(args) => args.execute(&client, &mut handle),
-            TenantCommands::AddAdministrator(args) => args.execute(&client, &mut handle),
-            TenantCommands::RemoveAdministrator(args) => args.execute(&client, &mut handle),
+            TenantCommands::Create(args) => args.execute(&ctx, &client, &mut handle).await,
+            TenantCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+            TenantCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
+            TenantCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            TenantCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
+            TenantCommands::AddAdministrator(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
+            TenantCommands::RemoveAdministrator(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
         },
         Command::Device(command) => match command.command {
             DeviceCommands::Create(args) => args.execute(&client, &mut handle),
@@ -191,12 +195,12 @@ async fn main() -> eyre::Result<()> {
             }
         },
         Command::Permission(command) => match command.command {
-            PermissionCommands::Set(args) => args.execute(&client, &mut handle),
-            PermissionCommands::Suspend(args) => args.execute(&client, &mut handle),
-            PermissionCommands::Resume(args) => args.execute(&client, &mut handle),
-            PermissionCommands::Delete(args) => args.execute(&client, &mut handle),
-            PermissionCommands::Get(args) => args.execute(&client, &mut handle),
-            PermissionCommands::List(args) => args.execute(&client, &mut handle),
+            PermissionCommands::Set(args) => args.execute(&ctx, &client, &mut handle).await,
+            PermissionCommands::Suspend(args) => args.execute(&ctx, &client, &mut handle).await,
+            PermissionCommands::Resume(args) => args.execute(&ctx, &client, &mut handle).await,
+            PermissionCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
+            PermissionCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            PermissionCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::User(command) => match command.command {
             UserCommands::Create(args) => args.execute(&client, &mut handle),

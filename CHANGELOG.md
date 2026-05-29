@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- feat(controller): enable eos-native gnmi provider ([#3781](https://github.com/malbeclabs/doublezero/pull/3781))
 - CLI
   - Migrate `doublezero geolocation` subcommands into the new `doublezero-geolocation-cli` module crate per RFC-20. The `probe` and `user` subtrees and the hidden `init` verb are now owned by the crate; the binary mounts them via `GeolocationArgs` from `doublezero-geolocation-cli`. The hidden top-level `doublezero init-geolocation-config` alias is removed; use `doublezero geolocation init` instead.
 - ci(e2e): add trusted fork PR e2e dispatch ([#3777](https://github.com/malbeclabs/doublezero/pull/3777))

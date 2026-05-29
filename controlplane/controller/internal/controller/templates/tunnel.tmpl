@@ -84,6 +84,9 @@ ip access-list MAIN-CONTROL-PLANE-ACL
 system control-plane
    ip access-group MAIN-CONTROL-PLANE-ACL in
 !
+management api gnmi
+   provider eos-native
+!
 {{- range .Device.Interfaces }}
 interface {{ .Name }}
    {{- if .IsPhysical }}

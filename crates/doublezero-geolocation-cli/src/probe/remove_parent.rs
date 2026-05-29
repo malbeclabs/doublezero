@@ -49,20 +49,11 @@ impl RemoveParentGeoProbeCliCommand {
 mod tests {
     use super::*;
     use crate::client::MockGeoCliCommand;
-    use doublezero_cli_core::testing::cli_context_default_for_tests;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_geolocation::state::{accounttype::AccountType, geo_probe::GeoProbe};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::net::Ipv4Addr;
-    use tokio::runtime::Builder;
-
-    fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(f)
-    }
 
     #[test]
     fn test_cli_geo_probe_remove_parent() {

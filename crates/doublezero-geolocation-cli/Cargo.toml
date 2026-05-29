@@ -29,4 +29,4 @@ doublezero-program-common.workspace = true
 doublezero_sdk.workspace = true
 
 [dev-dependencies]
-tokio.workspace = true
+doublezero-cli-core = { workspace = true, features = ["testing"] }

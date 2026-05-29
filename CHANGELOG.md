@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Breaking
+
+### Changes
+
+- SDK (Go)
+  - Add CreateUser / DeleteUser to the serviceability executor with cross-language wire-format fixtures and four new PDA helpers (GetUserPDA, GetAccessPassPDA, GetTunnelIdsPDA, GetDzPrefixBlockPDA)
+
 ## [v0.25.0](https://github.com/malbeclabs/doublezero/compare/client/v0.24.0...client/v0.25.0) - 2026-05-29
 
 ### Breaking

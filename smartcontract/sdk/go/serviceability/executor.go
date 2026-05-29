@@ -16,6 +16,8 @@ import (
 )
 
 const (
+	instructionCreateUser       = 36
+	instructionDeleteUser       = 42
 	instructionSetDeviceHealth  = 83
 	instructionSetLinkHealth    = 84
 	instructionSetUserBGPStatus = 106
@@ -165,6 +167,252 @@ func (e *Executor) SetLinkHealthBatch(ctx context.Context, updates []LinkHealthU
 	return lastSig, ErrAllUpdatesFailed
 }
 
+// UserCreateArgs bundles every input the Go executor needs to submit a CreateUser
+// instruction (variant 36). The first five fields are borsh-encoded into the
+// instruction payload exactly matching Rust's `UserCreateArgs`; the trailing
+// DevicePubkey/TenantPubkey are only used to derive AccountMeta entries.
+type UserCreateArgs struct {
+	UserType       UserUserType
+	CyoaType       CyoaType
+	ClientIP       [4]byte
+	TunnelEndpoint [4]byte
+	DzPrefixCount  uint8
+
+	// DevicePubkey identifies the device the user attaches to; required.
+	DevicePubkey solana.PublicKey
+	// TenantPubkey is the optional tenant association; pass the zero pubkey to omit.
+	TenantPubkey solana.PublicKey
+}
+
+// CreateUser submits a CreateUser instruction (variant 36) and waits for the user
+// PDA to become visible on-chain. Returns the signature and derived user PDA so the
+// caller can correlate (e.g., record t_activate against this user).
+func (e *Executor) CreateUser(ctx context.Context, args UserCreateArgs) (solana.Signature, solana.PublicKey, error) {
+	if e.signer == nil {
+		return solana.Signature{}, solana.PublicKey{}, ErrNoPrivateKey
+	}
+	if e.programID.IsZero() {
+		return solana.Signature{}, solana.PublicKey{}, ErrNoProgramID
+	}
+	if args.DzPrefixCount == 0 {
+		return solana.Signature{}, solana.PublicKey{}, errors.New("UserCreateArgs.DzPrefixCount must be > 0")
+	}
+	if args.DevicePubkey.IsZero() {
+		return solana.Signature{}, solana.PublicKey{}, errors.New("UserCreateArgs.DevicePubkey is required")
+	}
+
+	instr, userPDA, err := e.buildCreateUserInstruction(args)
+	if err != nil {
+		return solana.Signature{}, solana.PublicKey{}, fmt.Errorf("build CreateUser instruction: %w", err)
+	}
+
+	sig, _, err := e.executeTransaction(ctx, []solana.Instruction{instr})
+	if err != nil {
+		return sig, userPDA, err
+	}
+
+	if err := e.waitForAccountVisible(ctx, userPDA, e.waitForVisibleTimeout); err != nil {
+		return sig, userPDA, fmt.Errorf("post-confirm visibility timeout for user PDA: %w", err)
+	}
+	return sig, userPDA, nil
+}
+
+// DeleteUser submits a DeleteUser instruction (variant 42) and waits for the user
+// PDA to disappear from chain. The function reads the user account first so it
+// can derive the device-dependent PDAs and the multicast-publisher flag.
+// NOTE: this function does not unsubscribe multicast groups first. That should be
+// handled externally./
+func (e *Executor) DeleteUser(ctx context.Context, userPubkey solana.PublicKey) (solana.Signature, error) {
+	if e.signer == nil {
+		return solana.Signature{}, ErrNoPrivateKey
+	}
+	if e.programID.IsZero() {
+		return solana.Signature{}, ErrNoProgramID
+	}
+
+	info, err := e.rpc.GetAccountInfo(ctx, userPubkey)
+	if err != nil {
+		return solana.Signature{}, fmt.Errorf("fetch user account %s: %w", userPubkey, err)
+	}
+	if info == nil || info.Value == nil {
+		return solana.Signature{}, fmt.Errorf("user account %s not found", userPubkey)
+	}
+	rawData := info.Value.Data.GetBinary()
+	if len(rawData) == 0 {
+		return solana.Signature{}, fmt.Errorf("user account %s has empty data", userPubkey)
+	}
+	var user User
+	DeserializeUser(NewByteReader(rawData), &user)
+	if user.AccountType != UserType {
+		return solana.Signature{}, fmt.Errorf("account %s is not a User (type=%d)", userPubkey, user.AccountType)
+	}
+	user.PubKey = userPubkey
+
+	// The Rust SDK currently passes dz_prefix_count=1 / multicast_publisher_count=1
+	// because all users are created with exactly one DzPrefixBlock. Stress-orchestrator
+	// users likewise use DzPrefixCount=1, so 1 is the correct value here. Diverging
+	// requires fetching the Device record — out of scope for the SDK primitive.
+	const dzPrefixCount uint8 = 1
+	const multicastPublisherCount uint8 = 1
+
+	instr, err := e.buildDeleteUserInstruction(userPubkey, user, dzPrefixCount, multicastPublisherCount)
+	if err != nil {
+		return solana.Signature{}, fmt.Errorf("build DeleteUser instruction: %w", err)
+	}
+
+	sig, _, err := e.executeTransaction(ctx, []solana.Instruction{instr})
+	if err != nil {
+		return sig, err
+	}
+
+	if err := e.waitForAccountGone(ctx, userPubkey, e.waitForVisibleTimeout); err != nil {
+		return sig, fmt.Errorf("post-confirm visibility timeout waiting for user PDA closure: %w", err)
+	}
+	return sig, nil
+}
+
+// buildCreateUserInstruction packs the variant-36 payload and assembles the account
+// list in the order the on-chain processor expects:
+//
+//	[user_pda, device, accesspass, globalstate,
+//	 user_tunnel_block, multicast_publisher_block, device_tunnel_ids,
+//	 dz_prefix_block[0..N], optional_tenant, payer, system]
+func (e *Executor) buildCreateUserInstruction(args UserCreateArgs) (solana.Instruction, solana.PublicKey, error) {
+	data := make([]byte, 12)
+	data[0] = instructionCreateUser
+	data[1] = byte(args.UserType)
+	data[2] = byte(args.CyoaType)
+	copy(data[3:7], args.ClientIP[:])
+	copy(data[7:11], args.TunnelEndpoint[:])
+	data[11] = args.DzPrefixCount
+
+	userPDA, _, err := GetUserPDA(e.programID, args.ClientIP, args.UserType)
+	if err != nil {
+		return nil, solana.PublicKey{}, fmt.Errorf("derive user PDA: %w", err)
+	}
+	accessPassPDA, _, err := GetAccessPassPDA(e.programID, args.ClientIP, e.signer.PublicKey())
+	if err != nil {
+		return nil, userPDA, fmt.Errorf("derive accesspass PDA: %w", err)
+	}
+	globalStatePDA, _, err := GetGlobalStatePDA(e.programID)
+	if err != nil {
+		return nil, userPDA, fmt.Errorf("derive globalstate PDA: %w", err)
+	}
+	userTunnelBlockPDA, _, err := GetUserTunnelBlockPDA(e.programID)
+	if err != nil {
+		return nil, userPDA, fmt.Errorf("derive user tunnel block PDA: %w", err)
+	}
+	mcPublisherBlockPDA, _, err := GetMulticastPublisherBlockPDA(e.programID)
+	if err != nil {
+		return nil, userPDA, fmt.Errorf("derive multicast publisher block PDA: %w", err)
+	}
+	tunnelIdsPDA, _, err := GetTunnelIdsPDA(e.programID, args.DevicePubkey, 0)
+	if err != nil {
+		return nil, userPDA, fmt.Errorf("derive device tunnel ids PDA: %w", err)
+	}
+
+	accounts := solana.AccountMetaSlice{
+		solana.Meta(userPDA).WRITE(),
+		solana.Meta(args.DevicePubkey).WRITE(),
+		solana.Meta(accessPassPDA).WRITE(),
+		solana.Meta(globalStatePDA).WRITE(),
+		solana.Meta(userTunnelBlockPDA).WRITE(),
+		solana.Meta(mcPublisherBlockPDA).WRITE(),
+		solana.Meta(tunnelIdsPDA).WRITE(),
+	}
+	for i := uint64(0); i < uint64(args.DzPrefixCount); i++ {
+		dzPrefixPDA, _, err := GetDzPrefixBlockPDA(e.programID, args.DevicePubkey, i)
+		if err != nil {
+			return nil, userPDA, fmt.Errorf("derive dz_prefix_block[%d] PDA: %w", i, err)
+		}
+		accounts = append(accounts, solana.Meta(dzPrefixPDA).WRITE())
+	}
+	if !args.TenantPubkey.IsZero() {
+		accounts = append(accounts, solana.Meta(args.TenantPubkey).WRITE())
+	}
+	accounts = append(accounts,
+		solana.Meta(e.signer.PublicKey()).SIGNER().WRITE(),
+		solana.Meta(solana.SystemProgramID),
+	)
+
+	return &genericInstruction{
+		programID:            e.programID,
+		accounts:             accounts,
+		data:                 data,
+		skipPermissionInject: true,
+	}, userPDA, nil
+}
+
+// buildDeleteUserInstruction packs the variant-42 payload and assembles the account
+// list in the order the on-chain processor expects:
+//
+//	[user, accesspass, globalstate, device,
+//	 user_tunnel_block, multicast_publisher_block, device_tunnel_ids,
+//	 dz_prefix_block[0..N], optional_tenant, owner, payer, system]
+//
+// `multicastPublisherCount` mirrors the Rust SDK's behavior: the on-chain processor
+// consumes the MulticastPublisherBlock slot unconditionally for the variant-42
+// layout, so DeleteUser's caller passes 1 even when the user was not created as a
+// publisher. Exposed as a parameter so the byte-encoding can be tested independently.
+func (e *Executor) buildDeleteUserInstruction(userPubkey solana.PublicKey, user User, dzPrefixCount, multicastPublisherCount uint8) (solana.Instruction, error) {
+	data := []byte{instructionDeleteUser, dzPrefixCount, multicastPublisherCount}
+
+	accessPassPDA, _, err := GetAccessPassPDA(e.programID, user.ClientIp, user.Owner)
+	if err != nil {
+		return nil, fmt.Errorf("derive accesspass PDA: %w", err)
+	}
+	globalStatePDA, _, err := GetGlobalStatePDA(e.programID)
+	if err != nil {
+		return nil, fmt.Errorf("derive globalstate PDA: %w", err)
+	}
+	devicePubkey := solana.PublicKeyFromBytes(user.DevicePubKey[:])
+	userTunnelBlockPDA, _, err := GetUserTunnelBlockPDA(e.programID)
+	if err != nil {
+		return nil, fmt.Errorf("derive user tunnel block PDA: %w", err)
+	}
+	mcPublisherBlockPDA, _, err := GetMulticastPublisherBlockPDA(e.programID)
+	if err != nil {
+		return nil, fmt.Errorf("derive multicast publisher block PDA: %w", err)
+	}
+	tunnelIdsPDA, _, err := GetTunnelIdsPDA(e.programID, devicePubkey, 0)
+	if err != nil {
+		return nil, fmt.Errorf("derive device tunnel ids PDA: %w", err)
+	}
+
+	accounts := solana.AccountMetaSlice{
+		solana.Meta(userPubkey).WRITE(),
+		solana.Meta(accessPassPDA).WRITE(),
+		solana.Meta(globalStatePDA).WRITE(),
+		solana.Meta(devicePubkey).WRITE(),
+		solana.Meta(userTunnelBlockPDA).WRITE(),
+		solana.Meta(mcPublisherBlockPDA).WRITE(),
+		solana.Meta(tunnelIdsPDA).WRITE(),
+	}
+	for i := uint64(0); i < uint64(dzPrefixCount); i++ {
+		dzPrefixPDA, _, err := GetDzPrefixBlockPDA(e.programID, devicePubkey, i)
+		if err != nil {
+			return nil, fmt.Errorf("derive dz_prefix_block[%d] PDA: %w", i, err)
+		}
+		accounts = append(accounts, solana.Meta(dzPrefixPDA).WRITE())
+	}
+	var zeroPK [32]uint8
+	if user.TenantPubKey != zeroPK {
+		accounts = append(accounts, solana.Meta(solana.PublicKeyFromBytes(user.TenantPubKey[:])).WRITE())
+	}
+	accounts = append(accounts,
+		solana.Meta(solana.PublicKeyFromBytes(user.Owner[:])).WRITE(),
+		solana.Meta(e.signer.PublicKey()).SIGNER().WRITE(),
+		solana.Meta(solana.SystemProgramID),
+	)
+
+	return &genericInstruction{
+		programID:            e.programID,
+		accounts:             accounts,
+		data:                 data,
+		skipPermissionInject: true,
+	}, nil
+}
+
 // UserBGPStatusUpdate holds the parameters for a single SetUserBGPStatus submission.
 type UserBGPStatusUpdate struct {
 	UserPubkey   solana.PublicKey
@@ -231,6 +479,11 @@ type genericInstruction struct {
 	programID solana.PublicKey
 	accounts  solana.AccountMetaSlice
 	data      []byte
+	// skipPermissionInject suppresses the executor's auto-appending of the Permission PDA.
+	// CreateUser/DeleteUser opt out because the on-chain processor uses accounts.len()
+	// to detect the optional tenant account; appending a trailing Permission shifts that
+	// count and would mis-classify accounts.
+	skipPermissionInject bool
 }
 
 func (i *genericInstruction) ProgramID() solana.PublicKey {
@@ -278,7 +531,7 @@ func (e *Executor) executeTransaction(ctx context.Context, instructions []solana
 	e.resolvePermissionPDA(ctx)
 	if e.permissionPDA != nil {
 		for _, instr := range instructions {
-			if gi, ok := instr.(*genericInstruction); ok {
+			if gi, ok := instr.(*genericInstruction); ok && !gi.skipPermissionInject {
 				gi.accounts = append(gi.accounts, solana.Meta(*e.permissionPDA))
 			}
 		}
@@ -330,6 +583,53 @@ func (e *Executor) executeTransaction(ctx context.Context, instructions []solana
 	}
 
 	return sig, res, nil
+}
+
+// waitForAccountVisible polls GetAccountInfo until the given account is observable
+// on-chain, or the deadline expires. Used post-CreateUser to give the caller a
+// timestamp anchored to when the user PDA actually appears.
+func (e *Executor) waitForAccountVisible(ctx context.Context, pubkey solana.PublicKey, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		info, err := e.rpc.GetAccountInfo(ctx, pubkey)
+		if err == nil && info != nil && info.Value != nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			if err != nil {
+				return fmt.Errorf("account %s not visible: %w", pubkey, err)
+			}
+			return fmt.Errorf("account %s not visible before deadline", pubkey)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+}
+
+// waitForAccountGone polls GetAccountInfo until the given account no longer exists,
+// or the deadline expires. Used post-DeleteUser to detect closure.
+func (e *Executor) waitForAccountGone(ctx context.Context, pubkey solana.PublicKey, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		info, err := e.rpc.GetAccountInfo(ctx, pubkey)
+		if err == nil && (info == nil || info.Value == nil) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			if err != nil {
+				return fmt.Errorf("account %s still present: %w", pubkey, err)
+			}
+			return fmt.Errorf("account %s still present before deadline", pubkey)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
 }
 
 func (e *Executor) waitForSignatureVisible(ctx context.Context, sig solana.Signature, timeout time.Duration) error {

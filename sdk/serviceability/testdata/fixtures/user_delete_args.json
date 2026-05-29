@@ -1,0 +1,16 @@
+{
+  "name": "UserDeleteArgs",
+  "account_type": 0,
+  "fields": [
+    {
+      "name": "DzPrefixCount",
+      "value": "3",
+      "typ": "u8"
+    },
+    {
+      "name": "MulticastPublisherCount",
+      "value": "1",
+      "typ": "u8"
+    }
+  ]
+}

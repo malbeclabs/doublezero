@@ -1,3 +1,5 @@
 pub mod configure_validator_publisher_rewards_auth_message;
+pub mod validator_rewards_leaf;
 
 pub use configure_validator_publisher_rewards_auth_message::ConfigureValidatorPublisherRewardsAuthMessage;
+pub use validator_rewards_leaf::ValidatorRewardsLeaf;

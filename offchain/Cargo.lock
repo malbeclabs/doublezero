@@ -2667,6 +2667,7 @@ dependencies = [
  "doublezero-solana-sdk",
  "doublezero-solana-validator-debt",
  "doublezero_sdk",
+ "futures",
  "humantime",
  "itertools 0.14.0",
  "libc",

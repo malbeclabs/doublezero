@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `shreds publisher-rewards configure`: after the configure tx lands, scan the last 100 subscription epochs and submit `DistributeValidatorRewards` for any unsettled leaf so the validator's pending rewards land in the same operator session. Skipped under dry-run; per-epoch soft-fail so one bad epoch doesn't tank the rest (#375)
+
 ## [0.5.5](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.5)
 
 - uptick crate to v0.5.5 (#372)

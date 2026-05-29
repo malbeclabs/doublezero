@@ -305,9 +305,47 @@ impl ConfigureCommand {
         let transaction = wallet.new_transaction(&instructions).await?;
 
         let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
+        let configure_executed = matches!(tx_outcome, TransactionOutcome::Executed(_));
         if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
             println!("Configured validator publisher rewards: {tx_sig}");
             wallet.print_verbose_output(&[tx_sig]).await?;
+        }
+
+        // Post-configure: distribute this validator's pending rewards for
+        // any recent subscription epoch where accumulation has completed
+        // but distribute hasn't run for this leaf yet. Skipped under
+        // dry-run (the configure tx never actually wrote the ValidatorPublisherRewards
+        // state we would distribute under).
+        if configure_executed {
+            let distribute_result = async {
+                let network_env = wallet
+                    .connection
+                    .try_network_environment()
+                    .await
+                    .context("detecting network environment")?;
+                super::distribute::try_distribute_pending(
+                    &wallet,
+                    &solana_connection,
+                    &self.node_id,
+                    &self.rewards_token_owner,
+                    network_env,
+                )
+                .await
+            }
+            .await;
+            match distribute_result {
+                Ok(outcome) => {
+                    println!(
+                        "\nDistribute pass complete: {} distributed, {} failed.",
+                        outcome.distributed, outcome.failed,
+                    );
+                }
+                Err(error) => {
+                    eprintln!(
+                        "\nDistribute pass failed (configure already landed; safe to re-run): {error:#}"
+                    );
+                }
+            }
         }
 
         Ok(())

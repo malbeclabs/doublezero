@@ -1,7 +1,9 @@
 pub mod configure;
+pub mod distribute;
 pub mod init;
 pub mod prepare_offchain_message;
 pub mod rewards_mint_arg;
+pub mod s3;
 pub mod show;
 
 use anyhow::{Context, Result, bail};

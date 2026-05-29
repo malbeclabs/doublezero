@@ -1,12 +1,13 @@
-use std::net::Ipv4Addr;
+use std::{net::Ipv4Addr, ops::Range};
 
 use bytemuck::{Pod, Zeroable};
 use doublezero_program_tools::{
     DISCRIMINATOR_LEN, Discriminator, PrecomputedDiscriminator,
     types::{Flags, StorageGap},
 };
-use doublezero_revenue_distribution::types::UnitShare16;
+use doublezero_revenue_distribution::types::{DoubleZeroEpoch, UnitShare16};
 use solana_sdk::pubkey::Pubkey;
+use svm_hash::sha2::Hash;
 
 pub const PROGRAM_CONFIG_SEED_PREFIX: &[u8] = b"program_config";
 pub const EXECUTION_CONTROLLER_SEED_PREFIX: &[u8] = b"execution_controller";
@@ -21,6 +22,7 @@ pub const SHRED_REWARD_TOKEN_SEED_PREFIX: &[u8] = b"shred_reward_token";
 pub const INSTANT_ALLOCATION_REQUEST_SEED_PREFIX: &[u8] = b"instant_seat_allocation_request";
 pub const WITHDRAW_SEAT_REQUEST_SEED_PREFIX: &[u8] = b"withdraw_seat_request";
 pub const SHRED_DISTRIBUTION_SEED_PREFIX: &[u8] = b"shred_distribution";
+pub const SHRED_DISTRIBUTION_JOURNAL_SEED_PREFIX: &[u8] = b"shred_distribution_journal";
 pub const CLAIM_HOLDING_SEED_PREFIX: &[u8] = b"claim";
 
 pub fn find_program_config_address() -> (Pubkey, u8) {
@@ -142,6 +144,20 @@ pub fn find_shred_distribution_address(subscription_epoch: u64) -> (Pubkey, u8) 
     )
 }
 
+pub fn find_shred_distribution_journal_address(
+    subscription_epoch: u64,
+    mint_key: &Pubkey,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            SHRED_DISTRIBUTION_JOURNAL_SEED_PREFIX,
+            &subscription_epoch.to_le_bytes(),
+            mint_key.as_ref(),
+        ],
+        &crate::shred_subscription::ID,
+    )
+}
+
 pub fn find_claim_holding_address(
     parent_pda_key: &Pubkey,
     subscription_epoch: u64,
@@ -175,6 +191,7 @@ pub const PROGRAM_CONFIG_FLAGS_OFFSET: usize = DISCRIMINATOR_LEN;
 pub const PROGRAM_CONFIG_SHRED_ORACLE_KEY_OFFSET: usize = DISCRIMINATOR_LEN + 48;
 
 const PROGRAM_CONFIG_FLAG_IS_PRORATED_SERVICE_ENABLED_BIT: u64 = 1 << 2;
+const PROGRAM_CONFIG_FLAG_DISTRIBUTE_VALIDATOR_REWARDS_ENABLED_BIT: u64 = 1 << 5;
 
 /// Returns `true` if the `is_prorated_service_enabled` bit is set on the
 /// raw `ProgramConfig` account data. Returns `false` for accounts that are
@@ -191,6 +208,26 @@ pub fn is_prorated_service_enabled(data: &[u8]) -> bool {
     };
     let flags = u64::from_le_bytes(flags_bytes);
     flags & PROGRAM_CONFIG_FLAG_IS_PRORATED_SERVICE_ENABLED_BIT != 0
+}
+
+/// Returns `true` if the `distribute_validator_rewards_enabled` bit is set
+/// on the raw `ProgramConfig` account data. Mirrors the on-chain
+/// `ProgramConfig::FLAG_DISTRIBUTE_VALIDATOR_REWARDS_ENABLED_BIT` (bit 5).
+/// Returns `false` when the account is too short or the flag is unset —
+/// the on-chain `DistributeValidatorRewards` handler rejects with
+/// "Distribute validator rewards is disabled" in that state, so callers
+/// should skip distribute attempts when this returns `false`.
+pub fn is_distribute_validator_rewards_enabled(data: &[u8]) -> bool {
+    if data.len() < PROGRAM_CONFIG_FLAGS_OFFSET + 8 {
+        return false;
+    }
+    let Ok(flags_bytes) =
+        <[u8; 8]>::try_from(&data[PROGRAM_CONFIG_FLAGS_OFFSET..PROGRAM_CONFIG_FLAGS_OFFSET + 8])
+    else {
+        return false;
+    };
+    let flags = u64::from_le_bytes(flags_bytes);
+    flags & PROGRAM_CONFIG_FLAG_DISTRIBUTE_VALIDATOR_REWARDS_ENABLED_BIT != 0
 }
 
 /// Parse the `shred_oracle_key` from a `ProgramConfig` account. Returns
@@ -683,6 +720,208 @@ impl PrecomputedDiscriminator for ValidatorPublisherRewards {
         Discriminator::new_sha2(b"dz::account::validator_publisher_rewards");
 }
 
+// ---------------------------------------------------------------------------
+// ShredDistribution + ShredDistributionJournal + the
+// ValidatorClientRewardsConfig field they nest. Layouts mirrored from
+// `malbeclabs/doublezero-shreds` (program crate). Vendored here so the
+// offchain CLI can `bytemuck::from_bytes` these accounts without depending
+// on the shreds program crate. Remove once the shreds repo is merged into
+// the monorepo.
+//
+// The compile-time `const _: () = assert!(...)` lines at the bottom of this
+// block mirror the on-chain `assert!(zero_copy::data_end::<T>() == N)` for
+// each Pod struct (`data_end::<T>() == DISCRIMINATOR_LEN + size_of::<T>()`).
+// Without them, a silent upstream drift in any field — or in
+// `Flags`/`StorageGap<N>`'s size against a different `program-tools` pin —
+// would shift `remaining_data`'s start by some number of bytes. Bitmap
+// reads via `publisher_accumulation_bitmap_{start,end}_index` would then
+// land on the wrong bytes and `bitmap_bit_set` would return garbage,
+// silently undercounting or duplicating distribute work. If on-chain
+// changes any of these layouts, update both sides together (offchain
+// struct + the expected size below + the on-chain `assert!`).
+// ---------------------------------------------------------------------------
+
+pub const MAX_VALIDATOR_CLIENT_REWARDS_PROPORTIONS: usize = 32;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
+#[repr(C, align(4))]
+pub struct ValidatorClientRewardsProportion {
+    pub id: u16,
+    pub rewards_proportion: UnitShare16,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
+#[repr(C, align(4))]
+pub struct ValidatorClientRewardProportions {
+    pub set_bitmap: u32,
+    pub proportions: [ValidatorClientRewardsProportion; MAX_VALIDATOR_CLIENT_REWARDS_PROPORTIONS],
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
+#[repr(C, align(8))]
+pub struct ValidatorClientRewardsConfig {
+    pub default_proportion: UnitShare16,
+    _padding_0: [u8; 2],
+    pub proportions: ValidatorClientRewardProportions,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
+#[repr(C, align(8))]
+pub struct ShredDistribution {
+    pub subscription_epoch: u64,
+    pub flags: Flags,
+    pub associated_dz_epoch: DoubleZeroEpoch,
+    pub bump_seed: u8,
+    pub ata_usdc_bump_seed: u8,
+    pub ata_2z_bump_seed: u8,
+    _padding_0: [u8; 1],
+    pub device_count: u16,
+    pub client_seat_count: u16,
+    pub journal_count: u16,
+    pub validator_rewards_proportion: UnitShare16,
+    pub total_publishing_validators: u32,
+    pub validator_rewards_merkle_root: Hash,
+    pub collected_usdc_payments: u64,
+    pub contributor_collected_2z_converted_from_usdc: u64,
+    pub contributor_usdc_swapped: u64,
+    pub validator_client_rewards_config: ValidatorClientRewardsConfig,
+    pub accumulated_validator_rewards_count: u32,
+    _padding_1: [u8; 28],
+    pub total_published_leader_slots: u32,
+    _padding_2: [u8; 28],
+    _gap: StorageGap<3>,
+}
+
+impl PrecomputedDiscriminator for ShredDistribution {
+    const DISCRIMINATOR: Discriminator<8> =
+        Discriminator::new_sha2(b"dz::account::shred_distribution");
+}
+
+impl ShredDistribution {
+    pub const FLAG_VALIDATOR_REWARDS_CALCULATION_FINALIZED_BIT: usize = 1;
+    pub const FLAG_VALIDATOR_REWARDS_ACCUMULATED_BIT: usize = 2;
+    pub const FLAG_INTEGRATION_FUNDED_BIT: usize = 3;
+
+    #[inline]
+    pub fn is_validator_rewards_calculation_finalized(&self) -> bool {
+        self.flags
+            .bit(Self::FLAG_VALIDATOR_REWARDS_CALCULATION_FINALIZED_BIT)
+    }
+
+    #[inline]
+    pub fn is_validator_rewards_accumulated(&self) -> bool {
+        self.flags.bit(Self::FLAG_VALIDATOR_REWARDS_ACCUMULATED_BIT)
+    }
+
+    #[inline]
+    pub fn is_integration_funded(&self) -> bool {
+        self.flags.bit(Self::FLAG_INTEGRATION_FUNDED_BIT)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Pod, Zeroable)]
+#[repr(C, align(8))]
+pub struct ShredDistributionJournal {
+    pub subscription_epoch: u64,
+    pub mint_key: Pubkey,
+    pub reward_mint_key: Pubkey,
+    flags: Flags,
+    pub usdc_swapped_amount: u64,
+    pub tokens_received_amount: u64,
+    pub publisher_accumulation_bitmap_start_index: u32,
+    pub publisher_accumulation_bitmap_end_index: u32,
+    pub client_accumulation_bitmap_start_index: u32,
+    pub client_accumulation_bitmap_end_index: u32,
+    pub validator_pool: u64,
+    pub total_leader_slots: u32,
+    _padding_0: [u8; 4],
+    pub accumulated_publisher_slots_scaled: u64,
+    pub accumulated_client_slots_scaled: u64,
+    pub accumulated_publisher_leaf_count: u32,
+    pub distributed_publisher_leaf_count: u32,
+    pub distributed_amount: u64,
+    pub accumulated_client_leaf_count: u32,
+    pub distributed_client_leaf_count: u32,
+    _padding_1: [u8; 16],
+    pub first_distribute_timestamp: i64,
+    _gap: StorageGap<3>,
+}
+
+impl PrecomputedDiscriminator for ShredDistributionJournal {
+    const DISCRIMINATOR: Discriminator<8> =
+        Discriminator::new_sha2(b"dz::account::shred_distribution_journal");
+}
+
+impl ShredDistributionJournal {
+    pub const FLAG_SWAP_BYPASSED_BIT: usize = 0;
+    pub const FLAG_SWEPT_BIT: usize = 1;
+
+    #[inline]
+    pub fn is_swap_bypassed(&self) -> bool {
+        self.flags.bit(Self::FLAG_SWAP_BYPASSED_BIT)
+    }
+
+    #[inline]
+    pub fn is_swept(&self) -> bool {
+        self.flags.bit(Self::FLAG_SWEPT_BIT)
+    }
+
+    #[inline]
+    pub fn checked_publisher_accumulation_bitmap_range(&self) -> Option<Range<usize>> {
+        let has_end_index = self.publisher_accumulation_bitmap_end_index != 0;
+        let range = self.publisher_accumulation_bitmap_start_index as usize
+            ..self.publisher_accumulation_bitmap_end_index as usize;
+        has_end_index.then_some(range)
+    }
+
+    #[inline]
+    pub fn checked_client_accumulation_bitmap_range(&self) -> Option<Range<usize>> {
+        let has_end_index = self.client_accumulation_bitmap_end_index != 0;
+        let range = self.client_accumulation_bitmap_start_index as usize
+            ..self.client_accumulation_bitmap_end_index as usize;
+        has_end_index.then_some(range)
+    }
+
+    #[inline]
+    pub fn checked_usdc_swap_budget(&self) -> Option<u64> {
+        if self.total_leader_slots == 0 {
+            return None;
+        }
+        let accumulated_slots_scaled =
+            self.accumulated_publisher_slots_scaled + self.accumulated_client_slots_scaled;
+        let total_slots_scaled = u64::from(self.total_leader_slots) * u64::from(UnitShare16::MAX);
+        let budget = u128::from(self.validator_pool) * u128::from(accumulated_slots_scaled)
+            / u128::from(total_slots_scaled);
+        Some(budget as u64)
+    }
+
+    #[inline]
+    pub fn is_swap_complete(&self) -> bool {
+        if self.is_swap_bypassed() {
+            return true;
+        }
+        match self.checked_usdc_swap_budget() {
+            Some(budget) => self.usdc_swapped_amount == budget,
+            None => true,
+        }
+    }
+}
+
+// Mirror the on-chain
+// `assert!(zero_copy::data_end::<T>() == N)` lines in
+// `programs/shred-subscription/src/processor/mod.rs`. `data_end` is
+// `DISCRIMINATOR_LEN + size_of::<T>()`, so the offchain size assert is
+// `size_of::<T>() == N - DISCRIMINATOR_LEN`. If on-chain bumps either
+// value, update both sides together.
+const _: () = assert!(std::mem::size_of::<ShredDistribution>() == 400 - DISCRIMINATOR_LEN);
+const _: () = assert!(std::mem::size_of::<ShredDistributionJournal>() == 296 - DISCRIMINATOR_LEN);
+// `ValidatorClientRewardsConfig` is a field inside `ShredDistribution`,
+// not a top-level account, so the on-chain code has no separate
+// `data_end::<T>()` assert for it. Pin its size here directly so any
+// upstream layout shift breaks the build instead of silently relocating
+// later fields of `ShredDistribution`.
+const _: () = assert!(std::mem::size_of::<ValidatorClientRewardsConfig>() == 136);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -725,6 +964,28 @@ mod tests {
     #[test]
     fn prorated_enabled_empty_buffer_returns_false() {
         assert!(!is_prorated_service_enabled(&[]));
+    }
+
+    #[test]
+    fn distribute_validator_rewards_enabled_bit_set() {
+        let data = program_config_data_with_flags(
+            PROGRAM_CONFIG_FLAG_DISTRIBUTE_VALIDATOR_REWARDS_ENABLED_BIT,
+        );
+        assert!(is_distribute_validator_rewards_enabled(&data));
+    }
+
+    #[test]
+    fn distribute_validator_rewards_disabled_when_unset() {
+        // All lower bits set (paused, prorated, accumulate, jupiter) but
+        // not bit 5 — must not be mistaken for distribute-enabled.
+        let data = program_config_data_with_flags(0b01_1111);
+        assert!(!is_distribute_validator_rewards_enabled(&data));
+    }
+
+    #[test]
+    fn distribute_validator_rewards_enabled_short_buffer_returns_false() {
+        let data = vec![0u8; PROGRAM_CONFIG_FLAGS_OFFSET + 4];
+        assert!(!is_distribute_validator_rewards_enabled(&data));
     }
 
     fn client_seat_data_with_last_price(price_dollars: u16) -> Vec<u8> {

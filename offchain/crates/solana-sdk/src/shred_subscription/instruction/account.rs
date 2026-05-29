@@ -601,6 +601,170 @@ impl From<ConfigureValidatorPublisherRewardsAccounts> for Vec<AccountMeta> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DistributeValidatorRewardsAccounts {
+    pub program_config_key: Pubkey,
+    pub shred_distribution_key: Pubkey,
+    pub parent_distribution_key: Pubkey,
+    pub validator_publisher_rewards_key: Pubkey,
+    pub validator_client_rewards_key: Pubkey,
+    pub validator_publisher_journal_key: Pubkey,
+    // Omitted when the publisher journal IS the client journal (omit-rule
+    // fires when `client_mint_key` equals `publisher_mint_key`). The publisher
+    // journal then plays both roles, mirroring accumulate.
+    pub validator_client_journal_key: Option<Pubkey>,
+    pub destination_ata_key: Pubkey,
+    pub shred_distribution_publisher_ata_key: Pubkey,
+    pub shred_distribution_client_ata_key: Pubkey,
+    pub client_claim_holding_key: Pubkey,
+}
+
+#[derive(Debug)]
+pub struct DistributeValidatorRewardsAccountsInitializer<'a> {
+    pub subscription_epoch: u64,
+    pub associated_dz_epoch: u64,
+    pub node_id: &'a Pubkey,
+    pub client_id: u16,
+    pub rewards_token_owner_key: &'a Pubkey,
+    pub publisher_mint_key: &'a Pubkey,
+    pub publisher_reward_mint_key: &'a Pubkey,
+    /// Mint that identifies the client-side journal. In the current
+    /// protocol this is always the 2Z mint (client rewards are routed
+    /// exclusively to the 2Z journal), so every caller today passes the
+    /// 2Z mint — but the field is a generic `&Pubkey` so a future
+    /// protocol version that routes client rewards to a different mint
+    /// works without an API change.
+    pub client_mint_key: &'a Pubkey,
+}
+
+impl DistributeValidatorRewardsAccounts {
+    pub fn new(initializer: DistributeValidatorRewardsAccountsInitializer<'_>) -> Self {
+        let DistributeValidatorRewardsAccountsInitializer {
+            subscription_epoch,
+            associated_dz_epoch,
+            node_id,
+            client_id,
+            rewards_token_owner_key,
+            publisher_mint_key,
+            publisher_reward_mint_key,
+            client_mint_key,
+        } = initializer;
+
+        let shred_distribution_key = state::find_shred_distribution_address(subscription_epoch).0;
+        let validator_client_rewards_key =
+            state::find_validator_client_rewards_address(client_id).0;
+
+        // Omit-rule: when the publisher journal IS the client journal
+        // (their mints match), the publisher journal plays both roles and
+        // the client-side journal account drops out of the meta list.
+        // Otherwise the client side has its own journal at the 2Z mint,
+        // and the client-side ATA / claim_holding use the 2Z mint too.
+        let client_side_present = client_mint_key != publisher_mint_key;
+        let validator_client_journal_key = client_side_present.then(|| {
+            state::find_shred_distribution_journal_address(subscription_epoch, client_mint_key).0
+        });
+        let client_addresses_mint_key = if client_side_present {
+            client_mint_key
+        } else {
+            publisher_reward_mint_key
+        };
+
+        Self {
+            program_config_key: state::find_program_config_address().0,
+            shred_distribution_key,
+            parent_distribution_key:
+                crate::revenue_distribution::state::Distribution::find_address(
+                    crate::revenue_distribution::types::DoubleZeroEpoch::new(associated_dz_epoch),
+                )
+                .0,
+            validator_publisher_rewards_key: state::find_validator_publisher_rewards_address(
+                node_id,
+            )
+            .0,
+            validator_client_rewards_key,
+            validator_publisher_journal_key: state::find_shred_distribution_journal_address(
+                subscription_epoch,
+                publisher_mint_key,
+            )
+            .0,
+            validator_client_journal_key,
+            destination_ata_key: get_associated_token_address(
+                rewards_token_owner_key,
+                publisher_reward_mint_key,
+            ),
+            shred_distribution_publisher_ata_key: get_associated_token_address(
+                &shred_distribution_key,
+                publisher_reward_mint_key,
+            ),
+            shred_distribution_client_ata_key: get_associated_token_address(
+                &shred_distribution_key,
+                client_addresses_mint_key,
+            ),
+            client_claim_holding_key: state::find_claim_holding_address(
+                &validator_client_rewards_key,
+                subscription_epoch,
+                client_addresses_mint_key,
+            )
+            .0,
+        }
+    }
+}
+
+impl From<DistributeValidatorRewardsAccountsInitializer<'_>>
+    for DistributeValidatorRewardsAccounts
+{
+    fn from(initializer: DistributeValidatorRewardsAccountsInitializer<'_>) -> Self {
+        Self::new(initializer)
+    }
+}
+
+impl From<DistributeValidatorRewardsAccountsInitializer<'_>> for Vec<AccountMeta> {
+    fn from(initializer: DistributeValidatorRewardsAccountsInitializer<'_>) -> Self {
+        DistributeValidatorRewardsAccounts::new(initializer).into()
+    }
+}
+
+impl From<DistributeValidatorRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: DistributeValidatorRewardsAccounts) -> Self {
+        let DistributeValidatorRewardsAccounts {
+            program_config_key,
+            shred_distribution_key,
+            parent_distribution_key,
+            validator_publisher_rewards_key,
+            validator_client_rewards_key,
+            validator_publisher_journal_key,
+            validator_client_journal_key,
+            destination_ata_key,
+            shred_distribution_publisher_ata_key,
+            shred_distribution_client_ata_key,
+            client_claim_holding_key,
+        } = accounts;
+
+        let mut account_metas = vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new_readonly(shred_distribution_key, false),
+            AccountMeta::new_readonly(parent_distribution_key, false),
+            AccountMeta::new_readonly(validator_publisher_rewards_key, false),
+            AccountMeta::new_readonly(validator_client_rewards_key, false),
+            AccountMeta::new(validator_publisher_journal_key, false),
+        ];
+
+        if let Some(validator_client_journal_key) = validator_client_journal_key {
+            account_metas.push(AccountMeta::new(validator_client_journal_key, false));
+        }
+
+        account_metas.extend([
+            AccountMeta::new(destination_ata_key, false),
+            AccountMeta::new(shred_distribution_publisher_ata_key, false),
+            AccountMeta::new(shred_distribution_client_ata_key, false),
+            AccountMeta::new(client_claim_holding_key, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+        ]);
+
+        account_metas
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

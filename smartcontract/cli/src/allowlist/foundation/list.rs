@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::allowlist::foundation::list::ListFoundationAllowlistCommand;
 use std::io::Write;
 
@@ -14,7 +15,12 @@ pub struct ListFoundationAllowlistCliCommand {
 }
 
 impl ListFoundationAllowlistCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let list = client.list_foundation_allowlist(ListFoundationAllowlistCommand)?;
 
         if self.json || self.json_compact {
@@ -44,6 +50,8 @@ impl ListFoundationAllowlistCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         allowlist::foundation::list::ListFoundationAllowlistCliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -72,11 +80,14 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = ListFoundationAllowlistCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListFoundationAllowlistCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -84,11 +95,13 @@ mod tests {
         );
 
         let mut output = Vec::new();
-        let res = ListFoundationAllowlistCliCommand {
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListFoundationAllowlistCliCommand {
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

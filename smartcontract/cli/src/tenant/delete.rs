@@ -139,7 +139,7 @@ impl DeleteTenantCliCommand {
                     std::thread::sleep(delay);
 
                     let (_, current_tenant) = client.get_tenant(GetTenantCommand {
-                        pubkey_or_code: self.pubkey.clone(),
+                        pubkey_or_code: tenant_pubkey.to_string(),
                     })?;
 
                     if current_tenant.reference_count == 0 {

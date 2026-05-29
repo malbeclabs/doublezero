@@ -3,6 +3,7 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::allowlist::qa::add::AddQaAllowlistCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
@@ -15,7 +16,12 @@ pub struct AddQaCliCommand {
 }
 
 impl AddQaCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -36,6 +42,8 @@ impl AddQaCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         allowlist::qa::add::{AddQaAllowlistCommand, AddQaCliCommand},
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -67,10 +75,13 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = AddQaCliCommand {
-            pubkey: pubkey.to_string(),
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            AddQaCliCommand {
+                pubkey: pubkey.to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

@@ -1,6 +1,7 @@
 use crate::doublezerocommand::CliCommand;
 use ::serde::Serialize;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::GetGlobalStateCommand;
 use std::io::Write;
 use tabled::Tabled;
@@ -19,7 +20,12 @@ pub struct AirdropDisplay {
 }
 
 impl GetAirdropCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (_, gstate) = client.get_globalstate(GetGlobalStateCommand)?;
 
         let config_display = AirdropDisplay {
@@ -45,6 +51,8 @@ impl GetAirdropCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         globalconfig::airdrop::get::GetAirdropCliCommand, tests::utils::create_test_client,
     };
@@ -81,7 +89,9 @@ mod tests {
 
         // Table output
         let mut output = Vec::new();
-        let res = GetAirdropCliCommand { json: false }.execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res =
+            block_on(GetAirdropCliCommand { json: false }.execute(&ctx, &client, &mut output));
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -100,7 +110,7 @@ mod tests {
 
         // JSON output
         let mut output = Vec::new();
-        let res = GetAirdropCliCommand { json: true }.execute(&client, &mut output);
+        let res = block_on(GetAirdropCliCommand { json: true }.execute(&ctx, &client, &mut output));
         assert!(res.is_ok());
         let json: serde_json::Value =
             serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();

@@ -1,5 +1,6 @@
 use crate::{doublezerocommand::CliCommand, helpers::parse_pubkey};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::{serializer, types::NetworkV4};
 use doublezero_sdk::{
     commands::{
@@ -134,7 +135,12 @@ fn format_bgp_rtt_ns(ns: u64) -> String {
 }
 
 impl ListUserCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let devices = client.list_device(ListDeviceCommand)?;
         let locations = client.list_location(ListLocationCommand)?;
         let mgroups = client.list_multicastgroup(ListMulticastGroupCommand)?;
@@ -536,6 +542,8 @@ fn narrow_role_entry(
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use std::collections::HashMap;
 
     use super::narrow_groups;
@@ -891,83 +899,90 @@ mod tests {
         /*****************************************************************************************************/
 
         let mut output = Vec::new();
-        let res = ListUserCliCommand {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            device: None,
-            location: None,
-            owner: None,
-            user_payer: None,
-            client_ip: None,
-            user_type: None,
-            cyoa_type: None,
-            dz_ip: None,
-            tunnel_id: None,
-            status: None,
-            multicast_group: None,
-            tenant: None,
-            all_tenants: true,
-            json: false,
-            json_compact: false,
-            narrow: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListUserCliCommand {
+                prepaid: false,
+                solana_validator: false,
+                solana_identity: None,
+                device: None,
+                location: None,
+                owner: None,
+                user_payer: None,
+                client_ip: None,
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: None,
+                status: None,
+                multicast_group: None,
+                tenant: None,
+                all_tenants: true,
+                json: false,
+                json_compact: false,
+                narrow: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, " account                                   | tenant                                    | user_type | groups   | device       | location       | cyoa_type  | client_ip | dz_ip   | accesspass                  | tunnel_id | tunnel_net | status    | bgp_status | rtt | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | Multicast | S:m_code | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | Prepaid: (expires epoch 10) | 500       | 1.2.3.5/32 | activated | unknown    | -   | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
-        let res = ListUserCliCommand {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            device: None,
-            location: None,
-            owner: None,
-            user_payer: None,
-            client_ip: None,
-            user_type: None,
-            cyoa_type: None,
-            dz_ip: None,
-            tunnel_id: None,
-            status: None,
-            multicast_group: None,
-            tenant: None,
-            all_tenants: true,
-            json: false,
-            json_compact: true,
-            narrow: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListUserCliCommand {
+                prepaid: false,
+                solana_validator: false,
+                solana_identity: None,
+                device: None,
+                location: None,
+                owner: None,
+                user_payer: None,
+                client_ip: None,
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: None,
+                status: None,
+                multicast_group: None,
+                tenant: None,
+                all_tenants: true,
+                json: false,
+                json_compact: true,
+                narrow: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"tenant\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"Prepaid: (expires epoch 10)\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"status\":\"Activated\",\"bgp_status\":\"Unknown\",\"bgp_rtt_ns\":0,\"bgp_rtt\":\"-\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
 
         let mut output = Vec::new();
-        let res = ListUserCliCommand {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            device: None,
-            location: None,
-            owner: None,
-            user_payer: None,
-            client_ip: None,
-            user_type: None,
-            cyoa_type: None,
-            dz_ip: None,
-            tunnel_id: None,
-            status: None,
-            multicast_group: None,
-            tenant: None,
-            all_tenants: true,
-            json: false,
-            json_compact: false,
-            narrow: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListUserCliCommand {
+                prepaid: false,
+                solana_validator: false,
+                solana_identity: None,
+                device: None,
+                location: None,
+                owner: None,
+                user_payer: None,
+                client_ip: None,
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: None,
+                status: None,
+                multicast_group: None,
+                tenant: None,
+                all_tenants: true,
+                json: false,
+                json_compact: false,
+                narrow: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let header = output_str.lines().next().unwrap();
@@ -1088,28 +1103,31 @@ mod tests {
             .returning(|_| Ok(std::collections::HashMap::new()));
 
         let mut output = Vec::new();
-        let res = ListUserCliCommand {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            device: None,
-            location: None,
-            owner: None,
-            user_payer: None,
-            client_ip: None,
-            user_type: Some(vec!["Multicast".to_string()]),
-            cyoa_type: None,
-            dz_ip: None,
-            tunnel_id: None,
-            status: None,
-            multicast_group: None,
-            tenant: None,
-            all_tenants: true,
-            json: false,
-            json_compact: false,
-            narrow: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListUserCliCommand {
+                prepaid: false,
+                solana_validator: false,
+                solana_identity: None,
+                device: None,
+                location: None,
+                owner: None,
+                user_payer: None,
+                client_ip: None,
+                user_type: Some(vec!["Multicast".to_string()]),
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: None,
+                status: None,
+                multicast_group: None,
+                tenant: None,
+                all_tenants: true,
+                json: false,
+                json_compact: false,
+                narrow: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
@@ -1200,28 +1218,31 @@ mod tests {
             .returning(|_| Ok(std::collections::HashMap::new()));
 
         let mut output = Vec::new();
-        let res = ListUserCliCommand {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            device: None,
-            location: None,
-            owner: None,
-            user_payer: None,
-            client_ip: None,
-            user_type: None,
-            cyoa_type: Some(vec!["GREOverDIA".to_string()]),
-            dz_ip: None,
-            tunnel_id: None,
-            status: None,
-            multicast_group: None,
-            tenant: None,
-            all_tenants: true,
-            json: false,
-            json_compact: false,
-            narrow: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListUserCliCommand {
+                prepaid: false,
+                solana_validator: false,
+                solana_identity: None,
+                device: None,
+                location: None,
+                owner: None,
+                user_payer: None,
+                client_ip: None,
+                user_type: None,
+                cyoa_type: Some(vec!["GREOverDIA".to_string()]),
+                dz_ip: None,
+                tunnel_id: None,
+                status: None,
+                multicast_group: None,
+                tenant: None,
+                all_tenants: true,
+                json: false,
+                json_compact: false,
+                narrow: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
@@ -1312,28 +1333,31 @@ mod tests {
             .returning(|_| Ok(std::collections::HashMap::new()));
 
         let mut output = Vec::new();
-        let res = ListUserCliCommand {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            device: None,
-            location: None,
-            owner: None,
-            user_payer: None,
-            client_ip: None,
-            user_type: None,
-            cyoa_type: None,
-            dz_ip: Some(vec![[2, 3, 4, 5].into()]),
-            tunnel_id: None,
-            status: None,
-            multicast_group: None,
-            tenant: None,
-            all_tenants: true,
-            json: false,
-            json_compact: false,
-            narrow: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListUserCliCommand {
+                prepaid: false,
+                solana_validator: false,
+                solana_identity: None,
+                device: None,
+                location: None,
+                owner: None,
+                user_payer: None,
+                client_ip: None,
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: Some(vec![[2, 3, 4, 5].into()]),
+                tunnel_id: None,
+                status: None,
+                multicast_group: None,
+                tenant: None,
+                all_tenants: true,
+                json: false,
+                json_compact: false,
+                narrow: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
@@ -1424,28 +1448,31 @@ mod tests {
             .returning(|_| Ok(std::collections::HashMap::new()));
 
         let mut output = Vec::new();
-        let res = ListUserCliCommand {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            device: None,
-            location: None,
-            owner: None,
-            user_payer: None,
-            client_ip: None,
-            user_type: None,
-            cyoa_type: None,
-            dz_ip: None,
-            tunnel_id: Some(vec![500]),
-            status: None,
-            multicast_group: None,
-            tenant: None,
-            all_tenants: true,
-            json: false,
-            json_compact: false,
-            narrow: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListUserCliCommand {
+                prepaid: false,
+                solana_validator: false,
+                solana_identity: None,
+                device: None,
+                location: None,
+                owner: None,
+                user_payer: None,
+                client_ip: None,
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: Some(vec![500]),
+                status: None,
+                multicast_group: None,
+                tenant: None,
+                all_tenants: true,
+                json: false,
+                json_compact: false,
+                narrow: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
@@ -1536,28 +1563,31 @@ mod tests {
             .returning(|_| Ok(std::collections::HashMap::new()));
 
         let mut output = Vec::new();
-        let res = ListUserCliCommand {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            device: None,
-            location: None,
-            owner: None,
-            user_payer: None,
-            client_ip: None,
-            user_type: None,
-            cyoa_type: None,
-            dz_ip: None,
-            tunnel_id: None,
-            status: Some(vec!["activated".to_string()]),
-            multicast_group: None,
-            tenant: None,
-            all_tenants: true,
-            json: false,
-            json_compact: false,
-            narrow: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListUserCliCommand {
+                prepaid: false,
+                solana_validator: false,
+                solana_identity: None,
+                device: None,
+                location: None,
+                owner: None,
+                user_payer: None,
+                client_ip: None,
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: None,
+                status: Some(vec!["activated".to_string()]),
+                multicast_group: None,
+                tenant: None,
+                all_tenants: true,
+                json: false,
+                json_compact: false,
+                narrow: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
@@ -1665,28 +1695,31 @@ mod tests {
             .returning(|_| Ok(std::collections::HashMap::new()));
 
         let mut output = Vec::new();
-        let res = ListUserCliCommand {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            device: None,
-            location: None,
-            owner: None,
-            user_payer: None,
-            client_ip: None,
-            user_type: None,
-            cyoa_type: None,
-            dz_ip: None,
-            tunnel_id: None,
-            status: None,
-            multicast_group: Some(vec!["m_code".to_string()]),
-            tenant: None,
-            all_tenants: true,
-            json: false,
-            json_compact: false,
-            narrow: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListUserCliCommand {
+                prepaid: false,
+                solana_validator: false,
+                solana_identity: None,
+                device: None,
+                location: None,
+                owner: None,
+                user_payer: None,
+                client_ip: None,
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: None,
+                status: None,
+                multicast_group: Some(vec!["m_code".to_string()]),
+                tenant: None,
+                all_tenants: true,
+                json: false,
+                json_compact: false,
+                narrow: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
@@ -1817,28 +1850,31 @@ mod tests {
 
         // Filter by tenant code
         let mut output = Vec::new();
-        let res = ListUserCliCommand {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            device: None,
-            location: None,
-            owner: None,
-            user_payer: None,
-            client_ip: None,
-            user_type: None,
-            cyoa_type: None,
-            dz_ip: None,
-            tunnel_id: None,
-            status: None,
-            multicast_group: None,
-            tenant: Some(vec!["tenant1".to_string()]),
-            all_tenants: false,
-            json: false,
-            json_compact: false,
-            narrow: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListUserCliCommand {
+                prepaid: false,
+                solana_validator: false,
+                solana_identity: None,
+                device: None,
+                location: None,
+                owner: None,
+                user_payer: None,
+                client_ip: None,
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: None,
+                status: None,
+                multicast_group: None,
+                tenant: Some(vec!["tenant1".to_string()]),
+                all_tenants: false,
+                json: false,
+                json_compact: false,
+                narrow: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
@@ -1847,28 +1883,30 @@ mod tests {
 
         // Filter by tenant pubkey
         let mut output = Vec::new();
-        let res = ListUserCliCommand {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            device: None,
-            location: None,
-            owner: None,
-            user_payer: None,
-            client_ip: None,
-            user_type: None,
-            cyoa_type: None,
-            dz_ip: None,
-            tunnel_id: None,
-            status: None,
-            multicast_group: None,
-            tenant: Some(vec![tenant2_pubkey.to_string()]),
-            all_tenants: false,
-            json: false,
-            json_compact: false,
-            narrow: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListUserCliCommand {
+                prepaid: false,
+                solana_validator: false,
+                solana_identity: None,
+                device: None,
+                location: None,
+                owner: None,
+                user_payer: None,
+                client_ip: None,
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: None,
+                status: None,
+                multicast_group: None,
+                tenant: Some(vec![tenant2_pubkey.to_string()]),
+                all_tenants: false,
+                json: false,
+                json_compact: false,
+                narrow: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
@@ -1998,28 +2036,31 @@ mod tests {
 
         // --no-tenant should show users from all tenants
         let mut output = Vec::new();
-        let res = ListUserCliCommand {
-            prepaid: false,
-            solana_validator: false,
-            solana_identity: None,
-            device: None,
-            location: None,
-            owner: None,
-            user_payer: None,
-            client_ip: None,
-            user_type: None,
-            cyoa_type: None,
-            dz_ip: None,
-            tunnel_id: None,
-            status: None,
-            multicast_group: None,
-            tenant: None,
-            all_tenants: true,
-            json: false,
-            json_compact: false,
-            narrow: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListUserCliCommand {
+                prepaid: false,
+                solana_validator: false,
+                solana_identity: None,
+                device: None,
+                location: None,
+                owner: None,
+                user_payer: None,
+                client_ip: None,
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: None,
+                status: None,
+                multicast_group: None,
+                tenant: None,
+                all_tenants: true,
+                json: false,
+                json_compact: false,
+                narrow: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();

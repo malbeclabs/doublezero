@@ -1,6 +1,7 @@
 use std::io::Write;
 
 use clap::{Args, Subcommand};
+use doublezero_cli_core::CliContext;
 
 use crate::{
     doublezerocommand::CliCommand,
@@ -114,25 +115,45 @@ impl MulticastGroupCommands {
     /// daemon-coupled async verbs (`Subscribe` / `Unsubscribe` / `Publish` /
     /// `Unpublish`) and delegates the non-daemon group tree here. Mirrors the
     /// per-resource dispatch pattern in `ServiceabilityCommand::execute`.
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    ///
+    /// `ctx` is forwarded to every verb whose signature accepts it. As the
+    /// remaining verbs migrate to the RFC-20 `async fn execute(self, ctx, client, out)`
+    /// shape, additional arms below await their futures directly.
+    pub async fn execute<C, W>(self, ctx: &CliContext, client: &C, out: &mut W) -> eyre::Result<()>
+    where
+        C: CliCommand,
+        W: Write,
+    {
         match self {
-            Self::Create(args) => args.execute(client, out),
-            Self::Update(args) => args.execute(client, out),
-            Self::List(args) => args.execute(client, out),
-            Self::Get(args) => args.execute(client, out),
-            Self::Delete(args) => args.execute(client, out),
             Self::Allowlist(cmd) => match cmd.command {
                 MulticastGroupAllowlistCommands::Publisher(c) => match c.command {
-                    MulticastGroupPubAllowlistCommands::List(args) => args.execute(client, out),
-                    MulticastGroupPubAllowlistCommands::Add(args) => args.execute(client, out),
-                    MulticastGroupPubAllowlistCommands::Remove(args) => args.execute(client, out),
+                    MulticastGroupPubAllowlistCommands::List(args) => {
+                        args.execute(ctx, client, out).await
+                    }
+                    MulticastGroupPubAllowlistCommands::Add(args) => {
+                        args.execute(ctx, client, out).await
+                    }
+                    MulticastGroupPubAllowlistCommands::Remove(args) => {
+                        args.execute(ctx, client, out).await
+                    }
                 },
                 MulticastGroupAllowlistCommands::Subscriber(c) => match c.command {
-                    MulticastGroupSubAllowlistCommands::List(args) => args.execute(client, out),
-                    MulticastGroupSubAllowlistCommands::Add(args) => args.execute(client, out),
-                    MulticastGroupSubAllowlistCommands::Remove(args) => args.execute(client, out),
+                    MulticastGroupSubAllowlistCommands::List(args) => {
+                        args.execute(ctx, client, out).await
+                    }
+                    MulticastGroupSubAllowlistCommands::Add(args) => {
+                        args.execute(ctx, client, out).await
+                    }
+                    MulticastGroupSubAllowlistCommands::Remove(args) => {
+                        args.execute(ctx, client, out).await
+                    }
                 },
             },
+            Self::Create(args) => args.execute(ctx, client, out).await,
+            Self::Update(args) => args.execute(ctx, client, out).await,
+            Self::List(args) => args.execute(ctx, client, out).await,
+            Self::Get(args) => args.execute(ctx, client, out).await,
+            Self::Delete(args) => args.execute(ctx, client, out).await,
         }
     }
 }

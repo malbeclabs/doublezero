@@ -6,6 +6,7 @@ use crate::{
     },
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::multicastgroup::{
     get::GetMulticastGroupCommand, update::UpdateMulticastGroupCommand,
 };
@@ -40,7 +41,12 @@ pub struct UpdateMulticastGroupCliCommand {
 }
 
 impl UpdateMulticastGroupCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -78,6 +84,8 @@ impl UpdateMulticastGroupCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand,
         multicastgroup::update::UpdateMulticastGroupCliCommand,
@@ -283,17 +291,20 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
-        let res = UpdateMulticastGroupCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: Some("new_code".to_string()),
-            multicast_ip: Some([10, 0, 0, 1].into()),
-            max_bandwidth: Some(1000000000),
-            publisher_count: Some(5),
-            subscriber_count: Some(10),
-            owner: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            UpdateMulticastGroupCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: Some("new_code".to_string()),
+                multicast_ip: Some([10, 0, 0, 1].into()),
+                max_bandwidth: Some(1000000000),
+                publisher_count: Some(5),
+                subscriber_count: Some(10),
+                owner: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
     }
@@ -331,17 +342,20 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
-        let res = UpdateMulticastGroupCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: None,
-            multicast_ip: None,
-            max_bandwidth: None,
-            publisher_count: None,
-            subscriber_count: None,
-            owner: Some(explicit_owner.to_string()),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            UpdateMulticastGroupCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: None,
+                multicast_ip: None,
+                max_bandwidth: None,
+                publisher_count: None,
+                subscriber_count: None,
+                owner: Some(explicit_owner.to_string()),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
     }
@@ -380,17 +394,20 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         let mut output = Vec::new();
-        let res = UpdateMulticastGroupCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: None,
-            multicast_ip: None,
-            max_bandwidth: None,
-            publisher_count: None,
-            subscriber_count: None,
-            owner: Some("me".to_string()),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            UpdateMulticastGroupCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: None,
+                multicast_ip: None,
+                max_bandwidth: None,
+                publisher_count: None,
+                subscriber_count: None,
+                owner: Some("me".to_string()),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
     }

@@ -88,9 +88,10 @@ impl GetUserCliCommand {
             })?
             .map(|(_, ap)| ap.to_string());
         if accesspass_str.is_none() {
-            eprintln!(
-                "Warning: no Access Pass found for this user (client-ip: {}, payer: {})",
-                user.client_ip, user.owner
+            tracing::warn!(
+                client_ip = %user.client_ip,
+                payer = %user.owner,
+                "no access pass found for user"
             );
         }
         let multicast_groups = client.list_multicastgroup(ListMulticastGroupCommand {})?;

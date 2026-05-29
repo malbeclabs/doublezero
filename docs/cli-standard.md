@@ -100,7 +100,7 @@ The binary owns these globals; modules MUST NOT redeclare them:
 | `--geo-program-id` | Geolocation program ID override. |
 | `--sock-file` | Daemon Unix socket path override. |
 | `--no-version-warning` | Suppress version-check banner. |
-| `--log-verbose` | Diagnostic logging. Repeat for higher levels: once raises to `debug`, twice raises to `trace`. No short alias because `connect`/`disconnect` still own `-v`/`--verbose` for their own flags. |
+| `--log-level` | Diagnostic logging level. One of `off`, `error`, `warn` (default), `info`, `debug`, `trace`. No short alias because `connect`/`disconnect` still own `-v`/`--verbose` for their own flags. |
 | `--version`, `-V` | Print version and exit. |
 
 `--env` resolves through `doublezero-config`. Recognized values are
@@ -118,11 +118,12 @@ tracing::debug!(env = %ctx.env, code = %self.code, "location get");
 ```
 
 Modules MUST NOT call `init_subscriber` themselves; the binary calls
-`doublezero_cli_core::init_logging(verbosity)` once at startup. The
-`RUST_LOG` env var overrides verbosity for per-module filtering.
+`doublezero_cli_core::init_logging(app.log_level)` once at startup from the
+global `--log-level` flag. The `RUST_LOG` env var overrides the level for
+per-module filtering.
 
-JSON output on stdout stays parseable at every verbosity level because logs
-go to stderr.
+JSON output on stdout stays parseable at every log level because logs go to
+stderr.
 
 ## Reference verb: `location get`
 

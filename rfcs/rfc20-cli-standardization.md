@@ -136,7 +136,7 @@ Modules MUST NOT mutate `CliContext` and MUST NOT re-resolve any value from `--e
 
 Diagnostic output is separate from user-facing output and goes to standard error through the shared logging facade in the CLI core crate. Modules use the standard log macros (`debug!`, `info!`, `warn!`, `error!`, and `trace!` when finer granularity is justified) for anything that explains what a verb is doing internally: backend requests issued, retries, resolution of pubkey-or-code arguments, polling progress, and similar.
 
-The binary configures the global log level from `--log-verbose`: warnings and errors only by default, `debug` when `--log-verbose` is set once, and `trace` when set twice (`--log-verbose --log-verbose`). The flag is spelled `--log-verbose` rather than `--verbose, -v` because `connect` and `disconnect` still own their own per-subcommand `--verbose` (`-v`) flags from earlier releases; a future RFC may deprecate those and reclaim the shorter spelling. Modules MUST NOT set or override the log level themselves and MUST NOT use `println!` or `eprintln!` for diagnostics. JSON output remains parseable regardless of `--log-verbose` because diagnostic logs go to stderr and the user-facing writer goes to stdout.
+The binary configures the global log level from `--log-level`, an enum flag accepting `off`, `error`, `warn` (the default), `info`, `debug`, and `trace`. The flag is spelled `--log-level` rather than `--verbose, -v` because `connect` and `disconnect` still own their own per-subcommand `--verbose` (`-v`) flags from earlier releases; a future RFC may deprecate those and reclaim the shorter spelling. Modules MUST NOT set or override the log level themselves and MUST NOT use `println!` or `eprintln!` for diagnostics. JSON output remains parseable regardless of `--log-level` because diagnostic logs go to stderr and the user-facing writer goes to stdout.
 
 ### Environments and configuration resolution
 
@@ -168,7 +168,7 @@ The unified binary owns the following global flags, propagated to every subcomma
 | `--geo-program-id` | Geolocation program ID override. |
 | `--sock-file` | Daemon Unix socket path override. |
 | `--no-version-warning` | Suppress the version-check banner. |
-| `--log-verbose` | Enable diagnostic logging. Repeating (`--log-verbose --log-verbose`) raises the level from `debug` to `trace`. No short alias yet because `connect`/`disconnect` still own `-v`/`--verbose` for legacy per-subcommand flags. |
+| `--log-level` | Diagnostic logging level. One of `off`, `error`, `warn` (default), `info`, `debug`, `trace`. No short alias yet because `connect`/`disconnect` still own `-v`/`--verbose` for legacy per-subcommand flags. |
 | `--version`, `-V` | Print the binary version and exit. |
 
 The DZ-ledger and Solana-L1 transports use separate override flags by design: confusing the two leads to verbs that quietly run against the wrong network. When `--env` is set, all transports resolve consistently; when an override is needed for one transport, the others continue to follow `--env`.

@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - Route the `doublezero user get` "no Access Pass found" warning through `tracing::warn!` instead of `eprintln!`, so diagnostics go to the logging facade per RFC-20 §Diagnostic logging and no longer write directly to stderr. No user-facing output, flag, or schema change.
+  - Reconcile the RFC-20 docs with the implemented global logging flag: `rfcs/rfc20-cli-standardization.md` and `docs/cli-standard.md` now describe `--log-level <off|error|warn|info|debug|trace>` (default `warn`) instead of the never-implemented repeatable `--log-verbose`. Documentation only; the binary is unchanged.
 - feat(controller): enable eos-native gnmi provider ([#3781](https://github.com/malbeclabs/doublezero/pull/3781))
 - CLI
   - Migrate `doublezero geolocation` subcommands into the new `doublezero-geolocation-cli` module crate per RFC-20. The `probe` and `user` subtrees and the hidden `init` verb are now owned by the crate; the binary mounts them via `GeolocationArgs` from `doublezero-geolocation-cli`. The hidden top-level `doublezero init-geolocation-config` alias is removed; use `doublezero geolocation init` instead.

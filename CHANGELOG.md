@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.25.0](https://github.com/malbeclabs/doublezero/compare/client/v0.24.0...client/v0.25.0) - 2026-05-29
+
+### Breaking
+
 ### Changes
 
 - Controller

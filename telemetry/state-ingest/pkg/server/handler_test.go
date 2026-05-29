@@ -860,7 +860,7 @@ func TestTelemetry_StateIngest_Handler_StateToCollect_UsesDefaultShowCommandsAnd
 
 	var resp types.StateToCollectResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	require.Len(t, resp.ShowCommands, 2)
+	require.Len(t, resp.ShowCommands, 8)
 	require.Len(t, resp.Custom, 1)
 
 	// Convert to map for order-independent comparison (map iteration is non-deterministic)
@@ -869,8 +869,14 @@ func TestTelemetry_StateIngest_Handler_StateToCollect_UsesDefaultShowCommandsAnd
 		respMap[sc.Kind] = sc.Command
 	}
 	require.Equal(t, map[string]string{
-		"snmp-mib-ifmib-ifindex": "show snmp mib ifmib ifindex",
-		"isis-database-detail":   "show isis database detail",
+		"snmp-mib-ifmib-ifindex":    "show snmp mib ifmib ifindex",
+		"isis-database-detail":      "show isis database detail",
+		"ip-mroute":                 "show ip mroute",
+		"ip-mroute-count":           "show ip mroute count",
+		"ip-msdp-summary":           "show ip msdp summary",
+		"ip-msdp-pim-sa-cache":      "show ip msdp pim sa-cache",
+		"ip-msdp-sa-cache":          "show ip msdp sa-cache",
+		"ip-msdp-sa-cache-rejected": "show ip msdp sa-cache rejected",
 	}, respMap)
 	require.Equal(t, []string{"bgp-sockets"}, resp.Custom)
 }

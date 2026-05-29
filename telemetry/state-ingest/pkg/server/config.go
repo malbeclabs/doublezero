@@ -23,6 +23,12 @@ var (
 	defaultStateToCollectShowCommands = map[string]string{
 		"snmp-mib-ifmib-ifindex": "show snmp mib ifmib ifindex",
 		"isis-database-detail":   "show isis database detail",
+		"ip-mroute":              "show ip mroute",
+		"ip-mroute-count":        "show ip mroute count",
+		"ip-msdp-summary":        "show ip msdp summary",
+		"ip-msdp-pim-sa-cache":   "show ip msdp pim sa-cache",
+		"ip-msdp-sa-cache":       "show ip msdp sa-cache",
+		"ip-msdp-sa-cache-rejected": "show ip msdp sa-cache rejected",
 	}
 	defaultStateToCollectCustom = []string{
 		"bgp-sockets",

@@ -1,14 +1,19 @@
-use crate::{doublezerocommand::CliCommand, requirements::CHECK_ID_JSON};
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::{require, CliContext, RequirementCheck};
 use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct BalanceCliCommand;
 
 impl BalanceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-        client.check_requirements(CHECK_ID_JSON)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(client, RequirementCheck::KEYPAIR);
 
         let balance = client.get_balance()?;
 

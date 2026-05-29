@@ -82,13 +82,13 @@ async fn main() -> eyre::Result<()> {
     let mut handle = stdout.lock();
 
     let res = match app.command {
-        Command::Address(args) => args.execute(&client, &mut handle),
-        Command::Balance(args) => args.execute(&client, &mut handle),
+        Command::Address(args) => args.execute(&ctx, &client, &mut handle).await,
+        Command::Balance(args) => args.execute(&ctx, &client, &mut handle).await,
 
-        Command::Init(args) => args.execute(&client, &mut handle),
+        Command::Init(args) => args.execute(&ctx, &client, &mut handle).await,
         Command::Config(command) => match command.command {
-            ConfigCommands::Get(args) => args.execute(&client, &mut handle),
-            ConfigCommands::Set(args) => args.execute(&client, &mut handle),
+            ConfigCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            ConfigCommands::Set(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::GlobalConfig(command) => match command.command {
             GlobalConfigCommands::Set(args) => args.execute(&client, &mut handle),
@@ -183,15 +183,24 @@ async fn main() -> eyre::Result<()> {
             LinkCommands::Delete(args) => args.execute(&client, &mut handle),
         },
         Command::AccessPass(command) => match command.command {
-            cli::accesspass::AccessPassCommands::Set(args) => args.execute(&client, &mut handle),
-            cli::accesspass::AccessPassCommands::Close(args) => args.execute(&client, &mut handle),
-            cli::accesspass::AccessPassCommands::List(args) => args.execute(&client, &mut handle),
-            cli::accesspass::AccessPassCommands::Get(args) => args.execute(&client, &mut handle),
+            cli::accesspass::AccessPassCommands::Set(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
+            cli::accesspass::AccessPassCommands::Close(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
+            cli::accesspass::AccessPassCommands::List(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
+            cli::accesspass::AccessPassCommands::Get(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
             cli::accesspass::AccessPassCommands::UserBalances(args) => {
-                args.execute(&client, &mut handle)
+                args.execute(&ctx, &client, &mut handle).await
             }
             cli::accesspass::AccessPassCommands::Fund(args) => {
-                args.execute(&client, &mut handle, &mut std::io::stdin().lock())
+                args.execute(&ctx, &client, &mut handle, &mut std::io::stdin().lock())
+                    .await
             }
         },
         Command::Permission(command) => match command.command {
@@ -274,8 +283,8 @@ async fn main() -> eyre::Result<()> {
         Command::Migrate(args) => match args.command {
             cli::migrate::MigrateCommands::FlexAlgo(cmd) => cmd.execute(&client, &mut handle),
         },
-        Command::Export(args) => args.execute(&client, &mut handle),
-        Command::Keygen(args) => args.execute(&client, &mut handle),
+        Command::Export(args) => args.execute(&ctx, &client, &mut handle).await,
+        Command::Keygen(args) => args.execute(&ctx, &client, &mut handle).await,
         Command::Log(args) => args.execute(&dzclient, &mut handle),
         Command::Completion(args) => {
             let mut cmd = App::command();

@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::{
     accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
     tenant::list::ListTenantCommand,
@@ -42,7 +43,12 @@ struct AccessPassDisplay {
 }
 
 impl GetAccessPassCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let epoch = client.get_epoch()?;
 
         let (pubkey, accesspass) = client
@@ -124,6 +130,7 @@ impl GetAccessPassCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{accesspass::get::GetAccessPassCliCommand, tests::utils::create_test_client};
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
         commands::{
             accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
@@ -221,13 +228,16 @@ mod tests {
                 Ok(map)
             });
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = GetAccessPassCliCommand {
-            client_ip,
-            user_payer,
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetAccessPassCliCommand {
+                client_ip,
+                user_payer,
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {

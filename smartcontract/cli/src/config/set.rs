@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::{ArgGroup, Args};
+use doublezero_cli_core::CliContext;
 use doublezero_config::Environment;
 use doublezero_sdk::{
     convert_geo_program_moniker, convert_program_moniker, convert_url_moniker, convert_url_to_ws,
@@ -42,7 +43,12 @@ pub struct SetConfigCliCommand {
 }
 
 impl SetConfigCliCommand {
-    pub fn execute<W: Write>(self, _client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<W: Write>(
+        self,
+        _ctx: &CliContext,
+        _client: &dyn CliCommand,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (ledger_url, ledger_ws, program_id, geo_program_id) = if let Some(env) = self.env {
             if self.url.is_some()
                 || self.ws.is_some()
@@ -132,6 +138,7 @@ impl SetConfigCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use serial_test::serial;
     use tempfile::TempDir;
 
@@ -150,20 +157,23 @@ mod tests {
 
         temp_env::with_var(CONFIG_ENV_VAR, Some(&config_path.to_str().unwrap()), || {
             let client = create_test_client();
+            let ctx = cli_context_default_for_tests();
             write_doublezero_config(&cfg).unwrap();
 
             let mut output = Vec::new();
-            SetConfigCliCommand {
-                env: Some(Environment::Devnet.to_string()),
-                url: None,
-                ws: None,
-                keypair: None,
-                program_id: None,
-                geo_program_id: None,
-                tenant: None,
-                no_tenant: false,
-            }
-            .execute(&client, &mut output)
+            block_on(
+                SetConfigCliCommand {
+                    env: Some(Environment::Devnet.to_string()),
+                    url: None,
+                    ws: None,
+                    keypair: None,
+                    program_id: None,
+                    geo_program_id: None,
+                    tenant: None,
+                    no_tenant: false,
+                }
+                .execute(&ctx, &client, &mut output),
+            )
             .unwrap();
             let output_str = String::from_utf8(output).unwrap();
             let devnet_config = Environment::Devnet.config().unwrap();
@@ -185,19 +195,22 @@ mod tests {
             create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
 
             let client = create_test_client();
+            let ctx = cli_context_default_for_tests();
 
             let mut output = Vec::new();
-            SetConfigCliCommand {
-                env: None,
-                url: None,
-                ws: None,
-                keypair: None,
-                program_id: None,
-                geo_program_id: None,
-                tenant: None,
-                no_tenant: false,
-            }
-            .execute(&client, &mut output)
+            block_on(
+                SetConfigCliCommand {
+                    env: None,
+                    url: None,
+                    ws: None,
+                    keypair: None,
+                    program_id: None,
+                    geo_program_id: None,
+                    tenant: None,
+                    no_tenant: false,
+                }
+                .execute(&ctx, &client, &mut output),
+            )
             .unwrap();
             let output_str = String::from_utf8(output).unwrap();
             assert_eq!(output_str, "No arguments provided\n");
@@ -214,19 +227,22 @@ mod tests {
             create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
 
             let client = create_test_client();
+            let ctx = cli_context_default_for_tests();
 
             let mut output = Vec::new();
-            SetConfigCliCommand {
-                env: Some(Environment::Devnet.to_string()),
-                url: None,
-                ws: None,
-                keypair: None,
-                program_id: None,
-                geo_program_id: None,
-                tenant: None,
-                no_tenant: false,
-            }
-            .execute(&client, &mut output)
+            block_on(
+                SetConfigCliCommand {
+                    env: Some(Environment::Devnet.to_string()),
+                    url: None,
+                    ws: None,
+                    keypair: None,
+                    program_id: None,
+                    geo_program_id: None,
+                    tenant: None,
+                    no_tenant: false,
+                }
+                .execute(&ctx, &client, &mut output),
+            )
             .unwrap();
             let output_str = String::from_utf8(output).unwrap();
 
@@ -249,19 +265,22 @@ mod tests {
             create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
 
             let client = create_test_client();
+            let ctx = cli_context_default_for_tests();
 
             let mut output = Vec::new();
-            SetConfigCliCommand {
-                env: None,
-                url: Some("https://example.com".to_string()),
-                ws: None,
-                keypair: None,
-                program_id: None,
-                geo_program_id: None,
-                tenant: None,
-                no_tenant: false,
-            }
-            .execute(&client, &mut output)
+            block_on(
+                SetConfigCliCommand {
+                    env: None,
+                    url: Some("https://example.com".to_string()),
+                    ws: None,
+                    keypair: None,
+                    program_id: None,
+                    geo_program_id: None,
+                    tenant: None,
+                    no_tenant: false,
+                }
+                .execute(&ctx, &client, &mut output),
+            )
             .unwrap();
             let output_str = String::from_utf8(output).unwrap();
 
@@ -284,19 +303,22 @@ mod tests {
             create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
 
             let client = create_test_client();
+            let ctx = cli_context_default_for_tests();
 
             let mut output = Vec::new();
-            SetConfigCliCommand {
-                env: None,
-                url: None,
-                ws: None,
-                keypair: None,
-                program_id: Some("1234567890".to_string()),
-                geo_program_id: None,
-                tenant: None,
-                no_tenant: false,
-            }
-            .execute(&client, &mut output)
+            block_on(
+                SetConfigCliCommand {
+                    env: None,
+                    url: None,
+                    ws: None,
+                    keypair: None,
+                    program_id: Some("1234567890".to_string()),
+                    geo_program_id: None,
+                    tenant: None,
+                    no_tenant: false,
+                }
+                .execute(&ctx, &client, &mut output),
+            )
             .unwrap();
             let output_str = String::from_utf8(output).unwrap();
 
@@ -341,19 +363,22 @@ mod tests {
             create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
 
             let client = create_test_client();
+            let ctx = cli_context_default_for_tests();
 
             let mut output = Vec::new();
-            SetConfigCliCommand {
-                env: None,
-                url: None,
-                ws: None,
-                keypair: None,
-                program_id: None,
-                geo_program_id: None,
-                tenant: Some("my-tenant".to_string()),
-                no_tenant: false,
-            }
-            .execute(&client, &mut output)
+            block_on(
+                SetConfigCliCommand {
+                    env: None,
+                    url: None,
+                    ws: None,
+                    keypair: None,
+                    program_id: None,
+                    geo_program_id: None,
+                    tenant: Some("my-tenant".to_string()),
+                    no_tenant: false,
+                }
+                .execute(&ctx, &client, &mut output),
+            )
             .unwrap();
             let output_str = String::from_utf8(output).unwrap();
             assert!(output_str.contains("Tenant: my-tenant"));
@@ -376,19 +401,22 @@ mod tests {
             create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
 
             let client = create_test_client();
+            let ctx = cli_context_default_for_tests();
 
             let mut output = Vec::new();
-            SetConfigCliCommand {
-                env: None,
-                url: None,
-                ws: None,
-                keypair: None,
-                program_id: None,
-                geo_program_id: None,
-                tenant: None,
-                no_tenant: true,
-            }
-            .execute(&client, &mut output)
+            block_on(
+                SetConfigCliCommand {
+                    env: None,
+                    url: None,
+                    ws: None,
+                    keypair: None,
+                    program_id: None,
+                    geo_program_id: None,
+                    tenant: None,
+                    no_tenant: true,
+                }
+                .execute(&ctx, &client, &mut output),
+            )
             .unwrap();
             let output_str = String::from_utf8(output).unwrap();
             assert!(output_str.contains("Tenant: (not set)"));
@@ -409,19 +437,22 @@ mod tests {
             create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
 
             let client = create_test_client();
+            let ctx = cli_context_default_for_tests();
 
             let mut output = Vec::new();
-            SetConfigCliCommand {
-                env: None,
-                url: None,
-                ws: None,
-                keypair: None,
-                program_id: None,
-                geo_program_id: Some("MyGeoProgram123".to_string()),
-                tenant: None,
-                no_tenant: false,
-            }
-            .execute(&client, &mut output)
+            block_on(
+                SetConfigCliCommand {
+                    env: None,
+                    url: None,
+                    ws: None,
+                    keypair: None,
+                    program_id: None,
+                    geo_program_id: Some("MyGeoProgram123".to_string()),
+                    tenant: None,
+                    no_tenant: false,
+                }
+                .execute(&ctx, &client, &mut output),
+            )
             .unwrap();
             let output_str = String::from_utf8(output).unwrap();
 
@@ -442,19 +473,22 @@ mod tests {
             create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
 
             let client = create_test_client();
+            let ctx = cli_context_default_for_tests();
 
             let mut output = Vec::new();
-            SetConfigCliCommand {
-                env: Some(Environment::Devnet.to_string()),
-                url: None,
-                ws: None,
-                keypair: None,
-                program_id: None,
-                geo_program_id: Some("MyGeoProgram123".to_string()),
-                tenant: None,
-                no_tenant: false,
-            }
-            .execute(&client, &mut output)
+            block_on(
+                SetConfigCliCommand {
+                    env: Some(Environment::Devnet.to_string()),
+                    url: None,
+                    ws: None,
+                    keypair: None,
+                    program_id: None,
+                    geo_program_id: Some("MyGeoProgram123".to_string()),
+                    tenant: None,
+                    no_tenant: false,
+                }
+                .execute(&ctx, &client, &mut output),
+            )
             .unwrap();
             let output_str = String::from_utf8(output).unwrap();
             assert!(output_str.contains("Invalid flag combination"));

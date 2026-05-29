@@ -374,8 +374,10 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 			text := formatTextOutput(output)
 			if *verbose {
 				text += fmt.Sprintf("  Cache: result=%s promoted=%v\n\n", info.Result.String(), info.Promoted)
-			} else if info.Promoted && info.HadPrevBest {
-				text += fmt.Sprintf("  * Backup promoted to best (previous best: %.3fms)\n\n", float64(info.PrevBestRttNs)/nanosecondsPerMs)
+			} else if info.Promoted {
+				// A promotion implies the old best expired, so there is no
+				// non-stale previous best RTT to report.
+				text += "  * Backup promoted to best\n\n"
 			} else if info.Result == geoprobe.UpdateBest && info.HadPrevBest {
 				text += fmt.Sprintf("  * New best measurement (previous best: %.3fms)\n\n", float64(info.PrevBestRttNs)/nanosecondsPerMs)
 			}

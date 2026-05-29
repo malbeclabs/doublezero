@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - SDK (Go)
   - Add CreateUser / DeleteUser to the serviceability executor with cross-language wire-format fixtures and four new PDA helpers (GetUserPDA, GetAccessPassPDA, GetTunnelIdsPDA, GetDzPrefixBlockPDA)
+- CLI
+  - Honor the build-configured default environment (`Testnet` by default, `MainnetBeta` under the `default-mainnet-beta` feature) when neither `--env` nor a persisted `config.yml` selects one. The RFC-20 context-build previously fell back to `Environment::default()`, which is always `Devnet` regardless of the build, so a testnet build with no config silently targeted Devnet's ledger URLs and program IDs. The binary now resolves the fallback through the new `doublezero_sdk::default_environment()`, matching the legacy `DZClient::new` defaults (`default_program_id`, `ClientConfig::default`) which already key off the compiled-in environment ([#3810](https://github.com/malbeclabs/doublezero/pull/3810))
 
 ## [v0.25.0](https://github.com/malbeclabs/doublezero/compare/client/v0.24.0...client/v0.25.0) - 2026-05-29
 

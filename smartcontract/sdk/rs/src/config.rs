@@ -15,6 +15,15 @@ const DEFAULT_ENVIRONMENT: Environment = Environment::MainnetBeta;
 #[cfg(not(feature = "default-mainnet-beta"))]
 const DEFAULT_ENVIRONMENT: Environment = Environment::Testnet;
 
+/// The environment the binary defaults to when neither `--env` nor a persisted
+/// config selects one. Build-feature-aware: `Testnet` by default, `MainnetBeta`
+/// under `default-mainnet-beta`. Mirrors the legacy `DZClient::new` defaults
+/// (`default_program_id`, `ClientConfig::default`), which all key off the same
+/// compiled-in environment.
+pub fn default_environment() -> Environment {
+    DEFAULT_ENVIRONMENT
+}
+
 /// Returns the default program ID based on the compiled-in environment.
 pub fn default_program_id() -> Pubkey {
     DEFAULT_ENVIRONMENT

@@ -85,6 +85,27 @@ struct App {
     version: bool,
 }
 
+/// Resolve the active [`Environment`] from the `--env` flag and any persisted
+/// config, falling back to the build-configured default
+/// ([`doublezero_sdk::default_environment`]) when neither selects one.
+///
+/// The fallback MUST use the compiled default — not [`Environment::default`],
+/// which is always `Devnet` — so testnet / mainnet-beta builds honor their
+/// baked-in environment when no `config.yml` is present. `persisted` is `Some`
+/// only when a config file actually exists on disk.
+fn resolve_environment(
+    env_flag: Option<&str>,
+    persisted: Option<&doublezero_sdk::ClientConfig>,
+) -> eyre::Result<Environment> {
+    match env_flag {
+        Some(s) => s.parse::<Environment>(),
+        None => Ok(persisted
+            .and_then(|c| c.program_id.as_deref())
+            .and_then(|pid| Environment::from_program_id(pid).ok())
+            .unwrap_or_else(doublezero_sdk::default_environment)),
+    }
+}
+
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     unsafe {
@@ -119,18 +140,11 @@ async fn main() -> eyre::Result<()> {
     let persisted_exists = persisted_path.is_file();
 
     let env_explicit = app.env.is_some();
-    let env = match app.env.as_deref() {
-        Some(s) => s.parse::<Environment>().unwrap_or_else(|e| {
+    let env = resolve_environment(app.env.as_deref(), persisted_exists.then_some(&persisted))
+        .unwrap_or_else(|e| {
             doublezero_cli_core::error::render_eyre(&e);
             std::process::exit(1);
-        }),
-        None if persisted_exists => persisted
-            .program_id
-            .as_deref()
-            .and_then(|pid| Environment::from_program_id(pid).ok())
-            .unwrap_or_default(),
-        None => Environment::default(),
-    };
+        });
 
     let mut ctx_builder = doublezero_cli_core::CliContextBuilder::new().with_env(env);
 
@@ -371,5 +385,56 @@ mod tests {
     fn url_alone_parses() {
         App::try_parse_from(["doublezero", "--url", "https://x.invalid/"])
             .expect("--url alone should parse");
+    }
+
+    use super::resolve_environment;
+    use doublezero_config::Environment;
+
+    // Regression: with no `--env` and no persisted config, the active
+    // environment must be the build-configured default, not `Environment::default()`
+    // (which is always Devnet). A testnet build must resolve to Testnet here.
+    #[test]
+    fn no_env_flag_no_config_uses_build_default() {
+        assert_eq!(
+            resolve_environment(None, None).unwrap(),
+            doublezero_sdk::default_environment(),
+        );
+    }
+
+    #[test]
+    fn env_flag_overrides_default() {
+        assert_eq!(
+            resolve_environment(Some("mainnet-beta"), None).unwrap(),
+            Environment::MainnetBeta,
+        );
+    }
+
+    #[test]
+    fn persisted_program_id_selects_its_environment() {
+        let devnet_pid = Environment::Devnet
+            .config()
+            .unwrap()
+            .serviceability_program_id
+            .to_string();
+        let cfg = doublezero_sdk::ClientConfig {
+            program_id: Some(devnet_pid),
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_environment(None, Some(&cfg)).unwrap(),
+            Environment::Devnet,
+        );
+    }
+
+    #[test]
+    fn persisted_config_without_program_id_uses_build_default() {
+        let cfg = doublezero_sdk::ClientConfig {
+            program_id: None,
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_environment(None, Some(&cfg)).unwrap(),
+            doublezero_sdk::default_environment(),
+        );
     }
 }

@@ -1,6 +1,6 @@
 use crate::client::GeoCliCommand;
 use clap::{Args, ValueEnum};
-use doublezero_cli_core::validators::validate_pubkey_or_code;
+use doublezero_cli_core::{validators::validate_pubkey_or_code, CliContext};
 use doublezero_geolocation::state::geolocation_user::GeolocationPaymentStatus;
 use doublezero_sdk::geolocation::geolocation_user::{
     get::GetGeolocationUserCommand, update_payment_status::UpdatePaymentStatusCommand,
@@ -27,7 +27,14 @@ pub struct UpdatePaymentStatusCliCommand {
 }
 
 impl UpdatePaymentStatusCliCommand {
-    pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: GeoCliCommand, W: Write>(
+        self,
+        ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        tracing::debug!(env = %ctx.env, user = %self.user, "geolocation user update-payment");
+
         let payment_status = match self.status {
             PaymentStatus::Paid => GeolocationPaymentStatus::Paid,
             PaymentStatus::Delinquent => GeolocationPaymentStatus::Delinquent,
@@ -56,6 +63,7 @@ impl UpdatePaymentStatusCliCommand {
 mod tests {
     use super::*;
     use crate::client::MockGeoCliCommand;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_geolocation::state::{
         accounttype::AccountType,
         geolocation_user::{
@@ -110,13 +118,16 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdatePaymentStatusCliCommand {
-            user: "geo-user-01".to_string(),
-            status: PaymentStatus::Paid,
-            last_deduction_epoch: Some(42),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdatePaymentStatusCliCommand {
+                user: "geo-user-01".to_string(),
+                status: PaymentStatus::Paid,
+                last_deduction_epoch: Some(42),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));
@@ -145,13 +156,16 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdatePaymentStatusCliCommand {
-            user: "geo-user-01".to_string(),
-            status: PaymentStatus::Delinquent,
-            last_deduction_epoch: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdatePaymentStatusCliCommand {
+                user: "geo-user-01".to_string(),
+                status: PaymentStatus::Delinquent,
+                last_deduction_epoch: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));

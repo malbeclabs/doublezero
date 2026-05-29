@@ -1,6 +1,6 @@
 use crate::client::GeoCliCommand;
 use clap::Args;
-use doublezero_cli_core::validators::validate_code;
+use doublezero_cli_core::{validators::validate_code, CliContext};
 use doublezero_geolocation::validation::validate_public_ip;
 use doublezero_sdk::geolocation::geolocation_user::{
     get::GetGeolocationUserCommand, set_result_destination::SetResultDestinationCommand,
@@ -79,7 +79,14 @@ fn validate_destination(destination: &str) -> eyre::Result<()> {
 }
 
 impl SetResultDestinationCliCommand {
-    pub fn execute<C: GeoCliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: GeoCliCommand, W: Write>(
+        self,
+        ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        tracing::debug!(env = %ctx.env, user = %self.user, "geolocation user set-result-destination");
+
         let destination = if self.clear {
             String::new()
         } else {
@@ -117,6 +124,7 @@ impl SetResultDestinationCliCommand {
 mod tests {
     use super::*;
     use crate::client::MockGeoCliCommand;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_geolocation::state::{
         accounttype::AccountType,
         geolocation_user::{
@@ -194,13 +202,16 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetResultDestinationCliCommand {
-            user: "geo-user-01".to_string(),
-            destination: Some("185.199.108.1:9000".to_string()),
-            clear: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetResultDestinationCliCommand {
+                user: "geo-user-01".to_string(),
+                destination: Some("185.199.108.1:9000".to_string()),
+                clear: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));
@@ -231,13 +242,16 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetResultDestinationCliCommand {
-            user: "geo-user-01".to_string(),
-            destination: None,
-            clear: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetResultDestinationCliCommand {
+                user: "geo-user-01".to_string(),
+                destination: None,
+                clear: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));
@@ -247,13 +261,16 @@ mod tests {
     fn test_cli_set_result_destination_missing_destination() {
         let client = MockGeoCliCommand::new();
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetResultDestinationCliCommand {
-            user: "geo-user-01".to_string(),
-            destination: None,
-            clear: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetResultDestinationCliCommand {
+                user: "geo-user-01".to_string(),
+                destination: None,
+                clear: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("--destination"));
     }
@@ -273,13 +290,16 @@ mod tests {
         ];
         for (dest, expected_msg) in cases {
             let client = MockGeoCliCommand::new();
+            let ctx = cli_context_default_for_tests();
             let mut output = Vec::new();
-            let res = SetResultDestinationCliCommand {
-                user: "geo-user-01".to_string(),
-                destination: Some(dest.to_string()),
-                clear: false,
-            }
-            .execute(&client, &mut output);
+            let res = block_on(
+                SetResultDestinationCliCommand {
+                    user: "geo-user-01".to_string(),
+                    destination: Some(dest.to_string()),
+                    clear: false,
+                }
+                .execute(&ctx, &client, &mut output),
+            );
             assert!(res.is_err(), "expected error for destination \"{dest}\"");
             let err = res.unwrap_err().to_string();
             assert!(

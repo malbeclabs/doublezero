@@ -11,7 +11,7 @@ type UpdateResult int
 const (
 	UpdateNone   UpdateResult = iota // incoming value was discarded
 	UpdateBest                       // incoming value became the new best
-	UpdateBackup                     // incoming value became the new backup
+	UpdateBackup                     // incoming value became/updated the backup
 )
 
 func (r UpdateResult) String() string {
@@ -57,8 +57,9 @@ func (e *minEntry[T]) expiredAt(now time.Time, maxAge time.Duration) bool {
 }
 
 // MinCache tracks the minimum-RTT value over a rolling TTL window using a
-// best/backup pattern. When best expires, backup is promoted. This is a
-// single-stream simplification of the agent's offsetCache.
+// guarded backup pattern. A backup is only collected while best is in its final
+// maxAge/2 window ("guard"), so that on expiry the promoted value is always a
+// recent-window minimum — never a stale fallback.
 type MinCache[T any] struct {
 	mu      sync.RWMutex
 	best    *minEntry[T]
@@ -77,35 +78,38 @@ func NewMinCache[T any](maxAge time.Duration, rttFunc func(T) uint64) *MinCache[
 }
 
 // Update feeds a new measurement into the cache and returns what changed.
+//
+// Invariant: `best` is the recent minimum. A `backup` is collected only while
+// `best` is within its final maxAge/2 ("guard") window, so that on best's
+// expiry the promoted value is a minimum over recent samples — never a stale
+// fallback. A new record low resets `best` and clears `backup`.
 func (c *MinCache[T]) Update(value T) UpdateInfo {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	rttNs := c.rttFunc(value)
 	now := c.nowFunc()
-	entry := &minEntry[T]{
-		value:      value,
-		rttNs:      rttNs,
-		receivedAt: now,
-	}
+	guard := c.maxAge / 2
+	entry := &minEntry[T]{value: value, rttNs: rttNs, receivedAt: now}
 
-	// Capture previous best before any mutation.
 	var info UpdateInfo
 	if !c.best.expiredAt(now, c.maxAge) {
 		info.PrevBestRttNs = c.best.rttNs
 		info.HadPrevBest = true
 	}
 
-	if c.best.expiredAt(now, c.maxAge) {
+	// Expire + promote: when best expires, the backup (a recent-window
+	// min) takes over. Loop in case a promoted entry is itself expired.
+	for c.best.expiredAt(now, c.maxAge) {
 		if !c.backup.expiredAt(now, c.maxAge) {
-			info.PrevBestRttNs = c.best.rttNs // expired best's RTT (before promotion)
-			info.HadPrevBest = c.best != nil
 			c.best = c.backup
+			c.backup = nil
 			info.Promoted = true
 		} else {
 			c.best = nil
+			c.backup = nil
+			break
 		}
-		c.backup = nil
 	}
 
 	if c.best == nil {
@@ -113,61 +117,60 @@ func (c *MinCache[T]) Update(value T) UpdateInfo {
 		info.Result = UpdateBest
 		return info
 	}
-
 	if rttNs <= c.best.rttNs {
+		// New record low: reset best's clock, clear backup.
 		c.best = entry
+		c.backup = nil
 		info.Result = UpdateBest
 		return info
 	}
 
-	// Higher RTT than best — consider for backup.
-	if c.backup.expiredAt(now, c.maxAge) || rttNs <= c.backup.rttNs {
-		c.backup = entry
-		info.Result = UpdateBackup
+	// rttNs > best. Only collect a backup while best is in its final guard.
+	if c.maxAge-now.Sub(c.best.receivedAt) > guard {
+		c.backup = nil
 		return info
 	}
-	halfMaxAge := c.maxAge / 2
-	if now.Sub(c.backup.receivedAt) > halfMaxAge {
+	if c.backup == nil || rttNs <= c.backup.rttNs {
 		c.backup = entry
 		info.Result = UpdateBackup
-		return info
 	}
-
 	return info
 }
 
-// Best returns the current best value. If best is expired, it falls through to
-// backup without mutating state (no actual promotion). Use Update to trigger
-// promotion events.
+// Best returns the value of the lower non-expired slot, or zero/false if both
+// slots are expired. Read-through: does not mutate or promote.
 func (c *MinCache[T]) Best() (T, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-
-	now := c.nowFunc()
-	if !c.best.expiredAt(now, c.maxAge) {
-		return c.best.value, true
+	e := c.lowestLocked(c.nowFunc())
+	if e == nil {
+		var zero T
+		return zero, false
 	}
-	if !c.backup.expiredAt(now, c.maxAge) {
-		return c.backup.value, true
-	}
-	var zero T
-	return zero, false
+	return e.value, true
 }
 
-// BestRttNs returns the RTT of the current best entry, falling through to
-// backup if best is expired (same read-through semantics as Best).
+// BestRttNs returns the RTT of the lower non-expired slot.
 func (c *MinCache[T]) BestRttNs() (uint64, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	e := c.lowestLocked(c.nowFunc())
+	if e == nil {
+		return 0, false
+	}
+	return e.rttNs, true
+}
 
-	now := c.nowFunc()
+// lowestLocked returns the non-expired slot with the lowest RTT (caller holds mu).
+func (c *MinCache[T]) lowestLocked(now time.Time) *minEntry[T] {
+	var e *minEntry[T]
 	if !c.best.expiredAt(now, c.maxAge) {
-		return c.best.rttNs, true
+		e = c.best
 	}
-	if !c.backup.expiredAt(now, c.maxAge) {
-		return c.backup.rttNs, true
+	if !c.backup.expiredAt(now, c.maxAge) && (e == nil || c.backup.rttNs < e.rttNs) {
+		e = c.backup
 	}
-	return 0, false
+	return e
 }
 
 // Empty returns true if both best and backup are expired.

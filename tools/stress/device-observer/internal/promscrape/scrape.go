@@ -35,6 +35,12 @@ const (
 	// the loop self-recovers.
 	requestTimeout = 5 * time.Second
 
+	// maxBodyBytes caps how many bytes of exposition body we will parse.
+	// 16 MiB is generous (current agent emits a few kB) but bounds the
+	// memory a misbehaving or compromised endpoint can force us to
+	// allocate. Defense-in-depth — the URL is operator-controlled.
+	maxBodyBytes = 16 << 20
+
 	outputFilename = "observer.agent_metrics.json"
 )
 
@@ -103,13 +109,22 @@ func (s *Scraper) tick(ctx context.Context) {
 		s.logger.Warn("scrape fetch failed", "url", s.metricsURL, "err", err)
 		return
 	}
+	// Treat an empty-but-2xx response as a soft failure: keep the
+	// previous Snapshot rather than clobbering it with {}, since the
+	// downstream decider must not interpret a transient empty body as
+	// "counters reset to zero".
+	if len(families) == 0 {
+		s.logger.Warn("scrape returned no metric families", "url", s.metricsURL)
+		return
+	}
 	tNS := s.now().UTC().UnixNano()
 	rows, counters := encodeFamilies(families, tNS)
-	if len(rows) > 0 {
-		if err := s.appendRows(rows); err != nil {
-			s.logger.Warn("scrape append failed", "path", s.outPath, "err", err)
-			return
-		}
+	// Any per-tick error (including disk write) freezes the snapshot so
+	// the abort decider sees only fully-persisted ticks. This trades
+	// freshness for consistency between disk and the in-memory snapshot.
+	if err := s.appendRows(rows); err != nil {
+		s.logger.Warn("scrape append failed", "path", s.outPath, "err", err)
+		return
 	}
 	s.mu.Lock()
 	s.counters = counters
@@ -133,12 +148,14 @@ func (s *Scraper) fetch(ctx context.Context) (map[string]*prom.MetricFamily, err
 		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 	parser := expfmt.NewTextParser(model.LegacyValidation)
-	return parser.TextToMetricFamilies(resp.Body)
+	return parser.TextToMetricFamilies(io.LimitReader(resp.Body, maxBodyBytes))
 }
 
 // appendRows writes the buffered NDJSON in a single Write under
-// O_APPEND|O_CREATE, so a single tick is atomic on POSIX append (writes up
-// to PIPE_BUF / page size are atomic in practice for these small payloads).
+// O_APPEND|O_CREATE. There is exactly one writer per working directory (the
+// observer process), so no interleaving from concurrent appenders is
+// possible — the comment used to lean on POSIX append atomicity, but that
+// only guarantees atomic offset updates, not atomic data writes.
 func (s *Scraper) appendRows(rows []byte) error {
 	f, err := os.OpenFile(s.outPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o640)
 	if err != nil {

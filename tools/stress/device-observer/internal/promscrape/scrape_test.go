@@ -236,6 +236,34 @@ func TestSnapshotReflectsLatest(t *testing.T) {
 	}
 }
 
+// TestEmptyBodyFreezesSnapshot guards against a transient HTTP 200 with no
+// metric families clobbering the snapshot — the decider in PR #3796 must
+// not see "counters reset" when the agent momentarily returns an empty body.
+func TestEmptyBodyFreezesSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	var empty atomic.Bool
+	srv := startServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		if empty.Load() {
+			// Empty 200 — no families at all.
+			return
+		}
+		_, _ = io.WriteString(w, expositionSample)
+	})
+	s := newScraperWithClock(t, srv.URL, dir, time.Now)
+
+	s.tick(context.Background())
+	before := s.Snapshot()
+	if before["doublezero_agent_apply_config_errors_total"] != 7 {
+		t.Fatalf("first snapshot did not capture counter: %v", before)
+	}
+	empty.Store(true)
+	s.tick(context.Background())
+	after := s.Snapshot()
+	if after["doublezero_agent_apply_config_errors_total"] != 7 {
+		t.Errorf("snapshot should remain frozen across empty response, got %v", after)
+	}
+}
+
 // TestParseErrorContinues verifies a malformed exposition body logs WARN
 // and leaves the output file untouched (Run did not abort).
 func TestParseErrorContinues(t *testing.T) {

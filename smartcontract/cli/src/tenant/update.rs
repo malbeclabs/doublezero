@@ -1,6 +1,4 @@
-use crate::{
-    doublezerocommand::CliCommand, helpers::resolve_tenant_pk, validators::validate_pubkey_or_code,
-};
+use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
 use doublezero_sdk::{
@@ -48,11 +46,11 @@ impl UpdateTenantCliCommand {
             RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
         );
 
-        // Resolve the pubkey first, then re-fetch the full tenant so the
+        // Fetch the tenant once; get_tenant accepts a pubkey or code and
+        // returns the canonical pubkey plus the full tenant so the
         // billing_rate path can reuse the existing dz_epoch.
-        let tenant_pubkey = resolve_tenant_pk(client, &self.pubkey)?;
         let (tenant_pubkey, tenant) = client.get_tenant(GetTenantCommand {
-            pubkey_or_code: tenant_pubkey.to_string(),
+            pubkey_or_code: self.pubkey.clone(),
         })?;
 
         let token_account = self

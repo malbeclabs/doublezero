@@ -4,6 +4,7 @@ use crate::{
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::device::{delete::DeleteDeviceCommand, get::GetDeviceCommand};
 use std::io::Write;
 
@@ -15,7 +16,12 @@ pub struct DeleteDeviceCliCommand {
 }
 
 impl DeleteDeviceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -34,6 +40,8 @@ impl DeleteDeviceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         device::delete::DeleteDeviceCliCommand,
         doublezerocommand::CliCommand,
@@ -158,11 +166,15 @@ mod tests {
             .with(predicate::eq(DeleteDeviceCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = DeleteDeviceCliCommand {
-            pubkey: pda_pubkey.to_string(),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            DeleteDeviceCliCommand {
+                pubkey: pda_pubkey.to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

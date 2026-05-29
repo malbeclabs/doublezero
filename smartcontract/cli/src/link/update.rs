@@ -9,6 +9,7 @@ use crate::{
     },
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::commands::{
     contributor::get::GetContributorCommand,
@@ -72,7 +73,12 @@ pub struct UpdateLinkCliCommand {
 }
 
 impl UpdateLinkCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -176,6 +182,8 @@ impl UpdateLinkCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand,
         link::update::UpdateLinkCliCommand,
@@ -321,26 +329,29 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdateLinkCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: Some("new_code".to_string()),
-            contributor: Some(contributor_pk.to_string()),
-            tunnel_type: None,
-            bandwidth: Some(1000000000),
-            mtu: Some(9000),
-            delay_ms: Some(10.0),
-            jitter_ms: Some(5.0),
-            delay_override_ms: None,
-            status: None,
-            desired_status: None,
-            tunnel_id: None,
-            tunnel_net: None,
-            link_topology: None,
-            unicast_drained: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateLinkCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: Some("new_code".to_string()),
+                contributor: Some(contributor_pk.to_string()),
+                tunnel_type: None,
+                bandwidth: Some(1000000000),
+                mtu: Some(9000),
+                delay_ms: Some(10.0),
+                jitter_ms: Some(5.0),
+                delay_override_ms: None,
+                status: None,
+                desired_status: None,
+                tunnel_id: None,
+                tunnel_net: None,
+                link_topology: None,
+                unicast_drained: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -349,25 +360,27 @@ mod tests {
 
         // try to rename code to an existing one
         let mut output = Vec::new();
-        let res = UpdateLinkCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: Some("test2".to_string()),
-            contributor: Some(contributor_pk.to_string()),
-            tunnel_type: None,
-            bandwidth: Some(1000000000),
-            mtu: Some(9000),
-            delay_ms: Some(10.0),
-            jitter_ms: Some(5.0),
-            delay_override_ms: None,
-            status: None,
-            desired_status: None,
-            tunnel_id: None,
-            tunnel_net: None,
-            link_topology: None,
-            unicast_drained: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateLinkCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: Some("test2".to_string()),
+                contributor: Some(contributor_pk.to_string()),
+                tunnel_type: None,
+                bandwidth: Some(1000000000),
+                mtu: Some(9000),
+                delay_ms: Some(10.0),
+                jitter_ms: Some(5.0),
+                delay_override_ms: None,
+                status: None,
+                desired_status: None,
+                tunnel_id: None,
+                tunnel_net: None,
+                link_topology: None,
+                unicast_drained: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert_eq!(
             res.unwrap_err().to_string(),
             "Link with code 'test2' already exists"

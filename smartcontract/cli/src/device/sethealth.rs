@@ -4,6 +4,7 @@ use crate::{
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::device::{get::GetDeviceCommand, sethealth::SetDeviceHealthCommand};
 use doublezero_serviceability::state::device::DeviceHealth;
 use std::io::Write;
@@ -20,7 +21,12 @@ pub struct SetDeviceHealthCliCommand {
 }
 
 impl SetDeviceHealthCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -40,6 +46,8 @@ impl SetDeviceHealthCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use std::collections::HashMap;
 
     use crate::{
@@ -197,12 +205,15 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         // Expected success
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetDeviceHealthCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            health: DeviceHealth::ReadyForUsers,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetDeviceHealthCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                health: DeviceHealth::ReadyForUsers,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "{}", res.err().unwrap());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

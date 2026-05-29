@@ -3,6 +3,7 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
     commands::{link::list::ListLinkCommand, topology::delete::DeleteTopologyCommand},
     get_topology_pda,
@@ -17,7 +18,12 @@ pub struct DeleteTopologyCliCommand {
 }
 
 impl DeleteTopologyCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let name = self.name.to_uppercase();
@@ -48,6 +54,8 @@ impl DeleteTopologyCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use super::*;
     use crate::{doublezerocommand::MockCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{
@@ -79,8 +87,9 @@ mod tests {
         let cmd = DeleteTopologyCliCommand {
             name: "unicast-default".to_string(),
         };
+        let ctx = cli_context_default_for_tests();
         let mut out = Cursor::new(Vec::new());
-        let result = cmd.execute(&mock, &mut out);
+        let result = block_on(cmd.execute(&ctx, &mock, &mut out));
         assert!(result.is_ok());
         let output = String::from_utf8(out.into_inner()).unwrap();
         assert!(output.contains("Deleted topology 'UNICAST-DEFAULT' successfully."));
@@ -130,8 +139,9 @@ mod tests {
         let cmd = DeleteTopologyCliCommand {
             name: "unicast-default".to_string(),
         };
+        let ctx = cli_context_default_for_tests();
         let mut out = Cursor::new(Vec::new());
-        let result = cmd.execute(&client, &mut out);
+        let result = block_on(cmd.execute(&ctx, &client, &mut out));
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("Cannot delete topology 'UNICAST-DEFAULT'"));

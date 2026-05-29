@@ -5,6 +5,7 @@ use crate::{
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::validate_iface;
 use doublezero_sdk::{
     commands::{
@@ -30,7 +31,12 @@ pub struct AcceptLinkCliCommand {
 }
 
 impl AcceptLinkCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -120,6 +126,8 @@ impl AcceptLinkCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::{CliCommand, MockCliCommand},
         link::accept::AcceptLinkCliCommand,
@@ -297,13 +305,17 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = AcceptLinkCliCommand {
-            code: link_pubkey.to_string(),
-            side_z_interface: SIDE_Z_IFACE.to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            AcceptLinkCliCommand {
+                code: link_pubkey.to_string(),
+                side_z_interface: SIDE_Z_IFACE.to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "Error: {}", res.unwrap_err());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -321,13 +333,17 @@ mod tests {
             ..
         } = make_accept_fixture(500_000_000, 10_000_000_000, 1_000_000_000);
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = AcceptLinkCliCommand {
-            code: link_pubkey.to_string(),
-            side_z_interface: SIDE_Z_IFACE.to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            AcceptLinkCliCommand {
+                code: link_pubkey.to_string(),
+                side_z_interface: SIDE_Z_IFACE.to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         let err = res.unwrap_err().to_string();
         assert_eq!(
@@ -345,13 +361,17 @@ mod tests {
             ..
         } = make_accept_fixture(10_000_000_000, 500_000_000, 1_000_000_000);
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = AcceptLinkCliCommand {
-            code: link_pubkey.to_string(),
-            side_z_interface: SIDE_Z_IFACE.to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            AcceptLinkCliCommand {
+                code: link_pubkey.to_string(),
+                side_z_interface: SIDE_Z_IFACE.to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         let err = res.unwrap_err().to_string();
         assert_eq!(

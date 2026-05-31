@@ -758,7 +758,7 @@ mod cli_context_tests {
     const ENV_KEYPAIR: &str = "DOUBLEZERO_KEYPAIR";
 
     #[test]
-    #[serial]
+    #[serial(doublezero_keypair_env)]
     fn from_context_uses_resolved_values_without_config_read() {
         let pid = Pubkey::new_unique();
         let ctx = CliContextBuilder::new()
@@ -781,7 +781,7 @@ mod cli_context_tests {
     /// keypair path only as the low-precedence fallback, never as the CLI
     /// source, so `DOUBLEZERO_KEYPAIR` still wins over it.
     #[test]
-    #[serial]
+    #[serial(doublezero_keypair_env)]
     fn from_context_env_keypair_wins_over_context_path() {
         let kp = Keypair::new();
         let dir = tempfile::tempdir().unwrap();

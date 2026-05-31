@@ -2360,7 +2360,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-contributor-rewards"
-version = "0.5.5"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4610,16 +4610,18 @@ dependencies = [
 
 [[package]]
 name = "network-shapley"
-version = "0.1.0"
-source = "git+https://github.com/doublezerofoundation/network-shapley-rs?tag=v0.5.0#932b40eba7b13ca1310be351eb2d71b3e3107538"
+version = "0.2.0"
+source = "git+https://github.com/doublezerofoundation/network-shapley-rs?tag=v0.6.0#cc85bca771d986d170cc695f3be94a0c124e86cd"
 dependencies = [
  "borsh 1.5.7",
  "csv",
  "microlp",
  "rayon",
  "serde",
+ "sprs",
  "tabled",
  "thiserror 2.0.17",
+ "web-time",
 ]
 
 [[package]]

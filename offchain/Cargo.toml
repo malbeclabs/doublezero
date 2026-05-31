@@ -138,7 +138,7 @@ tag = "client/v0.20.0"
 [workspace.dependencies.network-shapley]
 features = ["serde", "borsh"]
 git = "https://github.com/doublezerofoundation/network-shapley-rs"
-tag = "v0.5.0"
+tag = "v0.6.0"
 
 ### Local dependencies
 

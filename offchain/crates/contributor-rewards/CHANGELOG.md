@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(contributor-rewards): bump network shapley ([#377](https://github.com/doublezerofoundation/doublezero-offchain/pull/377))
+
+## [0.5.5](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.5.5) - 2026-05-20
+
 - release(contributor-rewards): prep v0.5.5 ([#371](https://github.com/doublezerofoundation/doublezero-offchain/pull/371))
 - docs(contributor-rewards): document reward calculation methodology ([#370](https://github.com/doublezerofoundation/doublezero-offchain/pull/370))
 - feat(contributor-rewards): add configurable public latency multiplier ([#369](https://github.com/doublezerofoundation/doublezero-offchain/pull/369))

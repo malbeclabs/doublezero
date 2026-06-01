@@ -137,12 +137,20 @@ func run() error {
 	// doesn't leave a config file behind. A dry-run is exempt: its whole job is
 	// to dump the resolved config without needing the live-RPC flags.
 	if !*dryRun {
-		if err := requireFlags(map[string]string{
+		required := map[string]string{
 			"--dut-pubkey": *dutPubkey,
 			"--rpc-url":    *rpcURL,
 			"--program-id": *programID,
 			"--keypair":    *keypairPath,
-		}); err != nil {
+		}
+		if !*noAgent {
+			// Agent telemetry is required unless explicitly disabled; don't
+			// silently degrade to a no-op run that records no pre_commit_log /
+			// applied rows.
+			required["--dut-ssh-host"] = *dutSSHHost
+			required["--dut-ssh-key"] = *dutSSHKey
+		}
+		if err := requireFlags(required); err != nil {
 			return err
 		}
 	}
@@ -288,19 +296,17 @@ func requireFlags(required map[string]string) error {
 // selectAgentRunner picks between the SSH-backed runner and the no-op, based
 // on the CLI flags:
 //
-//   - --no-agent → noop (operator opted out)
-//   - --dut-ssh-host + --dut-ssh-key set → SSH runner (default for live runs)
-//   - otherwise → noop with a warning (operator forgot the flags)
+//   - --no-agent → noop (operator explicitly opted out, e.g. offline testing)
+//   - otherwise → SSH runner
+//
+// The SSH flags are validated as required upstream when --no-agent is unset, so
+// this never silently falls back to the no-op runner.
 //
 // The SSH runner tees remote stdout/stderr into <working-dir>/orchestrator.agent.log.
 // The exec'd command appends --controller iff the operator passed --controller.
 func selectAgentRunner(noAgent bool, sshHost, sshKey, sshUser, controllerAddr, workingDir string, logger *slog.Logger) agent.Runner {
 	if noAgent {
 		logger.Info("agent: --no-agent set; using no-op runner")
-		return agent.NewNoop(logger)
-	}
-	if sshHost == "" || sshKey == "" {
-		logger.Warn("agent: --dut-ssh-host and --dut-ssh-key not both set; falling back to no-op runner (pre_commit_log / applied events will not be recorded)")
 		return agent.NewNoop(logger)
 	}
 

@@ -142,6 +142,9 @@ func (l *Live) fetchTunnelID(ctx context.Context, userPDA solana.PublicKey) (uin
 	}
 	var u serviceability.User
 	serviceability.DeserializeUser(serviceability.NewByteReader(data), &u)
+	if u.AccountType != serviceability.UserType {
+		return 0, fmt.Errorf("account %s is not a user account (got account type %d)", userPDA, u.AccountType)
+	}
 	return u.TunnelId, nil
 }
 

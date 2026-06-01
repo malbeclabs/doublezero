@@ -172,33 +172,45 @@ func Run(ctx context.Context, cfg Config) error {
 	cfg.Logger = cfg.Logger.With("run_id", cfg.RunID)
 
 	registry := newTunnelRegistry()
-	agentCtx, agentCancel := context.WithCancel(ctx)
+
+	// runCtx lets the agent-event consumer abort the provisioning loop if the
+	// agent stream dies. The agent is required telemetry for a run, so a broken
+	// stream fails the run rather than silently degrading to missing runlog
+	// rows. deprovision below still runs (it derives from the original ctx).
+	runCtx, runCancel := context.WithCancelCause(ctx)
+	defer runCancel(nil)
+
+	agentCtx, agentCancel := context.WithCancel(runCtx)
 	defer agentCancel()
 	if err := cfg.Agent.Start(agentCtx); err != nil {
 		return fmt.Errorf("start agent runner: %w", err)
 	}
 
+	var agentErr error
 	var consumerWG sync.WaitGroup
 	consumerWG.Add(1)
 	go func() {
 		defer consumerWG.Done()
 		consumeAgentEvents(&cfg, registry)
+		// Events() has closed. If it closed because the stream errored (rather
+		// than our own agentCancel during teardown), abort the run so the
+		// provisioning loop stops and Run reports the failure.
+		if e := cfg.Agent.Err(); e != nil {
+			agentErr = fmt.Errorf("agent stream: %w", e)
+			runCancel(agentErr)
+		}
 	}()
 
-	created, err := provision(ctx, &cfg, registry)
-	if err != nil && !errors.Is(err, context.Canceled) {
-		// On a non-cancel error from provision we still want deprovision to
-		// run (clean up what was created); the consumer keeps draining in
-		// parallel so any straggling agent events for already-created users
-		// still land in the runlog.
-		_ = err
-	}
-	// Always attempt deprovision so an abort during provision still cleans up
-	// what the sweep created. Teardown runs under a context derived with
-	// WithoutCancel: an abort/signal that cancelled ctx must not also abandon
-	// the users we already created, so deprovision ignores that cancellation
-	// (it still inherits ctx's values). Callers wanting a hard stop on teardown
-	// must enforce it out of band.
+	created, err := provision(runCtx, &cfg, registry)
+
+	// Always attempt deprovision so a provision error (or an abort during
+	// provision) still cleans up what the sweep created; the consumer keeps
+	// draining in parallel so any straggling agent events for already-created
+	// users still land in the runlog. Teardown runs under a context derived
+	// with WithoutCancel: an abort/signal that cancelled ctx must not also
+	// abandon the users we already created, so deprovision ignores that
+	// cancellation (it still inherits ctx's values). Callers wanting a hard
+	// stop on teardown must enforce it out of band.
 	depErr := deprovision(context.WithoutCancel(ctx), &cfg, created)
 
 	// Tell the agent to stop and wait for the consumer goroutine to drain so
@@ -206,6 +218,11 @@ func Run(ctx context.Context, cfg Config) error {
 	agentCancel()
 	consumerWG.Wait()
 
+	// An agent stream failure takes precedence: it aborted the run, so report
+	// it even though provision likely returned context.Canceled as a result.
+	if agentErr != nil {
+		return agentErr
+	}
 	if err != nil {
 		return err
 	}

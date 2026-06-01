@@ -40,12 +40,16 @@ type Event struct {
 //   - Start(ctx) blocks until the agent stream is healthy enough to emit
 //     events (or returns an error). It returns immediately for the no-op impl.
 //   - Events() returns a channel that closes when the runner exits.
+//   - Err() reports the terminal error after Events() has closed: non-nil if
+//     the runner stopped because its stream failed, nil if it shut down because
+//     its context was cancelled. Only valid to read once Events() is closed.
 //
 // The SSH-backed implementation will manage an ssh.Session and parse stdout
 // for the two log lines listed under EventKind.
 type Runner interface {
 	Start(ctx context.Context) error
 	Events() <-chan Event
+	Err() error
 }
 
 // NewNoop returns a Runner that never starts a process and never emits events.
@@ -77,3 +81,6 @@ func (n *noop) Start(ctx context.Context) error {
 }
 
 func (n *noop) Events() <-chan Event { return n.events }
+
+// Err always returns nil: the no-op runner has no stream to fail.
+func (n *noop) Err() error { return nil }

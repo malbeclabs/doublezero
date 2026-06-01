@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -28,6 +29,9 @@ type SSHConfig struct {
 	// LogPath, when non-empty, is the local file the SSH runner tees remote
 	// stdout/stderr into. The file is truncated on Start.
 	LogPath string
+	// DialTimeout bounds the TCP connect + SSH handshake so an unresponsive
+	// device fails fast with a dial error instead of hanging. Defaults to 10s.
+	DialTimeout time.Duration
 	// Logger is used for diagnostic logs from the runner; pass nil for silent.
 	Logger *slog.Logger
 }
@@ -45,11 +49,12 @@ type SSH struct {
 
 	events chan Event
 
-	mu      sync.Mutex
-	started bool
-	client  *ssh.Client
-	session *ssh.Session
-	logFile *os.File
+	mu        sync.Mutex
+	started   bool
+	client    *ssh.Client
+	session   *ssh.Session
+	logFile   *os.File
+	streamErr error
 }
 
 // NewSSH returns an unstarted SSH runner. Call Start to dial.
@@ -59,6 +64,9 @@ func NewSSH(cfg SSHConfig) *SSH {
 	}
 	if cfg.Command == "" {
 		cfg.Command = "doublezero-agent -verbose"
+	}
+	if cfg.DialTimeout == 0 {
+		cfg.DialTimeout = 10 * time.Second
 	}
 	return &SSH{
 		cfg:    cfg,
@@ -92,6 +100,7 @@ func (s *SSH) Start(ctx context.Context) error {
 		User:            s.cfg.User,
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         s.cfg.DialTimeout,
 	}
 	client, err := ssh.Dial("tcp", s.cfg.Host, clientCfg)
 	if err != nil {
@@ -152,11 +161,17 @@ func (s *SSH) Start(ctx context.Context) error {
 	readWG.Add(2)
 	go func() {
 		defer readWG.Done()
-		scanLines(ctx, stdout, lines, s.cfg.Logger, "stdout")
+		// Record a read error only if it wasn't provoked by our own teardown
+		// (ctx cancel closes the session, which surfaces as a read error here).
+		if err := scanLines(ctx, stdout, lines, s.cfg.Logger, "stdout"); err != nil && ctx.Err() == nil {
+			s.setStreamErr(err)
+		}
 	}()
 	go func() {
 		defer readWG.Done()
-		scanLines(ctx, stderr, lines, s.cfg.Logger, "stderr")
+		if err := scanLines(ctx, stderr, lines, s.cfg.Logger, "stderr"); err != nil && ctx.Err() == nil {
+			s.setStreamErr(err)
+		}
 	}()
 	go func() {
 		readWG.Wait()
@@ -199,6 +214,24 @@ func (s *SSH) Start(ctx context.Context) error {
 	return nil
 }
 
+// Err returns the terminal stream error after Events() has closed: non-nil if
+// a stdout/stderr read failed for a reason other than our own ctx-driven
+// shutdown, nil otherwise.
+func (s *SSH) Err() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.streamErr
+}
+
+// setStreamErr records the first stream read error.
+func (s *SSH) setStreamErr(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.streamErr == nil {
+		s.streamErr = err
+	}
+}
+
 // shutdown is idempotent; safe to call from Start error paths and from the
 // supervising goroutine.
 func (s *SSH) shutdown() {
@@ -219,22 +252,27 @@ func (s *SSH) shutdown() {
 }
 
 // scanLines reads `src` line-by-line and forwards each raw line on `lines`.
-// It returns early when ctx cancels so a slow consumer can't deadlock
+// It returns early (nil) when ctx cancels so a slow consumer can't deadlock
 // shutdown. Tee-to-log and parsing happen in the single consumer that drains
-// `lines`, so this reader never touches the parser or the log file.
-func scanLines(ctx context.Context, src io.Reader, lines chan<- string, log *slog.Logger, label string) {
+// `lines`, so this reader never touches the parser or the log file. It returns
+// the scanner error, if any, so the caller can fail the run on a broken stream.
+func scanLines(ctx context.Context, src io.Reader, lines chan<- string, log *slog.Logger, label string) error {
 	scanner := bufio.NewScanner(src)
 	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024) // large diffs can exceed default
 	for scanner.Scan() {
 		select {
 		case lines <- scanner.Text():
 		case <-ctx.Done():
-			return
+			return nil
 		}
 	}
-	if err := scanner.Err(); err != nil && log != nil {
-		log.Warn("ssh agent: stream ended with error", "err", err, "stream", label)
+	if err := scanner.Err(); err != nil {
+		if log != nil {
+			log.Error("ssh agent: stream ended with error", "err", err, "stream", label)
+		}
+		return err
 	}
+	return nil
 }
 
 // loadSigner reads a PEM-encoded private key from disk and returns an ssh.Signer.

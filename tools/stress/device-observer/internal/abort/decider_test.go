@@ -1,0 +1,392 @@
+package abort
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/malbeclabs/doublezero/tools/stress/device-observer/internal/loggingtail"
+)
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+// newTestDecider returns a Decider with a fixed clock and a counter that
+// the test can read to confirm OnFire ran. The clock starts at a stable
+// reference; tests that need to step time wrap it in their own closure.
+func newTestDecider(t *testing.T, sources Sources, fireCount *atomic.Int32, now func() time.Time) *Decider {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := Config{
+		AbortFile: filepath.Join(dir, "abort"),
+		Interval:  time.Hour, // tests drive tick() directly
+		Logger:    discardLogger(),
+		Sources:   sources,
+		OnFire: func() {
+			if fireCount != nil {
+				fireCount.Add(1)
+			}
+		},
+		now: now,
+	}
+	return New(cfg)
+}
+
+func readSentinel(t *testing.T, path string) map[string]any {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read sentinel: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("decode sentinel: %v", err)
+	}
+	return out
+}
+
+func fixedNow(t time.Time) func() time.Time { return func() time.Time { return t } }
+
+func TestProvisionP95(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	// At least minSamples durations all > 30 s so p95 (checked before
+	// single-user) fires the p95 trigger rather than single-user.
+	durs := []time.Duration{31 * time.Second, 31 * time.Second, 31 * time.Second, 31 * time.Second}
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		ProvisionDurations: func(time.Duration) []time.Duration { return durs },
+	}, &fire, fixedNow(now))
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerProvisionP95 {
+		t.Fatalf("trigger = %v, want %s", got["trigger"], TriggerProvisionP95)
+	}
+	if fire.Load() != 1 {
+		t.Fatalf("OnFire count = %d, want 1", fire.Load())
+	}
+}
+
+// TestProvisionSingleUserFiresBeforeP95Samples confirms a single very
+// slow sample fires before enough samples have accumulated for p95.
+func TestProvisionSingleUserFiresBeforeP95Samples(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		// Only 3 samples — below minSamples for p95.
+		ProvisionDurations: func(time.Duration) []time.Duration {
+			return []time.Duration{5 * time.Second, 6 * time.Second, 31 * time.Second}
+		},
+	}, &fire, fixedNow(now))
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerProvisionSingleUser {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+func TestProvisionSingleUser(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		ProvisionDurations: func(time.Duration) []time.Duration {
+			return []time.Duration{31 * time.Second}
+		},
+	}, &fire, fixedNow(now))
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerProvisionSingleUser {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+func TestDeprovisionP95(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		DeprovisionDurations: func(time.Duration) []time.Duration {
+			return []time.Duration{
+				5 * time.Second, 5 * time.Second, 5 * time.Second, 31 * time.Second,
+			}
+		},
+	}, &fire, fixedNow(now))
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerDeprovisionP95 {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+func TestCPUSustainedAt80(t *testing.T) {
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var step atomic.Int64
+	clock := func() time.Time {
+		// Each tick advances by 10 s.
+		return base.Add(time.Duration(step.Add(1)) * 10 * time.Second)
+	}
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		CPUPercent: func() (float64, bool) { return 85, true },
+	}, &fire, clock)
+	// 7 ticks @ 10s = 70 s of sustained 85% CPU.
+	for i := 0; i < 7; i++ {
+		d.tick()
+		if fire.Load() > 0 {
+			break
+		}
+	}
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerCPUSustained {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+func TestApplyConfigErrorsCounter(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	current := map[string]float64{metricApplyConfigErrors: 0}
+	d := newTestDecider(t, Sources{
+		PromSnapshot: func() map[string]float64 {
+			out := make(map[string]float64, len(current))
+			for k, v := range current {
+				out[k] = v
+			}
+			return out
+		},
+	}, &fire, fixedNow(now))
+	d.tick() // seeds prev
+	if fire.Load() != 0 {
+		t.Fatal("should not fire on first observation")
+	}
+	current[metricApplyConfigErrors] = 1
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerApplyConfigErrors {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+func TestGetConfigErrorsCounter(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	current := map[string]float64{metricGetConfigErrors: 0}
+	d := newTestDecider(t, Sources{
+		PromSnapshot: func() map[string]float64 {
+			out := make(map[string]float64, len(current))
+			for k, v := range current {
+				out[k] = v
+			}
+			return out
+		},
+	}, &fire, fixedNow(now))
+	d.tick()
+	current[metricGetConfigErrors] = 5
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerGetConfigErrors {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+func TestDiffTimeoutPattern(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	counts := map[string]int{loggingtail.PatternDiffTimeout: 0}
+	d := newTestDecider(t, Sources{
+		AgentSnapshot: func() loggingtail.AgentSnapshot {
+			cp := map[string]int{}
+			for k, v := range counts {
+				cp[k] = v
+			}
+			return loggingtail.AgentSnapshot{MatchCounts: cp, LastLineAt: now}
+		},
+	}, &fire, fixedNow(now))
+	d.tick() // seed
+	counts[loggingtail.PatternDiffTimeout] = 1
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerDiffTimeout {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+func TestLockNotTakenPattern(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	counts := map[string]int{loggingtail.PatternLockNotTaken: 0}
+	d := newTestDecider(t, Sources{
+		AgentSnapshot: func() loggingtail.AgentSnapshot {
+			cp := map[string]int{}
+			for k, v := range counts {
+				cp[k] = v
+			}
+			return loggingtail.AgentSnapshot{MatchCounts: cp, LastLineAt: now}
+		},
+	}, &fire, fixedNow(now))
+	d.tick()
+	counts[loggingtail.PatternLockNotTaken] = 2
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerLockNotTaken {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+func TestAgentSilenceFifteenSeconds(t *testing.T) {
+	lastLine := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	silent := lastLine.Add(20 * time.Second)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		AgentSnapshot: func() loggingtail.AgentSnapshot {
+			return loggingtail.AgentSnapshot{MatchCounts: map[string]int{}, LastLineAt: lastLine}
+		},
+	}, &fire, fixedNow(silent))
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerAgentSilence {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+func TestAgentSilenceSuppressedBeforeFirstLine(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		AgentSnapshot: func() loggingtail.AgentSnapshot {
+			return loggingtail.AgentSnapshot{MatchCounts: map[string]int{}}
+		},
+	}, &fire, fixedNow(now))
+	d.tick()
+	if _, err := os.Stat(d.cfg.AbortFile); err == nil {
+		t.Fatal("decider must not fire while LastLineAt is zero")
+	}
+}
+
+func TestLedgerHeartbeatStale(t *testing.T) {
+	dir := t.TempDir()
+	hb := filepath.Join(dir, "orchestrator.ledger_heartbeat")
+	if err := os.WriteFile(hb, []byte("x"), 0o640); err != nil {
+		t.Fatalf("write hb: %v", err)
+	}
+	old := time.Now().Add(-90 * time.Second)
+	if err := os.Chtimes(hb, old, old); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{LedgerHeartbeatPath: hb}, &fire, time.Now)
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerLedgerHeartbeatStale {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+func TestLedgerHeartbeatAbsentSuppressed(t *testing.T) {
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{LedgerHeartbeatPath: "/nonexistent/path/heartbeat"}, &fire, time.Now)
+	d.tick()
+	if _, err := os.Stat(d.cfg.AbortFile); err == nil {
+		t.Fatal("missing heartbeat file must not fire the decider")
+	}
+}
+
+func TestSentinelWrittenOnce(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		ProvisionDurations: func(time.Duration) []time.Duration {
+			return []time.Duration{31 * time.Second}
+		},
+	}, &fire, fixedNow(now))
+	d.tick()
+	d.tick()
+	d.tick()
+	if fire.Load() != 1 {
+		t.Fatalf("OnFire count = %d, want 1", fire.Load())
+	}
+}
+
+func TestSentinelAtomicRename(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		ProvisionDurations: func(time.Duration) []time.Duration {
+			return []time.Duration{31 * time.Second}
+		},
+	}, &fire, fixedNow(now))
+	d.tick()
+	if _, err := os.Stat(d.cfg.AbortFile + ".tmp"); err == nil {
+		t.Fatal(".tmp must not survive after the rename")
+	}
+	got := readSentinel(t, d.cfg.AbortFile)
+	if _, ok := got["reason"]; !ok {
+		t.Fatalf("sentinel missing reason: %v", got)
+	}
+	if _, ok := got["fired_at_ns"]; !ok {
+		t.Fatalf("sentinel missing fired_at_ns: %v", got)
+	}
+}
+
+func TestRunCancels(t *testing.T) {
+	d := New(Config{
+		AbortFile: filepath.Join(t.TempDir(), "abort"),
+		Interval:  50 * time.Millisecond,
+		Logger:    discardLogger(),
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- d.Run(ctx) }()
+	time.Sleep(80 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run returned err: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return within 2 s of cancel")
+	}
+}
+
+func TestOnFireInvokedOnce(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		ProvisionDurations: func(time.Duration) []time.Duration {
+			return []time.Duration{31 * time.Second}
+		},
+		DeprovisionDurations: func(time.Duration) []time.Duration {
+			return []time.Duration{
+				31 * time.Second, 31 * time.Second, 31 * time.Second, 31 * time.Second,
+			}
+		},
+	}, &fire, fixedNow(now))
+	d.tick()
+	d.tick()
+	if fire.Load() != 1 {
+		t.Fatalf("OnFire count = %d, want 1", fire.Load())
+	}
+}
+
+func TestPercentile95(t *testing.T) {
+	cases := []struct {
+		in   []time.Duration
+		want time.Duration
+	}{
+		{[]time.Duration{1, 2, 3, 4}, 4},
+		{[]time.Duration{1, 1, 1, 1, 1, 1, 1, 1, 1, 99}, 99},
+		{[]time.Duration{5}, 5},
+	}
+	for _, c := range cases {
+		got := percentile95(c.in)
+		if got != c.want {
+			t.Errorf("percentile95(%v) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}

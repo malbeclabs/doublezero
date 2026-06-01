@@ -10,7 +10,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -40,10 +43,23 @@ type Sampler struct {
 	interval   time.Duration
 	logger     *slog.Logger
 	now        func() time.Time
+
+	mu        sync.RWMutex
+	latestCPU float64
+	cpuValid  bool
 }
 
 func NewSampler(client eapiRunner, workingDir string, interval time.Duration, logger *slog.Logger) *Sampler {
 	return &Sampler{client: client, workingDir: workingDir, interval: interval, logger: logger, now: time.Now}
+}
+
+// LatestCPUPercent returns the most recently parsed total CPU usage (sum of
+// non-idle fields from `show processes top once`). Returns (0, false) before
+// the first successful parse.
+func (s *Sampler) LatestCPUPercent() (float64, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.latestCPU, s.cpuValid
 }
 
 // Run samples immediately, then on every tick of interval, until ctx is
@@ -95,6 +111,15 @@ func (s *Sampler) runOne(c commandSpec, ts time.Time) error {
 			return err
 		}
 		body, ext = raw, "json"
+		if c.cmd == "show processes top once" {
+			if pct, ok := parseCPUPercent(raw); ok {
+				s.mu.Lock()
+				s.latestCPU, s.cpuValid = pct, true
+				s.mu.Unlock()
+			} else {
+				s.logger.Warn("could not parse CPU from show processes top once")
+			}
+		}
 	} else {
 		text, err := s.client.RunShowText(c.cmd)
 		if err != nil {
@@ -107,6 +132,51 @@ func (s *Sampler) runOne(c commandSpec, ts time.Time) error {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil
+}
+
+// topCPULineRE matches the procps/busybox `top` `%Cpu(s):` (or `Cpu(s):`)
+// header line. The numeric fields are extracted and summed below.
+var topCPULineRE = regexp.MustCompile(`(?m)^%?Cpu\(s\):\s*(.+)$`)
+
+// cpuFieldRE captures one `<number> <label>` pair (e.g. `0.5 us`, `5,0 id`).
+var cpuFieldRE = regexp.MustCompile(`([0-9]+(?:[.,][0-9]+)?)\s*([a-zA-Z]+)`)
+
+// parseCPUPercent extracts the total non-idle CPU percentage from an Arista
+// `show processes top once | json` envelope. The envelope wraps procps
+// `top -bn1` output as {"output":"top -bn1\n%Cpu(s): ...\n..."}; the
+// helper extracts the `%Cpu(s)` line, sums every numeric field except `id`
+// (idle), and returns (pct, true) on a parsed line. Locale-decimal commas
+// are tolerated.
+func parseCPUPercent(raw json.RawMessage) (float64, bool) {
+	var env struct {
+		Output string `json:"output"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil || env.Output == "" {
+		return 0, false
+	}
+	m := topCPULineRE.FindStringSubmatch(env.Output)
+	if len(m) < 2 {
+		return 0, false
+	}
+	var total float64
+	var found bool
+	for _, pair := range cpuFieldRE.FindAllStringSubmatch(m[1], -1) {
+		label := strings.ToLower(pair[2])
+		if label == "id" {
+			found = true
+			continue
+		}
+		v, err := strconv.ParseFloat(strings.ReplaceAll(pair[1], ",", "."), 64)
+		if err != nil {
+			continue
+		}
+		total += v
+		found = true
+	}
+	if !found {
+		return 0, false
+	}
+	return total, true
 }
 
 // fileTimestamp renders t as ISO 8601 UTC with `:` replaced by `-` so the

@@ -58,6 +58,7 @@ func run() error {
 		sampleInterval  = flag.Duration("sample-interval", 10*time.Second, "interval between eAPI samples")
 		workingDir      = flag.String("working-dir", "", "working directory for observer outputs (required)")
 		abortFile       = flag.String("abort-file", "", "path to write the abort sentinel (default <working-dir>/abort)")
+		force           = flag.Bool("force", false, "overwrite a stale abort sentinel from a previous run")
 	)
 	flag.Parse()
 
@@ -85,6 +86,10 @@ func run() error {
 		return fmt.Errorf("--abort-file %q must be inside --working-dir %q", absAbort, absWorking)
 	}
 
+	if err := checkStaleAbort(absAbort, *force); err != nil {
+		return err
+	}
+
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 
 	if err := os.MkdirAll(*workingDir, 0o750); err != nil {
@@ -108,25 +113,59 @@ func run() error {
 		return err
 	}
 
-	collectors := []collector.Collector{
-		sample.NewSampler(client, *workingDir, *sampleInterval, logger),
-		promscrape.New(*agentMetricsURL, *workingDir, *sampleInterval, logger),
-		loggingtail.NewEOS(client, *workingDir, *sampleInterval, logger),
-		loggingtail.NewAgent(*workingDir, *sampleInterval, logger),
-		runlog.New(*workingDir, *sampleInterval, logger),
-		abort.New(*abortFile),
-	}
+	sampler := sample.NewSampler(client, *workingDir, *sampleInterval, logger)
+	scraper := promscrape.New(*agentMetricsURL, *workingDir, *sampleInterval, logger)
+	eosTail := loggingtail.NewEOS(client, *workingDir, *sampleInterval, logger)
+	agentTail := loggingtail.NewAgent(*workingDir, *sampleInterval, logger)
+	runReader := runlog.New(*workingDir, *sampleInterval, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	g, gctx := errgroup.WithContext(runCtx)
+
+	decider := abort.New(abort.Config{
+		AbortFile: absAbort,
+		Interval:  *sampleInterval,
+		Logger:    logger,
+		Sources: abort.Sources{
+			PromSnapshot:         scraper.Snapshot,
+			AgentSnapshot:        agentTail.Snapshot,
+			ProvisionDurations:   runReader.ProvisionDurations,
+			DeprovisionDurations: runReader.DeprovisionDurations,
+			CPUPercent:           sampler.LatestCPUPercent,
+			LedgerHeartbeatPath:  filepath.Join(absWorking, "orchestrator.ledger_heartbeat"),
+		},
+		OnFire: cancel,
+	})
+
 	logger.Info("device-observer started", "dut_host", *dutHost, "working_dir", *workingDir, "pid", os.Getpid())
 
-	g, gctx := errgroup.WithContext(ctx)
-	for _, c := range collectors {
+	for _, c := range []collector.Collector{sampler, scraper, eosTail, agentTail, runReader, decider} {
 		g.Go(func() error { return c.Run(gctx) })
 	}
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("collector failed: %w", err)
+	}
+	return nil
+}
+
+// checkStaleAbort refuses to start if the abort sentinel already exists,
+// unless --force was passed. With --force the stale sentinel is removed so
+// the decider isn't immediately short-circuited by the previous run.
+func checkStaleAbort(absAbort string, force bool) error {
+	if _, err := os.Stat(absAbort); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat abort sentinel: %w", err)
+	}
+	if !force {
+		return fmt.Errorf("stale abort sentinel %s exists; pass --force to overwrite", absAbort)
+	}
+	if err := os.Remove(absAbort); err != nil {
+		return fmt.Errorf("remove stale abort sentinel %s: %w", absAbort, err)
 	}
 	return nil
 }

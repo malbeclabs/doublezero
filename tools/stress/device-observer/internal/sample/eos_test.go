@@ -210,6 +210,93 @@ func TestFileTimestampNoColon(t *testing.T) {
 	}
 }
 
+// TestParseCPUPercent exercises the `%Cpu(s)` parser against fixtures
+// for procps `top -bn1` output (95% idle → 5% used), the busybox
+// `Cpu(s):` prefix (no leading `%`), a comma-decimal locale, and a
+// response that omits the line.
+func TestParseCPUPercent(t *testing.T) {
+	cases := []struct {
+		name   string
+		output string
+		want   float64
+		ok     bool
+	}{
+		{
+			name:   "procps 95% idle",
+			output: "top - 12:34:56 up 1 day\n%Cpu(s):  1.0 us,  2.0 sy,  0.0 ni, 95.0 id,  2.0 wa,  0.0 hi,  0.0 si,  0.0 st\n",
+			want:   5.0,
+			ok:     true,
+		},
+		{
+			name:   "busybox prefix no percent",
+			output: "Cpu(s): 10.0 us, 5.0 sy, 0.0 ni, 80.0 id, 5.0 wa\n",
+			want:   20.0,
+			ok:     true,
+		},
+		{
+			name:   "comma-decimal locale",
+			output: "%Cpu(s):  1,0 us,  2,0 sy,  0,0 ni, 95,0 id,  2,0 wa,  0,0 hi,  0,0 si,  0,0 st\n",
+			want:   5.0,
+			ok:     true,
+		},
+		{
+			name:   "missing CPU line",
+			output: "top - 12:34:56\nMem: ...\n",
+			want:   0,
+			ok:     false,
+		},
+		{
+			name:   "empty output",
+			output: "",
+			want:   0,
+			ok:     false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			raw, _ := json.Marshal(map[string]string{"output": c.output})
+			got, ok := parseCPUPercent(raw)
+			if ok != c.ok {
+				t.Fatalf("ok = %v, want %v (got=%v)", ok, c.ok, got)
+			}
+			if ok {
+				const eps = 0.001
+				if got < c.want-eps || got > c.want+eps {
+					t.Errorf("got = %v, want %v", got, c.want)
+				}
+			}
+		})
+	}
+}
+
+// TestLatestCPUUpdated verifies a tick that succeeds on `show processes
+// top once` updates the sampler's CPU snapshot.
+func TestLatestCPUUpdated(t *testing.T) {
+	dir := t.TempDir()
+	envelope, _ := json.Marshal(map[string]string{
+		"output": "%Cpu(s):  3.0 us, 2.0 sy, 0.0 ni, 95.0 id, 0.0 wa, 0.0 hi, 0.0 si, 0.0 st\n",
+	})
+	runner := &fakeRunner{
+		jsonResp: map[string]json.RawMessage{
+			"show processes top once": envelope,
+		},
+	}
+	s := newSamplerWithClock(t, runner, dir, func() time.Time {
+		return time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	})
+	if _, ok := s.LatestCPUPercent(); ok {
+		t.Fatal("LatestCPUPercent should be invalid before any tick")
+	}
+	s.tick(context.Background())
+	pct, ok := s.LatestCPUPercent()
+	if !ok {
+		t.Fatal("LatestCPUPercent should be valid after a successful tick")
+	}
+	if pct < 4.9 || pct > 5.1 {
+		t.Errorf("LatestCPUPercent = %v, want ~5", pct)
+	}
+}
+
 // Sampler must satisfy collector.Collector via Run(ctx) error.
 type runnable interface {
 	Run(ctx context.Context) error

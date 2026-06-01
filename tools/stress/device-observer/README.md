@@ -1,16 +1,16 @@
 # device-observer
 
-> Alpha — eAPI sampler, Prometheus scrape, and log tailers are wired up.
-> The abort decider is still a no-op stub in this revision.
-
 `device-observer` samples an Arista cEOS device-under-test (DUT) during the
 GRE Tunnel Capacity Study sweep. On every tick of `--sample-interval` it:
 
 - issues five `show` commands over eAPI and writes one file per command,
 - scrapes the doublezero-agent's Prometheus metrics endpoint,
 - polls `show logging last <N> seconds` for EOS syslog entries,
-- tails the orchestrator's agent log for pattern matches, and
-- tails the orchestrator's runlog to compute provision/deprovision durations.
+- tails the orchestrator's agent log for pattern matches,
+- tails the orchestrator's runlog to compute provision/deprovision
+  durations, and
+- evaluates a list of abort triggers; the first match writes a sentinel
+  file and the observer exits so the orchestrator can archive.
 
 It is designed to be driven by an external orchestrator: the orchestrator
 sets the flags, owns the working directory, and signals the observer to
@@ -37,6 +37,7 @@ go build ./tools/stress/device-observer/cmd/device-observer
 | `--sample-interval`   | `10s`                   |          | interval between eAPI samples                   |
 | `--working-dir`       |                         | yes      | working directory for observer outputs          |
 | `--abort-file`        | `<working-dir>/abort`   |          | path to write the abort sentinel file           |
+| `--force`             | `false`                 |          | overwrite a stale abort sentinel from a previous run |
 
 ## Working-directory contract
 
@@ -57,13 +58,15 @@ The observer writes the following files into `--working-dir`:
 The orchestrator additionally owns these files in the same directory; the
 observer reads them but does not write them:
 
-| File                            | Owner        | Read by  |
-| ------------------------------- | ------------ | -------- |
-| `orchestrator-runlog.jsonl`     | orchestrator | observer |
-| `orchestrator.agent.log`        | orchestrator | observer |
+| File                                  | Owner        | Read by  |
+| ------------------------------------- | ------------ | -------- |
+| `orchestrator-runlog.jsonl`           | orchestrator | observer |
+| `orchestrator.agent.log`              | orchestrator | observer |
+| `orchestrator.ledger_heartbeat`       | orchestrator | observer |
 
 The abort sentinel at `--abort-file` (default `<working-dir>/abort`) is
-written by the observer's abort decider and read by the orchestrator.
+written by the observer's abort decider and read by the orchestrator. Its
+content is a single JSON object — see "Operator contract" below.
 
 Filenames use the observer's local clock formatted as ISO 8601 UTC with
 nanosecond precision, with `:` replaced by `-` for filesystem portability
@@ -267,13 +270,70 @@ configured devices. The observer writes one file per tick and never
 appends, so the working directory grows steadily during a sweep. Pruning
 old samples is the orchestrator's responsibility.
 
+## Abort triggers
+
+The decider ticks at `--sample-interval` and fires on the first match. On
+fire it writes the sentinel atomically (`<abort-file>.tmp` + rename) and
+cancels the observer's root context so the process exits.
+
+| Trigger (machine id)         | Source                                                | Condition                                                                                  |
+| ---------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `provision_p95`              | runlog `submit`→`activate` pairs (5-min window)       | ≥ 4 samples and p95 > 30 s                                                                 |
+| `provision_single_user`      | same                                                  | any single duration > 30 s                                                                 |
+| `deprovision_p95`            | runlog `deprovision_submit`→`deprovision_activate`    | ≥ 4 samples and p95 > 30 s                                                                 |
+| `cpu_sustained`              | `show processes top once` (`LatestCPUPercent`)        | ≥ 4 samples in a 60-s window all ≥ 80% (so a transient spike does not fire on startup)     |
+| `apply_config_errors`        | Prometheus `doublezero_agent_apply_config_errors_total` | counter strictly greater than the previous tick's value (first observation seeds only)   |
+| `get_config_errors`          | Prometheus `doublezero_agent_get_config_errors_total`  | same                                                                                       |
+| `diff_timeout`               | agent-log substring `could not get diff`              | match count strictly greater than the previous tick's value                                |
+| `lock_not_taken`             | agent-log substring `not overriding lock since its age` | same                                                                                     |
+| `agent_silence`              | `AgentTail.Snapshot().LastLineAt`                     | `LastLineAt` non-zero AND `now - LastLineAt > 15 s` (suppressed before any line is seen)   |
+| `ledger_heartbeat_stale`     | mtime of `<working-dir>/orchestrator.ledger_heartbeat` | file present AND `now - mtime > 30 s` (absent file is suppressed forward-compatibly)      |
+
+## Operator contract
+
+- **Sentinel format.** On fire the decider writes the sentinel atomically
+  by writing `<abort-file>.tmp` and renaming it onto `<abort-file>`. The
+  body is a single JSON object:
+
+  ```json
+  {
+    "reason": "<trigger machine id>",
+    "detail": "<short human-readable context>",
+    "fired_at_ns": 1748520896123456789,
+    "trigger": "<trigger machine id>"
+  }
+  ```
+
+  `reason` and `trigger` are equal today; both are stable identifiers
+  (`provision_p95`, `cpu_sustained`, …) the orchestrator can match
+  without parsing the human-readable string. The orchestrator only
+  checks file existence today, so the JSON body is forward-compatible.
+
+- **Exit on fire.** When the sentinel is written the observer cancels
+  its own root context and exits with status 0. The orchestrator's
+  abort watcher observes the file on its next tick and proceeds with
+  shutdown / archive on its own schedule. A partially-written sample
+  or log line at exit is acceptable; the rename completes before the
+  observer begins shutdown so the file is never observed mid-write.
+
+- **Stale-sentinel guard.** On startup the observer refuses to start if
+  `<abort-file>` already exists. Pass `--force` to remove the stale
+  sentinel and start a new run. The orchestrator's archive flow should
+  copy the working directory before a `--force` run because the stale
+  sentinel is destructively removed.
+
+- **Ledger heartbeat contract.** The decider treats the absence of
+  `<working-dir>/orchestrator.ledger_heartbeat` as "trigger not yet
+  active". The trigger goes live as soon as the orchestrator starts
+  touching the file. Until then, the trigger never fires.
+
 ## Layout
 
 ```
 tools/stress/device-observer/
 ├── cmd/device-observer/main.go
 ├── internal/
-│   ├── abort/         # abort decider (stub)
+│   ├── abort/         # abort decider + sentinel writer
 │   ├── collector/     # Collector interface + Noop
 │   ├── eapi/          # thin goeapi wrapper
 │   ├── loggingtail/   # EOS-syslog poller + agent-log tailer

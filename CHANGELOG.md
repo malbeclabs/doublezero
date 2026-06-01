@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 - Tools
   - Complete the device-stress orchestrator (part 3): replace the stubbed agent runner with an SSH-backed runner that execs `doublezero-agent -verbose` on the DUT and tees its output to `orchestrator.agent.log`, and a log parser that turns the agent's commit-diff lines into `pre_commit_log` / `applied` runlog events. Adds `--dut-ssh-user` and `--no-agent` flags.
   - Add `tools/stress/device-observer/`, a per-device sampling tool for the GRE Tunnel Capacity Study. Each tick issues five eAPI `show` commands, scrapes the doublezero-agent Prometheus endpoint, polls EOS syslog via `show logging last` with cross-tick dedupe, tails the orchestrator's agent log for abort-trigger patterns, and tails the orchestrator's runlog to compute provision/deprovision durations. The abort decider is stubbed.
+- Telemetry
+  - Drop the redundant `ip-msdp-sa-cache` kind from the state-ingest server's default state-collect command list. `show ip msdp sa-cache rejected` already returns the full SA cache (accepted SAs in the `acceptedSaMsg` array plus any rejected SAs in `rejectedSaMsg`), so the bare `show ip msdp sa-cache` collection is redundant — devices were running both commands per tick and uploading the same accepted-SA data twice. The `ip-msdp-sa-cache-rejected` kind is retained.
 
 ## [v0.25.1](https://github.com/malbeclabs/doublezero/compare/client/v0.24.0...client/v0.25.1) - 2026-06-01
 

@@ -4,10 +4,13 @@
 > The abort decider is still a no-op stub in this revision.
 
 `device-observer` samples an Arista cEOS device-under-test (DUT) during the
-GRE Tunnel Capacity Study sweep. On every tick of `--sample-interval` it
-issues five `show` commands over eAPI and writes one file per command into
-the working directory, and it scrapes the doublezero-agent's Prometheus
-metrics endpoint and appends rows to `observer.agent_metrics.json`.
+GRE Tunnel Capacity Study sweep. On every tick of `--sample-interval` it:
+
+- issues five `show` commands over eAPI and writes one file per command,
+- scrapes the doublezero-agent's Prometheus metrics endpoint,
+- polls `show logging last <N> seconds` for EOS syslog entries,
+- tails the orchestrator's agent log for pattern matches, and
+- tails the orchestrator's runlog to compute provision/deprovision durations.
 
 It is designed to be driven by an external orchestrator: the orchestrator
 sets the flags, owns the working directory, and signals the observer to
@@ -127,7 +130,8 @@ and the loop continues — the abort decider owns repeated-failure policy.
 runs `show logging last <N> seconds` over eAPI where `N` is
 `max(2 * sample_interval, 30 seconds)`, parses each line, and deduplicates
 against the prior tick's set so overlap doesn't double-emit. The dedupe key
-is `(timestamp, message)`.
+is the full raw syslog line, so distinct events at the same second with
+different facility/severity/mnemonic are preserved.
 
 Row schema:
 
@@ -179,8 +183,13 @@ Row schema:
 `runlog.Reader` tails `<working-dir>/orchestrator-runlog.jsonl` (written
 by the orchestrator) and pairs `submit` / `activate` and
 `deprovision_submit` / `deprovision_activate` events by `user_index` to
-produce per-user provision and deprovision durations. Durations are held
-in bounded rings (1024 entries each).
+produce per-user provision and deprovision durations. The reader is
+read-only — it does not write an output file; durations are held in
+memory only.
+
+Durations are stored in bounded rings (1024 entries each). The pending-
+submit maps (one per flow) are capped at 4096 entries; on overflow the
+oldest pending entry is evicted.
 
 `Reader.ProvisionDurations(window)` and `Reader.DeprovisionDurations(window)`
 return the durations whose completion timestamp lies within `window` of
@@ -199,7 +208,10 @@ The agent-log and runlog consumers share a poll-based tailer
 - detects truncation when the file size drops below the previously-read
   offset and reopens from offset zero,
 - buffers a trailing fragment (data not yet terminated by `\n`) across
-  polls so partial writes are not surfaced to the consumer.
+  polls so partial writes are not surfaced to the consumer,
+- caps the unterminated-line buffer at 1 MiB; if a fragment exceeds this
+  without a newline it is dropped and `ErrOversizeLine` is returned
+  alongside any complete lines already extracted.
 
 Linux-only: inode comparison uses `syscall.Stat_t.Ino`. This matches the
 device-observer's existing Linux-only assumptions (cEOS containers,

@@ -1,7 +1,7 @@
 # device-observer
 
-> Alpha — eAPI sampler and Prometheus scrape are wired up. Log tailers
-> (PR #3795) and abort decider (PR #3796) are no-op stubs in this revision.
+> Alpha — eAPI sampler, Prometheus scrape, and log tailers are wired up.
+> The abort decider (PR #3796) is still a no-op stub in this revision.
 
 `device-observer` samples an Arista cEOS device-under-test (DUT) during the
 GRE Tunnel Capacity Study sweep. On every tick of `--sample-interval` it
@@ -48,14 +48,16 @@ The observer writes the following files into `--working-dir`:
 | `show-logging-errors-<ts>.log`           | observer  | one per tick                                    |
 | `show-logging-critical-<ts>.log`         | observer  | one per tick                                    |
 | `observer.agent_metrics.json`            | observer  | NDJSON, one row per metric sample, appended     |
+| `observer.eos_logging.json`              | observer  | NDJSON, one row per deduped `show logging last` entry, appended |
+| `observer.agent_log.json`                | observer  | NDJSON, one row per agent-log line, appended    |
 
 The orchestrator additionally owns these files in the same directory; the
-observer reads them (in later PRs) but does not write them:
+observer reads them but does not write them:
 
-| File                          | Owner        | Read by                       |
-| ----------------------------- | ------------ | ----------------------------- |
-| `orchestrator-runlog.json`    | orchestrator | observer (PR #3795)           |
-| `orchestrator.agent.log`      | orchestrator | observer (PR #3795)           |
+| File                            | Owner        | Read by  |
+| ------------------------------- | ------------ | -------- |
+| `orchestrator-runlog.jsonl`     | orchestrator | observer |
+| `orchestrator.agent.log`        | orchestrator | observer |
 
 The abort sentinel at `--abort-file` (default `<working-dir>/abort`) is
 written by the observer (in PR #3796) and read by the orchestrator.
@@ -119,6 +121,88 @@ PR #3796 will use this to detect mid-sample counter increments.
 A per-tick HTTP failure, parse failure, or write failure is logged at WARN
 and the loop continues — the abort decider owns repeated-failure policy.
 
+## EOS syslog output
+
+`observer.eos_logging.json` captures the device's syslog stream. Each tick
+runs `show logging last <N> seconds` over eAPI where `N` is
+`max(2 * sample_interval, 30 seconds)`, parses each line, and deduplicates
+against the prior tick's set so overlap doesn't double-emit. The dedupe key
+is `(timestamp, message)`.
+
+Row schema:
+
+```json
+{
+  "t_ns": 1748520896123456789,
+  "time": "May 29 12:34:56",
+  "severity": "3",
+  "facility": "BGP",
+  "message": "BGP-3-NOTIFICATION: ..."
+}
+```
+
+Lines that don't match the default Arista syslog format (timestamp +
+`FACILITY-SEV-MNEMONIC:` tag) still land in the file with empty `severity`
+and `facility` and the full line under `message`, so unusual formats are
+not silently dropped.
+
+## Agent log output
+
+`observer.agent_log.json` mirrors each new line of
+`<working-dir>/orchestrator.agent.log` (written by the orchestrator's
+SSH-backed agent runner). The tailer handles a missing file (returns no
+rows until it appears), rotation (rename + recreate), and truncation.
+
+Row schema:
+
+```json
+{
+  "t_ns": 1748520896123456789,
+  "line": "INFO: Committing config session due to diffs detected: ..."
+}
+```
+
+`AgentTail.Snapshot()` also exposes:
+
+- `LastLineAt` — wall-clock timestamp of the most recent observed line
+  (zero before the first line). The abort decider uses this to flag
+  agent silence beyond a threshold.
+- `MatchCounts` — running counts of three abort-trigger substrings:
+  `diff_timeout` ("could not get diff"), `lock_not_taken`
+  ("not overriding lock since its age is less than"), and
+  `commit_session` ("Committing config session due to diffs detected:").
+
+## Runlog reader
+
+`runlog.Reader` tails `<working-dir>/orchestrator-runlog.jsonl` (written
+by the orchestrator) and pairs `submit` / `activate` and
+`deprovision_submit` / `deprovision_activate` events by `user_index` to
+produce per-user provision and deprovision durations. Durations are held
+in bounded rings (1024 entries each).
+
+`Reader.ProvisionDurations(window)` and `Reader.DeprovisionDurations(window)`
+return the durations whose completion timestamp lies within `window` of
+the current wall clock. The abort decider (PR #3796) will use these to
+detect a provisioning slowdown.
+
+## Tailer behavior
+
+The agent-log and runlog consumers share a poll-based tailer
+(`internal/tailer`) that:
+
+- treats a missing source file as a no-op (returns `nil, nil`) so the
+  observer can start before the orchestrator creates the file,
+- detects rotation via inode change and reads the new file from offset
+  zero,
+- detects truncation when the file size drops below the previously-read
+  offset and reopens from offset zero,
+- buffers a trailing fragment (data not yet terminated by `\n`) across
+  polls so partial writes are not surfaced to the consumer.
+
+Linux-only: inode comparison uses `syscall.Stat_t.Ino`. This matches the
+device-observer's existing Linux-only assumptions (cEOS containers,
+`/sys/class/net` for ifindex lookups).
+
 ## Local devnet smoke test
 
 Against `dz-local-device-dz1` (see top-level `CLAUDE.md` for devnet setup):
@@ -178,9 +262,10 @@ tools/stress/device-observer/
 │   ├── abort/         # PR #3796 (stub here)
 │   ├── collector/     # Collector interface + Noop
 │   ├── eapi/          # thin goeapi wrapper
-│   ├── loggingtail/   # PR #3795 (stubs here)
+│   ├── loggingtail/   # EOS-syslog poller + agent-log tailer
 │   ├── promscrape/    # Prometheus scraper for the doublezero-agent
-│   ├── runlog/        # PR #3795 (stub here)
-│   └── sample/        # eAPI sampler
+│   ├── runlog/        # orchestrator-runlog.jsonl reader + duration rings
+│   ├── sample/        # eAPI sampler
+│   └── tailer/        # shared poll-based file tailer
 └── README.md
 ```

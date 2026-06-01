@@ -147,6 +147,25 @@ func TestCPUSustainedAt80(t *testing.T) {
 	}
 }
 
+// TestCPUSustainedBelowSpan confirms the decider does not fire when ≥
+// minSamples are above the threshold but the samples don't span the
+// full cpuSustainedWindow yet.
+func TestCPUSustainedBelowSpan(t *testing.T) {
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var step atomic.Int64
+	d := newTestDecider(t, Sources{
+		CPUPercent: func() (float64, bool) { return 99, true },
+	}, nil, func() time.Time {
+		return base.Add(time.Duration(step.Add(1)) * 5 * time.Second)
+	})
+	for i := 0; i < 4; i++ {
+		d.tick()
+	}
+	if _, err := os.Stat(d.cfg.AbortFile); err == nil {
+		t.Fatal("decider must not fire while samples span < cpuSustainedWindow")
+	}
+}
+
 func TestApplyConfigErrorsCounter(t *testing.T) {
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	var fire atomic.Int32

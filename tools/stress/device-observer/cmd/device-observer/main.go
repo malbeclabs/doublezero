@@ -151,9 +151,9 @@ func run() error {
 	return nil
 }
 
-// checkStaleAbort refuses to start if the abort sentinel already exists,
-// unless --force was passed. With --force the stale sentinel is removed so
-// the decider isn't immediately short-circuited by the previous run.
+// checkStaleAbort refuses to start when the abort sentinel already
+// exists unless --force is passed; with --force, the stale sentinel is
+// removed so the decider isn't immediately short-circuited.
 func checkStaleAbort(absAbort string, force bool) error {
 	if _, err := os.Stat(absAbort); err != nil {
 		if os.IsNotExist(err) {

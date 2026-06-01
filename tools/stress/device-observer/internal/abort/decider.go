@@ -27,8 +27,8 @@ const (
 	ledgerStaleThresh    = 30 * time.Second
 	batchWindow          = 5 * time.Minute
 
-	// Triggers gated on a per-tick sample count below which a single
-	// outlier could trip the orchestrator on startup or an empty batch.
+	// minSamples gates per-tick triggers below which a single outlier
+	// could trip the orchestrator on startup or an empty batch.
 	minSamples = 4
 
 	cpuRingCap = 256
@@ -48,8 +48,9 @@ const (
 	metricGetConfigErrors   = "doublezero_agent_get_config_errors_total"
 )
 
-// Sources reads from the other collectors. Function-typed so tests pass
-// fakes without spinning up the real collectors.
+// Sources is function-typed so tests can pass fakes without spinning up
+// the real collectors. Snapshot getters must return maps the decider can
+// retain without further mutation by the caller.
 type Sources struct {
 	PromSnapshot         func() map[string]float64
 	AgentSnapshot        func() loggingtail.AgentSnapshot
@@ -135,13 +136,13 @@ func (d *Decider) tick() {
 		durs := f(batchWindow)
 		if len(durs) >= minSamples {
 			if p95 := percentile95(durs); p95 > p95ProvisionThresh {
-				d.fire(TriggerProvisionP95, fmt.Sprintf("provision p95 %s exceeded %s over %d samples", p95, p95ProvisionThresh, len(durs)))
+				d.fire(now, TriggerProvisionP95, fmt.Sprintf("provision p95 %s exceeded %s over %d samples", p95, p95ProvisionThresh, len(durs)))
 				return
 			}
 		}
 		for _, dur := range durs {
 			if dur > singleUserThresh {
-				d.fire(TriggerProvisionSingleUser, fmt.Sprintf("provision duration %s exceeded %s", dur, singleUserThresh))
+				d.fire(now, TriggerProvisionSingleUser, fmt.Sprintf("provision duration %s exceeded %s", dur, singleUserThresh))
 				return
 			}
 		}
@@ -151,7 +152,7 @@ func (d *Decider) tick() {
 		durs := f(batchWindow)
 		if len(durs) >= minSamples {
 			if p95 := percentile95(durs); p95 > p95DeprovisionThresh {
-				d.fire(TriggerDeprovisionP95, fmt.Sprintf("deprovision p95 %s exceeded %s over %d samples", p95, p95DeprovisionThresh, len(durs)))
+				d.fire(now, TriggerDeprovisionP95, fmt.Sprintf("deprovision p95 %s exceeded %s over %d samples", p95, p95DeprovisionThresh, len(durs)))
 				return
 			}
 		}
@@ -165,7 +166,7 @@ func (d *Decider) tick() {
 			}
 		}
 		if d.cpuSustained(now) {
-			d.fire(TriggerCPUSustained, fmt.Sprintf("CPU >= %.0f%% sustained over %s", cpuPercentThresh, cpuSustainedWindow))
+			d.fire(now, TriggerCPUSustained, fmt.Sprintf("CPU >= %.0f%% sustained over %s", cpuPercentThresh, cpuSustainedWindow))
 			return
 		}
 	}
@@ -179,13 +180,13 @@ func (d *Decider) tick() {
 			} {
 				prev, cur := d.prevCounters[c.name], counters[c.name]
 				if cur > prev {
-					d.prevCounters = counters
-					d.fire(c.trigger, fmt.Sprintf("%s incremented %g→%g", c.name, prev, cur))
+					d.prevCounters = copyFloatMap(counters)
+					d.fire(now, c.trigger, fmt.Sprintf("%s incremented %g→%g", c.name, prev, cur))
 					return
 				}
 			}
 		}
-		d.prevCounters = counters
+		d.prevCounters = copyFloatMap(counters)
 		d.countersSeeded = true
 	}
 
@@ -198,7 +199,7 @@ func (d *Decider) tick() {
 			} {
 				if cur, prev := snap.MatchCounts[p.name], d.prevPatterns[p.name]; cur > prev {
 					d.prevPatterns = copyIntMap(snap.MatchCounts)
-					d.fire(p.trigger, fmt.Sprintf("agent log pattern %q observed %d→%d", p.name, prev, cur))
+					d.fire(now, p.trigger, fmt.Sprintf("agent log pattern %q observed %d→%d", p.name, prev, cur))
 					return
 				}
 			}
@@ -209,7 +210,7 @@ func (d *Decider) tick() {
 		// Skip while LastLineAt is zero so we don't false-fire before
 		// the orchestrator has started the agent.
 		if !snap.LastLineAt.IsZero() && now.Sub(snap.LastLineAt) > agentSilenceThresh {
-			d.fire(TriggerAgentSilence, fmt.Sprintf("agent silent for %s (last line at %s)", now.Sub(snap.LastLineAt), snap.LastLineAt.UTC().Format(time.RFC3339Nano)))
+			d.fire(now, TriggerAgentSilence, fmt.Sprintf("agent silent for %s (last line at %s)", now.Sub(snap.LastLineAt), snap.LastLineAt.UTC().Format(time.RFC3339Nano)))
 			return
 		}
 	}
@@ -218,7 +219,7 @@ func (d *Decider) tick() {
 		st, err := os.Stat(path)
 		if err == nil {
 			if age := now.Sub(st.ModTime()); age > ledgerStaleThresh {
-				d.fire(TriggerLedgerHeartbeatStale, fmt.Sprintf("ledger heartbeat %s stale by %s", path, age))
+				d.fire(now, TriggerLedgerHeartbeatStale, fmt.Sprintf("ledger heartbeat %s stale by %s", path, age))
 				return
 			}
 		} else if !os.IsNotExist(err) {
@@ -227,9 +228,12 @@ func (d *Decider) tick() {
 	}
 }
 
+// cpuSustained reports whether the CPU has been >= cpuPercentThresh for
+// every retained sample, the retained samples span at least
+// cpuSustainedWindow, and there are at least minSamples retained.
 func (d *Decider) cpuSustained(now time.Time) bool {
 	cutoff := now.Add(-cpuSustainedWindow)
-	kept := d.cpuRing[:0]
+	kept := make([]cpuSample, 0, len(d.cpuRing))
 	for _, s := range d.cpuRing {
 		if s.at.Before(cutoff) {
 			continue
@@ -237,10 +241,13 @@ func (d *Decider) cpuSustained(now time.Time) bool {
 		kept = append(kept, s)
 	}
 	d.cpuRing = kept
-	if len(d.cpuRing) < minSamples {
+	if len(kept) < minSamples {
 		return false
 	}
-	for _, s := range d.cpuRing {
+	if now.Sub(kept[0].at) < cpuSustainedWindow {
+		return false
+	}
+	for _, s := range kept {
 		if s.pct < cpuPercentThresh {
 			return false
 		}
@@ -257,13 +264,12 @@ type sentinel struct {
 
 // fire writes the sentinel exactly once and invokes OnFire on success.
 // d.fired is only set after both write and rename succeed, so a failed
-// write does not strand the decider: the next tick will retry. Caller
-// holds d.mu.
-func (d *Decider) fire(trigger, detail string) {
+// write does not strand the decider: the next tick will retry.
+func (d *Decider) fire(now time.Time, trigger, detail string) {
 	if d.fired {
 		return
 	}
-	body, err := json.Marshal(sentinel{Reason: trigger, Detail: detail, FiredAtNs: d.cfg.now().UTC().UnixNano(), Trigger: trigger})
+	body, err := json.Marshal(sentinel{Reason: trigger, Detail: detail, FiredAtNs: now.UTC().UnixNano(), Trigger: trigger})
 	if err != nil {
 		d.cfg.Logger.Error("marshal abort sentinel", "err", err)
 		return
@@ -297,6 +303,14 @@ func percentile95(durs []time.Duration) time.Duration {
 		rank = len(cp) - 1
 	}
 	return cp[rank]
+}
+
+func copyFloatMap(m map[string]float64) map[string]float64 {
+	out := make(map[string]float64, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 func copyIntMap(m map[string]int) map[string]int {

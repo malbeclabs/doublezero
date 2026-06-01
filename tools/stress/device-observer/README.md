@@ -281,7 +281,7 @@ cancels the observer's root context so the process exits.
 | `provision_p95`              | runlog `submit`→`activate` pairs (5-min window)       | ≥ 4 samples and p95 > 30 s                                                                 |
 | `provision_single_user`      | same                                                  | any single duration > 30 s                                                                 |
 | `deprovision_p95`            | runlog `deprovision_submit`→`deprovision_activate`    | ≥ 4 samples and p95 > 30 s                                                                 |
-| `cpu_sustained`              | `show processes top once` (`LatestCPUPercent`)        | ≥ 4 samples in a 60-s window all ≥ 80% (so a transient spike does not fire on startup)     |
+| `cpu_sustained`              | `show processes top once` (`LatestCPUPercent`)        | ≥ 4 samples spanning ≥ 60 s, all ≥ 80% (so a transient spike does not fire on startup)     |
 | `apply_config_errors`        | Prometheus `doublezero_agent_apply_config_errors_total` | counter strictly greater than the previous tick's value (first observation seeds only)   |
 | `get_config_errors`          | Prometheus `doublezero_agent_get_config_errors_total`  | same                                                                                       |
 | `diff_timeout`               | agent-log substring `could not get diff`              | match count strictly greater than the previous tick's value                                |

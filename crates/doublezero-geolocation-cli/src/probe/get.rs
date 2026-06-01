@@ -36,7 +36,11 @@ struct GeoProbeGetDisplay {
     pub code: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
-    pub exchange: String,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[tabled(skip)]
+    pub exchange: Pubkey,
+    #[tabled(rename = "exchange")]
+    pub exchange_code: String,
     pub public_ip: Ipv4Addr,
     pub port: u16,
     #[serde(serialize_with = "serialize_pubkey_vec_as_string_array")]
@@ -63,8 +67,11 @@ impl GetGeoProbeCliCommand {
             pubkey_or_code: self.probe,
         })?;
 
-        let exchanges = client.list_exchanges()?;
-        let exchange = exchanges
+        let exchanges = client.list_exchanges().unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "failed to list exchanges; showing exchange pubkey");
+            Default::default()
+        });
+        let exchange_code = exchanges
             .get(&probe.exchange_pk)
             .map(|ex| ex.code.clone())
             .unwrap_or_else(|| probe.exchange_pk.to_string());
@@ -82,7 +89,8 @@ impl GetGeoProbeCliCommand {
             account: pubkey,
             code: probe.code,
             owner: probe.owner,
-            exchange,
+            exchange: probe.exchange_pk,
+            exchange_code,
             public_ip: probe.public_ip,
             port: probe.location_offset_port,
             parent_devices: probe.parent_devices,
@@ -270,7 +278,9 @@ mod tests {
         assert_eq!(json["account"].as_str().unwrap(), probe_pk.to_string());
         assert_eq!(json["code"].as_str().unwrap(), "ams-probe-01");
         assert_eq!(json["owner"].as_str().unwrap(), owner_pk.to_string());
-        assert_eq!(json["exchange"].as_str().unwrap(), "ams");
+        // exchange retains the canonical pubkey; the code is a separate field
+        assert_eq!(json["exchange"].as_str().unwrap(), exchange_pk.to_string());
+        assert_eq!(json["exchange_code"].as_str().unwrap(), "ams");
         assert_eq!(json["public_ip"].as_str().unwrap(), "10.0.0.1");
         assert_eq!(json["port"].as_u64().unwrap(), 8923);
         let parents = json["parent_devices"].as_array().unwrap();
@@ -318,7 +328,8 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(trimmed).unwrap();
         assert_eq!(json["account"].as_str().unwrap(), probe_pk.to_string());
         assert_eq!(json["code"].as_str().unwrap(), "ams-probe-01");
-        assert_eq!(json["exchange"].as_str().unwrap(), "ams");
+        assert_eq!(json["exchange"].as_str().unwrap(), exchange_pk.to_string());
+        assert_eq!(json["exchange_code"].as_str().unwrap(), "ams");
         assert_eq!(json["parent_devices"].as_array().unwrap().len(), 1);
     }
 
@@ -337,6 +348,38 @@ mod tests {
         client
             .expect_list_exchanges()
             .returning(|| Ok(HashMap::new()));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            GetGeoProbeCliCommand {
+                probe: probe_pk.to_string(),
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains(&exchange_pk.to_string()));
+    }
+
+    #[test]
+    fn test_cli_geo_probe_get_exchange_list_error_falls_back_to_pubkey() {
+        let (mut client, probe_pk, owner_pk, exchange_pk, metrics_pk) = setup_client();
+        let probe = make_probe(owner_pk, exchange_pk, metrics_pk, vec![]);
+
+        client
+            .expect_get_geo_probe()
+            .with(predicate::eq(GetGeoProbeCommand {
+                pubkey_or_code: probe_pk.to_string(),
+            }))
+            .returning(move |_| Ok((probe_pk, probe.clone())));
+
+        // A failure to list exchanges must not abort the command; it falls back to the pubkey.
+        client
+            .expect_list_exchanges()
+            .returning(|| Err(eyre::eyre!("rpc error")));
 
         let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();

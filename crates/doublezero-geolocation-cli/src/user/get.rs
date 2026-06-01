@@ -72,7 +72,12 @@ impl GetGeolocationUserCliCommand {
             pubkey_or_code: self.user,
         })?;
 
-        let probes = client.list_geo_probes(ListGeoProbeCommand)?;
+        let probes = client
+            .list_geo_probes(ListGeoProbeCommand)
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "failed to list geo probes; showing probe pubkey");
+                Default::default()
+            });
 
         let targets: Vec<TargetDisplay> = user
             .targets
@@ -305,6 +310,50 @@ mod tests {
         client
             .expect_list_geo_probes()
             .returning(|_| Ok(HashMap::new()));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            GetGeolocationUserCliCommand {
+                user: user_pk.to_string(),
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains(&probe_pk.to_string()));
+    }
+
+    #[test]
+    fn test_cli_geolocation_user_get_probe_list_error_falls_back_to_pubkey() {
+        let mut client = MockGeoCliCommand::new();
+        let user_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
+        let probe_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+
+        let user = make_user(
+            "geo-user-01",
+            vec![GeolocationTarget {
+                target_type: GeoLocationTargetType::Outbound,
+                ip_address: Ipv4Addr::new(8, 8, 8, 8),
+                location_offset_port: 8923,
+                target_pk: Pubkey::default(),
+                geoprobe_pk: probe_pk,
+            }],
+        );
+
+        client
+            .expect_get_geolocation_user()
+            .with(predicate::eq(GetGeolocationUserCommand {
+                pubkey_or_code: user_pk.to_string(),
+            }))
+            .returning(move |_| Ok((user_pk, user.clone())));
+
+        // A failure to list probes must not abort the command; it falls back to the pubkey.
+        client
+            .expect_list_geo_probes()
+            .returning(|_| Err(eyre::eyre!("rpc error")));
 
         let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();

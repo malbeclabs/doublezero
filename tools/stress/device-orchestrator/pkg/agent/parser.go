@@ -11,17 +11,23 @@ import (
 // It tracks two log lines from controlplane/agent/pkg/arista/eapi.go:
 //
 //   - "Committing config session due to diffs detected: <diff>"
-//     → emit one EventPreCommitLog per `+ interface Tunnel<ID>` in the diff,
-//     and remember those IDs as "pending".
+//     opens a diff block. The agent logs the diff with a single log.Printf, but
+//     Go's log package only prefixes the first line, so the body of the diff —
+//     the "+ interface Tunnel<ID>" lines — arrives on the lines that *follow*
+//     the marker. The parser therefore stays in the block and scans every
+//     subsequent line, emitting one EventPreCommitLog per added tunnel and
+//     remembering those IDs as "pending".
 //   - "Configuration session finalized with command '... commit'"
-//     → emit one EventApplied per pending ID, then clear the buffer.
+//     → emit one EventApplied per pending ID, then close the block and clear
+//     the buffer.
 //   - "Configuration session finalized with command '... abort'"
-//     → clear the buffer with no Applied events.
+//     → close the block and clear the buffer with no Applied events.
 //
 // A single Parser is goroutine-safe only against the calling Parse goroutine;
 // callers should funnel all lines through one Parse loop.
 type Parser struct {
 	pending []uint16
+	inDiff  bool             // open between a "Committing..." marker and its finalize line
 	now     func() time.Time // injectable for tests
 }
 
@@ -48,19 +54,13 @@ func WithClock(now func() time.Time) ParserOption {
 // retain.
 func (p *Parser) Parse(line string) []Event {
 	if m := committingRE.FindStringSubmatch(line); m != nil {
-		ids := extractAddedTunnelIDs(m[1])
-		if len(ids) == 0 {
-			return nil
-		}
-		p.pending = append(p.pending, ids...)
-		now := p.now()
-		out := make([]Event, 0, len(ids))
-		for _, id := range ids {
-			out = append(out, Event{Kind: EventPreCommitLog, TunnelID: id, At: now})
-		}
-		return out
+		// Open the diff block and scan the inline remainder of the marker line
+		// (the agent appends the first diff line after the colon).
+		p.inDiff = true
+		return p.scanAddedTunnels(m[1])
 	}
 	if finalizedCommitRE.MatchString(line) {
+		p.inDiff = false
 		if len(p.pending) == 0 {
 			return nil
 		}
@@ -74,10 +74,33 @@ func (p *Parser) Parse(line string) []Event {
 	}
 	if finalizedAbortRE.MatchString(line) {
 		// Abort cleared the session — drop pending without emitting Applied.
+		p.inDiff = false
 		p.pending = p.pending[:0]
 		return nil
 	}
+	if p.inDiff {
+		// A diff-body line inside an open commit block: the "+ interface
+		// Tunnel<ID>" additions arrive here, one (or more) per line.
+		return p.scanAddedTunnels(line)
+	}
 	return nil
+}
+
+// scanAddedTunnels emits one EventPreCommitLog per "+ interface Tunnel<ID>"
+// found in s, recording the IDs as pending. Returns nil when s adds no tunnels
+// (context lines, "- interface" deletions, or unrelated diff text).
+func (p *Parser) scanAddedTunnels(s string) []Event {
+	ids := extractAddedTunnelIDs(s)
+	if len(ids) == 0 {
+		return nil
+	}
+	p.pending = append(p.pending, ids...)
+	now := p.now()
+	out := make([]Event, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, Event{Kind: EventPreCommitLog, TunnelID: id, At: now})
+	}
+	return out
 }
 
 // Pending exposes the in-flight tunnel IDs awaiting an Applied event; tests
@@ -89,9 +112,10 @@ func (p *Parser) Pending() []uint16 {
 }
 
 var (
-	// committingRE captures the diff payload from the agent's pre-commit log.
-	// The diff is everything after the colon-space and runs to end of line —
-	// agents emit the diff inline (often multi-section but single-line).
+	// committingRE matches the agent's pre-commit marker and captures whatever
+	// trails the colon on that same line. Only the first diff line lands here:
+	// Go's log package prefixes a timestamp to the marker line, and the rest of
+	// the multi-line diff arrives on subsequent lines (handled via inDiff).
 	committingRE = regexp.MustCompile(`Committing config session due to diffs detected:\s*(.*)$`)
 
 	// addedTunnelRE matches an additive interface-Tunnel diff line; the `\b` on

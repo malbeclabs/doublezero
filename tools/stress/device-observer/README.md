@@ -137,14 +137,16 @@ Row schema:
   "time": "May 29 12:34:56",
   "severity": "3",
   "facility": "BGP",
-  "message": "BGP-3-NOTIFICATION: ..."
+  "message": "peer 10.0.0.1 went down"
 }
 ```
 
-Lines that don't match the default Arista syslog format (timestamp +
-`FACILITY-SEV-MNEMONIC:` tag) still land in the file with empty `severity`
-and `facility` and the full line under `message`, so unusual formats are
-not silently dropped.
+The parser extracts `facility` and `severity` from the Arista
+`FACILITY-SEV-MNEMONIC:` tag; `message` contains only the text after the
+colon. The mnemonic (e.g. `NOTIFICATION`) is not preserved in any field.
+Lines that don't match the default format still land in the file with
+empty `severity` and `facility` and the full line under `message`, so
+unusual formats are not silently dropped.
 
 ## Agent log output
 

@@ -104,7 +104,7 @@ func TestDedupeAcrossTicks(t *testing.T) {
 	dir := t.TempDir()
 	body := "May 29 12:00:00 dz1 BGP-3-NOTIF: a\nMay 29 12:00:01 dz1 BGP-3-NOTIF: b\n"
 	runner := newFakeEOSRunner(body)
-	p := NewEOS(runner, dir, time.Second, 30*time.Second, discardLogger())
+	p := NewEOS(runner, dir, time.Second, discardLogger())
 
 	p.tick()
 	// Same response; overlap window should dedupe.
@@ -121,7 +121,7 @@ func TestDedupeAcrossTicks(t *testing.T) {
 func TestNewLineAfterDedupe(t *testing.T) {
 	dir := t.TempDir()
 	runner := newFakeEOSRunner("May 29 12:00:00 dz1 BGP-3-NOTIF: a\n")
-	p := NewEOS(runner, dir, time.Second, 30*time.Second, discardLogger())
+	p := NewEOS(runner, dir, time.Second, discardLogger())
 	p.tick()
 	runner.set("May 29 12:00:00 dz1 BGP-3-NOTIF: a\nMay 29 12:00:01 dz1 BGP-3-NOTIF: b\n")
 	p.tick()
@@ -141,7 +141,7 @@ func TestTickErrorContinues(t *testing.T) {
 	dir := t.TempDir()
 	runner := newFakeEOSRunner("May 29 12:00:00 dz1 BGP-3-NOTIF: a\n")
 	runner.setErr(errors.New("boom"))
-	p := NewEOS(runner, dir, time.Second, 30*time.Second, discardLogger())
+	p := NewEOS(runner, dir, time.Second, discardLogger())
 
 	p.tick()
 	if _, err := os.Stat(filepath.Join(dir, eosOutputFilename)); !os.IsNotExist(err) {
@@ -160,7 +160,7 @@ func TestTickErrorContinues(t *testing.T) {
 func TestLookbackFloor(t *testing.T) {
 	dir := t.TempDir()
 	runner := newFakeEOSRunner("")
-	p := NewEOS(runner, dir, time.Second, 2*time.Second, discardLogger())
+	p := NewEOS(runner, dir, time.Second, discardLogger())
 	if p.lookback < 30*time.Second {
 		t.Fatalf("lookback = %v, want >= 30s", p.lookback)
 	}
@@ -170,7 +170,7 @@ func TestLookbackFloor(t *testing.T) {
 func TestRunCancelsCleanly(t *testing.T) {
 	dir := t.TempDir()
 	runner := newFakeEOSRunner("")
-	p := NewEOS(runner, dir, time.Hour, 30*time.Second, discardLogger())
+	p := NewEOS(runner, dir, time.Hour, discardLogger())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -191,7 +191,7 @@ func TestRunCancelsCleanly(t *testing.T) {
 func TestNDJSONShape(t *testing.T) {
 	dir := t.TempDir()
 	runner := newFakeEOSRunner("May 29 12:00:00 dz1 BGP-3-NOTIF: hello\n")
-	p := NewEOS(runner, dir, time.Second, 30*time.Second, discardLogger())
+	p := NewEOS(runner, dir, time.Second, discardLogger())
 	p.tick()
 
 	body, err := os.ReadFile(filepath.Join(dir, eosOutputFilename))

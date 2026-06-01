@@ -108,13 +108,10 @@ func run() error {
 		return err
 	}
 
-	// 2 × interval (min 30 s) so consecutive show-logging windows overlap.
-	eosLookback := max(2**sampleInterval, 30*time.Second)
-
 	collectors := []collector.Collector{
 		sample.NewSampler(client, *workingDir, *sampleInterval, logger),
 		promscrape.New(*agentMetricsURL, *workingDir, *sampleInterval, logger),
-		loggingtail.NewEOS(client, *workingDir, *sampleInterval, eosLookback, logger),
+		loggingtail.NewEOS(client, *workingDir, *sampleInterval, logger),
 		loggingtail.NewAgent(*workingDir, *sampleInterval, logger),
 		runlog.New(*workingDir, *sampleInterval, logger),
 		abort.New(*abortFile),

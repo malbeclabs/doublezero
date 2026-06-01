@@ -54,10 +54,10 @@ type EOSPoller struct {
 	prev     map[string]struct{}
 }
 
-// NewEOS returns an EOSPoller. lookback is clamped to max(2*interval, 30s)
-// so consecutive ticks overlap and dedupe is effective.
-func NewEOS(client eosLogRunner, workingDir string, interval, lookback time.Duration, logger *slog.Logger) *EOSPoller {
-	lookback = max(lookback, 2*interval, eosMinLookback)
+// NewEOS returns an EOSPoller. The lookback window is derived from interval
+// as max(2*interval, 30s) so consecutive ticks overlap and dedupe is effective.
+func NewEOS(client eosLogRunner, workingDir string, interval time.Duration, logger *slog.Logger) *EOSPoller {
+	lookback := max(2*interval, eosMinLookback)
 	return &EOSPoller{
 		client:   client,
 		outPath:  filepath.Join(workingDir, eosOutputFilename),

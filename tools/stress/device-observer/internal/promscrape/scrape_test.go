@@ -57,8 +57,6 @@ func newScraperWithClock(t *testing.T, url, dir string, clock func() time.Time) 
 	return s
 }
 
-// readRows reads observer.agent_metrics.json line-by-line and decodes each
-// NDJSON record into a metricRow.
 func readRows(t *testing.T, path string) []metricRow {
 	t.Helper()
 	f, err := os.Open(path)
@@ -82,8 +80,6 @@ func readRows(t *testing.T, path string) []metricRow {
 	return rows
 }
 
-// startServer returns an httptest.Server whose handler is supplied by the
-// caller. Tests use this to simulate happy / 500 / malformed responses.
 func startServer(t *testing.T, h http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(h)
@@ -237,8 +233,7 @@ func TestSnapshotReflectsLatest(t *testing.T) {
 }
 
 // TestEmptyBodyFreezesSnapshot guards against a transient HTTP 200 with no
-// metric families clobbering the snapshot — the decider in PR #3796 must
-// not see "counters reset" when the agent momentarily returns an empty body.
+// metric families clobbering the snapshot.
 func TestEmptyBodyFreezesSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	var empty atomic.Bool
@@ -279,8 +274,6 @@ func TestParseErrorContinues(t *testing.T) {
 	}
 }
 
-// TestRunCancelsCleanly matches sample/eos_test.go: cancel after the
-// initial tick and confirm Run returns nil within 2 s.
 func TestRunCancelsCleanly(t *testing.T) {
 	dir := t.TempDir()
 	srv := startServer(t, okHandler(expositionSample))
@@ -303,9 +296,6 @@ func TestRunCancelsCleanly(t *testing.T) {
 	}
 }
 
-// TestSingleAppendPerTick checks that a tick produces a single contiguous
-// block of rows so interleaving from concurrent processes (if any) cannot
-// split a tick's output.
 func TestSingleAppendPerTick(t *testing.T) {
 	dir := t.TempDir()
 	srv := startServer(t, okHandler(expositionSample))
@@ -317,7 +307,6 @@ func TestSingleAppendPerTick(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	// Every line must be a complete JSON object terminated by \n.
 	for _, line := range bytes.Split(bytes.TrimRight(body, "\n"), []byte("\n")) {
 		if !bytes.HasPrefix(line, []byte("{")) || !bytes.HasSuffix(line, []byte("}")) {
 			t.Errorf("malformed NDJSON line: %q", line)
@@ -328,5 +317,4 @@ func TestSingleAppendPerTick(t *testing.T) {
 	}
 }
 
-// Compile-time: *Scraper satisfies the collector.Collector interface.
 var _ collector.Collector = (*Scraper)(nil)

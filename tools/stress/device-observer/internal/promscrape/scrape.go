@@ -1,8 +1,7 @@
 // Package promscrape scrapes the doublezero-agent's Prometheus metrics
 // endpoint on every tick and appends one NDJSON row per metric sample to
 // observer.agent_metrics.json in the working directory. It also exposes a
-// thread-safe Snapshot of the latest counter values for the abort decider
-// (PR #3796).
+// thread-safe Snapshot of the latest counter values.
 package promscrape
 
 import (
@@ -28,17 +27,11 @@ import (
 )
 
 const (
-	// requestTimeout caps each scrape HTTP request. Matches the e2e prom
-	// client at e2e/internal/prometheus/metrics.go so behavior is uniform
-	// across the project. If --sample-interval is set below this, a slow
-	// scrape may overlap the next tick; time.Ticker drops missed ticks so
-	// the loop self-recovers.
+	// Matches e2e/internal/prometheus/metrics.go for uniform behavior.
 	requestTimeout = 5 * time.Second
 
-	// maxBodyBytes caps how many bytes of exposition body we will parse.
-	// 16 MiB is generous (current agent emits a few kB) but bounds the
-	// memory a misbehaving or compromised endpoint can force us to
-	// allocate. Defense-in-depth — the URL is operator-controlled.
+	// Bounds memory from a misbehaving or compromised endpoint. The agent
+	// emits a few kB in practice.
 	maxBodyBytes = 16 << 20
 
 	outputFilename = "observer.agent_metrics.json"
@@ -72,9 +65,8 @@ func New(metricsURL, workingDir string, interval time.Duration, logger *slog.Log
 }
 
 // Run scrapes the metrics endpoint immediately and then on every tick of
-// interval, until ctx is canceled. Per-tick errors (HTTP, parse, write) are
-// logged at WARN and do not abort the loop — the abort decider in PR #3796
-// owns repeated-failure policy.
+// interval, until ctx is canceled. Per-tick errors are logged at WARN and
+// do not abort the loop.
 func (s *Scraper) Run(ctx context.Context) error {
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
@@ -91,8 +83,8 @@ func (s *Scraper) Run(ctx context.Context) error {
 
 // Snapshot returns a copy of the latest counter family totals. Returns an
 // empty map before the first successful tick. Failed ticks do not clear the
-// previous snapshot — callers see the last successful values, which is the
-// correct input for "did the counter increment" deltas.
+// previous values, so callers can compute deltas without seeing spurious
+// resets.
 func (s *Scraper) Snapshot() map[string]float64 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -109,19 +101,16 @@ func (s *Scraper) tick(ctx context.Context) {
 		s.logger.Warn("scrape fetch failed", "url", s.metricsURL, "err", err)
 		return
 	}
-	// Treat an empty-but-2xx response as a soft failure: keep the
-	// previous Snapshot rather than clobbering it with {}, since the
-	// downstream decider must not interpret a transient empty body as
-	// "counters reset to zero".
+	// Treat an empty-but-2xx response as a soft failure so a transient
+	// empty body cannot look like "counters reset to zero" to a caller.
 	if len(families) == 0 {
 		s.logger.Warn("scrape returned no metric families", "url", s.metricsURL)
 		return
 	}
 	tNS := s.now().UTC().UnixNano()
 	rows, counters := encodeFamilies(families, tNS)
-	// Any per-tick error (including disk write) freezes the snapshot so
-	// the abort decider sees only fully-persisted ticks. This trades
-	// freshness for consistency between disk and the in-memory snapshot.
+	// A write failure freezes the snapshot so disk and the in-memory
+	// snapshot never disagree.
 	if err := s.appendRows(rows); err != nil {
 		s.logger.Warn("scrape append failed", "path", s.outPath, "err", err)
 		return
@@ -151,11 +140,8 @@ func (s *Scraper) fetch(ctx context.Context) (map[string]*prom.MetricFamily, err
 	return parser.TextToMetricFamilies(io.LimitReader(resp.Body, maxBodyBytes))
 }
 
-// appendRows writes the buffered NDJSON in a single Write under
-// O_APPEND|O_CREATE. There is exactly one writer per working directory (the
-// observer process), so no interleaving from concurrent appenders is
-// possible — the comment used to lean on POSIX append atomicity, but that
-// only guarantees atomic offset updates, not atomic data writes.
+// appendRows writes the buffered NDJSON in a single Write. The observer is
+// the only writer of the file, so concurrent interleaving is not a concern.
 func (s *Scraper) appendRows(rows []byte) error {
 	f, err := os.OpenFile(s.outPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o640)
 	if err != nil {
@@ -177,9 +163,8 @@ type metricRow struct {
 
 // encodeFamilies converts parsed metric families into NDJSON rows and a map
 // of counter totals (family name → sum across all label series). Families
-// are walked in sorted order so output is deterministic across runs. Counter
-// totals exclude gauges and other types by design — the abort triggers in
-// the parent issue are counter deltas only.
+// are walked in sorted order so output is deterministic. Only counters
+// contribute to the totals map; downstream consumers want counter deltas.
 func encodeFamilies(families map[string]*prom.MetricFamily, tNS int64) ([]byte, map[string]float64) {
 	counters := map[string]float64{}
 	if len(families) == 0 {
@@ -228,9 +213,7 @@ func encodeFamilies(families map[string]*prom.MetricFamily, tNS int64) ([]byte, 
 }
 
 func emitRow(buf *bytes.Buffer, tNS int64, name string, value float64, labels map[string]string) {
-	// JSON has no NaN/Inf; sanitize so a pathological agent value cannot
-	// corrupt the whole tick. The doublezero-agent does not emit these in
-	// practice (counters/gauges over integer state).
+	// Sanitize NaN/Inf so a pathological value cannot fail the whole tick.
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		value = 0
 	}

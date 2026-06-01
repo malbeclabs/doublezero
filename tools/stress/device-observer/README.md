@@ -1,13 +1,13 @@
 # device-observer
 
-> Alpha — only the eAPI sampler is wired up. Prometheus scrape (PR #3794),
-> log tailers (PR #3795), and abort decider (PR #3796) are no-op stubs in
-> this revision.
+> Alpha — eAPI sampler and Prometheus scrape are wired up. Log tailers
+> (PR #3795) and abort decider (PR #3796) are no-op stubs in this revision.
 
 `device-observer` samples an Arista cEOS device-under-test (DUT) during the
 GRE Tunnel Capacity Study sweep. On every tick of `--sample-interval` it
 issues five `show` commands over eAPI and writes one file per command into
-the working directory.
+the working directory, and it scrapes the doublezero-agent's Prometheus
+metrics endpoint and appends rows to `observer.agent_metrics.json`.
 
 It is designed to be driven by an external orchestrator: the orchestrator
 sets the flags, owns the working directory, and signals the observer to
@@ -47,6 +47,7 @@ The observer writes the following files into `--working-dir`:
 | `show-processes-top-once-<ts>.json`      | observer  | one per tick                                    |
 | `show-logging-errors-<ts>.log`           | observer  | one per tick                                    |
 | `show-logging-critical-<ts>.log`         | observer  | one per tick                                    |
+| `observer.agent_metrics.json`            | observer  | NDJSON, one row per metric sample, appended     |
 
 The orchestrator additionally owns these files in the same directory; the
 observer reads them (in later PRs) but does not write them:
@@ -81,6 +82,43 @@ nanosecond precision, with `:` replaced by `-` for filesystem portability
 `eapi_pass` is deliberately omitted — the working directory may be archived
 (e.g. to S3) and credentials must not land there.
 
+## Metrics output
+
+The Prometheus scraper fetches `--agent-metrics-url` on every tick, parses
+the exposition-format response, and appends one row per metric sample to
+`observer.agent_metrics.json` as newline-delimited JSON. The file name is
+kept as `.json` for orchestrator compatibility, but the content is NDJSON
+(one JSON object per line) so writes are append-safe across crashes.
+
+Row schema:
+
+```json
+{
+  "t_ns": 1748520896123456789,
+  "metric_name": "doublezero_agent_apply_config_errors_total",
+  "value": 0,
+  "labels_json": "{}"
+}
+```
+
+| Field          | Type    | Description                                                            |
+| -------------- | ------- | ---------------------------------------------------------------------- |
+| `t_ns`         | int64   | UTC unix-nano timestamp captured at the top of the tick (same for all rows in a tick) |
+| `metric_name`  | string  | Prometheus family name, with `_sum`/`_count`/`_bucket` suffixes for summary and histogram series |
+| `value`        | number  | metric value as float64 (counters and gauges; quantiles/buckets for summary/histogram) |
+| `labels_json`  | string  | compact JSON object of label name → value (empty object `{}` when no labels) |
+
+`labels_json` is stored as a JSON-encoded string rather than a nested object
+so the file can be consumed with line-oriented tools (`jq -c`, ClickHouse
+JSONEachRow) without schema-on-write decisions about variable label sets.
+
+Counter family totals (sum across all label series) are also exposed via
+`Scraper.Snapshot()` for in-process consumers; the abort decider in
+PR #3796 will use this to detect mid-sample counter increments.
+
+A per-tick HTTP failure, parse failure, or write failure is logged at WARN
+and the loop continues — the abort decider owns repeated-failure policy.
+
 ## Local devnet smoke test
 
 Against `dz-local-device-dz1` (see top-level `CLAUDE.md` for devnet setup):
@@ -97,6 +135,8 @@ mkdir -p /tmp/observer-out
 ls /tmp/observer-out
 jq . /tmp/observer-out/observer-config.json
 jq . /tmp/observer-out/show-hardware-capacity-*.json
+# observer.agent_metrics.json is NDJSON — use jq -c per line:
+head /tmp/observer-out/observer.agent_metrics.json | jq -c .
 ```
 
 ## Known limitations
@@ -139,7 +179,7 @@ tools/stress/device-observer/
 │   ├── collector/     # Collector interface + Noop
 │   ├── eapi/          # thin goeapi wrapper
 │   ├── loggingtail/   # PR #3795 (stubs here)
-│   ├── promscrape/    # PR #3794 (stub here)
+│   ├── promscrape/    # Prometheus scraper for the doublezero-agent
 │   ├── runlog/        # PR #3795 (stub here)
 │   └── sample/        # eAPI sampler
 └── README.md

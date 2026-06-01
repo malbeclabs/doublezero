@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -122,9 +123,46 @@ type createdUser struct {
 	tunnelID uint16
 }
 
+// tunnelRegistry holds the orchestrator's tunnelID → user metadata mapping,
+// shared between the provision goroutine (which writes) and the agent-event
+// consumer goroutine (which reads). Lookups for unknown tunnel IDs return
+// `ok=false` so the consumer can warn-log and drop the event.
+type tunnelRegistry struct {
+	mu  sync.RWMutex
+	idx map[uint16]createdUser
+}
+
+func newTunnelRegistry() *tunnelRegistry {
+	return &tunnelRegistry{idx: make(map[uint16]createdUser)}
+}
+
+func (r *tunnelRegistry) register(u createdUser) {
+	if u.tunnelID == 0 {
+		// TunnelId == 0 means the executor didn't surface a real ID; nothing
+		// in the agent log can match it, so don't take a map slot.
+		return
+	}
+	r.mu.Lock()
+	r.idx[u.tunnelID] = u
+	r.mu.Unlock()
+}
+
+func (r *tunnelRegistry) lookup(tunnelID uint16) (createdUser, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	u, ok := r.idx[tunnelID]
+	return u, ok
+}
+
 // Run drives the provision-then-deprovision sweep to completion. Returns the
 // number of users actually created/deleted alongside the error (if any), so
 // callers can report partial progress on abort.
+//
+// Run additionally starts a goroutine that consumes events from cfg.Agent and
+// writes pre_commit_log / applied runlog rows for tunnel IDs the sweep
+// registered. The consumer exits when the agent's Events channel closes; we
+// derive an agentCtx from ctx and cancel it after deprovision so the agent
+// stops cleanly even on a successful run.
 func Run(ctx context.Context, cfg Config) error {
 	cfg.applyDefaults()
 	if err := cfg.validate(); err != nil {
@@ -133,31 +171,107 @@ func Run(ctx context.Context, cfg Config) error {
 	// Tag every sweep log line with the run ID.
 	cfg.Logger = cfg.Logger.With("run_id", cfg.RunID)
 
-	if err := cfg.Agent.Start(ctx); err != nil {
+	registry := newTunnelRegistry()
+
+	// runCtx lets the agent-event consumer abort the provisioning loop if the
+	// agent stream dies. The agent is required telemetry for a run, so a broken
+	// stream fails the run rather than silently degrading to missing runlog
+	// rows. deprovision below still runs (it derives from the original ctx).
+	runCtx, runCancel := context.WithCancelCause(ctx)
+	defer runCancel(nil)
+
+	agentCtx, agentCancel := context.WithCancel(runCtx)
+	defer agentCancel()
+	if err := cfg.Agent.Start(agentCtx); err != nil {
 		return fmt.Errorf("start agent runner: %w", err)
 	}
 
-	created, err := provision(ctx, &cfg)
-	if err != nil && !errors.Is(err, context.Canceled) {
-		return err
-	}
-	// Always attempt deprovision so an abort during provision still cleans up
-	// what the sweep created. Teardown runs under a context derived with
-	// WithoutCancel: an abort/signal that cancelled ctx must not also abandon
-	// the users we already created, so deprovision ignores that cancellation
-	// (it still inherits ctx's values). Callers wanting a hard stop on teardown
-	// must enforce it out of band.
+	var agentErr error
+	var consumerWG sync.WaitGroup
+	consumerWG.Add(1)
+	go func() {
+		defer consumerWG.Done()
+		consumeAgentEvents(&cfg, registry)
+		// Events() has closed. If it closed because the stream errored (rather
+		// than our own agentCancel during teardown), abort the run so the
+		// provisioning loop stops and Run reports the failure.
+		if e := cfg.Agent.Err(); e != nil {
+			agentErr = fmt.Errorf("agent stream: %w", e)
+			runCancel(agentErr)
+		}
+	}()
+
+	created, err := provision(runCtx, &cfg, registry)
+
+	// Always attempt deprovision so a provision error (or an abort during
+	// provision) still cleans up what the sweep created; the consumer keeps
+	// draining in parallel so any straggling agent events for already-created
+	// users still land in the runlog. Teardown runs under a context derived
+	// with WithoutCancel: an abort/signal that cancelled ctx must not also
+	// abandon the users we already created, so deprovision ignores that
+	// cancellation (it still inherits ctx's values). Callers wanting a hard
+	// stop on teardown must enforce it out of band.
 	depErr := deprovision(context.WithoutCancel(ctx), &cfg, created)
+
+	// Tell the agent to stop and wait for the consumer goroutine to drain so
+	// no events are dropped between deprovision-end and consumer-exit.
+	agentCancel()
+	consumerWG.Wait()
+
+	// An agent stream failure takes precedence: it aborted the run, so report
+	// it even though provision likely returned context.Canceled as a result.
+	if agentErr != nil {
+		return agentErr
+	}
 	if err != nil {
 		return err
 	}
 	return depErr
 }
 
+// consumeAgentEvents reads from cfg.Agent.Events() until the channel closes
+// and writes pre_commit_log / applied rows for tunnel IDs the sweep has
+// registered. Events for unknown tunnel IDs are warn-logged and dropped — the
+// most likely cause is a tunnel that belongs to a non-orchestrator user.
+func consumeAgentEvents(cfg *Config, registry *tunnelRegistry) {
+	for ev := range cfg.Agent.Events() {
+		u, ok := registry.lookup(ev.TunnelID)
+		if !ok {
+			cfg.Logger.Debug("sweep: agent event for unregistered tunnel; dropping",
+				"tunnel_id", ev.TunnelID, "kind", ev.Kind)
+			continue
+		}
+		var runlogEvent runlog.Event
+		switch ev.Kind {
+		case agent.EventPreCommitLog:
+			runlogEvent = runlog.EventPreCommitLog
+		case agent.EventApplied:
+			runlogEvent = runlog.EventApplied
+		default:
+			continue
+		}
+		row := runlog.Row{
+			RunID:       cfg.RunID,
+			UserIndex:   u.idx,
+			UserPubkey:  u.pubkey.String(),
+			TunnelID:    u.tunnelID,
+			Event:       runlogEvent,
+			TNs:         ev.At.UnixNano(),
+			NAfterEvent: 0, // active-count state is owned by the sweep goroutine and not safe to read here
+		}
+		if err := cfg.Runlog.Append(row); err != nil {
+			cfg.Logger.Warn("sweep: runlog append failed for agent event",
+				"err", err, "kind", runlogEvent, "tunnel_id", ev.TunnelID)
+		}
+	}
+}
+
 // provision walks 0 → Target in batches, returning the slice of created users
 // so deprovision can iterate in reverse. Returns ctx.Err() if cancelled
-// between users.
-func provision(ctx context.Context, cfg *Config) ([]createdUser, error) {
+// between users. Each created user is also registered with the tunnel
+// registry so the agent-event consumer can attribute pre_commit_log /
+// applied events back to a user_index.
+func provision(ctx context.Context, cfg *Config, registry *tunnelRegistry) ([]createdUser, error) {
 	if cfg.Target == 0 {
 		return nil, nil
 	}
@@ -207,7 +321,9 @@ func provision(ctx context.Context, cfg *Config) ([]createdUser, error) {
 			if err := emit(cfg, idx, pkStr, res.TunnelID, runlog.EventConfirm, res.ConfirmedAt, activeCount); err != nil {
 				return created, err
 			}
-			created = append(created, createdUser{idx: idx, pubkey: res.UserPDA, tunnelID: res.TunnelID})
+			cu := createdUser{idx: idx, pubkey: res.UserPDA, tunnelID: res.TunnelID}
+			created = append(created, cu)
+			registry.register(cu)
 			activeCount++
 			if err := emit(cfg, idx, pkStr, res.TunnelID, runlog.EventActivate, res.ActivatedAt, activeCount); err != nil {
 				return created, err

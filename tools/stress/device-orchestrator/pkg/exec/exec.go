@@ -18,6 +18,11 @@ import (
 type Config struct {
 	Client   *serviceability.Client
 	Executor *serviceability.Executor
+	// RPC is used to fetch individual User accounts post-create so the
+	// orchestrator can record the assigned TunnelId in the runlog. In
+	// production this is the same *solanarpc.Client the Client/Executor
+	// were built from.
+	RPC serviceability.RPCClient
 
 	DevicePubkey solana.PublicKey
 	TenantPubkey solana.PublicKey // zero pubkey = no tenant
@@ -42,13 +47,16 @@ type Live struct {
 }
 
 // New returns a Live executor with the given configuration. Callers must
-// supply a non-nil Client and Executor.
+// supply a non-nil Client, Executor, and RPC.
 func New(cfg Config) (*Live, error) {
 	if cfg.Client == nil {
 		return nil, fmt.Errorf("exec.New: Client is required")
 	}
 	if cfg.Executor == nil {
 		return nil, fmt.Errorf("exec.New: Executor is required")
+	}
+	if cfg.RPC == nil {
+		return nil, fmt.Errorf("exec.New: RPC is required")
 	}
 	if cfg.DzPrefixCount == 0 {
 		cfg.DzPrefixCount = 1
@@ -89,12 +97,17 @@ func (l *Live) CreateUser(ctx context.Context, idx int) (sweep.CreateResult, err
 	// confirm and activate both anchor at the post-call wallclock. A future
 	// SDK refactor can split these.
 	//
-	// TunnelID is recorded as 0 for now: the SDK's CreateUser doesn't surface
-	// the assigned tunnel_id, and reading it back needs the User account bytes.
-	// Part 3 wires the per-account fetch here.
+	// Read the assigned tunnel_id back from the on-chain User account so the
+	// runlog and the agent-event consumer can key on it. A failure here is
+	// non-fatal: the create itself succeeded (the User exists onchain), so we
+	// record TunnelID 0 and continue.
+	tunnelID, err := l.fetchTunnelID(ctx, userPDA)
+	if err != nil {
+		tunnelID = 0
+	}
 	return sweep.CreateResult{
 		UserPDA:     userPDA,
-		TunnelID:    0,
+		TunnelID:    tunnelID,
 		ConfirmedAt: now,
 		ActivatedAt: now,
 	}, nil
@@ -110,6 +123,29 @@ func (l *Live) DeleteUser(ctx context.Context, userPDA solana.PublicKey) (sweep.
 		ConfirmedAt: now,
 		ActivatedAt: now,
 	}, nil
+}
+
+// fetchTunnelID reads the user account by PDA and returns the assigned
+// TunnelId. The sweep loop logs this in the runlog so the agent-event
+// consumer can attribute `+ interface Tunnel<ID>` log lines back to a user.
+func (l *Live) fetchTunnelID(ctx context.Context, userPDA solana.PublicKey) (uint16, error) {
+	info, err := l.cfg.RPC.GetAccountInfo(ctx, userPDA)
+	if err != nil {
+		return 0, fmt.Errorf("get user account info: %w", err)
+	}
+	if info == nil || info.Value == nil {
+		return 0, fmt.Errorf("user account %s not found", userPDA)
+	}
+	data := info.Value.Data.GetBinary()
+	if len(data) == 0 {
+		return 0, fmt.Errorf("user account %s empty", userPDA)
+	}
+	var u serviceability.User
+	serviceability.DeserializeUser(serviceability.NewByteReader(data), &u)
+	if u.AccountType != serviceability.UserType {
+		return 0, fmt.Errorf("account %s is not a user account (got account type %d)", userPDA, u.AccountType)
+	}
+	return u.TunnelId, nil
 }
 
 // ipForIndex returns base shifted by idx, wrapping at the /16 boundary so the

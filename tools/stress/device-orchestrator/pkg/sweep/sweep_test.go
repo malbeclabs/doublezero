@@ -67,6 +67,11 @@ type fakeExecutor struct {
 	// Optional hook invoked after the Nth create completes (1-based), with the
 	// created count. The abort test uses it to cancel the sweep context.
 	afterCreate func(calls int)
+
+	// Optional gate: when non-nil, DeleteUser blocks on it after incrementing
+	// deleteN. Tests use this to interleave work between provision and
+	// deprovision (e.g., emitting agent events).
+	deleteGate <-chan struct{}
 }
 
 func newFakeExecutor(owner solana.PublicKey) *fakeExecutor {
@@ -115,6 +120,9 @@ func (f *fakeExecutor) CreateUser(ctx context.Context, idx int) (sweep.CreateRes
 
 func (f *fakeExecutor) DeleteUser(ctx context.Context, userPDA solana.PublicKey) (sweep.DeleteResult, error) {
 	calls := int(f.deleteN.Add(1))
+	if f.deleteGate != nil {
+		<-f.deleteGate
+	}
 	f.mu.Lock()
 	// Remove the matching user from the active set.
 	for i, u := range f.created {
@@ -309,6 +317,173 @@ func TestRun_RejectsInvalidConfig(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+}
+
+// scriptedAgent is an agent.Runner used to drive the sweep's agent-event
+// consumer from a test. Events are emitted via Emit() so the test can
+// control timing — in production the agent log lags the on-chain CreateUser
+// by far longer than registry registration takes, but in tests the executor
+// is instantaneous and we need to emit AFTER provision has registered the
+// tunnels.
+type scriptedAgent struct {
+	out      chan agent.Event
+	err      error
+	closeOut sync.Once
+}
+
+func newScriptedAgent() *scriptedAgent {
+	return &scriptedAgent{out: make(chan agent.Event, 16)}
+}
+
+func (s *scriptedAgent) Start(ctx context.Context) error {
+	go func() {
+		<-ctx.Done()
+		s.closeOut.Do(func() { close(s.out) })
+	}()
+	return nil
+}
+
+func (s *scriptedAgent) Events() <-chan agent.Event { return s.out }
+
+func (s *scriptedAgent) Err() error { return s.err }
+
+func (s *scriptedAgent) Emit(e agent.Event) { s.out <- e }
+
+// Fail simulates a stream error: it records the terminal error and closes the
+// events channel so the consumer observes the failure (as the SSH runner does
+// when a read fails). The error is set before the close so the consumer, which
+// reads Err() only after the channel drains, sees it.
+func (s *scriptedAgent) Fail(err error) {
+	s.err = err
+	s.closeOut.Do(func() { close(s.out) })
+}
+
+func TestRun_ConsumesAgentEventsForRegisteredTunnels(t *testing.T) {
+	t.Parallel()
+
+	owner := solana.NewWallet().PublicKey()
+	exec := newFakeExecutor(owner)
+	// Block deprovision so the test can emit agent events while all created
+	// tunnels are registered but before agentCancel() shuts the consumer down.
+	gate := make(chan struct{})
+	exec.deleteGate = gate
+
+	ag := newScriptedAgent()
+
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	w, err := runlog.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	cfg := sweep.Config{
+		RunID:         "run-events",
+		Target:        2,
+		UsersPerBatch: 2,
+		Hold:          0,
+		OwnerFilter:   owner,
+		Executor:      exec,
+		Agent:         ag,
+		Runlog:        w,
+		Clock:         &fakeClock{now: time.Unix(1_700_000_000, 0)},
+	}
+	done := make(chan error, 1)
+	go func() { done <- sweep.Run(context.Background(), cfg) }()
+
+	// Wait for deprovision to begin (deleteN >= 1) — this means provision is
+	// fully complete AND both tunnel registrations are in the registry.
+	deadline := time.Now().Add(time.Second)
+	for exec.deleteN.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("sweep did not reach deprovision within 1s")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// Emit events for both registered tunnels plus one unregistered one.
+	ag.Emit(agent.Event{Kind: agent.EventPreCommitLog, TunnelID: 500, At: time.Unix(1, 100)})
+	ag.Emit(agent.Event{Kind: agent.EventApplied, TunnelID: 500, At: time.Unix(1, 200)})
+	ag.Emit(agent.Event{Kind: agent.EventPreCommitLog, TunnelID: 999, At: time.Unix(1, 300)}) // unregistered; dropped
+	ag.Emit(agent.Event{Kind: agent.EventPreCommitLog, TunnelID: 501, At: time.Unix(1, 400)})
+	ag.Emit(agent.Event{Kind: agent.EventApplied, TunnelID: 501, At: time.Unix(1, 500)})
+
+	close(gate) // unblock deprovision
+
+	require.NoError(t, <-done)
+	require.NoError(t, w.Close())
+
+	rows := readRows(t, path)
+
+	// Filter for the agent-driven rows so we don't depend on exact interleaving
+	// with the submit/confirm/activate stream emitted by provision.
+	var preCommit, applied []runlog.Row
+	for _, r := range rows {
+		switch r.Event {
+		case runlog.EventPreCommitLog:
+			preCommit = append(preCommit, r)
+		case runlog.EventApplied:
+			applied = append(applied, r)
+		}
+	}
+	require.Len(t, preCommit, 2, "two registered tunnels → two pre_commit_log rows; the unregistered tunnel 999 is dropped")
+	require.Len(t, applied, 2)
+
+	// Tunnel 500 → user_index 0, Tunnel 501 → user_index 1 (fake executor assigns 500+idx).
+	for _, r := range preCommit {
+		switch r.TunnelID {
+		case 500:
+			assert.Equal(t, 0, r.UserIndex)
+		case 501:
+			assert.Equal(t, 1, r.UserIndex)
+		default:
+			t.Fatalf("unexpected tunnel id %d in pre_commit_log", r.TunnelID)
+		}
+	}
+}
+
+// An agent stream error aborts the run: provision stops, deprovision still
+// cleans up what was created, and Run returns the agent error.
+func TestRun_AgentStreamErrorFailsRun(t *testing.T) {
+	t.Parallel()
+
+	owner := solana.NewWallet().PublicKey()
+	exec := newFakeExecutor(owner)
+	ag := newScriptedAgent()
+	streamErr := errors.New("connection reset")
+
+	// Fail the agent stream after the first create so provision is still in
+	// flight when the abort lands.
+	exec.afterCreate = func(calls int) {
+		if calls == 1 {
+			ag.Fail(streamErr)
+		}
+	}
+
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	w, err := runlog.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	cfg := sweep.Config{
+		RunID:         "run-agent-fail",
+		Target:        4,
+		UsersPerBatch: 1,
+		Hold:          0,
+		OwnerFilter:   owner,
+		Executor:      exec,
+		Agent:         ag,
+		Runlog:        w,
+		Clock:         &fakeClock{now: time.Unix(1_700_000_000, 0)},
+	}
+
+	runErr := sweep.Run(context.Background(), cfg)
+	require.Error(t, runErr)
+	require.ErrorIs(t, runErr, streamErr, "Run should surface the agent stream error")
+
+	// Deprovision still ran: every created user was deleted.
+	assert.Equal(t, exec.createN.Load(), exec.deleteN.Load(), "all created users are deprovisioned")
+	exec.mu.Lock()
+	assert.Empty(t, exec.created, "no users left active after teardown")
+	exec.mu.Unlock()
 }
 
 // Sanity: ctx cancellation between users is observed at the next iteration boundary.

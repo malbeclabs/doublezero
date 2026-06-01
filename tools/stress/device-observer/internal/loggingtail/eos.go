@@ -37,6 +37,7 @@ type eosLine struct {
 	Severity string `json:"severity"`
 	Facility string `json:"facility"`
 	Message  string `json:"message"`
+	raw      string // full source line; used as dedupe key so distinct events at the same second don't collapse
 }
 
 // EOSPoller queries `show logging last <window>` on every tick, dedupes
@@ -100,7 +101,7 @@ func (p *EOSPoller) tick() {
 	next := make(map[string]struct{}, len(parsed))
 	var fresh []eosLine
 	for _, line := range parsed {
-		key := line.Time + "|" + line.Message
+		key := line.raw
 		next[key] = struct{}{}
 		if _, seen := p.prev[key]; seen {
 			continue
@@ -141,10 +142,11 @@ func parseEOSLog(text string, tNS int64) ([]eosLine, error) {
 				Facility: m[2],
 				Severity: m[3],
 				Message:  m[4],
+				raw:      line,
 			})
 			continue
 		}
-		out = append(out, eosLine{TNS: tNS, Message: line})
+		out = append(out, eosLine{TNS: tNS, Message: line, raw: line})
 	}
 	return out, sc.Err()
 }

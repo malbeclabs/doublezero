@@ -255,13 +255,14 @@ type sentinel struct {
 	Trigger   string `json:"trigger"`
 }
 
-// fire writes the sentinel exactly once (atomically via tmp + rename)
-// and then invokes OnFire. Caller holds d.mu.
+// fire writes the sentinel exactly once and invokes OnFire on success.
+// d.fired is only set after both write and rename succeed, so a failed
+// write does not strand the decider: the next tick will retry. Caller
+// holds d.mu.
 func (d *Decider) fire(trigger, detail string) {
 	if d.fired {
 		return
 	}
-	d.fired = true
 	body, err := json.Marshal(sentinel{Reason: trigger, Detail: detail, FiredAtNs: d.cfg.now().UTC().UnixNano(), Trigger: trigger})
 	if err != nil {
 		d.cfg.Logger.Error("marshal abort sentinel", "err", err)
@@ -276,6 +277,7 @@ func (d *Decider) fire(trigger, detail string) {
 		d.cfg.Logger.Error("rename abort sentinel", "from", tmp, "to", d.cfg.AbortFile, "err", err)
 		return
 	}
+	d.fired = true
 	d.cfg.Logger.Warn("abort sentinel written", "trigger", trigger, "detail", detail, "path", d.cfg.AbortFile)
 	if d.cfg.OnFire != nil {
 		d.cfg.OnFire()

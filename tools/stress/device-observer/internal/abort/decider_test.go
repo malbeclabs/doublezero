@@ -374,6 +374,48 @@ func TestOnFireInvokedOnce(t *testing.T) {
 	}
 }
 
+// TestSentinelWriteFailureRetries confirms a failed sentinel write does
+// not strand the decider: the next tick re-evaluates and writes the
+// sentinel once the path becomes writable.
+func TestSentinelWriteFailureRetries(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	dir := t.TempDir()
+	// AbortFile points inside a directory that does not yet exist, so
+	// os.WriteFile of .tmp fails on the first tick.
+	bad := filepath.Join(dir, "absent", "abort")
+	d := New(Config{
+		AbortFile: bad,
+		Interval:  time.Hour,
+		Logger:    discardLogger(),
+		Sources: Sources{
+			ProvisionDurations: func(time.Duration) []time.Duration {
+				return []time.Duration{31 * time.Second}
+			},
+		},
+		OnFire: func() { fire.Add(1) },
+		now:    fixedNow(now),
+	})
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatalf("OnFire must not be called on failed write, got %d", fire.Load())
+	}
+	if _, err := os.Stat(bad); err == nil {
+		t.Fatal("sentinel must not exist after failed write")
+	}
+	// Make the path writable.
+	if err := os.MkdirAll(filepath.Dir(bad), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	d.tick()
+	if fire.Load() != 1 {
+		t.Fatalf("OnFire count after recovery = %d, want 1", fire.Load())
+	}
+	if _, err := os.Stat(bad); err != nil {
+		t.Fatalf("sentinel must exist after recovery: %v", err)
+	}
+}
+
 func TestPercentile95(t *testing.T) {
 	cases := []struct {
 		in   []time.Duration

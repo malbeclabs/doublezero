@@ -112,5 +112,5 @@ func (s *Sampler) runOne(c commandSpec, ts time.Time) error {
 // fileTimestamp renders t as ISO 8601 UTC with `:` replaced by `-` so the
 // result is portable across filesystems that disallow `:`.
 func fileTimestamp(t time.Time) string {
-	return strings.ReplaceAll(t.Format("2006-01-02T15:04:05.000000000Z"), ":", "-")
+	return strings.ReplaceAll(t.UTC().Format("2006-01-02T15:04:05.000000000Z"), ":", "-")
 }

@@ -14,7 +14,7 @@ type Client struct {
 }
 
 // NewClient dials the device's eAPI endpoint over HTTP. HTTPS support is
-// deferred; see docs/work-plan-3793.md.
+// deferred to a follow-up PR.
 func NewClient(host, user, pass string, port int) (*Client, error) {
 	node, err := goeapi.Connect("http", host, user, pass, port)
 	if err != nil {

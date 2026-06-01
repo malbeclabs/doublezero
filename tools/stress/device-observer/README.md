@@ -41,7 +41,7 @@ The observer writes the following files into `--working-dir`:
 
 | File                                     | Owner     | Description                                     |
 | ---------------------------------------- | --------- | ----------------------------------------------- |
-| `observer-config.json`                   | observer  | resolved flag values + PID + start timestamp    |
+| `observer-config.json`                   | observer  | selected flag values (excludes `eapi_pass` and `eapi_port`) + PID + start timestamp |
 | `show-hardware-capacity-<ts>.json`       | observer  | one per tick                                    |
 | `show-gre-tunnel-static-<ts>.json`       | observer  | one per tick                                    |
 | `show-processes-top-once-<ts>.json`      | observer  | one per tick                                    |

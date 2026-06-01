@@ -36,8 +36,7 @@ struct GeoProbeGetDisplay {
     pub code: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
-    pub exchange: Pubkey,
+    pub exchange: String,
     pub public_ip: Ipv4Addr,
     pub port: u16,
     #[serde(serialize_with = "serialize_pubkey_vec_as_string_array")]
@@ -64,6 +63,12 @@ impl GetGeoProbeCliCommand {
             pubkey_or_code: self.probe,
         })?;
 
+        let exchanges = client.list_exchanges()?;
+        let exchange = exchanges
+            .get(&probe.exchange_pk)
+            .map(|ex| ex.code.clone())
+            .unwrap_or_else(|| probe.exchange_pk.to_string());
+
         let parent_devices_display = format!(
             "[{}]",
             probe
@@ -77,7 +82,7 @@ impl GetGeoProbeCliCommand {
             account: pubkey,
             code: probe.code,
             owner: probe.owner,
-            exchange: probe.exchange_pk,
+            exchange,
             public_ip: probe.public_ip,
             port: probe.location_offset_port,
             parent_devices: probe.parent_devices,
@@ -112,9 +117,34 @@ mod tests {
     use crate::client::MockGeoCliCommand;
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_geolocation::state::{accounttype::AccountType, geo_probe::GeoProbe};
+    use doublezero_sdk::{AccountType as SvcAccountType, Exchange, ExchangeStatus};
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
-    use std::net::Ipv4Addr;
+    use std::{collections::HashMap, net::Ipv4Addr};
+
+    fn make_exchanges(exchange_pk: Pubkey, code: &str) -> HashMap<Pubkey, Exchange> {
+        let mut exchanges = HashMap::new();
+        exchanges.insert(
+            exchange_pk,
+            Exchange {
+                account_type: SvcAccountType::Exchange,
+                owner: exchange_pk,
+                index: 0,
+                bump_seed: 0,
+                reference_count: 0,
+                device1_pk: Pubkey::default(),
+                device2_pk: Pubkey::default(),
+                lat: 0.0,
+                lng: 0.0,
+                bgp_community: 0,
+                unused: 0,
+                status: ExchangeStatus::Activated,
+                code: code.to_string(),
+                name: code.to_string(),
+            },
+        );
+        exchanges
+    }
 
     fn setup_client() -> (MockGeoCliCommand, Pubkey, Pubkey, Pubkey, Pubkey) {
         let client = MockGeoCliCommand::new();
@@ -161,6 +191,11 @@ mod tests {
             .expect_get_geo_probe()
             .returning(move |_| Err(eyre::eyre!("not found")));
 
+        let exchanges = make_exchanges(exchange_pk, "ams");
+        client
+            .expect_list_exchanges()
+            .returning(move || Ok(exchanges.clone()));
+
         let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
         let res = block_on(
@@ -192,7 +227,9 @@ mod tests {
         assert!(has_row("account", &probe_pk.to_string()));
         assert!(has_row("code", "ams-probe-01"));
         assert!(has_row("owner", &owner_pk.to_string()));
-        assert!(has_row("exchange", &exchange_pk.to_string()));
+        // exchange column shows the code, not the pubkey
+        assert!(has_row("exchange", "ams"));
+        assert!(!output_str.contains(&exchange_pk.to_string()));
         assert!(has_row("public_ip", "10.0.0.1"));
         assert!(has_row("port", "8923"));
         assert!(has_row("signing_pubkey", &metrics_pk.to_string()));
@@ -212,6 +249,11 @@ mod tests {
             }))
             .returning(move |_| Ok((probe_pk, probe.clone())));
 
+        let exchanges = make_exchanges(exchange_pk, "ams");
+        client
+            .expect_list_exchanges()
+            .returning(move || Ok(exchanges.clone()));
+
         let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
         let res = block_on(
@@ -228,7 +270,7 @@ mod tests {
         assert_eq!(json["account"].as_str().unwrap(), probe_pk.to_string());
         assert_eq!(json["code"].as_str().unwrap(), "ams-probe-01");
         assert_eq!(json["owner"].as_str().unwrap(), owner_pk.to_string());
-        assert_eq!(json["exchange"].as_str().unwrap(), exchange_pk.to_string());
+        assert_eq!(json["exchange"].as_str().unwrap(), "ams");
         assert_eq!(json["public_ip"].as_str().unwrap(), "10.0.0.1");
         assert_eq!(json["port"].as_u64().unwrap(), 8923);
         let parents = json["parent_devices"].as_array().unwrap();
@@ -254,6 +296,11 @@ mod tests {
             }))
             .returning(move |_| Ok((probe_pk, probe.clone())));
 
+        let exchanges = make_exchanges(exchange_pk, "ams");
+        client
+            .expect_list_exchanges()
+            .returning(move || Ok(exchanges.clone()));
+
         let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
         let res = block_on(
@@ -271,6 +318,38 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(trimmed).unwrap();
         assert_eq!(json["account"].as_str().unwrap(), probe_pk.to_string());
         assert_eq!(json["code"].as_str().unwrap(), "ams-probe-01");
+        assert_eq!(json["exchange"].as_str().unwrap(), "ams");
         assert_eq!(json["parent_devices"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_cli_geo_probe_get_unknown_exchange_falls_back_to_pubkey() {
+        let (mut client, probe_pk, owner_pk, exchange_pk, metrics_pk) = setup_client();
+        let probe = make_probe(owner_pk, exchange_pk, metrics_pk, vec![]);
+
+        client
+            .expect_get_geo_probe()
+            .with(predicate::eq(GetGeoProbeCommand {
+                pubkey_or_code: probe_pk.to_string(),
+            }))
+            .returning(move |_| Ok((probe_pk, probe.clone())));
+
+        client
+            .expect_list_exchanges()
+            .returning(|| Ok(HashMap::new()));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            GetGeoProbeCliCommand {
+                probe: probe_pk.to_string(),
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains(&exchange_pk.to_string()));
     }
 }

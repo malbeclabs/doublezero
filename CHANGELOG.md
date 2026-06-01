@@ -8,8 +8,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- SDK (Go)
+  - Add CreateUser / DeleteUser to the serviceability executor with cross-language wire-format fixtures and four new PDA helpers (GetUserPDA, GetAccessPassPDA, GetTunnelIdsPDA, GetDzPrefixBlockPDA)
+- SDK (Rust)
+  - Add `DZClient::from_context` and `GeoClient::from_context`, which build clients directly from a resolved RFC-20 `CliContext` instead of re-reading `~/.config/doublezero/cli/config.yml` and re-applying moniker conversion. The context already carries the fully resolved ledger RPC/WS URLs and program IDs, so these constructors consume them verbatim, making the context the single source of truth and removing the double-resolution the binary previously incurred. Keypair precedence is preserved exactly (CLI flag > `DOUBLEZERO_KEYPAIR` > stdin > context keypair path > default): the raw `--keypair` flag is passed as the highest-precedence source and the context keypair path is used only as the low-precedence fallback, so the env var still wins. The new constructors and their `doublezero-cli-core` dependency are gated behind a `cli-context` cargo feature so non-CLI SDK consumers (controlplane, telemetry, e2e) keep a dependency-light default build. `DZClient::new` / `GeoClient::new` are unchanged for callers that do not build a `CliContext` (e.g. `controlplane/doublezero-admin`).
 - CLI
   - Change `geolocation user update-payment` to `update-payment-status` for clarity. 
+  - geolocation `user get`: Show probe code, rather than probe pubkey in target list. 
+  - geolocation `probe get`: Show exchange code, rather than exchange pubkeys.
 - ci(e2e): report trusted fork e2e/shreds shard results onto the PR head SHA so branch protection's required `e2e (shard N)` / `shard-e2e (shard N)` checks are satisfied by a `/run-e2e` dispatch, removing the need for a maintainer to bypass the ruleset to merge fork PRs; also make the dispatcher's confirmation comment non-fatal so a capped `GITHUB_TOKEN` no longer fails the job after the runs have already launched (follow-up to [#3777](https://github.com/malbeclabs/doublezero/pull/3777))
 - Tools
   - Complete the device-stress orchestrator (part 3): replace the stubbed agent runner with an SSH-backed runner that execs `doublezero-agent -verbose` on the DUT and tees its output to `orchestrator.agent.log`, and a log parser that turns the agent's commit-diff lines into `pre_commit_log` / `applied` runlog events. Adds `--dut-ssh-user` and `--no-agent` flags.

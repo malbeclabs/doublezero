@@ -115,6 +115,38 @@ impl GeoClient {
             program_id,
         })
     }
+
+    /// Build a `GeoClient` from a resolved RFC-20 [`CliContext`].
+    ///
+    /// Mirrors [`crate::DZClient::from_context`]: no `config.yml` read and no
+    /// moniker conversion. The ledger RPC URL and the geolocation program ID
+    /// are taken verbatim from the context (the context already folds the
+    /// `--geo-program-id` flag and any persisted value). Keypair precedence is
+    /// preserved exactly as in [`crate::DZClient::from_context`].
+    #[cfg(feature = "cli-context")]
+    pub fn from_context(
+        ctx: &doublezero_cli_core::CliContext,
+        keypair: Option<PathBuf>,
+    ) -> eyre::Result<GeoClient> {
+        let client = RpcClient::new_with_commitment(
+            ctx.ledger_rpc_url.clone(),
+            CommitmentConfig::confirmed(),
+        );
+
+        let default_path = ctx
+            .keypair_path
+            .clone()
+            .unwrap_or_else(crate::config::default_keypair_path);
+        let payer = load_keypair(keypair, None, default_path)
+            .ok()
+            .map(|r| r.keypair);
+
+        Ok(GeoClient {
+            client,
+            payer,
+            program_id: ctx.geolocation_program_id,
+        })
+    }
 }
 
 impl GeolocationClient for GeoClient {

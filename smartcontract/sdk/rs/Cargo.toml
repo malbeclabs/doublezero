@@ -22,6 +22,7 @@ bincode.workspace = true
 chrono.workspace = true
 directories-next.workspace = true
 dirs-next.workspace = true
+doublezero-cli-core = { workspace = true, optional = true }
 doublezero-config.workspace = true
 doublezero-geolocation = { workspace = true, features = ["no-entrypoint"] }
 doublezero-program-common.workspace = true
@@ -51,3 +52,7 @@ log.workspace = true
 
 [features]
 default-mainnet-beta = []
+# Enables `from_context` constructors that build clients directly from a
+# resolved `CliContext`. Gated so non-CLI SDK consumers don't pull in the
+# CLI-only dependency tree (clap, tabled, tracing-subscriber).
+cli-context = ["dep:doublezero-cli-core"]

@@ -11,7 +11,10 @@ mod servicecontroller;
 use crate::cli::{command::Command, multicast::MulticastCommands};
 use doublezero_cli_core::LogLevel;
 use doublezero_geolocation_cli::GeoCliCommandImpl;
-use doublezero_sdk::{geolocation::client::GeoClient, DZClient, ProgramVersion};
+use doublezero_sdk::{
+    convert_geo_program_moniker, convert_program_moniker, geolocation::client::GeoClient, DZClient,
+    ProgramVersion,
+};
 use doublezero_serviceability::pda::get_globalstate_pda;
 use doublezero_serviceability_cli::{
     checkversion::check_version, cli::ServiceabilityCommand, doublezerocommand::CliCommandImpl,
@@ -101,6 +104,27 @@ fn resolve_environment(
     }
 }
 
+/// Resolve a `--program-id` / `--geo-program-id` flag value into a `Pubkey`.
+///
+/// The raw value is first run through `convert` so environment monikers (in
+/// either their full `devnet` or short `d` form) map to the matching program
+/// ID; a literal pubkey passes through unchanged. A value that is neither a
+/// known moniker nor a valid pubkey is a hard error rather than being silently
+/// dropped in favor of the env default.
+fn resolve_program_id(
+    flag: &str,
+    raw: &str,
+    convert: impl Fn(String) -> String,
+) -> eyre::Result<solana_sdk::pubkey::Pubkey> {
+    let converted = convert(raw.to_string());
+    converted.parse().map_err(|_| {
+        eyre::eyre!(
+            "invalid {flag} '{raw}': expected a pubkey or a known environment \
+             moniker (mainnet-beta/m, testnet/t, devnet/d, local/l)"
+        )
+    })
+}
+
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     unsafe {
@@ -183,18 +207,12 @@ async fn main() -> eyre::Result<()> {
     if let Some(s) = app.solana_url.clone() {
         ctx_builder = ctx_builder.with_solana_l1_rpc_url(s);
     }
-    if let Some(pid) = app
-        .program_id
-        .as_deref()
-        .and_then(|s| s.parse::<solana_sdk::pubkey::Pubkey>().ok())
-    {
+    if let Some(s) = app.program_id.as_deref() {
+        let pid = resolve_program_id("--program-id", s, convert_program_moniker)?;
         ctx_builder = ctx_builder.with_serviceability_program_id(pid);
     }
-    if let Some(pid) = app
-        .geo_program_id
-        .as_deref()
-        .and_then(|s| s.parse::<solana_sdk::pubkey::Pubkey>().ok())
-    {
+    if let Some(s) = app.geo_program_id.as_deref() {
+        let pid = resolve_program_id("--geo-program-id", s, convert_geo_program_moniker)?;
         ctx_builder = ctx_builder.with_geolocation_program_id(pid);
     }
     if let Some(k) = app.keypair.clone() {
@@ -208,19 +226,15 @@ async fn main() -> eyre::Result<()> {
         std::process::exit(1);
     });
 
-    // Bridge to the legacy `DZClient::new(Option<String>, ...)` signature.
-    // CliContext now carries the fully resolved values for URL/WS/program-ID,
-    // so we forward them directly. The keypair argument is an exception: it
-    // must reflect only the `--keypair` CLI flag so that `DZClient::new`'s
-    // internal `load_keypair` precedence chain (CLI flag > `DOUBLEZERO_KEYPAIR`
-    // env var > stdin > persisted config) is preserved. Passing the layered
-    // ctx value here would mask the env var, which the e2e contributor-auth
-    // suite relies on for negative-authz checks.
-    let url = Some(ctx.ledger_rpc_url.clone());
-    let ws = Some(ctx.ledger_ws_rpc_url.clone());
-    let program_id = Some(ctx.serviceability_program_id.to_string());
-
-    let dzclient = DZClient::new(url.clone(), ws, program_id, app.keypair.clone())?;
+    // Build the SDK client directly from the resolved `CliContext`. The context
+    // already carries the fully resolved URL/WS/program-ID, so `from_context`
+    // consumes them verbatim (no config-file re-read, no moniker conversion).
+    // The keypair argument reflects only the `--keypair` CLI flag so that the
+    // SDK's `load_keypair` precedence chain (CLI flag > `DOUBLEZERO_KEYPAIR`
+    // env var > stdin > context keypair path > default) is preserved. Passing
+    // the layered ctx value as the CLI source would mask the env var, which the
+    // e2e contributor-auth suite relies on for negative-authz checks.
+    let dzclient = DZClient::from_context(&ctx, app.keypair.clone())?;
     let client = CliCommandImpl::new(&dzclient);
 
     let stdout = std::io::stdout();
@@ -276,8 +290,7 @@ async fn main() -> eyre::Result<()> {
 
         // Geolocation module crate (doublezero-geolocation-cli per RFC-20)
         Command::Geolocation(args) => {
-            let geo_client =
-                GeoClient::new(url.clone(), app.geo_program_id.clone(), app.keypair.clone())?;
+            let geo_client = GeoClient::from_context(&ctx, app.keypair.clone())?;
             let svc_program_id = *dzclient.get_program_id();
             let (globalstate_pk, _) = get_globalstate_pda(&svc_program_id);
             let geo_cli = GeoCliCommandImpl::new(&geo_client, &dzclient, globalstate_pk);
@@ -457,6 +470,54 @@ mod tests {
         assert_eq!(
             resolve_environment(None, Some(&cfg)).unwrap(),
             doublezero_sdk::default_environment(),
+        );
+    }
+
+    use super::resolve_program_id;
+    use doublezero_sdk::{convert_geo_program_moniker, convert_program_moniker};
+
+    #[test]
+    fn resolve_program_id_accepts_full_and_short_monikers() {
+        for env in [
+            Environment::MainnetBeta,
+            Environment::Testnet,
+            Environment::Devnet,
+            Environment::Local,
+        ] {
+            let cfg = env.config().unwrap();
+            for moniker in [
+                env.to_string(),
+                env.to_string().chars().next().unwrap().to_string(),
+            ] {
+                assert_eq!(
+                    resolve_program_id("--program-id", &moniker, convert_program_moniker).unwrap(),
+                    cfg.serviceability_program_id,
+                    "serviceability moniker {moniker} should resolve to {env}",
+                );
+                assert_eq!(
+                    resolve_program_id("--geo-program-id", &moniker, convert_geo_program_moniker)
+                        .unwrap(),
+                    cfg.geolocation_program_id,
+                    "geo moniker {moniker} should resolve to {env}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_program_id_passes_through_literal_pubkey() {
+        let pk = solana_sdk::pubkey::Pubkey::new_unique();
+        assert_eq!(
+            resolve_program_id("--program-id", &pk.to_string(), convert_program_moniker).unwrap(),
+            pk,
+        );
+    }
+
+    #[test]
+    fn resolve_program_id_rejects_invalid_value() {
+        assert!(
+            resolve_program_id("--program-id", "not-a-key", convert_program_moniker).is_err(),
+            "an unparseable value must be a hard error, not a silent fallback",
         );
     }
 }

@@ -3,6 +3,7 @@ package loggingtail
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -108,8 +109,12 @@ type agentLogRow struct {
 func (a *AgentTail) tick() {
 	lines, err := a.tail.Poll()
 	if err != nil {
+		// ErrOversizeLine is non-fatal: the partial was dropped, but any
+		// complete lines surfaced before the overflow are still valid.
 		a.logger.Warn("agent log tail failed", "path", a.inPath, "err", err)
-		return
+		if !errors.Is(err, tailer.ErrOversizeLine) {
+			return
+		}
 	}
 	if len(lines) == 0 {
 		return

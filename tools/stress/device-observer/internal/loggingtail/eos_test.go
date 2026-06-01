@@ -68,7 +68,7 @@ func TestParseHappyPath(t *testing.T) {
 	const text = `May 29 12:34:56 dz1 BGP-3-NOTIFICATION: bgp event
 May 29 12:34:57 dz1 SYS-6-INFO: hello world
 `
-	rows := parseEOSLog(text, 12345)
+	rows, _ := parseEOSLog(text, 12345)
 	if len(rows) != 2 {
 		t.Fatalf("rows = %d, want 2", len(rows))
 	}
@@ -86,7 +86,7 @@ May 29 12:34:57 dz1 SYS-6-INFO: hello world
 // TestParseUnparseable: a line not matching the prefix is still emitted
 // with empty severity/facility and the full line in Message.
 func TestParseUnparseable(t *testing.T) {
-	rows := parseEOSLog("this is not syslog\n", 7)
+	rows, _ := parseEOSLog("this is not syslog\n", 7)
 	if len(rows) != 1 {
 		t.Fatalf("rows = %d, want 1", len(rows))
 	}

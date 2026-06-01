@@ -136,6 +136,31 @@ func TestRingEviction(t *testing.T) {
 	}
 }
 
+// TestPendingMapBounded: inserting more than maxPending entries evicts
+// the oldest by submit time so the map never grows past the cap.
+func TestPendingMapBounded(t *testing.T) {
+	m := map[int]time.Time{}
+	base := time.Unix(0, 0)
+	for i := 0; i < maxPending+10; i++ {
+		insertPending(m, i, base.Add(time.Duration(i)*time.Second))
+	}
+	if len(m) != maxPending {
+		t.Fatalf("len(map) = %d, want %d", len(m), maxPending)
+	}
+	// The first 10 keys should have been evicted (oldest by time).
+	for i := 0; i < 10; i++ {
+		if _, ok := m[i]; ok {
+			t.Errorf("key %d should have been evicted", i)
+		}
+	}
+	// The newest keys should still be present.
+	for i := maxPending; i < maxPending+10; i++ {
+		if _, ok := m[i]; !ok {
+			t.Errorf("key %d should be present", i)
+		}
+	}
+}
+
 // TestLateRunlogFile: the runlog file appearing after the first tick is
 // picked up on the next poll without error.
 func TestLateRunlogFile(t *testing.T) {

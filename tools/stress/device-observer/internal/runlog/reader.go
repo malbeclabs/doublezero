@@ -6,6 +6,7 @@ package runlog
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"sync"
@@ -20,6 +21,10 @@ const (
 	// ringCapacity bounds memory for a very long sweep. 1024 covers ~10x the
 	// expected ~100-user sweep with headroom for retries.
 	ringCapacity = 1024
+	// maxPending caps each pending-submit map. A misbehaving orchestrator
+	// that emits submits without matching activates would otherwise grow
+	// these maps until OOM. On overflow we evict the oldest entry.
+	maxPending = 4096
 )
 
 // Row mirrors the orchestrator's runlog schema. We re-declare it here so
@@ -80,8 +85,12 @@ func (r *Reader) Run(ctx context.Context) error {
 func (r *Reader) tick() {
 	lines, err := r.tail.Poll()
 	if err != nil {
+		// ErrOversizeLine is non-fatal: any complete lines surfaced before
+		// the overflow are still valid runlog rows.
 		r.logger.Warn("runlog tail failed", "path", r.inPath, "err", err)
-		return
+		if !errors.Is(err, tailer.ErrOversizeLine) {
+			return
+		}
 	}
 	if len(lines) == 0 {
 		return
@@ -91,20 +100,22 @@ func (r *Reader) tick() {
 	for _, line := range lines {
 		var row Row
 		if err := json.Unmarshal([]byte(line), &row); err != nil {
-			r.logger.Warn("runlog decode failed", "line", line, "err", err)
+			// Truncate the logged line so a flood of malformed rows cannot
+			// inflate the observer's own log without bound.
+			r.logger.Warn("runlog decode failed", "line", truncateForLog(line), "err", err)
 			continue
 		}
 		at := time.Unix(0, row.TNs)
 		switch row.Event {
 		case "submit":
-			r.pendingSubmit[row.UserIndex] = at
+			insertPending(r.pendingSubmit, row.UserIndex, at)
 		case "activate":
 			if start, ok := r.pendingSubmit[row.UserIndex]; ok {
 				delete(r.pendingSubmit, row.UserIndex)
 				r.provisionRing = pushRing(r.provisionRing, durationSample{at: at, dur: at.Sub(start)})
 			}
 		case "deprovision_submit":
-			r.pendingDeprovSubmit[row.UserIndex] = at
+			insertPending(r.pendingDeprovSubmit, row.UserIndex, at)
 		case "deprovision_activate":
 			if start, ok := r.pendingDeprovSubmit[row.UserIndex]; ok {
 				delete(r.pendingDeprovSubmit, row.UserIndex)
@@ -112,6 +123,37 @@ func (r *Reader) tick() {
 			}
 		}
 	}
+}
+
+// insertPending caps the pending map at maxPending entries. On overflow it
+// evicts the oldest entry by scanning the map (O(maxPending) per overflow,
+// which is acceptable since the map is bounded). Without this cap a
+// misbehaving orchestrator that never emits matching activates would grow
+// the map until OOM.
+func insertPending(m map[int]time.Time, userIndex int, at time.Time) {
+	if _, exists := m[userIndex]; !exists && len(m) >= maxPending {
+		var oldestKey int
+		var oldestAt time.Time
+		first := true
+		for k, v := range m {
+			if first || v.Before(oldestAt) {
+				oldestKey, oldestAt = k, v
+				first = false
+			}
+		}
+		delete(m, oldestKey)
+	}
+	m[userIndex] = at
+}
+
+// truncateForLog bounds a log field so a flood of large malformed lines
+// cannot balloon the observer's own log.
+func truncateForLog(s string) string {
+	const max = 256
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "...(truncated)"
 }
 
 func pushRing(ring []durationSample, s durationSample) []durationSample {

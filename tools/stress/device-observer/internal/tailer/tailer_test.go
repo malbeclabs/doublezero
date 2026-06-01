@@ -1,6 +1,7 @@
 package tailer
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -138,6 +139,32 @@ func TestPollRotation(t *testing.T) {
 	}
 	if len(got) != 1 || got[0] != "fresh" {
 		t.Fatalf("Poll 2 = %v, want [fresh]", got)
+	}
+}
+
+// TestPollOversizeLine: an unterminated line larger than maxPartialBytes
+// is dropped and ErrOversizeLine is returned, but any complete lines that
+// preceded it are still returned to the caller.
+func TestPollOversizeLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tail.log")
+	// One complete line followed by a single oversize fragment (>1 MiB,
+	// no newline).
+	huge := make([]byte, maxPartialBytes+1024)
+	for i := range huge {
+		huge[i] = 'x'
+	}
+	if err := os.WriteFile(path, append([]byte("good\n"), huge...), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	tl := New(path)
+	defer tl.Close()
+	got, err := tl.Poll()
+	if !errors.Is(err, ErrOversizeLine) {
+		t.Fatalf("Poll err = %v, want ErrOversizeLine", err)
+	}
+	if len(got) != 1 || got[0] != "good" {
+		t.Fatalf("Poll = %v, want [good]", got)
 	}
 }
 

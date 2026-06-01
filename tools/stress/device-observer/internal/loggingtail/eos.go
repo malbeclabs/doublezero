@@ -101,7 +101,13 @@ func (p *EOSPoller) tick() {
 		return
 	}
 	tNS := p.now().UTC().UnixNano()
-	parsed := parseEOSLog(out, tNS)
+	parsed, scanErr := parseEOSLog(out, tNS)
+	if scanErr != nil {
+		// bufio.ErrTooLong (or a similar scanner error) terminates the
+		// scanner early — surface a WARN so the operator notices silent
+		// truncation rather than blaming the device.
+		p.logger.Warn("eos logging parse truncated", "err", scanErr)
+	}
 	p.mu.Lock()
 	next := make(map[string]struct{}, len(parsed))
 	var fresh []eosLine
@@ -131,7 +137,7 @@ func (p *EOSPoller) tick() {
 // timestamp+tag prefix still becomes a row with empty severity/facility.
 var eosLineRE = regexp.MustCompile(`^(\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+\S+\s+([A-Za-z0-9_]+)-(\d)-[A-Za-z0-9_]+:\s*(.*)$`)
 
-func parseEOSLog(text string, tNS int64) []eosLine {
+func parseEOSLog(text string, tNS int64) ([]eosLine, error) {
 	var out []eosLine
 	sc := bufio.NewScanner(strings.NewReader(text))
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
@@ -152,7 +158,7 @@ func parseEOSLog(text string, tNS int64) []eosLine {
 		}
 		out = append(out, eosLine{TNS: tNS, Message: line})
 	}
-	return out
+	return out, sc.Err()
 }
 
 func appendNDJSON(path string, rows []eosLine) error {

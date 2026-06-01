@@ -15,10 +15,23 @@ import (
 	"syscall"
 )
 
-// readChunkSize is the size of the per-Poll read buffer. The agent log and
-// runlog are short-line files; 32 KiB amortizes syscalls without holding
-// excess memory.
-const readChunkSize = 32 * 1024
+const (
+	// readChunkSize is the size of the per-Poll read buffer. The agent log
+	// and runlog are short-line files; 32 KiB amortizes syscalls without
+	// holding excess memory.
+	readChunkSize = 32 * 1024
+
+	// maxPartialBytes bounds the in-memory buffer for an unterminated line.
+	// A misbehaving writer that never emits '\n' would otherwise grow the
+	// buffer until the process OOMs. On overflow the partial is dropped
+	// with a WARN-equivalent signal (oversize-line error from Poll).
+	maxPartialBytes = 1 << 20
+)
+
+// ErrOversizeLine is returned from Poll when an unterminated line exceeds
+// maxPartialBytes. The tailer drops the in-progress fragment and continues
+// from the next byte read.
+var ErrOversizeLine = errors.New("tailer: oversize line dropped")
 
 // Tailer reads newly-appended complete lines from a file across multiple
 // Poll calls. It is not safe for concurrent use; callers own the polling
@@ -72,31 +85,48 @@ func (t *Tailer) Poll() ([]string, error) {
 	}
 	buf := make([]byte, readChunkSize)
 	var lines []string
+	oversize := false
 	for {
 		n, err := t.f.Read(buf)
 		if n > 0 {
 			t.offset += int64(n)
 			t.partial = append(t.partial, buf[:n]...)
+			// Extract any complete lines before checking the overflow
+			// cap: a long file with normal-length lines and a trailing
+			// fragment shorter than the cap must still surface every
+			// complete line.
+			for {
+				idx := bytes.IndexByte(t.partial, '\n')
+				if idx < 0 {
+					break
+				}
+				lines = append(lines, string(t.partial[:idx]))
+				t.partial = t.partial[idx+1:]
+			}
+			if len(t.partial) > maxPartialBytes {
+				// No newline within the cap; the in-progress fragment is
+				// pathological. Drop it so memory stays bounded.
+				t.partial = t.partial[:0]
+				oversize = true
+			}
 		}
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
+			if oversize {
+				return lines, ErrOversizeLine
+			}
 			return lines, err
 		}
-	}
-	for {
-		idx := bytes.IndexByte(t.partial, '\n')
-		if idx < 0 {
-			break
-		}
-		lines = append(lines, string(t.partial[:idx]))
-		t.partial = t.partial[idx+1:]
 	}
 	// Re-compact partial so the underlying capacity does not grow without
 	// bound across many polls on a steadily-appended file.
 	if cap(t.partial) > 4*readChunkSize {
 		t.partial = append([]byte(nil), t.partial...)
+	}
+	if oversize {
+		return lines, ErrOversizeLine
 	}
 	return lines, nil
 }

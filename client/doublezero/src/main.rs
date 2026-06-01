@@ -32,17 +32,12 @@ struct App {
     command: Option<Command>,
     /// DZ env (testnet, devnet, or mainnet-beta).
     ///
-    /// Mutually exclusive with the per-field URL and program-ID overrides
-    /// (`--url`, `--ws`, `--solana-url`, `--program-id`, `--geo-program-id`).
-    /// Pass `--env` to use a network's defaults wholesale, or pass the
-    /// individual overrides; combining the two yields an error from clap.
-    #[arg(
-        short,
-        long,
-        value_name = "ENV",
-        global = true,
-        conflicts_with_all = ["url", "ws", "solana_url", "program_id", "geo_program_id"],
-    )]
+    /// `--env` resolves a whole network at once (ledger URL, WS URL, Solana L1
+    /// URL, serviceability and geolocation program IDs). The per-field flags
+    /// (`--url`, `--ws`, `--solana-url`, `--program-id`, `--geo-program-id`)
+    /// override individual values on top of that base. Precedence per RFC-20
+    /// (§override hierarchy): explicit CLI flag > env var > value from `--env`.
+    #[arg(short, long, value_name = "ENV", global = true)]
     env: Option<String>,
     /// DZ ledger RPC URL
     #[arg(long, value_name = "RPC_URL", global = true)]
@@ -200,9 +195,9 @@ async fn main() -> eyre::Result<()> {
         ctx_builder = ctx_builder.with_keypair_path(persisted.keypair_path.clone());
     }
 
-    // CLI-flag overrides win. `--env` is mutually exclusive with the per-field
-    // URL and program-ID flags at the clap layer, so at most one branch of each
-    // pair fires per invocation.
+    // CLI-flag overrides win, layered on top of the `--env` base resolved into
+    // the builder above: each per-field flag replaces only its own value, while
+    // the rest keep following `--env` (RFC-20 §override hierarchy).
     if let Some(u) = app.url.clone() {
         ctx_builder = ctx_builder.with_ledger_rpc_url(u);
     }
@@ -341,52 +336,79 @@ async fn main() -> eyre::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::App;
-    use clap::{error::ErrorKind, Parser};
+    use clap::Parser;
 
-    fn parse_err(args: &[&str]) -> clap::Error {
-        App::try_parse_from(args).expect_err("expected clap to reject these arguments")
+    fn parse_ok(args: &[&str]) -> App {
+        App::try_parse_from(args).expect("expected clap to accept these arguments")
     }
 
+    // `--env` layers with the per-field override flags rather than conflicting
+    // with them: each combination must parse, with both values retained so the
+    // override can win over the env base during resolution.
+
     #[test]
-    fn env_conflicts_with_url() {
-        let err = parse_err(&[
+    fn env_combines_with_url() {
+        let app = parse_ok(&[
             "doublezero",
             "--env",
             "devnet",
             "--url",
             "https://x.invalid/",
         ]);
-        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+        assert_eq!(app.env.as_deref(), Some("devnet"));
+        assert_eq!(app.url.as_deref(), Some("https://x.invalid/"));
     }
 
     #[test]
-    fn env_conflicts_with_ws() {
-        let err = parse_err(&["doublezero", "--env", "devnet", "--ws", "wss://x.invalid/"]);
-        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+    fn env_combines_with_ws() {
+        let app = parse_ok(&["doublezero", "--env", "devnet", "--ws", "wss://x.invalid/"]);
+        assert_eq!(app.env.as_deref(), Some("devnet"));
+        assert_eq!(app.ws.as_deref(), Some("wss://x.invalid/"));
     }
 
     #[test]
-    fn env_conflicts_with_solana_url() {
-        let err = parse_err(&[
+    fn env_combines_with_solana_url() {
+        let app = parse_ok(&[
             "doublezero",
             "--env",
             "devnet",
             "--solana-url",
             "https://x.invalid/",
         ]);
-        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+        assert_eq!(app.env.as_deref(), Some("devnet"));
+        assert_eq!(app.solana_url.as_deref(), Some("https://x.invalid/"));
     }
 
     #[test]
-    fn env_conflicts_with_program_id() {
-        let err = parse_err(&[
+    fn env_combines_with_program_id() {
+        let app = parse_ok(&[
             "doublezero",
             "--env",
             "devnet",
             "--program-id",
             "11111111111111111111111111111111",
         ]);
-        assert_eq!(err.kind(), ErrorKind::ArgumentConflict);
+        assert_eq!(app.env.as_deref(), Some("devnet"));
+        assert_eq!(
+            app.program_id.as_deref(),
+            Some("11111111111111111111111111111111")
+        );
+    }
+
+    #[test]
+    fn env_combines_with_geo_program_id() {
+        let app = parse_ok(&[
+            "doublezero",
+            "--env",
+            "devnet",
+            "--geo-program-id",
+            "11111111111111111111111111111111",
+        ]);
+        assert_eq!(app.env.as_deref(), Some("devnet"));
+        assert_eq!(
+            app.geo_program_id.as_deref(),
+            Some("11111111111111111111111111111111")
+        );
     }
 
     #[test]

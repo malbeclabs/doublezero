@@ -1,6 +1,5 @@
 // device-observer samples an Arista cEOS device-under-test during the GRE
-// Tunnel Capacity Study. PR #3793 implements the eAPI sampler; subsequent
-// PRs replace the stub collectors with real implementations.
+// Tunnel Capacity Study.
 package main
 
 import (
@@ -81,8 +80,7 @@ func run() error {
 		return fmt.Errorf("resolve --abort-file: %w", err)
 	}
 	// Constrain --abort-file to live under --working-dir so the sentinel
-	// path PR #3796 will write to is bounded by the orchestrator's
-	// archive surface.
+	// is bounded by the orchestrator's archive surface.
 	if !strings.HasPrefix(absAbort+string(os.PathSeparator), absWorking+string(os.PathSeparator)) {
 		return fmt.Errorf("--abort-file %q must be inside --working-dir %q", absAbort, absWorking)
 	}
@@ -113,9 +111,9 @@ func run() error {
 	collectors := []collector.Collector{
 		sample.NewSampler(client, *workingDir, *sampleInterval, logger),
 		promscrape.New(*agentMetricsURL, *workingDir, *sampleInterval, logger),
-		loggingtail.NewEOS(client, *workingDir),
-		loggingtail.NewAgent(*workingDir),
-		runlog.New(*workingDir),
+		loggingtail.NewEOS(client, *workingDir, *sampleInterval, logger),
+		loggingtail.NewAgent(*workingDir, *sampleInterval, logger),
+		runlog.New(*workingDir, *sampleInterval, logger),
 		abort.New(*abortFile),
 	}
 

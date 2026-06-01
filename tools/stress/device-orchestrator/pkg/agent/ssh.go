@@ -139,34 +139,60 @@ func (s *SSH) Start(ctx context.Context) error {
 		s.cfg.Logger.Info("ssh agent started", "host", s.cfg.Host, "command", s.cfg.Command, "log_path", s.cfg.LogPath)
 	}
 
+	// Funnel both streams through a single consumer. The two reader goroutines
+	// only scan raw lines and forward them on `lines`; one consumer tees to the
+	// log and runs the parser. This keeps the parser (which is not
+	// goroutine-safe) and the log file touched by exactly one goroutine, while
+	// still interleaving stdout/stderr in arrival order so a "Committing..."
+	// marker and its multi-line diff body are parsed as one ordered sequence.
 	parser := NewParser()
-	var wg sync.WaitGroup
-	wg.Add(2)
+	lines := make(chan string, 256)
+
+	var readWG sync.WaitGroup
+	readWG.Add(2)
 	go func() {
-		defer wg.Done()
-		streamLines(ctx, stdout, logFile, parser, s.events, s.cfg.Logger, "stdout")
+		defer readWG.Done()
+		scanLines(ctx, stdout, lines, s.cfg.Logger, "stdout")
 	}()
 	go func() {
-		defer wg.Done()
-		streamLines(ctx, stderr, logFile, parser, s.events, s.cfg.Logger, "stderr")
+		defer readWG.Done()
+		scanLines(ctx, stderr, lines, s.cfg.Logger, "stderr")
+	}()
+	go func() {
+		readWG.Wait()
+		close(lines)
+	}()
+
+	consumerDone := make(chan struct{})
+	go func() {
+		defer close(consumerDone)
+		for line := range lines {
+			if logFile != nil {
+				if _, err := logFile.WriteString(line + "\n"); err != nil && s.cfg.Logger != nil {
+					s.cfg.Logger.Warn("ssh agent: log tee write failed", "err", err)
+				}
+			}
+			for _, ev := range parser.Parse(line) {
+				select {
+				case s.events <- ev:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
 	}()
 
 	go func() {
-		// Close session and channel when ctx cancels OR all reader goroutines exit.
-		done := make(chan struct{})
-		go func() {
-			wg.Wait()
-			close(done)
-		}()
+		// Close session and channel when ctx cancels OR the streams end.
 		select {
 		case <-ctx.Done():
-		case <-done:
+		case <-consumerDone:
 		}
 		// Closing the session causes the read loops to return EOF; the wait
-		// below blocks until both have returned before closing the events
+		// below blocks until the consumer has drained before closing the events
 		// channel, so consumers never see a half-emitted event.
 		s.shutdown()
-		<-done
+		<-consumerDone
 		close(s.events)
 	}()
 
@@ -192,25 +218,18 @@ func (s *SSH) shutdown() {
 	}
 }
 
-// streamLines reads `src` line-by-line, optionally tees raw lines to `tee`,
-// runs each through `parser`, and pushes resulting events onto `events`.
-// Returns early when ctx cancels so a slow consumer can't deadlock shutdown.
-func streamLines(ctx context.Context, src io.Reader, tee io.Writer, parser *Parser, events chan<- Event, log *slog.Logger, label string) {
+// scanLines reads `src` line-by-line and forwards each raw line on `lines`.
+// It returns early when ctx cancels so a slow consumer can't deadlock
+// shutdown. Tee-to-log and parsing happen in the single consumer that drains
+// `lines`, so this reader never touches the parser or the log file.
+func scanLines(ctx context.Context, src io.Reader, lines chan<- string, log *slog.Logger, label string) {
 	scanner := bufio.NewScanner(src)
 	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024) // large diffs can exceed default
 	for scanner.Scan() {
-		line := scanner.Text()
-		if tee != nil {
-			if _, err := tee.Write([]byte(line + "\n")); err != nil && log != nil {
-				log.Warn("ssh agent: log tee write failed", "err", err, "stream", label)
-			}
-		}
-		for _, ev := range parser.Parse(line) {
-			select {
-			case events <- ev:
-			case <-ctx.Done():
-				return
-			}
+		select {
+		case lines <- scanner.Text():
+		case <-ctx.Done():
+			return
 		}
 	}
 	if err := scanner.Err(); err != nil && log != nil {

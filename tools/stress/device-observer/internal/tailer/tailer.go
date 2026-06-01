@@ -16,21 +16,12 @@ import (
 )
 
 const (
-	// readChunkSize is the size of the per-Poll read buffer. The agent log
-	// and runlog are short-line files; 32 KiB amortizes syscalls without
-	// holding excess memory.
-	readChunkSize = 32 * 1024
-
-	// maxPartialBytes bounds the in-memory buffer for an unterminated line.
-	// A misbehaving writer that never emits '\n' would otherwise grow the
-	// buffer until the process OOMs. On overflow the partial is dropped
-	// with a WARN-equivalent signal (oversize-line error from Poll).
-	maxPartialBytes = 1 << 20
+	readChunkSize   = 32 * 1024
+	maxPartialBytes = 1 << 20 // cap on unterminated-line buffer; prevents OOM
 )
 
-// ErrOversizeLine is returned from Poll when an unterminated line exceeds
-// maxPartialBytes. The tailer drops the in-progress fragment and continues
-// from the next byte read.
+// ErrOversizeLine is returned (alongside any complete lines) when an
+// unterminated fragment exceeds maxPartialBytes. The fragment is dropped.
 var ErrOversizeLine = errors.New("tailer: oversize line dropped")
 
 // Tailer reads newly-appended complete lines from a file across multiple
@@ -152,7 +143,6 @@ func (t *Tailer) open() error {
 	return nil
 }
 
-// Close releases the underlying file handle. Safe to call multiple times.
 func (t *Tailer) Close() error {
 	if t.f == nil {
 		return nil

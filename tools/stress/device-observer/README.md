@@ -1,7 +1,7 @@
 # device-observer
 
 > Alpha — eAPI sampler, Prometheus scrape, and log tailers are wired up.
-> The abort decider (PR #3796) is still a no-op stub in this revision.
+> The abort decider is still a no-op stub in this revision.
 
 `device-observer` samples an Arista cEOS device-under-test (DUT) during the
 GRE Tunnel Capacity Study sweep. On every tick of `--sample-interval` it
@@ -60,7 +60,7 @@ observer reads them but does not write them:
 | `orchestrator.agent.log`        | orchestrator | observer |
 
 The abort sentinel at `--abort-file` (default `<working-dir>/abort`) is
-written by the observer (in PR #3796) and read by the orchestrator.
+written by the observer's abort decider and read by the orchestrator.
 
 Filenames use the observer's local clock formatted as ISO 8601 UTC with
 nanosecond precision, with `:` replaced by `-` for filesystem portability
@@ -115,8 +115,8 @@ so the file can be consumed with line-oriented tools (`jq -c`, ClickHouse
 JSONEachRow) without schema-on-write decisions about variable label sets.
 
 Counter family totals (sum across all label series) are also exposed via
-`Scraper.Snapshot()` for in-process consumers; the abort decider in
-PR #3796 will use this to detect mid-sample counter increments.
+`Scraper.Snapshot()` for in-process consumers; the abort decider uses
+this to detect mid-sample counter increments.
 
 A per-tick HTTP failure, parse failure, or write failure is logged at WARN
 and the loop continues — the abort decider owns repeated-failure policy.
@@ -182,8 +182,8 @@ in bounded rings (1024 entries each).
 
 `Reader.ProvisionDurations(window)` and `Reader.DeprovisionDurations(window)`
 return the durations whose completion timestamp lies within `window` of
-the current wall clock. The abort decider (PR #3796) will use these to
-detect a provisioning slowdown.
+the current wall clock. The abort decider uses these to detect a
+provisioning slowdown.
 
 ## Tailer behavior
 
@@ -239,7 +239,7 @@ head /tmp/observer-out/observer.agent_metrics.json | jq -c .
 
 A failure on a single `show` command logs at WARN and continues to the
 next command. The next tick retries from a clean slate. The abort decider
-(PR #3796) owns the policy for declaring repeated failures fatal.
+owns the policy for declaring repeated failures fatal.
 
 On `SIGINT` / `SIGTERM` the observer cancels its context and exits without
 finishing a partially-started tick. Each file is written via a single
@@ -259,7 +259,7 @@ old samples is the orchestrator's responsibility.
 tools/stress/device-observer/
 ├── cmd/device-observer/main.go
 ├── internal/
-│   ├── abort/         # PR #3796 (stub here)
+│   ├── abort/         # abort decider (stub)
 │   ├── collector/     # Collector interface + Noop
 │   ├── eapi/          # thin goeapi wrapper
 │   ├── loggingtail/   # EOS-syslog poller + agent-log tailer

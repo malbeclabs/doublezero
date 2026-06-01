@@ -21,15 +21,13 @@ const (
 )
 
 // Pattern names exposed via Snapshot. Naming is stable so the abort
-// decider (PR #3796) can reference them by string.
+// decider can reference them by string.
 const (
 	PatternDiffTimeout   = "diff_timeout"
 	PatternLockNotTaken  = "lock_not_taken"
 	PatternCommitSession = "commit_session"
 )
 
-// agentPatterns holds the substring matches the abort decider needs.
-// Substrings (not regex) keep the match cheap and intent-obvious.
 var agentPatterns = []struct {
 	name, substr string
 }{
@@ -38,8 +36,8 @@ var agentPatterns = []struct {
 	{PatternCommitSession, "Committing config session due to diffs detected:"},
 }
 
-// AgentSnapshot reports the latest tail state for downstream consumers
-// (the abort decider). LastLineAt is zero before the first line is seen.
+// AgentSnapshot reports the latest tail state for the abort decider.
+// LastLineAt is zero before the first line is seen.
 type AgentSnapshot struct {
 	LastLineAt  time.Time
 	MatchCounts map[string]int
@@ -89,8 +87,7 @@ func (a *AgentTail) Run(ctx context.Context) error {
 	}
 }
 
-// Snapshot returns a copy of the current tail state. Safe for concurrent
-// use; the abort decider reads from a separate goroutine.
+// Snapshot returns a copy of the current tail state. Safe for concurrent use.
 func (a *AgentTail) Snapshot() AgentSnapshot {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

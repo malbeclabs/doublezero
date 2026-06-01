@@ -1,6 +1,6 @@
 // Package runlog reads the orchestrator's runlog (orchestrator-runlog.jsonl)
 // via tailer.Tailer and maintains bounded rings of provision and deprovision
-// durations for the abort decider (PR #3796).
+// durations for the abort decider.
 package runlog
 
 import (
@@ -18,17 +18,12 @@ import (
 
 const (
 	inputFilename = "orchestrator-runlog.jsonl"
-	// ringCapacity bounds memory for a very long sweep. 1024 covers ~10x the
-	// expected ~100-user sweep with headroom for retries.
-	ringCapacity = 1024
-	// maxPending caps each pending-submit map. A misbehaving orchestrator
-	// that emits submits without matching activates would otherwise grow
-	// these maps until OOM. On overflow we evict the oldest entry.
-	maxPending = 4096
+	ringCapacity  = 1024 // bounded duration ring; ~10x a typical sweep
+	maxPending    = 4096 // cap per pending-submit map; evicts oldest on overflow
 )
 
-// Row mirrors the orchestrator's runlog schema. We re-declare it here so
-// the observer does not take a build-time dep on tools/stress/device-orchestrator.
+// Row mirrors the orchestrator's runlog schema (redeclared to avoid a
+// build-time dep on tools/stress/device-orchestrator).
 type Row struct {
 	UserIndex int    `json:"user_index"`
 	Event     string `json:"event"`
@@ -125,11 +120,8 @@ func (r *Reader) tick() {
 	}
 }
 
-// insertPending caps the pending map at maxPending entries. On overflow it
-// evicts the oldest entry by scanning the map (O(maxPending) per overflow,
-// which is acceptable since the map is bounded). Without this cap a
-// misbehaving orchestrator that never emits matching activates would grow
-// the map until OOM.
+// insertPending caps the pending map at maxPending entries, evicting the
+// oldest on overflow.
 func insertPending(m map[int]time.Time, userIndex int, at time.Time) {
 	if _, exists := m[userIndex]; !exists && len(m) >= maxPending {
 		var oldestKey int
@@ -146,8 +138,6 @@ func insertPending(m map[int]time.Time, userIndex int, at time.Time) {
 	m[userIndex] = at
 }
 
-// truncateForLog bounds a log field so a flood of large malformed lines
-// cannot balloon the observer's own log.
 func truncateForLog(s string) string {
 	const max = 256
 	if len(s) <= max {
@@ -160,7 +150,6 @@ func pushRing(ring []durationSample, s durationSample) []durationSample {
 	if len(ring) < ringCapacity {
 		return append(ring, s)
 	}
-	// Drop the oldest by copying the tail forward in place.
 	copy(ring, ring[1:])
 	ring[len(ring)-1] = s
 	return ring

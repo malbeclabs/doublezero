@@ -21,13 +21,9 @@ import (
 
 const (
 	eosOutputFilename = "observer.eos_logging.json"
-	// Minimum dedupe window so consecutive ticks always overlap, even when
-	// the operator picks a very short --sample-interval.
-	eosMinLookback = 30 * time.Second
+	eosMinLookback    = 30 * time.Second // floor so consecutive ticks always overlap
 )
 
-// eosLogRunner is the subset of *eapi.Client used by EOSPoller; tests
-// substitute a fake.
 type eosLogRunner interface {
 	RunShowText(cmd string) (string, error)
 }
@@ -60,12 +56,7 @@ type EOSPoller struct {
 // NewEOS returns an EOSPoller. lookback is clamped to max(2*interval, 30s)
 // so consecutive ticks overlap and dedupe is effective.
 func NewEOS(client eosLogRunner, workingDir string, interval, lookback time.Duration, logger *slog.Logger) *EOSPoller {
-	if lookback < 2*interval {
-		lookback = 2 * interval
-	}
-	if lookback < eosMinLookback {
-		lookback = eosMinLookback
-	}
+	lookback = max(lookback, 2*interval, eosMinLookback)
 	return &EOSPoller{
 		client:   client,
 		outPath:  filepath.Join(workingDir, eosOutputFilename),
@@ -103,9 +94,6 @@ func (p *EOSPoller) tick() {
 	tNS := p.now().UTC().UnixNano()
 	parsed, scanErr := parseEOSLog(out, tNS)
 	if scanErr != nil {
-		// bufio.ErrTooLong (or a similar scanner error) terminates the
-		// scanner early — surface a WARN so the operator notices silent
-		// truncation rather than blaming the device.
 		p.logger.Warn("eos logging parse truncated", "err", scanErr)
 	}
 	p.mu.Lock()

@@ -1,6 +1,5 @@
 // device-observer samples an Arista cEOS device-under-test during the GRE
-// Tunnel Capacity Study. PR #3793 implements the eAPI sampler; subsequent
-// PRs replace the stub collectors with real implementations.
+// Tunnel Capacity Study.
 package main
 
 import (
@@ -81,8 +80,7 @@ func run() error {
 		return fmt.Errorf("resolve --abort-file: %w", err)
 	}
 	// Constrain --abort-file to live under --working-dir so the sentinel
-	// path PR #3796 will write to is bounded by the orchestrator's
-	// archive surface.
+	// is bounded by the orchestrator's archive surface.
 	if !strings.HasPrefix(absAbort+string(os.PathSeparator), absWorking+string(os.PathSeparator)) {
 		return fmt.Errorf("--abort-file %q must be inside --working-dir %q", absAbort, absWorking)
 	}
@@ -110,13 +108,8 @@ func run() error {
 		return err
 	}
 
-	// EOS syslog lookback must cover the sample interval so consecutive
-	// `show logging last <window>` calls overlap and the in-memory dedupe
-	// catches duplicates. 2 × interval (min 30 s) is the contract.
-	eosLookback := 2 * *sampleInterval
-	if eosLookback < 30*time.Second {
-		eosLookback = 30 * time.Second
-	}
+	// 2 × interval (min 30 s) so consecutive show-logging windows overlap.
+	eosLookback := max(2**sampleInterval, 30*time.Second)
 
 	collectors := []collector.Collector{
 		sample.NewSampler(client, *workingDir, *sampleInterval, logger),

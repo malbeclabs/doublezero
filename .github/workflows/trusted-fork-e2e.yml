@@ -107,16 +107,23 @@ jobs:
               .map((workflow) => `- [${workflow}](https://github.com/${owner}/${repo}/actions/workflows/${workflow})`)
               .join('\n');
 
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: prNumber,
-              body: [
-                `Trusted e2e requested by @${context.actor} for \`${headSha}\`.`,
-                '',
-                `Image tag: \`${imageTag}\``,
-                '',
-                'Dispatched workflows:',
-                links,
-              ].join('\n'),
-            });
+            // The dispatches above are the load-bearing work; a failure to post
+            // the confirmation comment (e.g. a capped GITHUB_TOKEN denying
+            // issues:write) must not fail the job and leave the runs orphaned.
+            try {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: [
+                  `Trusted e2e requested by @${context.actor} for \`${headSha}\`.`,
+                  '',
+                  `Image tag: \`${imageTag}\``,
+                  '',
+                  'Dispatched workflows:',
+                  links,
+                ].join('\n'),
+              });
+            } catch (e) {
+              core.warning(`Could not post confirmation comment: ${e.message}`);
+            }

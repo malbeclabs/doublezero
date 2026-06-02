@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - Change `geolocation user update-payment` to `update-payment-status` for clarity. 
+- ci(e2e): report trusted fork e2e/shreds shard results onto the PR head SHA so branch protection's required `e2e (shard N)` / `shard-e2e (shard N)` checks are satisfied by a `/run-e2e` dispatch, removing the need for a maintainer to bypass the ruleset to merge fork PRs; also make the dispatcher's confirmation comment non-fatal so a capped `GITHUB_TOKEN` no longer fails the job after the runs have already launched (follow-up to [#3777](https://github.com/malbeclabs/doublezero/pull/3777))
 - Tools
   - Complete the device-stress orchestrator (part 3): replace the stubbed agent runner with an SSH-backed runner that execs `doublezero-agent -verbose` on the DUT and tees its output to `orchestrator.agent.log`, and a log parser that turns the agent's commit-diff lines into `pre_commit_log` / `applied` runlog events. Adds `--dut-ssh-user` and `--no-agent` flags.
   - Add `tools/stress/device-observer/`, a per-device sampling tool for the GRE Tunnel Capacity Study. Each tick issues five eAPI `show` commands, scrapes the doublezero-agent Prometheus endpoint, polls EOS syslog via `show logging last` with cross-tick dedupe, tails the orchestrator's agent log for abort-trigger patterns, and tails the orchestrator's runlog to compute provision/deprovision durations. The abort decider is stubbed.

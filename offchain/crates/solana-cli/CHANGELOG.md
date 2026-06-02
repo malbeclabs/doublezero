@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `revenue-distribution fetch validator-debts`: remove the written-off debt sanity check that aborted the command. It compared a windowed sum (the last 100 epochs of debt records) against the deposit's lifetime cumulative `written_off_sol_debt`, so it fired whenever a validator had a write-off older than the window (#380)
+
 ## [0.5.6](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.6)
 
 - uptick crate to v0.5.6 (#376)

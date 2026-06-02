@@ -134,21 +134,10 @@ async fn try_print_validator_debts_outstanding_table(
         })
         .collect::<Vec<_>>();
 
-    let deposit_accounts = deposit_account_infos
-        .into_iter()
-        .map(ZeroCopyAccountOwnedData::<SolanaValidatorDeposit>::try_from)
-        .collect::<Result<Vec<_>>>()?;
-
     let mut outputs = Vec::with_capacity(debt_records.len());
 
-    for ((node_id, deposit_balance), deposit_account) in node_ids
-        .into_iter()
-        .zip(deposit_balances)
-        .zip(deposit_accounts)
-    {
+    for (node_id, deposit_balance) in node_ids.into_iter().zip(deposit_balances) {
         let mut total_debt = 0;
-
-        let mut recorded_written_off_debt = 0;
 
         for (debt_record, distribution) in debt_records.iter().zip(distributions) {
             if debt_record.debts.is_empty() {
@@ -174,10 +163,6 @@ async fn try_print_validator_debts_outstanding_table(
                     false
                 };
 
-                if is_written_off {
-                    recorded_written_off_debt += debt_record.data.debts[index].amount;
-                }
-
                 // If the debt is not processed or if it is processed but
                 // written off, we should include it in the total debt.
                 if !try_is_processed_leaf(processed_leaf_data, index).unwrap() || is_written_off {
@@ -185,14 +170,6 @@ async fn try_print_validator_debts_outstanding_table(
                 }
             }
         }
-
-        // Out of paranoia, make sure the debt written in the records equals the
-        // written-off debt amount in the deposit account.
-        anyhow::ensure!(
-            recorded_written_off_debt == deposit_account.written_off_sol_debt,
-            "Recorded written off debt {recorded_written_off_debt} is not equal to deposit balance {}",
-            deposit_account.written_off_sol_debt
-        );
 
         if excess_mode {
             if total_debt >= deposit_balance {

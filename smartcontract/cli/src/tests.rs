@@ -12,6 +12,10 @@ pub mod utils {
         client.expect_get_balance().returning(|| Ok(10));
         client.expect_get_epoch().returning(|| Ok(10));
         client.expect_get_program_id().returning(move || program_id);
+        // Pre-flight checks call has_keypair_source() to decide whether to skip
+        // the default-path keypair file check. Tests provide the keypair via the
+        // mock, so report a source as present.
+        client.expect_has_keypair_source().returning(|| true);
 
         client
     }

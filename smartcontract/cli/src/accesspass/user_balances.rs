@@ -54,6 +54,9 @@ pub enum SortOrder {
 
 #[derive(Args, Debug, Default)]
 pub struct UserBalancesAccessPassCliCommand {
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
     /// Filter by user payer public key
     #[arg(long)]
     pub user_payer: Option<Pubkey>,
@@ -254,24 +257,29 @@ impl UserBalancesAccessPassCliCommand {
                 },
             );
 
-        let table = Table::new(display_rows)
-            .with(Style::psql().remove_horizontals())
-            .with(Modify::new(Columns::new(0..=0)).with(Alignment::right()))
-            .with(Modify::new(Columns::new(2..=2)).with(Alignment::right()))
-            .with(Modify::new(Columns::new(3..=3)).with(Alignment::right()))
-            .with(Modify::new(Columns::new(4..=4)).with(Alignment::right()))
-            .with(Modify::new(Columns::new(5..=5)).with(Alignment::right()))
-            .with(Modify::new(Columns::new(6..=6)).with(Alignment::right()))
-            .with(Modify::new(Columns::new(7..=7)).with(Alignment::right()))
-            .to_string();
+        if self.json {
+            let json = serde_json::to_string_pretty(&display_rows)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let table = Table::new(display_rows)
+                .with(Style::psql().remove_horizontals())
+                .with(Modify::new(Columns::new(0..=0)).with(Alignment::right()))
+                .with(Modify::new(Columns::new(2..=2)).with(Alignment::right()))
+                .with(Modify::new(Columns::new(3..=3)).with(Alignment::right()))
+                .with(Modify::new(Columns::new(4..=4)).with(Alignment::right()))
+                .with(Modify::new(Columns::new(5..=5)).with(Alignment::right()))
+                .with(Modify::new(Columns::new(6..=6)).with(Alignment::right()))
+                .with(Modify::new(Columns::new(7..=7)).with(Alignment::right()))
+                .to_string();
 
-        // Color rows after rendering to avoid ANSI codes breaking column widths.
-        // Line 0 is the header; data rows start at line 1.
-        for (i, line) in table.lines().enumerate() {
-            if i > 0 && red_indices.contains(&(i - 1)) {
-                writeln!(out, "{}", style(line).red())?;
-            } else {
-                writeln!(out, "{line}")?;
+            // Color rows after rendering to avoid ANSI codes breaking column widths.
+            // Line 0 is the header; data rows start at line 1.
+            for (i, line) in table.lines().enumerate() {
+                if i > 0 && red_indices.contains(&(i - 1)) {
+                    writeln!(out, "{}", style(line).red())?;
+                } else {
+                    writeln!(out, "{line}")?;
+                }
             }
         }
 

@@ -1,12 +1,24 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_cli_core::CliContext;
+use doublezero_cli_core::{render_record, CliContext, OutputFormat};
 use doublezero_sdk::GetGlobalStateCommand;
 use doublezero_serviceability::state::feature_flags::enabled_flags;
+use serde::Serialize;
 use std::io::Write;
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
-pub struct GetFeatureFlagsCliCommand;
+pub struct GetFeatureFlagsCliCommand {
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
+}
+
+#[derive(Tabled, Serialize)]
+struct FeatureFlagsDisplay {
+    flags: String,
+    raw: u128,
+}
 
 impl GetFeatureFlagsCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
@@ -20,22 +32,16 @@ impl GetFeatureFlagsCliCommand {
         let flags = enabled_flags(gstate.feature_flags);
         let flag_names: Vec<String> = flags.iter().map(|f| f.to_string()).collect();
 
-        if flag_names.is_empty() {
-            writeln!(
-                out,
-                "No feature flags enabled (raw: {})",
-                gstate.feature_flags
-            )?;
-        } else {
-            writeln!(
-                out,
-                "Enabled feature flags: {} (raw: {})",
-                flag_names.join(", "),
-                gstate.feature_flags
-            )?;
-        }
+        let display = FeatureFlagsDisplay {
+            flags: if flag_names.is_empty() {
+                String::new()
+            } else {
+                flag_names.join(", ")
+            },
+            raw: gstate.feature_flags,
+        };
 
-        Ok(())
+        render_record(out, &display, OutputFormat::from_flags(self.json, false))
     }
 }
 
@@ -80,11 +86,12 @@ mod tests {
 
         let mut output = Vec::new();
         let ctx = cli_context_default_for_tests();
-        let res = block_on(GetFeatureFlagsCliCommand.execute(&ctx, &client, &mut output));
+        let cmd = GetFeatureFlagsCliCommand { json: false };
+        let res = block_on(cmd.execute(&ctx, &client, &mut output));
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("onchain-allocation"));
-        assert!(output_str.contains("raw: 1"));
+        assert!(output_str.contains("1"));
     }
 
     #[test]
@@ -116,9 +123,52 @@ mod tests {
 
         let mut output = Vec::new();
         let ctx = cli_context_default_for_tests();
-        let res = block_on(GetFeatureFlagsCliCommand.execute(&ctx, &client, &mut output));
+        let cmd = GetFeatureFlagsCliCommand { json: false };
+        let res = block_on(cmd.execute(&ctx, &client, &mut output));
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains("No feature flags enabled"));
+        // Table output: empty flags column, raw = 0
+        assert!(output_str.contains("0"));
+    }
+
+    #[test]
+    fn test_cli_globalconfig_featureflags_get_json() {
+        let mut client = create_test_client();
+
+        let gstate_pubkey = Pubkey::new_unique();
+        let globalstate = GlobalState {
+            account_type: AccountType::GlobalState,
+            bump_seed: 0,
+            account_index: 0,
+            foundation_allowlist: vec![],
+            _device_allowlist: vec![],
+            _user_allowlist: vec![],
+            activator_authority_pk: Pubkey::default(),
+            sentinel_authority_pk: Pubkey::default(),
+            contributor_airdrop_lamports: 0,
+            user_airdrop_lamports: 0,
+            health_oracle_pk: Pubkey::default(),
+            qa_allowlist: vec![],
+            feature_flags: 1,
+            feed_authority_pk: Pubkey::default(),
+        };
+
+        client
+            .expect_get_globalstate()
+            .with(predicate::eq(GetGlobalStateCommand))
+            .returning(move |_| Ok((gstate_pubkey, globalstate.clone())));
+
+        let mut output = Vec::new();
+        let ctx = cli_context_default_for_tests();
+        let cmd = GetFeatureFlagsCliCommand { json: true };
+        let res = block_on(cmd.execute(&ctx, &client, &mut output));
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&output_str).unwrap();
+        assert_eq!(parsed["raw"], 1);
+        assert!(parsed["flags"]
+            .as_str()
+            .unwrap()
+            .contains("onchain-allocation"));
     }
 }

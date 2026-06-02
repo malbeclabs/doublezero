@@ -99,8 +99,10 @@ func (p *Publisher) AddProbe(ctx context.Context, addr ProbeAddress) error {
 	var conn *net.UDPConn
 	var err error
 
+	// Retry transient bind failures inside the namespace closure so that all
+	// attempts stay on the same OS-thread-locked netns. See retry.go.
 	createConn := func() (*net.UDPConn, error) {
-		return NewUDPConn()
+		return retryOnBindError(ctx, p.log, NewUDPConn)
 	}
 
 	if p.cfg.ManagementNamespace != "" {

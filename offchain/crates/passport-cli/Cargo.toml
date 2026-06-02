@@ -1,0 +1,38 @@
+[package]
+name = "doublezero-passport-cli"
+
+# Workspace inherited keys
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+readme.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+# RFC-20 module crate: library-only, no [[bin]]. The unified `doublezero`
+# binary (and the offchain `doublezero-solana` binary) mount the exported
+# `Command` enum and drive it through `execute(ctx, out)`.
+[lib]
+name = "doublezero_passport_cli"
+
+[dependencies]
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+url.workspace = true
+solana-client.workspace = true
+solana-sdk.workspace = true
+
+doublezero-cli-core.workspace = true
+
+# Offchain workspace crates that own the passport transports/state.
+doublezero-solana-client-tools.workspace = true
+doublezero-solana-sdk.workspace = true
+doublezero-ledger-sentinel.workspace = true
+doublezero_sdk.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

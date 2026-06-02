@@ -9,6 +9,7 @@ members = [
     "crates/solana-admin-cli/passport",
     "crates/solana-admin-cli/revenue-distribution",
     "crates/solana-admin-cli/sol-conversion",
+    "crates/passport-cli",
     "crates/solana-cli",
     "crates/solana-client-tools",
     "crates/solana-fork",
@@ -45,6 +46,7 @@ clap = { version = "4", features = ["derive", "env"] }
 config = "0.15"
 csv = "1"
 dotenvy = "0.15"
+eyre = "0.6"
 futures = "0.3"
 governor = "0.6"
 hex = "0.4"
@@ -110,6 +112,20 @@ tag = "revenue-distribution/v0.3.6"
 
 ### Dependencies found in github.com/malbeclabs/doublezero
 
+# RFC-20 CLI core: provides CliContext, OutputFormat, RequirementCheck, the
+# render_* output helpers, and the eyre-based error type. Pinned to the tag
+# that introduced doublezero-cli-core (client/v0.25.0 == geolocation-cli/v0.24.0).
+[workspace.dependencies.doublezero-cli-core]
+git = "https://github.com/malbeclabs/doublezero"
+tag = "client/v0.25.0"
+
+# Source of the RFC-20 `Environment` enum consumed by `CliContext`. MUST be
+# pinned to the same tag as doublezero-cli-core so the `Environment` type
+# unifies across the boundary.
+[workspace.dependencies.doublezero-config]
+git = "https://github.com/malbeclabs/doublezero"
+tag = "client/v0.25.0"
+
 [workspace.dependencies.doublezero-program-common]
 git = "https://github.com/malbeclabs/doublezero"
 tag = "client/v0.20.0"
@@ -150,6 +166,9 @@ path = "crates/scheduled-command"
 
 [workspace.dependencies.doublezero-ledger-sentinel]
 path = "crates/sentinel"
+
+[workspace.dependencies.doublezero-passport-cli]
+path = "crates/passport-cli"
 
 [workspace.dependencies.doublezero-sol-conversion-interface]
 features = ["serde"]

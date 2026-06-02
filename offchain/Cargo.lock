@@ -2349,9 +2349,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
+name = "doublezero-cli-core"
+version = "0.25.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.0#c53e54a2306dd9f05421a927bd97d2add9f32ea7"
+dependencies = [
+ "bitflags",
+ "clap",
+ "doublezero-config 0.25.0",
+ "doublezero-program-common 0.25.0",
+ "eyre",
+ "serde",
+ "serde_json",
+ "solana-sdk",
+ "tabled",
+ "thiserror 2.0.17",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "doublezero-config"
 version = "0.20.0"
 source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
+dependencies = [
+ "eyre",
+ "serde",
+ "solana-sdk",
+]
+
+[[package]]
+name = "doublezero-config"
+version = "0.25.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.0#c53e54a2306dd9f05421a927bd97d2add9f32ea7"
 dependencies = [
  "eyre",
  "serde",
@@ -2376,7 +2405,7 @@ dependencies = [
  "config",
  "csv",
  "dotenvy",
- "doublezero-program-common",
+ "doublezero-program-common 0.20.0",
  "doublezero-program-tools",
  "doublezero-record",
  "doublezero-revenue-distribution",
@@ -2419,8 +2448,8 @@ source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37
 dependencies = [
  "borsh 1.5.7",
  "borsh-incremental",
- "doublezero-config",
- "doublezero-program-common",
+ "doublezero-config 0.20.0",
+ "doublezero-program-common 0.20.0",
  "doublezero-serviceability",
  "solana-bincode",
  "solana-loader-v3-interface 3.0.0",
@@ -2441,7 +2470,7 @@ dependencies = [
  "clap",
  "config",
  "doublezero-passport",
- "doublezero-program-common",
+ "doublezero-program-common 0.20.0",
  "doublezero-program-tools",
  "doublezero-record",
  "doublezero-revenue-distribution",
@@ -2504,9 +2533,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-passport-cli"
+version = "0.0.1"
+dependencies = [
+ "clap",
+ "doublezero-cli-core",
+ "doublezero-ledger-sentinel",
+ "doublezero-solana-client-tools",
+ "doublezero-solana-sdk",
+ "doublezero_sdk",
+ "serde",
+ "serde_json",
+ "solana-client",
+ "solana-sdk",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "doublezero-program-common"
 version = "0.20.0"
 source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
+dependencies = [
+ "borsh 1.5.7",
+ "byteorder",
+ "ipnetwork",
+ "serde",
+ "solana-program",
+ "solana-system-interface",
+]
+
+[[package]]
+name = "doublezero-program-common"
+version = "0.25.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.0#c53e54a2306dd9f05421a927bd97d2add9f32ea7"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -2608,7 +2670,7 @@ dependencies = [
  "borsh 1.5.7",
  "borsh-incremental",
  "bytemuck",
- "doublezero-program-common",
+ "doublezero-program-common 0.20.0",
  "ipnetwork",
  "serde",
  "serde_bytes",
@@ -2659,14 +2721,18 @@ dependencies = [
  "chrono",
  "clap",
  "csv",
+ "doublezero-cli-core",
+ "doublezero-config 0.25.0",
  "doublezero-contributor-rewards",
  "doublezero-ledger-sentinel",
+ "doublezero-passport-cli",
  "doublezero-scheduled-command",
  "doublezero-serviceability",
  "doublezero-solana-client-tools",
  "doublezero-solana-sdk",
  "doublezero-solana-validator-debt",
  "doublezero_sdk",
+ "eyre",
  "futures",
  "humantime",
  "itertools 0.14.0",
@@ -2818,8 +2884,8 @@ source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37
 dependencies = [
  "borsh 1.5.7",
  "borsh-incremental",
- "doublezero-config",
- "doublezero-program-common",
+ "doublezero-config 0.20.0",
+ "doublezero-program-common 0.20.0",
  "doublezero-serviceability",
  "serde",
  "serde_bytes",
@@ -2840,9 +2906,9 @@ dependencies = [
  "chrono",
  "directories-next",
  "dirs-next",
- "doublezero-config",
+ "doublezero-config 0.20.0",
  "doublezero-geolocation",
- "doublezero-program-common",
+ "doublezero-program-common 0.20.0",
  "doublezero-record",
  "doublezero-serviceability",
  "doublezero-telemetry",

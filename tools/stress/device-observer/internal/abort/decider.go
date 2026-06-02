@@ -47,9 +47,14 @@ const (
 
 	// deviceTunnelGapGrace is how long after a provision activate the
 	// device is given to converge before the device_tunnel_gap trigger
-	// inspects the runlog-vs-eAPI delta. A single batch's apply settles
-	// in well under 10 s in our local devnet; 30 s is conservative.
-	deviceTunnelGapGrace = 30 * time.Second
+	// inspects the runlog-vs-eAPI delta. At high user counts an agent
+	// apply cycle takes 30+ s (the config can run to 22k lines / 650 KB
+	// at ~290 users), so the grace has to clear a full slow apply
+	// while still firing when convergence is genuinely stuck. The
+	// agentSilenceThresh fires first on a truly hung agent — past that
+	// point a persistent gap is the controller's slot cap or an agent
+	// silently dropping work.
+	deviceTunnelGapGrace = agentSilenceThresh
 	// deviceTunnelGapThreshold is the minimum (active - tunnels) shortfall
 	// that fires the trigger. Small transient mismatches mid-commit
 	// shouldn't fire — anything past that is a real divergence (controller

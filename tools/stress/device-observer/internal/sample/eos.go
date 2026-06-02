@@ -10,8 +10,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -129,34 +127,13 @@ func (s *Sampler) runOne(c commandSpec, ts time.Time) error {
 	return nil
 }
 
-var (
-	topCPULineRE = regexp.MustCompile(`(?m)^%?Cpu\(s\):\s*(.+)$`)
-	cpuFieldRE   = regexp.MustCompile(`([0-9]+(?:[.,][0-9]+)?)\s*([a-zA-Z]+)`)
-)
-
 // parseCPUPercent extracts the total non-idle CPU percentage from the
-// `show processes top once | json` response. Two shapes are accepted:
-//
-//  1. Arista EOS / cEOS structured envelope:
-//     `{"cpuInfo":{"%Cpu(s)":{"idle":X,"user":Y,"system":Z,…}}, …}`.
-//     Every numeric sibling of `idle` is summed.
-//  2. Legacy procps text envelope: `{"output":"…%Cpu(s): … id, … us, …"}`.
-//     Retained so an operator can flip the command to `text` without
-//     breaking the abort decider.
-//
-// Returns (0, false) only when neither shape yields a recognizable
-// non-idle field. Locale-decimal commas in the text shape are tolerated.
+// `show processes top once | json` eAPI response, which has shape
+// `{"cpuInfo":{"%Cpu(s)":{"idle":X,"user":Y,"system":Z,…}}, …}`. Every
+// numeric sibling of `idle` is summed. The `%Cpu(s)` key embeds a
+// percent sign so the inner object can only be addressed via map
+// decoding.
 func parseCPUPercent(raw json.RawMessage) (float64, bool) {
-	if pct, ok := parseCPUPercentStructured(raw); ok {
-		return pct, true
-	}
-	return parseCPUPercentTextEnvelope(raw)
-}
-
-// parseCPUPercentStructured handles the EOS eAPI JSON shape, where the
-// `%Cpu(s)` key intentionally embeds the percent sign and is therefore
-// only addressable via map decoding.
-func parseCPUPercentStructured(raw json.RawMessage) (float64, bool) {
 	var env struct {
 		CPUInfo map[string]map[string]float64 `json:"cpuInfo"`
 	}
@@ -177,38 +154,6 @@ func parseCPUPercentStructured(raw json.RawMessage) (float64, bool) {
 		total += v
 	}
 	if !sawIdle {
-		return 0, false
-	}
-	return total, true
-}
-
-func parseCPUPercentTextEnvelope(raw json.RawMessage) (float64, bool) {
-	var env struct {
-		Output string `json:"output"`
-	}
-	if err := json.Unmarshal(raw, &env); err != nil || env.Output == "" {
-		return 0, false
-	}
-	m := topCPULineRE.FindStringSubmatch(env.Output)
-	if len(m) < 2 {
-		return 0, false
-	}
-	var total float64
-	var found bool
-	for _, pair := range cpuFieldRE.FindAllStringSubmatch(m[1], -1) {
-		label := strings.ToLower(pair[2])
-		if label == "id" {
-			found = true
-			continue
-		}
-		v, err := strconv.ParseFloat(strings.ReplaceAll(pair[1], ",", "."), 64)
-		if err != nil {
-			continue
-		}
-		total += v
-		found = true
-	}
-	if !found {
 		return 0, false
 	}
 	return total, true

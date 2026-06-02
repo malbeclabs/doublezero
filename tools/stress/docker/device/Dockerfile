@@ -22,6 +22,17 @@ RUN chmod +x /usr/local/bin/doublezero-agent
 # run-stress-local.sh plants the orchestrator's pubkey into this user's
 # authorized_keys at runtime (the keypair is generated per devnet, so we can't
 # bake it in).
-RUN useradd -m -s /bin/bash stress
+#
+# The agent shells out to `ip netns exec default /usr/bin/Cli -p 15 -c "show
+# session-config named X diffs"` to inspect the staged config session, and
+# `ip netns exec` requires CAP_SYS_ADMIN. Give `stress` passwordless sudo so
+# the wrapper can run the agent as root; without this every apply cycle ends
+# in "Operation not permitted" from netns_exec and the agent never settles.
+# Append to /etc/sudoers.Eos because cEOS overlays that template onto
+# /etc/sudoers at boot (and it does not source /etc/sudoers.d/), so any
+# rule we'd add to /etc/sudoers or /etc/sudoers.d/ gets wiped.
+RUN useradd -m -s /bin/bash stress \
+    && echo 'stress ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers.Eos \
+    && visudo -cf /etc/sudoers.Eos
 
 EXPOSE 22

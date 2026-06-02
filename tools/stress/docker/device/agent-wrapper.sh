@@ -4,7 +4,17 @@
 #   doublezero-agent -verbose [-controller HOST:PORT]
 # It does not pass -pubkey or enable metrics. This wrapper supplies both so
 # the agent can fetch its config and the observer can scrape its counters.
+#
+# The agent must run as root: it shells out to `ip netns exec default
+# /usr/bin/Cli` to inspect staged configure-session diffs, and that requires
+# CAP_SYS_ADMIN. We invoke ourselves through sudo so the agent runs with
+# the privilege it needs even when SSH lands the orchestrator as the `stress`
+# user. (The Dockerfile grants `stress` passwordless sudo.)
 set -eu
+
+if [ "$(id -u)" -ne 0 ]; then
+    exec sudo -E -- "$0" "$@"
+fi
 
 PUBKEY_FILE="/etc/doublezero/agent/pubkey"
 PUBKEY=""

@@ -33,7 +33,7 @@ impl UpdatePaymentStatusCliCommand {
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
-        tracing::debug!(env = %ctx.env, user = %self.user, "geolocation user update-payment");
+        tracing::debug!(env = %ctx.env, user = %self.user, "geolocation user update-payment-status");
 
         let payment_status = match self.status {
             PaymentStatus::Paid => GeolocationPaymentStatus::Paid,

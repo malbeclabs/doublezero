@@ -2,7 +2,7 @@ use crate::client::GeoCliCommand;
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::geolocation::programconfig::init::InitProgramConfigCommand;
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 
 #[derive(Args, Debug)]
 pub struct InitProgramConfigCliCommand {
@@ -21,7 +21,14 @@ impl InitProgramConfigCliCommand {
         tracing::debug!(env = %ctx.env, "geolocation init");
 
         if !self.yes {
-            eprint!("Initialize geolocation program config? This is a one-time operation. [y/N]: ");
+            if !std::io::stdin().is_terminal() {
+                eyre::bail!("stdin is not a terminal — pass --yes to skip confirmation");
+            }
+            write!(
+                out,
+                "Initialize geolocation program config? This is a one-time operation. [y/N]: "
+            )?;
+            out.flush()?;
             let mut input = String::new();
             std::io::stdin().read_line(&mut input)?;
             if !input.trim().eq_ignore_ascii_case("y") {
@@ -71,5 +78,22 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));
         assert!(output_str.contains(&config_pda.to_string()));
+    }
+
+    #[test]
+    fn test_cli_geo_init_rejects_non_tty() {
+        let client = MockGeoCliCommand::new();
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(InitProgramConfigCliCommand { yes: false }.execute(
+            &ctx,
+            &client,
+            &mut output,
+        ));
+        let err = res.unwrap_err();
+        assert!(
+            err.to_string().contains("stdin is not a terminal"),
+            "expected non-TTY error, got: {err}"
+        );
     }
 }

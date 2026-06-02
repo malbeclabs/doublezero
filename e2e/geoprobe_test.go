@@ -907,11 +907,11 @@ func createGeolocationUser(t *testing.T, dn *devnet.Devnet, code, tokenAccount s
 func updateGeolocationUserPayment(t *testing.T, dn *devnet.Devnet, code, status string) {
 	t.Helper()
 	output, err := dn.Manager.Exec(t.Context(), []string{
-		"doublezero", "geolocation", "user", "update-payment",
+		"doublezero", "geolocation", "user", "update-payment-status",
 		"--user", code,
 		"--status", status,
 	})
-	require.NoError(t, err, "user update-payment failed: %s", string(output))
+	require.NoError(t, err, "user update-payment-status failed: %s", string(output))
 }
 
 // setGeolocationUserResultDestination sets the result destination on a GeolocationUser.

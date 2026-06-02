@@ -4,7 +4,7 @@ use doublezero_cli_core::{validators::validate_pubkey_or_code, CliContext};
 use doublezero_sdk::geolocation::geolocation_user::{
     delete::DeleteGeolocationUserCommand, get::GetGeolocationUserCommand,
 };
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 
 #[derive(Args, Debug)]
 pub struct DeleteGeolocationUserCliCommand {
@@ -31,7 +31,11 @@ impl DeleteGeolocationUserCliCommand {
         let code = resolved_user.code;
 
         if !self.yes {
-            eprint!("Delete user '{}'? [y/N]: ", &code);
+            if !std::io::stdin().is_terminal() {
+                eyre::bail!("stdin is not a terminal — pass --yes to skip confirmation");
+            }
+            write!(out, "Delete user '{}'? [y/N]: ", &code)?;
+            out.flush()?;
             let mut input = String::new();
             std::io::stdin().read_line(&mut input)?;
             if !input.trim().eq_ignore_ascii_case("y") {
@@ -129,5 +133,50 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));
+    }
+
+    #[test]
+    fn test_cli_geolocation_user_delete_rejects_non_tty() {
+        let mut client = MockGeoCliCommand::new();
+
+        client
+            .expect_get_geolocation_user()
+            .with(predicate::eq(GetGeolocationUserCommand {
+                pubkey_or_code: "geo-user-01".to_string(),
+            }))
+            .returning(move |_| {
+                Ok((
+                    Pubkey::new_unique(),
+                    GeolocationUser {
+                        account_type: AccountType::GeolocationUser,
+                        owner: Pubkey::new_unique(),
+                        code: "geo-user-01".to_string(),
+                        token_account: Pubkey::new_unique(),
+                        payment_status: GeolocationPaymentStatus::Paid,
+                        billing: GeolocationBillingConfig::FlatPerEpoch(FlatPerEpochConfig {
+                            rate: 1000,
+                            last_deduction_dz_epoch: 42,
+                        }),
+                        status: GeolocationUserStatus::Activated,
+                        targets: vec![],
+                        result_destination: String::new(),
+                    },
+                ))
+            });
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            DeleteGeolocationUserCliCommand {
+                user: "geo-user-01".to_string(),
+                yes: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        let err = res.unwrap_err();
+        assert!(
+            err.to_string().contains("stdin is not a terminal"),
+            "expected non-TTY error, got: {err}"
+        );
     }
 }

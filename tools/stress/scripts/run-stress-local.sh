@@ -140,6 +140,35 @@ CONTROLLER_IP="$(docker inspect "${DEPLOY_ID}-controller" \
 LEDGER_IP="$(docker inspect "${DEPLOY_ID}-ledger" \
     --format "{{(index .NetworkSettings.Networks \"${DEFAULT_NETWORK}\").IPAddress}}")"
 
+# dzctl bails on `doublezero geolocation init` before starting the
+# controller, so start it ourselves if missing. The agent's config-fetch
+# path goes through it; without it the agent's polling loop errors and
+# the orchestrator never sees a healthy apply.
+CONTROLLER_NAME="${DEPLOY_ID}-controller"
+if [ -z "$CONTROLLER_IP" ]; then
+    log "starting $CONTROLLER_NAME (dzctl skipped it)"
+    SERVICEABILITY_PROGRAM_ID="$(docker exec "${DEPLOY_ID}-manager" \
+        solana address -k /etc/doublezero/manager/dz-program-keypair.json \
+        | tr -d '[:space:]')"
+    docker run -d \
+        --name "$CONTROLLER_NAME" \
+        --hostname controller \
+        --network "$DEFAULT_NETWORK" \
+        --label "dz.malbeclabs.com/type=devnet" \
+        --label "dz.malbeclabs.com/deploy-id=${DEPLOY_ID}" \
+        -e "DZ_LEDGER_URL=http://ledger:8899" \
+        -e "DZ_SERVICEABILITY_PROGRAM_ID=${SERVICEABILITY_PROGRAM_ID}" \
+        "${DZ_CONTROLLER_IMAGE:-dz-local/controller:dev}" >/dev/null
+    # Re-inspect for the IP.
+    for _ in $(seq 1 10); do
+        CONTROLLER_IP="$(docker inspect "$CONTROLLER_NAME" \
+            --format "{{(index .NetworkSettings.Networks \"${DEFAULT_NETWORK}\").IPAddress}}" 2>/dev/null || true)"
+        [ -n "$CONTROLLER_IP" ] && break
+        sleep 1
+    done
+    [ -n "$CONTROLLER_IP" ] || { echo "controller did not get a default-network IP" >&2; exit 1; }
+fi
+
 # Derive an IP inside the CYOA subnet (host octet = DEVICE_HOST_ID) and a
 # globally-routable /29 dz_prefix at a non-overlapping host offset. Mirrors
 # the rules in e2e/internal/devnet/device.go.
@@ -360,6 +389,23 @@ log "device onchain pubkey: $DEVICE_PUBKEY"
 # Plant the pubkey on the device so the agent wrapper can supply --pubkey.
 echo -n "$DEVICE_PUBKEY" | docker exec -i "$CONTAINER_NAME" \
     bash -c 'cat > /etc/doublezero/agent/pubkey'
+
+# Register VPNv4/IPv4 loopback interfaces onchain. Without these, the
+# controller reports "device has pathology" every poll and returns an
+# empty config — the agent runs but has nothing to apply. The interface
+# names + types mirror the e2e harness.
+for entry in "Loopback255:vpnv4" "Loopback256:ipv4"; do
+    iface="${entry%:*}"
+    iftype="${entry#*:}"
+    out=$(docker exec "${DEPLOY_ID}-manager" \
+        doublezero device interface create "$DEVICE_CODE" "$iface" \
+            --loopback-type "$iftype" --bandwidth 10G 2>&1) || true
+    if echo "$out" | grep -q "already exists"; then
+        log "loopback ${iface} (${iftype}) already exists onchain"
+    else
+        log "registered loopback ${iface} (${iftype})"
+    fi
+done
 
 PROGRAM_ID="$(docker exec "${DEPLOY_ID}-manager" \
     solana address -k /etc/doublezero/manager/dz-program-keypair.json | tr -d '[:space:]')"

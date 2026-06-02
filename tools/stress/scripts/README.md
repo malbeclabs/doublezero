@@ -37,27 +37,39 @@ Both processes keep running in the background. Stop them with the
 
 ## What the stress device differs from the e2e device
 
-It is the same cEOS base, but the startup config (rendered at run time by the
-script) drops the `daemon doublezero-agent` and `daemon doublezero-telemetry`
-blocks. SSH access for `admin` is enabled via the orchestrator's
-auto-generated ed25519 key, and the admin login shell in `/etc/passwd` is
-flipped to `/bin/bash` after EOS boot so the SSH-exec'd
-`doublezero-agent …` command runs through bash instead of the Cli parser.
+It is the same cEOS base, but the startup config (rendered at run time
+by the script) drops the `daemon doublezero-agent` and
+`daemon doublezero-telemetry` blocks. cEOS pins admin's NSS shell to
+`/usr/bin/RunCli` (the EOS Cli wrapper), so the image adds a separate
+`stress` system user with `/bin/bash`; the script plants the
+orchestrator's pubkey into its authorized_keys at runtime, and the
+orchestrator's SSH session connects as `stress`.
+
+## Agent metrics port: why 50100, not 9100
+
+The agent's prometheus listener is parked on `:50100`, not the default
+`:9100`. The cEOS device's `system control-plane` binds
+`MAIN-CONTROL-PLANE-ACL` (no `-MGMT` suffix), and the
+doublezero-controller's pushed device config fully redefines that ACL
+on every apply (starting with `no ip access-list
+MAIN-CONTROL-PLANE-ACL`). Any port permit we add via our startup-config
+is wiped on the first agent apply. The controller's default ACL does
+permit TCP `50000-50100`, so the wrapper at
+`/usr/local/bin/doublezero-agent` sets `-metrics-addr :50100` and the
+script points the observer's `--agent-metrics-url` at the same port.
 
 ## Caveats / known issues
 
 - The orchestrator's hardcoded SSH command is
   `doublezero-agent -verbose [-controller HOST:PORT]`. It does not pass
-  `-pubkey` or `-metrics-enable`. The stress image works around this with
-  the wrapper at `/usr/local/bin/doublezero-agent`, which injects
+  `-pubkey` or `-metrics-enable`. The stress image works around this
+  with the wrapper at `/usr/local/bin/doublezero-agent`, which injects
   `-pubkey` from `/etc/doublezero/agent/pubkey` and turns on metrics on
-  `:9100`.
-- Use `--no-agent` to skip the SSH agent entirely; the orchestrator will
-  only drive the onchain sweep and the observer will only see passive
-  device state (no agent-log / metrics rows). Useful as a first smoke test.
-- The observer's `agent_silence` and `apply_config_errors` triggers depend
-  on the agent's metrics endpoint being reachable — they stay quiet under
-  `--no-agent`.
+  `:50100`.
+- Use `--no-agent` to skip the SSH agent entirely; the orchestrator
+  will only drive the onchain sweep and the observer will only see
+  passive device state (no agent-log / metrics rows). Useful as a
+  first smoke test.
 
 ## Teardown
 

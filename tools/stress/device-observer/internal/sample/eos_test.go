@@ -297,6 +297,54 @@ func TestLatestCPUUpdated(t *testing.T) {
 	}
 }
 
+// TestParseCPUPercentStructured covers the EOS eAPI JSON shape that the
+// sampler actually receives from `show processes top once | json` on
+// real (and containerized) Arista boxes. The fixture is a verbatim
+// capture from a cEOS device.
+func TestParseCPUPercentStructured(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "ceos-show-processes-top-once.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	// Fixture has user=1, system=0.3, all others 0, idle=98.7.
+	const want = 1.3
+	got, ok := parseCPUPercent(raw)
+	if !ok {
+		t.Fatal("parseCPUPercent returned ok=false for cEOS fixture")
+	}
+	const eps = 0.001
+	if got < want-eps || got > want+eps {
+		t.Errorf("got = %v, want %v", got, want)
+	}
+
+	t.Run("idle only", func(t *testing.T) {
+		body := []byte(`{"cpuInfo":{"%Cpu(s)":{"idle":100,"user":0,"system":0}}}`)
+		got, ok := parseCPUPercent(body)
+		if !ok {
+			t.Fatal("ok=false")
+		}
+		if got != 0 {
+			t.Errorf("got = %v, want 0", got)
+		}
+	})
+
+	t.Run("missing idle field", func(t *testing.T) {
+		// No `idle` key means the response is malformed or partial;
+		// reject rather than report a misleading non-zero sum.
+		body := []byte(`{"cpuInfo":{"%Cpu(s)":{"user":1,"system":2}}}`)
+		if _, ok := parseCPUPercent(body); ok {
+			t.Error("expected ok=false when idle field absent")
+		}
+	})
+
+	t.Run("missing cpuInfo", func(t *testing.T) {
+		body := []byte(`{"processes":{}}`)
+		if _, ok := parseCPUPercent(body); ok {
+			t.Error("expected ok=false when cpuInfo absent")
+		}
+	})
+}
+
 // Sampler must satisfy collector.Collector via Run(ctx) error.
 type runnable interface {
 	Run(ctx context.Context) error

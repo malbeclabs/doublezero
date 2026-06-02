@@ -135,10 +135,54 @@ var (
 )
 
 // parseCPUPercent extracts the total non-idle CPU percentage from the
-// Arista `show processes top once | json` envelope, which wraps procps
-// `top -bn1` output as `{"output":"…%Cpu(s): …"}`. Sums every numeric
-// field except `id` (idle); tolerates locale-decimal commas.
+// `show processes top once | json` response. Two shapes are accepted:
+//
+//  1. Arista EOS / cEOS structured envelope:
+//     `{"cpuInfo":{"%Cpu(s)":{"idle":X,"user":Y,"system":Z,…}}, …}`.
+//     Every numeric sibling of `idle` is summed.
+//  2. Legacy procps text envelope: `{"output":"…%Cpu(s): … id, … us, …"}`.
+//     Retained so an operator can flip the command to `text` without
+//     breaking the abort decider.
+//
+// Returns (0, false) only when neither shape yields a recognizable
+// non-idle field. Locale-decimal commas in the text shape are tolerated.
 func parseCPUPercent(raw json.RawMessage) (float64, bool) {
+	if pct, ok := parseCPUPercentStructured(raw); ok {
+		return pct, true
+	}
+	return parseCPUPercentTextEnvelope(raw)
+}
+
+// parseCPUPercentStructured handles the EOS eAPI JSON shape, where the
+// `%Cpu(s)` key intentionally embeds the percent sign and is therefore
+// only addressable via map decoding.
+func parseCPUPercentStructured(raw json.RawMessage) (float64, bool) {
+	var env struct {
+		CPUInfo map[string]map[string]float64 `json:"cpuInfo"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil || len(env.CPUInfo) == 0 {
+		return 0, false
+	}
+	fields, ok := env.CPUInfo["%Cpu(s)"]
+	if !ok || len(fields) == 0 {
+		return 0, false
+	}
+	var total float64
+	var sawIdle bool
+	for k, v := range fields {
+		if strings.EqualFold(k, "idle") {
+			sawIdle = true
+			continue
+		}
+		total += v
+	}
+	if !sawIdle {
+		return 0, false
+	}
+	return total, true
+}
+
+func parseCPUPercentTextEnvelope(raw json.RawMessage) (float64, bool) {
 	var env struct {
 		Output string `json:"output"`
 	}

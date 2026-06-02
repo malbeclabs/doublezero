@@ -5,7 +5,9 @@ use doublezero_geolocation::state::geolocation_user::{
     GeoLocationTargetType, GeolocationBillingConfig,
 };
 use doublezero_program_common::serializer;
-use doublezero_sdk::geolocation::geolocation_user::get::GetGeolocationUserCommand;
+use doublezero_sdk::geolocation::{
+    geo_probe::list::ListGeoProbeCommand, geolocation_user::get::GetGeolocationUserCommand,
+};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
@@ -50,8 +52,10 @@ struct TargetDisplay {
     pub port: u16,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub target_signing_pubkey: Pubkey,
-    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(rename = "probe")]
+    pub probe: String,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    #[tabled(skip)]
     pub geoprobe_pk: Pubkey,
 }
 
@@ -68,6 +72,13 @@ impl GetGeolocationUserCliCommand {
             pubkey_or_code: self.user,
         })?;
 
+        let probes = client
+            .list_geo_probes(ListGeoProbeCommand)
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "failed to list geo probes; showing probe pubkey");
+                Default::default()
+            });
+
         let targets: Vec<TargetDisplay> = user
             .targets
             .iter()
@@ -78,11 +89,16 @@ impl GetGeolocationUserCliCommand {
                     }
                     GeoLocationTargetType::Inbound => ("-".to_string(), 0),
                 };
+                let probe = probes
+                    .get(&t.geoprobe_pk)
+                    .map(|p| p.code.clone())
+                    .unwrap_or_else(|| t.geoprobe_pk.to_string());
                 TargetDisplay {
                     target_type: t.target_type.to_string(),
                     ip,
                     port,
                     target_signing_pubkey: t.target_pk,
+                    probe,
                     geoprobe_pk: t.geoprobe_pk,
                 }
             })
@@ -161,6 +177,7 @@ mod tests {
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_geolocation::state::{
         accounttype::AccountType,
+        geo_probe::GeoProbe,
         geolocation_user::{
             FlatPerEpochConfig, GeoLocationTargetType, GeolocationPaymentStatus, GeolocationTarget,
             GeolocationUser, GeolocationUserStatus,
@@ -168,7 +185,27 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
-    use std::net::Ipv4Addr;
+    use std::{collections::HashMap, net::Ipv4Addr};
+
+    fn make_probes(probe_pk: Pubkey, code: &str) -> HashMap<Pubkey, GeoProbe> {
+        let mut probes = HashMap::new();
+        probes.insert(
+            probe_pk,
+            GeoProbe {
+                account_type: AccountType::GeoProbe,
+                owner: Pubkey::default(),
+                exchange_pk: Pubkey::default(),
+                public_ip: Ipv4Addr::new(10, 0, 0, 1),
+                location_offset_port: 8923,
+                code: code.to_string(),
+                parent_devices: vec![],
+                metrics_publisher_pk: Pubkey::default(),
+                reference_count: 0,
+                target_update_count: 0,
+            },
+        );
+        probes
+    }
 
     fn make_user(code: &str, targets: Vec<GeolocationTarget>) -> GeolocationUser {
         GeolocationUser {
@@ -211,6 +248,11 @@ mod tests {
             }))
             .returning(move |_| Ok((user_pk, user.clone())));
 
+        let probes = make_probes(probe_pk, "ams-probe-01");
+        client
+            .expect_list_geo_probes()
+            .returning(move |_| Ok(probes.clone()));
+
         let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
         let res = block_on(
@@ -236,6 +278,96 @@ mod tests {
         assert!(has_row("target_count", "1"));
         assert!(output_str.contains("Targets:"));
         assert!(output_str.contains("8.8.8.8"));
+        // probe column shows the code, not the pubkey
+        assert!(output_str.contains("ams-probe-01"));
+        assert!(!output_str.contains(&probe_pk.to_string()));
+    }
+
+    #[test]
+    fn test_cli_geolocation_user_get_unknown_probe_falls_back_to_pubkey() {
+        let mut client = MockGeoCliCommand::new();
+        let user_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
+        let probe_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+
+        let user = make_user(
+            "geo-user-01",
+            vec![GeolocationTarget {
+                target_type: GeoLocationTargetType::Outbound,
+                ip_address: Ipv4Addr::new(8, 8, 8, 8),
+                location_offset_port: 8923,
+                target_pk: Pubkey::default(),
+                geoprobe_pk: probe_pk,
+            }],
+        );
+
+        client
+            .expect_get_geolocation_user()
+            .with(predicate::eq(GetGeolocationUserCommand {
+                pubkey_or_code: user_pk.to_string(),
+            }))
+            .returning(move |_| Ok((user_pk, user.clone())));
+
+        client
+            .expect_list_geo_probes()
+            .returning(|_| Ok(HashMap::new()));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            GetGeolocationUserCliCommand {
+                user: user_pk.to_string(),
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains(&probe_pk.to_string()));
+    }
+
+    #[test]
+    fn test_cli_geolocation_user_get_probe_list_error_falls_back_to_pubkey() {
+        let mut client = MockGeoCliCommand::new();
+        let user_pk = Pubkey::from_str_const("BmrLoL9jzYo4yiPUsFhYFU8hgE3CD3Npt8tgbqvneMyB");
+        let probe_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+
+        let user = make_user(
+            "geo-user-01",
+            vec![GeolocationTarget {
+                target_type: GeoLocationTargetType::Outbound,
+                ip_address: Ipv4Addr::new(8, 8, 8, 8),
+                location_offset_port: 8923,
+                target_pk: Pubkey::default(),
+                geoprobe_pk: probe_pk,
+            }],
+        );
+
+        client
+            .expect_get_geolocation_user()
+            .with(predicate::eq(GetGeolocationUserCommand {
+                pubkey_or_code: user_pk.to_string(),
+            }))
+            .returning(move |_| Ok((user_pk, user.clone())));
+
+        // A failure to list probes must not abort the command; it falls back to the pubkey.
+        client
+            .expect_list_geo_probes()
+            .returning(|_| Err(eyre::eyre!("rpc error")));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            GetGeolocationUserCliCommand {
+                user: user_pk.to_string(),
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains(&probe_pk.to_string()));
     }
 
     #[test]
@@ -251,6 +383,10 @@ mod tests {
                 pubkey_or_code: user_pk.to_string(),
             }))
             .returning(move |_| Ok((user_pk, user.clone())));
+
+        client
+            .expect_list_geo_probes()
+            .returning(|_| Ok(HashMap::new()));
 
         let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
@@ -287,6 +423,10 @@ mod tests {
                 pubkey_or_code: user_pk.to_string(),
             }))
             .returning(move |_| Ok((user_pk, user.clone())));
+
+        client
+            .expect_list_geo_probes()
+            .returning(|_| Ok(HashMap::new()));
 
         let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
@@ -327,6 +467,11 @@ mod tests {
             }))
             .returning(move |_| Ok((user_pk, user.clone())));
 
+        let probes = make_probes(probe_pk, "ams-probe-01");
+        client
+            .expect_list_geo_probes()
+            .returning(move |_| Ok(probes.clone()));
+
         let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
         let res = block_on(
@@ -347,5 +492,14 @@ mod tests {
         assert_eq!(json["target_count"].as_u64().unwrap(), 1);
         assert_eq!(json["targets"].as_array().unwrap().len(), 1);
         assert_eq!(json["targets"][0]["ip"].as_str().unwrap(), "8.8.8.8");
+        // JSON carries the resolved probe code plus the canonical pubkey
+        assert_eq!(
+            json["targets"][0]["probe"].as_str().unwrap(),
+            "ams-probe-01"
+        );
+        assert_eq!(
+            json["targets"][0]["geoprobe_pk"].as_str().unwrap(),
+            probe_pk.to_string()
+        );
     }
 }

@@ -140,34 +140,59 @@ CONTROLLER_IP="$(docker inspect "${DEPLOY_ID}-controller" \
 LEDGER_IP="$(docker inspect "${DEPLOY_ID}-ledger" \
     --format "{{(index .NetworkSettings.Networks \"${DEFAULT_NETWORK}\").IPAddress}}")"
 
-# dzctl bails on `doublezero geolocation init` before starting the
-# controller, so start it ourselves if missing. The agent's config-fetch
-# path goes through it; without it the agent's polling loop errors and
-# the orchestrator never sees a healthy apply.
+# The controller defaults `-max-user-tunnel-slots` to 128 — beyond that the
+# controller renders only the first 128 tunnels in the device config and
+# the agent never knows about higher-index users (the orchestrator's
+# onchain provisions succeed regardless, so the bug is silent). Always
+# restart the controller with our slot count derived from TARGET_USERS so
+# stress sweeps past 128 users actually exercise the device. This also
+# replaces any controller dzctl may have started before failing on its
+# broken geolocation init step (we override the entrypoint to keep the
+# ledger-readiness wait and inject the flag).
 CONTROLLER_NAME="${DEPLOY_ID}-controller"
-if [ -z "$CONTROLLER_IP" ]; then
-    log "starting $CONTROLLER_NAME (dzctl skipped it)"
-    SERVICEABILITY_PROGRAM_ID="$(docker exec "${DEPLOY_ID}-manager" \
-        solana address -k /etc/doublezero/manager/dz-program-keypair.json \
-        | tr -d '[:space:]')"
-    docker run -d \
-        --name "$CONTROLLER_NAME" \
-        --hostname controller \
-        --network "$DEFAULT_NETWORK" \
-        --label "dz.malbeclabs.com/type=devnet" \
-        --label "dz.malbeclabs.com/deploy-id=${DEPLOY_ID}" \
-        -e "DZ_LEDGER_URL=http://ledger:8899" \
-        -e "DZ_SERVICEABILITY_PROGRAM_ID=${SERVICEABILITY_PROGRAM_ID}" \
-        "${DZ_CONTROLLER_IMAGE:-dz-local/controller:dev}" >/dev/null
-    # Re-inspect for the IP.
-    for _ in $(seq 1 10); do
-        CONTROLLER_IP="$(docker inspect "$CONTROLLER_NAME" \
-            --format "{{(index .NetworkSettings.Networks \"${DEFAULT_NETWORK}\").IPAddress}}" 2>/dev/null || true)"
-        [ -n "$CONTROLLER_IP" ] && break
-        sleep 1
-    done
-    [ -n "$CONTROLLER_IP" ] || { echo "controller did not get a default-network IP" >&2; exit 1; }
+CONTROLLER_MAX_SLOTS="${DZ_STRESS_CONTROLLER_MAX_SLOTS:-$TARGET_USERS}"
+if [ "$CONTROLLER_MAX_SLOTS" -lt 128 ]; then
+    CONTROLLER_MAX_SLOTS=128
 fi
+log "starting $CONTROLLER_NAME (max-user-tunnel-slots=$CONTROLLER_MAX_SLOTS)"
+docker rm -f "$CONTROLLER_NAME" >/dev/null 2>&1 || true
+SERVICEABILITY_PROGRAM_ID="$(docker exec "${DEPLOY_ID}-manager" \
+    solana address -k /etc/doublezero/manager/dz-program-keypair.json \
+    | tr -d '[:space:]')"
+docker run -d \
+    --name "$CONTROLLER_NAME" \
+    --hostname controller \
+    --network "$DEFAULT_NETWORK" \
+    --label "dz.malbeclabs.com/type=devnet" \
+    --label "dz.malbeclabs.com/deploy-id=${DEPLOY_ID}" \
+    -e "DZ_LEDGER_URL=http://ledger:8899" \
+    -e "DZ_SERVICEABILITY_PROGRAM_ID=${SERVICEABILITY_PROGRAM_ID}" \
+    --entrypoint bash \
+    "${DZ_CONTROLLER_IMAGE:-dz-local/controller:dev}" \
+    -c "
+        while ! curl -sf -X POST -H 'Content-Type: application/json' \\
+            --data '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getHealth\"}' \\
+            \"\${DZ_LEDGER_URL}\" | grep -q '\"result\":\"ok\"'; do
+            echo 'Waiting for solana validator to be ready...'
+            sleep 1
+        done
+        exec doublezero-controller start \\
+            -listen-addr 0.0.0.0 -listen-port 7000 \\
+            -program-id \"\${DZ_SERVICEABILITY_PROGRAM_ID}\" \\
+            -solana-rpc-endpoint \"\${DZ_LEDGER_URL}\" \\
+            -device-local-asn 65342 \\
+            -max-user-tunnel-slots ${CONTROLLER_MAX_SLOTS} \\
+            -no-hardware
+    " >/dev/null
+# Re-inspect for the IP.
+CONTROLLER_IP=""
+for _ in $(seq 1 10); do
+    CONTROLLER_IP="$(docker inspect "$CONTROLLER_NAME" \
+        --format "{{(index .NetworkSettings.Networks \"${DEFAULT_NETWORK}\").IPAddress}}" 2>/dev/null || true)"
+    [ -n "$CONTROLLER_IP" ] && break
+    sleep 1
+done
+[ -n "$CONTROLLER_IP" ] || { echo "controller did not get a default-network IP" >&2; exit 1; }
 
 # Derive an IP inside the CYOA subnet (host octet = DEVICE_HOST_ID) and a
 # globally-routable /29 dz_prefix at a non-overlapping host offset. Mirrors
@@ -421,11 +446,20 @@ chmod 600 "$KEYPAIR_LOCAL"
 # keyed on (client_ip, user_payer). The orchestrator signs as the manager, so
 # user_payer is the manager's pubkey. Sweep CLIENT_IP_BASE + 0..N to cover
 # every IP the orchestrator might use.
+#
+# The set-access-pass calls fan out via xargs -P so high user counts don't
+# bottleneck on serial CLI roundtrips — at 1024 users a serial loop is 12+
+# minutes of sustained txn submission per second and can knock the local
+# validator over, while batches of ACCESS_PASS_PARALLEL concurrent calls
+# complete in well under a minute.
 PAYER_PUBKEY="$(docker exec "${DEPLOY_ID}-manager" \
     solana-keygen pubkey /root/.config/doublezero/id.json | tr -d '[:space:]')"
 IFS=. read -r b1 b2 b3 b4 <<<"$CLIENT_IP_BASE"
-log "creating access passes for ${CLIENT_IP_BASE}+0..$((TARGET_USERS-1)) (payer=$PAYER_PUBKEY)"
-for i in $(seq 0 $((TARGET_USERS - 1))); do
+ACCESS_PASS_PARALLEL="${DZ_STRESS_ACCESS_PASS_PARALLEL:-16}"
+log "creating access passes for ${CLIENT_IP_BASE}+0..$((TARGET_USERS-1)) (payer=$PAYER_PUBKEY, parallel=$ACCESS_PASS_PARALLEL)"
+export DEPLOY_ID PAYER_PUBKEY b1 b2 b3 b4
+seq 0 $((TARGET_USERS - 1)) | xargs -P "$ACCESS_PASS_PARALLEL" -I{} bash -c '
+    i=$1
     host=$(( (b3 << 8) + b4 + i ))
     octet3=$(( (host >> 8) & 0xff ))
     octet4=$(( host & 0xff ))
@@ -435,7 +469,7 @@ for i in $(seq 0 $((TARGET_USERS - 1))); do
             --accesspass-type prepaid \
             --client-ip "$client_ip" \
             --user-payer "$PAYER_PUBKEY" >/dev/null
-done
+' _ {}
 
 # ---------------------------------------------------------------------------
 # Phase 8: build orchestrator + observer

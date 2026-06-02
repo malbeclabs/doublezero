@@ -282,12 +282,25 @@ cancels the observer's root context so the process exits.
 | `provision_single_user`      | same                                                  | any single duration > 30 s                                                                 |
 | `deprovision_p95`            | runlog `deprovision_submit`→`deprovision_activate`    | ≥ 4 samples and p95 > 30 s                                                                 |
 | `cpu_sustained`              | `show processes top once` (`LatestCPUPercent`)        | ≥ 4 samples spanning ≥ 60 s, all ≥ 80% (so a transient spike does not fire on startup)     |
-| `apply_config_errors`        | Prometheus `doublezero_agent_apply_config_errors_total` | counter strictly greater than the previous tick's value (first observation seeds only)   |
+| `apply_config_errors`        | Prometheus `doublezero_agent_apply_config_errors_total` | counter strictly greater than the previous tick's value, after `startupGrace` (60 s)     |
 | `get_config_errors`          | Prometheus `doublezero_agent_get_config_errors_total`  | same                                                                                       |
-| `diff_timeout`               | agent-log substring `could not get diff`              | match count strictly greater than the previous tick's value                                |
+| `diff_timeout`               | agent-log substring `could not get diff`              | match count strictly greater than the previous tick's value, after `startupGrace` (60 s)   |
 | `lock_not_taken`             | agent-log substring `not overriding lock since its age` | same                                                                                     |
 | `agent_silence`              | `AgentTail.Snapshot().LastLineAt`                     | `LastLineAt` non-zero AND `now - LastLineAt > 15 s` (suppressed before any line is seen)   |
 | `ledger_heartbeat_stale`     | mtime of `<working-dir>/orchestrator.ledger_heartbeat` | file present AND `now - mtime > 30 s` (absent file is suppressed forward-compatibly)      |
+
+**Startup grace.** The four counter and log-pattern triggers
+(`apply_config_errors`, `get_config_errors`, `diff_timeout`,
+`lock_not_taken`) absorb increments observed in the first 60 seconds
+after the decider starts. The doublezero-agent's first commit attempt
+on a fresh device reliably races with EOS session validation and
+increments these metrics/patterns once — a known transient that should
+not abort the sweep. During grace the baseline keeps reseeding to the
+latest observation, so a single startup-time increment becomes the
+post-grace baseline; the next increment after grace fires the trigger
+as before. The CPU and p95 triggers are unaffected (they have their
+own `minSamples` / window requirements that already absorb startup
+noise).
 
 ## Operator contract
 

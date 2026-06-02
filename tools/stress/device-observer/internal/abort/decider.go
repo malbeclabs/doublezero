@@ -27,6 +27,16 @@ const (
 	ledgerStaleThresh    = 30 * time.Second
 	batchWindow          = 5 * time.Minute
 
+	// startupGrace suppresses the counter- and log-pattern-based triggers
+	// for the first window after the decider starts. The doublezero-agent
+	// reliably emits an apply_config_errors / "could not get diff" race on
+	// its first commit attempt as EOS validates the new session — a real
+	// transient, not a sweep failure. The provision/deprovision and CPU
+	// triggers are unaffected (they have their own minSamples / window
+	// requirements). After grace, a single counter or pattern increment
+	// fires the trigger as before.
+	startupGrace = 60 * time.Second
+
 	// minSamples gates per-tick triggers below which a single outlier
 	// could trip the orchestrator on startup or an empty batch.
 	minSamples = 4
@@ -75,6 +85,7 @@ type Decider struct {
 	cfg Config
 
 	mu             sync.Mutex
+	startedAt      time.Time
 	prevCounters   map[string]float64
 	countersSeeded bool
 	prevPatterns   map[string]int
@@ -97,6 +108,7 @@ func New(cfg Config) *Decider {
 	}
 	return &Decider{
 		cfg:          cfg,
+		startedAt:    cfg.now(),
 		prevCounters: map[string]float64{},
 		prevPatterns: map[string]int{},
 	}
@@ -171,9 +183,16 @@ func (d *Decider) tick() {
 		}
 	}
 
+	// Counter and log-pattern triggers absorb the agent's startup race for
+	// `startupGrace` after the decider starts: keep reseeding `prev*` so
+	// the increments accumulated during that window become the new
+	// baseline, and don't fire. After grace, the existing increment-fires
+	// logic applies against the latest baseline.
+	pastGrace := now.Sub(d.startedAt) >= startupGrace
+
 	if f := d.cfg.Sources.PromSnapshot; f != nil {
 		counters := f()
-		if d.countersSeeded {
+		if d.countersSeeded && pastGrace {
 			for _, c := range []struct{ name, trigger string }{
 				{metricApplyConfigErrors, TriggerApplyConfigErrors},
 				{metricGetConfigErrors, TriggerGetConfigErrors},
@@ -192,7 +211,7 @@ func (d *Decider) tick() {
 
 	if f := d.cfg.Sources.AgentSnapshot; f != nil {
 		snap := f()
-		if d.patternsSeeded {
+		if d.patternsSeeded && pastGrace {
 			for _, p := range []struct{ name, trigger string }{
 				{loggingtail.PatternDiffTimeout, TriggerDiffTimeout},
 				{loggingtail.PatternLockNotTaken, TriggerLockNotTaken},

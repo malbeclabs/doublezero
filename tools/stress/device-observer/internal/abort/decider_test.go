@@ -179,7 +179,8 @@ func TestApplyConfigErrorsCounter(t *testing.T) {
 			return out
 		},
 	}, &fire, fixedNow(now))
-	d.tick() // seeds prev
+	d.startedAt = now.Add(-2 * startupGrace) // bypass startup grace
+	d.tick()                                 // seeds prev
 	if fire.Load() != 0 {
 		t.Fatal("should not fire on first observation")
 	}
@@ -204,6 +205,7 @@ func TestGetConfigErrorsCounter(t *testing.T) {
 			return out
 		},
 	}, &fire, fixedNow(now))
+	d.startedAt = now.Add(-2 * startupGrace) // bypass startup grace
 	d.tick()
 	current[metricGetConfigErrors] = 5
 	d.tick()
@@ -226,7 +228,8 @@ func TestDiffTimeoutPattern(t *testing.T) {
 			return loggingtail.AgentSnapshot{MatchCounts: cp, LastLineAt: now}
 		},
 	}, &fire, fixedNow(now))
-	d.tick() // seed
+	d.startedAt = now.Add(-2 * startupGrace) // bypass startup grace
+	d.tick()                                 // seed
 	counts[loggingtail.PatternDiffTimeout] = 1
 	d.tick()
 	got := readSentinel(t, d.cfg.AbortFile)
@@ -248,11 +251,102 @@ func TestLockNotTakenPattern(t *testing.T) {
 			return loggingtail.AgentSnapshot{MatchCounts: cp, LastLineAt: now}
 		},
 	}, &fire, fixedNow(now))
+	d.startedAt = now.Add(-2 * startupGrace) // bypass startup grace
 	d.tick()
 	counts[loggingtail.PatternLockNotTaken] = 2
 	d.tick()
 	got := readSentinel(t, d.cfg.AbortFile)
 	if got["trigger"] != TriggerLockNotTaken {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+// TestStartupGraceSuppressesCounterTrigger covers the grace contract:
+// within `startupGrace` of the decider start, even a counter increment
+// (and a corresponding agent log pattern increment) must not fire. After
+// grace, the next increment fires against the post-grace baseline.
+func TestStartupGraceSuppressesCounterTrigger(t *testing.T) {
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var step atomic.Int64
+	// 20s per call: New() captures startedAt at t=base+20s; ticks 1-3
+	// fall at +40s, +60s, +80s (deltas 20s, 40s, 60s from startedAt — all
+	// still within the 60s grace, since the gate is `>= grace`); tick 4
+	// at +100s (delta 80s) is past grace.
+	clock := func() time.Time {
+		return base.Add(time.Duration(step.Add(1)) * 20 * time.Second)
+	}
+	var fire atomic.Int32
+	current := map[string]float64{metricApplyConfigErrors: 0}
+	d := newTestDecider(t, Sources{
+		PromSnapshot: func() map[string]float64 {
+			out := make(map[string]float64, len(current))
+			for k, v := range current {
+				out[k] = v
+			}
+			return out
+		},
+	}, &fire, clock)
+	// Tick 1: t=base+60s, seeds prev=0.
+	d.tick()
+	// Counter increments to 1 while still in grace (t=base+90s ≤ start+60s).
+	current[metricApplyConfigErrors] = 1
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire while within startup grace")
+	}
+	// Past grace (t=base+120s, start=base+30s → diff=90s > 60s) but counter unchanged.
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire when counter unchanged since prior tick")
+	}
+	// Now counter advances post-grace → fires.
+	current[metricApplyConfigErrors] = 2
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerApplyConfigErrors {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+// TestStartupGraceSuppressesPatternTrigger is the agent-log-pattern
+// analogue of the counter grace test.
+func TestStartupGraceSuppressesPatternTrigger(t *testing.T) {
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var step atomic.Int64
+	clock := func() time.Time {
+		return base.Add(time.Duration(step.Add(1)) * 20 * time.Second)
+	}
+	var fire atomic.Int32
+	counts := map[string]int{loggingtail.PatternDiffTimeout: 0}
+	d := newTestDecider(t, Sources{
+		AgentSnapshot: func() loggingtail.AgentSnapshot {
+			cp := map[string]int{}
+			for k, v := range counts {
+				cp[k] = v
+			}
+			// LastLineAt must lead the clock so agent_silence doesn't preempt.
+			return loggingtail.AgentSnapshot{MatchCounts: cp, LastLineAt: base.Add(10 * time.Hour)}
+		},
+	}, &fire, clock)
+	// Tick 1 (delta 20s, in grace): seed prev=0.
+	d.tick()
+	// Increment to 1 within grace (tick 2 at delta 40s).
+	counts[loggingtail.PatternDiffTimeout] = 1
+	d.tick()
+	if fire.Load() != 0 {
+		got := readSentinel(t, d.cfg.AbortFile)
+		t.Fatalf("must not fire within startup grace (fired with %v)", got)
+	}
+	// Tick 3 at delta 60s — AT/past grace boundary but pattern unchanged.
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire when pattern unchanged")
+	}
+	// Tick 4 at delta 80s — past grace, increment → fires.
+	counts[loggingtail.PatternDiffTimeout] = 2
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerDiffTimeout {
 		t.Fatalf("trigger = %v", got["trigger"])
 	}
 }

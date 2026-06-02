@@ -476,6 +476,104 @@ func TestDeleteUserNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
+// TestDeleteUserTreatsNotFoundAsClosure exercises the production behavior of
+// the real gagliardetto RPC client, which surfaces a missing account as
+// (nil, solanarpc.ErrNotFound) from GetAccountInfo rather than as
+// (&Result{Value: nil}, nil). The post-delete visibility wait must treat that
+// shape as the success signal — otherwise it polls until the deadline and
+// wraps the (correct, expected) ErrNotFound into a misleading
+// "still present: not found" error. See doublezero-3796.
+func TestDeleteUserTreatsNotFoundAsClosure(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+	userPubkey := solana.NewWallet().PublicKey()
+	owner := solana.NewWallet().PublicKey()
+	device := solana.NewWallet().PublicKey()
+	userBytes := makeMinimalUserBytes(owner, device, [4]byte{10, 0, 0, 5})
+
+	// First call (the DeleteUser pre-fetch) returns the live user. Every
+	// subsequent call returns (nil, ErrNotFound), matching what gagliardetto's
+	// RPC client returns post-closure.
+	var lookups atomic.Int32
+	rpc := &mockRPCClient{
+		getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			n := lookups.Add(1)
+			if account.Equals(userPubkey) && n == 1 {
+				return &solanarpc.GetAccountInfoResult{
+					Value: &solanarpc.Account{
+						Owner: programID,
+						Data:  solanarpc.DataBytesOrJSONFromBytes(userBytes),
+					},
+				}, nil
+			}
+			return nil, solanarpc.ErrNotFound
+		},
+	}
+	// Tight timeout: if the bug regresses, the test fails fast rather than
+	// hanging for the default 3s.
+	executor := NewExecutor(slog.Default(), rpc, &signer, programID, WithWaitForVisibleTimeout(500*time.Millisecond))
+
+	sig, err := executor.DeleteUser(context.Background(), userPubkey)
+	require.NoError(t, err, "ErrNotFound from GetAccountInfo must be treated as closure-success")
+	assert.NotEqual(t, solana.Signature{}, sig)
+}
+
+func TestWaitForAccountGone(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns nil on ErrNotFound", func(t *testing.T) {
+		t.Parallel()
+		rpc := &mockRPCClient{
+			getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+				return nil, solanarpc.ErrNotFound
+			},
+		}
+		executor, _ := newTestExecutor(t, rpc)
+		require.NoError(t, executor.waitForAccountGone(context.Background(), solana.NewWallet().PublicKey(), time.Second))
+	})
+
+	t.Run("returns nil on nil result with nil Value", func(t *testing.T) {
+		t.Parallel()
+		rpc := &mockRPCClient{
+			getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+				return &solanarpc.GetAccountInfoResult{Value: nil}, nil
+			},
+		}
+		executor, _ := newTestExecutor(t, rpc)
+		require.NoError(t, executor.waitForAccountGone(context.Background(), solana.NewWallet().PublicKey(), time.Second))
+	})
+
+	t.Run("returns error past deadline when account stays present", func(t *testing.T) {
+		t.Parallel()
+		rpc := &mockRPCClient{
+			getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+				return &solanarpc.GetAccountInfoResult{Value: &solanarpc.Account{}}, nil
+			},
+		}
+		executor, _ := newTestExecutor(t, rpc)
+		err := executor.waitForAccountGone(context.Background(), solana.NewWallet().PublicKey(), 50*time.Millisecond)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "still present")
+	})
+
+	t.Run("returns context error on cancel", func(t *testing.T) {
+		t.Parallel()
+		rpc := &mockRPCClient{
+			getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+				return &solanarpc.GetAccountInfoResult{Value: &solanarpc.Account{}}, nil
+			},
+		}
+		executor, _ := newTestExecutor(t, rpc)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err := executor.waitForAccountGone(ctx, solana.NewWallet().PublicKey(), time.Second)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, context.Canceled))
+	})
+}
+
 func TestWaitForAccountVisible_TimeoutVsCancel(t *testing.T) {
 	t.Parallel()
 

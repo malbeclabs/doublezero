@@ -611,10 +611,18 @@ func (e *Executor) waitForAccountVisible(ctx context.Context, pubkey solana.Publ
 
 // waitForAccountGone polls GetAccountInfo until the given account no longer exists,
 // or the deadline expires. Used post-DeleteUser to detect closure.
+//
+// The gagliardetto RPC client surfaces a missing account as (nil, ErrNotFound)
+// rather than (&Result{Value: nil}, nil). Both shapes mean the same thing —
+// closure succeeded — so both are treated as the success signal. Any other
+// error is transient: retry until the deadline.
 func (e *Executor) waitForAccountGone(ctx context.Context, pubkey solana.PublicKey, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
 		info, err := e.rpc.GetAccountInfo(ctx, pubkey)
+		if errors.Is(err, solanarpc.ErrNotFound) {
+			return nil
+		}
 		if err == nil && (info == nil || info.Value == nil) {
 			return nil
 		}

@@ -174,6 +174,7 @@ jobs:
     permissions:
       packages: read
       contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v4
         if: github.event_name != 'workflow_dispatch'
@@ -190,6 +191,24 @@ jobs:
             echo "::error::PR head SHA changed: expected ${{ github.event.inputs.head_sha }}, got $actual_head"
             exit 1
           fi
+      # Trusted (workflow_dispatch) runs execute on the base ref, so their native
+      # check runs attach to that commit, not the PR head. Report a check run on
+      # the validated PR head SHA so branch protection's required context is met.
+      - name: Report check-run start on PR head
+        if: github.event_name == 'workflow_dispatch'
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'e2e (shard ${{ matrix.shard }})',
+              head_sha: context.payload.inputs.head_sha,
+              status: 'in_progress',
+              details_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+            core.setOutput('id', String(data.id));
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -237,6 +256,22 @@ jobs:
           pull_with_retry ghcr.io/malbeclabs/dz-e2e/prometheus:v2.54.1
           pull_with_retry public.ecr.aws/influxdb/influxdb:1.8
       - name: test
+        id: test
         env:
           DZ_E2E_NO_BUILD: "1"
         run: go test -tags=e2e -timeout=20m -parallel=12 -run '${{ matrix.run }}' -v
+      - name: Report check-run result on PR head
+        if: always() && github.event_name == 'workflow_dispatch' && steps.check.outputs.id
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const outcome = '${{ steps.test.outcome }}';
+            const conclusion = outcome === 'success' ? 'success' : (outcome === 'cancelled' ? 'cancelled' : 'failure');
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: Number('${{ steps.check.outputs.id }}'),
+              status: 'completed',
+              conclusion,
+              details_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });

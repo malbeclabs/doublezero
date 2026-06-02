@@ -23,9 +23,17 @@ const (
 	singleUserThresh     = 30 * time.Second
 	cpuPercentThresh     = 80.0
 	cpuSustainedWindow   = 60 * time.Second
-	agentSilenceThresh   = 15 * time.Second
-	ledgerStaleThresh    = 30 * time.Second
-	batchWindow          = 5 * time.Minute
+	// agentSilenceThresh bounds how long the agent log can be silent
+	// before we declare the agent hung. The agent goes legitimately
+	// silent during each apply cycle — receive config → parse → compute
+	// diff → commit session — and at high user counts the config is
+	// large enough that this can run for 30+ seconds without
+	// intermediate log lines (e.g. ~22k lines / 650 KB at ~290 users).
+	// The threshold has to clear that legitimate silent window while
+	// still catching a deadlocked agent.
+	agentSilenceThresh = 120 * time.Second
+	ledgerStaleThresh  = 30 * time.Second
+	batchWindow        = 5 * time.Minute
 
 	// startupGrace suppresses the counter- and log-pattern-based triggers
 	// for the first window after the decider starts. The doublezero-agent

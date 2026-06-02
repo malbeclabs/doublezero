@@ -286,7 +286,7 @@ cancels the observer's root context so the process exits.
 | `get_config_errors`          | Prometheus `doublezero_agent_get_config_errors_total`  | same                                                                                       |
 | `diff_timeout`               | agent-log substring `could not get diff`              | match count strictly greater than the previous tick's value, after `startupGrace` (60 s)   |
 | `lock_not_taken`             | agent-log substring `not overriding lock since its age` | same                                                                                     |
-| `agent_silence`              | `AgentTail.Snapshot().LastLineAt`                     | `LastLineAt` non-zero AND `now - LastLineAt > 15 s` (suppressed before any line is seen)   |
+| `agent_silence`              | `AgentTail.Snapshot().LastLineAt`                     | `LastLineAt` non-zero AND `now - LastLineAt > 120 s` (suppressed before any line is seen). Threshold accommodates the legitimate silent window during a large config apply at high user counts — at ~290 users the agent processes ~22k lines per cycle without intermediate logs. |
 | `ledger_heartbeat_stale`     | mtime of `<working-dir>/orchestrator.ledger_heartbeat` | file present AND `now - mtime > 30 s` (absent file is suppressed forward-compatibly)      |
 | `device_tunnel_gap`          | runlog `n_after_event` vs sampler `greTunnels` map length | orchestrator active-user count exceeds the device's tunnel count by `≥ 4` AND `now - last_activate ≥ 30 s` (suppressed before the first activate is seen) |
 

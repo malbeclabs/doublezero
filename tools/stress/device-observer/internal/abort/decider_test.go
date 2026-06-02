@@ -351,9 +351,13 @@ func TestStartupGraceSuppressesPatternTrigger(t *testing.T) {
 	}
 }
 
-func TestAgentSilenceFifteenSeconds(t *testing.T) {
+// TestAgentSilencePastThreshold confirms the trigger fires when the
+// agent has been silent for longer than `agentSilenceThresh`. Uses a
+// silent window comfortably past the threshold so the assertion is
+// robust to small threshold tuning.
+func TestAgentSilencePastThreshold(t *testing.T) {
 	lastLine := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
-	silent := lastLine.Add(20 * time.Second)
+	silent := lastLine.Add(agentSilenceThresh + 5*time.Second)
 	var fire atomic.Int32
 	d := newTestDecider(t, Sources{
 		AgentSnapshot: func() loggingtail.AgentSnapshot {
@@ -364,6 +368,25 @@ func TestAgentSilenceFifteenSeconds(t *testing.T) {
 	got := readSentinel(t, d.cfg.AbortFile)
 	if got["trigger"] != TriggerAgentSilence {
 		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+// TestAgentSilenceBelowThresholdNoFire confirms the trigger does NOT
+// fire while the silence window is shorter than `agentSilenceThresh`.
+// At high user counts the agent legitimately goes silent for tens of
+// seconds during each apply cycle, so the threshold must cover that.
+func TestAgentSilenceBelowThresholdNoFire(t *testing.T) {
+	lastLine := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	silent := lastLine.Add(agentSilenceThresh - 5*time.Second)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		AgentSnapshot: func() loggingtail.AgentSnapshot {
+			return loggingtail.AgentSnapshot{MatchCounts: map[string]int{}, LastLineAt: lastLine}
+		},
+	}, &fire, fixedNow(silent))
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire while silence is below threshold")
 	}
 }
 

@@ -45,5 +45,5 @@ pub enum UserCommands {
     /// Set result destination for geolocation results
     SetResultDestination(SetResultDestinationCliCommand),
     /// Update payment status (foundation-only)
-    UpdatePayment(UpdatePaymentStatusCliCommand),
+    UpdatePaymentStatus(UpdatePaymentStatusCliCommand),
 }

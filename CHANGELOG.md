@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - Change `geolocation user update-payment` to `update-payment-status` for clarity. 
 - Tools
   - Complete the device-stress orchestrator (part 3): replace the stubbed agent runner with an SSH-backed runner that execs `doublezero-agent -verbose` on the DUT and tees its output to `orchestrator.agent.log`, and a log parser that turns the agent's commit-diff lines into `pre_commit_log` / `applied` runlog events. Adds `--dut-ssh-user` and `--no-agent` flags.
   - Add `tools/stress/device-observer/`, a per-device sampling tool for the GRE Tunnel Capacity Study. Each tick issues five eAPI `show` commands, scrapes the doublezero-agent Prometheus endpoint, polls EOS syslog via `show logging last` with cross-tick dedupe, tails the orchestrator's agent log for abort-trigger patterns, and tails the orchestrator's runlog to compute provision/deprovision durations. The abort decider is stubbed.

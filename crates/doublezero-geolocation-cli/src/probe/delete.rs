@@ -4,7 +4,7 @@ use doublezero_cli_core::{validators::validate_pubkey_or_code, CliContext};
 use doublezero_sdk::geolocation::geo_probe::{
     delete::DeleteGeoProbeCommand, get::GetGeoProbeCommand,
 };
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 
 #[derive(Args, Debug)]
 pub struct DeleteGeoProbeCliCommand {
@@ -31,7 +31,11 @@ impl DeleteGeoProbeCliCommand {
         let code = resolved_probe.code;
 
         if !self.yes {
-            eprint!("Delete probe '{code}'? [y/N]: ");
+            if !std::io::stdin().is_terminal() {
+                eyre::bail!("stdin is not a terminal — pass --yes to skip confirmation");
+            }
+            write!(out, "Delete probe '{code}'? [y/N]: ")?;
+            out.flush()?;
             let mut input = String::new();
             std::io::stdin().read_line(&mut input)?;
             if !input.trim().eq_ignore_ascii_case("y") {
@@ -122,5 +126,48 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Signature:"));
+    }
+
+    #[test]
+    fn test_cli_geo_probe_delete_rejects_non_tty() {
+        let mut client = MockGeoCliCommand::new();
+
+        client
+            .expect_get_geo_probe()
+            .with(predicate::eq(GetGeoProbeCommand {
+                pubkey_or_code: "ams-probe-01".to_string(),
+            }))
+            .returning(move |_| {
+                Ok((
+                    Pubkey::new_unique(),
+                    GeoProbe {
+                        account_type: AccountType::GeoProbe,
+                        owner: Pubkey::new_unique(),
+                        exchange_pk: Pubkey::new_unique(),
+                        public_ip: Ipv4Addr::new(10, 0, 0, 1),
+                        location_offset_port: 8923,
+                        code: "ams-probe-01".to_string(),
+                        parent_devices: vec![],
+                        metrics_publisher_pk: Pubkey::new_unique(),
+                        reference_count: 0,
+                        target_update_count: 0,
+                    },
+                ))
+            });
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            DeleteGeoProbeCliCommand {
+                probe: "ams-probe-01".to_string(),
+                yes: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        let err = res.unwrap_err();
+        assert!(
+            err.to_string().contains("stdin is not a terminal"),
+            "expected non-TTY error, got: {err}"
+        );
     }
 }

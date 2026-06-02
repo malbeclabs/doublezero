@@ -37,6 +37,17 @@ const (
 	// fires the trigger as before.
 	startupGrace = 60 * time.Second
 
+	// deviceTunnelGapGrace is how long after a provision activate the
+	// device is given to converge before the device_tunnel_gap trigger
+	// inspects the runlog-vs-eAPI delta. A single batch's apply settles
+	// in well under 10 s in our local devnet; 30 s is conservative.
+	deviceTunnelGapGrace = 30 * time.Second
+	// deviceTunnelGapThreshold is the minimum (active - tunnels) shortfall
+	// that fires the trigger. Small transient mismatches mid-commit
+	// shouldn't fire — anything past that is a real divergence (controller
+	// cap, agent stuck, etc.).
+	deviceTunnelGapThreshold = 4
+
 	// minSamples gates per-tick triggers below which a single outlier
 	// could trip the orchestrator on startup or an empty batch.
 	minSamples = 4
@@ -53,6 +64,7 @@ const (
 	TriggerLockNotTaken         = "lock_not_taken"
 	TriggerAgentSilence         = "agent_silence"
 	TriggerLedgerHeartbeatStale = "ledger_heartbeat_stale"
+	TriggerDeviceTunnelGap      = "device_tunnel_gap"
 
 	metricApplyConfigErrors = "doublezero_agent_apply_config_errors_total"
 	metricGetConfigErrors   = "doublezero_agent_get_config_errors_total"
@@ -67,7 +79,17 @@ type Sources struct {
 	ProvisionDurations   func(time.Duration) []time.Duration
 	DeprovisionDurations func(time.Duration) []time.Duration
 	CPUPercent           func() (float64, bool)
-	LedgerHeartbeatPath  string
+	// ActiveUserCount returns the orchestrator's most recent
+	// n_after_event from the runlog (the count of users the orchestrator
+	// considers active), the wall-clock timestamp of the most recent
+	// provision activate event, and `ok=false` before any runlog row has
+	// been seen.
+	ActiveUserCount func() (count int, lastActivate time.Time, ok bool)
+	// TunnelCount returns the most recently observed number of user
+	// tunnels on the device (from `show gre tunnel static`). `ok=false`
+	// before the first successful sample.
+	TunnelCount         func() (int, bool)
+	LedgerHeartbeatPath string
 }
 
 // Config configures a Decider. OnFire is called exactly once after the
@@ -230,6 +252,24 @@ func (d *Decider) tick() {
 		// the orchestrator has started the agent.
 		if !snap.LastLineAt.IsZero() && now.Sub(snap.LastLineAt) > agentSilenceThresh {
 			d.fire(now, TriggerAgentSilence, fmt.Sprintf("agent silent for %s (last line at %s)", now.Sub(snap.LastLineAt), snap.LastLineAt.UTC().Format(time.RFC3339Nano)))
+			return
+		}
+	}
+
+	// device_tunnel_gap: catch the orchestrator's view of active users
+	// drifting above what the device actually has plumbed (controller
+	// truncating the rendered config beyond its slot cap, agent stuck
+	// without erroring, etc.). Suppressed until the most recent activate
+	// is at least deviceTunnelGapGrace old so the agent has time to
+	// converge. Suppressed entirely while either source is unset.
+	if d.cfg.Sources.ActiveUserCount != nil && d.cfg.Sources.TunnelCount != nil {
+		active, lastActivate, runlogOK := d.cfg.Sources.ActiveUserCount()
+		tunnels, tunnelsOK := d.cfg.Sources.TunnelCount()
+		if runlogOK && tunnelsOK && active > 0 && !lastActivate.IsZero() &&
+			now.Sub(lastActivate) >= deviceTunnelGapGrace &&
+			active-tunnels >= deviceTunnelGapThreshold {
+			d.fire(now, TriggerDeviceTunnelGap, fmt.Sprintf("orchestrator reports %d active users but device has %d tunnels (gap %d, last activate %s ago)",
+				active, tunnels, active-tunnels, now.Sub(lastActivate).Truncate(time.Second)))
 			return
 		}
 	}

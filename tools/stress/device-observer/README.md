@@ -288,6 +288,7 @@ cancels the observer's root context so the process exits.
 | `lock_not_taken`             | agent-log substring `not overriding lock since its age` | same                                                                                     |
 | `agent_silence`              | `AgentTail.Snapshot().LastLineAt`                     | `LastLineAt` non-zero AND `now - LastLineAt > 15 s` (suppressed before any line is seen)   |
 | `ledger_heartbeat_stale`     | mtime of `<working-dir>/orchestrator.ledger_heartbeat` | file present AND `now - mtime > 30 s` (absent file is suppressed forward-compatibly)      |
+| `device_tunnel_gap`          | runlog `n_after_event` vs sampler `greTunnels` map length | orchestrator active-user count exceeds the device's tunnel count by `≥ 4` AND `now - last_activate ≥ 30 s` (suppressed before the first activate is seen) |
 
 **Startup grace.** The four counter and log-pattern triggers
 (`apply_config_errors`, `get_config_errors`, `diff_timeout`,

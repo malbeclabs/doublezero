@@ -40,9 +40,11 @@ type Sampler struct {
 	logger     *slog.Logger
 	now        func() time.Time
 
-	mu        sync.RWMutex
-	latestCPU float64
-	cpuValid  bool
+	mu                sync.RWMutex
+	latestCPU         float64
+	cpuValid          bool
+	latestTunnelCount int
+	tunnelCountValid  bool
 }
 
 func NewSampler(client eapiRunner, workingDir string, interval time.Duration, logger *slog.Logger) *Sampler {
@@ -56,6 +58,19 @@ func (s *Sampler) LatestCPUPercent() (float64, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.latestCPU, s.cpuValid
+}
+
+// LatestTunnelCount returns the most recently observed number of user
+// tunnels on the device (`show gre tunnel static`'s greTunnels map
+// length). Returns (0, false) before the first successful parse. The
+// abort decider uses this to detect when the orchestrator's expected
+// active-user count diverges from what the agent has actually applied —
+// e.g. when the controller's per-device tunnel-slot cap silently
+// truncates the rendered device config.
+func (s *Sampler) LatestTunnelCount() (int, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.latestTunnelCount, s.tunnelCountValid
 }
 
 func (s *Sampler) Run(ctx context.Context) error {
@@ -113,6 +128,15 @@ func (s *Sampler) runOne(c commandSpec, ts time.Time) error {
 				s.logger.Warn("could not parse CPU from show processes top once")
 			}
 		}
+		if c.cmd == "show gre tunnel static" {
+			if n, ok := parseTunnelCount(raw); ok {
+				s.mu.Lock()
+				s.latestTunnelCount, s.tunnelCountValid = n, true
+				s.mu.Unlock()
+			} else {
+				s.logger.Warn("could not parse tunnel count from show gre tunnel static")
+			}
+		}
 	} else {
 		text, err := s.client.RunShowText(c.cmd)
 		if err != nil {
@@ -157,6 +181,25 @@ func parseCPUPercent(raw json.RawMessage) (float64, bool) {
 		return 0, false
 	}
 	return total, true
+}
+
+// parseTunnelCount returns the number of entries in the `greTunnels` map
+// of the `show gre tunnel static | json` eAPI response, shaped as
+// `{"greTunnels": {"<idx>": {…}, …}}`. Returns (0, true) on an empty map
+// — a healthy device with no user tunnels — and (0, false) only when
+// `greTunnels` is missing entirely or the response is malformed, so the
+// abort decider can distinguish "zero confirmed" from "unknown".
+func parseTunnelCount(raw json.RawMessage) (int, bool) {
+	var env struct {
+		GreTunnels map[string]json.RawMessage `json:"greTunnels"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return 0, false
+	}
+	if env.GreTunnels == nil {
+		return 0, false
+	}
+	return len(env.GreTunnels), true
 }
 
 // fileTimestamp renders t as ISO 8601 UTC with `:` → `-` for filesystem

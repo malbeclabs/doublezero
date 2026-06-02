@@ -23,11 +23,15 @@ const (
 )
 
 // Row mirrors the orchestrator's runlog schema (redeclared to avoid a
-// build-time dep on tools/stress/device-orchestrator).
+// build-time dep on tools/stress/device-orchestrator). NAfterEvent is the
+// orchestrator's view of how many users it considers active after this
+// event; tracked here so the abort decider can compare it against the
+// device's actual tunnel count and catch silent provisioning gaps.
 type Row struct {
-	UserIndex int    `json:"user_index"`
-	Event     string `json:"event"`
-	TNs       int64  `json:"t_ns"`
+	UserIndex   int    `json:"user_index"`
+	Event       string `json:"event"`
+	TNs         int64  `json:"t_ns"`
+	NAfterEvent int    `json:"n_after_event"`
 }
 
 // Reader tails the orchestrator runlog and exposes pair-completion duration
@@ -43,6 +47,16 @@ type Reader struct {
 	pendingDeprovSubmit map[int]time.Time
 	provisionRing       []durationSample
 	deprovisionRing     []durationSample
+
+	// activeCount tracks the orchestrator's most-recent n_after_event from
+	// the runlog (any event qualifies — it's monotonically maintained on the
+	// orchestrator side as it provisions and deprovisions). lastActivateAt
+	// pins the wall-clock timestamp of the most recent provision activate
+	// so the decider can apply a grace window before comparing against the
+	// device's actual tunnel count.
+	activeCount     int
+	activeCountSeen bool
+	lastActivateAt  time.Time
 }
 
 type durationSample struct {
@@ -101,6 +115,12 @@ func (r *Reader) tick() {
 			continue
 		}
 		at := time.Unix(0, row.TNs)
+		// Track the latest active-user count across all events. The
+		// orchestrator emits n_after_event on every row and progresses it
+		// linearly through provision and deprovision, so the most recent
+		// row is always authoritative.
+		r.activeCount = row.NAfterEvent
+		r.activeCountSeen = true
 		switch row.Event {
 		case "submit":
 			insertPending(r.pendingSubmit, row.UserIndex, at)
@@ -108,6 +128,9 @@ func (r *Reader) tick() {
 			if start, ok := r.pendingSubmit[row.UserIndex]; ok {
 				delete(r.pendingSubmit, row.UserIndex)
 				r.provisionRing = pushRing(r.provisionRing, durationSample{at: at, dur: at.Sub(start)})
+			}
+			if at.After(r.lastActivateAt) {
+				r.lastActivateAt = at
 			}
 		case "deprovision_submit":
 			insertPending(r.pendingDeprovSubmit, row.UserIndex, at)
@@ -165,6 +188,18 @@ func (r *Reader) ProvisionDurations(window time.Duration) []time.Duration {
 // DeprovisionDurations is ProvisionDurations for the deprovision pair.
 func (r *Reader) DeprovisionDurations(window time.Duration) []time.Duration {
 	return r.filterDurations(r.deprovisionRingSnapshot(), window)
+}
+
+// ActiveUserCount returns the orchestrator's most recent n_after_event
+// value alongside the wall-clock timestamp of the most recent activate
+// event (i.e. the moment the count last grew via a provision). `ok` is
+// false before any runlog row has been seen, so the abort decider can
+// suppress the device_tunnel_gap trigger while the runlog file is still
+// empty.
+func (r *Reader) ActiveUserCount() (count int, lastActivate time.Time, ok bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.activeCount, r.lastActivateAt, r.activeCountSeen
 }
 
 func (r *Reader) provisionRingSnapshot() []durationSample {

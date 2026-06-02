@@ -289,3 +289,52 @@ type runnable interface {
 }
 
 var _ runnable = (*Sampler)(nil)
+
+// TestParseTunnelCount covers the three shapes the parser must handle:
+// a populated greTunnels map, an empty map (healthy device with no users),
+// and a missing/malformed response (must signal ok=false so the decider
+// suppresses the device_tunnel_gap trigger).
+func TestParseTunnelCount(t *testing.T) {
+	cases := []struct {
+		name   string
+		body   string
+		wantN  int
+		wantOK bool
+	}{
+		{
+			name:   "populated map",
+			body:   `{"greTunnels":{"500":{"name":"Tunnel500"},"501":{"name":"Tunnel501"},"502":{"name":"Tunnel502"}}}`,
+			wantN:  3,
+			wantOK: true,
+		},
+		{
+			name:   "empty map",
+			body:   `{"greTunnels":{}}`,
+			wantN:  0,
+			wantOK: true,
+		},
+		{
+			name:   "missing greTunnels key",
+			body:   `{}`,
+			wantN:  0,
+			wantOK: false,
+		},
+		{
+			name:   "malformed JSON",
+			body:   `{nope`,
+			wantN:  0,
+			wantOK: false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			n, ok := parseTunnelCount(json.RawMessage(c.body))
+			if ok != c.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, c.wantOK)
+			}
+			if n != c.wantN {
+				t.Fatalf("n = %d, want %d", n, c.wantN)
+			}
+		})
+	}
+}

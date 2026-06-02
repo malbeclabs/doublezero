@@ -545,3 +545,78 @@ func TestPercentile95(t *testing.T) {
 		}
 	}
 }
+
+// TestDeviceTunnelGapFiresAfterGrace covers the case the trigger was
+// designed for: the orchestrator's view of active users (from the runlog)
+// exceeds the device's actual tunnel count, the grace window has elapsed
+// since the most recent activate, and the shortfall is at or above the
+// threshold.
+func TestDeviceTunnelGapFiresAfterGrace(t *testing.T) {
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	// now is just past the grace window after lastActivate.
+	now := base.Add(deviceTunnelGapGrace + time.Second)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		ActiveUserCount: func() (int, time.Time, bool) { return 32, base, true },
+		TunnelCount:     func() (int, bool) { return 16, true },
+	}, &fire, fixedNow(now))
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerDeviceTunnelGap {
+		t.Fatalf("trigger = %v, want %s", got["trigger"], TriggerDeviceTunnelGap)
+	}
+}
+
+// TestDeviceTunnelGapSuppressedWithinGrace confirms the trigger does not
+// fire until deviceTunnelGapGrace has passed since the most recent
+// activate, so a mid-batch transient mismatch can't trip the sweep.
+func TestDeviceTunnelGapSuppressedWithinGrace(t *testing.T) {
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	now := base.Add(deviceTunnelGapGrace - time.Second)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		ActiveUserCount: func() (int, time.Time, bool) { return 32, base, true },
+		TunnelCount:     func() (int, bool) { return 16, true },
+	}, &fire, fixedNow(now))
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire within deviceTunnelGapGrace")
+	}
+}
+
+// TestDeviceTunnelGapBelowThreshold confirms small mid-commit mismatches
+// (e.g. one tunnel briefly absent during a re-stage) do not fire.
+func TestDeviceTunnelGapBelowThreshold(t *testing.T) {
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	now := base.Add(2 * deviceTunnelGapGrace)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		// shortfall = active - tunnels = deviceTunnelGapThreshold - 1
+		ActiveUserCount: func() (int, time.Time, bool) {
+			return deviceTunnelGapThreshold, base, true
+		},
+		TunnelCount: func() (int, bool) { return 1, true },
+	}, &fire, fixedNow(now))
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire when shortfall is below threshold")
+	}
+}
+
+// TestDeviceTunnelGapSuppressedBeforeFirstActivate handles the period
+// after the observer starts but before the orchestrator has activated
+// any user — the runlog is empty so ActiveUserCount returns ok=false.
+func TestDeviceTunnelGapSuppressedBeforeFirstActivate(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		ActiveUserCount: func() (int, time.Time, bool) {
+			return 0, time.Time{}, false
+		},
+		TunnelCount: func() (int, bool) { return 0, true },
+	}, &fire, fixedNow(now))
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire before any activate has been seen")
+	}
+}

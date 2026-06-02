@@ -268,9 +268,12 @@ func consumeAgentEvents(cfg *Config, registry *tunnelRegistry) {
 
 // provision walks 0 → Target in batches, returning the slice of created users
 // so deprovision can iterate in reverse. Returns ctx.Err() if cancelled
-// between users. Each created user is also registered with the tunnel
-// registry so the agent-event consumer can attribute pre_commit_log /
-// applied events back to a user_index.
+// between batches. Within each batch, all UsersPerBatch creates run
+// concurrently — finalization is ~14 s per CreateUser and dominates wall
+// time, so pipelining a batch of N drops the per-batch cost from N × 14 s
+// to ~14 s. Each created user is registered with the tunnel registry so
+// the agent-event consumer can attribute pre_commit_log / applied events
+// back to a user_index.
 func provision(ctx context.Context, cfg *Config, registry *tunnelRegistry) ([]createdUser, error) {
 	if cfg.Target == 0 {
 		return nil, nil
@@ -299,35 +302,11 @@ func provision(ctx context.Context, cfg *Config, registry *tunnelRegistry) ([]cr
 				"count", len(plan.ToDelete))
 		}
 
-		for i := 0; i < plan.ToCreate; i++ {
-			if err := ctx.Err(); err != nil {
-				return created, err
-			}
-			idx := activeCount
-			submitAt := cfg.Clock.Now()
-			if err := emit(cfg, idx, "", 0, runlog.EventSubmit, submitAt, activeCount); err != nil {
-				return created, err
-			}
-
-			// Don't let an abort interrupt an in-flight create. A cancelled
-			// CreateUser can return an error even after the transaction landed
-			// onchain, which would orphan a user the deprovision phase never
-			// learns about. Abort is observed at the iteration boundary above.
-			res, err := cfg.Executor.CreateUser(context.WithoutCancel(ctx), idx)
-			if err != nil {
-				return created, fmt.Errorf("create user idx=%d: %w", idx, err)
-			}
-			pkStr := res.UserPDA.String()
-			if err := emit(cfg, idx, pkStr, res.TunnelID, runlog.EventConfirm, res.ConfirmedAt, activeCount); err != nil {
-				return created, err
-			}
-			cu := createdUser{idx: idx, pubkey: res.UserPDA, tunnelID: res.TunnelID}
-			created = append(created, cu)
-			registry.register(cu)
-			activeCount++
-			if err := emit(cfg, idx, pkStr, res.TunnelID, runlog.EventActivate, res.ActivatedAt, activeCount); err != nil {
-				return created, err
-			}
+		newUsers, newActive, err := provisionBatch(ctx, cfg, registry, activeCount, plan.ToCreate)
+		created = append(created, newUsers...)
+		activeCount = newActive
+		if err != nil {
+			return created, err
 		}
 
 		runningTarget = nextTarget
@@ -348,33 +327,169 @@ func provision(ctx context.Context, cfg *Config, registry *tunnelRegistry) ([]cr
 	return created, nil
 }
 
-// deprovision walks the created slice in reverse, emitting deprovision_*
-// events for each. It runs to completion regardless of ctx cancellation (Run
-// passes an uncancellable teardown context) so an aborted sweep never leaks
-// the users it created.
-func deprovision(ctx context.Context, cfg *Config, created []createdUser) error {
-	activeCount := len(created)
-	for i := len(created) - 1; i >= 0; i-- {
-		u := created[i]
-		pkStr := u.pubkey.String()
-		submitAt := cfg.Clock.Now()
-		if err := emit(cfg, u.idx, pkStr, u.tunnelID, runlog.EventDeprovisionSubmit, submitAt, activeCount); err != nil {
-			return err
-		}
+// provisionBatch fires `count` concurrent CreateUser calls assigned indexes
+// [baseIdx, baseIdx+count). It emits submit events for every user before
+// launching the goroutines (so the runlog captures submission order and
+// wall-clock baseline), then confirm/activate pairs in idx order after every
+// goroutine completes. Returns the newly-created users, the updated active
+// count, and the first error observed.
+func provisionBatch(ctx context.Context, cfg *Config, registry *tunnelRegistry, baseIdx, count int) ([]createdUser, int, error) {
+	if count <= 0 {
+		return nil, baseIdx, nil
+	}
 
-		res, err := cfg.Executor.DeleteUser(ctx, u.pubkey)
-		if err != nil {
-			return fmt.Errorf("delete user idx=%d pubkey=%s: %w", u.idx, pkStr, err)
-		}
-		if err := emit(cfg, u.idx, pkStr, u.tunnelID, runlog.EventDeprovisionConfirm, res.ConfirmedAt, activeCount); err != nil {
-			return err
-		}
-		activeCount--
-		if err := emit(cfg, u.idx, pkStr, u.tunnelID, runlog.EventDeprovisionActivate, res.ActivatedAt, activeCount); err != nil {
-			return err
+	// Emit all submit events up-front so their timestamps reflect when the
+	// batch was actually dispatched, not when each goroutine completed.
+	for i := 0; i < count; i++ {
+		idx := baseIdx + i
+		submitAt := cfg.Clock.Now()
+		// activeCount on submit is the count *before* this user activates.
+		// We pass baseIdx (the count before the batch started) so all submits
+		// in a batch report the same pre-batch active count, matching the
+		// observable state at the time the user was submitted.
+		if err := emit(cfg, idx, "", 0, runlog.EventSubmit, submitAt, baseIdx); err != nil {
+			return nil, baseIdx, err
 		}
 	}
+
+	type outcome struct {
+		res CreateResult
+		err error
+	}
+	outcomes := make([]outcome, count)
+	var wg sync.WaitGroup
+	wg.Add(count)
+	for i := 0; i < count; i++ {
+		i, idx := i, baseIdx+i
+		go func() {
+			defer wg.Done()
+			// Don't let an abort interrupt an in-flight create. A cancelled
+			// CreateUser can return an error even after the transaction landed
+			// onchain, which would orphan a user the deprovision phase never
+			// learns about. Abort is observed between batches in provision().
+			res, err := cfg.Executor.CreateUser(context.WithoutCancel(ctx), idx)
+			outcomes[i] = outcome{res: res, err: err}
+		}()
+	}
+	wg.Wait()
+
+	// Iterate in idx order so the runlog stays user-deterministic; collect
+	// the first error after registering all successes so deprovision can clean
+	// up everything the batch actually committed.
+	var created []createdUser
+	activeCount := baseIdx
+	var firstErr error
+	for i := 0; i < count; i++ {
+		idx := baseIdx + i
+		o := outcomes[i]
+		if o.err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("create user idx=%d: %w", idx, o.err)
+			}
+			continue
+		}
+		pkStr := o.res.UserPDA.String()
+		if err := emit(cfg, idx, pkStr, o.res.TunnelID, runlog.EventConfirm, o.res.ConfirmedAt, activeCount); err != nil {
+			return created, activeCount, err
+		}
+		cu := createdUser{idx: idx, pubkey: o.res.UserPDA, tunnelID: o.res.TunnelID}
+		created = append(created, cu)
+		registry.register(cu)
+		activeCount++
+		if err := emit(cfg, idx, pkStr, o.res.TunnelID, runlog.EventActivate, o.res.ActivatedAt, activeCount); err != nil {
+			return created, activeCount, err
+		}
+	}
+	return created, activeCount, firstErr
+}
+
+// deprovision walks the created slice in reverse, processing each batch of
+// UsersPerBatch concurrently (same pipelining rationale as provision). It
+// runs to completion regardless of ctx cancellation (Run passes an
+// uncancellable teardown context) so an aborted sweep never leaks the users
+// it created.
+func deprovision(ctx context.Context, cfg *Config, created []createdUser) error {
+	if len(created) == 0 {
+		return nil
+	}
+	activeCount := len(created)
+	batchSize := cfg.UsersPerBatch
+	if batchSize <= 0 {
+		batchSize = 1
+	}
+	// Walk created in reverse-creation order, processing one batch per loop.
+	for end := len(created); end > 0; {
+		start := end - batchSize
+		if start < 0 {
+			start = 0
+		}
+		// batch[0] is the newest user in the slice (highest idx); deleting
+		// in reverse-creation order means we process [end-1, end-2, …, start].
+		batch := make([]createdUser, end-start)
+		for i := range batch {
+			batch[i] = created[end-1-i]
+		}
+		newActive, err := deprovisionBatch(ctx, cfg, batch, activeCount)
+		activeCount = newActive
+		if err != nil {
+			return err
+		}
+		end = start
+	}
 	return nil
+}
+
+// deprovisionBatch fires len(batch) concurrent DeleteUsers. It emits
+// deprovision_submit events for every user before launching, then
+// deprovision_confirm/deprovision_activate pairs in the order given by
+// `batch` (which the caller orders newest-first to preserve the
+// reverse-creation contract).
+func deprovisionBatch(ctx context.Context, cfg *Config, batch []createdUser, activeCountIn int) (int, error) {
+	if len(batch) == 0 {
+		return activeCountIn, nil
+	}
+
+	for _, u := range batch {
+		submitAt := cfg.Clock.Now()
+		if err := emit(cfg, u.idx, u.pubkey.String(), u.tunnelID, runlog.EventDeprovisionSubmit, submitAt, activeCountIn); err != nil {
+			return activeCountIn, err
+		}
+	}
+
+	type outcome struct {
+		res DeleteResult
+		err error
+	}
+	outcomes := make([]outcome, len(batch))
+	var wg sync.WaitGroup
+	wg.Add(len(batch))
+	for i := range batch {
+		i := i
+		u := batch[i]
+		go func() {
+			defer wg.Done()
+			res, err := cfg.Executor.DeleteUser(ctx, u.pubkey)
+			outcomes[i] = outcome{res: res, err: err}
+		}()
+	}
+	wg.Wait()
+
+	activeCount := activeCountIn
+	for i, u := range batch {
+		o := outcomes[i]
+		if o.err != nil {
+			return activeCount, fmt.Errorf("delete user idx=%d pubkey=%s: %w", u.idx, u.pubkey.String(), o.err)
+		}
+		pkStr := u.pubkey.String()
+		if err := emit(cfg, u.idx, pkStr, u.tunnelID, runlog.EventDeprovisionConfirm, o.res.ConfirmedAt, activeCount); err != nil {
+			return activeCount, err
+		}
+		activeCount--
+		if err := emit(cfg, u.idx, pkStr, u.tunnelID, runlog.EventDeprovisionActivate, o.res.ActivatedAt, activeCount); err != nil {
+			return activeCount, err
+		}
+	}
+	return activeCount, nil
 }
 
 func emit(cfg *Config, idx int, pubkey string, tunnelID uint16, ev runlog.Event, at time.Time, nAfter int) error {

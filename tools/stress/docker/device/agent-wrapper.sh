@@ -16,6 +16,11 @@ EXTRA_ARGS=()
 if [ -n "$PUBKEY" ]; then
     EXTRA_ARGS+=(-pubkey "$PUBKEY")
 fi
-EXTRA_ARGS+=(-metrics-enable -metrics-addr ":9100")
+# Pick a port the controller-pushed MAIN-CONTROL-PLANE-ACL already permits.
+# That ACL binds `system control-plane in` and the controller fully redefines
+# it on every apply (`no ip access-list MAIN-CONTROL-PLANE-ACL` + recreate),
+# so anything we add gets wiped on the agent's next tick. The default ACL
+# does permit TCP 50000-50100, so park the metrics endpoint there.
+EXTRA_ARGS+=(-metrics-enable -metrics-addr ":50100")
 
 exec /mnt/flash/doublezero-agent "${EXTRA_ARGS[@]}" "$@"

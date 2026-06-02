@@ -212,8 +212,13 @@ CYOA_CIDR_PREFIX="${CYOA_SUBNET##*/}"
 # added in the stress device image) and plant the orchestrator's pubkey
 # into its authorized_keys post-boot. The `protocol http` / eos-sdk-rpc /
 # Loopback0 blocks mirror the e2e device so the agent's hardcoded
-# 127.0.0.1:9543 endpoint works. The 999-line ACL exception lets the
-# observer scrape `:9100` (agent prometheus metrics).
+# 127.0.0.1:9543 endpoint works.
+#
+# The agent's prometheus metrics listen on :50100 (set by agent-wrapper.sh)
+# because the controller-pushed MAIN-CONTROL-PLANE-ACL — which is the one
+# actually bound to `system control-plane in` — permits TCP 50000-50100 by
+# default. The controller fully redefines that ACL on every apply, so we
+# can't add a port-9100 permit ourselves and have it survive.
 cat > "$STARTUP_CONFIG_PATH" <<EOF
 ! stress-test device startup-config (no doublezero-agent daemon)
 !
@@ -246,20 +251,6 @@ management api gnmi
 !
 management ssh
    no shutdown
-!
-ip access-list MAIN-CONTROL-PLANE-ACL-MGMT
-   counters per-entry
-   10 permit icmp any any
-   20 permit ip any any tracked
-   30 permit tcp any any eq ssh telnet www snmp bgp https
-   40 permit udp any any eq bootps bootpc snmp ntp
-   50 permit tcp any eq bgp any
-   60 permit ahp any any
-   70 permit pim any any
-   80 permit igmp any any
-   90 permit ospf any any
-   100 permit vrrp any any
-   999 permit tcp any any eq 9100
 !
 hostname ${DEVICE_CODE}
 !
@@ -454,7 +445,7 @@ log "launching observer (background)"
 nohup "$OBS_BIN" \
     --dut-host "$CYOA_IP" \
     --eapi-user admin --eapi-pass admin \
-    --agent-metrics-url "http://${CYOA_IP}:9100/metrics" \
+    --agent-metrics-url "http://${CYOA_IP}:50100/metrics" \
     --working-dir "$RUN_DIR" \
     --abort-file "${RUN_DIR}/abort" \
     --sample-interval "$SAMPLE_INTERVAL" \

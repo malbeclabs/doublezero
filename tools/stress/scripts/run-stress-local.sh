@@ -166,16 +166,54 @@ fi
 SSH_PUBKEY="$(cat "${SSH_KEY_PATH}.pub")"
 
 # ---------------------------------------------------------------------------
-# Phase 5: render EOS startup-config (no doublezero-agent daemon)
+# Phase 5: start the stress device container (it will block on its
+# entrypoint's wait-for-startup-config loop until phase 6 copies the config)
+# ---------------------------------------------------------------------------
+if docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
+    log "removing existing stress device container"
+    docker rm -f "$CONTAINER_NAME" >/dev/null
+fi
+
+log "starting stress device container: $CONTAINER_NAME"
+docker run -d \
+    --name "$CONTAINER_NAME" \
+    --hostname "device-${DEVICE_CODE}" \
+    --privileged \
+    --network "$DEFAULT_NETWORK" \
+    --label "dz.malbeclabs.com/type=devnet" \
+    --label "dz.malbeclabs.com/deploy-id=${DEPLOY_ID}" \
+    "$STRESS_IMAGE" >/dev/null
+
+# Network ordering matters with containerized EOS: the first network
+# attached is the management interface (Management0/eth0), then subsequent
+# networks correspond to Ethernet1+ in order. So default → eth0, cyoa → eth1.
+docker network connect --ip "$CYOA_IP" "$CYOA_NETWORK" "$CONTAINER_NAME"
+
+# Inspect for the default-network IP / gateway / prefix Docker assigned —
+# the agent's path to the controller goes through Management0, so the EOS
+# config needs all three.
+DEFAULT_IP="$(docker inspect "$CONTAINER_NAME" \
+    --format "{{(index .NetworkSettings.Networks \"${DEFAULT_NETWORK}\").IPAddress}}")"
+DEFAULT_PREFIX="$(docker inspect "$CONTAINER_NAME" \
+    --format "{{(index .NetworkSettings.Networks \"${DEFAULT_NETWORK}\").IPPrefixLen}}")"
+DEFAULT_GATEWAY="$(docker inspect "$CONTAINER_NAME" \
+    --format "{{(index .NetworkSettings.Networks \"${DEFAULT_NETWORK}\").Gateway}}")"
+log "default network: ip=${DEFAULT_IP}/${DEFAULT_PREFIX} gw=${DEFAULT_GATEWAY}"
+
+# ---------------------------------------------------------------------------
+# Phase 6: render EOS startup-config and unblock the container's init
 # ---------------------------------------------------------------------------
 STARTUP_CONFIG_PATH="${WORKING_DIR}/startup-config"
 CYOA_CIDR_PREFIX="${CYOA_SUBNET##*/}"
 
-# Note: the orchestrator's SSH runner exec's `doublezero-agent` over SSH. cEOS
-# routes non-EOS-CLI commands through bash for privilege-15 admin users, so
-# our /usr/local/bin/doublezero-agent wrapper runs. The `protocol http` /
-# eos-sdk-rpc / Loopback0 blocks mirror the e2e device so the agent's
-# hardcoded 127.0.0.1:9543 endpoint works.
+# Note: the orchestrator's SSH runner exec's `doublezero-agent`. cEOS pins
+# `admin`'s NSS shell to /usr/bin/RunCli, so SSH-exec'd commands hit the EOS
+# Cli parser. We connect as a separate /bin/bash system user (`stress`,
+# added in the stress device image) and plant the orchestrator's pubkey
+# into its authorized_keys post-boot. The `protocol http` / eos-sdk-rpc /
+# Loopback0 blocks mirror the e2e device so the agent's hardcoded
+# 127.0.0.1:9543 endpoint works. The 999-line ACL exception lets the
+# observer scrape `:9100` (agent prometheus metrics).
 cat > "$STARTUP_CONFIG_PATH" <<EOF
 ! stress-test device startup-config (no doublezero-agent daemon)
 !
@@ -209,6 +247,20 @@ management api gnmi
 management ssh
    no shutdown
 !
+ip access-list MAIN-CONTROL-PLANE-ACL-MGMT
+   counters per-entry
+   10 permit icmp any any
+   20 permit ip any any tracked
+   30 permit tcp any any eq ssh telnet www snmp bgp https
+   40 permit udp any any eq bootps bootpc snmp ntp
+   50 permit tcp any eq bgp any
+   60 permit ahp any any
+   70 permit pim any any
+   80 permit igmp any any
+   90 permit ospf any any
+   100 permit vrrp any any
+   999 permit tcp any any eq 9100
+!
 hostname ${DEVICE_CODE}
 !
 no service interface inactive port-id allocation disabled
@@ -240,8 +292,11 @@ interface Ethernet1
 !
 interface Management0
    no shutdown
+   ip address ${DEFAULT_IP}/${DEFAULT_PREFIX}
 !
 ip routing
+!
+ip route 0.0.0.0/0 ${DEFAULT_GATEWAY}
 !
 router bgp 65342
    router-id 10.10.10.10
@@ -255,28 +310,6 @@ end
 EOF
 log "rendered startup-config: $STARTUP_CONFIG_PATH"
 
-# ---------------------------------------------------------------------------
-# Phase 6: start the stress device container
-# ---------------------------------------------------------------------------
-if docker inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
-    log "removing existing stress device container"
-    docker rm -f "$CONTAINER_NAME" >/dev/null
-fi
-
-log "starting stress device container: $CONTAINER_NAME"
-docker run -d \
-    --name "$CONTAINER_NAME" \
-    --hostname "device-${DEVICE_CODE}" \
-    --privileged \
-    --network "$DEFAULT_NETWORK" \
-    --label "dz.malbeclabs.com/type=devnet" \
-    --label "dz.malbeclabs.com/deploy-id=${DEPLOY_ID}" \
-    "$STRESS_IMAGE" >/dev/null
-
-# Attach to the CYOA network with the assigned IP (matches e2e ordering:
-# default first → eth0, cyoa second → eth1). Then drop in the startup-config
-# so the wait loop in the entrypoint can proceed.
-docker network connect --ip "$CYOA_IP" "$CYOA_NETWORK" "$CONTAINER_NAME"
 docker exec "$CONTAINER_NAME" mkdir -p /etc/doublezero/agent
 docker cp "$STARTUP_CONFIG_PATH" "${CONTAINER_NAME}:/etc/doublezero/agent/startup-config"
 
@@ -294,11 +327,20 @@ if [ "$status" != "healthy" ]; then
     exit 1
 fi
 
-# Force admin's login shell to bash. cEOS provisions admin with /usr/bin/Cli,
-# which doesn't recognize external binaries like `doublezero-agent`. With bash
-# as the login shell, the orchestrator's SSH exec runs the wrapper directly.
-docker exec "$CONTAINER_NAME" \
-    sed -i 's|^\(admin:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:\).*$|\1/bin/bash|' /etc/passwd
+# Plant the orchestrator's SSH pubkey into the `stress` system user's
+# authorized_keys. The user is created in the Dockerfile with /bin/bash so
+# SSH-exec'd commands run through bash rather than EOS Cli. The pubkey can
+# only be installed at runtime because the keypair is generated per devnet.
+docker exec "$CONTAINER_NAME" bash -c '
+    mkdir -p /home/stress/.ssh &&
+    chown stress:stress /home/stress/.ssh &&
+    chmod 700 /home/stress/.ssh
+'
+docker exec -i "$CONTAINER_NAME" bash -c '
+    cat > /home/stress/.ssh/authorized_keys &&
+    chown stress:stress /home/stress/.ssh/authorized_keys &&
+    chmod 600 /home/stress/.ssh/authorized_keys
+' < "${SSH_KEY_PATH}.pub"
 
 # ---------------------------------------------------------------------------
 # Phase 7: create the device onchain
@@ -397,7 +439,7 @@ else
     ORCH_ARGS+=(
         --dut-ssh-host "${CYOA_IP}:22"
         --dut-ssh-key  "$SSH_KEY_PATH"
-        --dut-ssh-user admin
+        --dut-ssh-user stress
     )
 fi
 

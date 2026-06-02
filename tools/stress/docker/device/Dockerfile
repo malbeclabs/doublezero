@@ -15,4 +15,13 @@ FROM ${DZ_DEVICE_IMAGE}
 COPY agent-wrapper.sh /usr/local/bin/doublezero-agent
 RUN chmod +x /usr/local/bin/doublezero-agent
 
+# cEOS provisions admin via NSS with shell /usr/bin/RunCli, which intercepts
+# SSH-exec'd commands and feeds them to the EOS Cli parser. The orchestrator's
+# hardcoded SSH command (`doublezero-agent -verbose …`) is not valid EOS Cli,
+# so we add a separate system user with /bin/bash for the orchestrator to use.
+# run-stress-local.sh plants the orchestrator's pubkey into this user's
+# authorized_keys at runtime (the keypair is generated per devnet, so we can't
+# bake it in).
+RUN useradd -m -s /bin/bash stress
+
 EXPOSE 22

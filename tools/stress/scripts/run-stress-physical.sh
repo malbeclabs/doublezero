@@ -77,6 +77,11 @@ DEVICE_PUBLIC_IP="${DZ_STRESS_DEVICE_PUBLIC_IP:-9.210.180.5}"
 # the device advertises for its tunnels — separate from device-tunnel-block
 # (which is the private pool the program auto-allocates loopback IPs from).
 DEVICE_DZ_PREFIX="${DZ_STRESS_DEVICE_DZ_PREFIX:-9.210.180.176/29}"
+# The mgmt VRF name baked into the device account. The controller renders
+# config like `ntp server vrf <MGMT_VRF> ...`, so this must match the VRF
+# name actually configured on the DUT. cEOS uses `mgmt`; real Arista EOS
+# typically uses the full `management`. Override if the device differs.
+DEVICE_MGMT_VRF="${DZ_STRESS_DEVICE_MGMT_VRF:-management}"
 
 # Where the device reaches the controller. Default to the same address the
 # user mentioned the device can reach (chi-dn-bm1's mgmt IP from the DUT).
@@ -230,19 +235,21 @@ if ! dz device get --code "$DEVICE_CODE" >/dev/null 2>&1; then
         --exchange "$DEVICE_EXCHANGE" \
         --public-ip "$DEVICE_PUBLIC_IP" \
         --dz-prefixes "$DEVICE_DZ_PREFIX" \
-        --mgmt-vrf mgmt
+        --mgmt-vrf "$DEVICE_MGMT_VRF"
 fi
 
 DEVICE_PUBKEY="$(dz device get --code "$DEVICE_CODE" --json | jq -r .account)"
 log "device onchain pubkey: $DEVICE_PUBKEY"
 
-# Keep the onchain cap in sync with TARGET_USERS on every run. The create
-# branch above sets it implicitly on first run, but reruns with a larger
-# --target-users would otherwise leave the cap at its original value and
-# silently truncate the sweep — the controller's --max-user-tunnel-slots
-# would advertise the new number while the device account still capped at
-# the old one. (Reported by @elitegreg in #3829 review.)
-dz device update --pubkey "$DEVICE_PUBKEY" --max-users "$TARGET_USERS" \
+# Keep the onchain device record in sync with the script's env on every
+# run. The create branch above sets these implicitly on first run, but
+# reruns with a changed --target-users or DEVICE_MGMT_VRF would otherwise
+# leave the old values stuck — the controller's rendered config (and the
+# orchestrator's slot accounting) would then disagree with onchain state.
+# (--max-users issue reported by @elitegreg in #3829 review.)
+dz device update --pubkey "$DEVICE_PUBKEY" \
+    --max-users "$TARGET_USERS" \
+    --mgmt-vrf "$DEVICE_MGMT_VRF" \
     --desired-status activated
 
 for entry in "Loopback255:vpnv4" "Loopback256:ipv4"; do
@@ -302,17 +309,26 @@ log "starting controller (listen=${CONTROLLER_BIND_ADDR}:${CONTROLLER_LISTEN_POR
         > "$CONTROLLER_LOG" 2>&1 &
     echo $! > "$CONTROLLER_PID_FILE"
 )
-CONTROLLER_PID="$(cat "$CONTROLLER_PID_FILE")"
-log "controller pid: $CONTROLLER_PID (log: $CONTROLLER_LOG)"
+# Provisionally tracks the `go run` parent PID. `go run` compiles a temp
+# binary then exec's it as a child process; the actual port listener is
+# the child. We overwrite this once the port is up.
+CONTROLLER_PARENT_PID="$(cat "$CONTROLLER_PID_FILE")"
+log "controller (go run) pid: $CONTROLLER_PARENT_PID (log: $CONTROLLER_LOG)"
 
 # Teardown trap: kill the controller on script exit so a Ctrl-C doesn't leave
 # it lingering. The orchestrator + observer are intentionally NOT killed by
 # this script — they run in the background past script exit.
+#
+# Cleanup tries the listener pid (set after the port is up) first, then
+# falls back to the `go run` parent. Killing only `go run` orphans its
+# child; killing the listener causes `go run` to exit on its own.
 cleanup_controller() {
-    if kill -0 "$CONTROLLER_PID" 2>/dev/null; then
-        log "stopping controller (pid=$CONTROLLER_PID)"
-        kill "$CONTROLLER_PID" 2>/dev/null || true
-    fi
+    for pid in "${CONTROLLER_LISTENER_PID:-}" "$CONTROLLER_PARENT_PID"; do
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            log "stopping controller (pid=$pid)"
+            kill "$pid" 2>/dev/null || true
+        fi
+    done
 }
 trap cleanup_controller EXIT
 
@@ -336,6 +352,16 @@ if ! $controller_ready; then
     log "controller log tail:"
     tail -50 "$CONTROLLER_LOG" >&2 || true
     die "controller did not start listening within 30s"
+fi
+
+# Now that the port is bound, discover the actual listener pid (the
+# compiled binary that `go run` exec'd) and overwrite the pid file so
+# `kill $(cat $CONTROLLER_PID_FILE)` from any subsequent invocation kills
+# the listener, not just the `go run` shim.
+CONTROLLER_LISTENER_PID="$(ss -ltnp "sport = :$CONTROLLER_LISTEN_PORT" 2>/dev/null | grep -oP 'pid=\K\d+' | head -1)"
+if [ -n "$CONTROLLER_LISTENER_PID" ]; then
+    echo "$CONTROLLER_LISTENER_PID" > "$CONTROLLER_PID_FILE"
+    log "controller listener pid: $CONTROLLER_LISTENER_PID (overwrote pidfile)"
 fi
 
 # Determine the address the device will use to reach the controller. If the
@@ -442,7 +468,7 @@ echo "$OBS_PID" > "${RUN_DIR}/observer.pid"
 cat <<EOF
 
 ==> stress test launched against $DUT_HOST
-    controller   pid : $CONTROLLER_PID  (log: $CONTROLLER_LOG)
+    controller   pid : ${CONTROLLER_LISTENER_PID:-$CONTROLLER_PARENT_PID}  (log: $CONTROLLER_LOG)
     orchestrator pid : $ORCH_PID  (logs: ${RUN_DIR}/orchestrator.std{out,err})
     observer     pid : $OBS_PID  (logs: ${RUN_DIR}/observer.std{out,err})
     working dir      : ${RUN_DIR}

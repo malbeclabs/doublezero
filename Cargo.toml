@@ -12,6 +12,7 @@ members = [
     "smartcontract/programs/common",
     "e2e/docker/ledger/fork-accounts",
     "crates/doublezero-cli-core",
+    "crates/doublezero-daemon-cli",
     "crates/doublezero-geolocation-cli",
     "crates/sentinel",
 ]
@@ -106,6 +107,7 @@ tokio = { version = "1", default-features = false, features = [
 ] }
 doublezero-cli-core = { path = "crates/doublezero-cli-core" }
 doublezero-config = { path = "config" }
+doublezero-daemon-cli = { path = "crates/doublezero-daemon-cli" }
 doublezero-geolocation-cli = { path = "crates/doublezero-geolocation-cli" }
 doublezero-sentinel = { path = "crates/sentinel" }
 doublezero-serviceability-cli = { path = "smartcontract/cli" }

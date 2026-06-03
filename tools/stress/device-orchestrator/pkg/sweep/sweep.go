@@ -79,7 +79,8 @@ type Config struct {
 	// cancels the SSH session. Zero disables the wait — Run cancels the agent
 	// immediately after deprovision returns, which matches the pre-3796
 	// behavior and is what tests use to avoid clock coupling. AgentQuiescenceTimeout
-	// bounds the wait so a stuck agent can't pin teardown forever.
+	// bounds the wait so a stuck agent can't pin teardown forever, and must be
+	// > 0 whenever AgentQuietWindow > 0 (enforced by validate).
 	//
 	// Why this exists: the orchestrator's DeleteUser returns the moment the
 	// deprovision txn finalizes onchain, but the agent applies that change to
@@ -109,6 +110,12 @@ func (c *Config) validate() error {
 		return errors.New("sweep: AgentQuietWindow must be >= 0")
 	case c.AgentQuiescenceTimeout < 0:
 		return errors.New("sweep: AgentQuiescenceTimeout must be >= 0")
+	case c.AgentQuietWindow > 0 && c.AgentQuiescenceTimeout <= 0:
+		// The wait loop only enforces the deadline when timeout > 0. A zero
+		// timeout paired with a positive window would loop until ctx
+		// cancellation — defeats the "stuck agent can't pin teardown" guarantee
+		// the field exists for.
+		return errors.New("sweep: AgentQuiescenceTimeout must be > 0 when AgentQuietWindow > 0")
 	case c.RunID == "":
 		return errors.New("sweep: RunID is required")
 	case c.OwnerFilter.IsZero():
@@ -377,7 +384,7 @@ func waitForAgentQuiescence(ctx context.Context, cfg *Config, tracker *quiescenc
 				"wait_elapsed", now.Sub(start))
 			return
 		}
-		if cfg.AgentQuiescenceTimeout > 0 && !now.Before(deadline) {
+		if !now.Before(deadline) {
 			cfg.Logger.Warn("sweep: agent quiescence timed out; proceeding with shutdown anyway",
 				"wait_elapsed", now.Sub(start),
 				"since_last_event", sinceLast)

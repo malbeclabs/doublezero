@@ -345,6 +345,7 @@ func TestRun_RejectsInvalidConfig(t *testing.T) {
 		{name: "missing runlog", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", OwnerFilter: owner, Executor: &fakeExecutor{}}},
 		{name: "negative quiet window", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", OwnerFilter: owner, Executor: &fakeExecutor{}, Runlog: &runlog.Writer{}, AgentQuietWindow: -1}},
 		{name: "negative quiescence timeout", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", OwnerFilter: owner, Executor: &fakeExecutor{}, Runlog: &runlog.Writer{}, AgentQuiescenceTimeout: -1}},
+		{name: "positive quiet window with zero timeout", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", OwnerFilter: owner, Executor: &fakeExecutor{}, Runlog: &runlog.Writer{}, AgentQuietWindow: time.Second}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -707,6 +708,21 @@ func TestRun_WaitsForAgentQuiescenceAfterDeprovision(t *testing.T) {
 	// Mark the agent as active right before releasing deprovision so the
 	// quiescence wait sees a recent Applied.
 	ag.Emit(agent.Event{Kind: agent.EventApplied, TunnelID: 500, At: time.Now()})
+
+	// Block until the consumer goroutine has written the applied row to the
+	// runlog. consumeAgentEvents calls tracker.markEvent BEFORE Runlog.Append,
+	// so the row's presence proves the tracker was marked. Without this gate,
+	// close(gate) can race the consumer; if the tracker is still empty when
+	// waitForAgentQuiescence reads it, the wait is skipped and the test
+	// flakes (~5/6 failures under the parallel suite).
+	require.Eventually(t, func() bool {
+		for _, r := range readRows(t, path) {
+			if r.Event == runlog.EventApplied && r.TunnelID == 500 {
+				return true
+			}
+		}
+		return false
+	}, time.Second, time.Millisecond, "consumer goroutine did not record applied row")
 
 	gateReleased := time.Now()
 	close(gate)

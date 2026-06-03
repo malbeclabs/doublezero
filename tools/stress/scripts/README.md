@@ -77,3 +77,77 @@ script points the observer's `--agent-metrics-url` at the same port.
 dev/dzctl destroy -y
 docker rm -f dz-local-device-dzstress 2>/dev/null
 ```
+
+---
+
+# Physical-device harness
+
+`run-stress-physical.sh` reuses the same orchestrator/observer binaries
+against a real Arista EOS device, with a host-local controller and the
+devnet ledger.
+
+Differences from the containerized harness:
+
+| | Containerized | Physical |
+| --- | --- | --- |
+| Ledger | local solana-test-validator | devnet RPC (`DZ_RPC_URL`) |
+| Serviceability | deployed fresh per `dzctl start` | pre-deployed at `DZ_PROGRAM_ID`, initialized on first run |
+| Controller | `dz-local-controller` container | `go run controlplane/controller/cmd/controller start ...` on the host |
+| Device | cEOS container + agent wrapper script | physical DUT over SSH, no wrapper |
+| Agent invocation | wrapper injects `-pubkey` + sudo | orchestrator passes `-pubkey` directly and prefixes `/sbin/ip netns exec ns-management` |
+
+The orchestrator gained three additive flags (`--agent-binary`,
+`--agent-command-prefix`, `--agent-pubkey`) to support the physical case.
+All default to empty so the containerized path is unchanged.
+
+## Quick start
+
+```bash
+# Required env (set per operator):
+export DZ_RPC_URL='https://doublezerolocalnet.rpcpool.com/...'   # devnet pool
+export DZ_PROGRAM_ID='GXxf6xgCdngKsRPGg3svaoKUQskVnu4mTuUoJ5PhNUau'
+export DUT_HOST=10.0.0.141
+export DUT_SSH_USER=admin
+export DUT_SSH_KEY=$HOME/.ssh/id_ed25519
+export SOLANA_KEYPAIR=$HOME/.config/solana/id.json
+
+# 4-user smoke run
+tools/stress/scripts/run-stress-physical.sh --target-users 4 --users-per-batch 2 --hold 0
+```
+
+The script:
+1. SSH-pings the DUT and verifies `$AGENT_BINARY` exists on it.
+2. Initializes the serviceability program (global-config + one location +
+   one exchange + contributor `co01`) if not already initialized.
+3. Creates the device + loopbacks onchain (idempotent).
+4. Launches the controller on the host with
+   `--max-user-tunnel-slots $TARGET_USERS` and waits for the gRPC port.
+5. Sets up access passes in parallel against the devnet RPC.
+6. Builds the orchestrator + observer binaries and launches them in the
+   background, pointing at the physical DUT.
+
+The controller pid is recorded in `dev/.deploy/stress-physical/run/controller.pid`;
+the orchestrator + observer pids land in the per-run subdirectory
+(`run/<UTC timestamp>/`). Stop everything with the `kill $(cat …)`
+snippet the script prints.
+
+## Overrides
+
+All knobs are env vars (defaults in the script header):
+
+| Var                       | Purpose                                                   |
+| ------------------------- | --------------------------------------------------------- |
+| `DZ_RPC_URL`              | Devnet RPC URL                                            |
+| `DZ_PROGRAM_ID`           | Pre-deployed serviceability program ID                    |
+| `DUT_HOST`                | Device IP/hostname                                        |
+| `DUT_SSH_USER`            | SSH user on the device                                    |
+| `DUT_SSH_KEY`             | SSH private key path                                      |
+| `AGENT_BINARY`            | Path of `doublezero-agent` on the device                  |
+| `AGENT_COMMAND_PREFIX`    | Prepended to the agent command (default: ns-management)   |
+| `AGENT_METRICS_PORT`      | Metrics listener port on the device (default `50100`)     |
+| `CONTROLLER_BIND_ADDR`    | Controller listen address (default `0.0.0.0`)             |
+| `CONTROLLER_ADVERTISE_ADDR` | Address advertised to the device (default: auto-detect) |
+| `CONTROLLER_LISTEN_PORT`  | Controller listen port (default `7000`)                   |
+| `SOLANA_KEYPAIR`          | Operator keypair (signs init + access-passes)             |
+| `DEVICE_CODE`             | Device code onchain (default `chi-dn-dzd5`)               |
+| `DEVICE_DZ_PREFIX`        | Device's dz-prefix /29 (carved from the tunnel block)     |

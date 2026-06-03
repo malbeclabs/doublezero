@@ -19,10 +19,6 @@ pub struct GetAccountsCliCommand {
     /// Suppress output
     #[arg(long, default_value_t = false)]
     pub no_output: bool,
-
-    /// Output as JSON
-    #[arg(long)]
-    pub json: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -97,7 +93,6 @@ mod tests {
             GetAccountsCliCommand {
                 account_type: None,
                 no_output: false,
-                json: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -117,7 +112,6 @@ mod tests {
             GetAccountsCliCommand {
                 account_type: None,
                 no_output: true,
-                json: false,
             }
             .execute(&ctx, &client, &mut output),
         );

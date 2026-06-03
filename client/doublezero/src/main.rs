@@ -317,6 +317,24 @@ async fn main() -> eyre::Result<()> {
             Ok(())
         }
 
+        // Binary-level override: subscribe uses the real blocking websocket
+        // loop (DZClient::subscribe) for live event streaming. The module
+        // crate's SubscribeCliCommand.execute() falls back to a get_all()
+        // snapshot for testability (mockall cannot mock FnMut callbacks).
+        Command::Serviceability(ServiceabilityCommand::Subscribe(_)) => {
+            use std::io::Write;
+            use std::sync::{atomic::AtomicBool, Arc};
+            writeln!(handle, "Waiting for events...")?;
+            let stop = Arc::new(AtomicBool::new(false));
+            dzclient.subscribe(
+                |_client, pubkey, account| {
+                    let _ = writeln!(handle, "{pubkey} -> {account:?}");
+                },
+                stop,
+            )?;
+            Ok(())
+        }
+
         // Flattened serviceability module: single dispatch arm hoists all variants.
         Command::Serviceability(cmd) => cmd.execute(&ctx, &client, &mut handle).await,
     };

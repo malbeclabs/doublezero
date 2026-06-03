@@ -3,12 +3,12 @@ use doublezero_cli_core::CliContext;
 use serde::Serialize;
 use std::io::Write;
 
-use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
+use crate::{doublezerocommand::CliCommand, validators::validate_pubkey};
 
 #[derive(Args, Debug)]
 pub struct GetAccountCliCommand {
     /// Public key of the account to retrieve
-    #[arg(long, value_parser = validate_pubkey_or_code)]
+    #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
     /// Include transaction logs in the output
     #[arg(long, action = clap::ArgAction::SetTrue)]
@@ -52,7 +52,13 @@ impl GetAccountCliCommand {
             .map_err(|_| eyre::eyre!("Invalid pubkey"))?;
 
         let account = client.get_account_data(pubkey)?;
-        let transactions = client.get_transactions(pubkey).ok();
+        let transactions = match client.get_transactions(pubkey) {
+            Ok(t) => Some(t),
+            Err(e) => {
+                tracing::warn!("Failed to fetch transactions: {e}");
+                None
+            }
+        };
 
         if self.json {
             let json_out = AccountJsonOutput {

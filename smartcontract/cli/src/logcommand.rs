@@ -2,12 +2,12 @@ use clap::Args;
 use doublezero_cli_core::CliContext;
 use std::io::Write;
 
-use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
+use crate::{doublezerocommand::CliCommand, validators::validate_pubkey};
 
 #[derive(Args, Debug)]
 pub struct LogCliCommand {
     /// Public key of the user to get logs for
-    #[arg(long, value_parser = validate_pubkey_or_code)]
+    #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
     /// Output as JSON
     #[arg(long)]

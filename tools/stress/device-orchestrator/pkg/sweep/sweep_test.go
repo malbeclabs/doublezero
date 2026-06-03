@@ -343,6 +343,8 @@ func TestRun_RejectsInvalidConfig(t *testing.T) {
 		{name: "missing owner filter", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", Executor: &fakeExecutor{}, Runlog: &runlog.Writer{}}},
 		{name: "missing executor", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", OwnerFilter: owner, Runlog: &runlog.Writer{}}},
 		{name: "missing runlog", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", OwnerFilter: owner, Executor: &fakeExecutor{}}},
+		{name: "negative quiet window", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", OwnerFilter: owner, Executor: &fakeExecutor{}, Runlog: &runlog.Writer{}, AgentQuietWindow: -1}},
+		{name: "negative quiescence timeout", cfg: sweep.Config{Target: 1, UsersPerBatch: 1, RunID: "r", OwnerFilter: owner, Executor: &fakeExecutor{}, Runlog: &runlog.Writer{}, AgentQuiescenceTimeout: -1}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -648,4 +650,113 @@ func (e *funcExecutor) CreateUser(ctx context.Context, idx int) (sweep.CreateRes
 }
 func (e *funcExecutor) DeleteUser(ctx context.Context, pk solana.PublicKey) (sweep.DeleteResult, error) {
 	return e.delete(ctx, pk)
+}
+
+// TestRun_WaitsForAgentQuiescenceAfterDeprovision exercises the post-deprovision
+// quiescence wait: after deprovision returns, Run must block until the agent
+// has been silent (no EventApplied) for AgentQuietWindow before cancelling the
+// SSH session. The test emits an Applied during deprovision, then verifies Run
+// takes at least AgentQuietWindow to return after deprovision's gate closes.
+//
+// Uses a real clock — the wait uses cfg.Clock.After(time.Second) for tick
+// pacing, so a fake clock would either fire instantly (deadlock-free but
+// untestable) or never (deadlock). With AgentQuietWindow = 100 ms and a
+// real clock the test bounds at ~150 ms wallclock.
+func TestRun_WaitsForAgentQuiescenceAfterDeprovision(t *testing.T) {
+	t.Parallel()
+
+	owner := solana.NewWallet().PublicKey()
+	exec := newFakeExecutor(owner)
+	// Block deprovision so we can emit an Applied while users are still
+	// registered, then watch how long Run takes to return after the gate
+	// releases.
+	gate := make(chan struct{})
+	exec.deleteGate = gate
+
+	ag := newScriptedAgent()
+
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	w, err := runlog.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	const quietWindow = 100 * time.Millisecond
+	cfg := sweep.Config{
+		RunID:                  "run-quiesce",
+		Target:                 1,
+		UsersPerBatch:          1,
+		Hold:                   0,
+		AgentQuietWindow:       quietWindow,
+		AgentQuiescenceTimeout: 5 * time.Second,
+		OwnerFilter:            owner,
+		Executor:               exec,
+		Agent:                  ag,
+		Runlog:                 w,
+		Clock:                  sweep.RealClock{},
+	}
+	done := make(chan error, 1)
+	go func() { done <- sweep.Run(context.Background(), cfg) }()
+
+	deadline := time.Now().Add(time.Second)
+	for exec.deleteN.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("sweep did not reach deprovision within 1s")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// Mark the agent as active right before releasing deprovision so the
+	// quiescence wait sees a recent Applied.
+	ag.Emit(agent.Event{Kind: agent.EventApplied, TunnelID: 500, At: time.Now()})
+
+	gateReleased := time.Now()
+	close(gate)
+
+	select {
+	case runErr := <-done:
+		require.NoError(t, runErr)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return within 2s of gate release")
+	}
+	elapsed := time.Since(gateReleased)
+	// Wait should have blocked for at least roughly the quiet window. Allow a
+	// generous lower bound (quietWindow/2) to absorb scheduler jitter; the
+	// negative case (wait skipped entirely) returns in < 10 ms and would
+	// still trip a quietWindow/2 floor.
+	assert.GreaterOrEqual(t, elapsed, quietWindow/2,
+		"Run returned %v after gate release; expected ≥ %v (quiet window)", elapsed, quietWindow/2)
+}
+
+// TestRun_SkipsQuiescenceWaitWhenNoAppliedObserved confirms the wait is a
+// no-op when the agent never emitted an Applied — common in --no-agent runs
+// and on early-failure paths where teardown shouldn't pay the wait cost.
+func TestRun_SkipsQuiescenceWaitWhenNoAppliedObserved(t *testing.T) {
+	t.Parallel()
+
+	owner := solana.NewWallet().PublicKey()
+	exec := newFakeExecutor(owner)
+
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	w, err := runlog.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	cfg := sweep.Config{
+		RunID:                  "run-quiesce-skip",
+		Target:                 1,
+		UsersPerBatch:          1,
+		Hold:                   0,
+		AgentQuietWindow:       30 * time.Second, // would dominate run time if the wait did NOT skip
+		AgentQuiescenceTimeout: 60 * time.Second,
+		OwnerFilter:            owner,
+		Executor:               exec,
+		Agent:                  agent.NewNoop(nil),
+		Runlog:                 w,
+		Clock:                  sweep.RealClock{},
+	}
+
+	start := time.Now()
+	require.NoError(t, sweep.Run(context.Background(), cfg))
+	elapsed := time.Since(start)
+	assert.Less(t, elapsed, time.Second,
+		"Run took %v with a 30s quiet window but no Applied events — wait should have skipped", elapsed)
 }

@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -73,6 +74,22 @@ type Config struct {
 	Hold          time.Duration
 	OwnerFilter   solana.PublicKey
 
+	// AgentQuietWindow is how long the agent must be silent (no observed
+	// EventApplied) before Run treats deprovision teardown as complete and
+	// cancels the SSH session. Zero disables the wait — Run cancels the agent
+	// immediately after deprovision returns, which matches the pre-3796
+	// behavior and is what tests use to avoid clock coupling. AgentQuiescenceTimeout
+	// bounds the wait so a stuck agent can't pin teardown forever.
+	//
+	// Why this exists: the orchestrator's DeleteUser returns the moment the
+	// deprovision txn finalizes onchain, but the agent applies that change to
+	// EOS asynchronously — it polls the controller every 5s, builds a config
+	// diff, and runs `configure session` (tens of seconds at high tunnel
+	// counts). Cancelling the SSH session mid-commit leaves the deprovisioned
+	// tunnels on the device. The wait closes the gap.
+	AgentQuietWindow       time.Duration
+	AgentQuiescenceTimeout time.Duration
+
 	Executor Executor
 	Agent    agent.Runner
 	Runlog   *runlog.Writer
@@ -88,6 +105,10 @@ func (c *Config) validate() error {
 		return errors.New("sweep: UsersPerBatch must be > 0")
 	case c.Hold < 0:
 		return errors.New("sweep: Hold must be >= 0")
+	case c.AgentQuietWindow < 0:
+		return errors.New("sweep: AgentQuietWindow must be >= 0")
+	case c.AgentQuiescenceTimeout < 0:
+		return errors.New("sweep: AgentQuiescenceTimeout must be >= 0")
 	case c.RunID == "":
 		return errors.New("sweep: RunID is required")
 	case c.OwnerFilter.IsZero():
@@ -113,6 +134,28 @@ func (c *Config) applyDefaults() {
 	if c.Agent == nil {
 		c.Agent = agent.NewNoop(c.Logger)
 	}
+}
+
+// quiescenceTracker records the wall-clock time of the most recent observed
+// agent.EventApplied. The orchestrator polls it after deprovision returns to
+// wait for the agent to finish converging EOS to the new (post-deprovision)
+// config before cancelling the SSH session. We track only EventApplied
+// because that's the post-commit signal — pre_commit_log fires while the
+// commit is still being prepared.
+type quiescenceTracker struct {
+	lastAppliedNanos atomic.Int64
+}
+
+func (q *quiescenceTracker) markApplied(at time.Time) {
+	q.lastAppliedNanos.Store(at.UnixNano())
+}
+
+func (q *quiescenceTracker) lastApplied() (time.Time, bool) {
+	n := q.lastAppliedNanos.Load()
+	if n == 0 {
+		return time.Time{}, false
+	}
+	return time.Unix(0, n), true
 }
 
 // createdUser tracks an orchestrator-owned user so the deprovision phase can
@@ -172,6 +215,7 @@ func Run(ctx context.Context, cfg Config) error {
 	cfg.Logger = cfg.Logger.With("run_id", cfg.RunID)
 
 	registry := newTunnelRegistry()
+	tracker := &quiescenceTracker{}
 
 	// runCtx lets the agent-event consumer abort the provisioning loop if the
 	// agent stream dies. The agent is required telemetry for a run, so a broken
@@ -191,7 +235,7 @@ func Run(ctx context.Context, cfg Config) error {
 	consumerWG.Add(1)
 	go func() {
 		defer consumerWG.Done()
-		consumeAgentEvents(&cfg, registry)
+		consumeAgentEvents(&cfg, registry, tracker)
 		// Events() has closed. If it closed because the stream errored (rather
 		// than our own agentCancel during teardown), abort the run so the
 		// provisioning loop stops and Run reports the failure.
@@ -213,6 +257,15 @@ func Run(ctx context.Context, cfg Config) error {
 	// stop on teardown must enforce it out of band.
 	depErr := deprovision(context.WithoutCancel(ctx), &cfg, created)
 
+	// Give the agent a chance to finish applying the deprovision config to
+	// EOS before we kill its SSH session. Skip on any error path: if the
+	// run is already failing we want a fast shutdown, not 5 minutes of
+	// extra wait. ctx (the caller's signal-aware context) cuts the wait
+	// short on Ctrl-C / abort-file even on the success path.
+	if err == nil && depErr == nil && agentErr == nil {
+		waitForAgentQuiescence(ctx, &cfg, tracker)
+	}
+
 	// Tell the agent to stop and wait for the consumer goroutine to drain so
 	// no events are dropped between deprovision-end and consumer-exit.
 	agentCancel()
@@ -233,8 +286,18 @@ func Run(ctx context.Context, cfg Config) error {
 // and writes pre_commit_log / applied rows for tunnel IDs the sweep has
 // registered. Events for unknown tunnel IDs are warn-logged and dropped — the
 // most likely cause is a tunnel that belongs to a non-orchestrator user.
-func consumeAgentEvents(cfg *Config, registry *tunnelRegistry) {
+//
+// Every observed EventApplied (including for unregistered tunnels) bumps the
+// quiescence tracker so Run can wait for the agent to settle before teardown.
+// Filtering by registered tunnels here would miss legitimate agent activity
+// for orchestrator-adjacent tunnels (a non-orchestrator user on the same
+// device), which is still "agent is doing work" for the purpose of timing
+// the SSH cancel.
+func consumeAgentEvents(cfg *Config, registry *tunnelRegistry, tracker *quiescenceTracker) {
 	for ev := range cfg.Agent.Events() {
+		if ev.Kind == agent.EventApplied {
+			tracker.markApplied(cfg.Clock.Now())
+		}
 		u, ok := registry.lookup(ev.TunnelID)
 		if !ok {
 			cfg.Logger.Debug("sweep: agent event for unregistered tunnel; dropping",
@@ -262,6 +325,57 @@ func consumeAgentEvents(cfg *Config, registry *tunnelRegistry) {
 		if err := cfg.Runlog.Append(row); err != nil {
 			cfg.Logger.Warn("sweep: runlog append failed for agent event",
 				"err", err, "kind", runlogEvent, "tunnel_id", ev.TunnelID)
+		}
+	}
+}
+
+// waitForAgentQuiescence blocks until the agent has been silent (no
+// EventApplied observation) for cfg.AgentQuietWindow, or the cumulative wait
+// exceeds cfg.AgentQuiescenceTimeout, or ctx is cancelled. It is a no-op
+// when cfg.AgentQuietWindow is zero (the library default) or when no
+// EventApplied has ever been observed (e.g. --no-agent runs).
+//
+// The wait polls in 1s ticks. Polling avoids needing a separate "applied
+// observed" signal channel — the tracker's atomic.Int64 is read each tick
+// and compared against the current clock. At 1024 users / batch=32 the
+// agent emits applieds in clumps tens of seconds apart, so a 1s poll is
+// well below the natural event cadence.
+func waitForAgentQuiescence(ctx context.Context, cfg *Config, tracker *quiescenceTracker) {
+	if cfg.AgentQuietWindow <= 0 {
+		return
+	}
+	last, ok := tracker.lastApplied()
+	if !ok {
+		cfg.Logger.Info("sweep: no applied events observed; skipping agent quiescence wait")
+		return
+	}
+	start := cfg.Clock.Now()
+	deadline := start.Add(cfg.AgentQuiescenceTimeout)
+	cfg.Logger.Info("sweep: waiting for agent to quiesce",
+		"quiet_window", cfg.AgentQuietWindow,
+		"timeout", cfg.AgentQuiescenceTimeout,
+		"last_applied_at", last)
+	for {
+		now := cfg.Clock.Now()
+		last, _ = tracker.lastApplied()
+		sinceLast := now.Sub(last)
+		if sinceLast >= cfg.AgentQuietWindow {
+			cfg.Logger.Info("sweep: agent quiesced",
+				"quiet_for", sinceLast,
+				"wait_elapsed", now.Sub(start))
+			return
+		}
+		if cfg.AgentQuiescenceTimeout > 0 && !now.Before(deadline) {
+			cfg.Logger.Warn("sweep: agent quiescence timed out; proceeding with shutdown anyway",
+				"wait_elapsed", now.Sub(start),
+				"since_last_applied", sinceLast)
+			return
+		}
+		select {
+		case <-cfg.Clock.After(time.Second):
+		case <-ctx.Done():
+			cfg.Logger.Warn("sweep: agent quiescence wait cancelled", "err", ctx.Err())
+			return
 		}
 	}
 }

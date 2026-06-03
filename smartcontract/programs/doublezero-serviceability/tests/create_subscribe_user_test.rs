@@ -1156,7 +1156,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
         solana_sdk::account::Account {
             lamports: 10_000_000_000,
             data: vec![],
-            owner: solana_sdk::system_program::id(),
+            owner: solana_sdk_ids::system_program::id(),
             executable: false,
             rent_epoch: 0,
         },
@@ -1458,7 +1458,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
         solana_sdk::account::Account {
             lamports: 10_000_000_000,
             data: vec![],
-            owner: solana_sdk::system_program::id(),
+            owner: solana_sdk_ids::system_program::id(),
             executable: false,
             rent_epoch: 0,
         },

@@ -32,6 +32,7 @@ serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
 solana-client.workspace = true
+solana-commitment-config.workspace = true
 solana-program.workspace = true
 solana-pubsub-client.workspace = true
 solana-sdk.workspace = true

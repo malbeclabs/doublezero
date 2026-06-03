@@ -35,7 +35,7 @@ pub fn process_update_program_config(
         msg!("Payer must be a signer");
         return Err(ProgramError::MissingRequiredSignature);
     }
-    if system_program.key != &solana_program::system_program::id() {
+    if system_program.key != &solana_sdk_ids::system_program::id() {
         msg!("Invalid System Program account");
         return Err(ProgramError::IncorrectProgramId);
     }
@@ -49,7 +49,7 @@ pub fn process_update_program_config(
     }
 
     // Verify the program data account is owned by the BPF Upgradeable Loader
-    if program_data_account.owner != &solana_program::bpf_loader_upgradeable::id() {
+    if program_data_account.owner != &solana_sdk_ids::bpf_loader_upgradeable::id() {
         msg!("Program data account not owned by BPF Upgradeable Loader");
         return Err(ProgramError::IllegalOwner);
     }
@@ -57,7 +57,7 @@ pub fn process_update_program_config(
     // Verify the program data account derives from the program id
     let expected_program_data = Pubkey::find_program_address(
         &[program_id.as_ref()],
-        &solana_program::bpf_loader_upgradeable::id(),
+        &solana_sdk_ids::bpf_loader_upgradeable::id(),
     )
     .0;
     if program_data_account.key != &expected_program_data {

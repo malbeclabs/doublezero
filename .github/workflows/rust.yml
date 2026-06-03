@@ -13,7 +13,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install agave solana tools
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.13/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - run: make rust-build
   rust-lint:
@@ -33,7 +33,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install agave solana tools
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.13/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - run: make rust-test
   rust-validator-test:
@@ -44,6 +44,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install agave solana tools
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.13/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - run: make rust-validator-test

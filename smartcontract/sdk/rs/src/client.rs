@@ -20,11 +20,11 @@ use solana_client::{
     },
     rpc_filter::{Memcmp, MemcmpEncodedBytes, RpcFilterType},
 };
+use solana_commitment_config::CommitmentConfig;
+use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_rpc_client_api::client_error::{Error as ClientError, ErrorKind as ClientErrorKind};
 use solana_sdk::{
     account::Account,
-    commitment_config::CommitmentConfig,
-    compute_budget::ComputeBudgetInstruction,
     instruction::{AccountMeta, Instruction, InstructionError},
     program_error::ProgramError,
     pubkey::Pubkey,
@@ -237,7 +237,7 @@ impl DZClient {
             ) {
             Ok(sig) => Ok(sig),
             Err(client_err) => {
-                let tx_err = match &client_err.kind {
+                let tx_err = match client_err.kind.as_ref() {
                     ClientErrorKind::TransactionError(e) => Some(e.clone()),
                     ClientErrorKind::RpcError(
                         solana_rpc_client_api::request::RpcError::RpcResponseError {
@@ -247,7 +247,7 @@ impl DZClient {
                                 ),
                             ..
                         },
-                    ) => res.err.clone(),
+                    ) => res.err.clone().map(Into::into),
                     _ => None,
                 };
 
@@ -313,7 +313,7 @@ impl DZClient {
     /// Returns false for permanent errors like AccountNotFound or RPC response errors.
     fn is_retryable_rpc_error(err: &ClientError) -> bool {
         matches!(
-            err.kind,
+            err.kind.as_ref(),
             ClientErrorKind::Io(_) | ClientErrorKind::Reqwest(_) | ClientErrorKind::Middleware(_)
         )
     }

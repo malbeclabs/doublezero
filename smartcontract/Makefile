@@ -3,6 +3,11 @@ BUILD:=`git rev-parse --short HEAD`
 LDFLAGS=
 CLIPPY_FLAGS=-- -Dclippy::all -D warnings
 env ?= localnet
+# Platform-tools (Cargo/rustc) used by cargo build-sbf / test-sbf. The solana 3.0
+# program dependency tree pulls edition2024 crates (cpufeatures 0.3 via blake3),
+# which require Cargo >= 1.85; agave's default platform-tools (v1.51) ships Cargo
+# 1.84.1 and cannot parse them. v1.54 ships a new enough toolchain.
+SBF_TOOLS_VERSION ?= v1.54
 
 UNAME_S := $(shell uname -s)
 
@@ -31,7 +36,7 @@ test-programs: test-sbf
 
 .PHONY: test-sbf
 test-sbf:
-	cargo test-sbf
+	cargo test-sbf --tools-version $(SBF_TOOLS_VERSION)
 
 .PHONY: lint
 lint: lint-programs
@@ -55,7 +60,7 @@ build: build-programs
 
 .PHONY: build-programs
 build-programs:
-	cd programs/doublezero-record && cargo build-sbf
-	cd programs/doublezero-serviceability && cargo build-sbf
-	cd programs/doublezero-telemetry && cargo build-sbf --features $(env)
-	cd programs/doublezero-geolocation && cargo build-sbf --features $(env)
+	cd programs/doublezero-record && cargo build-sbf --tools-version $(SBF_TOOLS_VERSION)
+	cd programs/doublezero-serviceability && cargo build-sbf --tools-version $(SBF_TOOLS_VERSION)
+	cd programs/doublezero-telemetry && cargo build-sbf --tools-version $(SBF_TOOLS_VERSION) --features $(env)
+	cd programs/doublezero-geolocation && cargo build-sbf --tools-version $(SBF_TOOLS_VERSION) --features $(env)

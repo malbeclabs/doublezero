@@ -23,6 +23,12 @@ All notable changes to this project will be documented in this file.
   - Drop the redundant `ip-msdp-sa-cache` kind from the state-ingest server's default state-collect command list. `show ip msdp sa-cache rejected` already returns the full SA cache (accepted SAs in the `acceptedSaMsg` array plus any rejected SAs in `rejectedSaMsg`), so the bare `show ip msdp sa-cache` collection is redundant — devices were running both commands per tick and uploading the same accepted-SA data twice. The `ip-msdp-sa-cache-rejected` kind is retained.
 - Telemetry (geoprobe)
   - Retry transient `bind: invalid argument` failures when allocating per-probe UDP sockets in `Publisher.AddProbe`, matching the existing retry-on-bind pattern in `Pinger`. The shared retry helper is lifted into `retry.go` so the publisher and pinger paths use the same exponential-backoff logic. Fixes intermittent `TestPublisher_RemoveProbe`/`TestPublisher_AddProbe` CI flakes caused by concurrent ephemeral-port allocation ([#3765](https://github.com/malbeclabs/doublezero/issues/3765))
+- Dependencies
+  - Migrate the entire Rust workspace from solana-sdk 2.3.x to the solana 3.0 line plus the granular split crates (`solana-pubkey`, `solana-instruction`, `solana-cpi`, `solana-sdk-ids`, `solana-system-interface`, `solana-commitment-config`, `solana-compute-budget-interface`), aligning with the doublezero-solana programs. Onchain account layouts are unchanged (regenerated fixtures are byte-identical), so the Go, TypeScript, and Python SDKs are unaffected.
+- Onchain programs
+  - Adapt to the solana 3.0 APIs: `AccountInfo::realloc` becomes `resize`, system-program and BPF-upgradeable-loader IDs move to `solana-sdk-ids`, `ProgramError::BorshIoError` is now a unit variant, and `AccountInfo::new` drops its `rent_epoch` argument. Bump the programs build toolchain to Rust 1.91.
+- CI
+  - Install agave v3.0.4 and build/test the SBF programs with platform-tools v1.54 (`SBF_TOOLS_VERSION`), required because the solana 3.0 dependency tree pulls edition2024 crates that need Cargo >= 1.85 (agave's default platform-tools v1.51 ships Cargo 1.84.1).
 
 ## [v0.25.1](https://github.com/malbeclabs/doublezero/compare/client/v0.24.0...client/v0.25.1) - 2026-06-01
 

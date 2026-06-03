@@ -24,7 +24,7 @@ use solana_sdk::{
 
 use std::any::type_name;
 
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn init_logger() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
@@ -55,7 +55,7 @@ pub const TEST_PAYER_BYTES: [u8; 64] = [
 
 #[allow(dead_code)]
 pub fn test_payer() -> Keypair {
-    Keypair::from_bytes(&TEST_PAYER_BYTES).unwrap()
+    Keypair::try_from(&TEST_PAYER_BYTES[..]).unwrap()
 }
 
 #[allow(dead_code)]

@@ -15,15 +15,20 @@
 #   tools/stress/scripts/run-stress-physical.sh \
 #       --target-users 4 --users-per-batch 2 --hold 0
 #
-# Required env (or defaults shown):
+# Required env:
+#   DZ_PROGRAM_ID       serviceability program id (no default — operator
+#                       passes the stress-test program id, e.g. from the
+#                       private infra repo)
+# Env (defaults shown — override per operator):
 #   DZ_RPC_URL          devnet RPC (default: doublezerolocalnet pool)
-#   DZ_PROGRAM_ID       serviceability program id (default: GXxf6xgC...)
-#   DUT_HOST            device IP or hostname (default: 10.0.0.141)
+#   DUT_HOST            device IP or hostname
 #   DUT_SSH_USER        SSH user on the DUT
 #   DUT_SSH_KEY         SSH private key path
-#   CONTROLLER_BIND_ADDR  controller listen address (default: 10.0.0.141's gateway from the DUT)
-#   AGENT_BINARY        path to doublezero-agent on the DUT (default: /usr/local/bin/doublezero-agent)
-#   SOLANA_KEYPAIR      operator's keypair (default: $HOME/.config/solana/id.json)
+#   CONTROLLER_BIND_ADDR  controller listen address (default: 0.0.0.0)
+#   AGENT_BINARY        path to doublezero-agent on the DUT
+#   SOLANA_KEYPAIR      operator's keypair (default: $HOME/.config/doublezero/id.json
+#                       — the same default the doublezero CLI uses, so `dz` calls
+#                       and orchestrator share the operator's authority)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
@@ -33,7 +38,10 @@ WORKSPACE_DIR="$(cd -- "${SCRIPT_DIR}/../../.." &> /dev/null && pwd)"
 # Config (env-overridable)
 # ---------------------------------------------------------------------------
 DZ_RPC_URL="${DZ_RPC_URL:-https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16}"
-DZ_PROGRAM_ID="${DZ_PROGRAM_ID:-GXxf6xgCdngKsRPGg3svaoKUQskVnu4mTuUoJ5PhNUau}"
+# DZ_PROGRAM_ID has no default: the stress-test serviceability program ID is
+# kept in the private infra repo, not here. Operators export it before
+# running the script.
+DZ_PROGRAM_ID="${DZ_PROGRAM_ID:?DZ_PROGRAM_ID is required (stress-test serviceability program id; see infra repo)}"
 
 DUT_HOST="${DUT_HOST:-10.0.0.15}"
 DUT_SSH_USER="${DUT_SSH_USER:-nik}"
@@ -69,7 +77,11 @@ CONTROLLER_BIND_ADDR="${CONTROLLER_BIND_ADDR:-0.0.0.0}"
 CONTROLLER_ADVERTISE_ADDR="${CONTROLLER_ADVERTISE_ADDR:-}"
 CONTROLLER_LISTEN_PORT="${CONTROLLER_LISTEN_PORT:-7000}"
 
-SOLANA_KEYPAIR="${SOLANA_KEYPAIR:-$HOME/.config/solana/id.json}"
+# Default to the doublezero CLI's keypair location so `dz` (which reads this
+# location implicitly) and the orchestrator's --keypair both use the same
+# operator authority. The standard solana CLI default at ~/.config/solana/id.json
+# may be a different key and would need an explicit override.
+SOLANA_KEYPAIR="${SOLANA_KEYPAIR:-$HOME/.config/doublezero/id.json}"
 
 DEPLOY_DIR="${WORKSPACE_DIR}/dev/.deploy/stress-physical"
 WORKING_DIR="${DZ_STRESS_WORKING_DIR:-${DEPLOY_DIR}/run}"

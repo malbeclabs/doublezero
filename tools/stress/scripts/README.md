@@ -103,13 +103,16 @@ All default to empty so the containerized path is unchanged.
 ## Quick start
 
 ```bash
-# Required env (set per operator):
-export DZ_RPC_URL='https://doublezerolocalnet.rpcpool.com/...'   # devnet pool
-export DZ_PROGRAM_ID='GXxf6xgCdngKsRPGg3svaoKUQskVnu4mTuUoJ5PhNUau'
-export DUT_HOST=10.0.0.141
-export DUT_SSH_USER=admin
-export DUT_SSH_KEY=$HOME/.ssh/id_ed25519
-export SOLANA_KEYPAIR=$HOME/.config/solana/id.json
+# Required: the stress-test serviceability program ID lives in the
+# private infra repo, not here. Export it before running.
+export DZ_PROGRAM_ID='<stress-program-id-from-infra-repo>'
+
+# Optional overrides (defaults shown in the script header):
+# export DZ_RPC_URL='https://...'
+# export DUT_HOST=10.0.0.15
+# export DUT_SSH_USER=nik
+# export DUT_SSH_KEY=$HOME/.ssh/nik@malbeclabs.com
+# export SOLANA_KEYPAIR=$HOME/.config/doublezero/id.json
 
 # 4-user smoke run
 tools/stress/scripts/run-stress-physical.sh --target-users 4 --users-per-batch 2 --hold 0

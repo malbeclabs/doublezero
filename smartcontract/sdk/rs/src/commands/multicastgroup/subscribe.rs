@@ -47,10 +47,6 @@ impl UpdateMulticastGroupRolesCommand {
         .execute(client)
         .map_err(|_err| eyre::eyre!("User not found"))?;
 
-        if user.status != UserStatus::Activated {
-            eyre::bail!("User not active");
-        }
-
         let (accesspass_pubkey, accesspass) = GetAccessPassCommand {
             client_ip: Ipv4Addr::UNSPECIFIED,
             user_payer: user.owner,

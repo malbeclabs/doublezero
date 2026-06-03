@@ -54,6 +54,13 @@ AGENT_BINARY="${AGENT_BINARY:-/mnt/flash/doublezero-agent}"
 # SSH login as `nik` on a real EOS device.
 AGENT_COMMAND_PREFIX="${AGENT_COMMAND_PREFIX:-bash sudo /sbin/ip netns exec ns-management}"
 AGENT_METRICS_PORT="${AGENT_METRICS_PORT:-50100}"
+# eAPI HTTP basic auth for the device-observer's `show ...` polls. The
+# containerized cEOS device accepts an empty password (dev default), but a
+# real EOS device requires real credentials. Default user to the SSH user;
+# password must be supplied via env (empty default keeps the containerized
+# path unchanged).
+EAPI_USER="${EAPI_USER:-$DUT_SSH_USER}"
+EAPI_PASS="${EAPI_PASS:-}"
 
 DEVICE_CODE="${DZ_STRESS_DEVICE_CODE:-chi-dn-dzd5}"
 DEVICE_LOCATION="${DZ_STRESS_DEVICE_LOCATION:-ewr}"
@@ -420,7 +427,7 @@ trap - EXIT
 log "launching observer (background)"
 nohup "$OBS_BIN" \
     --dut-host "$DUT_HOST" \
-    --eapi-user "$DUT_SSH_USER" --eapi-pass "" \
+    --eapi-user "$EAPI_USER" --eapi-pass "$EAPI_PASS" \
     --agent-metrics-url "http://${DUT_HOST}:${AGENT_METRICS_PORT}/metrics" \
     --working-dir "$RUN_DIR" \
     --abort-file "${RUN_DIR}/abort" \

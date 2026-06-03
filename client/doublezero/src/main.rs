@@ -322,8 +322,10 @@ async fn main() -> eyre::Result<()> {
         // crate's SubscribeCliCommand.execute() falls back to a get_all()
         // snapshot for testability (mockall cannot mock FnMut callbacks).
         Command::Serviceability(ServiceabilityCommand::Subscribe(_)) => {
-            use std::io::Write;
-            use std::sync::{atomic::AtomicBool, Arc};
+            use std::{
+                io::Write,
+                sync::{atomic::AtomicBool, Arc},
+            };
             writeln!(handle, "Waiting for events...")?;
             let stop = Arc::new(AtomicBool::new(false));
             dzclient.subscribe(

@@ -45,7 +45,7 @@ jobs:
           solana balance -k id.json
       - name: Build ${{ matrix.program }} program
         run: |
-          cargo build-sbf ${{ matrix.build_features }}
+          cargo build-sbf --tools-version v1.54 ${{ matrix.build_features }}
         working-directory: ${{ matrix.directory }}
       - name: Deploy ${{ matrix.program }} program to DevNet
         run: |

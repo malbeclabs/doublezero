@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, fs::File, path::Path, sync::OnceLock};
 use tabled::{derive::display, Tabled};
 
-pub const DEFAULT_SOCKET_PATH: &str = "/var/run/doublezerod/doublezerod.sock";
+pub(crate) const DEFAULT_SOCKET_PATH: &str = "/var/run/doublezerod/doublezerod.sock";
 const NANOS_TO_MS: f64 = 1000000.0;
 static GLOBAL_SOCKET_PATH: OnceLock<String> = OnceLock::new();
 
@@ -324,10 +324,16 @@ impl DaemonClient for DaemonClientImpl {
             .request(req)
             .await
             .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
-        let data = res.into_body().collect().await?.to_bytes();
-        let response = serde_json::from_slice::<V2StatusResponse>(&data)
-            .map_err(|e| eyre!("Unable to parse V2StatusResponse: {e}"))?;
-        Ok(response)
+        if res.status() != 200 {
+            eyre::bail!("Unable to connect to doublezero daemon: {}", res.status());
+        }
+        let data = res
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| eyre!("Unable to read response body: {e}"))?
+            .to_bytes();
+        parse_daemon_response::<V2StatusResponse>(&data, "/v2/status")
     }
 
     async fn enable(&self) -> eyre::Result<()> {
@@ -370,10 +376,20 @@ impl DaemonClient for DaemonClientImpl {
             .method(Method::GET)
             .uri(Uri::new(&self.socket_path, "/routes"))
             .body(Empty::<Bytes>::new())?;
-        let res = client.request(req).await?;
-        let data = res.into_body().collect().await?.to_bytes();
-        let response = serde_json::from_slice::<Vec<RouteRecord>>(&data)?;
-        Ok(response)
+        let res = client
+            .request(req)
+            .await
+            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
+        if res.status() != 200 {
+            eyre::bail!("Unable to connect to doublezero daemon: {}", res.status());
+        }
+        let data = res
+            .into_body()
+            .collect()
+            .await
+            .map_err(|e| eyre!("Unable to read response body: {e}"))?
+            .to_bytes();
+        parse_daemon_response::<Vec<RouteRecord>>(&data, "/routes")
     }
 }
 

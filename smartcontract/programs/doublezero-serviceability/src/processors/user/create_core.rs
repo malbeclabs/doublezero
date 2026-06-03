@@ -206,16 +206,15 @@ pub fn create_user_core(
         }
     }
 
-    // Enforce epoch validity for unicast users only. Multicast access is
-    // governed by mgroup_*_allowlist on the access pass, not by epoch.
-    if user_type != UserType::Multicast {
+    // Enforce epoch validity for unicast users only. Multicast access (publisher or
+    // subscriber) is governed by mgroup_*_allowlist on the access pass, not by epoch.
+    if user_type.is_epoch_gated() {
         let clock = Clock::get()?;
-        let current_epoch = clock.epoch;
-        if accesspass.last_access_epoch < current_epoch {
+        if !epoch_allows_connection(user_type, accesspass.last_access_epoch, clock.epoch) {
             msg!(
                 "Invalid epoch last_access_epoch: {} < current_epoch: {}",
                 accesspass.last_access_epoch,
-                current_epoch
+                clock.epoch
             );
             return Err(DoubleZeroError::AccessPassUnauthorized.into());
         }

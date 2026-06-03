@@ -1227,8 +1227,11 @@ async fn test_user_delete_from_banned() {
     assert_eq!(user, None);
 }
 
+/// Epoch expiry is deprecated: CheckUserAccessPass no longer demotes a unicast user
+/// to OutOfCredits when its access pass has last_access_epoch = 0. The user stays
+/// Activated, and DeleteUser still closes the account.
 #[tokio::test]
-async fn test_user_delete_from_out_of_credits() {
+async fn test_user_check_access_pass_expired_epoch_stays_activated_and_delete() {
     let (
         mut banks_client,
         payer,
@@ -1269,7 +1272,8 @@ async fn test_user_delete_from_out_of_credits() {
     )
     .await;
 
-    // CheckUserAccessPass will see the expired access pass and set user to OutOfCredits
+    // CheckUserAccessPass sees the expired access pass but, since epoch expiry is
+    // deprecated, leaves the user Activated instead of demoting it to OutOfCredits.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -1289,11 +1293,11 @@ async fn test_user_delete_from_out_of_credits() {
         .unwrap()
         .get_user()
         .unwrap();
-    assert_eq!(user.status, UserStatus::OutOfCredits);
+    assert_eq!(user.status, UserStatus::Activated);
 
     let user_owner = user.owner;
 
-    // Atomic DeleteUser succeeds from OutOfCredits and closes the account.
+    // Atomic DeleteUser succeeds and closes the account.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

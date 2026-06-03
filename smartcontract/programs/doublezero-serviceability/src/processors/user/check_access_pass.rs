@@ -4,9 +4,9 @@ use crate::{
     processors::validation::validate_program_account,
     serializer::try_acc_write,
     state::{
-        accesspass::{AccessPass, AccessPassStatus},
+        accesspass::AccessPass,
         globalstate::GlobalState,
-        user::{User, UserStatus, UserType},
+        user::{User, UserStatus},
     },
 };
 use borsh::BorshSerialize;
@@ -98,15 +98,9 @@ pub fn process_check_access_pass_user(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    // Multicast users are not subject to epoch expiry — their access is gated by
-    // mgroup_*_allowlist, not by accesspass.last_access_epoch.
-    user.status = if user.user_type == UserType::Multicast {
-        UserStatus::Activated
-    } else if accesspass.status == AccessPassStatus::Expired {
-        UserStatus::OutOfCredits
-    } else {
-        UserStatus::Activated
-    };
+    // Epoch expiry is deprecated and no longer demotes users. Access for all user
+    // types is governed by allowlists, not by accesspass.last_access_epoch.
+    user.status = UserStatus::Activated;
 
     try_acc_write(&user, user_account, payer_account, accounts)?;
     try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;

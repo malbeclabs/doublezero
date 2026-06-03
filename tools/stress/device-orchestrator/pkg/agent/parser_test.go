@@ -28,9 +28,13 @@ func TestParser_SingleTunnelDiffThenCommit(t *testing.T) {
 	assert.Equal(t, []uint16{500}, p.Pending())
 
 	events = p.Parse(`2026/05/27 12:00:02 Configuration session finalized with command 'configure session doublezero-agent-abc123 commit'`)
-	require.Len(t, events, 1)
-	assert.Equal(t, agent.EventApplied, events[0].Kind)
-	assert.Equal(t, uint16(500), events[0].TunnelID)
+	// Two events: EventCommit (activity signal, always fires) and EventApplied
+	// (per pending tunnel).
+	require.Len(t, events, 2)
+	assert.Equal(t, agent.EventCommit, events[0].Kind, "EventCommit fires first as the activity signal")
+	assert.Equal(t, uint16(0), events[0].TunnelID, "EventCommit carries no tunnel id")
+	assert.Equal(t, agent.EventApplied, events[1].Kind)
+	assert.Equal(t, uint16(500), events[1].TunnelID)
 	assert.Empty(t, p.Pending(), "pending should clear after commit-success")
 }
 
@@ -60,8 +64,13 @@ func TestParser_MultiTunnelDiffEmitsOneEventPerTunnel(t *testing.T) {
 	}
 
 	applied := p.Parse(`Configuration session finalized with command 'configure session foo commit'`)
-	require.Len(t, applied, 3, "Applied fires once per pending tunnel")
-	assert.Equal(t, []uint16{500, 501, 502}, []uint16{applied[0].TunnelID, applied[1].TunnelID, applied[2].TunnelID})
+	// One EventCommit + one EventApplied per pending tunnel.
+	require.Len(t, applied, 4)
+	assert.Equal(t, agent.EventCommit, applied[0].Kind)
+	assert.Equal(t, []uint16{500, 501, 502}, []uint16{applied[1].TunnelID, applied[2].TunnelID, applied[3].TunnelID})
+	for _, e := range applied[1:] {
+		assert.Equal(t, agent.EventApplied, e.Kind)
+	}
 }
 
 func TestParser_AddedInterfaceOutsideDiffBlockIgnored(t *testing.T) {
@@ -76,7 +85,8 @@ func TestParser_AddedInterfaceOutsideDiffBlockIgnored(t *testing.T) {
 	// Once a commit closes the block, later diff-shaped lines are ignored again
 	// until the next marker opens a new block.
 	require.Len(t, p.Parse(`Committing config session due to diffs detected: + interface Tunnel600`), 1)
-	require.Len(t, p.Parse(`Configuration session finalized with command 'configure session foo commit'`), 1)
+	// EventCommit + EventApplied for tunnel 600.
+	require.Len(t, p.Parse(`Configuration session finalized with command 'configure session foo commit'`), 2)
 	assert.Empty(t, p.Parse(`+ interface Tunnel601`), "diff-shaped line after block close is ignored")
 	assert.Empty(t, p.Pending())
 }
@@ -88,6 +98,25 @@ func TestParser_DeprovisionOnlyDiffEmitsNothing(t *testing.T) {
 	events := p.Parse(`Committing config session due to diffs detected: - interface Tunnel500 - interface Tunnel501`)
 	assert.Empty(t, events)
 	assert.Empty(t, p.Pending())
+}
+
+// TestParser_DeprovisionCommitEmitsCommitOnly proves that a successful
+// commit whose diff was pure-removal (no `+ interface Tunnel<ID>` lines)
+// still emits EventCommit. The post-deprovision quiescence wait in
+// sweep.Run depends on this — without an EventCommit signal during
+// deprovision the wait would see the agent as silent through the entire
+// teardown and skip the wait, leaving deprovisioned tunnels stranded on
+// the device.
+func TestParser_DeprovisionCommitEmitsCommitOnly(t *testing.T) {
+	t.Parallel()
+
+	p := agent.NewParser()
+	assert.Empty(t, p.Parse(`Committing config session due to diffs detected: - interface Tunnel500 - interface Tunnel501`))
+
+	events := p.Parse(`Configuration session finalized with command 'configure session foo commit'`)
+	require.Len(t, events, 1, "deprovision commit must still emit one EventCommit even with no pending Applied tunnels")
+	assert.Equal(t, agent.EventCommit, events[0].Kind)
+	assert.Equal(t, uint16(0), events[0].TunnelID)
 }
 
 func TestParser_AbortClearsBufferWithoutAppliedEvents(t *testing.T) {
@@ -103,12 +132,16 @@ func TestParser_AbortClearsBufferWithoutAppliedEvents(t *testing.T) {
 	assert.Empty(t, p.Pending(), "abort still clears pending")
 }
 
-func TestParser_CommitWithoutPendingDiffIsNoOp(t *testing.T) {
+func TestParser_CommitWithoutPendingDiffEmitsCommitOnly(t *testing.T) {
 	t.Parallel()
 
 	p := agent.NewParser()
 	events := p.Parse(`Configuration session finalized with command 'configure session foo commit'`)
-	assert.Empty(t, events)
+	// Every successful commit emits EventCommit even if no diff block was
+	// open (e.g. a configure-session that committed an empty changeset).
+	require.Len(t, events, 1)
+	assert.Equal(t, agent.EventCommit, events[0].Kind)
+	assert.Equal(t, uint16(0), events[0].TunnelID)
 }
 
 func TestParser_TwoConsecutiveProvisionCycles(t *testing.T) {
@@ -116,16 +149,18 @@ func TestParser_TwoConsecutiveProvisionCycles(t *testing.T) {
 
 	p := agent.NewParser()
 
-	// Cycle 1
+	// Cycle 1: pre_commit (tunnel 500) → EventCommit + Applied(500).
 	require.Len(t, p.Parse(`Committing config session due to diffs detected: + interface Tunnel500`), 1)
-	require.Len(t, p.Parse(`Configuration session finalized with command 'configure session foo commit'`), 1)
+	require.Len(t, p.Parse(`Configuration session finalized with command 'configure session foo commit'`), 2)
 	assert.Empty(t, p.Pending())
 
-	// Cycle 2
+	// Cycle 2 must not replay tunnel 500.
 	require.Len(t, p.Parse(`Committing config session due to diffs detected: + interface Tunnel501`), 1)
 	applied := p.Parse(`Configuration session finalized with command 'configure session bar commit'`)
-	require.Len(t, applied, 1)
-	assert.Equal(t, uint16(501), applied[0].TunnelID, "cycle 2 must not replay tunnel 500")
+	require.Len(t, applied, 2)
+	assert.Equal(t, agent.EventCommit, applied[0].Kind)
+	assert.Equal(t, agent.EventApplied, applied[1].Kind)
+	assert.Equal(t, uint16(501), applied[1].TunnelID, "cycle 2 must not replay tunnel 500")
 }
 
 func TestParser_UnrelatedLinesIgnored(t *testing.T) {

@@ -137,21 +137,28 @@ func (c *Config) applyDefaults() {
 }
 
 // quiescenceTracker records the wall-clock time of the most recent observed
-// agent.EventApplied. The orchestrator polls it after deprovision returns to
-// wait for the agent to finish converging EOS to the new (post-deprovision)
-// config before cancelling the SSH session. We track only EventApplied
-// because that's the post-commit signal — pre_commit_log fires while the
-// commit is still being prepared.
+// post-commit agent event (EventApplied or EventCommit). The orchestrator
+// polls it after deprovision returns to wait for the agent to finish
+// converging EOS to the new (post-deprovision) config before cancelling the
+// SSH session.
+//
+// Both signals are post-commit: EventApplied fires per pending tunnel after
+// a successful commit-finalize; EventCommit fires once per successful
+// commit-finalize regardless of which tunnels (if any) changed. We need
+// both because deprovision diffs produce zero EventApplieds (the parser
+// only tracks `+ interface Tunnel<ID>` lines), so without EventCommit the
+// tracker would see the agent as silent through the entire deprovision
+// phase.
 type quiescenceTracker struct {
-	lastAppliedNanos atomic.Int64
+	lastEventNanos atomic.Int64
 }
 
-func (q *quiescenceTracker) markApplied(at time.Time) {
-	q.lastAppliedNanos.Store(at.UnixNano())
+func (q *quiescenceTracker) markEvent(at time.Time) {
+	q.lastEventNanos.Store(at.UnixNano())
 }
 
-func (q *quiescenceTracker) lastApplied() (time.Time, bool) {
-	n := q.lastAppliedNanos.Load()
+func (q *quiescenceTracker) lastEvent() (time.Time, bool) {
+	n := q.lastEventNanos.Load()
 	if n == 0 {
 		return time.Time{}, false
 	}
@@ -287,16 +294,21 @@ func Run(ctx context.Context, cfg Config) error {
 // registered. Events for unknown tunnel IDs are warn-logged and dropped — the
 // most likely cause is a tunnel that belongs to a non-orchestrator user.
 //
-// Every observed EventApplied (including for unregistered tunnels) bumps the
-// quiescence tracker so Run can wait for the agent to settle before teardown.
-// Filtering by registered tunnels here would miss legitimate agent activity
-// for orchestrator-adjacent tunnels (a non-orchestrator user on the same
-// device), which is still "agent is doing work" for the purpose of timing
-// the SSH cancel.
+// Every observed EventApplied or EventCommit bumps the quiescence tracker so
+// Run can wait for the agent to settle before teardown. EventCommit covers
+// deprovision: pure-removal diffs emit no Applied events, but every
+// successful commit (creation, removal, or modification) emits one
+// EventCommit. Filtering by registered tunnels here would miss legitimate
+// agent activity for orchestrator-adjacent tunnels, which is still "agent
+// is doing work" for the purpose of timing the SSH cancel.
 func consumeAgentEvents(cfg *Config, registry *tunnelRegistry, tracker *quiescenceTracker) {
 	for ev := range cfg.Agent.Events() {
-		if ev.Kind == agent.EventApplied {
-			tracker.markApplied(cfg.Clock.Now())
+		if ev.Kind == agent.EventApplied || ev.Kind == agent.EventCommit {
+			tracker.markEvent(cfg.Clock.Now())
+		}
+		if ev.Kind == agent.EventCommit {
+			// Pure activity signal — no per-tunnel runlog row to emit.
+			continue
 		}
 		u, ok := registry.lookup(ev.TunnelID)
 		if !ok {
@@ -344,9 +356,9 @@ func waitForAgentQuiescence(ctx context.Context, cfg *Config, tracker *quiescenc
 	if cfg.AgentQuietWindow <= 0 {
 		return
 	}
-	last, ok := tracker.lastApplied()
+	last, ok := tracker.lastEvent()
 	if !ok {
-		cfg.Logger.Info("sweep: no applied events observed; skipping agent quiescence wait")
+		cfg.Logger.Info("sweep: no agent events observed; skipping agent quiescence wait")
 		return
 	}
 	start := cfg.Clock.Now()
@@ -354,10 +366,10 @@ func waitForAgentQuiescence(ctx context.Context, cfg *Config, tracker *quiescenc
 	cfg.Logger.Info("sweep: waiting for agent to quiesce",
 		"quiet_window", cfg.AgentQuietWindow,
 		"timeout", cfg.AgentQuiescenceTimeout,
-		"last_applied_at", last)
+		"last_event_at", last)
 	for {
 		now := cfg.Clock.Now()
-		last, _ = tracker.lastApplied()
+		last, _ = tracker.lastEvent()
 		sinceLast := now.Sub(last)
 		if sinceLast >= cfg.AgentQuietWindow {
 			cfg.Logger.Info("sweep: agent quiesced",
@@ -368,7 +380,7 @@ func waitForAgentQuiescence(ctx context.Context, cfg *Config, tracker *quiescenc
 		if cfg.AgentQuiescenceTimeout > 0 && !now.Before(deadline) {
 			cfg.Logger.Warn("sweep: agent quiescence timed out; proceeding with shutdown anyway",
 				"wait_elapsed", now.Sub(start),
-				"since_last_applied", sinceLast)
+				"since_last_event", sinceLast)
 			return
 		}
 		select {

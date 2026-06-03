@@ -22,6 +22,17 @@ const (
 	// EventApplied marks the moment the agent log shows a commit-success line
 	// for a previously-pending tunnel interface.
 	EventApplied
+	// EventCommit marks the moment the agent finishes any successful commit
+	// (the post-commit "Configuration session finalized with command
+	// '... commit'" log line) — regardless of whether the diff added,
+	// removed, or only modified tunnels. EventApplied only fires when the
+	// diff added "+ interface Tunnel<ID>" lines, so deprovision commits emit
+	// EventCommit with no accompanying Applieds. TunnelID is always 0.
+	// Consumers use it as a generic "agent is doing work" signal — notably
+	// the post-deprovision quiescence wait in sweep.Run, which would
+	// otherwise see the agent as silent throughout the entire deprovision
+	// phase and skip the wait.
+	EventCommit
 )
 
 // Event is one observation emitted by the agent runner: a timestamped tunnel

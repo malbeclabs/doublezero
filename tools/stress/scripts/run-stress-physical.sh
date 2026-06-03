@@ -54,12 +54,13 @@ AGENT_BINARY="${AGENT_BINARY:-/mnt/flash/doublezero-agent}"
 # SSH login as `nik` on a real EOS device.
 AGENT_COMMAND_PREFIX="${AGENT_COMMAND_PREFIX:-bash sudo /sbin/ip netns exec ns-management}"
 AGENT_METRICS_PORT="${AGENT_METRICS_PORT:-50100}"
-# eAPI HTTP basic auth for the device-observer's `show ...` polls. The
-# containerized cEOS device accepts an empty password (dev default), but a
-# real EOS device requires real credentials. Default user to the SSH user;
-# password must be supplied via env (empty default keeps the containerized
-# path unchanged).
-EAPI_USER="${EAPI_USER:-$DUT_SSH_USER}"
+# eAPI HTTP basic auth for the device-observer's `show ...` polls. eAPI
+# typically uses a privileged user separate from the SSH login (e.g. `admin`,
+# not the bash-shell operator user). Password has no default — must be set
+# via env on physical hardware. The containerized harness uses a hardcoded
+# admin/admin pair baked into its rendered startup-config; this script does
+# not control the physical device's user table, so the operator supplies it.
+EAPI_USER="${EAPI_USER:-admin}"
 EAPI_PASS="${EAPI_PASS:-}"
 
 DEVICE_CODE="${DZ_STRESS_DEVICE_CODE:-chi-dn-dzd5}"

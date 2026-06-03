@@ -96,9 +96,60 @@ Differences from the containerized harness:
 | Device | cEOS container + agent wrapper script | physical DUT over SSH, no wrapper |
 | Agent invocation | wrapper injects `-pubkey` + sudo | orchestrator passes `-pubkey` directly and prefixes `/sbin/ip netns exec ns-management` |
 
-The orchestrator gained three additive flags (`--agent-binary`,
-`--agent-command-prefix`, `--agent-pubkey`) to support the physical case.
-All default to empty so the containerized path is unchanged.
+The orchestrator gained four additive flags (`--agent-binary`,
+`--agent-command-prefix`, `--agent-pubkey`, `--agent-metrics-addr`) to
+support the physical case. All default to empty so the containerized
+path is unchanged.
+
+## Prerequisites on the physical DUT
+
+The script does not configure EOS — it assumes a few things are already
+in place on the device. Without these the script will either fail SSH /
+SDK checks or the agent will run but fail to apply config:
+
+1. **SSH access for the operator.** A user with a `/bin/bash` login
+   shell and passwordless sudo. cEOS pins `admin` to RunCli, so don't
+   use `admin`; create a separate operator user (this harness defaults
+   to `nik`) keyed with `$DUT_SSH_KEY.pub`.
+
+2. **`doublezero-agent` binary on disk.** Built statically for
+   `linux/amd64` and SCP'd to `$AGENT_BINARY` (default
+   `/mnt/flash/doublezero-agent`, which persists across reboots).
+   Build with `CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o
+   doublezero-agent ./controlplane/agent/cmd/agent` on a host with the
+   repo checked out.
+
+3. **EOS SDK RPC agent (`eapilocal`)** running in the management VRF —
+   the agent dials its local SDK at `127.0.0.1:9543`. cEOS provides
+   this implicitly via `management api eos-sdk-rpc / transport grpc
+   foo / localhost loopback`; physical EOS requires an explicit
+   `daemon eapilocal` block plus a VRF qualifier on the transport:
+   ```
+   daemon eapilocal
+      exec /usr/bin/EosSdkRpcAgent --daemon-name eapilocal
+      no shutdown
+   !
+   management api eos-sdk-rpc
+      transport grpc eapilocal
+         localhost loopback vrf management
+         service all
+         no disabled
+   !
+   ```
+   Verify with `show management api eos-sdk-rpc` — `Server: running`,
+   `Listening on: ... port: 9543, VRF: management`.
+
+4. **eAPI HTTP-commands enabled.** The device-observer scrapes `show
+   gre tunnel static`, `show processes top once`, etc. via eAPI. Make
+   sure `management api http-commands` is `no shutdown` and an admin
+   user with a password the harness can use exists. Export
+   `EAPI_USER` / `EAPI_PASS` before running.
+
+5. **Management netns.** The orchestrator wraps the agent command in
+   `ip netns exec ns-management` so it can reach the controller via
+   the management interface and dial the SDK in VRF management. EOS
+   auto-creates `ns-management` when a `vrf management` is configured;
+   confirm with `bash sudo ip netns list`.
 
 ## Quick start
 
@@ -106,6 +157,11 @@ All default to empty so the containerized path is unchanged.
 # Required: the stress-test serviceability program ID lives in the
 # private infra repo, not here. Export it before running.
 export DZ_PROGRAM_ID='<stress-program-id-from-infra-repo>'
+
+# Required: eAPI credentials for the observer. EAPI_USER defaults to
+# $DUT_SSH_USER; password must be supplied (no plaintext default).
+export EAPI_USER=admin
+read -s EAPI_PASS; export EAPI_PASS
 
 # Optional overrides (defaults shown in the script header):
 # export DZ_RPC_URL='https://...'
@@ -152,5 +208,7 @@ All knobs are env vars (defaults in the script header):
 | `CONTROLLER_ADVERTISE_ADDR` | Address advertised to the device (default: auto-detect) |
 | `CONTROLLER_LISTEN_PORT`  | Controller listen port (default `7000`)                   |
 | `SOLANA_KEYPAIR`          | Operator keypair (signs init + access-passes)             |
+| `EAPI_USER`               | eAPI HTTP basic-auth user (default `admin`)               |
+| `EAPI_PASS`               | eAPI HTTP basic-auth password (no default — required)     |
 | `DEVICE_CODE`             | Device code onchain (default `chi-dn-dzd5`)               |
 | `DEVICE_DZ_PREFIX`        | Device's dz-prefix /29 (carved from the tunnel block)     |

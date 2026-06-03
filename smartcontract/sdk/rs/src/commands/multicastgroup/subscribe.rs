@@ -8,11 +8,9 @@ use crate::{
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::get_resource_extension_pda,
-    processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
-    resource::ResourceType,
-    state::{multicastgroup::MulticastGroupStatus, user::UserStatus},
+    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
+    processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs, resource::ResourceType,
+    state::multicastgroup::MulticastGroupStatus,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -46,10 +44,6 @@ impl UpdateMulticastGroupRolesCommand {
         }
         .execute(client)
         .map_err(|_err| eyre::eyre!("User not found"))?;
-
-        if user.status != UserStatus::Activated {
-            eyre::bail!("User not active");
-        }
 
         let (accesspass_pubkey, accesspass) = GetAccessPassCommand {
             client_ip: Ipv4Addr::UNSPECIFIED,

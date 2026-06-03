@@ -6,8 +6,8 @@ use crate::{
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::AccountInfo, clock::Clock, entrypoint::ProgramResult, msg,
-    program_error::ProgramError, pubkey::Pubkey, sysvar::Sysvar,
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
+    pubkey::Pubkey,
 };
 use std::{fmt, net::Ipv4Addr};
 
@@ -86,7 +86,7 @@ pub enum AccessPassStatus {
     Requested = 0,
     Connected = 1,
     Disconnected = 2,
-    Expired = 3,
+    ExpiredDeprecated = 3, // deprecated; epoch expiry no longer demotes access passes
 }
 
 impl From<u8> for AccessPassStatus {
@@ -95,7 +95,7 @@ impl From<u8> for AccessPassStatus {
             0 => AccessPassStatus::Requested,
             1 => AccessPassStatus::Connected,
             2 => AccessPassStatus::Disconnected,
-            3 => AccessPassStatus::Expired,
+            3 => AccessPassStatus::ExpiredDeprecated,
             _ => AccessPassStatus::Requested,
         }
     }
@@ -107,7 +107,7 @@ impl fmt::Display for AccessPassStatus {
             AccessPassStatus::Requested => write!(f, "requested"),
             AccessPassStatus::Connected => write!(f, "connected"),
             AccessPassStatus::Disconnected => write!(f, "disconnected"),
-            AccessPassStatus::Expired => write!(f, "expired"),
+            AccessPassStatus::ExpiredDeprecated => write!(f, "expired (deprecated)"),
         }
     }
 }
@@ -255,17 +255,10 @@ impl TryFrom<&AccountInfo<'_>> for AccessPass {
 
 impl AccessPass {
     pub fn update_status(&mut self) -> ProgramResult {
-        let clock = Clock::get()?;
-        let mut current_epoch = clock.epoch;
-
-        // Ensure current_epoch is never zero
-        if current_epoch == 0 {
-            current_epoch = 1;
-        }
-
-        self.status = if self.last_access_epoch < current_epoch {
-            AccessPassStatus::Expired
-        } else if self.connection_count > 0 {
+        // Epoch expiry is deprecated: the access-pass status no longer reflects
+        // last_access_epoch. Epoch is enforced at user creation for unicast users
+        // only (see create_user_core). Status now tracks connection state only.
+        self.status = if self.connection_count > 0 {
             AccessPassStatus::Connected
         } else {
             AccessPassStatus::Requested

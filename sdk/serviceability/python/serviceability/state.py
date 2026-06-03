@@ -390,10 +390,15 @@ class AccessPassStatus(IntEnum):
     REQUESTED = 0
     CONNECTED = 1
     DISCONNECTED = 2
-    EXPIRED = 3
+    EXPIRED_DEPRECATED = 3  # deprecated; epoch expiry no longer demotes access passes
 
     def __str__(self) -> str:
-        _names = {0: "requested", 1: "connected", 2: "disconnected", 3: "expired"}
+        _names = {
+            0: "requested",
+            1: "connected",
+            2: "disconnected",
+            3: "expired (deprecated)",
+        }
         return _names.get(self.value, "unknown")
 
 

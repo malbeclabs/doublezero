@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain programs
+  - Deprecate the `AccessPassStatus::Expired` access-pass status (renamed `ExpiredDeprecated`; discriminant `3` retained for wire compatibility). Access-pass epoch expiry no longer demotes users to `OutOfCredits`: `update_status` stops producing the status, and both `try_activate` (user creation) and `CheckUserAccessPass` (periodic re-check) keep users `Activated`. Epoch validity is still enforced at user creation for unicast users only; multicast publishers and subscribers are governed by `mgroup_*_allowlist`, not by epoch.
+- SDK
+  - Mirror the access-pass status rename in the Go, Python, and TypeScript deserializers: `AccessPassStatusExpiredDeprecated` (Go), `EXPIRED_DEPRECATED` (Python), and the `"expired (deprecated)"` string across all three.
+- SDK (Rust)
+  - Remove the client-side `User not active` precheck from the multicast subscribe/publish command (`UpdateMulticastGroupRoles`) so non-`Activated` users are no longer blocked before submission; authorization is enforced onchain.
 - CLI
   - Fold `version`, `account`, `accounts`, `log`, and `subscribe` diagnostic verbs from the binary's top-level `Command` enum into `ServiceabilityCommand` per RFC-20. Each verb now takes `&CliContext` + generic `&C: CliCommand` + `&mut W` writer and is async. Add `--json` to `account`, `accounts`, and `log` (RFC-20 §Output). The binary-level `subscribe` override uses the real blocking `DZClient::subscribe` for live event streaming; the module crate's implementation falls back to a `get_all()` snapshot for testability.
   - Change `geolocation user update-payment` to `update-payment-status` for clarity. 

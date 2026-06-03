@@ -737,10 +737,10 @@ async fn test_create_subscribe_user_ignores_expired_epoch() {
         .expect("User should exist")
         .get_user()
         .unwrap();
-    // Multicast creation is not blocked by an expired access pass — the user is
-    // still created (and ends up in OutOfCredits because try_activate sees the
-    // pass as Expired). Multicast access is then gated by mgroup_*_allowlist.
-    assert_eq!(user.status, UserStatus::OutOfCredits);
+    // Multicast creation is not blocked by an expired access pass, and the user is
+    // not transitioned to OutOfCredits by epoch expiry: multicast access is gated
+    // by mgroup_*_allowlist, not by accesspass.last_access_epoch.
+    assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.publishers, vec![mgroup_pubkey]);
     assert_eq!(user.user_type, UserType::Multicast);
 }

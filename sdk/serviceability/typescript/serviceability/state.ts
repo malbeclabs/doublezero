@@ -286,7 +286,7 @@ const ACCESS_PASS_STATUS_NAMES: Record<number, string> = {
   0: "requested",
   1: "connected",
   2: "disconnected",
-  3: "expired",
+  3: "expired (deprecated)",
 };
 export function accessPassStatusString(v: number): string {
   return ACCESS_PASS_STATUS_NAMES[v] ?? "unknown";

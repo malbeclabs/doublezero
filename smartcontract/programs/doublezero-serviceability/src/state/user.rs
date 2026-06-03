@@ -2,7 +2,7 @@ use crate::{
     error::{DoubleZeroError, Validate},
     helper::{deserialize_vec_with_capacity, is_global},
     state::{
-        accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+        accesspass::{AccessPass, AccessPassType},
         accounttype::AccountType,
     },
 };
@@ -37,6 +37,30 @@ impl From<u8> for UserType {
             _ => panic!("Unknown UserType"),
         }
     }
+}
+
+impl UserType {
+    /// Whether connecting as this user type is gated by the access-pass epoch.
+    ///
+    /// Multicast access (publisher or subscriber) is governed by the access-pass
+    /// `mgroup_*_allowlist`, not by `last_access_epoch`, so multicast users are
+    /// exempt. All other (unicast) user types are epoch-gated.
+    pub fn is_epoch_gated(&self) -> bool {
+        *self != UserType::Multicast
+    }
+}
+
+/// Whether a user of `user_type` may connect given the access-pass epoch.
+///
+/// Multicast users are always allowed (allowlist-gated). Unicast users require
+/// `last_access_epoch >= current_epoch`; in particular `last_access_epoch == 0`
+/// (no epoch defined) blocks every unicast type.
+pub fn epoch_allows_connection(
+    user_type: UserType,
+    last_access_epoch: u64,
+    current_epoch: u64,
+) -> bool {
+    !user_type.is_epoch_gated() || last_access_epoch >= current_epoch
 }
 
 impl fmt::Display for UserType {
@@ -451,11 +475,10 @@ impl User {
             _ => Pubkey::default(),
         };
 
-        self.status = if accesspass.status == AccessPassStatus::Expired {
-            UserStatus::OutOfCredits
-        } else {
-            UserStatus::Activated
-        };
+        // Access-pass epoch expiry is deprecated and no longer demotes users.
+        // Epoch is enforced at creation for unicast users only (see
+        // create_user_core); multicast access is governed by mgroup_*_allowlist.
+        self.status = UserStatus::Activated;
 
         Ok(())
     }
@@ -1116,5 +1139,139 @@ mod tests {
             deserialized.tunnel_flags,
             TunnelFlags::CreatedAsPublisher
         ));
+    }
+
+    use crate::state::accesspass::AccessPassStatus;
+
+    fn user_with_type(user_type: UserType) -> User {
+        User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::None,
+            client_ip: [1, 2, 3, 4].into(),
+            dz_ip: [5, 6, 7, 8].into(),
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: UserStatus::OutOfCredits,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
+        }
+    }
+
+    fn accesspass_with_epoch(last_access_epoch: u64) -> AccessPass {
+        AccessPass {
+            account_type: AccountType::AccessPass,
+            owner: Pubkey::new_unique(),
+            bump_seed: 1,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: [1, 2, 3, 4].into(),
+            user_payer: Pubkey::new_unique(),
+            last_access_epoch,
+            connection_count: 0,
+            status: AccessPassStatus::Requested,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            flags: 0,
+            tenant_allowlist: vec![],
+        }
+    }
+
+    /// Epoch gating applies to unicast user types only; multicast is exempt.
+    #[test]
+    fn test_user_type_is_epoch_gated() {
+        assert!(UserType::IBRL.is_epoch_gated());
+        assert!(UserType::IBRLWithAllocatedIP.is_epoch_gated());
+        assert!(UserType::EdgeFiltering.is_epoch_gated());
+        assert!(!UserType::Multicast.is_epoch_gated());
+    }
+
+    /// Connection decision matrix for the access-pass epoch (current_epoch = 1).
+    ///
+    /// 1) last_access_epoch = 0 blocks IBRL.
+    /// 2) multicast (publisher or subscriber) connects without an epoch check.
+    /// 3) all other (unicast) user types are blocked with last_access_epoch = 0.
+    #[test]
+    fn test_epoch_allows_connection_matrix() {
+        let current_epoch = 1;
+
+        // 1) IBRL with no epoch defined cannot connect.
+        assert!(!epoch_allows_connection(UserType::IBRL, 0, current_epoch));
+
+        // 2) Multicast connects regardless of epoch (covers publisher + subscriber:
+        //    both use UserType::Multicast).
+        assert!(epoch_allows_connection(
+            UserType::Multicast,
+            0,
+            current_epoch
+        ));
+        assert!(epoch_allows_connection(
+            UserType::Multicast,
+            u64::MAX,
+            current_epoch
+        ));
+
+        // 3) Other unicast types with no epoch defined cannot connect.
+        assert!(!epoch_allows_connection(
+            UserType::IBRLWithAllocatedIP,
+            0,
+            current_epoch
+        ));
+        assert!(!epoch_allows_connection(
+            UserType::EdgeFiltering,
+            0,
+            current_epoch
+        ));
+
+        // Unicast with a current/future epoch is allowed.
+        assert!(epoch_allows_connection(
+            UserType::IBRL,
+            current_epoch,
+            current_epoch
+        ));
+        assert!(epoch_allows_connection(
+            UserType::IBRL,
+            current_epoch + 1,
+            current_epoch
+        ));
+    }
+
+    /// try_activate activates every user type: epoch expiry is deprecated and no
+    /// longer demotes users to OutOfCredits. validator_pubkey is taken from the pass.
+    #[test]
+    fn test_try_activate_always_activates() {
+        for user_type in [
+            UserType::IBRL,
+            UserType::IBRLWithAllocatedIP,
+            UserType::EdgeFiltering,
+            UserType::Multicast,
+        ] {
+            let mut user = user_with_type(user_type);
+            // last_access_epoch = 0 would previously have produced Expired/OutOfCredits.
+            let mut accesspass = accesspass_with_epoch(0);
+            user.try_activate(&mut accesspass).unwrap();
+            assert_eq!(user.status, UserStatus::Activated);
+            // Deprecated status is never produced.
+            assert_ne!(accesspass.status, AccessPassStatus::ExpiredDeprecated);
+        }
+
+        // validator_pubkey is populated from a SolanaValidator access pass.
+        let validator = Pubkey::new_unique();
+        let mut user = user_with_type(UserType::IBRL);
+        let mut accesspass = accesspass_with_epoch(0);
+        accesspass.accesspass_type = AccessPassType::SolanaValidator(validator);
+        user.try_activate(&mut accesspass).unwrap();
+        assert_eq!(user.validator_pubkey, validator);
     }
 }

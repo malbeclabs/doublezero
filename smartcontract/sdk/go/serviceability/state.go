@@ -1103,10 +1103,10 @@ const (
 type AccessPassStatus uint8
 
 const (
-	AccessPassStatusRequested    AccessPassStatus = 0
-	AccessPassStatusConnected    AccessPassStatus = 1
-	AccessPassStatusDisconnected AccessPassStatus = 2
-	AccessPassStatusExpired      AccessPassStatus = 3
+	AccessPassStatusRequested         AccessPassStatus = 0
+	AccessPassStatusConnected         AccessPassStatus = 1
+	AccessPassStatusDisconnected      AccessPassStatus = 2
+	AccessPassStatusExpiredDeprecated AccessPassStatus = 3 // deprecated; epoch expiry no longer demotes access passes
 )
 
 func (s AccessPassStatus) String() string {
@@ -1117,8 +1117,8 @@ func (s AccessPassStatus) String() string {
 		return "connected"
 	case AccessPassStatusDisconnected:
 		return "disconnected"
-	case AccessPassStatusExpired:
-		return "expired"
+	case AccessPassStatusExpiredDeprecated:
+		return "expired (deprecated)"
 	default:
 		return "unknown"
 	}

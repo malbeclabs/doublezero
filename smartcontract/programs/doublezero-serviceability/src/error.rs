@@ -180,6 +180,8 @@ pub enum DoubleZeroError {
     ArithmeticOverflow, // variant 86
     #[error("Invalid name")]
     InvalidName, // variant 87
+    #[error("Device tunnel block must be a private or link-local address")]
+    InvalidDeviceTunnelBlock, // variant 88
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -273,6 +275,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::MaxMulticastPublishersExceeded => ProgramError::Custom(85),
             DoubleZeroError::ArithmeticOverflow => ProgramError::Custom(86),
             DoubleZeroError::InvalidName => ProgramError::Custom(87),
+            DoubleZeroError::InvalidDeviceTunnelBlock => ProgramError::Custom(88),
         }
     }
 }
@@ -367,6 +370,7 @@ impl From<u32> for DoubleZeroError {
             85 => DoubleZeroError::MaxMulticastPublishersExceeded,
             86 => DoubleZeroError::ArithmeticOverflow,
             87 => DoubleZeroError::InvalidName,
+            88 => DoubleZeroError::InvalidDeviceTunnelBlock,
             _ => DoubleZeroError::Custom(e),
         }
     }

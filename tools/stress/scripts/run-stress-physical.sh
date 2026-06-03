@@ -35,19 +35,31 @@ WORKSPACE_DIR="$(cd -- "${SCRIPT_DIR}/../../.." &> /dev/null && pwd)"
 DZ_RPC_URL="${DZ_RPC_URL:-https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16}"
 DZ_PROGRAM_ID="${DZ_PROGRAM_ID:-GXxf6xgCdngKsRPGg3svaoKUQskVnu4mTuUoJ5PhNUau}"
 
-DUT_HOST="${DUT_HOST:-10.0.0.141}"
-DUT_SSH_USER="${DUT_SSH_USER:-admin}"
-DUT_SSH_KEY="${DUT_SSH_KEY:-$HOME/.ssh/id_ed25519}"
-AGENT_BINARY="${AGENT_BINARY:-/usr/local/bin/doublezero-agent}"
-AGENT_COMMAND_PREFIX="${AGENT_COMMAND_PREFIX:-/sbin/ip netns exec ns-management}"
+DUT_HOST="${DUT_HOST:-10.0.0.15}"
+DUT_SSH_USER="${DUT_SSH_USER:-nik}"
+DUT_SSH_KEY="${DUT_SSH_KEY:-$HOME/.ssh/nik@malbeclabs.com}"
+# Default to /mnt/flash on the EOS device: it persists across reboots and is
+# writable by sudo. Override via AGENT_BINARY if installed somewhere else.
+AGENT_BINARY="${AGENT_BINARY:-/mnt/flash/doublezero-agent}"
+# `bash` escapes EOS Cli (RunCli) into the underlying shell; `sudo` gets us
+# CAP_SYS_ADMIN for `ip netns exec`. Both are needed for the per-default
+# SSH login as `nik` on a real EOS device.
+AGENT_COMMAND_PREFIX="${AGENT_COMMAND_PREFIX:-bash sudo /sbin/ip netns exec ns-management}"
 AGENT_METRICS_PORT="${AGENT_METRICS_PORT:-50100}"
 
 DEVICE_CODE="${DZ_STRESS_DEVICE_CODE:-chi-dn-dzd5}"
 DEVICE_LOCATION="${DZ_STRESS_DEVICE_LOCATION:-ewr}"
 DEVICE_EXCHANGE="${DZ_STRESS_DEVICE_EXCHANGE:-xewr}"
-DEVICE_PUBLIC_IP="${DZ_STRESS_DEVICE_PUBLIC_IP:-$DUT_HOST}"
-# /29 carved out of the device-tunnel-block. Override if it collides with
-# another device's prefixes in the program.
+# Smart-contract device validation requires public_ip to be globally
+# routable (is_global() — rejects RFC1918) AND not overlap any of the
+# device's own dz_prefixes (processors/device/create.rs ~line 152). The
+# default below is a sentinel publicly-routable IP inside the 9.210.180.0/24
+# block but outside the /29 used for dz_prefixes; override only if you need
+# the device's real public address recorded onchain.
+DEVICE_PUBLIC_IP="${DZ_STRESS_DEVICE_PUBLIC_IP:-9.210.180.5}"
+# /29 carved out of a globally-routable block. dz-prefixes is the route range
+# the device advertises for its tunnels — separate from device-tunnel-block
+# (which is the private pool the program auto-allocates loopback IPs from).
 DEVICE_DZ_PREFIX="${DZ_STRESS_DEVICE_DZ_PREFIX:-9.210.180.176/29}"
 
 # Where the device reaches the controller. Default to the same address the
@@ -117,15 +129,17 @@ mkdir -p "$DEPLOY_DIR" "$WORKING_DIR"
 # Phase 1: connectivity sanity checks
 # ---------------------------------------------------------------------------
 log "verifying SSH reachability of $DUT_HOST"
+# EOS pins the SSH login shell to RunCli, so the remote command must start
+# with `bash` to escape into the underlying shell.
 ssh -i "$DUT_SSH_KEY" -o BatchMode=yes -o ConnectTimeout=5 \
     -o StrictHostKeyChecking=accept-new \
-    "$DUT_SSH_USER@$DUT_HOST" "echo ssh-ok" >/dev/null \
+    "$DUT_SSH_USER@$DUT_HOST" "bash echo ssh-ok" >/dev/null \
     || die "cannot SSH into $DUT_SSH_USER@$DUT_HOST with $DUT_SSH_KEY"
 
 log "verifying $AGENT_BINARY exists on the DUT"
 ssh -i "$DUT_SSH_KEY" -o BatchMode=yes "$DUT_SSH_USER@$DUT_HOST" \
-    "test -x $AGENT_BINARY" \
-    || die "agent binary not found at $AGENT_BINARY on $DUT_HOST — set AGENT_BINARY"
+    "bash test -x $AGENT_BINARY" \
+    || die "agent binary not found / not executable at $AGENT_BINARY on $DUT_HOST — set AGENT_BINARY or scp it first"
 
 log "verifying solana RPC reachability"
 solana_cli cluster-version >/dev/null \
@@ -153,9 +167,13 @@ if dz global-config get >/dev/null 2>&1; then
 else
     log "running doublezero init"
     dz init
+    # device-tunnel-block must be in a private (RFC1918) range — the program
+    # allocates loopback IPs from it and validates `is_private()` on the
+    # result (smartcontract/programs/doublezero-serviceability/src/state/interface.rs:494).
+    # 172.16.0.0/16 mirrors the standard from smartcontract/test/start-test.sh.
     dz global-config set \
         --local-asn 65000 --remote-asn 65342 \
-        --device-tunnel-block 9.210.180.0/24 \
+        --device-tunnel-block 172.16.0.0/16 \
         --user-tunnel-block 169.254.0.0/16 \
         --multicastgroup-block 233.84.178.0/24 \
         --multicast-publisher-block 148.51.120.0/21
@@ -193,21 +211,33 @@ if ! dz device get --code "$DEVICE_CODE" >/dev/null 2>&1; then
         --public-ip "$DEVICE_PUBLIC_IP" \
         --dz-prefixes "$DEVICE_DZ_PREFIX" \
         --mgmt-vrf mgmt
-    DEVICE_PK="$(dz device get --code "$DEVICE_CODE" --json | jq -r .account)"
-    dz device update --pubkey "$DEVICE_PK" --max-users "$TARGET_USERS" \
-        --desired-status activated
 fi
 
 DEVICE_PUBKEY="$(dz device get --code "$DEVICE_CODE" --json | jq -r .account)"
 log "device onchain pubkey: $DEVICE_PUBKEY"
 
+# Keep the onchain cap in sync with TARGET_USERS on every run. The create
+# branch above sets it implicitly on first run, but reruns with a larger
+# --target-users would otherwise leave the cap at its original value and
+# silently truncate the sweep — the controller's --max-user-tunnel-slots
+# would advertise the new number while the device account still capped at
+# the old one. (Reported by @elitegreg in #3829 review.)
+dz device update --pubkey "$DEVICE_PUBKEY" --max-users "$TARGET_USERS" \
+    --desired-status activated
+
 for entry in "Loopback255:vpnv4" "Loopback256:ipv4"; do
     iface="${entry%:*}"
     iftype="${entry#*:}"
+    # No --ip-net: the program rejects ip_net on plain loopbacks
+    # (interface/create.rs:155-162) and auto-allocates from the
+    # device-tunnel-block instead (interface/create.rs:213-218).
     out=$(dz device interface create "$DEVICE_CODE" "$iface" \
         --loopback-type "$iftype" --bandwidth 10G 2>&1) || true
     if echo "$out" | grep -q "already exists"; then
         log "loopback ${iface} (${iftype}) already exists onchain"
+    elif echo "$out" | grep -qiE "error|failed"; then
+        log "WARNING: loopback ${iface} (${iftype}) create may have failed:"
+        echo "$out" | tail -3 >&2
     else
         log "registered loopback ${iface} (${iftype})"
     fi
@@ -251,17 +281,22 @@ cleanup_controller() {
 trap cleanup_controller EXIT
 
 # Wait for the controller's listen port to accept connections (gRPC handshake).
+# The cleanup trap stays armed through every following phase (access-pass
+# setup, build, orchestrator + observer launch) so a `set -e` failure in any
+# of them tears the controller down instead of orphaning it. The trap is
+# disarmed only once the orchestrator has actually launched. (Reported by
+# @elitegreg in #3829 review.)
 log "waiting for controller to accept connections"
+controller_ready=false
 for _ in $(seq 1 30); do
     if nc -z -w 1 127.0.0.1 "$CONTROLLER_LISTEN_PORT" 2>/dev/null; then
         log "controller listening on :${CONTROLLER_LISTEN_PORT}"
-        # Disarm the trap — controller is up and should outlive this script.
-        trap - EXIT
+        controller_ready=true
         break
     fi
     sleep 1
 done
-if ! nc -z -w 1 127.0.0.1 "$CONTROLLER_LISTEN_PORT" 2>/dev/null; then
+if ! $controller_ready; then
     log "controller log tail:"
     tail -50 "$CONTROLLER_LOG" >&2 || true
     die "controller did not start listening within 30s"
@@ -347,6 +382,11 @@ nohup "$ORCH_BIN" "${ORCH_ARGS[@]}" \
     2> "${RUN_DIR}/orchestrator.stderr" &
 ORCH_PID=$!
 echo "$ORCH_PID" > "${RUN_DIR}/orchestrator.pid"
+
+# Orchestrator is up — the controller has a long-running consumer now. Disarm
+# the cleanup trap so script exit doesn't terminate the controller out from
+# under it.
+trap - EXIT
 
 log "launching observer (background)"
 nohup "$OBS_BIN" \

@@ -3,14 +3,17 @@ package agent
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 )
 
 // SSHConfig describes how to reach the DUT and what to run on it.
@@ -91,14 +94,14 @@ func (s *SSH) Start(ctx context.Context) error {
 	s.started = true
 	s.mu.Unlock()
 
-	signer, err := loadSigner(s.cfg.KeyPath)
+	authMethod, err := loadAuthMethod(s.cfg.KeyPath, s.cfg.Logger)
 	if err != nil {
-		return fmt.Errorf("ssh agent: load key %s: %w", s.cfg.KeyPath, err)
+		return fmt.Errorf("ssh agent: load auth: %w", err)
 	}
 
 	clientCfg := &ssh.ClientConfig{
 		User:            s.cfg.User,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		Auth:            []ssh.AuthMethod{authMethod},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         s.cfg.DialTimeout,
 	}
@@ -275,11 +278,64 @@ func scanLines(ctx context.Context, src io.Reader, lines chan<- string, log *slo
 	return nil
 }
 
-// loadSigner reads a PEM-encoded private key from disk and returns an ssh.Signer.
-func loadSigner(path string) (ssh.Signer, error) {
+// loadAuthMethod resolves an ssh.AuthMethod from the configured KeyPath with a
+// graceful fall-back to ssh-agent ($SSH_AUTH_SOCK):
+//
+//  1. If KeyPath is empty, use ssh-agent directly. If $SSH_AUTH_SOCK isn't set
+//     in that case, return an error — there's nothing else to try.
+//  2. If KeyPath parses as an unencrypted private key, use that key.
+//  3. If KeyPath exists but is passphrase-protected, fall back to ssh-agent
+//     and log a hint that the user needs `ssh-add <KeyPath>` once for the
+//     orchestrator to authenticate. This is the common path for engineers
+//     whose SSH keys live encrypted on disk and get unlocked via the agent.
+//  4. If KeyPath read or parse fails for any other reason, return the error.
+func loadAuthMethod(path string, log *slog.Logger) (ssh.AuthMethod, error) {
+	if path == "" {
+		return agentAuthMethod(log)
+	}
 	buf, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read key %s: %w", path, err)
 	}
-	return ssh.ParsePrivateKey(buf)
+	signer, err := ssh.ParsePrivateKey(buf)
+	if err == nil {
+		return ssh.PublicKeys(signer), nil
+	}
+	// errors.As against *ssh.PassphraseMissingError; on a hit, try the agent.
+	var passErr *ssh.PassphraseMissingError
+	if errors.As(err, &passErr) {
+		if log != nil {
+			log.Info("ssh agent: key is passphrase-protected; falling back to ssh-agent",
+				"key_path", path,
+				"hint", "if this fails, run `ssh-add "+path+"` to load it into your agent")
+		}
+		return agentAuthMethod(log)
+	}
+	return nil, fmt.Errorf("parse key %s: %w", path, err)
+}
+
+// agentAuthMethod connects to ssh-agent via $SSH_AUTH_SOCK and returns an
+// ssh.AuthMethod that delegates signing to the agent. Errors out fast (rather
+// than silently returning a no-op AuthMethod) when the agent is unreachable
+// so the operator sees a precise diagnostic.
+func agentAuthMethod(log *slog.Logger) (ssh.AuthMethod, error) {
+	sock := os.Getenv("SSH_AUTH_SOCK")
+	if sock == "" {
+		return nil, errors.New("SSH_AUTH_SOCK not set; cannot fall back to ssh-agent — either unset the key passphrase or `ssh-add` the key first")
+	}
+	conn, err := net.Dial("unix", sock)
+	if err != nil {
+		return nil, fmt.Errorf("dial ssh-agent at %s: %w", sock, err)
+	}
+	ac := agent.NewClient(conn)
+	if log != nil {
+		// Probe the agent so a "key not loaded" failure surfaces here, not
+		// inside the SSH handshake (where the error is opaque).
+		if signers, sErr := ac.Signers(); sErr != nil {
+			log.Warn("ssh agent: failed to enumerate signers", "err", sErr)
+		} else {
+			log.Info("ssh agent: using ssh-agent", "socket", sock, "loaded_keys", len(signers))
+		}
+	}
+	return ssh.PublicKeysCallback(ac.Signers), nil
 }

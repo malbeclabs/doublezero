@@ -31,6 +31,7 @@ pub fn cli_context_for_tests() -> CliContextBuilder {
         .with_geolocation_program_id(Pubkey::new_unique())
         .with_telemetry_program_id(Pubkey::new_unique())
         .with_output_format(OutputFormat::Table)
+        .with_client_version("0.0.0-test")
 }
 
 /// Convenience: build a fully resolved `CliContext` with sensible defaults

@@ -1,10 +1,7 @@
 use clap::{Args, Subcommand};
 use clap_complete::Shell;
 use doublezero_geolocation_cli::GeolocationArgs;
-use doublezero_serviceability_cli::{
-    account::GetAccountCliCommand, accounts::GetAccountsCliCommand, cli::ServiceabilityCommand,
-    logcommand::LogCliCommand,
-};
+use doublezero_serviceability_cli::cli::ServiceabilityCommand;
 
 use crate::{
     cli::multicast::MulticastCliCommand,
@@ -21,10 +18,9 @@ use crate::{
 /// `doublezero_serviceability_cli::cli::ServiceabilityCommand` and are hoisted
 /// to the top level here via `#[command(flatten)]`. The binary retains the
 /// daemon-control verbs, the `doublezero-geolocation-cli` module crate's
-/// geolocation subtree (via `GeolocationArgs`), the raw-`DZClient` diagnostics
-/// (`Account`, `Accounts`, `Log`), the binary-only `Completion` generator, and
-/// `Multicast` (whose `Subscribe`/`Unsubscribe`/`Publish`/`Unpublish` arms
-/// depend on binary-local daemon-control infrastructure).
+/// geolocation subtree (via `GeolocationArgs`), the binary-only `Completion`
+/// generator, and `Multicast` (whose `Subscribe`/`Unsubscribe`/`Publish`/
+/// `Unpublish` arms depend on binary-local daemon-control infrastructure).
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// Connect your server to a doublezero device
@@ -41,14 +37,6 @@ pub enum Command {
     Latency(LatencyCliCommand),
     /// View your installed routes
     Routes(RoutesCliCommand),
-
-    /// Get Account
-    Account(GetAccountCliCommand),
-    /// List Accounts
-    #[command(hide = true)]
-    Accounts(GetAccountsCliCommand),
-    /// Get logs
-    Log(LogCliCommand),
 
     /// Manage geolocation probes and users
     Geolocation(GeolocationArgs),

@@ -106,9 +106,9 @@ use doublezero_sdk::{
         },
     },
     telemetry::LinkLatencyStats,
-    DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GetGlobalStateCommand,
-    GlobalConfig, GlobalState, Link, Location, MulticastGroup, ResourceExtensionOwned,
-    TopologyInfo, User,
+    DZClient, DZTransaction, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand,
+    GetGlobalStateCommand, GlobalConfig, GlobalState, Link, Location, MulticastGroup,
+    ResourceExtensionOwned, TopologyInfo, User,
 };
 use doublezero_serviceability::state::{
     accesspass::AccessPass, accountdata::AccountData, contributor::Contributor,
@@ -140,6 +140,8 @@ pub trait CliCommand {
     fn get_multiple_accounts(&self, pubkeys: Vec<Pubkey>) -> eyre::Result<Vec<Option<Account>>>;
     fn transfer_sol(&self, to: Pubkey, lamports: u64) -> eyre::Result<Signature>;
     fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>>;
+    fn get_account_data(&self, pubkey: Pubkey) -> eyre::Result<AccountData>;
+    fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>>;
     fn get_program_accounts(
         &self,
         program_id: &Pubkey,
@@ -393,6 +395,12 @@ impl CliCommand for CliCommandImpl<'_> {
     }
     fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>> {
         self.client.get_all()
+    }
+    fn get_account_data(&self, pubkey: Pubkey) -> eyre::Result<AccountData> {
+        self.client.get(pubkey)
+    }
+    fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>> {
+        self.client.get_transactions(pubkey)
     }
     fn get_program_accounts(
         &self,

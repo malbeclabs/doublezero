@@ -179,7 +179,8 @@ func TestApplyConfigErrorsCounter(t *testing.T) {
 			return out
 		},
 	}, &fire, fixedNow(now))
-	d.tick() // seeds prev
+	d.startedAt = now.Add(-2 * startupGrace) // bypass startup grace
+	d.tick()                                 // seeds prev
 	if fire.Load() != 0 {
 		t.Fatal("should not fire on first observation")
 	}
@@ -204,6 +205,7 @@ func TestGetConfigErrorsCounter(t *testing.T) {
 			return out
 		},
 	}, &fire, fixedNow(now))
+	d.startedAt = now.Add(-2 * startupGrace) // bypass startup grace
 	d.tick()
 	current[metricGetConfigErrors] = 5
 	d.tick()
@@ -226,7 +228,8 @@ func TestDiffTimeoutPattern(t *testing.T) {
 			return loggingtail.AgentSnapshot{MatchCounts: cp, LastLineAt: now}
 		},
 	}, &fire, fixedNow(now))
-	d.tick() // seed
+	d.startedAt = now.Add(-2 * startupGrace) // bypass startup grace
+	d.tick()                                 // seed
 	counts[loggingtail.PatternDiffTimeout] = 1
 	d.tick()
 	got := readSentinel(t, d.cfg.AbortFile)
@@ -248,6 +251,7 @@ func TestLockNotTakenPattern(t *testing.T) {
 			return loggingtail.AgentSnapshot{MatchCounts: cp, LastLineAt: now}
 		},
 	}, &fire, fixedNow(now))
+	d.startedAt = now.Add(-2 * startupGrace) // bypass startup grace
 	d.tick()
 	counts[loggingtail.PatternLockNotTaken] = 2
 	d.tick()
@@ -257,9 +261,103 @@ func TestLockNotTakenPattern(t *testing.T) {
 	}
 }
 
-func TestAgentSilenceFifteenSeconds(t *testing.T) {
+// TestStartupGraceSuppressesCounterTrigger covers the grace contract:
+// within `startupGrace` of the decider start, even a counter increment
+// (and a corresponding agent log pattern increment) must not fire. After
+// grace, the next increment fires against the post-grace baseline.
+func TestStartupGraceSuppressesCounterTrigger(t *testing.T) {
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var step atomic.Int64
+	// 20s per call: New() captures startedAt at t=base+20s; ticks 1-3
+	// fall at +40s, +60s, +80s (deltas 20s, 40s, 60s from startedAt — all
+	// still within the 60s grace, since the gate is `>= grace`); tick 4
+	// at +100s (delta 80s) is past grace.
+	clock := func() time.Time {
+		return base.Add(time.Duration(step.Add(1)) * 20 * time.Second)
+	}
+	var fire atomic.Int32
+	current := map[string]float64{metricApplyConfigErrors: 0}
+	d := newTestDecider(t, Sources{
+		PromSnapshot: func() map[string]float64 {
+			out := make(map[string]float64, len(current))
+			for k, v := range current {
+				out[k] = v
+			}
+			return out
+		},
+	}, &fire, clock)
+	// Tick 1: t=base+60s, seeds prev=0.
+	d.tick()
+	// Counter increments to 1 while still in grace (t=base+90s ≤ start+60s).
+	current[metricApplyConfigErrors] = 1
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire while within startup grace")
+	}
+	// Past grace (t=base+120s, start=base+30s → diff=90s > 60s) but counter unchanged.
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire when counter unchanged since prior tick")
+	}
+	// Now counter advances post-grace → fires.
+	current[metricApplyConfigErrors] = 2
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerApplyConfigErrors {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+// TestStartupGraceSuppressesPatternTrigger is the agent-log-pattern
+// analogue of the counter grace test.
+func TestStartupGraceSuppressesPatternTrigger(t *testing.T) {
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var step atomic.Int64
+	clock := func() time.Time {
+		return base.Add(time.Duration(step.Add(1)) * 20 * time.Second)
+	}
+	var fire atomic.Int32
+	counts := map[string]int{loggingtail.PatternDiffTimeout: 0}
+	d := newTestDecider(t, Sources{
+		AgentSnapshot: func() loggingtail.AgentSnapshot {
+			cp := map[string]int{}
+			for k, v := range counts {
+				cp[k] = v
+			}
+			// LastLineAt must lead the clock so agent_silence doesn't preempt.
+			return loggingtail.AgentSnapshot{MatchCounts: cp, LastLineAt: base.Add(10 * time.Hour)}
+		},
+	}, &fire, clock)
+	// Tick 1 (delta 20s, in grace): seed prev=0.
+	d.tick()
+	// Increment to 1 within grace (tick 2 at delta 40s).
+	counts[loggingtail.PatternDiffTimeout] = 1
+	d.tick()
+	if fire.Load() != 0 {
+		got := readSentinel(t, d.cfg.AbortFile)
+		t.Fatalf("must not fire within startup grace (fired with %v)", got)
+	}
+	// Tick 3 at delta 60s — AT/past grace boundary but pattern unchanged.
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire when pattern unchanged")
+	}
+	// Tick 4 at delta 80s — past grace, increment → fires.
+	counts[loggingtail.PatternDiffTimeout] = 2
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerDiffTimeout {
+		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+// TestAgentSilencePastThreshold confirms the trigger fires when the
+// agent has been silent for longer than `agentSilenceThresh`. Uses a
+// silent window comfortably past the threshold so the assertion is
+// robust to small threshold tuning.
+func TestAgentSilencePastThreshold(t *testing.T) {
 	lastLine := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
-	silent := lastLine.Add(20 * time.Second)
+	silent := lastLine.Add(agentSilenceThresh + 5*time.Second)
 	var fire atomic.Int32
 	d := newTestDecider(t, Sources{
 		AgentSnapshot: func() loggingtail.AgentSnapshot {
@@ -270,6 +368,25 @@ func TestAgentSilenceFifteenSeconds(t *testing.T) {
 	got := readSentinel(t, d.cfg.AbortFile)
 	if got["trigger"] != TriggerAgentSilence {
 		t.Fatalf("trigger = %v", got["trigger"])
+	}
+}
+
+// TestAgentSilenceBelowThresholdNoFire confirms the trigger does NOT
+// fire while the silence window is shorter than `agentSilenceThresh`.
+// At high user counts the agent legitimately goes silent for tens of
+// seconds during each apply cycle, so the threshold must cover that.
+func TestAgentSilenceBelowThresholdNoFire(t *testing.T) {
+	lastLine := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	silent := lastLine.Add(agentSilenceThresh - 5*time.Second)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		AgentSnapshot: func() loggingtail.AgentSnapshot {
+			return loggingtail.AgentSnapshot{MatchCounts: map[string]int{}, LastLineAt: lastLine}
+		},
+	}, &fire, fixedNow(silent))
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire while silence is below threshold")
 	}
 }
 
@@ -449,5 +566,80 @@ func TestPercentile95(t *testing.T) {
 		if got != c.want {
 			t.Errorf("percentile95(%v) = %v, want %v", c.in, got, c.want)
 		}
+	}
+}
+
+// TestDeviceTunnelGapFiresAfterGrace covers the case the trigger was
+// designed for: the orchestrator's view of active users (from the runlog)
+// exceeds the device's actual tunnel count, the grace window has elapsed
+// since the most recent activate, and the shortfall is at or above the
+// threshold.
+func TestDeviceTunnelGapFiresAfterGrace(t *testing.T) {
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	// now is just past the grace window after lastActivate.
+	now := base.Add(deviceTunnelGapGrace + time.Second)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		ActiveUserCount: func() (int, time.Time, bool) { return 32, base, true },
+		TunnelCount:     func() (int, bool) { return 16, true },
+	}, &fire, fixedNow(now))
+	d.tick()
+	got := readSentinel(t, d.cfg.AbortFile)
+	if got["trigger"] != TriggerDeviceTunnelGap {
+		t.Fatalf("trigger = %v, want %s", got["trigger"], TriggerDeviceTunnelGap)
+	}
+}
+
+// TestDeviceTunnelGapSuppressedWithinGrace confirms the trigger does not
+// fire until deviceTunnelGapGrace has passed since the most recent
+// activate, so a mid-batch transient mismatch can't trip the sweep.
+func TestDeviceTunnelGapSuppressedWithinGrace(t *testing.T) {
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	now := base.Add(deviceTunnelGapGrace - time.Second)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		ActiveUserCount: func() (int, time.Time, bool) { return 32, base, true },
+		TunnelCount:     func() (int, bool) { return 16, true },
+	}, &fire, fixedNow(now))
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire within deviceTunnelGapGrace")
+	}
+}
+
+// TestDeviceTunnelGapBelowThreshold confirms small mid-commit mismatches
+// (e.g. one tunnel briefly absent during a re-stage) do not fire.
+func TestDeviceTunnelGapBelowThreshold(t *testing.T) {
+	base := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	now := base.Add(2 * deviceTunnelGapGrace)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		// shortfall = active - tunnels = deviceTunnelGapThreshold - 1
+		ActiveUserCount: func() (int, time.Time, bool) {
+			return deviceTunnelGapThreshold, base, true
+		},
+		TunnelCount: func() (int, bool) { return 1, true },
+	}, &fire, fixedNow(now))
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire when shortfall is below threshold")
+	}
+}
+
+// TestDeviceTunnelGapSuppressedBeforeFirstActivate handles the period
+// after the observer starts but before the orchestrator has activated
+// any user — the runlog is empty so ActiveUserCount returns ok=false.
+func TestDeviceTunnelGapSuppressedBeforeFirstActivate(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	var fire atomic.Int32
+	d := newTestDecider(t, Sources{
+		ActiveUserCount: func() (int, time.Time, bool) {
+			return 0, time.Time{}, false
+		},
+		TunnelCount: func() (int, bool) { return 0, true },
+	}, &fire, fixedNow(now))
+	d.tick()
+	if fire.Load() != 0 {
+		t.Fatal("must not fire before any activate has been seen")
 	}
 }

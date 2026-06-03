@@ -199,3 +199,90 @@ func TestRunCancels(t *testing.T) {
 }
 
 var _ collector.Collector = (*Reader)(nil)
+
+// TestActiveUserCountTracksRunlog confirms the reader exposes the most
+// recent n_after_event and timestamps the most recent provision activate.
+// Order of arrival matters: a later submit/deprovision_submit/activate
+// for a different user should also update the count, but only an activate
+// event updates lastActivate.
+func TestActiveUserCountTracksRunlog(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "orchestrator-runlog.jsonl")
+	r := New(dir, time.Hour, discardLogger())
+
+	// Initial: no rows yet, source should signal "not seen".
+	r.tick()
+	if _, _, ok := r.ActiveUserCount(); ok {
+		t.Fatal("ActiveUserCount must report ok=false before any row")
+	}
+
+	// Provision two users.
+	submit0 := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	activate0 := submit0.Add(14 * time.Second)
+	submit1 := activate0.Add(time.Microsecond)
+	activate1 := submit1.Add(14 * time.Second)
+	appendRow(t, path, map[string]any{
+		"user_index":    0,
+		"event":         "submit",
+		"t_ns":          submit0.UnixNano(),
+		"n_after_event": 0,
+	})
+	appendRow(t, path, map[string]any{
+		"user_index":    0,
+		"event":         "activate",
+		"t_ns":          activate0.UnixNano(),
+		"n_after_event": 1,
+	})
+	appendRow(t, path, map[string]any{
+		"user_index":    1,
+		"event":         "submit",
+		"t_ns":          submit1.UnixNano(),
+		"n_after_event": 1,
+	})
+	appendRow(t, path, map[string]any{
+		"user_index":    1,
+		"event":         "activate",
+		"t_ns":          activate1.UnixNano(),
+		"n_after_event": 2,
+	})
+	r.tick()
+
+	count, last, ok := r.ActiveUserCount()
+	if !ok {
+		t.Fatal("ActiveUserCount must report ok=true after seeing rows")
+	}
+	if count != 2 {
+		t.Errorf("count = %d, want 2", count)
+	}
+	if !last.Equal(activate1) {
+		t.Errorf("lastActivate = %v, want %v", last, activate1)
+	}
+
+	// Deprovision the newest user. n_after_event drops to 1; lastActivate
+	// stays at activate1 (only provision activates move it forward).
+	deprovSubmit := activate1.Add(time.Second)
+	deprovActivate := deprovSubmit.Add(14 * time.Second)
+	appendRow(t, path, map[string]any{
+		"user_index":    1,
+		"event":         "deprovision_submit",
+		"t_ns":          deprovSubmit.UnixNano(),
+		"n_after_event": 2,
+	})
+	appendRow(t, path, map[string]any{
+		"user_index":    1,
+		"event":         "deprovision_activate",
+		"t_ns":          deprovActivate.UnixNano(),
+		"n_after_event": 1,
+	})
+	r.tick()
+
+	count, last, _ = r.ActiveUserCount()
+	if count != 1 {
+		t.Errorf("count after deprovision = %d, want 1", count)
+	}
+	if !last.Equal(activate1) {
+		t.Errorf("lastActivate after deprovision = %v, want %v (unchanged)", last, activate1)
+	}
+}
+
+var _ = context.Background // keep import used if tests above remove it

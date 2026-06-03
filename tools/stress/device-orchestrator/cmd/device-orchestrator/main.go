@@ -37,24 +37,26 @@ import (
 // orchestratorConfig captures the resolved CLI inputs in the shape that gets
 // dumped to orchestrator-config.json on start.
 type orchestratorConfig struct {
-	RunID           string `json:"run_id"`
-	TargetUserCount int    `json:"target_user_count"`
-	UsersPerBatch   int    `json:"users_per_batch"`
-	HoldSeconds     int    `json:"hold_seconds"`
-	DUTPubkey       string `json:"dut_pubkey"`
-	DUTSSHHost      string `json:"dut_ssh_host"`
-	DUTSSHKey       string `json:"dut_ssh_key"`
-	DUTSSHUser      string `json:"dut_ssh_user"`
-	RPCURL          string `json:"rpc_url"`
-	ProgramID       string `json:"program_id"`
-	KeypairPath     string `json:"keypair"`
-	ControllerAddr  string `json:"controller"`
-	AbortFile       string `json:"abort_file"`
-	WorkingDir      string `json:"working_dir"`
-	ClientIPBase    string `json:"client_ip_base"`
-	TunnelEndpoint  string `json:"tunnel_endpoint"`
-	TenantPubkey    string `json:"tenant_pubkey,omitempty"`
-	NoAgent         bool   `json:"no_agent"`
+	RunID                         string `json:"run_id"`
+	TargetUserCount               int    `json:"target_user_count"`
+	UsersPerBatch                 int    `json:"users_per_batch"`
+	HoldSeconds                   int    `json:"hold_seconds"`
+	AgentQuietSeconds             int    `json:"agent_quiet_seconds"`
+	AgentQuiescenceTimeoutSeconds int    `json:"agent_quiescence_timeout_seconds"`
+	DUTPubkey                     string `json:"dut_pubkey"`
+	DUTSSHHost                    string `json:"dut_ssh_host"`
+	DUTSSHKey                     string `json:"dut_ssh_key"`
+	DUTSSHUser                    string `json:"dut_ssh_user"`
+	RPCURL                        string `json:"rpc_url"`
+	ProgramID                     string `json:"program_id"`
+	KeypairPath                   string `json:"keypair"`
+	ControllerAddr                string `json:"controller"`
+	AbortFile                     string `json:"abort_file"`
+	WorkingDir                    string `json:"working_dir"`
+	ClientIPBase                  string `json:"client_ip_base"`
+	TunnelEndpoint                string `json:"tunnel_endpoint"`
+	TenantPubkey                  string `json:"tenant_pubkey,omitempty"`
+	NoAgent                       bool   `json:"no_agent"`
 }
 
 func main() {
@@ -86,6 +88,12 @@ func run() error {
 		dryRun          = flag.Bool("dry-run", false, "Validate flags and dump orchestrator-config.json without contacting the RPC.")
 		dutSSHUser      = flag.String("dut-ssh-user", "admin", "SSH user for the DUT.")
 		noAgent         = flag.Bool("no-agent", false, "Use the no-op AgentRunner even when SSH flags are set (offline testing).")
+		// Default: 15 s — clears the 5 s controller poll plus an apply margin
+		// observed up to ~10 s per cycle at 1024 users / batch=32.
+		agentQuietSeconds = flag.Int("agent-quiet-seconds", 15, "Seconds of agent silence (no EventApplied) required after deprovision before the SSH session is cancelled. 0 disables the wait.")
+		// Default: 300 s — accommodates the 22k-line / ~650 KB final config
+		// commit at 1024 tunnels.
+		agentQuiescenceTimeoutSeconds = flag.Int("agent-quiescence-timeout-seconds", 300, "Hard cap on the post-deprovision agent quiescence wait, in seconds.")
 	)
 	flag.Parse()
 
@@ -114,24 +122,26 @@ func run() error {
 	}
 
 	resolved := orchestratorConfig{
-		RunID:           *runID,
-		TargetUserCount: *targetUserCount,
-		UsersPerBatch:   *usersPerBatch,
-		HoldSeconds:     *holdSeconds,
-		DUTPubkey:       *dutPubkey,
-		DUTSSHHost:      *dutSSHHost,
-		DUTSSHKey:       *dutSSHKey,
-		DUTSSHUser:      *dutSSHUser,
-		RPCURL:          *rpcURL,
-		ProgramID:       *programID,
-		KeypairPath:     *keypairPath,
-		ControllerAddr:  *controllerAddr,
-		AbortFile:       *abortFile,
-		WorkingDir:      *workingDir,
-		ClientIPBase:    *clientIPBase,
-		TunnelEndpoint:  *tunnelEndpoint,
-		TenantPubkey:    *tenantPubkey,
-		NoAgent:         *noAgent,
+		RunID:                         *runID,
+		TargetUserCount:               *targetUserCount,
+		UsersPerBatch:                 *usersPerBatch,
+		HoldSeconds:                   *holdSeconds,
+		AgentQuietSeconds:             *agentQuietSeconds,
+		AgentQuiescenceTimeoutSeconds: *agentQuiescenceTimeoutSeconds,
+		DUTPubkey:                     *dutPubkey,
+		DUTSSHHost:                    *dutSSHHost,
+		DUTSSHKey:                     *dutSSHKey,
+		DUTSSHUser:                    *dutSSHUser,
+		RPCURL:                        *rpcURL,
+		ProgramID:                     *programID,
+		KeypairPath:                   *keypairPath,
+		ControllerAddr:                *controllerAddr,
+		AbortFile:                     *abortFile,
+		WorkingDir:                    *workingDir,
+		ClientIPBase:                  *clientIPBase,
+		TunnelEndpoint:                *tunnelEndpoint,
+		TenantPubkey:                  *tenantPubkey,
+		NoAgent:                       *noAgent,
 	}
 	// Validate required flags before writing anything, so a bad invocation
 	// doesn't leave a config file behind. A dry-run is exempt: its whole job is
@@ -224,16 +234,18 @@ func run() error {
 	agentRunner := selectAgentRunner(*noAgent, *dutSSHHost, *dutSSHKey, *dutSSHUser, *controllerAddr, *workingDir, logger)
 
 	cfg := sweep.Config{
-		RunID:         *runID,
-		Target:        *targetUserCount,
-		UsersPerBatch: *usersPerBatch,
-		Hold:          time.Duration(*holdSeconds) * time.Second,
-		OwnerFilter:   signer.PublicKey(),
-		Executor:      liveExec,
-		Agent:         agentRunner,
-		Runlog:        rlw,
-		Clock:         sweep.RealClock{},
-		Logger:        logger,
+		RunID:                  *runID,
+		Target:                 *targetUserCount,
+		UsersPerBatch:          *usersPerBatch,
+		Hold:                   time.Duration(*holdSeconds) * time.Second,
+		AgentQuietWindow:       time.Duration(*agentQuietSeconds) * time.Second,
+		AgentQuiescenceTimeout: time.Duration(*agentQuiescenceTimeoutSeconds) * time.Second,
+		OwnerFilter:            signer.PublicKey(),
+		Executor:               liveExec,
+		Agent:                  agentRunner,
+		Runlog:                 rlw,
+		Clock:                  sweep.RealClock{},
+		Logger:                 logger,
 	}
 
 	logger.Info("sweep starting", "target", cfg.Target, "batch", cfg.UsersPerBatch, "hold", cfg.Hold)

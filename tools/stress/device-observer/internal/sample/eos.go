@@ -10,8 +10,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,9 +40,11 @@ type Sampler struct {
 	logger     *slog.Logger
 	now        func() time.Time
 
-	mu        sync.RWMutex
-	latestCPU float64
-	cpuValid  bool
+	mu                sync.RWMutex
+	latestCPU         float64
+	cpuValid          bool
+	latestTunnelCount int
+	tunnelCountValid  bool
 }
 
 func NewSampler(client eapiRunner, workingDir string, interval time.Duration, logger *slog.Logger) *Sampler {
@@ -58,6 +58,19 @@ func (s *Sampler) LatestCPUPercent() (float64, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.latestCPU, s.cpuValid
+}
+
+// LatestTunnelCount returns the most recently observed number of user
+// tunnels on the device (`show gre tunnel static`'s greTunnels map
+// length). Returns (0, false) before the first successful parse. The
+// abort decider uses this to detect when the orchestrator's expected
+// active-user count diverges from what the agent has actually applied —
+// e.g. when the controller's per-device tunnel-slot cap silently
+// truncates the rendered device config.
+func (s *Sampler) LatestTunnelCount() (int, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.latestTunnelCount, s.tunnelCountValid
 }
 
 func (s *Sampler) Run(ctx context.Context) error {
@@ -115,6 +128,15 @@ func (s *Sampler) runOne(c commandSpec, ts time.Time) error {
 				s.logger.Warn("could not parse CPU from show processes top once")
 			}
 		}
+		if c.cmd == "show gre tunnel static" {
+			if n, ok := parseTunnelCount(raw); ok {
+				s.mu.Lock()
+				s.latestTunnelCount, s.tunnelCountValid = n, true
+				s.mu.Unlock()
+			} else {
+				s.logger.Warn("could not parse tunnel count from show gre tunnel static")
+			}
+		}
 	} else {
 		text, err := s.client.RunShowText(c.cmd)
 		if err != nil {
@@ -129,45 +151,55 @@ func (s *Sampler) runOne(c commandSpec, ts time.Time) error {
 	return nil
 }
 
-var (
-	topCPULineRE = regexp.MustCompile(`(?m)^%?Cpu\(s\):\s*(.+)$`)
-	cpuFieldRE   = regexp.MustCompile(`([0-9]+(?:[.,][0-9]+)?)\s*([a-zA-Z]+)`)
-)
-
 // parseCPUPercent extracts the total non-idle CPU percentage from the
-// Arista `show processes top once | json` envelope, which wraps procps
-// `top -bn1` output as `{"output":"…%Cpu(s): …"}`. Sums every numeric
-// field except `id` (idle); tolerates locale-decimal commas.
+// `show processes top once | json` eAPI response, which has shape
+// `{"cpuInfo":{"%Cpu(s)":{"idle":X,"user":Y,"system":Z,…}}, …}`. Every
+// numeric sibling of `idle` is summed. The `%Cpu(s)` key embeds a
+// percent sign so the inner object can only be addressed via map
+// decoding.
 func parseCPUPercent(raw json.RawMessage) (float64, bool) {
 	var env struct {
-		Output string `json:"output"`
+		CPUInfo map[string]map[string]float64 `json:"cpuInfo"`
 	}
-	if err := json.Unmarshal(raw, &env); err != nil || env.Output == "" {
+	if err := json.Unmarshal(raw, &env); err != nil || len(env.CPUInfo) == 0 {
 		return 0, false
 	}
-	m := topCPULineRE.FindStringSubmatch(env.Output)
-	if len(m) < 2 {
+	fields, ok := env.CPUInfo["%Cpu(s)"]
+	if !ok || len(fields) == 0 {
 		return 0, false
 	}
 	var total float64
-	var found bool
-	for _, pair := range cpuFieldRE.FindAllStringSubmatch(m[1], -1) {
-		label := strings.ToLower(pair[2])
-		if label == "id" {
-			found = true
-			continue
-		}
-		v, err := strconv.ParseFloat(strings.ReplaceAll(pair[1], ",", "."), 64)
-		if err != nil {
+	var sawIdle bool
+	for k, v := range fields {
+		if strings.EqualFold(k, "idle") {
+			sawIdle = true
 			continue
 		}
 		total += v
-		found = true
 	}
-	if !found {
+	if !sawIdle {
 		return 0, false
 	}
 	return total, true
+}
+
+// parseTunnelCount returns the number of entries in the `greTunnels` map
+// of the `show gre tunnel static | json` eAPI response, shaped as
+// `{"greTunnels": {"<idx>": {…}, …}}`. Returns (0, true) on an empty map
+// — a healthy device with no user tunnels — and (0, false) only when
+// `greTunnels` is missing entirely or the response is malformed, so the
+// abort decider can distinguish "zero confirmed" from "unknown".
+func parseTunnelCount(raw json.RawMessage) (int, bool) {
+	var env struct {
+		GreTunnels map[string]json.RawMessage `json:"greTunnels"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return 0, false
+	}
+	if env.GreTunnels == nil {
+		return 0, false
+	}
+	return len(env.GreTunnels), true
 }
 
 // fileTimestamp renders t as ISO 8601 UTC with `:` → `-` for filesystem

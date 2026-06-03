@@ -23,9 +23,43 @@ const (
 	singleUserThresh     = 30 * time.Second
 	cpuPercentThresh     = 80.0
 	cpuSustainedWindow   = 60 * time.Second
-	agentSilenceThresh   = 15 * time.Second
-	ledgerStaleThresh    = 30 * time.Second
-	batchWindow          = 5 * time.Minute
+	// agentSilenceThresh bounds how long the agent log can be silent
+	// before we declare the agent hung. The agent goes legitimately
+	// silent during each apply cycle — receive config → parse → compute
+	// diff → commit session — and at high user counts the config is
+	// large enough that this can run for 30+ seconds without
+	// intermediate log lines (e.g. ~22k lines / 650 KB at ~290 users).
+	// The threshold has to clear that legitimate silent window while
+	// still catching a deadlocked agent.
+	agentSilenceThresh = 120 * time.Second
+	ledgerStaleThresh  = 30 * time.Second
+	batchWindow        = 5 * time.Minute
+
+	// startupGrace suppresses the counter- and log-pattern-based triggers
+	// for the first window after the decider starts. The doublezero-agent
+	// reliably emits an apply_config_errors / "could not get diff" race on
+	// its first commit attempt as EOS validates the new session — a real
+	// transient, not a sweep failure. The provision/deprovision and CPU
+	// triggers are unaffected (they have their own minSamples / window
+	// requirements). After grace, a single counter or pattern increment
+	// fires the trigger as before.
+	startupGrace = 60 * time.Second
+
+	// deviceTunnelGapGrace is how long after a provision activate the
+	// device is given to converge before the device_tunnel_gap trigger
+	// inspects the runlog-vs-eAPI delta. At high user counts an agent
+	// apply cycle takes 30+ s (the config can run to 22k lines / 650 KB
+	// at ~290 users), so the grace has to clear a full slow apply
+	// while still firing when convergence is genuinely stuck. The
+	// agentSilenceThresh fires first on a truly hung agent — past that
+	// point a persistent gap is the controller's slot cap or an agent
+	// silently dropping work.
+	deviceTunnelGapGrace = agentSilenceThresh
+	// deviceTunnelGapThreshold is the minimum (active - tunnels) shortfall
+	// that fires the trigger. Small transient mismatches mid-commit
+	// shouldn't fire — anything past that is a real divergence (controller
+	// cap, agent stuck, etc.).
+	deviceTunnelGapThreshold = 4
 
 	// minSamples gates per-tick triggers below which a single outlier
 	// could trip the orchestrator on startup or an empty batch.
@@ -43,6 +77,7 @@ const (
 	TriggerLockNotTaken         = "lock_not_taken"
 	TriggerAgentSilence         = "agent_silence"
 	TriggerLedgerHeartbeatStale = "ledger_heartbeat_stale"
+	TriggerDeviceTunnelGap      = "device_tunnel_gap"
 
 	metricApplyConfigErrors = "doublezero_agent_apply_config_errors_total"
 	metricGetConfigErrors   = "doublezero_agent_get_config_errors_total"
@@ -57,7 +92,17 @@ type Sources struct {
 	ProvisionDurations   func(time.Duration) []time.Duration
 	DeprovisionDurations func(time.Duration) []time.Duration
 	CPUPercent           func() (float64, bool)
-	LedgerHeartbeatPath  string
+	// ActiveUserCount returns the orchestrator's most recent
+	// n_after_event from the runlog (the count of users the orchestrator
+	// considers active), the wall-clock timestamp of the most recent
+	// provision activate event, and `ok=false` before any runlog row has
+	// been seen.
+	ActiveUserCount func() (count int, lastActivate time.Time, ok bool)
+	// TunnelCount returns the most recently observed number of user
+	// tunnels on the device (from `show gre tunnel static`). `ok=false`
+	// before the first successful sample.
+	TunnelCount         func() (int, bool)
+	LedgerHeartbeatPath string
 }
 
 // Config configures a Decider. OnFire is called exactly once after the
@@ -75,6 +120,7 @@ type Decider struct {
 	cfg Config
 
 	mu             sync.Mutex
+	startedAt      time.Time
 	prevCounters   map[string]float64
 	countersSeeded bool
 	prevPatterns   map[string]int
@@ -97,6 +143,7 @@ func New(cfg Config) *Decider {
 	}
 	return &Decider{
 		cfg:          cfg,
+		startedAt:    cfg.now(),
 		prevCounters: map[string]float64{},
 		prevPatterns: map[string]int{},
 	}
@@ -171,9 +218,16 @@ func (d *Decider) tick() {
 		}
 	}
 
+	// Counter and log-pattern triggers absorb the agent's startup race for
+	// `startupGrace` after the decider starts: keep reseeding `prev*` so
+	// the increments accumulated during that window become the new
+	// baseline, and don't fire. After grace, the existing increment-fires
+	// logic applies against the latest baseline.
+	pastGrace := now.Sub(d.startedAt) >= startupGrace
+
 	if f := d.cfg.Sources.PromSnapshot; f != nil {
 		counters := f()
-		if d.countersSeeded {
+		if d.countersSeeded && pastGrace {
 			for _, c := range []struct{ name, trigger string }{
 				{metricApplyConfigErrors, TriggerApplyConfigErrors},
 				{metricGetConfigErrors, TriggerGetConfigErrors},
@@ -192,7 +246,7 @@ func (d *Decider) tick() {
 
 	if f := d.cfg.Sources.AgentSnapshot; f != nil {
 		snap := f()
-		if d.patternsSeeded {
+		if d.patternsSeeded && pastGrace {
 			for _, p := range []struct{ name, trigger string }{
 				{loggingtail.PatternDiffTimeout, TriggerDiffTimeout},
 				{loggingtail.PatternLockNotTaken, TriggerLockNotTaken},
@@ -211,6 +265,24 @@ func (d *Decider) tick() {
 		// the orchestrator has started the agent.
 		if !snap.LastLineAt.IsZero() && now.Sub(snap.LastLineAt) > agentSilenceThresh {
 			d.fire(now, TriggerAgentSilence, fmt.Sprintf("agent silent for %s (last line at %s)", now.Sub(snap.LastLineAt), snap.LastLineAt.UTC().Format(time.RFC3339Nano)))
+			return
+		}
+	}
+
+	// device_tunnel_gap: catch the orchestrator's view of active users
+	// drifting above what the device actually has plumbed (controller
+	// truncating the rendered config beyond its slot cap, agent stuck
+	// without erroring, etc.). Suppressed until the most recent activate
+	// is at least deviceTunnelGapGrace old so the agent has time to
+	// converge. Suppressed entirely while either source is unset.
+	if d.cfg.Sources.ActiveUserCount != nil && d.cfg.Sources.TunnelCount != nil {
+		active, lastActivate, runlogOK := d.cfg.Sources.ActiveUserCount()
+		tunnels, tunnelsOK := d.cfg.Sources.TunnelCount()
+		if runlogOK && tunnelsOK && active > 0 && !lastActivate.IsZero() &&
+			now.Sub(lastActivate) >= deviceTunnelGapGrace &&
+			active-tunnels >= deviceTunnelGapThreshold {
+			d.fire(now, TriggerDeviceTunnelGap, fmt.Sprintf("orchestrator reports %d active users but device has %d tunnels (gap %d, last activate %s ago)",
+				active, tunnels, active-tunnels, now.Sub(lastActivate).Truncate(time.Second)))
 			return
 		}
 	}

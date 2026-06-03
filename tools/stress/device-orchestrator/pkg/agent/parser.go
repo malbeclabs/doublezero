@@ -61,11 +61,11 @@ func (p *Parser) Parse(line string) []Event {
 	}
 	if finalizedCommitRE.MatchString(line) {
 		p.inDiff = false
-		if len(p.pending) == 0 {
-			return nil
-		}
 		now := p.now()
-		out := make([]Event, 0, len(p.pending))
+		// Always emit EventCommit so the consumer can see commit activity
+		// during deprovision (pure-removal diffs leave p.pending empty).
+		out := make([]Event, 0, len(p.pending)+1)
+		out = append(out, Event{Kind: EventCommit, TunnelID: 0, At: now})
 		for _, id := range p.pending {
 			out = append(out, Event{Kind: EventApplied, TunnelID: id, At: now})
 		}

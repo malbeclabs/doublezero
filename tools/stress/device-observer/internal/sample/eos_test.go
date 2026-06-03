@@ -210,72 +210,58 @@ func TestFileTimestampNoColon(t *testing.T) {
 	}
 }
 
-// TestParseCPUPercent exercises the `%Cpu(s)` parser against fixtures
-// for procps `top -bn1` output (95% idle → 5% used), the busybox
-// `Cpu(s):` prefix (no leading `%`), a comma-decimal locale, and a
-// response that omits the line.
+// TestParseCPUPercent exercises the parser against the EOS eAPI JSON
+// shape returned by `show processes top once | json`. The primary
+// fixture is a verbatim capture from a cEOS device.
 func TestParseCPUPercent(t *testing.T) {
-	cases := []struct {
-		name   string
-		output string
-		want   float64
-		ok     bool
-	}{
-		{
-			name:   "procps 95% idle",
-			output: "top - 12:34:56 up 1 day\n%Cpu(s):  1.0 us,  2.0 sy,  0.0 ni, 95.0 id,  2.0 wa,  0.0 hi,  0.0 si,  0.0 st\n",
-			want:   5.0,
-			ok:     true,
-		},
-		{
-			name:   "busybox prefix no percent",
-			output: "Cpu(s): 10.0 us, 5.0 sy, 0.0 ni, 80.0 id, 5.0 wa\n",
-			want:   20.0,
-			ok:     true,
-		},
-		{
-			name:   "comma-decimal locale",
-			output: "%Cpu(s):  1,0 us,  2,0 sy,  0,0 ni, 95,0 id,  2,0 wa,  0,0 hi,  0,0 si,  0,0 st\n",
-			want:   5.0,
-			ok:     true,
-		},
-		{
-			name:   "missing CPU line",
-			output: "top - 12:34:56\nMem: ...\n",
-			want:   0,
-			ok:     false,
-		},
-		{
-			name:   "empty output",
-			output: "",
-			want:   0,
-			ok:     false,
-		},
+	raw, err := os.ReadFile(filepath.Join("testdata", "ceos-show-processes-top-once.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			raw, _ := json.Marshal(map[string]string{"output": c.output})
-			got, ok := parseCPUPercent(raw)
-			if ok != c.ok {
-				t.Fatalf("ok = %v, want %v (got=%v)", ok, c.ok, got)
-			}
-			if ok {
-				const eps = 0.001
-				if got < c.want-eps || got > c.want+eps {
-					t.Errorf("got = %v, want %v", got, c.want)
-				}
-			}
-		})
+	// Fixture has user=1, system=0.3, all others 0, idle=98.7.
+	const want = 1.3
+	got, ok := parseCPUPercent(raw)
+	if !ok {
+		t.Fatal("parseCPUPercent returned ok=false for cEOS fixture")
 	}
+	const eps = 0.001
+	if got < want-eps || got > want+eps {
+		t.Errorf("got = %v, want %v", got, want)
+	}
+
+	t.Run("idle only", func(t *testing.T) {
+		body := []byte(`{"cpuInfo":{"%Cpu(s)":{"idle":100,"user":0,"system":0}}}`)
+		got, ok := parseCPUPercent(body)
+		if !ok {
+			t.Fatal("ok=false")
+		}
+		if got != 0 {
+			t.Errorf("got = %v, want 0", got)
+		}
+	})
+
+	t.Run("missing idle field", func(t *testing.T) {
+		// No `idle` key means the response is malformed or partial;
+		// reject rather than report a misleading non-zero sum.
+		body := []byte(`{"cpuInfo":{"%Cpu(s)":{"user":1,"system":2}}}`)
+		if _, ok := parseCPUPercent(body); ok {
+			t.Error("expected ok=false when idle field absent")
+		}
+	})
+
+	t.Run("missing cpuInfo", func(t *testing.T) {
+		body := []byte(`{"processes":{}}`)
+		if _, ok := parseCPUPercent(body); ok {
+			t.Error("expected ok=false when cpuInfo absent")
+		}
+	})
 }
 
 // TestLatestCPUUpdated verifies a tick that succeeds on `show processes
 // top once` updates the sampler's CPU snapshot.
 func TestLatestCPUUpdated(t *testing.T) {
 	dir := t.TempDir()
-	envelope, _ := json.Marshal(map[string]string{
-		"output": "%Cpu(s):  3.0 us, 2.0 sy, 0.0 ni, 95.0 id, 0.0 wa, 0.0 hi, 0.0 si, 0.0 st\n",
-	})
+	envelope := []byte(`{"cpuInfo":{"%Cpu(s)":{"idle":95,"user":3,"system":2,"nice":0}}}`)
 	runner := &fakeRunner{
 		jsonResp: map[string]json.RawMessage{
 			"show processes top once": envelope,
@@ -303,3 +289,52 @@ type runnable interface {
 }
 
 var _ runnable = (*Sampler)(nil)
+
+// TestParseTunnelCount covers the three shapes the parser must handle:
+// a populated greTunnels map, an empty map (healthy device with no users),
+// and a missing/malformed response (must signal ok=false so the decider
+// suppresses the device_tunnel_gap trigger).
+func TestParseTunnelCount(t *testing.T) {
+	cases := []struct {
+		name   string
+		body   string
+		wantN  int
+		wantOK bool
+	}{
+		{
+			name:   "populated map",
+			body:   `{"greTunnels":{"500":{"name":"Tunnel500"},"501":{"name":"Tunnel501"},"502":{"name":"Tunnel502"}}}`,
+			wantN:  3,
+			wantOK: true,
+		},
+		{
+			name:   "empty map",
+			body:   `{"greTunnels":{}}`,
+			wantN:  0,
+			wantOK: true,
+		},
+		{
+			name:   "missing greTunnels key",
+			body:   `{}`,
+			wantN:  0,
+			wantOK: false,
+		},
+		{
+			name:   "malformed JSON",
+			body:   `{nope`,
+			wantN:  0,
+			wantOK: false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			n, ok := parseTunnelCount(json.RawMessage(c.body))
+			if ok != c.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, c.wantOK)
+			}
+			if n != c.wantN {
+				t.Fatalf("n = %d, want %d", n, c.wantN)
+			}
+		})
+	}
+}

@@ -135,6 +135,8 @@ func run() error {
 			ProvisionDurations:   runReader.ProvisionDurations,
 			DeprovisionDurations: runReader.DeprovisionDurations,
 			CPUPercent:           sampler.LatestCPUPercent,
+			ActiveUserCount:      runReader.ActiveUserCount,
+			TunnelCount:          sampler.LatestTunnelCount,
 			LedgerHeartbeatPath:  filepath.Join(absWorking, "orchestrator.ledger_heartbeat"),
 		},
 		OnFire: cancel,

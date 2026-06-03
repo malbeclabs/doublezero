@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -751,4 +752,34 @@ func TestPermissionPDAInjection(t *testing.T) {
 
 		assert.Equal(t, 1, lookupCount, "permission PDA should be resolved exactly once")
 	})
+}
+
+// TestWaitForTransactionFinalizedSurfacesProgramError reproduces the
+// silent-program-error bug: a transaction that finalizes with a non-nil
+// Err in its signature status was previously treated as success, leading
+// callers to wait for an account that the program never created and
+// time out with a misleading "not visible" error. The fix returns the
+// program error directly from waitForTransactionFinalized.
+func TestWaitForTransactionFinalizedSurfacesProgramError(t *testing.T) {
+	t.Parallel()
+	programErr := map[string]any{
+		"InstructionError": []any{0, map[string]any{"Custom": 29}},
+	}
+	rpc := &mockRPCClient{
+		getSignatureStatusesFunc: func(_ context.Context, _ bool, _ ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
+			return &solanarpc.GetSignatureStatusesResult{
+				Value: []*solanarpc.SignatureStatusesResult{
+					{ConfirmationStatus: solanarpc.ConfirmationStatusFinalized, Err: programErr},
+				},
+			}, nil
+		},
+	}
+	exec, _ := newTestExecutor(t, rpc)
+	_, err := exec.waitForTransactionFinalized(context.Background(), solana.Signature{})
+	if err == nil {
+		t.Fatal("expected program-level error to surface; got nil")
+	}
+	if !strings.Contains(err.Error(), "transaction finalized with error") {
+		t.Errorf("error %q should mention the finalized-with-error path", err.Error())
+	}
 }

@@ -611,10 +611,18 @@ func (e *Executor) waitForAccountVisible(ctx context.Context, pubkey solana.Publ
 
 // waitForAccountGone polls GetAccountInfo until the given account no longer exists,
 // or the deadline expires. Used post-DeleteUser to detect closure.
+//
+// The gagliardetto RPC client surfaces a missing account as (nil, ErrNotFound)
+// rather than (&Result{Value: nil}, nil). Both shapes mean the same thing —
+// closure succeeded — so both are treated as the success signal. Any other
+// error is transient: retry until the deadline.
 func (e *Executor) waitForAccountGone(ctx context.Context, pubkey solana.PublicKey, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
 		info, err := e.rpc.GetAccountInfo(ctx, pubkey)
+		if errors.Is(err, solanarpc.ErrNotFound) {
+			return nil
+		}
 		if err == nil && (info == nil || info.Value == nil) {
 			return nil
 		}
@@ -651,6 +659,7 @@ func (e *Executor) waitForSignatureVisible(ctx context.Context, sig solana.Signa
 func (e *Executor) waitForTransactionFinalized(ctx context.Context, sig solana.Signature) (*solanarpc.GetTransactionResult, error) {
 	e.log.Debug("--> Waiting for transaction to be finalized", "sig", sig)
 	start := time.Now()
+	var finalStatus *solanarpc.SignatureStatusesResult
 	for {
 		statusResp, err := e.rpc.GetSignatureStatuses(ctx, true, sig)
 		if err != nil {
@@ -662,6 +671,7 @@ func (e *Executor) waitForTransactionFinalized(ctx context.Context, sig solana.S
 		status := statusResp.Value[0]
 		if status != nil && status.ConfirmationStatus == solanarpc.ConfirmationStatusFinalized {
 			e.log.Debug("--> Transaction finalized", "sig", sig, "duration", time.Since(start))
+			finalStatus = status
 			break
 		}
 		select {
@@ -672,6 +682,16 @@ func (e *Executor) waitForTransactionFinalized(ctx context.Context, sig solana.S
 				e.log.Debug("--> Still waiting for transaction to be finalized", "sig", sig, "elapsed", time.Since(start))
 			}
 		}
+	}
+
+	// A finalized status carries a non-nil Err when the transaction executed
+	// but the program returned an error (e.g. a doublezero-serviceability
+	// validation rejection). Without this check the caller assumes success,
+	// the post-confirm visibility poll hits a missing account, and the error
+	// surfaces as a misleading "account not visible" timeout instead of the
+	// actual program error.
+	if finalStatus.Err != nil {
+		return nil, fmt.Errorf("transaction finalized with error: %v", finalStatus.Err)
 	}
 
 	tx, err := e.rpc.GetTransaction(ctx, sig, &solanarpc.GetTransactionOpts{

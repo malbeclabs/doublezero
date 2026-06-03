@@ -196,13 +196,15 @@ done
 
 # Derive an IP inside the CYOA subnet (host octet = DEVICE_HOST_ID) and a
 # globally-routable /29 dz_prefix at a non-overlapping host offset. Mirrors
-# the rules in e2e/internal/devnet/device.go.
+# the rules in e2e/internal/devnet/device.go. Snap to a /29 boundary so the
+# prefix is network-aligned in case `--dz-prefixes` ever validates alignment.
 read -r CYOA_IP DZ_PREFIX < <(python3 - <<PY
 import ipaddress
 net = ipaddress.ip_network("$CYOA_SUBNET")
 host_id = $DEVICE_HOST_ID
 ip = net.network_address + host_id
-last = (host_id + 128) if (host_id + 128) < 256 else ((host_id - 128) // 8) * 8
+last = (host_id + 128) if (host_id + 128) < 256 else (host_id - 128)
+last &= ~0x7
 prefix = ipaddress.ip_address(int(net.network_address) + last)
 print(ip, f"{prefix}/29")
 PY

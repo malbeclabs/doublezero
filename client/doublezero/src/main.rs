@@ -18,7 +18,6 @@ use doublezero_sdk::{
 use doublezero_serviceability::pda::get_globalstate_pda;
 use doublezero_serviceability_cli::{
     checkversion::check_version, cli::ServiceabilityCommand, doublezerocommand::CliCommandImpl,
-    version::VersionCliCommand,
 };
 use servicecontroller::ServiceControllerImpl;
 
@@ -165,7 +164,10 @@ async fn main() -> eyre::Result<()> {
             std::process::exit(1);
         });
 
-    let mut ctx_builder = doublezero_cli_core::CliContextBuilder::new().with_env(env);
+    let local_version = option_env!("BUILD_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    let mut ctx_builder = doublezero_cli_core::CliContextBuilder::new()
+        .with_env(env)
+        .with_client_version(local_version);
 
     // Layer the persisted config when the file exists. When the user is
     // selecting an environment wholesale via `--env`, skip persisted URL and
@@ -244,8 +246,9 @@ async fn main() -> eyre::Result<()> {
     let mut handle = stdout.lock();
 
     if app.version {
-        let local_version = option_env!("BUILD_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
-        return VersionCliCommand.execute(&client, local_version, &mut handle);
+        return doublezero_serviceability_cli::version::VersionCliCommand
+            .execute(&ctx, &client, &mut handle)
+            .await;
     }
 
     let command = match app.command {
@@ -267,7 +270,8 @@ async fn main() -> eyre::Result<()> {
             | Command::Serviceability(
                 ServiceabilityCommand::Address(_)
                     | ServiceabilityCommand::Balance(_)
-                    | ServiceabilityCommand::Export(_),
+                    | ServiceabilityCommand::Export(_)
+                    | ServiceabilityCommand::Version(_),
             )
     );
     if !app.no_version_warning && !skip_version_check {
@@ -285,11 +289,6 @@ async fn main() -> eyre::Result<()> {
         Command::Disconnect(args) => args.execute(&client).await,
         Command::Latency(args) => args.execute(&client).await,
         Command::Routes(args) => args.execute(&client).await,
-
-        // Raw-DZClient diagnostic verbs
-        Command::Account(args) => args.execute(&dzclient, &mut handle),
-        Command::Accounts(args) => args.execute(&dzclient, &mut handle),
-        Command::Log(args) => args.execute(&dzclient, &mut handle),
 
         // Geolocation module crate (doublezero-geolocation-cli per RFC-20)
         Command::Geolocation(args) => {
@@ -321,7 +320,27 @@ async fn main() -> eyre::Result<()> {
             Ok(())
         }
 
-        // Flattened serviceability module: single dispatch arm hoists 17 variants.
+        // Binary-level override: subscribe uses the real blocking websocket
+        // loop (DZClient::subscribe) for live event streaming. The module
+        // crate's SubscribeCliCommand.execute() falls back to a get_all()
+        // snapshot for testability (mockall cannot mock FnMut callbacks).
+        Command::Serviceability(ServiceabilityCommand::Subscribe(_)) => {
+            use std::{
+                io::Write,
+                sync::{atomic::AtomicBool, Arc},
+            };
+            writeln!(handle, "Waiting for events...")?;
+            let stop = Arc::new(AtomicBool::new(false));
+            dzclient.subscribe(
+                |_client, pubkey, account| {
+                    let _ = writeln!(handle, "{pubkey} -> {account:?}");
+                },
+                stop,
+            )?;
+            Ok(())
+        }
+
+        // Flattened serviceability module: single dispatch arm hoists all variants.
         Command::Serviceability(cmd) => cmd.execute(&ctx, &client, &mut handle).await,
     };
 

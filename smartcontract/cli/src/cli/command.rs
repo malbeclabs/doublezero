@@ -3,14 +3,15 @@
 //! The unified `doublezero` binary mounts this enum via `#[command(flatten)]`
 //! so its variants surface as top-level commands (`doublezero device list`,
 //! `doublezero location get`, ...). The binary keeps its own `Command` enum
-//! for binary-local verbs (daemon-control, geolocation, completion, and the
-//! raw-`DZClient` diagnostics like `Account`, `Accounts`, `Log`).
+//! for binary-local verbs (daemon-control, geolocation, completion).
 
 use clap::Subcommand;
 use doublezero_cli_core::CliContext;
 use std::io::Write;
 
 use crate::{
+    account::GetAccountCliCommand,
+    accounts::GetAccountsCliCommand,
     address::AddressCliCommand,
     balance::BalanceCliCommand,
     cli::{
@@ -34,7 +35,10 @@ use crate::{
     export::ExportCliCommand,
     init::InitCliCommand,
     keygen::KeyGenCliCommand,
+    logcommand::LogCliCommand,
     migrate::MigrateCliCommand,
+    subscribe::SubscribeCliCommand,
+    version::VersionCliCommand,
 };
 
 #[derive(Subcommand, Debug)]
@@ -80,6 +84,19 @@ pub enum ServiceabilityCommand {
 
     /// IP/ID Resource Management
     Resource(ResourceCliCommand),
+
+    /// Print version information
+    Version(VersionCliCommand),
+    /// Get Account
+    Account(GetAccountCliCommand),
+    /// List Accounts
+    #[command(hide = true)]
+    Accounts(GetAccountsCliCommand),
+    /// Get logs
+    Log(LogCliCommand),
+    /// Subscribe to program events
+    #[command(hide = true)]
+    Subscribe(SubscribeCliCommand),
 }
 
 impl ServiceabilityCommand {
@@ -242,6 +259,12 @@ impl ServiceabilityCommand {
                 ResourceCommands::Close(args) => args.execute(ctx, client, out).await,
                 ResourceCommands::Verify(args) => args.execute(ctx, client, out).await,
             },
+
+            Self::Version(args) => args.execute(ctx, client, out).await,
+            Self::Account(args) => args.execute(ctx, client, out).await,
+            Self::Accounts(args) => args.execute(ctx, client, out).await,
+            Self::Log(args) => args.execute(ctx, client, out).await,
+            Self::Subscribe(args) => args.execute(ctx, client, out).await,
         }
     }
 }
@@ -377,5 +400,38 @@ mod tests {
     fn parses_hidden_migrate() {
         let parsed = TestCli::try_parse_from(["test", "migrate"]).unwrap();
         assert!(matches!(parsed.command, ServiceabilityCommand::Migrate(_)));
+    }
+
+    #[test]
+    fn parses_version() {
+        let parsed = TestCli::try_parse_from(["test", "version"]).unwrap();
+        assert!(matches!(parsed.command, ServiceabilityCommand::Version(_)));
+    }
+
+    #[test]
+    fn parses_account() {
+        let parsed = TestCli::try_parse_from(["test", "account", "--pubkey", TEST_PUBKEY]).unwrap();
+        assert!(matches!(parsed.command, ServiceabilityCommand::Account(_)));
+    }
+
+    #[test]
+    fn parses_hidden_accounts() {
+        let parsed = TestCli::try_parse_from(["test", "accounts"]).unwrap();
+        assert!(matches!(parsed.command, ServiceabilityCommand::Accounts(_)));
+    }
+
+    #[test]
+    fn parses_log() {
+        let parsed = TestCli::try_parse_from(["test", "log", "--pubkey", TEST_PUBKEY]).unwrap();
+        assert!(matches!(parsed.command, ServiceabilityCommand::Log(_)));
+    }
+
+    #[test]
+    fn parses_hidden_subscribe() {
+        let parsed = TestCli::try_parse_from(["test", "subscribe"]).unwrap();
+        assert!(matches!(
+            parsed.command,
+            ServiceabilityCommand::Subscribe(_)
+        ));
     }
 }

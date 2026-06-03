@@ -116,8 +116,8 @@ async fn main() -> eyre::Result<()> {
                 args.execute(&ctx, &client, &mut handle).await
             }
         },
-        Command::Account(args) => args.execute(&dzclient, &mut handle),
-        Command::Accounts(args) => args.execute(&dzclient, &mut handle),
+        Command::Account(args) => args.execute(&ctx, &client, &mut handle).await,
+        Command::Accounts(args) => args.execute(&ctx, &client, &mut handle).await,
         Command::Location(command) => match command.command {
             LocationCommands::Create(args) => args.execute(&ctx, &client, &mut handle).await,
             LocationCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
@@ -297,7 +297,7 @@ async fn main() -> eyre::Result<()> {
         },
         Command::Export(args) => args.execute(&ctx, &client, &mut handle).await,
         Command::Keygen(args) => args.execute(&ctx, &client, &mut handle).await,
-        Command::Log(args) => args.execute(&dzclient, &mut handle),
+        Command::Log(args) => args.execute(&ctx, &client, &mut handle).await,
         Command::Completion(args) => {
             let mut cmd = App::command();
             generate(args.shell, &mut cmd, "doublezero", &mut std::io::stdout());

@@ -74,6 +74,13 @@ pub struct CliContext {
 
     /// Default output-format hint.
     pub output_format: OutputFormat,
+
+    /// Client build version string (e.g. `0.24.0-SNAPSHOT-e86957575`).
+    ///
+    /// Populated by the binary at startup from `BUILD_VERSION` or
+    /// `CARGO_PKG_VERSION`. Module verbs read this instead of receiving the
+    /// version as a parameter, keeping them decoupled from build-time env vars.
+    pub client_version: String,
 }
 
 /// Builder for `CliContext`. The binary populates a builder from parsed
@@ -91,6 +98,7 @@ pub struct CliContextBuilder {
     keypair_path: Option<PathBuf>,
     daemon_socket_path: Option<PathBuf>,
     output_format: OutputFormat,
+    client_version: Option<String>,
 }
 
 impl CliContextBuilder {
@@ -148,6 +156,11 @@ impl CliContextBuilder {
         self
     }
 
+    pub fn with_client_version(mut self, version: impl Into<String>) -> Self {
+        self.client_version = Some(version.into());
+        self
+    }
+
     /// Resolve all fields and produce a `CliContext`.
     ///
     /// If `env` is set and a given override is `None`, the corresponding
@@ -190,6 +203,7 @@ impl CliContextBuilder {
             keypair_path: self.keypair_path,
             daemon_socket_path: self.daemon_socket_path,
             output_format: self.output_format,
+            client_version: self.client_version.unwrap_or_default(),
         })
     }
 
@@ -224,6 +238,7 @@ impl CliContextBuilder {
             keypair_path: self.keypair_path,
             daemon_socket_path: self.daemon_socket_path,
             output_format: self.output_format,
+            client_version: self.client_version.unwrap_or_default(),
         })
     }
 }

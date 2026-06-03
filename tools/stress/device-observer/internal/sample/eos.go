@@ -1,6 +1,6 @@
 // Package sample issues a fixed list of show commands on every tick and
 // writes one file per command. Per-command failures are logged but do not
-// stop the loop; the abort decider (PR #3796) owns repeated-failure policy.
+// stop the loop; the abort decider owns repeated-failure policy.
 package sample
 
 import (
@@ -10,12 +10,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
-// eapiRunner is the subset of *eapi.Client used by Sampler; tests
-// substitute a fake.
 type eapiRunner interface {
 	RunShowJSON(cmd string) (json.RawMessage, error)
 	RunShowText(cmd string) (string, error)
@@ -23,7 +24,7 @@ type eapiRunner interface {
 
 type commandSpec struct {
 	cmd, slug string
-	json      bool // false → text encoding
+	json      bool
 }
 
 var commands = []commandSpec{
@@ -40,15 +41,25 @@ type Sampler struct {
 	interval   time.Duration
 	logger     *slog.Logger
 	now        func() time.Time
+
+	mu        sync.RWMutex
+	latestCPU float64
+	cpuValid  bool
 }
 
 func NewSampler(client eapiRunner, workingDir string, interval time.Duration, logger *slog.Logger) *Sampler {
 	return &Sampler{client: client, workingDir: workingDir, interval: interval, logger: logger, now: time.Now}
 }
 
-// Run samples immediately, then on every tick of interval, until ctx is
-// canceled. The immediate first sample avoids waiting a full interval for
-// the first snapshot when interval is large.
+// LatestCPUPercent returns the most recently parsed total CPU usage (sum
+// of non-idle fields). Returns (0, false) before the first successful
+// parse.
+func (s *Sampler) LatestCPUPercent() (float64, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.latestCPU, s.cpuValid
+}
+
 func (s *Sampler) Run(ctx context.Context) error {
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
@@ -69,10 +80,10 @@ func (s *Sampler) tick(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		// Run each command in a goroutine so ctx cancellation can
-		// abandon the tick even though goeapi.RunCommands does not
-		// accept a context. The leaked goroutine finishes whenever
-		// the underlying HTTP call returns and does not block exit.
+		// goeapi.RunCommands does not accept a context, so run the
+		// command in a goroutine and race ctx.Done() against the
+		// result. The leaked goroutine finishes whenever the HTTP
+		// call returns and does not block exit.
 		done := make(chan error, 1)
 		go func() { done <- s.runOne(c, ts) }()
 		select {
@@ -95,6 +106,15 @@ func (s *Sampler) runOne(c commandSpec, ts time.Time) error {
 			return err
 		}
 		body, ext = raw, "json"
+		if c.cmd == "show processes top once" {
+			if pct, ok := parseCPUPercent(raw); ok {
+				s.mu.Lock()
+				s.latestCPU, s.cpuValid = pct, true
+				s.mu.Unlock()
+			} else {
+				s.logger.Warn("could not parse CPU from show processes top once")
+			}
+		}
 	} else {
 		text, err := s.client.RunShowText(c.cmd)
 		if err != nil {
@@ -109,8 +129,49 @@ func (s *Sampler) runOne(c commandSpec, ts time.Time) error {
 	return nil
 }
 
-// fileTimestamp renders t as ISO 8601 UTC with `:` replaced by `-` so the
-// result is portable across filesystems that disallow `:`.
+var (
+	topCPULineRE = regexp.MustCompile(`(?m)^%?Cpu\(s\):\s*(.+)$`)
+	cpuFieldRE   = regexp.MustCompile(`([0-9]+(?:[.,][0-9]+)?)\s*([a-zA-Z]+)`)
+)
+
+// parseCPUPercent extracts the total non-idle CPU percentage from the
+// Arista `show processes top once | json` envelope, which wraps procps
+// `top -bn1` output as `{"output":"…%Cpu(s): …"}`. Sums every numeric
+// field except `id` (idle); tolerates locale-decimal commas.
+func parseCPUPercent(raw json.RawMessage) (float64, bool) {
+	var env struct {
+		Output string `json:"output"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil || env.Output == "" {
+		return 0, false
+	}
+	m := topCPULineRE.FindStringSubmatch(env.Output)
+	if len(m) < 2 {
+		return 0, false
+	}
+	var total float64
+	var found bool
+	for _, pair := range cpuFieldRE.FindAllStringSubmatch(m[1], -1) {
+		label := strings.ToLower(pair[2])
+		if label == "id" {
+			found = true
+			continue
+		}
+		v, err := strconv.ParseFloat(strings.ReplaceAll(pair[1], ",", "."), 64)
+		if err != nil {
+			continue
+		}
+		total += v
+		found = true
+	}
+	if !found {
+		return 0, false
+	}
+	return total, true
+}
+
+// fileTimestamp renders t as ISO 8601 UTC with `:` → `-` for filesystem
+// portability.
 func fileTimestamp(t time.Time) string {
 	return strings.ReplaceAll(t.UTC().Format("2006-01-02T15:04:05.000000000Z"), ":", "-")
 }

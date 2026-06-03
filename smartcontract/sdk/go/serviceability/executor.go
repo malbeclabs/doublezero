@@ -685,11 +685,11 @@ func (e *Executor) waitForTransactionFinalized(ctx context.Context, sig solana.S
 	}
 
 	// A finalized status carries a non-nil Err when the transaction executed
-	// but the program returned an error (e.g. the doublezero-serviceability
-	// "tunnel_id > 1024" rejection at 525 users/device). Without this check
-	// the caller assumes success, the post-confirm visibility poll hits a
-	// missing account, and the error surfaces as a misleading "account not
-	// visible" timeout instead of the actual program error.
+	// but the program returned an error (e.g. a doublezero-serviceability
+	// validation rejection). Without this check the caller assumes success,
+	// the post-confirm visibility poll hits a missing account, and the error
+	// surfaces as a misleading "account not visible" timeout instead of the
+	// actual program error.
 	if finalStatus.Err != nil {
 		return nil, fmt.Errorf("transaction finalized with error: %v", finalStatus.Err)
 	}

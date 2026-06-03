@@ -659,6 +659,7 @@ func (e *Executor) waitForSignatureVisible(ctx context.Context, sig solana.Signa
 func (e *Executor) waitForTransactionFinalized(ctx context.Context, sig solana.Signature) (*solanarpc.GetTransactionResult, error) {
 	e.log.Debug("--> Waiting for transaction to be finalized", "sig", sig)
 	start := time.Now()
+	var finalStatus *solanarpc.SignatureStatusesResult
 	for {
 		statusResp, err := e.rpc.GetSignatureStatuses(ctx, true, sig)
 		if err != nil {
@@ -670,6 +671,7 @@ func (e *Executor) waitForTransactionFinalized(ctx context.Context, sig solana.S
 		status := statusResp.Value[0]
 		if status != nil && status.ConfirmationStatus == solanarpc.ConfirmationStatusFinalized {
 			e.log.Debug("--> Transaction finalized", "sig", sig, "duration", time.Since(start))
+			finalStatus = status
 			break
 		}
 		select {
@@ -680,6 +682,16 @@ func (e *Executor) waitForTransactionFinalized(ctx context.Context, sig solana.S
 				e.log.Debug("--> Still waiting for transaction to be finalized", "sig", sig, "elapsed", time.Since(start))
 			}
 		}
+	}
+
+	// A finalized status carries a non-nil Err when the transaction executed
+	// but the program returned an error (e.g. the doublezero-serviceability
+	// "tunnel_id > 1024" rejection at 525 users/device). Without this check
+	// the caller assumes success, the post-confirm visibility poll hits a
+	// missing account, and the error surfaces as a misleading "account not
+	// visible" timeout instead of the actual program error.
+	if finalStatus.Err != nil {
+		return nil, fmt.Errorf("transaction finalized with error: %v", finalStatus.Err)
 	}
 
 	tx, err := e.rpc.GetTransaction(ctx, sig, &solanarpc.GetTransactionOpts{

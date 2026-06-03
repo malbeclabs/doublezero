@@ -1482,6 +1482,7 @@ dependencies = [
  "ctor",
  "doublezero-cli-core",
  "doublezero-config",
+ "doublezero-daemon-cli",
  "doublezero-geolocation-cli",
  "doublezero-program-common",
  "doublezero-serviceability",
@@ -1579,6 +1580,27 @@ dependencies = [
  "serde",
  "serial_test",
  "solana-sdk",
+]
+
+[[package]]
+name = "doublezero-daemon-cli"
+version = "0.25.1"
+dependencies = [
+ "chrono",
+ "clap",
+ "doublezero-cli-core",
+ "doublezero-config",
+ "eyre",
+ "http 1.3.1",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "hyperlocal",
+ "mockall",
+ "serde",
+ "serde_json",
+ "tabled",
+ "tokio",
 ]
 
 [[package]]

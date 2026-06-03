@@ -123,6 +123,15 @@ use std::collections::HashMap;
 pub trait CliCommand {
     fn check_requirements(&self, checks: u8) -> eyre::Result<()>;
 
+    /// Whether a keypair source is available (CLI flag, env var, or piped stdin).
+    ///
+    /// Used by pre-flight checks to skip the default-path keypair file check
+    /// when an alternative source is present. Default is `false`; the binary
+    /// sets it at startup based on resolved inputs.
+    fn has_keypair_source(&self) -> bool {
+        false
+    }
+
     fn get_program_config(
         &self,
         cmd: GetProgramConfigCommand,
@@ -336,17 +345,30 @@ pub trait CliCommand {
 
 pub struct CliCommandImpl<'a> {
     client: &'a DZClient,
+    keypair_source: bool,
 }
 
 impl CliCommandImpl<'_> {
     pub fn new(client: &DZClient) -> CliCommandImpl<'_> {
-        CliCommandImpl { client }
+        CliCommandImpl {
+            client,
+            keypair_source: false,
+        }
+    }
+
+    pub fn with_keypair_source(mut self, has: bool) -> Self {
+        self.keypair_source = has;
+        self
     }
 }
 
 impl CliCommand for CliCommandImpl<'_> {
     fn check_requirements(&self, checks: u8) -> eyre::Result<()> {
         crate::requirements::check_requirements(self, None, checks)
+    }
+
+    fn has_keypair_source(&self) -> bool {
+        self.keypair_source
     }
 
     fn get_program_config(

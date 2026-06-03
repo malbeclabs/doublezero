@@ -86,7 +86,7 @@ pub fn resolve_tenant_pk<C: CliCommand>(client: &C, pubkey_or_code: &str) -> eyr
 }
 
 pub fn print_error(e: eyre::Report) {
-    eprintln!("\nError: {e:?}\n");
+    tracing::error!("{e:?}");
 }
 
 pub fn get_public_ipv4() -> Result<String, Box<dyn std::error::Error>> {

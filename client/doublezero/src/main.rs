@@ -235,7 +235,10 @@ async fn main() -> eyre::Result<()> {
     // the layered ctx value as the CLI source would mask the env var, which the
     // e2e contributor-auth suite relies on for negative-authz checks.
     let dzclient = DZClient::from_context(&ctx, app.keypair.clone())?;
-    let client = CliCommandImpl::new(&dzclient);
+    let has_keypair_source = app.keypair.is_some()
+        || std::env::var(doublezero_sdk::keypair::ENV_KEYPAIR).is_ok()
+        || !std::io::IsTerminal::is_terminal(&std::io::stdin());
+    let client = CliCommandImpl::new(&dzclient).with_keypair_source(has_keypair_source);
 
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();

@@ -60,6 +60,7 @@ type orchestratorConfig struct {
 	AgentBinary                   string `json:"agent_binary,omitempty"`
 	AgentCommandPrefix            string `json:"agent_command_prefix,omitempty"`
 	AgentPubkey                   string `json:"agent_pubkey,omitempty"`
+	AgentMetricsAddr              string `json:"agent_metrics_addr,omitempty"`
 }
 
 func main() {
@@ -107,6 +108,7 @@ func run() error {
 		agentBinary        = flag.String("agent-binary", "doublezero-agent", "Path to doublezero-agent on the DUT; the orchestrator SSH-execs this directly.")
 		agentCommandPrefix = flag.String("agent-command-prefix", "", "Optional prefix prepended to the agent command (e.g. \"/sbin/ip netns exec ns-management\" on a physical device).")
 		agentPubkey        = flag.String("agent-pubkey", "", "When set, appended as `-pubkey <value>` to the agent command. Leave empty when the DUT has a wrapper that injects it locally.")
+		agentMetricsAddr   = flag.String("agent-metrics-addr", "", "When set, appended as `-metrics-enable -metrics-addr <value>` so the observer can scrape the agent. Leave empty when the DUT has a wrapper that turns metrics on locally.")
 	)
 	flag.Parse()
 
@@ -158,6 +160,7 @@ func run() error {
 		AgentBinary:                   *agentBinary,
 		AgentCommandPrefix:            *agentCommandPrefix,
 		AgentPubkey:                   *agentPubkey,
+		AgentMetricsAddr:              *agentMetricsAddr,
 	}
 	// Validate required flags before writing anything, so a bad invocation
 	// doesn't leave a config file behind. A dry-run is exempt: its whole job is
@@ -247,7 +250,7 @@ func run() error {
 	ctx, abortCancel := abort.Watch(rootCtx, *abortFile, abort.DefaultPollInterval, logger)
 	defer abortCancel()
 
-	agentRunner := selectAgentRunner(*noAgent, *dutSSHHost, *dutSSHKey, *dutSSHUser, *controllerAddr, *workingDir, *agentBinary, *agentCommandPrefix, *agentPubkey, logger)
+	agentRunner := selectAgentRunner(*noAgent, *dutSSHHost, *dutSSHKey, *dutSSHUser, *controllerAddr, *workingDir, *agentBinary, *agentCommandPrefix, *agentPubkey, *agentMetricsAddr, logger)
 
 	cfg := sweep.Config{
 		RunID:                  *runID,
@@ -340,7 +343,7 @@ func requireFlags(required map[string]string) error {
 // through sudo. Physical DUTs without a wrapper set prefix to e.g.
 // "/sbin/ip netns exec ns-management" and pubkey to the device's onchain pubkey
 // so the command is self-contained.
-func selectAgentRunner(noAgent bool, sshHost, sshKey, sshUser, controllerAddr, workingDir, agentBinary, agentCmdPrefix, agentPubkey string, logger *slog.Logger) agent.Runner {
+func selectAgentRunner(noAgent bool, sshHost, sshKey, sshUser, controllerAddr, workingDir, agentBinary, agentCmdPrefix, agentPubkey, agentMetricsAddr string, logger *slog.Logger) agent.Runner {
 	if noAgent {
 		logger.Info("agent: --no-agent set; using no-op runner")
 		return agent.NewNoop(logger)
@@ -352,6 +355,9 @@ func selectAgentRunner(noAgent bool, sshHost, sshKey, sshUser, controllerAddr, w
 	}
 	if controllerAddr != "" {
 		cmd += " -controller " + controllerAddr
+	}
+	if agentMetricsAddr != "" {
+		cmd += " -metrics-enable -metrics-addr " + agentMetricsAddr
 	}
 	if agentCmdPrefix != "" {
 		cmd = agentCmdPrefix + " " + cmd

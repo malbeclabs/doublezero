@@ -264,6 +264,22 @@ done
 CONTROLLER_LOG="${WORKING_DIR}/controller.log"
 CONTROLLER_PID_FILE="${WORKING_DIR}/controller.pid"
 
+# Fail fast if something is already listening on the controller port. Without
+# this check, our `go run` silently fails to bind and the readiness wait
+# (`nc -z 127.0.0.1 $PORT`) succeeds against the stale process, so the script
+# proceeds against a controller pointing at the wrong program / RPC. Common
+# culprits: a leftover controller from a previous run (recoverable via
+# `kill $(cat $CONTROLLER_PID_FILE)`), or the dz-local-controller docker
+# container with a host-port mapping.
+if ss -ltn "sport = :$CONTROLLER_LISTEN_PORT" 2>/dev/null | tail -n +2 | grep -q .; then
+    log "ERROR: port ${CONTROLLER_LISTEN_PORT} already has a listener:"
+    ss -ltnp "sport = :$CONTROLLER_LISTEN_PORT" >&2 || true
+    if [ -f "$CONTROLLER_PID_FILE" ]; then
+        log "hint: prior run's controller pid is in $CONTROLLER_PID_FILE — kill it first"
+    fi
+    die "refusing to start controller; release port ${CONTROLLER_LISTEN_PORT} and rerun"
+fi
+
 log "starting controller (listen=${CONTROLLER_BIND_ADDR}:${CONTROLLER_LISTEN_PORT}, max-slots=${TARGET_USERS})"
 (
     cd "$WORKSPACE_DIR"
@@ -383,6 +399,7 @@ ORCH_ARGS=(
     --agent-binary "$AGENT_BINARY"
     --agent-command-prefix "$AGENT_COMMAND_PREFIX"
     --agent-pubkey "$DEVICE_PUBKEY"
+    --agent-metrics-addr ":${AGENT_METRICS_PORT}"
 )
 if [ "$NO_AGENT" = true ]; then
     ORCH_ARGS+=(--no-agent)

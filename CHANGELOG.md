@@ -31,6 +31,7 @@ All notable changes to this project will be documented in this file.
   - Install agave v3.0.4 and build/test the SBF programs with platform-tools v1.54 (`SBF_TOOLS_VERSION`), required because the solana 3.0 dependency tree pulls edition2024 crates that need Cargo >= 1.85 (agave's default platform-tools v1.51 ships Cargo 1.84.1).
 - E2E tests
   - Bump the e2e base image to agave v3.0.4 and build the onchain programs with platform-tools v1.54 to match the solana 3.0 migration.
+  - Fix a `TestE2E_Multicast` flake where the post-connect `doublezero status` check could observe only the first multicast group. After incrementally adding the second group, the test relied on `WaitForTunnelUp`, which returns immediately because the first tunnel is already up, so the single-shot status assertion could race the onchain propagation and the daemon's cached program data. Add an `Eventually` poll on `doublezero user list` for both groups before the post-connect checks.
 
 ## [v0.25.1](https://github.com/malbeclabs/doublezero/compare/client/v0.24.0...client/v0.25.1) - 2026-06-01
 

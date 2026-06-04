@@ -296,6 +296,26 @@ if ss -ltn "sport = :$CONTROLLER_LISTEN_PORT" 2>/dev/null | tail -n +2 | grep -q
 fi
 
 log "starting controller (listen=${CONTROLLER_BIND_ADDR}:${CONTROLLER_LISTEN_PORT}, max-slots=${TARGET_USERS})"
+
+# Teardown trap: kill the controller on script exit so a Ctrl-C doesn't leave
+# it lingering. The orchestrator + observer are intentionally NOT killed by
+# this script — they run in the background past script exit.
+#
+# Cleanup tries the listener pid (set after the port is up) first, then
+# falls back to the `go run` parent. Killing only `go run` orphans its
+# child; killing the listener causes `go run` to exit on its own. The
+# trap is armed BEFORE the `nohup go run ... &` so a `set -e` failure
+# anywhere between launch and trap arming can't orphan the controller.
+cleanup_controller() {
+    for pid in "${CONTROLLER_LISTENER_PID:-}" "${CONTROLLER_PARENT_PID:-}"; do
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            log "stopping controller (pid=$pid)"
+            kill "$pid" 2>/dev/null || true
+        fi
+    done
+}
+trap cleanup_controller EXIT
+
 (
     cd "$WORKSPACE_DIR"
     nohup go run ./controlplane/controller/cmd/controller start \
@@ -314,23 +334,6 @@ log "starting controller (listen=${CONTROLLER_BIND_ADDR}:${CONTROLLER_LISTEN_POR
 # the child. We overwrite this once the port is up.
 CONTROLLER_PARENT_PID="$(cat "$CONTROLLER_PID_FILE")"
 log "controller (go run) pid: $CONTROLLER_PARENT_PID (log: $CONTROLLER_LOG)"
-
-# Teardown trap: kill the controller on script exit so a Ctrl-C doesn't leave
-# it lingering. The orchestrator + observer are intentionally NOT killed by
-# this script — they run in the background past script exit.
-#
-# Cleanup tries the listener pid (set after the port is up) first, then
-# falls back to the `go run` parent. Killing only `go run` orphans its
-# child; killing the listener causes `go run` to exit on its own.
-cleanup_controller() {
-    for pid in "${CONTROLLER_LISTENER_PID:-}" "$CONTROLLER_PARENT_PID"; do
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            log "stopping controller (pid=$pid)"
-            kill "$pid" 2>/dev/null || true
-        fi
-    done
-}
-trap cleanup_controller EXIT
 
 # Wait for the controller's listen port to accept connections (gRPC handshake).
 # The cleanup trap stays armed through every following phase (access-pass
@@ -358,7 +361,17 @@ fi
 # compiled binary that `go run` exec'd) and overwrite the pid file so
 # `kill $(cat $CONTROLLER_PID_FILE)` from any subsequent invocation kills
 # the listener, not just the `go run` shim.
-CONTROLLER_LISTENER_PID="$(ss -ltnp "sport = :$CONTROLLER_LISTEN_PORT" 2>/dev/null | grep -oP 'pid=\K\d+' | head -1)"
+#
+# Primary: `ss -ltnp pid=` parses the listener pid from the kernel's
+# socket table. Requires the user to own the socket (or be root) AND
+# GNU grep for `\K`. Fallback: `pgrep -P` walks the process tree from
+# the `go run` parent to its compiled-binary child, which doesn't need
+# either privilege or GNU grep — covers e.g. BSD/macOS or restricted
+# environments where the ss form returns nothing.
+CONTROLLER_LISTENER_PID="$(ss -ltnp "sport = :$CONTROLLER_LISTEN_PORT" 2>/dev/null | grep -oP 'pid=\K\d+' | head -1 || true)"
+if [ -z "$CONTROLLER_LISTENER_PID" ] && [ -n "$CONTROLLER_PARENT_PID" ]; then
+    CONTROLLER_LISTENER_PID="$(pgrep -P "$CONTROLLER_PARENT_PID" | head -1 || true)"
+fi
 if [ -n "$CONTROLLER_LISTENER_PID" ]; then
     echo "$CONTROLLER_LISTENER_PID" > "$CONTROLLER_PID_FILE"
     log "controller listener pid: $CONTROLLER_LISTENER_PID (overwrote pidfile)"

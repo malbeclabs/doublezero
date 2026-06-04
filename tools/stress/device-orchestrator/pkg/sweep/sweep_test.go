@@ -778,12 +778,19 @@ func TestRun_SkipsQuiescenceWaitWhenNoAppliedObserved(t *testing.T) {
 }
 
 // TestRun_WaitsForAgentQuiescenceEvenOnAbort proves that the quiescence
-// wait also engages when provision was cancelled by ctx (e.g. the
-// observer's abort sentinel). Before this case was covered, the wait
-// was guarded by `err == nil` and got skipped on the abort path —
-// agentCancel() then killed the SSH session mid-commit, leaving
-// in-flight tunnels stranded on the device even though the onchain
-// deprovision had completed.
+// wait engages and blocks for the full window when provision was
+// cancelled by ctx (e.g. the observer's abort sentinel). The new branch
+// (introduced together with the elapsed-since-wait-start floor) needs
+// to be observable: the test asserts that the run blocks at least
+// `quietWindow` after deprovision returns, even though the agent emits
+// no events after ctx-cancellation. A regression that reverts either
+// (a) the `err == nil` guard removal or (b) the elapsed-since-wait-start
+// floor would surface here:
+//   - reverting (a) → wait is skipped, run returns in well under
+//     quietWindow.
+//   - reverting (b) → the absolute "silent for quietWindow" predicate
+//     is satisfied immediately (agent was already silent at wait
+//     start), so the wait returns instantly even with the new branch.
 func TestRun_WaitsForAgentQuiescenceEvenOnAbort(t *testing.T) {
 	t.Parallel()
 
@@ -802,17 +809,19 @@ func TestRun_WaitsForAgentQuiescenceEvenOnAbort(t *testing.T) {
 	// should engage despite the cancellation.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	// Emit the synthetic agent event well before cancellation so the
+	// tracker's `lastEvent` timestamp is meaningfully older than the
+	// wait's start. This forces the wait to rely on the elapsed-since-
+	// wait-start floor — the absolute "silent for quietWindow" predicate
+	// would otherwise be satisfied immediately.
+	ag.Emit(agent.Event{Kind: agent.EventCommit, TunnelID: 0, At: time.Now()})
 	exec.afterCreate = func(calls int) {
 		if calls == 1 {
-			// Emit a synthetic agent commit so the tracker sees activity
-			// during the (brief) provision phase. Without an event,
-			// the wait would skip per TestRun_SkipsQuiescenceWaitWhenNoAppliedObserved.
-			ag.Emit(agent.Event{Kind: agent.EventCommit, TunnelID: 0, At: time.Now()})
 			cancel()
 		}
 	}
 
-	const quietWindow = 100 * time.Millisecond
+	const quietWindow = 200 * time.Millisecond
 	cfg := sweep.Config{
 		RunID:                  "run-quiesce-abort",
 		Target:                 4,
@@ -828,6 +837,7 @@ func TestRun_WaitsForAgentQuiescenceEvenOnAbort(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
+	start := time.Now()
 	go func() { done <- sweep.Run(ctx, cfg) }()
 
 	var runErr error
@@ -836,25 +846,24 @@ func TestRun_WaitsForAgentQuiescenceEvenOnAbort(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return within 2s")
 	}
+	elapsed := time.Since(start)
 	require.Error(t, runErr, "Run should surface the ctx-cancellation error")
 	assert.ErrorIs(t, runErr, context.Canceled)
-
-	// The wait should have engaged (not been guarded away by the
-	// `err == nil` check); we can't directly measure its duration here
-	// because deprovision races with it, but the sweep's overall
-	// runtime should be ≥ quietWindow when the wait actually fires.
-	// (Pre-fix: total runtime would be < 10ms because the wait was
-	// skipped on err != nil.)
-	// We rely on the test framework's timing to bound this loosely;
-	// the stronger assertion is the absence of stranded tunnels in
-	// real runs.
+	// The wait must block at least quietWindow even though ctx is
+	// cancelled — that's the whole point of the abort-path branch.
+	// Allow a generous lower bound (quietWindow/2) to absorb scheduler
+	// jitter; the negative case (wait skipped) returns in well under
+	// 10 ms.
+	assert.GreaterOrEqual(t, elapsed, quietWindow/2,
+		"Run returned in %v under abort; expected ≥ %v (quiet window floor)", elapsed, quietWindow/2)
+	// Deprovision should still complete onchain regardless of the wait.
 	rows := readRows(t, path)
-	var sawCommit bool
+	var sawDeprovisionActivate bool
 	for _, r := range rows {
 		if r.Event == runlog.EventDeprovisionActivate {
-			sawCommit = true
+			sawDeprovisionActivate = true
 			break
 		}
 	}
-	assert.True(t, sawCommit, "deprovision should still complete onchain after abort")
+	assert.True(t, sawDeprovisionActivate, "deprovision should still complete onchain after abort")
 }

@@ -98,9 +98,10 @@ func run() error {
 		// Default: 300 s — accommodates the 22k-line / ~650 KB final config
 		// commit at 1024 tunnels.
 		agentQuiescenceTimeoutSeconds = flag.Int("agent-quiescence-timeout-seconds", 300, "Hard cap on the post-deprovision agent quiescence wait, in seconds.")
-		// The containerized harness ships a device-side wrapper that injects
-		// -pubkey from /etc/doublezero/agent/pubkey and re-execs through sudo, so
-		// the orchestrator can leave these empty and rely on PATH + the wrapper.
+		// The containerized harness ships a device-side wrapper (see
+		// tools/stress/docker/device/agent-wrapper.sh) that injects -pubkey from
+		// /etc/doublezero/agent/pubkey and re-execs through sudo, so the
+		// orchestrator can leave these empty and rely on PATH + the wrapper.
 		// Against a physical device with no wrapper, set --agent-binary to the
 		// full path on the device, --agent-command-prefix to e.g.
 		// "/sbin/ip netns exec ns-management", and --agent-pubkey to the device

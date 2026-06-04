@@ -94,7 +94,7 @@ Differences from the containerized harness:
 | Serviceability | deployed fresh per `dzctl start` | pre-deployed at `DZ_PROGRAM_ID`, initialized on first run |
 | Controller | `dz-local-controller` container | `go run controlplane/controller/cmd/controller start ...` on the host |
 | Device | cEOS container + agent wrapper script | physical DUT over SSH, no wrapper |
-| Agent invocation | wrapper injects `-pubkey` + sudo | orchestrator passes `-pubkey` directly and prefixes `/sbin/ip netns exec ns-management` |
+| Agent invocation | wrapper injects `-pubkey` + sudo | orchestrator passes `-pubkey` directly and prefixes `bash sudo /sbin/ip netns exec ns-management` (the `bash` keyword escapes EOS Cli into the shell; `sudo` provides CAP_SYS_ADMIN for `ip netns exec`) |
 
 The orchestrator gained four additive flags (`--agent-binary`,
 `--agent-command-prefix`, `--agent-pubkey`, `--agent-metrics-addr`) to
@@ -146,10 +146,17 @@ SDK checks or the agent will run but fail to apply config:
    `EAPI_USER` / `EAPI_PASS` before running.
 
 5. **Management netns.** The orchestrator wraps the agent command in
-   `ip netns exec ns-management` so it can reach the controller via
-   the management interface and dial the SDK in VRF management. EOS
-   auto-creates `ns-management` when a `vrf management` is configured;
-   confirm with `bash sudo ip netns list`.
+   `ip netns exec <netns>` so it can reach the controller via the
+   management interface and dial the SDK in the management VRF. EOS
+   auto-creates one netns per configured VRF; the netns name matches
+   the VRF name (e.g. `vrf management` → `ns-management`, `vrf mgmt` →
+   `ns-mgmt`). The harness defaults to `ns-management` to match the
+   long-form VRF name used by chi-dn-dzd5; override the
+   `AGENT_COMMAND_PREFIX` env var and the `DZ_STRESS_DEVICE_MGMT_VRF`
+   env var consistently if your device uses a different name (cEOS
+   uses `vrf mgmt`, so the containerized harness configures
+   `mgmt_vrf=mgmt` onchain). Confirm what's available with
+   `bash sudo ip netns list`.
 
 ## Quick start
 

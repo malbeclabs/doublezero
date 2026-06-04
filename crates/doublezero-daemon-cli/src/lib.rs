@@ -5,7 +5,10 @@
 
 pub mod cli;
 pub mod client;
+pub mod disable;
+pub mod enable;
 pub mod ledger;
+mod requirements;
 
 pub use cli::DaemonCommand;
 pub use client::{DaemonClient, DaemonClientImpl};

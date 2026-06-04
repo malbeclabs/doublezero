@@ -92,6 +92,36 @@ func TestOnchainLatencies_AppliedWithoutActivate(t *testing.T) {
 	}
 }
 
+// TestCommitCycles_DiffCheckDuration verifies that the gap from
+// `Received N bytes ...` to `Committing config session ...` is computed
+// and emitted on each CommitCycle row.
+func TestCommitCycles_DiffCheckDuration(t *testing.T) {
+	base := time.Unix(1_700_000_000, 0)
+	cycles := []parser.AgentCycle{
+		{
+			ReceivedAt:      base,
+			ReceivedLines:   100,
+			ReceivedBytes:   2000,
+			CommitStartedAt: base.Add(12 * time.Second),
+			FinalizedAt:     base.Add(14 * time.Second),
+			Outcome:         "commit",
+		},
+		{
+			// Mid-cycle agent restart: no paired Received line before commit.
+			CommitStartedAt: base.Add(20 * time.Second),
+			FinalizedAt:     base.Add(21 * time.Second),
+			Outcome:         "commit",
+		},
+	}
+	rows := commitCycles(cycles, nil)
+	if got, want := rows[0].DiffCheckDuration, 12*time.Second; got != want {
+		t.Errorf("cycle 1 DiffCheckDuration = %s, want %s", got, want)
+	}
+	if rows[1].DiffCheckDuration != 0 {
+		t.Errorf("cycle 2 DiffCheckDuration = %s, want 0 (no Received pair)", rows[1].DiffCheckDuration)
+	}
+}
+
 // TestCommitCycles_JoinsAppliedEventsByTNs verifies that the agent-log
 // cycle list and the runlog `applied` events are paired correctly:
 //

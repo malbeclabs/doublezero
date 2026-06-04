@@ -29,6 +29,9 @@ func Summary(w io.Writer, s analyze.Summary, r *parser.Run) {
 	if s.IsPhysical {
 		dut = "physical EOS"
 	}
+	if s.DUTName != "" {
+		dut = fmt.Sprintf("%s (%s)", s.DUTName, dut)
+	}
 	bw.printf("**Target**: %s users, batch=%d, hold=%s, dut=%s\n", fmtInt(s.Target), s.Batch, analyze.FormatDurationOrZero(s.Hold), dut)
 	if !s.StartedAt.IsZero() {
 		bw.printf("**Started**: %s UTC\n", s.StartedAt.UTC().Format("2006-01-02 15:04:05"))
@@ -101,8 +104,12 @@ func Summary(w io.Writer, s analyze.Summary, r *parser.Run) {
 		// the cycle list is empty already).
 		if len(s.CommitCycles) > 0 {
 			bw.printf("### Per-cycle wall time\n\n")
-			bw.printf("| Cycle | Users (cycle) | Users (cumulative) | Lines | Bytes | Commit time | p50 onchain→on-device | Max |\n")
-			bw.printf("|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+			// Columns: Cycle | users(cycle) | users(cumulative) | lines | bytes | diff check | commit | p50 onchain→on-device | max
+			// "Diff check" is the gap from `Received N bytes` to `Committing
+			// config session` (diff compute + decide + session-open);
+			// "Commit time" is the gap from Committing to Finalized.
+			bw.printf("| Cycle | Users (cycle) | Users (cumulative) | Lines | Bytes | Diff check | Commit time | p50 onchain→on-device | Max |\n")
+			bw.printf("|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
 			cumulative := 0
 			for i, c := range s.CommitCycles {
 				cumulative += c.UsersCommitted
@@ -111,12 +118,13 @@ func Summary(w io.Writer, s analyze.Summary, r *parser.Run) {
 					p50 = fmtDur(c.OnchainToOnDeviceP50)
 					maxv = fmtDur(c.OnchainToOnDeviceMax)
 				}
-				bw.printf("| %d | %s | %s | %s | %s | %s | %s | %s |\n",
+				bw.printf("| %d | %s | %s | %s | %s | %s | %s | %s | %s |\n",
 					i+1,
 					fmtInt(c.UsersCommitted),
 					fmtInt(cumulative),
 					fmtInt(c.ReceivedLines),
 					fmtInt(c.ReceivedBytes),
+					fmtDur(c.DiffCheckDuration),
 					fmtDur(c.CommitDuration),
 					p50, maxv)
 			}

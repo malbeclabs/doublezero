@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // OrchestratorConfig mirrors the subset of orchestrator-config.json that the
@@ -17,6 +18,18 @@ type OrchestratorConfig struct {
 	HoldSeconds        int    `json:"hold_seconds"`
 	AgentCommandPrefix string `json:"agent_command_prefix,omitempty"`
 	AgentPubkey        string `json:"agent_pubkey,omitempty"`
+	// DUTSSHHost is the ssh target the orchestrator drove (e.g.
+	// "chi-dn-dzd9:22" or "10.0.0.15:22"). The reporter strips the port
+	// to render a device name in the summary header.
+	DUTSSHHost string `json:"dut_ssh_host,omitempty"`
+}
+
+// DUTName returns the DUT identifier without the SSH port suffix, for
+// display in the summary header. Falls back to the raw value when no
+// colon is present.
+func (c *OrchestratorConfig) DUTName() string {
+	host, _, _ := strings.Cut(c.DUTSSHHost, ":")
+	return host
 }
 
 // IsPhysical heuristics off the presence of AgentCommandPrefix or

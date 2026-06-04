@@ -13,6 +13,11 @@ import (
 type Summary struct {
 	// RunID, taken straight from orchestrator-config.json.
 	RunID string
+	// DUTName is the device-under-test identifier (hostname or IP)
+	// extracted from the orchestrator's ssh target, used in the
+	// summary header so multiple runs against different DUTs can be
+	// told apart at a glance.
+	DUTName string
 	// IsPhysical is true when the agent flags indicate a non-containerized
 	// DUT (orchestrator passes prefix/pubkey directly).
 	IsPhysical bool
@@ -80,6 +85,16 @@ type CommitCycle struct {
 	UsersCommitted int
 	ReceivedLines  int
 	ReceivedBytes  int
+	// DiffCheckDuration is the gap from `Received N bytes of
+	// configuration from controller` to `Committing config session due
+	// to diffs detected`. It covers the agent's diff-compute +
+	// decide-to-commit + configure-session-open time. Zero when the
+	// agent log did not emit a paired Received line before the commit
+	// (e.g. the agent restarted mid-cycle).
+	DiffCheckDuration time.Duration
+	// CommitDuration is the gap from `Committing config session ...` to
+	// `Configuration session finalized ...`. The wall-clock cost of the
+	// commit itself.
 	CommitDuration time.Duration
 	// OnchainToOnDeviceP50 / Max are within-cycle stats of the gap from
 	// each user's `activate` to this commit. They surface the spread —
@@ -135,6 +150,7 @@ func BuildSummary(r *parser.Run) Summary {
 	}
 	if r.Config != nil {
 		s.RunID = r.Config.RunID
+		s.DUTName = r.Config.DUTName()
 		s.IsPhysical = r.Config.IsPhysical()
 		s.Target = r.Config.TargetUserCount
 		s.Batch = r.Config.UsersPerBatch
@@ -452,6 +468,13 @@ func commitCycles(cycles []parser.AgentCycle, events []parser.Event) []CommitCyc
 			ReceivedLines:  c.ReceivedLines,
 			ReceivedBytes:  c.ReceivedBytes,
 			CommitDuration: c.CommitDuration(),
+		}
+		// Diff-check is Received → Committing. Skip when either side
+		// is missing (agent restart mid-cycle leaves ReceivedAt zero).
+		if !c.ReceivedAt.IsZero() && !c.CommitStartedAt.IsZero() {
+			if d := c.CommitStartedAt.Sub(c.ReceivedAt); d > 0 {
+				row.DiffCheckDuration = d
+			}
 		}
 		// Only successful commits should consume an applied bucket. Abort
 		// and unfinished cycles emit no applied events, so giving them

@@ -200,7 +200,7 @@ pub struct V2ServiceStatus {
     pub subscriptions: Vec<Subscription>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct V2StatusResponse {
     pub reconciler_enabled: bool,
     #[serde(default)]

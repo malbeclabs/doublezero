@@ -13,6 +13,7 @@ repository.workspace = true
 name = "doublezero_daemon_cli"
 
 [dependencies]
+backon.workspace = true
 chrono.workspace = true
 clap.workspace = true
 eyre.workspace = true

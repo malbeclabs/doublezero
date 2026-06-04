@@ -197,3 +197,101 @@ func TestParser_DoesNotConfuseInterfaceNamePrefixes(t *testing.T) {
 	require.Len(t, events, 1)
 	assert.Equal(t, uint16(5000), events[0].TunnelID)
 }
+
+// TestParser_RealEOSDiffFormat covers the shape real Arista EOS hardware
+// emits when diffing a session against running-config: the
+// "interface TunnelN" section header is a context line (no prefix on the
+// first section, space-prefixed on subsequent sections) and the additions
+// land on the property lines below it. cEOS containers don't do this —
+// they prefix the entire section, header included, with "+". The parser
+// must promote a section into pending the first time it sees a `+   ...`
+// property line inside it, and only once per section.
+func TestParser_RealEOSDiffFormat(t *testing.T) {
+	t.Parallel()
+
+	p := agent.NewParser()
+	lines := []string{
+		`2026/06/04 13:40:10 Committing config session due to diffs detected: --- system:/running-config`,
+		`+++ session:/doublezero-agent-1780580398-session-config`,
+		`interface Tunnel500`,
+		`+   description USER-UCAST-500`,
+		`+   mtu 9216`,
+		`+   vrf vrf1`,
+		`+   ip address 169.254.0.0/31`,
+		` !`,
+		` interface Tunnel501`,
+		`+   description USER-UCAST-501`,
+		`+   mtu 9216`,
+		` !`,
+		` interface Tunnel502`,
+		`+   description USER-UCAST-502`,
+		` !`,
+	}
+	var events []agent.Event
+	for _, l := range lines {
+		events = append(events, p.Parse(l)...)
+	}
+	require.Len(t, events, 3, "one EventPreCommitLog per real-EOS section, not per + line")
+	for i, want := range []uint16{500, 501, 502} {
+		assert.Equal(t, agent.EventPreCommitLog, events[i].Kind)
+		assert.Equal(t, want, events[i].TunnelID)
+	}
+	assert.Equal(t, []uint16{500, 501, 502}, p.Pending())
+
+	applied := p.Parse(`Configuration session finalized with command 'configure session doublezero-agent-1780580398 commit'`)
+	// One EventCommit + one EventApplied per pending tunnel.
+	require.Len(t, applied, 4)
+	assert.Equal(t, agent.EventCommit, applied[0].Kind)
+	assert.Equal(t, []uint16{500, 501, 502}, []uint16{applied[1].TunnelID, applied[2].TunnelID, applied[3].TunnelID})
+}
+
+// TestParser_RealEOSPureRemovalSectionEmitsNothing proves that a real-EOS
+// section that contains only "-   ..." lines (deprovision) does not get
+// promoted into pending — only `+` lines flip the section.
+func TestParser_RealEOSPureRemovalSectionEmitsNothing(t *testing.T) {
+	t.Parallel()
+
+	p := agent.NewParser()
+	lines := []string{
+		`Committing config session due to diffs detected: --- system:/running-config`,
+		`+++ session:/foo-config`,
+		` interface Tunnel500`,
+		`-   description USER-UCAST-500`,
+		`-   mtu 9216`,
+		` !`,
+	}
+	for _, l := range lines {
+		assert.Empty(t, p.Parse(l), "line=%q", l)
+	}
+	assert.Empty(t, p.Pending(), "pure-removal section must not pre-commit")
+
+	events := p.Parse(`Configuration session finalized with command 'configure session foo commit'`)
+	require.Len(t, events, 1, "commit fires EventCommit even with no pending")
+	assert.Equal(t, agent.EventCommit, events[0].Kind)
+}
+
+// TestParser_RealEOSEmitsOncePerSectionEvenWithManyAdditions enforces that
+// a section with many `+   ...` property lines produces exactly one
+// EventPreCommitLog (and exactly one entry in pending).
+func TestParser_RealEOSEmitsOncePerSectionEvenWithManyAdditions(t *testing.T) {
+	t.Parallel()
+
+	p := agent.NewParser()
+	require.Empty(t, p.Parse(`Committing config session due to diffs detected: --- system:/running-config`))
+	require.Empty(t, p.Parse(`+++ session:/foo-config`))
+	require.Empty(t, p.Parse(`interface Tunnel900`))
+
+	first := p.Parse(`+   description USER-UCAST-900`)
+	require.Len(t, first, 1, "first + line promotes the section")
+	assert.Equal(t, uint16(900), first[0].TunnelID)
+
+	for _, prop := range []string{
+		`+   mtu 9216`,
+		`+   vrf vrf1`,
+		`+   ip address 169.254.0.0/31`,
+		`+   tunnel mode gre`,
+	} {
+		assert.Empty(t, p.Parse(prop), "subsequent + lines in the same section must not re-emit")
+	}
+	assert.Equal(t, []uint16{900}, p.Pending())
+}

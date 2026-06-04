@@ -11,7 +11,7 @@ use std::{fmt, fs::File, path::Path, sync::OnceLock};
 use tabled::{derive::display, Tabled};
 
 const DEFAULT_SOCKET_PATH: &str = "/var/run/doublezerod/doublezerod.sock";
-const NANOS_TO_MS: f64 = 1000000.0;
+const NANOS_TO_MS: f64 = 1_000_000.0;
 static GLOBAL_SOCKET_PATH: OnceLock<String> = OnceLock::new();
 
 #[derive(Clone, Tabled, Deserialize, Serialize, Debug)]
@@ -401,9 +401,9 @@ mod tests {
             device_pk: "DevicePubkey123".to_string(),
             device_code: "device1".to_string(),
             device_ip: "5.6.7.8".to_string(),
-            min_latency_ns: 1000000,
-            max_latency_ns: 5000000,
-            avg_latency_ns: 3000000,
+            min_latency_ns: 1_000_000,
+            max_latency_ns: 5_000_000,
+            avg_latency_ns: 3_000_000,
             reachable: true,
         };
 
@@ -443,9 +443,9 @@ mod tests {
         assert_eq!(json_output.get("device_pk").unwrap(), "DevicePubkey123");
         assert_eq!(json_output.get("device_code").unwrap(), "device1");
         assert_eq!(json_output.get("device_ip").unwrap(), "5.6.7.8");
-        assert_eq!(json_output.get("min_latency_ns").unwrap(), 1000000);
-        assert_eq!(json_output.get("max_latency_ns").unwrap(), 5000000);
-        assert_eq!(json_output.get("avg_latency_ns").unwrap(), 3000000);
+        assert_eq!(json_output.get("min_latency_ns").unwrap(), 1_000_000);
+        assert_eq!(json_output.get("max_latency_ns").unwrap(), 5_000_000);
+        assert_eq!(json_output.get("avg_latency_ns").unwrap(), 3_000_000);
         assert_eq!(json_output.get("reachable").unwrap(), true);
     }
 
@@ -559,7 +559,7 @@ mod tests {
         let status = StatusResponse {
             doublezero_status: DoubleZeroStatus {
                 session_status: "BGP Session Up".to_string(),
-                last_session_update: Some(1625247600),
+                last_session_update: Some(1_625_247_600),
             },
             tunnel_name: Some("doublezero1".to_string()),
             tunnel_src: Some("10.0.0.1".to_string()),
@@ -614,6 +614,6 @@ mod tests {
         assert_eq!(json_output.get("doublezero_ip").unwrap(), "10.1.2.3");
         assert_eq!(json_output.get("user_type").unwrap(), "IBRL");
         assert_eq!(dz_status.get("session_status").unwrap(), "BGP Session Up");
-        assert_eq!(dz_status.get("last_session_update").unwrap(), 1625247600);
+        assert_eq!(dz_status.get("last_session_update").unwrap(), 1_625_247_600);
     }
 }

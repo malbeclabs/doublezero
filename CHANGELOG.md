@@ -29,6 +29,8 @@ All notable changes to this project will be documented in this file.
   - Drop the redundant `ip-msdp-sa-cache` kind from the state-ingest server's default state-collect command list. `show ip msdp sa-cache rejected` already returns the full SA cache (accepted SAs in the `acceptedSaMsg` array plus any rejected SAs in `rejectedSaMsg`), so the bare `show ip msdp sa-cache` collection is redundant — devices were running both commands per tick and uploading the same accepted-SA data twice. The `ip-msdp-sa-cache-rejected` kind is retained.
 - Telemetry (geoprobe)
   - Retry transient `bind: invalid argument` failures when allocating per-probe UDP sockets in `Publisher.AddProbe`, matching the existing retry-on-bind pattern in `Pinger`. The shared retry helper is lifted into `retry.go` so the publisher and pinger paths use the same exponential-backoff logic. Fixes intermittent `TestPublisher_RemoveProbe`/`TestPublisher_AddProbe` CI flakes caused by concurrent ephemeral-port allocation ([#3765](https://github.com/malbeclabs/doublezero/issues/3765))
+- Makefile
+  - Add `unreadable_literal` to make cargo clippy alert on large numbers written without `_`.
 
 ## [v0.25.1](https://github.com/malbeclabs/doublezero/compare/client/v0.24.0...client/v0.25.1) - 2026-06-01
 

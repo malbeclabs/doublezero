@@ -22,8 +22,8 @@ import (
 )
 
 var (
-	devicesFlag      = flag.String("devices", "", "comma separated list of devices to run tests against")
-	allocateAddrHosts = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
+	devicesFlag             = flag.String("devices", "", "comma separated list of devices to run tests against")
+	allocateAddrHosts       = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
 	failureThreshold        = flag.Float64("failure-threshold", 0.1, "maximum allowed overall device failure rate (0.0-1.0) before the test is marked as failed")
 	perHostFailureThreshold = flag.Float64("per-host-failure-threshold", 0.2, "maximum allowed per-host device failure rate (0.0-1.0) before the test is marked as failed")
 )
@@ -482,7 +482,7 @@ func runConnectivitySubtests(
 						dstReady := dstDevice.Status == serviceability.DeviceStatusActivated && dstDevice.MaxUsers > 0
 						if srcReady && dstReady {
 							t.Logf("DEVICE FAILURE: connectivity test failed from %s to %s (device %s -> %s): %v",
-							src.Host, target.Host, srcDevice.Code, dstDevice.Code, err)
+								src.Host, target.Host, srcDevice.Code, dstDevice.Code, err)
 						} else {
 							log.Warn("Ignoring connectivity failure involving device not ready for users",
 								"sourceDevice", srcDevice.Code, "sourceStatus", srcDevice.Status, "sourceMaxUsers", srcDevice.MaxUsers,

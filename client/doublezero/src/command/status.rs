@@ -182,7 +182,7 @@ mod tests {
             status: StatusResponse {
                 doublezero_status: DoubleZeroStatus {
                     session_status: session_status.to_string(),
-                    last_session_update: Some(1625247600),
+                    last_session_update: Some(1_625_247_600),
                 },
                 tunnel_name: tunnel_name.map(String::from),
                 tunnel_src: tunnel_src.map(String::from),
@@ -352,7 +352,7 @@ mod tests {
                     status: StatusResponse {
                         doublezero_status: DoubleZeroStatus {
                             session_status: "BGP Session Up".to_string(),
-                            last_session_update: Some(1625247600),
+                            last_session_update: Some(1_625_247_600),
                         },
                         tunnel_name: Some("doublezero1".to_string()),
                         tunnel_src: Some("10.10.10.10".to_string()),
@@ -392,7 +392,7 @@ mod tests {
         let status_response = StatusResponse {
             doublezero_status: DoubleZeroStatus {
                 session_status: "BGP Session Up".to_string(),
-                last_session_update: Some(1625247600),
+                last_session_update: Some(1_625_247_600),
             },
             tunnel_name: Some("doublezero1".to_string()),
             tunnel_src: Some("10.0.0.1".to_string()),
@@ -496,7 +496,7 @@ mod tests {
         assert_eq!(response.get("doublezero_ip").unwrap(), "10.1.2.3");
         assert_eq!(response.get("user_type").unwrap(), "IBRL");
         assert_eq!(dz_status.get("session_status").unwrap(), "BGP Session Up");
-        assert_eq!(dz_status.get("last_session_update").unwrap(), 1625247600);
+        assert_eq!(dz_status.get("last_session_update").unwrap(), 1_625_247_600);
     }
 
     /// Test JSON output format with null/missing optional fields
@@ -706,7 +706,7 @@ mod tests {
                     status: StatusResponse {
                         doublezero_status: DoubleZeroStatus {
                             session_status: "BGP Session Up".to_string(),
-                            last_session_update: Some(1625247600),
+                            last_session_update: Some(1_625_247_600),
                         },
                         tunnel_name: Some("doublezero1".to_string()),
                         tunnel_src: Some("10.10.10.10".to_string()),

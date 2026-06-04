@@ -17,7 +17,7 @@ impl BalanceCliCommand {
 
         let balance = client.get_balance()?;
 
-        writeln!(out, "{} Credits", balance as f64 / 1000000000.0)?;
+        writeln!(out, "{} Credits", balance as f64 / 1_000_000_000.0)?;
 
         Ok(())
     }

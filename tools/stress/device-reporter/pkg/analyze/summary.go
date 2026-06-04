@@ -55,7 +55,10 @@ type Summary struct {
 }
 
 // OnchainLatencies collects per-user submit→activate timing stats for both
-// the provision and deprovision phases.
+// the provision and deprovision phases, plus the activate→applied gap that
+// measures how long it took for the agent to actually configure each
+// user's tunnel interface after the user account was activated onchain
+// (provision-only — deprovision has no `applied` event).
 type OnchainLatencies struct {
 	ProvisionSubmitToActivateP50   time.Duration
 	ProvisionSubmitToActivateP95   time.Duration
@@ -63,6 +66,14 @@ type OnchainLatencies struct {
 	DeprovisionSubmitToActivateP95 time.Duration
 	ProvisionUsers                 int
 	DeprovisionUsers               int
+
+	// ActivateToAppliedP50 / P95 are the per-user gap from `activate` to
+	// `applied` events in the provision phase. UsersApplied is the count
+	// of provision users that had both events (a user is dropped from the
+	// percentile inputs if either side is missing).
+	ActivateToAppliedP50 time.Duration
+	ActivateToAppliedP95 time.Duration
+	UsersApplied         int
 }
 
 // AgentCommitStats summarizes the agent-cycle table.
@@ -162,10 +173,15 @@ func lastEvent(events []parser.Event, kind string) *parser.Event {
 	return nil
 }
 
-// onchainLatencies computes per-user submit→activate gaps. Each user is
-// keyed by (phase, UserIndex). Phase is "provision" if the user has a
-// `submit`/`activate` pair, "deprovision" if a `deprovision_submit`/
-// `deprovision_activate` pair.
+// onchainLatencies computes per-user submit→activate gaps for both phases
+// and the per-user activate→applied gap for the provision phase. Pairs
+// are keyed by UserIndex. Missing-side events drop the user from the
+// corresponding percentile inputs (a user with `submit` but no `activate`
+// counts toward neither submit→activate population, for example).
+//
+// Activate→applied is provision-only because the agent emits `applied`
+// only when a `+ interface Tunnel<N>` shows up in the commit diff — pure
+// deprovision diffs (only removals) do not produce `applied` events.
 func onchainLatencies(events []parser.Event) OnchainLatencies {
 	type key struct {
 		phase string
@@ -180,7 +196,29 @@ func onchainLatencies(events []parser.Event) OnchainLatencies {
 		hasSubmit, hasActivate bool
 	}
 	pairs := map[key]*pair{}
+	// applied events are provision-only and keyed by UserIndex alone.
+	type appliedPair struct {
+		appliedTNs int64
+		hasApplied bool
+	}
+	applieds := map[int]*appliedPair{}
 	for _, e := range events {
+		if e.Event == "applied" {
+			p, ok := applieds[e.UserIndex]
+			if !ok {
+				p = &appliedPair{}
+				applieds[e.UserIndex] = p
+			}
+			// Take the first `applied` per user: a user can only be
+			// configured once per run, and a stray second event (e.g. an
+			// agent restart that re-applies the same diff) is the agent
+			// recovering, not a new device-creation moment.
+			if !p.hasApplied {
+				p.appliedTNs = e.TNs
+				p.hasApplied = true
+			}
+			continue
+		}
 		var phase, role string
 		switch e.Event {
 		case "submit":
@@ -209,7 +247,7 @@ func onchainLatencies(events []parser.Event) OnchainLatencies {
 		}
 	}
 
-	var provGaps, deprovGaps []float64
+	var provGaps, deprovGaps, applyGaps []float64
 	for k, p := range pairs {
 		if !p.hasSubmit || !p.hasActivate {
 			continue
@@ -217,12 +255,18 @@ func onchainLatencies(events []parser.Event) OnchainLatencies {
 		gap := float64(p.activateTNs - p.submitTNs)
 		if k.phase == "provision" {
 			provGaps = append(provGaps, gap)
+			// activate→applied only makes sense when we know the activate
+			// timestamp. If the user also has an applied event, record it.
+			if ap, ok := applieds[k.idx]; ok && ap.hasApplied {
+				applyGaps = append(applyGaps, float64(ap.appliedTNs-p.activateTNs))
+			}
 		} else {
 			deprovGaps = append(deprovGaps, gap)
 		}
 	}
 	sort.Float64s(provGaps)
 	sort.Float64s(deprovGaps)
+	sort.Float64s(applyGaps)
 	return OnchainLatencies{
 		ProvisionSubmitToActivateP50:   time.Duration(Percentile(provGaps, 0.50)),
 		ProvisionSubmitToActivateP95:   time.Duration(Percentile(provGaps, 0.95)),
@@ -230,6 +274,9 @@ func onchainLatencies(events []parser.Event) OnchainLatencies {
 		DeprovisionSubmitToActivateP95: time.Duration(Percentile(deprovGaps, 0.95)),
 		ProvisionUsers:                 len(provGaps),
 		DeprovisionUsers:               len(deprovGaps),
+		ActivateToAppliedP50:           time.Duration(Percentile(applyGaps, 0.50)),
+		ActivateToAppliedP95:           time.Duration(Percentile(applyGaps, 0.95)),
+		UsersApplied:                   len(applyGaps),
 	}
 }
 

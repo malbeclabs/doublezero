@@ -55,6 +55,21 @@ func Summary(w io.Writer, s analyze.Summary, r *parser.Run) {
 		fmtDur(s.OnchainLatencies.DeprovisionSubmitToActivateP95))
 	bw.printf("\n")
 
+	// activate→applied is the "user account exists onchain → tunnel
+	// interface configured on device" delay. Render only when at least
+	// one user produced both events so that runs without agent data
+	// (`--no-agent`, parser shape we don't yet handle) don't leave an
+	// empty table behind.
+	if s.OnchainLatencies.UsersApplied > 0 {
+		bw.printf("| Phase | Users with `applied` | p50 activate→applied | p95 |\n")
+		bw.printf("|---|---|---|---|\n")
+		bw.printf("| Provision | %s | %s | %s |\n",
+			fmtInt(s.OnchainLatencies.UsersApplied),
+			fmtDur(s.OnchainLatencies.ActivateToAppliedP50),
+			fmtDur(s.OnchainLatencies.ActivateToAppliedP95))
+		bw.printf("\n")
+	}
+
 	bw.printf("**Event counts**: ")
 	keys := []string{"submit", "confirm", "activate", "deprovision_submit", "deprovision_confirm", "deprovision_activate", "pre_commit_log", "applied"}
 	var parts []string

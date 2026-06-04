@@ -61,6 +61,8 @@ func BuildComparison(a, b *parser.Run) Comparison {
 	addDur("Provision p95", sa.OnchainLatencies.ProvisionSubmitToActivateP95, sb.OnchainLatencies.ProvisionSubmitToActivateP95)
 	addDur("Deprovision p50", sa.OnchainLatencies.DeprovisionSubmitToActivateP50, sb.OnchainLatencies.DeprovisionSubmitToActivateP50)
 	addDur("Deprovision p95", sa.OnchainLatencies.DeprovisionSubmitToActivateP95, sb.OnchainLatencies.DeprovisionSubmitToActivateP95)
+	addDur("Activate→applied p50", sa.OnchainLatencies.ActivateToAppliedP50, sb.OnchainLatencies.ActivateToAppliedP50)
+	addDur("Activate→applied p95", sa.OnchainLatencies.ActivateToAppliedP95, sb.OnchainLatencies.ActivateToAppliedP95)
 	addInt("Agent commits", sa.AgentCommitStats.CommitCount, sb.AgentCommitStats.CommitCount)
 	addInt("Agent unfinished cycles", sa.AgentCommitStats.UnfinishedCount, sb.AgentCommitStats.UnfinishedCount)
 	addDur("Avg commit duration", sa.AgentCommitStats.AvgCommitDuration, sb.AgentCommitStats.AvgCommitDuration)

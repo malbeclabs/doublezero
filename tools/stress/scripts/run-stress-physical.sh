@@ -414,12 +414,14 @@ seq 0 $((TARGET_USERS - 1)) | xargs -P "$ACCESS_PASS_PARALLEL" -I{} bash -c '
 # ---------------------------------------------------------------------------
 # Phase 6: build orchestrator + observer
 # ---------------------------------------------------------------------------
-log "building orchestrator + observer binaries"
+log "building orchestrator + observer + reporter binaries"
 ORCH_BIN="${DEPLOY_DIR}/device-orchestrator"
 OBS_BIN="${DEPLOY_DIR}/device-observer"
+REPORTER_BIN="${DEPLOY_DIR}/device-reporter"
 ( cd "$WORKSPACE_DIR" && \
-  go build -o "$ORCH_BIN" ./tools/stress/device-orchestrator/cmd/device-orchestrator && \
-  go build -o "$OBS_BIN"  ./tools/stress/device-observer/cmd/device-observer )
+  go build -o "$ORCH_BIN"     ./tools/stress/device-orchestrator/cmd/device-orchestrator && \
+  go build -o "$OBS_BIN"      ./tools/stress/device-observer/cmd/device-observer && \
+  go build -o "$REPORTER_BIN" ./tools/stress/device-reporter/cmd/device-reporter )
 
 # ---------------------------------------------------------------------------
 # Phase 7: launch orchestrator + observer
@@ -478,15 +480,45 @@ nohup "$OBS_BIN" \
 OBS_PID=$!
 echo "$OBS_PID" > "${RUN_DIR}/observer.pid"
 
+# Background watcher: when the orchestrator exits (sweep finished or
+# aborted), tear down the observer and emit a markdown summary into
+# the run dir. Polls every 5s with `kill -0` so we don't depend on
+# `wait` having access to a non-child pid. The summary is written to
+# `$RUN_DIR/summary.md`; an empty file means the reporter run failed
+# (stderr captured next to it).
+SUMMARY_PATH="${RUN_DIR}/summary.md"
+SUMMARY_ERR_PATH="${RUN_DIR}/summary.stderr"
+(
+    while kill -0 "$ORCH_PID" 2>/dev/null; do
+        sleep 5
+    done
+    # Orchestrator has exited. Give the observer a moment to flush its
+    # final sample, then stop it. Pid is best-effort; absent processes
+    # are silently skipped.
+    sleep 2
+    kill "$OBS_PID" 2>/dev/null || true
+    # Give the observer time to actually shut down before reading its
+    # working dir (it writes sample files mid-cycle).
+    sleep 2
+    if [ -x "$REPORTER_BIN" ]; then
+        "$REPORTER_BIN" summary "$RUN_DIR" >"$SUMMARY_PATH" 2>"$SUMMARY_ERR_PATH" || true
+    fi
+) >/dev/null 2>&1 &
+WATCHER_PID=$!
+echo "$WATCHER_PID" > "${RUN_DIR}/watcher.pid"
+
 cat <<EOF
 
 ==> stress test launched against $DUT_HOST
     controller   pid : ${CONTROLLER_LISTENER_PID:-$CONTROLLER_PARENT_PID}  (log: $CONTROLLER_LOG)
     orchestrator pid : $ORCH_PID  (logs: ${RUN_DIR}/orchestrator.std{out,err})
     observer     pid : $OBS_PID  (logs: ${RUN_DIR}/observer.std{out,err})
+    watcher      pid : $WATCHER_PID  (writes ${SUMMARY_PATH} when orchestrator exits)
     working dir      : ${RUN_DIR}
     abort sentinel   : ${RUN_DIR}/abort
 
-To stop everything:  kill \$(cat ${CONTROLLER_PID_FILE} ${RUN_DIR}/orchestrator.pid ${RUN_DIR}/observer.pid)
+To stop everything:  kill \$(cat ${CONTROLLER_PID_FILE} ${RUN_DIR}/orchestrator.pid ${RUN_DIR}/observer.pid ${RUN_DIR}/watcher.pid)
 To follow:           tail -F ${RUN_DIR}/orchestrator.stderr ${RUN_DIR}/observer.stderr ${CONTROLLER_LOG}
+To read the post-run summary (once ready): tail -F ${SUMMARY_PATH}
+Or invoke it ad-hoc:                       ${REPORTER_BIN} summary ${RUN_DIR}
 EOF

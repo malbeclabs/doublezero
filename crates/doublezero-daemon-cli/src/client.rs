@@ -493,6 +493,56 @@ mod tests {
     }
 
     #[test]
+    fn test_v2_service_status_serde_missing_multicast_groups() {
+        let json = r#"{
+            "doublezero_status": {"session_status": "BGP Session Up", "last_session_update": null},
+            "tunnel_name": null, "tunnel_src": null, "tunnel_dst": null,
+            "doublezero_ip": null, "user_type": "IBRL",
+            "current_device": "dz1", "lowest_latency_device": "dz1",
+            "metro": "ams", "tenant": ""
+        }"#;
+        let svc: V2ServiceStatus = serde_json::from_str(json).unwrap();
+        assert!(svc.multicast_groups.publisher.is_empty());
+        assert!(svc.multicast_groups.subscriber.is_empty());
+    }
+
+    #[test]
+    fn test_v2_service_status_serde_populated_multicast_groups() {
+        let json = r#"{
+            "doublezero_status": {"session_status": "BGP Session Up", "last_session_update": null},
+            "tunnel_name": "doublezero1", "tunnel_src": "10.0.0.1", "tunnel_dst": "5.6.7.8",
+            "doublezero_ip": null, "user_type": "Multicast",
+            "current_device": "dz1", "lowest_latency_device": "dz1",
+            "metro": "ams", "tenant": "acme",
+            "multicast_groups": {
+                "publisher": ["solana-lv"],
+                "subscriber": ["solana-ams", "solana-fra"]
+            }
+        }"#;
+        let svc: V2ServiceStatus = serde_json::from_str(json).unwrap();
+        assert_eq!(svc.multicast_groups.publisher, vec!["solana-lv"]);
+        assert_eq!(
+            svc.multicast_groups.subscriber,
+            vec!["solana-ams", "solana-fra"]
+        );
+    }
+
+    #[test]
+    fn test_v2_service_status_serde_empty_multicast_arrays() {
+        let json = r#"{
+            "doublezero_status": {"session_status": "BGP Session Up", "last_session_update": null},
+            "tunnel_name": null, "tunnel_src": null, "tunnel_dst": null,
+            "doublezero_ip": "10.0.0.1", "user_type": "IBRL",
+            "current_device": "dz1", "lowest_latency_device": "dz1",
+            "metro": "ams", "tenant": "",
+            "multicast_groups": {"publisher": [], "subscriber": []}
+        }"#;
+        let svc: V2ServiceStatus = serde_json::from_str(json).unwrap();
+        assert!(svc.multicast_groups.publisher.is_empty());
+        assert!(svc.multicast_groups.subscriber.is_empty());
+    }
+
+    #[test]
     fn test_daemon_client_impl_uses_explicit_socket_path() {
         let socket_path =
             std::env::temp_dir().join(format!("doublezerod-test-{}.sock", std::process::id()));

@@ -272,12 +272,23 @@ func Run(ctx context.Context, cfg Config) error {
 	depErr := deprovision(context.WithoutCancel(ctx), &cfg, created)
 
 	// Give the agent a chance to finish applying the deprovision config to
-	// EOS before we kill its SSH session. Skip on any error path: if the
-	// run is already failing we want a fast shutdown, not 5 minutes of
-	// extra wait. ctx (the caller's signal-aware context) cuts the wait
-	// short on Ctrl-C / abort-file even on the success path.
-	if err == nil && depErr == nil && agentErr == nil {
-		waitForAgentQuiescence(ctx, &cfg, tracker)
+	// EOS before we kill its SSH session. We wait whenever deprovision
+	// completed cleanly (`depErr == nil`) and the agent stream is healthy
+	// (`agentErr == nil`) — including the abort path, where ctx was
+	// cancelled by the observer's sentinel. The intent of the abort
+	// triggers is "something off-device looks bad, tear down the run";
+	// it isn't "kill the agent mid-commit". On the success path ctx is
+	// not cancelled and the wait listens on it for Ctrl-C; on the abort
+	// path ctx is already done, so we pass a derived context that
+	// ignores cancellation. The hard `AgentQuiescenceTimeout` (default
+	// 300s) caps the wait either way, and a user who really wants out
+	// can re-Ctrl-C to kill the orchestrator process.
+	if depErr == nil && agentErr == nil {
+		waitCtx := ctx
+		if ctx.Err() != nil {
+			waitCtx = context.WithoutCancel(ctx)
+		}
+		waitForAgentQuiescence(waitCtx, &cfg, tracker)
 	}
 
 	// Tell the agent to stop and wait for the consumer goroutine to drain so
@@ -348,17 +359,27 @@ func consumeAgentEvents(cfg *Config, registry *tunnelRegistry, tracker *quiescen
 	}
 }
 
-// waitForAgentQuiescence blocks until the agent has been silent (no
-// EventApplied observation) for cfg.AgentQuietWindow, or the cumulative wait
-// exceeds cfg.AgentQuiescenceTimeout, or ctx is cancelled. It is a no-op
-// when cfg.AgentQuietWindow is zero (the library default) or when no
-// EventApplied has ever been observed (e.g. --no-agent runs).
+// waitForAgentQuiescence blocks until BOTH (a) the agent has been silent
+// for cfg.AgentQuietWindow AND (b) at least cfg.AgentQuietWindow has
+// elapsed since the wait started. The dual condition handles the case
+// where the agent went silent BEFORE deprovision returned — the absolute
+// "silent for N seconds" predicate alone would return instantly without
+// giving the agent any time to commit the post-deprovision config push
+// from the controller. The added "elapsed since wait start" floor
+// guarantees we always block at least one quiet window after deprovision
+// finishes, even if the agent had been silent for minutes during a slow
+// commit cycle.
 //
-// The wait polls in 1s ticks. Polling avoids needing a separate "applied
-// observed" signal channel — the tracker's atomic.Int64 is read each tick
-// and compared against the current clock. At 1024 users / batch=32 the
-// agent emits applieds in clumps tens of seconds apart, so a 1s poll is
-// well below the natural event cadence.
+// The wait returns early on cfg.AgentQuiescenceTimeout (warned) or
+// ctx.Done() (warned). It is a no-op when cfg.AgentQuietWindow is zero
+// (the library default) or when no agent event has ever been observed
+// (e.g. --no-agent runs).
+//
+// The wait polls in 1s ticks. Polling avoids needing a separate
+// "applied observed" signal channel — the tracker's atomic.Int64 is
+// read each tick and compared against the current clock. At 1024
+// users / batch=32 the agent emits commits in clumps tens of seconds
+// apart, so a 1s poll is well below the natural event cadence.
 func waitForAgentQuiescence(ctx context.Context, cfg *Config, tracker *quiescenceTracker) {
 	if cfg.AgentQuietWindow <= 0 {
 		return
@@ -378,15 +399,16 @@ func waitForAgentQuiescence(ctx context.Context, cfg *Config, tracker *quiescenc
 		now := cfg.Clock.Now()
 		last, _ = tracker.lastEvent()
 		sinceLast := now.Sub(last)
-		if sinceLast >= cfg.AgentQuietWindow {
+		elapsed := now.Sub(start)
+		if elapsed >= cfg.AgentQuietWindow && sinceLast >= cfg.AgentQuietWindow {
 			cfg.Logger.Info("sweep: agent quiesced",
 				"quiet_for", sinceLast,
-				"wait_elapsed", now.Sub(start))
+				"wait_elapsed", elapsed)
 			return
 		}
 		if !now.Before(deadline) {
 			cfg.Logger.Warn("sweep: agent quiescence timed out; proceeding with shutdown anyway",
-				"wait_elapsed", now.Sub(start),
+				"wait_elapsed", elapsed,
 				"since_last_event", sinceLast)
 			return
 		}

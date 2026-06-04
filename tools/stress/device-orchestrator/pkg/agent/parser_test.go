@@ -127,8 +127,13 @@ func TestParser_AbortClearsBufferWithoutAppliedEvents(t *testing.T) {
 	require.Len(t, events, 1)
 	require.Equal(t, []uint16{500}, p.Pending())
 
+	// Abort emits exactly one EventCommitAborted (so the quiescence
+	// tracker can clear its pending-commit flag) and drops the
+	// per-tunnel Applieds.
 	events = p.Parse(`Configuration session finalized with command 'configure session foo abort'`)
-	assert.Empty(t, events, "abort emits no events")
+	require.Len(t, events, 1)
+	assert.Equal(t, agent.EventCommitAborted, events[0].Kind)
+	assert.Equal(t, uint16(0), events[0].TunnelID)
 	assert.Empty(t, p.Pending(), "abort still clears pending")
 }
 

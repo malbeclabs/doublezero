@@ -354,10 +354,15 @@ func consumeAgentEvents(cfg *Config, registry *tunnelRegistry, tracker *quiescen
 		switch ev.Kind {
 		case agent.EventConfigReceived:
 			tracker.markEvent(cfg.Clock.Now(), true)
-		case agent.EventCommit, agent.EventApplied:
+		case agent.EventCommit, agent.EventApplied, agent.EventCommitAborted:
+			// All three close a commit cycle from the tracker's
+			// perspective: EventCommit and EventApplied report a
+			// successful finalize; EventCommitAborted reports the
+			// agent gave up on the session (no-op diff in steady-
+			// state polling, most commonly post-deprovision).
 			tracker.markEvent(cfg.Clock.Now(), false)
 		}
-		if ev.Kind == agent.EventCommit || ev.Kind == agent.EventConfigReceived {
+		if ev.Kind == agent.EventCommit || ev.Kind == agent.EventConfigReceived || ev.Kind == agent.EventCommitAborted {
 			// Pure activity signals — no per-tunnel runlog row to emit.
 			continue
 		}

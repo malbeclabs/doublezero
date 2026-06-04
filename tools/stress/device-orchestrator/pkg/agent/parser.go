@@ -103,11 +103,14 @@ func (p *Parser) Parse(line string) []Event {
 		return out
 	}
 	if finalizedAbortRE.MatchString(line) {
-		// Abort cleared the session — drop pending without emitting Applied.
+		// Abort cleared the session — drop pending Applieds without emitting,
+		// but emit one EventCommitAborted so the quiescence tracker can
+		// clear its pending-commit flag (set when the matching
+		// `Received N bytes` line arrived).
 		p.inDiff = false
 		p.resetSection()
 		p.pending = p.pending[:0]
-		return nil
+		return []Event{{Kind: EventCommitAborted, TunnelID: 0, At: p.now()}}
 	}
 	if p.inDiff {
 		return p.parseDiffLine(line)

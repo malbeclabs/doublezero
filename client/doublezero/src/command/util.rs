@@ -1,3 +1,5 @@
+// TODO: remove once latency/routes migrate to doublezero-daemon-cli;
+// the writer-based equivalent lives in doublezero_daemon_cli::helpers.
 use eyre::Result;
 use tabled::{settings::Style, Table, Tabled};
 

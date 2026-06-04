@@ -1601,6 +1601,7 @@ dependencies = [
  "serde_json",
  "tabled",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

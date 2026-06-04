@@ -8,22 +8,30 @@ use clap::Subcommand;
 use doublezero_cli_core::CliContext;
 use std::io::Write;
 
-use crate::{client::DaemonClient, ledger::LedgerClient};
+use crate::{client::DaemonClient, disable::Disable, enable::Enable, ledger::LedgerClient};
 
 /// Daemon-control verbs hoisted to the binary's top level.
 ///
 /// Populated incrementally as verbs migrate from the binary into this crate.
 #[derive(Subcommand, Debug)]
-pub enum DaemonCommand {}
+pub enum DaemonCommand {
+    /// Enable the reconciler (start managing tunnels)
+    Enable(Enable),
+    /// Disable the reconciler (tear down tunnels and stop managing them)
+    Disable(Disable),
+}
 
 impl DaemonCommand {
     pub async fn execute<D: DaemonClient, L: LedgerClient, W: Write>(
         self,
-        _ctx: &CliContext,
-        _daemon: &D,
-        _ledger: &L,
-        _out: &mut W,
+        ctx: &CliContext,
+        daemon: &D,
+        ledger: &L,
+        out: &mut W,
     ) -> eyre::Result<()> {
-        match self {}
+        match self {
+            Self::Enable(cmd) => cmd.execute(ctx, daemon, ledger, out).await,
+            Self::Disable(cmd) => cmd.execute(ctx, daemon, ledger, out).await,
+        }
     }
 }

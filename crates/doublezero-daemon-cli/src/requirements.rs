@@ -20,13 +20,14 @@ pub(crate) async fn check_daemon<D: DaemonClient, L: LedgerClient>(
     }
 
     let daemon_env = daemon.get_env().await?;
-    if daemon_env != ledger.get_environment() {
+    let client_env = ledger.get_environment();
+    if daemon_env != client_env {
         return Err(eyre::eyre!(
             "The client and the daemon are using different environments.\n\
 Client: {}\n\
 Daemon: {}\n\
 Please update the daemon configuration so both use the same environment.",
-            ledger.get_environment(),
+            client_env,
             daemon_env
         ));
     }

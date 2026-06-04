@@ -44,7 +44,6 @@ const (
 	defaultDeliveryDNSTTL             = defaultDeliveryDNSRefreshInterval * 5 / 2
 )
 
-
 var (
 	env                        = flag.String("env", "", "The network environment to use (devnet, testnet, mainnet-beta).")
 	ledgerRPCURL               = flag.String("ledger-rpc-url", "", "The url of the ledger RPC. If env is provided, this flag is ignored.")

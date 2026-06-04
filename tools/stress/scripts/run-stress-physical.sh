@@ -61,7 +61,13 @@ AGENT_METRICS_PORT="${AGENT_METRICS_PORT:-50100}"
 # admin/admin pair baked into its rendered startup-config; this script does
 # not control the physical device's user table, so the operator supplies it.
 EAPI_USER="${EAPI_USER:-admin}"
-EAPI_PASS="${EAPI_PASS:-}"
+# EAPI_PASS has no default: the observer authenticates over HTTP basic
+# auth on each `show ...` poll, and an empty password silently yields
+# 401-Unauthorized for every sample, producing an empty observer
+# capture set (no show-*.{json,log} files in the run dir). Fail fast
+# at startup so the operator notices before a 4-minute run finishes
+# with nothing to analyze.
+: "${EAPI_PASS:?EAPI_PASS is required — export it (and optionally EAPI_USER) before running. See README.md.}"
 
 DEVICE_CODE="${DZ_STRESS_DEVICE_CODE:-chi-dn-dzd5}"
 DEVICE_LOCATION="${DZ_STRESS_DEVICE_LOCATION:-ewr}"

@@ -6,6 +6,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -34,16 +35,6 @@ type AgentCycle struct {
 	Outcome string
 }
 
-// ReceivedToFinalized is the gap from "Received N lines" to "Configuration
-// session finalized" — what an external observer would call "apply time".
-// Returns 0 for unfinished cycles.
-func (c AgentCycle) ReceivedToFinalized() time.Duration {
-	if c.ReceivedAt.IsZero() || c.FinalizedAt.IsZero() {
-		return 0
-	}
-	return c.FinalizedAt.Sub(c.ReceivedAt)
-}
-
 // CommitDuration is the gap from `Committing config session...` to
 // `Configuration session finalized...`. Returns 0 for unfinished cycles.
 func (c AgentCycle) CommitDuration() time.Duration {
@@ -57,13 +48,13 @@ func (c AgentCycle) CommitDuration() time.Duration {
 // These are commit-time EOS validation failures; reading them as a group
 // surfaces hardware-quirk patterns (e.g. all errors being
 // `default interface TunnelN invalid command` from chi-dn-dzd5's
-// Tunnel-name range cap).
+// Tunnel-name range cap). The N/M indices and timestamp are intentionally
+// not captured — the top-K bucketer in pkg/analyze only reads Command +
+// Reason after normalization, so the extra fields would just be unused
+// parser state.
 type AgentCLIError struct {
-	At       time.Time
-	CmdIndex int    // N
-	CmdTotal int    // M
-	Command  string // <cmd>
-	Reason   string // <reason>
+	Command string // <cmd>
+	Reason  string // <reason>
 }
 
 var (
@@ -73,33 +64,36 @@ var (
 	agentTimeRE = regexp.MustCompile(`^(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d+)\s`)
 	// Lines we care about (eapi.go line numbers are stable enough across
 	// agent builds that we anchor on them).
-	receivedLinesRE  = regexp.MustCompile(`Received (\d+) lines of configuration from controller`)
-	receivedBytesRE  = regexp.MustCompile(`Received (\d+) bytes of configuration from controller`)
-	committingRE     = regexp.MustCompile(`Committing config session due to diffs detected:`)
-	finalizedRE      = regexp.MustCompile(`Configuration session finalized with command '[^']*\s+(commit|abort)'`)
-	cliCommandFailRE = regexp.MustCompile(`CLI command (\d+) of (\d+) '([^']+)' failed:\s+(.+?)(?:$|\s+at line)`)
+	receivedLinesRE = regexp.MustCompile(`Received (\d+) lines of configuration from controller`)
+	receivedBytesRE = regexp.MustCompile(`Received (\d+) bytes of configuration from controller`)
+	committingRE    = regexp.MustCompile(`Committing config session due to diffs detected:`)
+	finalizedRE     = regexp.MustCompile(`Configuration session finalized with command '[^']*\s+(commit|abort)'`)
+	// The CLI-command failure shape, when seen inside the orchestrator's
+	// log, is doubly quoted: `'CLI command N of M '<cmd>' failed: <reason>' at line K`.
+	// The outer quotes belong to the orchestrator's error wrapper; the
+	// inner ones belong to the agent's reported failure. We stop <cmd> and
+	// <reason> at the next single quote to avoid capturing the outer
+	// closing quote into the reason field.
+	cliCommandFailRE = regexp.MustCompile(`CLI command (\d+) of (\d+) '([^']+)' failed:\s+([^']+)`)
 )
 
 const agentTimeLayout = "2006/01/02 15:04:05.000000"
 
 func parseAgentTime(s string) (time.Time, bool) {
-	// Accept variable-length fractional seconds by trimming to the layout's
-	// precision.
+	// Accept variable-length fractional seconds by trimming or right-padding
+	// to the layout's 6-digit microsecond precision. The agentTimeRE already
+	// requires a `.<digits>` segment, so we always land on the dot branch.
 	m := agentTimeRE.FindStringSubmatch(s)
 	if m == nil {
 		return time.Time{}, false
 	}
 	stamp := m[1]
-	// time.Parse with .000000 needs exactly 6 fractional digits; trim/pad.
-	if dot := indexByte(stamp, '.'); dot >= 0 {
-		frac := stamp[dot+1:]
-		if len(frac) > 6 {
-			stamp = stamp[:dot+1+6]
-		} else if len(frac) < 6 {
-			stamp = stamp + repeat('0', 6-len(frac))
-		}
-	} else {
-		stamp = stamp + "." + repeat('0', 6)
+	dot := strings.IndexByte(stamp, '.')
+	frac := stamp[dot+1:]
+	if len(frac) > 6 {
+		stamp = stamp[:dot+1+6]
+	} else if len(frac) < 6 {
+		stamp = stamp + strings.Repeat("0", 6-len(frac))
 	}
 	t, err := time.Parse(agentTimeLayout, stamp)
 	if err != nil {
@@ -157,6 +151,16 @@ func loadAgentLog(path string) ([]AgentCycle, []AgentCLIError, error) {
 			// leave pendingReceivedAt at the lines-line time (microsecond
 			// difference; the lines marker is the canonical "received").
 		case committingRE.MatchString(line):
+			// If a prior cycle was active but never finalized (e.g. the
+			// agent process exited between `Committing` and the matching
+			// `Configuration session finalized`, then restarted and began
+			// a fresh commit), record it as `unfinished` before replacing.
+			// Otherwise we'd silently drop it and skew commit counts +
+			// downstream stats.
+			if active != nil {
+				active.Outcome = "unfinished"
+				cycles = append(cycles, *active)
+			}
 			// Open a new cycle; absorb the pending received-pair into it
 			// (the most recent one is the closest match by construction).
 			active = &AgentCycle{
@@ -182,14 +186,9 @@ func loadAgentLog(path string) ([]AgentCycle, []AgentCLIError, error) {
 		// CLI command failures land scattered through the log; capture
 		// independently of the cycle state machine.
 		if m := cliCommandFailRE.FindStringSubmatch(line); m != nil {
-			idx, _ := strconv.Atoi(m[1])
-			total, _ := strconv.Atoi(m[2])
 			errs = append(errs, AgentCLIError{
-				At:       ts,
-				CmdIndex: idx,
-				CmdTotal: total,
-				Command:  m[3],
-				Reason:   m[4],
+				Command: m[3],
+				Reason:  m[4],
 			})
 		}
 	}
@@ -203,26 +202,4 @@ func loadAgentLog(path string) ([]AgentCycle, []AgentCLIError, error) {
 		cycles = append(cycles, *active)
 	}
 	return cycles, errs, nil
-}
-
-// indexByte / repeat keep the file dependency-free (no strings import for
-// these two tiny helpers).
-func indexByte(s string, c byte) int {
-	for i := 0; i < len(s); i++ {
-		if s[i] == c {
-			return i
-		}
-	}
-	return -1
-}
-
-func repeat(c byte, n int) string {
-	if n <= 0 {
-		return ""
-	}
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = c
-	}
-	return string(b)
 }

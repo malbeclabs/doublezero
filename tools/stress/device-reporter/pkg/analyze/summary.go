@@ -115,8 +115,13 @@ func BuildSummary(r *parser.Run) Summary {
 		}
 	}
 
-	// Outcome detection: an abort sentinel takes precedence; otherwise
-	// look for matched submit/activate counts in both phases.
+	// Outcome detection: an abort sentinel takes precedence; otherwise the
+	// run is "success" when every observed submit has a matching activate
+	// in both phases AND at least one event of any kind landed (so a run
+	// with zero recorded events is "unfinished", not vacuously successful).
+	// Guarding on `submit > 0` alone would mark a deprovision-only artifact
+	// (a re-run that only tore down a prior run's leftovers) as unfinished
+	// even though it converged.
 	switch {
 	case r.Abort != nil:
 		s.Outcome = "aborted"
@@ -125,7 +130,7 @@ func BuildSummary(r *parser.Run) Summary {
 		s.AbortDetail = r.Abort.Detail
 	case s.EventCounts["activate"] == s.EventCounts["submit"] &&
 		s.EventCounts["deprovision_activate"] == s.EventCounts["deprovision_submit"] &&
-		s.EventCounts["submit"] > 0:
+		(s.EventCounts["submit"]+s.EventCounts["deprovision_submit"]) > 0:
 		s.Outcome = "success"
 	default:
 		s.Outcome = "unfinished"
@@ -166,8 +171,13 @@ func onchainLatencies(events []parser.Event) OnchainLatencies {
 		phase string
 		idx   int
 	}
+	// Track whether each timestamp was observed explicitly rather than
+	// relying on TNs==0 as a "missing" sentinel — Unix epoch 0 is a
+	// theoretically valid timestamp and shouldn't be misclassified as
+	// absent.
 	type pair struct {
 		submitTNs, activateTNs int64
+		hasSubmit, hasActivate bool
 	}
 	pairs := map[key]*pair{}
 	for _, e := range events {
@@ -192,14 +202,16 @@ func onchainLatencies(events []parser.Event) OnchainLatencies {
 		}
 		if role == "submit" {
 			p.submitTNs = e.TNs
+			p.hasSubmit = true
 		} else {
 			p.activateTNs = e.TNs
+			p.hasActivate = true
 		}
 	}
 
 	var provGaps, deprovGaps []float64
 	for k, p := range pairs {
-		if p.submitTNs == 0 || p.activateTNs == 0 {
+		if !p.hasSubmit || !p.hasActivate {
 			continue
 		}
 		gap := float64(p.activateTNs - p.submitTNs)

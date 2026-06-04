@@ -29,7 +29,7 @@ func Summary(w io.Writer, s analyze.Summary, r *parser.Run) {
 	if s.IsPhysical {
 		dut = "physical EOS"
 	}
-	bw.printf("**Target**: %s users, batch=%d, hold=%s, dut=%s\n", fmtInt(s.Target), s.Batch, fmtDur(s.Hold), dut)
+	bw.printf("**Target**: %s users, batch=%d, hold=%s, dut=%s\n", fmtInt(s.Target), s.Batch, analyze.FormatDurationOrZero(s.Hold), dut)
 	if !s.StartedAt.IsZero() {
 		bw.printf("**Started**: %s UTC\n", s.StartedAt.UTC().Format("2006-01-02 15:04:05"))
 	}
@@ -156,33 +156,8 @@ type writer struct{ w io.Writer }
 
 func (w *writer) printf(f string, a ...any) { fmt.Fprintf(w.w, f, a...) }
 
-// fmtInt / fmtDur duplicate the analyze-package helpers because the
-// summary writer also needs them; they're kept tiny and stable.
-func fmtInt(n int) string {
-	if n < 0 {
-		return "-" + fmtInt(-n)
-	}
-	if n < 1000 {
-		return fmt.Sprintf("%d", n)
-	}
-	return fmtInt(n/1000) + "," + fmt.Sprintf("%03d", n%1000)
-}
-
-func fmtDur(d time.Duration) string {
-	if d == 0 {
-		return "—"
-	}
-	if d < time.Microsecond {
-		return fmt.Sprintf("%dns", d.Nanoseconds())
-	}
-	if d < time.Millisecond {
-		return fmt.Sprintf("%.1fµs", float64(d)/float64(time.Microsecond))
-	}
-	if d < time.Second {
-		return fmt.Sprintf("%.1fms", float64(d)/float64(time.Millisecond))
-	}
-	if d < time.Minute {
-		return fmt.Sprintf("%.2fs", d.Seconds())
-	}
-	return d.Truncate(time.Second).String()
-}
+// fmtInt / fmtDur are thin wrappers around the exported analyze helpers
+// so the markdown writer doesn't duplicate their definitions. Kept
+// unexported here so call sites read naturally inside this file.
+func fmtInt(n int) string           { return analyze.FormatInt(n) }
+func fmtDur(d time.Duration) string { return analyze.FormatDuration(d) }

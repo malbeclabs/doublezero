@@ -6,7 +6,7 @@
 //
 //	device-reporter summary <run-dir>           # markdown summary to stdout
 //	device-reporter compare <run-dir-a> <run-dir-b>  # side-by-side
-//	device-reporter export  <run-dir> --metric commit-latency [--format csv]
+//	device-reporter export  <run-dir> --metric commit-latency
 //
 // All output is stdout; pipe or redirect at will.
 package main
@@ -55,7 +55,7 @@ func usage(w *os.File) {
 Usage:
   device-reporter summary <run-dir>
   device-reporter compare <run-dir-a> <run-dir-b>
-  device-reporter export  <run-dir> --metric <commit-latency|runlog> [--format csv]
+  device-reporter export  <run-dir> --metric <commit-latency|runlog>  # CSV to stdout
 `)
 }
 
@@ -108,12 +108,8 @@ func cmdExport(args []string) error {
 	runDir := args[0]
 	fs := flag.NewFlagSet("export", flag.ExitOnError)
 	metric := fs.String("metric", "commit-latency", "metric to export: commit-latency | runlog")
-	formatFlag := fs.String("format", "csv", "output format (csv only for now)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
-	}
-	if *formatFlag != "csv" {
-		return fmt.Errorf("unsupported --format %q (only csv)", *formatFlag)
 	}
 	run, err := parser.LoadRun(runDir)
 	if err != nil {

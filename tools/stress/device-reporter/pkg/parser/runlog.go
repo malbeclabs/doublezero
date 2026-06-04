@@ -12,7 +12,6 @@ import (
 // at most 8 distinct kinds (submit/confirm/activate × {provision, deprovision}
 // plus pre_commit_log / applied for tunnels the agent finished applying).
 type Event struct {
-	RunID       string `json:"run_id"`
 	UserIndex   int    `json:"user_index"`
 	UserPubkey  string `json:"user_pubkey"`
 	TunnelID    uint16 `json:"tunnel_id"`
@@ -32,17 +31,6 @@ func CountEvents(events []Event) EventCounts {
 	out := make(EventCounts)
 	for _, e := range events {
 		out[e.Event]++
-	}
-	return out
-}
-
-// FilterByEvent returns the subset matching `kind` in order.
-func FilterByEvent(events []Event, kind string) []Event {
-	var out []Event
-	for _, e := range events {
-		if e.Event == kind {
-			out = append(out, e)
-		}
 	}
 	return out
 }

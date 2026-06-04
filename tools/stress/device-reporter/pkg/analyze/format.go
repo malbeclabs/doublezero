@@ -5,23 +5,41 @@ import (
 	"time"
 )
 
-// fmtInt formats with thousand-separators for readability in tables.
-func fmtInt(n int) string {
+// FormatInt formats with thousand-separators for readability in tables.
+// Exported so the format package's markdown writer can render the same
+// way the analyze-internal `compare` rows do.
+func FormatInt(n int) string {
 	if n < 0 {
-		return "-" + fmtInt(-n)
+		return "-" + FormatInt(-n)
 	}
 	if n < 1000 {
 		return fmt.Sprintf("%d", n)
 	}
-	return fmtInt(n/1000) + "," + fmt.Sprintf("%03d", n%1000)
+	return FormatInt(n/1000) + "," + fmt.Sprintf("%03d", n%1000)
 }
 
-// fmtDur renders a duration with units that fit the magnitude. Zero
-// durations render as "—" so empty cells are visually obvious in tables.
-func fmtDur(d time.Duration) string {
+// FormatDuration renders a duration with units that fit the magnitude.
+// Zero durations render as "—" so empty cells are visually obvious in
+// tables. For fields where 0 is a deliberate operator choice (e.g. the
+// Hold knob), use FormatDurationOrZero instead.
+func FormatDuration(d time.Duration) string {
 	if d == 0 {
 		return "—"
 	}
+	return formatNonZeroDuration(d)
+}
+
+// FormatDurationOrZero renders 0 as "0s" rather than "—". Use this for
+// fields where the operator explicitly chose zero (e.g. `--hold 0`),
+// since the em-dash reads as "data missing" rather than "no hold".
+func FormatDurationOrZero(d time.Duration) string {
+	if d == 0 {
+		return "0s"
+	}
+	return formatNonZeroDuration(d)
+}
+
+func formatNonZeroDuration(d time.Duration) string {
 	if d < time.Microsecond {
 		return fmt.Sprintf("%dns", d.Nanoseconds())
 	}
@@ -36,3 +54,9 @@ func fmtDur(d time.Duration) string {
 	}
 	return d.Truncate(time.Second).String()
 }
+
+// fmtInt / fmtDur are kept as unexported aliases so the existing
+// analyze-package call sites don't have to be churned. New code should
+// use the exported names.
+func fmtInt(n int) string           { return FormatInt(n) }
+func fmtDur(d time.Duration) string { return FormatDuration(d) }

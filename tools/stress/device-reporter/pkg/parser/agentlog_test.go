@@ -50,11 +50,11 @@ func TestLoadAgentLog_PairsReceivedAndFinalized(t *testing.T) {
 		t.Fatalf("expected 1 CLI error, got %d", len(errs))
 	}
 	e := errs[0]
-	if e.CmdIndex != 67 || e.CmdTotal != 253 {
-		t.Errorf("CLI error indices wrong: %d/%d", e.CmdIndex, e.CmdTotal)
-	}
 	if e.Command != " interface Tunnel500" { // intentional leading space — preserved from EOS log shape
 		t.Errorf("CLI error command wrong: %q", e.Command)
+	}
+	if e.Reason != "invalid command" {
+		t.Errorf("CLI error reason wrong: %q", e.Reason)
 	}
 }
 

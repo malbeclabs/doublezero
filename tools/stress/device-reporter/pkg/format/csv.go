@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"time"
 
 	"github.com/malbeclabs/doublezero/tools/stress/device-reporter/pkg/parser"
 )
@@ -21,18 +22,35 @@ const (
 	MetricRunlog ExportMetric = "runlog"
 )
 
-// ExportCSV writes `metric` rows from r to w.
+// ExportCSV writes `metric` rows from r to w. Flush failures (e.g. broken
+// pipe on the receiving side) are surfaced via the returned error.
 func ExportCSV(w io.Writer, r *parser.Run, metric ExportMetric) error {
 	cw := csv.NewWriter(w)
-	defer cw.Flush()
+	var werr error
 	switch metric {
 	case MetricCommitLatency:
-		return writeCommitLatency(cw, r)
+		werr = writeCommitLatency(cw, r)
 	case MetricRunlog:
-		return writeRunlog(cw, r)
+		werr = writeRunlog(cw, r)
 	default:
 		return fmt.Errorf("unknown metric %q (known: %s, %s)", metric, MetricCommitLatency, MetricRunlog)
 	}
+	cw.Flush()
+	if werr != nil {
+		return werr
+	}
+	return cw.Error()
+}
+
+// nsOrEmpty renders a time.Time as its UnixNano epoch, or "" when the time
+// is zero. Without this, unfinished cycles (zero ReceivedAt / FinalizedAt)
+// serialize as -6795364578871345152 — the int64 min that UnixNano returns
+// for the zero value — which poisons spreadsheet / pandas analysis.
+func nsOrEmpty(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return fmt.Sprintf("%d", t.UnixNano())
 }
 
 func writeCommitLatency(cw *csv.Writer, r *parser.Run) error {
@@ -47,12 +65,9 @@ func writeCommitLatency(cw *csv.Writer, r *parser.Run) error {
 	}); err != nil {
 		return err
 	}
-	for _, c := range r.Cycles {
-		// Stable ordering by CommitStartedAt — the parser already produces
-		// cycles in agent-log order, but be explicit so future re-parses
-		// can't accidentally shuffle.
-		_ = c
-	}
+	// Stable ordering by CommitStartedAt. The parser already produces cycles
+	// in agent-log order, but be explicit so a future re-parse can't
+	// accidentally shuffle.
 	sorted := append([]parser.AgentCycle(nil), r.Cycles...)
 	sort.Slice(sorted, func(i, j int) bool {
 		return sorted[i].CommitStartedAt.Before(sorted[j].CommitStartedAt)
@@ -61,11 +76,11 @@ func writeCommitLatency(cw *csv.Writer, r *parser.Run) error {
 		err := cw.Write([]string{
 			runID,
 			c.Outcome,
-			fmt.Sprintf("%d", c.ReceivedAt.UnixNano()),
+			nsOrEmpty(c.ReceivedAt),
 			fmt.Sprintf("%d", c.ReceivedLines),
 			fmt.Sprintf("%d", c.ReceivedBytes),
-			fmt.Sprintf("%d", c.CommitStartedAt.UnixNano()),
-			fmt.Sprintf("%d", c.FinalizedAt.UnixNano()),
+			nsOrEmpty(c.CommitStartedAt),
+			nsOrEmpty(c.FinalizedAt),
 			fmt.Sprintf("%d", c.CommitDuration().Nanoseconds()),
 		})
 		if err != nil {

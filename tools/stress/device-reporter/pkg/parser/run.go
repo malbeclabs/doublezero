@@ -24,8 +24,6 @@ type Run struct {
 	// Config is the orchestrator's resolved CLI inputs, or nil if the
 	// config file is missing.
 	Config *OrchestratorConfig
-	// Observer is the device-observer's config, or nil if not present.
-	Observer *ObserverConfig
 	// Events is every row from orchestrator-runlog.jsonl in file order.
 	Events []Event
 	// Cycles is the parsed agent commit cycles, one per
@@ -42,12 +40,22 @@ type Run struct {
 }
 
 // LoadRun reads every artifact present under `dir` into a Run. Missing
-// artifacts leave the matching field nil/empty; unparseable artifacts
-// surface as errors so callers can decide whether to skip the run or fail.
+// individual artifacts leave the matching field nil/empty; the directory
+// itself, however, must exist — a typo'd path is a hard error so callers
+// don't silently get an empty Run + a near-empty markdown summary.
+// Unparseable artifacts surface as errors so callers can decide whether to
+// skip the run or fail.
 func LoadRun(dir string) (*Run, error) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("resolve run dir: %w", err)
+	}
+	info, err := os.Stat(absDir)
+	if err != nil {
+		return nil, fmt.Errorf("stat run dir: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("not a directory: %s", absDir)
 	}
 	r := &Run{Path: absDir}
 
@@ -55,12 +63,6 @@ func LoadRun(dir string) (*Run, error) {
 		return nil, fmt.Errorf("orchestrator-config.json: %w", err)
 	} else if cfg != nil {
 		r.Config = cfg
-	}
-
-	if obs, err := loadObserverConfig(filepath.Join(absDir, "observer-config.json")); err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("observer-config.json: %w", err)
-	} else if obs != nil {
-		r.Observer = obs
 	}
 
 	if events, err := loadRunlog(filepath.Join(absDir, "orchestrator-runlog.jsonl")); err != nil && !os.IsNotExist(err) {

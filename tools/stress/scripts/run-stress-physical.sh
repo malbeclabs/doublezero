@@ -156,6 +156,13 @@ solana_cli() {
 
 mkdir -p "$DEPLOY_DIR" "$WORKING_DIR"
 
+# Stamp the per-run directory up front so the controller (phase 4) can drop
+# its log alongside the orchestrator/observer artifacts in the same dir,
+# rather than into a shared file at $WORKING_DIR/controller.log that every
+# subsequent run truncates.
+RUN_DIR="${WORKING_DIR}/$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$RUN_DIR"
+
 # ---------------------------------------------------------------------------
 # Phase 1: connectivity sanity checks
 # ---------------------------------------------------------------------------
@@ -282,7 +289,9 @@ done
 # `go run` is intentional per the user spec — convenient for iteration; the
 # operator can later swap to a built binary if startup time matters.
 # ---------------------------------------------------------------------------
-CONTROLLER_LOG="${WORKING_DIR}/controller.log"
+CONTROLLER_LOG="${RUN_DIR}/controller.log"
+# Pid file stays at the parent level so the leftover-process detection in
+# the next run can find it even after $RUN_DIR has been pruned/archived.
 CONTROLLER_PID_FILE="${WORKING_DIR}/controller.pid"
 
 # Fail fast if something is already listening on the controller port. Without
@@ -432,8 +441,6 @@ REPORTER_BIN="${DEPLOY_DIR}/device-reporter"
 # ---------------------------------------------------------------------------
 # Phase 7: launch orchestrator + observer
 # ---------------------------------------------------------------------------
-RUN_DIR="${WORKING_DIR}/$(date -u +%Y%m%dT%H%M%SZ)"
-mkdir -p "$RUN_DIR"
 log "run working-dir: $RUN_DIR"
 
 ORCH_ARGS=(

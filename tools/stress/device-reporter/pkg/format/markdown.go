@@ -55,18 +55,23 @@ func Summary(w io.Writer, s analyze.Summary, r *parser.Run) {
 		fmtDur(s.OnchainLatencies.DeprovisionSubmitToActivateP95))
 	bw.printf("\n")
 
-	// activate→applied is the "user account exists onchain → tunnel
-	// interface configured on device" delay. Render only when at least
-	// one user produced both events so that runs without agent data
-	// (`--no-agent`, parser shape we don't yet handle) don't leave an
-	// empty table behind.
+	// onchain→on-device is the gap from `activate` (user account written
+	// onchain) to `applied` (first commit cycle whose diff includes the
+	// user's tunnel interface). Render only when at least one user
+	// produced both events so that runs without agent data (`--no-agent`,
+	// device-side path broken) don't leave an empty table behind.
 	if s.OnchainLatencies.UsersApplied > 0 {
-		bw.printf("| Phase | Users with `applied` | p50 activate→applied | p95 |\n")
+		bw.printf("| Phase | Users on device | p50 onchain→on-device | p95 |\n")
 		bw.printf("|---|---|---|---|\n")
 		bw.printf("| Provision | %s | %s | %s |\n",
 			fmtInt(s.OnchainLatencies.UsersApplied),
 			fmtDur(s.OnchainLatencies.ActivateToAppliedP50),
 			fmtDur(s.OnchainLatencies.ActivateToAppliedP95))
+		bw.printf("\n")
+		// Linearity hint: does the gap grow as the run progresses?
+		// `+X ms / user` means each additional active user pushes the
+		// next user's onchain→on-device by that much.
+		writeFit(bw, "active users", s.OnchainToOnDeviceFit, time.Millisecond, "ms/user")
 		bw.printf("\n")
 	}
 
@@ -88,6 +93,33 @@ func Summary(w io.Writer, s analyze.Summary, r *parser.Run) {
 		bw.printf("- Avg commit duration: **%s**\n", fmtDur(st.AvgCommitDuration))
 		bw.printf("- Max config received: **%s lines / %s bytes**\n", fmtInt(st.MaxLines), fmtInt(st.MaxBytes))
 		bw.printf("\n")
+
+		// Per-cycle breakdown: one row per agent commit cycle, joined
+		// with the runlog so each row knows how many users it pushed and
+		// the within-cycle onchain→on-device lag distribution. Skip when
+		// the join produced nothing useful (e.g. --no-agent runs where
+		// the cycle list is empty already).
+		if len(s.CommitCycles) > 0 {
+			bw.printf("### Per-cycle wall time\n\n")
+			bw.printf("| Cycle | Users | Lines | Bytes | Commit time | p50 onchain→on-device | Max |\n")
+			bw.printf("|---:|---:|---:|---:|---:|---:|---:|\n")
+			for i, c := range s.CommitCycles {
+				p50, maxv := "—", "—"
+				if c.OnchainToOnDeviceMax > 0 {
+					p50 = fmtDur(c.OnchainToOnDeviceP50)
+					maxv = fmtDur(c.OnchainToOnDeviceMax)
+				}
+				bw.printf("| %d | %s | %s | %s | %s | %s | %s |\n",
+					i+1,
+					fmtInt(c.UsersCommitted),
+					fmtInt(c.ReceivedLines),
+					fmtInt(c.ReceivedBytes),
+					fmtDur(c.CommitDuration),
+					p50, maxv)
+			}
+			bw.printf("\n")
+		}
+
 		bw.printf("### Commit duration vs config size\n\n")
 		writeFit(bw, "bytes", s.CommitVsBytes, time.Microsecond, "µs/byte")
 		writeFit(bw, "lines", s.CommitVsLines, time.Microsecond, "µs/line")

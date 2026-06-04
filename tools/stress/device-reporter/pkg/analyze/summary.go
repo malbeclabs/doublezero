@@ -52,6 +52,41 @@ type Summary struct {
 	// AgentErrorTopK is up to k=8 most common CLI failure patterns
 	// (command-text with tunnel numbers normalized).
 	AgentErrorTopK []AgentErrorBucket
+
+	// CommitCycles is one row per agent commit cycle, joined against the
+	// runlog so each row knows how many users it actually pushed to the
+	// device. Used to render the per-cycle wall-time + onchain→on-device
+	// lag breakdown. Cycles with no matching `applied` event (e.g. config
+	// pushes that contained no user-tunnel additions) are still listed
+	// with UsersCommitted == 0 so the operator can see them.
+	CommitCycles []CommitCycle
+
+	// OnchainToOnDeviceFit fits the per-user onchain→on-device gap (y, ns)
+	// against the active-user count when each user activated (x, count).
+	// Slope is duration / +1 user, so the operator can see whether the
+	// gap grows as the run progresses. Empty (N < 2) when fewer than two
+	// users had both `activate` and `applied`.
+	OnchainToOnDeviceFit LinearFit
+}
+
+// CommitCycle is the joined view of one agent commit cycle: the agent
+// log gives us the lines/bytes/duration; the runlog gives us the count
+// of users committed in that cycle plus the within-cycle onchain→on-device
+// gap distribution. Rows are ordered by commit-finalized time ascending.
+type CommitCycle struct {
+	// UsersCommitted is the count of `applied` runlog events that share
+	// this cycle's finalize timestamp. Zero for commit cycles that
+	// applied no user additions (e.g. controller pushed a no-op delta).
+	UsersCommitted int
+	ReceivedLines  int
+	ReceivedBytes  int
+	CommitDuration time.Duration
+	// OnchainToOnDeviceP50 / Max are within-cycle stats of the gap from
+	// each user's `activate` to this commit. They surface the spread —
+	// the just-activated user sees a small gap, the oldest user in the
+	// batch sees the largest. Both zero when UsersCommitted == 0.
+	OnchainToOnDeviceP50 time.Duration
+	OnchainToOnDeviceMax time.Duration
 }
 
 // OnchainLatencies collects per-user submit→activate timing stats for both
@@ -151,6 +186,8 @@ func BuildSummary(r *parser.Run) Summary {
 	s.AgentCommitStats = agentCommitStats(r.Cycles)
 	s.CommitVsBytes, s.CommitVsLines = commitVsSizeFits(r.Cycles)
 	s.AgentErrorTopK = topAgentErrors(r.CliErrors, 8)
+	s.CommitCycles = commitCycles(r.Cycles, r.Events)
+	s.OnchainToOnDeviceFit = onchainToOnDeviceFit(r.Events)
 
 	return s
 }
@@ -332,4 +369,136 @@ func commitVsSizeFits(cycles []parser.AgentCycle) (LinearFit, LinearFit) {
 		y = append(y, float64(d))
 	}
 	return LinearLeastSquares(bx, y), LinearLeastSquares(lx, y)
+}
+
+// commitCycles joins each agent-log commit cycle with the runlog
+// `applied` events that share its finalize timestamp. All `applied`
+// events from one commit are emitted by the orchestrator at the same
+// instant (the parser stamps them with one wallclock read when the
+// "finalized ... commit" line is seen), so grouping the runlog by
+// `applied.TNs` yields a clean per-cycle bucket. Buckets are paired
+// with cycles in chronological order — the i-th cycle (by FinalizedAt)
+// pairs with the i-th distinct applied-TNs.
+//
+// Cycles whose Outcome is not "commit" (abort, unfinished) are still
+// emitted so the operator can see them; their UsersCommitted will be
+// zero by construction (the orchestrator doesn't emit Applied on
+// abort/unfinished cycles).
+func commitCycles(cycles []parser.AgentCycle, events []parser.Event) []CommitCycle {
+	if len(cycles) == 0 {
+		return nil
+	}
+
+	// Build per-user activate timestamps so we can compute the
+	// within-cycle onchain→on-device gap for each user.
+	activateAt := map[int]int64{}
+	for _, e := range events {
+		if e.Event == "activate" {
+			if _, seen := activateAt[e.UserIndex]; !seen {
+				activateAt[e.UserIndex] = e.TNs
+			}
+		}
+	}
+
+	// Group `applied` events by TNs. Events from the same commit cycle
+	// share an exact TNs, so a plain map suffices — no fuzzy bucketing.
+	type appliedBucket struct {
+		tNs   int64
+		gaps  []float64 // per-user onchain→on-device gaps (ns)
+		count int
+	}
+	bucketByTNs := map[int64]*appliedBucket{}
+	for _, e := range events {
+		if e.Event != "applied" {
+			continue
+		}
+		b, ok := bucketByTNs[e.TNs]
+		if !ok {
+			b = &appliedBucket{tNs: e.TNs}
+			bucketByTNs[e.TNs] = b
+		}
+		b.count++
+		if a, hasActivate := activateAt[e.UserIndex]; hasActivate {
+			b.gaps = append(b.gaps, float64(e.TNs-a))
+		}
+	}
+	buckets := make([]*appliedBucket, 0, len(bucketByTNs))
+	for _, b := range bucketByTNs {
+		buckets = append(buckets, b)
+	}
+	sort.Slice(buckets, func(i, j int) bool { return buckets[i].tNs < buckets[j].tNs })
+
+	// Cycles are already in chronological order from the agent-log
+	// parser, but make it explicit: sort by FinalizedAt with a stable
+	// fallback to CommitStartedAt so unfinished cycles (zero FinalizedAt)
+	// trail their finished neighbors instead of jumping to the front.
+	sorted := make([]parser.AgentCycle, len(cycles))
+	copy(sorted, cycles)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		ti, tj := sorted[i].FinalizedAt, sorted[j].FinalizedAt
+		if ti.IsZero() {
+			ti = sorted[i].CommitStartedAt
+		}
+		if tj.IsZero() {
+			tj = sorted[j].CommitStartedAt
+		}
+		return ti.Before(tj)
+	})
+
+	out := make([]CommitCycle, 0, len(sorted))
+	bi := 0
+	for _, c := range sorted {
+		row := CommitCycle{
+			ReceivedLines:  c.ReceivedLines,
+			ReceivedBytes:  c.ReceivedBytes,
+			CommitDuration: c.CommitDuration(),
+		}
+		// Only successful commits should consume an applied bucket. Abort
+		// and unfinished cycles emit no applied events, so giving them
+		// a bucket would shift every later cycle's user-count off by one.
+		if c.Outcome == "commit" && bi < len(buckets) {
+			b := buckets[bi]
+			row.UsersCommitted = b.count
+			if len(b.gaps) > 0 {
+				sort.Float64s(b.gaps)
+				row.OnchainToOnDeviceP50 = time.Duration(Percentile(b.gaps, 0.50))
+				row.OnchainToOnDeviceMax = time.Duration(b.gaps[len(b.gaps)-1])
+			}
+			bi++
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// onchainToOnDeviceFit fits the per-user onchain→on-device gap (y) in
+// nanoseconds against the count of users active when the user activated
+// (x — sourced from the runlog's NAfterEvent column at the activate
+// event). The slope tells the operator whether the gap grows as the
+// run progresses; R² indicates how linear the trend is.
+func onchainToOnDeviceFit(events []parser.Event) LinearFit {
+	activate := map[int]parser.Event{}
+	applied := map[int]parser.Event{}
+	for _, e := range events {
+		switch e.Event {
+		case "activate":
+			if _, seen := activate[e.UserIndex]; !seen {
+				activate[e.UserIndex] = e
+			}
+		case "applied":
+			if _, seen := applied[e.UserIndex]; !seen {
+				applied[e.UserIndex] = e
+			}
+		}
+	}
+	var xs, ys []float64
+	for idx, a := range activate {
+		ap, ok := applied[idx]
+		if !ok {
+			continue
+		}
+		xs = append(xs, float64(a.NAfterEvent))
+		ys = append(ys, float64(ap.TNs-a.TNs))
+	}
+	return LinearLeastSquares(xs, ys)
 }

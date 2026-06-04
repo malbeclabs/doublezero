@@ -91,3 +91,112 @@ func TestOnchainLatencies_AppliedWithoutActivate(t *testing.T) {
 		t.Errorf("UsersApplied = %d, want 0 (applied without activate must be ignored)", got.UsersApplied)
 	}
 }
+
+// TestCommitCycles_JoinsAppliedEventsByTNs verifies that the agent-log
+// cycle list and the runlog `applied` events are paired correctly:
+//
+//   - cycles are listed chronologically by FinalizedAt;
+//   - applied events sharing a TNs collapse to one "users committed"
+//     count for the matching cycle;
+//   - non-commit cycles (abort, unfinished) get zero users and don't
+//     consume an applied bucket (which would shift later cycles).
+func TestCommitCycles_JoinsAppliedEventsByTNs(t *testing.T) {
+	base := time.Unix(1_700_000_000, 0)
+	// Three agent cycles, finalized at base+10s, base+20s, base+30s.
+	cycles := []parser.AgentCycle{
+		{
+			CommitStartedAt: base.Add(8 * time.Second),
+			FinalizedAt:     base.Add(10 * time.Second),
+			ReceivedLines:   100,
+			ReceivedBytes:   2000,
+			Outcome:         "commit",
+		},
+		{
+			CommitStartedAt: base.Add(18 * time.Second),
+			FinalizedAt:     base.Add(20 * time.Second),
+			ReceivedLines:   150,
+			ReceivedBytes:   3500,
+			Outcome:         "abort", // mid-run abort, no applied events
+		},
+		{
+			CommitStartedAt: base.Add(28 * time.Second),
+			FinalizedAt:     base.Add(30 * time.Second),
+			ReceivedLines:   200,
+			ReceivedBytes:   5000,
+			Outcome:         "commit",
+		},
+	}
+	// Cycle 1: two users activated at base+0s, base+5s; both applied at
+	// base+10s. Gaps: 10s, 5s. Cycle 3: one user activated at base+25s,
+	// applied at base+30s. Gap: 5s.
+	events := []parser.Event{
+		{UserIndex: 0, Event: "activate", TNs: base.UnixNano()},
+		{UserIndex: 1, Event: "activate", TNs: base.Add(5 * time.Second).UnixNano()},
+		{UserIndex: 0, Event: "applied", TNs: base.Add(10 * time.Second).UnixNano()},
+		{UserIndex: 1, Event: "applied", TNs: base.Add(10 * time.Second).UnixNano()},
+		{UserIndex: 2, Event: "activate", TNs: base.Add(25 * time.Second).UnixNano()},
+		{UserIndex: 2, Event: "applied", TNs: base.Add(30 * time.Second).UnixNano()},
+	}
+
+	rows := commitCycles(cycles, events)
+	if len(rows) != 3 {
+		t.Fatalf("want 3 rows (one per cycle, including the abort), got %d", len(rows))
+	}
+	// Cycle 1: 2 users, max gap = 10s.
+	if rows[0].UsersCommitted != 2 {
+		t.Errorf("cycle 1 UsersCommitted = %d, want 2", rows[0].UsersCommitted)
+	}
+	if rows[0].OnchainToOnDeviceMax != 10*time.Second {
+		t.Errorf("cycle 1 max gap = %s, want 10s", rows[0].OnchainToOnDeviceMax)
+	}
+	// Cycle 2: abort, must not consume the cycle-3 applied bucket.
+	if rows[1].UsersCommitted != 0 {
+		t.Errorf("cycle 2 (abort) UsersCommitted = %d, want 0 (abort cycles emit no applied events)", rows[1].UsersCommitted)
+	}
+	if rows[1].OnchainToOnDeviceMax != 0 {
+		t.Errorf("cycle 2 max gap should be zero, got %s", rows[1].OnchainToOnDeviceMax)
+	}
+	// Cycle 3: 1 user, gap 5s.
+	if rows[2].UsersCommitted != 1 {
+		t.Errorf("cycle 3 UsersCommitted = %d, want 1 (abort cycle must not have eaten this bucket)", rows[2].UsersCommitted)
+	}
+	if rows[2].OnchainToOnDeviceMax != 5*time.Second {
+		t.Errorf("cycle 3 max gap = %s, want 5s", rows[2].OnchainToOnDeviceMax)
+	}
+}
+
+// TestOnchainToOnDeviceFit_GrowsWithActiveUsers feeds a synthetic
+// dataset where the gap scales linearly with the active-user count and
+// asserts the slope comes back positive and R² is near 1.
+func TestOnchainToOnDeviceFit_GrowsWithActiveUsers(t *testing.T) {
+	base := time.Unix(1_700_000_000, 0).UnixNano()
+	var events []parser.Event
+	// gap_ns = NAfterEvent * 1ms exactly — perfect linearity.
+	for i := 1; i <= 10; i++ {
+		activateT := base + int64(i)*int64(time.Second)
+		gap := int64(i) * int64(time.Millisecond)
+		events = append(events,
+			parser.Event{UserIndex: i, Event: "activate", TNs: activateT, NAfterEvent: i},
+			parser.Event{UserIndex: i, Event: "applied", TNs: activateT + gap},
+		)
+	}
+	fit := onchainToOnDeviceFit(events)
+	if fit.N != 10 {
+		t.Fatalf("fit.N = %d, want 10", fit.N)
+	}
+	// Slope is duration (ns) per +1 active user. We expect 1ms = 1e6 ns.
+	const wantSlope = float64(time.Millisecond)
+	if rel := abs((fit.Slope - wantSlope) / wantSlope); rel > 0.001 {
+		t.Errorf("fit.Slope = %v, want ≈ %v (rel err %v)", fit.Slope, wantSlope, rel)
+	}
+	if fit.R2 < 0.999 {
+		t.Errorf("fit.R2 = %v, want near 1.0 (perfectly linear input)", fit.R2)
+	}
+}
+
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}

@@ -60,7 +60,7 @@ AGENT_METRICS_PORT="${AGENT_METRICS_PORT:-50100}"
 # via env on physical hardware. The containerized harness uses a hardcoded
 # admin/admin pair baked into its rendered startup-config; this script does
 # not control the physical device's user table, so the operator supplies it.
-EAPI_USER="${EAPI_USER:-admin}"
+EAPI_USER="${EAPI_USER:-stress}"
 # EAPI_PASS has no default: the observer authenticates over HTTP basic
 # auth on each `show ...` poll, and an empty password silently yields
 # 401-Unauthorized for every sample, producing an empty observer

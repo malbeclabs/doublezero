@@ -149,11 +149,21 @@ SDK checks or the agent will run but fail to apply config:
    agent log shows `dial tcp 127.0.0.1:9543: connect: connection
    refused`, this stanza is missing or misconfigured.
 
-4. **eAPI HTTP-commands enabled.** The device-observer scrapes `show
-   gre tunnel static`, `show processes top once`, etc. via eAPI. Make
-   sure `management api http-commands` is `no shutdown` and an admin
-   user with a password the harness can use exists. Export
-   `EAPI_USER` / `EAPI_PASS` before running.
+4. **eAPI HTTP-commands enabled + a stress user.** The device-observer
+   scrapes `show gre tunnel static`, `show processes top once`, etc.
+   over HTTP basic auth on each sample. Add a dedicated stress user
+   (so the harness doesn't share the `admin` password) and enable
+   the HTTP transport:
+   ```
+   username stress secret 0 stress
+   !
+   management api http-commands
+      no shutdown
+   ```
+   The harness defaults `EAPI_USER=stress`; export `EAPI_PASS` before
+   running (the script bails out fast if it's unset, since an empty
+   password silently produces 401s and leaves the run dir with zero
+   `show-*.{json,log}` captures).
 
 5. **Management netns.** The orchestrator wraps the agent command in
    `ip netns exec <netns>` so it can reach the controller via the
@@ -175,10 +185,10 @@ SDK checks or the agent will run but fail to apply config:
 # private infra repo, not here. Export it before running.
 export DZ_PROGRAM_ID='<stress-program-id-from-infra-repo>'
 
-# Required: eAPI credentials for the observer. EAPI_USER defaults to
-# $DUT_SSH_USER; password must be supplied (no plaintext default).
-export EAPI_USER=admin
-read -s EAPI_PASS; export EAPI_PASS
+# Required: eAPI password for the observer. EAPI_USER defaults to
+# `stress` (the username the README's prerequisite step adds to the
+# device); password has no default — the script fails fast if unset.
+export EAPI_PASS=stress
 
 # Optional overrides (defaults shown in the script header):
 # export DZ_RPC_URL='https://...'

@@ -743,7 +743,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
 					DzIp:         [4]uint8{147, 100, 100, 100},
-					TunnelId:     uint16(500),
+					TunnelId:     uint16(1),
 					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
 					Status:       serviceability.UserStatusActivated,
 				},
@@ -755,7 +755,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{3, 3, 3, 3},
 					DzIp:         [4]uint8{147, 100, 100, 101},
-					TunnelId:     uint16(501),
+					TunnelId:     uint16(2),
 					TunnelNet:    [5]uint8{10, 1, 1, 2, 31},
 					Status:       serviceability.UserStatusActivated,
 					Subscribers:  [][32]uint8{{1}},
@@ -769,7 +769,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{0, 0, 0, 0},
 					DzIp:         [4]uint8{147, 100, 100, 102},
-					TunnelId:     uint16(502),
+					TunnelId:     uint16(3),
 					TunnelNet:    [5]uint8{10, 1, 1, 3, 31},
 					Status:       serviceability.UserStatusActivated,
 					Subscribers:  [][32]uint8{{1}},
@@ -783,7 +783,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{5, 5, 5, 5},
 					DzIp:         [4]uint8{0, 0, 0, 0},
-					TunnelId:     uint16(502),
+					TunnelId:     uint16(3),
 					TunnelNet:    [5]uint8{10, 1, 1, 4, 31},
 					Status:       serviceability.UserStatusActivated,
 					Subscribers:  [][32]uint8{{1}},
@@ -797,7 +797,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{0, 0, 0, 0},
 					DzIp:         [4]uint8{0, 0, 0, 0},
-					TunnelId:     uint16(502),
+					TunnelId:     uint16(3),
 					TunnelNet:    [5]uint8{10, 1, 1, 5, 31},
 					Status:       serviceability.UserStatusActivated,
 					Subscribers:  [][32]uint8{{1}},
@@ -811,7 +811,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{6, 6, 6, 6},
 					DzIp:         [4]uint8{10, 0, 0, 1},
-					TunnelId:     uint16(503),
+					TunnelId:     uint16(4),
 					TunnelNet:    [5]uint8{10, 1, 1, 6, 31},
 					Status:       serviceability.UserStatusActivated,
 				},
@@ -824,7 +824,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{7, 7, 7, 7},
 					DzIp:         [4]uint8{127, 0, 0, 1},
-					TunnelId:     uint16(504),
+					TunnelId:     uint16(5),
 					TunnelNet:    [5]uint8{10, 1, 1, 8, 31},
 					Status:       serviceability.UserStatusActivated,
 				},
@@ -952,7 +952,7 @@ func TestStateCache(t *testing.T) {
 						BgpCommunity:      10050,
 						Tunnels: append([]*Tunnel{
 							{
-								Id:            500,
+								Id:            1,
 								UnderlaySrcIP: net.IP{2, 2, 2, 2},
 								UnderlayDstIP: net.IP{1, 1, 1, 1},
 								OverlaySrcIP:  net.IP{10, 1, 1, 0},
@@ -965,7 +965,7 @@ func TestStateCache(t *testing.T) {
 								TenantPubKey:  "11111111111111111111111111111111",
 							},
 							{
-								Id:            501,
+								Id:            2,
 								UnderlaySrcIP: net.IP{2, 2, 2, 2},
 								UnderlayDstIP: net.IP{3, 3, 3, 3},
 								OverlaySrcIP:  net.IP{10, 1, 1, 2},
@@ -1061,7 +1061,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
 					DzIp:         [4]uint8{147, 100, 100, 100},
-					TunnelId:     uint16(500),
+					TunnelId:     uint16(1),
 					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
 					Status:       serviceability.UserStatusActivated,
 				},
@@ -1106,7 +1106,7 @@ func TestStateCache(t *testing.T) {
 						LocationCode:    "unknown",
 						Tunnels: append([]*Tunnel{
 							{
-								Id:            500,
+								Id:            1,
 								UnderlaySrcIP: net.IP{3, 3, 3, 3},
 								UnderlayDstIP: net.IP{1, 1, 1, 1},
 								OverlaySrcIP:  net.IP{10, 1, 1, 0},
@@ -1145,7 +1145,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
 					DzIp:         [4]uint8{147, 100, 100, 100},
-					TunnelId:     uint16(500),
+					TunnelId:     uint16(1),
 					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
 					Status:       serviceability.UserStatusActivated,
 				},
@@ -1220,7 +1220,7 @@ func TestStateCache(t *testing.T) {
 						},
 						Tunnels: append([]*Tunnel{
 							{
-								Id:            500,
+								Id:            1,
 								UnderlaySrcIP: net.IP{3, 3, 3, 3},
 								UnderlayDstIP: net.IP{1, 1, 1, 1},
 								OverlaySrcIP:  net.IP{10, 1, 1, 0},
@@ -1259,7 +1259,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:       serviceability.CyoaTypeGREOverDIA,
 					ClientIp:       [4]uint8{1, 1, 1, 1},
 					DzIp:           [4]uint8{147, 100, 100, 100},
-					TunnelId:       uint16(500),
+					TunnelId:       uint16(1),
 					TunnelNet:      [5]uint8{10, 1, 1, 0, 31},
 					Status:         serviceability.UserStatusActivated,
 					TunnelEndpoint: [4]uint8{5, 5, 5, 5}, // Explicit tunnel endpoint
@@ -1272,7 +1272,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:       serviceability.CyoaTypeGREOverDIA,
 					ClientIp:       [4]uint8{2, 2, 2, 2},
 					DzIp:           [4]uint8{147, 100, 100, 101},
-					TunnelId:       uint16(501),
+					TunnelId:       uint16(2),
 					TunnelNet:      [5]uint8{10, 1, 1, 2, 31},
 					Status:         serviceability.UserStatusActivated,
 					TunnelEndpoint: [4]uint8{0, 0, 0, 0}, // Unspecified - should fall back to device PublicIP
@@ -1360,7 +1360,7 @@ func TestStateCache(t *testing.T) {
 						},
 						Tunnels: append([]*Tunnel{
 							{
-								Id:            500,
+								Id:            1,
 								UnderlaySrcIP: net.IP{5, 5, 5, 5}, // Uses explicit TunnelEndpoint
 								UnderlayDstIP: net.IP{1, 1, 1, 1},
 								OverlaySrcIP:  net.IP{10, 1, 1, 0},
@@ -1373,7 +1373,7 @@ func TestStateCache(t *testing.T) {
 								TenantPubKey:  "11111111111111111111111111111111",
 							},
 							{
-								Id:            501,
+								Id:            2,
 								UnderlaySrcIP: net.IP{3, 3, 3, 3}, // Falls back to device PublicIP
 								UnderlayDstIP: net.IP{2, 2, 2, 2},
 								OverlaySrcIP:  net.IP{10, 1, 1, 2},
@@ -1423,7 +1423,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
 					DzIp:         [4]uint8{147, 100, 100, 100},
-					TunnelId:     uint16(500),
+					TunnelId:     uint16(1),
 					TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
 					Status:       serviceability.UserStatusActivated,
 				},
@@ -1436,7 +1436,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{2, 2, 2, 2},
 					DzIp:         [4]uint8{147, 100, 100, 101},
-					TunnelId:     uint16(501),
+					TunnelId:     uint16(2),
 					TunnelNet:    [5]uint8{10, 1, 1, 2, 31},
 					Status:       serviceability.UserStatusActivated,
 				},
@@ -1449,7 +1449,7 @@ func TestStateCache(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{3, 3, 3, 3},
 					DzIp:         [4]uint8{147, 100, 100, 102},
-					TunnelId:     uint16(502),
+					TunnelId:     uint16(3),
 					TunnelNet:    [5]uint8{10, 1, 1, 4, 31},
 					Status:       serviceability.UserStatusActivated,
 				},
@@ -1523,7 +1523,7 @@ func TestStateCache(t *testing.T) {
 						BgpCommunity:      10050,
 						Tunnels: append([]*Tunnel{
 							{
-								Id:            500,
+								Id:            1,
 								UnderlaySrcIP: net.IP{2, 2, 2, 2},
 								UnderlayDstIP: net.IP{1, 1, 1, 1},
 								OverlaySrcIP:  net.IP{10, 1, 1, 0},
@@ -1535,7 +1535,7 @@ func TestStateCache(t *testing.T) {
 								TenantPubKey:  "g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT",
 							},
 							{
-								Id:            501,
+								Id:            2,
 								UnderlaySrcIP: net.IP{2, 2, 2, 2},
 								UnderlayDstIP: net.IP{2, 2, 2, 2},
 								OverlaySrcIP:  net.IP{10, 1, 1, 2},
@@ -1547,7 +1547,7 @@ func TestStateCache(t *testing.T) {
 								TenantPubKey:  "2M59vuWgsiuHAqQVB6KvuXuaBCJR8138gMAm4uCuR6Du",
 							},
 							{
-								Id:            502,
+								Id:            3,
 								UnderlaySrcIP: net.IP{2, 2, 2, 2},
 								UnderlayDstIP: net.IP{3, 3, 3, 3},
 								OverlaySrcIP:  net.IP{10, 1, 1, 4},
@@ -1663,7 +1663,7 @@ func TestStateCache_DuplicateTunnelId(t *testing.T) {
 						CyoaType:     serviceability.CyoaTypeGREOverDIA,
 						ClientIp:     [4]uint8{1, 1, 1, 1},
 						DzIp:         [4]uint8{147, 100, 100, 100},
-						TunnelId:     uint16(500),
+						TunnelId:     uint16(1),
 						TunnelNet:    [5]uint8{10, 1, 1, 0, 31},
 						Status:       serviceability.UserStatusActivated,
 					},
@@ -1674,7 +1674,7 @@ func TestStateCache_DuplicateTunnelId(t *testing.T) {
 						CyoaType:     serviceability.CyoaTypeGREOverDIA,
 						ClientIp:     [4]uint8{3, 3, 3, 3},
 						DzIp:         [4]uint8{147, 100, 100, 101},
-						TunnelId:     uint16(500), // Duplicate tunnel ID
+						TunnelId:     uint16(1), // Duplicate tunnel ID
 						TunnelNet:    [5]uint8{10, 1, 1, 2, 31},
 						Status:       serviceability.UserStatusActivated,
 					},
@@ -1727,12 +1727,12 @@ func TestStateCache_DuplicateTunnelId(t *testing.T) {
 	if device == nil {
 		t.Fatal("expected device in cache")
 	}
-	tunnel := device.findTunnel(500)
+	tunnel := device.findTunnel(1)
 	if tunnel == nil {
-		t.Fatal("expected tunnel 500 in device")
+		t.Fatal("expected tunnel 1 in device")
 	}
 	if !tunnel.Allocated {
-		t.Fatal("expected tunnel 500 to be allocated")
+		t.Fatal("expected tunnel 1 to be allocated")
 	}
 
 	// Second user (pubkey [32]uint8{20}) should have overwritten the first.
@@ -1922,7 +1922,7 @@ func TestEndToEnd(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
 					DzIp:         [4]uint8{147, 100, 100, 100},
-					TunnelId:     uint16(500),
+					TunnelId:     uint16(1),
 					TunnelNet:    [5]uint8{169, 254, 0, 0, 31},
 					Status:       serviceability.UserStatusActivated,
 				},
@@ -1934,7 +1934,7 @@ func TestEndToEnd(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{3, 3, 3, 3},
 					DzIp:         [4]uint8{147, 100, 100, 101},
-					TunnelId:     uint16(501),
+					TunnelId:     uint16(2),
 					TunnelNet:    [5]uint8{169, 254, 0, 2, 31},
 					Status:       serviceability.UserStatusActivated,
 					Subscribers:  [][32]uint8{{1}},
@@ -2060,7 +2060,7 @@ func TestEndToEnd(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
 					DzIp:         [4]uint8{147, 100, 100, 100},
-					TunnelId:     uint16(500),
+					TunnelId:     uint16(1),
 					TunnelNet:    [5]uint8{169, 254, 0, 0, 31},
 					Status:       serviceability.UserStatusActivated,
 				},
@@ -2072,7 +2072,7 @@ func TestEndToEnd(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{3, 3, 3, 3},
 					DzIp:         [4]uint8{147, 100, 100, 101},
-					TunnelId:     uint16(501),
+					TunnelId:     uint16(2),
 					TunnelNet:    [5]uint8{169, 254, 0, 2, 31},
 					Status:       serviceability.UserStatusActivated,
 					Subscribers:  [][32]uint8{{1}},
@@ -2251,7 +2251,7 @@ func TestEndToEnd(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{1, 1, 1, 1},
 					DzIp:         [4]uint8{147, 100, 100, 100},
-					TunnelId:     uint16(500),
+					TunnelId:     uint16(1),
 					TunnelNet:    [5]uint8{169, 254, 0, 0, 31},
 					Status:       serviceability.UserStatusActivated,
 				},
@@ -2264,7 +2264,7 @@ func TestEndToEnd(t *testing.T) {
 					CyoaType:     serviceability.CyoaTypeGREOverDIA,
 					ClientIp:     [4]uint8{2, 2, 2, 2},
 					DzIp:         [4]uint8{147, 100, 100, 101},
-					TunnelId:     uint16(501),
+					TunnelId:     uint16(2),
 					TunnelNet:    [5]uint8{169, 254, 0, 2, 31},
 					Status:       serviceability.UserStatusActivated,
 				},

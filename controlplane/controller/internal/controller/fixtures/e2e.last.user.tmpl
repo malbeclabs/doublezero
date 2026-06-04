@@ -147,7 +147,7 @@ no route-map RM-USER-{{$i}}-OUT
 no route-map RM-USER-{{$i}}-IN
 !
 {{- end}}
-no ip prefix-list PL-USER-500
+no ip prefix-list PL-USER-1
 !
 {{- range $i := seq (add .StartTunnel 1) .EndTunnel}}
 no ip prefix-list PL-USER-{{$i}}

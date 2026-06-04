@@ -1019,7 +1019,7 @@ async fn test_update_user_tunnel_id_with_onchain_allocation() {
         .unwrap();
     assert_eq!(user.status, UserStatus::Activated);
     let old_tunnel_id = user.tunnel_id;
-    assert!((500..=4596).contains(&old_tunnel_id));
+    assert!((1..=4096).contains(&old_tunnel_id));
 
     // Pick a new tunnel_id
     let new_tunnel_id: u16 = if old_tunnel_id == 501 { 502 } else { 501 };

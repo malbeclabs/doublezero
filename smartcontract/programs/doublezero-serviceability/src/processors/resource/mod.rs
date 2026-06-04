@@ -64,7 +64,7 @@ pub fn get_resource_extension_range(
                 device.is_some(),
                 "Associated account must be a device for DzPrefixBlock"
             );
-            ResourceExtensionRange::IdRange(500, 4596)
+            ResourceExtensionRange::IdRange(1, 4097)
         }
         ResourceType::LinkIds => ResourceExtensionRange::IdRange(0, 65535),
         ResourceType::SegmentRoutingIds => ResourceExtensionRange::IdRange(1, 65535),

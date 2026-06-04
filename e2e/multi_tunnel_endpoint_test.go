@@ -475,8 +475,8 @@ func runSimultaneousTunnelTest(t *testing.T, log *slog.Logger, dn *devnet.Devnet
 		if out, err := device.Exec(ctx, []string{"Cli", "-p", "15", "-c", "show running-config section Tunnel"}); err == nil {
 			log.Info("Device Tunnel config", "output", string(out))
 		}
-		if out, err := device.Exec(ctx, []string{"Cli", "-c", "show interfaces Tunnel500"}); err == nil {
-			log.Info("Device Tunnel500 status", "output", string(out))
+		if out, err := device.Exec(ctx, []string{"Cli", "-c", "show interfaces Tunnel1"}); err == nil {
+			log.Info("Device Tunnel1 status", "output", string(out))
 		}
 		if out, err := device.Exec(ctx, []string{"Cli", "-c", "show ip bgp summary"}); err == nil {
 			log.Info("Device BGP summary", "output", string(out))

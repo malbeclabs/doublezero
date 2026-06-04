@@ -393,12 +393,10 @@ impl Validate for User {
             return Err(DoubleZeroError::InvalidTunnelNet);
         }
         // tunnel_id must lie within the per-device TunnelIds resource extension
-        // range, which the resource module sizes as [500, 4596) — see
-        // crate::processors::resource::mod.rs. The previous cap of 1024 admitted
-        // only the first ~525 tunnels (500..=1024) per device, blocking the
-        // stress harness from exercising the device past that count even
-        // though the bitmap has 4 096 slots.
-        if self.tunnel_id >= 4596 {
+        // range, which the resource module sizes as [1, 4097) — see
+        // crate::processors::resource::mod.rs. This admits tunnel IDs 1..=4096,
+        // giving each device 4 096 allocatable slots matching the bitmap size.
+        if self.tunnel_id >= 4097 {
             msg!("tunnel_id: {}", self.tunnel_id);
             return Err(DoubleZeroError::InvalidTunnelId);
         }
@@ -746,7 +744,7 @@ mod tests {
             cyoa_type: UserCYOA::GREOverDIA,
             dz_ip: [3, 2, 4, 2].into(),
             client_ip: [1, 2, 3, 4].into(),
-            tunnel_id: 4596, // Invalid: at/above the per-device TunnelIds resource extension's upper bound
+            tunnel_id: 4097, // Invalid: at/above the per-device TunnelIds resource extension's upper bound
             tunnel_net: "169.254.0.0/25".parse().unwrap(),
             status: UserStatus::Activated,
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],

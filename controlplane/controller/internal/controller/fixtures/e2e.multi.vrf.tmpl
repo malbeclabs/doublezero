@@ -87,14 +87,14 @@ mpls ip
 mpls icmp ttl-exceeded tunneling
 mpls icmp ip source-interface Loopback255
 !
-default interface Tunnel500
-default interface Tunnel501
+default interface Tunnel1
+default interface Tunnel2
 {{- range $i := seq (add .StartTunnel 2) .EndTunnel}}
 default interface Tunnel{{$i}}
 {{- end}}
-interface Tunnel500
-   description USER-UCAST-500
-   ip access-group SEC-USER-500-IN in
+interface Tunnel1
+   description USER-UCAST-1
+   ip access-group SEC-USER-1-IN in
    vrf vrf1
    mtu 9216
    ip address 169.254.0.0/31
@@ -105,9 +105,9 @@ interface Tunnel500
    tunnel ttl 32
    no shutdown
 !
-interface Tunnel501
-   description USER-UCAST-501
-   ip access-group SEC-USER-501-IN in
+interface Tunnel2
+   description USER-UCAST-2
+   ip access-group SEC-USER-2-IN in
    vrf vrf2
    mtu 9216
    ip address 169.254.0.2/31
@@ -135,9 +135,9 @@ router bgp 65342
       neighbor 169.254.0.1 remote-as 65000
       neighbor 169.254.0.1 local-as 65342 no-prepend replace-as
       neighbor 169.254.0.1 passive
-      neighbor 169.254.0.1 description USER-500
-      neighbor 169.254.0.1 route-map RM-USER-500-IN in
-      neighbor 169.254.0.1 route-map RM-USER-500-OUT out
+      neighbor 169.254.0.1 description USER-1
+      neighbor 169.254.0.1 route-map RM-USER-1-IN in
+      neighbor 169.254.0.1 route-map RM-USER-1-OUT out
       neighbor 169.254.0.1 maximum-routes 1
       neighbor 169.254.0.1 maximum-accepted-routes 1
    vrf vrf2
@@ -149,9 +149,9 @@ router bgp 65342
       neighbor 169.254.0.3 remote-as 65000
       neighbor 169.254.0.3 local-as 65342 no-prepend replace-as
       neighbor 169.254.0.3 passive
-      neighbor 169.254.0.3 description USER-501
-      neighbor 169.254.0.3 route-map RM-USER-501-IN in
-      neighbor 169.254.0.3 route-map RM-USER-501-OUT out
+      neighbor 169.254.0.3 description USER-2
+      neighbor 169.254.0.3 route-map RM-USER-2-IN in
+      neighbor 169.254.0.3 route-map RM-USER-2-OUT out
       neighbor 169.254.0.3 maximum-routes 1
       neighbor 169.254.0.3 maximum-accepted-routes 1
 !
@@ -170,31 +170,31 @@ ip community-list COMM-ALL_USERS permit 21682:1200
 ip community-list COMM-ALL_MCAST_USERS permit 21682:1300
 ip community-list COMM-TST_USERS permit 21682:10050
 !
-no route-map RM-USER-500-OUT
-route-map RM-USER-500-OUT deny 10
+no route-map RM-USER-1-OUT
+route-map RM-USER-1-OUT deny 10
    match community COMM-TST_USERS
-route-map RM-USER-500-OUT permit 20
+route-map RM-USER-1-OUT permit 20
    match community COMM-ALL_USERS
 !
-no route-map RM-USER-501-OUT
-route-map RM-USER-501-OUT deny 10
+no route-map RM-USER-2-OUT
+route-map RM-USER-2-OUT deny 10
    match community COMM-TST_USERS
-route-map RM-USER-501-OUT permit 20
+route-map RM-USER-2-OUT permit 20
    match community COMM-ALL_USERS
 !
 {{- range $i := seq (add .StartTunnel 2) .EndTunnel}}
 no route-map RM-USER-{{$i}}-OUT
 !
 {{- end}}
-no route-map RM-USER-500-IN
-route-map RM-USER-500-IN permit 10
-   match ip address prefix-list PL-USER-500
+no route-map RM-USER-1-IN
+route-map RM-USER-1-IN permit 10
+   match ip address prefix-list PL-USER-1
    match as-path length = 1
    set community 21682:1200 21682:10050
 !
-no route-map RM-USER-501-IN
-route-map RM-USER-501-IN permit 10
-   match ip address prefix-list PL-USER-501
+no route-map RM-USER-2-IN
+route-map RM-USER-2-IN permit 10
+   match ip address prefix-list PL-USER-2
    match as-path length = 1
    set community 21682:1200 21682:10050
 !
@@ -202,18 +202,18 @@ route-map RM-USER-501-IN permit 10
 no route-map RM-USER-{{$i}}-IN
 !
 {{- end}}
-no ip prefix-list PL-USER-500
-ip prefix-list PL-USER-500 seq 10 permit 147.100.100.100/32
+no ip prefix-list PL-USER-1
+ip prefix-list PL-USER-1 seq 10 permit 147.100.100.100/32
 !
-no ip prefix-list PL-USER-501
-ip prefix-list PL-USER-501 seq 10 permit 147.100.100.101/32
+no ip prefix-list PL-USER-2
+ip prefix-list PL-USER-2 seq 10 permit 147.100.100.101/32
 !
 {{- range $i := seq (add .StartTunnel 2) .EndTunnel}}
 no ip prefix-list PL-USER-{{$i}}
 !
 {{- end}}
-no ip access-list SEC-USER-500-IN
-ip access-list SEC-USER-500-IN
+no ip access-list SEC-USER-1-IN
+ip access-list SEC-USER-1-IN
    counters per-entry
    !ICMP
    permit icmp 169.254.0.1/32 any
@@ -227,8 +227,8 @@ ip access-list SEC-USER-500-IN
    permit ip 147.100.100.100/32 any
    deny ip any any
 !
-no ip access-list SEC-USER-501-IN
-ip access-list SEC-USER-501-IN
+no ip access-list SEC-USER-2-IN
+ip access-list SEC-USER-2-IN
    counters per-entry
    !ICMP
    permit icmp 169.254.0.3/32 any

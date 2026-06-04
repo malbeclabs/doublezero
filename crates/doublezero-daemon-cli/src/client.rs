@@ -179,7 +179,7 @@ pub struct V2ServiceStatus {
     pub multicast_groups: MulticastGroups,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct V2StatusResponse {
     pub reconciler_enabled: bool,
     #[serde(default)]

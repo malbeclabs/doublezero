@@ -279,9 +279,9 @@ async fn main() -> eyre::Result<()> {
     // Skip version check for verbs that should always work even if the program is unavailable.
     let skip_version_check = matches!(
         &command,
-        Command::Status(_)
-            | Command::Daemon(DaemonCommand::Enable(_) | DaemonCommand::Disable(_))
-            | Command::Completion(_)
+        Command::Daemon(
+            DaemonCommand::Enable(_) | DaemonCommand::Disable(_) | DaemonCommand::Status(_)
+        ) | Command::Completion(_)
             | Command::Serviceability(
                 ServiceabilityCommand::Address(_)
                     | ServiceabilityCommand::Balance(_)
@@ -312,7 +312,6 @@ async fn main() -> eyre::Result<()> {
             cmd.execute(&ctx, &daemon, &ledger, &mut handle).await
         }
 
-        Command::Status(args) => args.execute(&client).await,
         Command::Disconnect(args) => args.execute(&client).await,
         Command::Latency(args) => args.execute(&client).await,
         Command::Routes(args) => args.execute(&client).await,

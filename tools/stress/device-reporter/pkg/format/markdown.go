@@ -135,6 +135,11 @@ func Summary(w io.Writer, s analyze.Summary, r *parser.Run) {
 		writeFit(bw, "bytes", s.CommitVsBytes, time.Microsecond, "µs/byte")
 		writeFit(bw, "lines", s.CommitVsLines, time.Microsecond, "µs/line")
 		bw.printf("\n")
+
+		bw.printf("### Diff-check duration vs config size\n\n")
+		writeFit(bw, "bytes", s.DiffCheckVsBytes, time.Microsecond, "µs/byte")
+		writeFit(bw, "lines", s.DiffCheckVsLines, time.Microsecond, "µs/line")
+		bw.printf("\n")
 	}
 
 	if len(s.AgentErrorTopK) > 0 {

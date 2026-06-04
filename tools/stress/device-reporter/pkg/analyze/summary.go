@@ -54,6 +54,14 @@ type Summary struct {
 	CommitVsBytes LinearFit
 	CommitVsLines LinearFit
 
+	// DiffCheckVsBytes / DiffCheckVsLines fit the per-cycle diff-check
+	// time (`Received N bytes` → `Committing config session`) against
+	// the received-config size. Diff-check tends to dominate the
+	// per-cycle wall time at scale, so the slope here is more
+	// load-bearing than the commit-vs-size fits.
+	DiffCheckVsBytes LinearFit
+	DiffCheckVsLines LinearFit
+
 	// AgentErrorTopK is up to k=8 most common CLI failure patterns
 	// (command-text with tunnel numbers normalized).
 	AgentErrorTopK []AgentErrorBucket
@@ -201,6 +209,7 @@ func BuildSummary(r *parser.Run) Summary {
 	s.OnchainLatencies = onchainLatencies(r.Events)
 	s.AgentCommitStats = agentCommitStats(r.Cycles)
 	s.CommitVsBytes, s.CommitVsLines = commitVsSizeFits(r.Cycles)
+	s.DiffCheckVsBytes, s.DiffCheckVsLines = diffCheckVsSizeFits(r.Cycles)
 	s.AgentErrorTopK = topAgentErrors(r.CliErrors, 8)
 	s.CommitCycles = commitCycles(r.Cycles, r.Events)
 	s.OnchainToOnDeviceFit = onchainToOnDeviceFit(r.Events)
@@ -383,6 +392,35 @@ func commitVsSizeFits(cycles []parser.AgentCycle) (LinearFit, LinearFit) {
 		bx = append(bx, float64(c.ReceivedBytes))
 		lx = append(lx, float64(c.ReceivedLines))
 		y = append(y, float64(d))
+	}
+	return LinearLeastSquares(bx, y), LinearLeastSquares(lx, y)
+}
+
+// diffCheckVsSizeFits returns (vs-bytes, vs-lines) linear fits of the
+// agent's diff-check time against the received-config size. Same
+// inclusion rule as commitVsSizeFits — only successful commits with a
+// paired Received line and a positive diff-check gap contribute, so
+// agent restarts mid-cycle (zero ReceivedAt) and pure-noop polls don't
+// distort the slope.
+func diffCheckVsSizeFits(cycles []parser.AgentCycle) (LinearFit, LinearFit) {
+	var bx, lx, y []float64
+	for _, c := range cycles {
+		if c.Outcome != "commit" {
+			continue
+		}
+		if c.ReceivedAt.IsZero() || c.CommitStartedAt.IsZero() {
+			continue
+		}
+		gap := c.CommitStartedAt.Sub(c.ReceivedAt)
+		if gap <= 0 {
+			continue
+		}
+		if c.ReceivedBytes == 0 && c.ReceivedLines == 0 {
+			continue
+		}
+		bx = append(bx, float64(c.ReceivedBytes))
+		lx = append(lx, float64(c.ReceivedLines))
+		y = append(y, float64(gap))
 	}
 	return LinearLeastSquares(bx, y), LinearLeastSquares(lx, y)
 }

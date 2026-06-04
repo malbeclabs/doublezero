@@ -272,12 +272,23 @@ func Run(ctx context.Context, cfg Config) error {
 	depErr := deprovision(context.WithoutCancel(ctx), &cfg, created)
 
 	// Give the agent a chance to finish applying the deprovision config to
-	// EOS before we kill its SSH session. Skip on any error path: if the
-	// run is already failing we want a fast shutdown, not 5 minutes of
-	// extra wait. ctx (the caller's signal-aware context) cuts the wait
-	// short on Ctrl-C / abort-file even on the success path.
-	if err == nil && depErr == nil && agentErr == nil {
-		waitForAgentQuiescence(ctx, &cfg, tracker)
+	// EOS before we kill its SSH session. We wait whenever deprovision
+	// completed cleanly (`depErr == nil`) and the agent stream is healthy
+	// (`agentErr == nil`) — including the abort path, where ctx was
+	// cancelled by the observer's sentinel. The intent of the abort
+	// triggers is "something off-device looks bad, tear down the run";
+	// it isn't "kill the agent mid-commit". On the success path ctx is
+	// not cancelled and the wait listens on it for Ctrl-C; on the abort
+	// path ctx is already done, so we pass a derived context that
+	// ignores cancellation. The hard `AgentQuiescenceTimeout` (default
+	// 300s) caps the wait either way, and a user who really wants out
+	// can re-Ctrl-C to kill the orchestrator process.
+	if depErr == nil && agentErr == nil {
+		waitCtx := ctx
+		if ctx.Err() != nil {
+			waitCtx = context.WithoutCancel(ctx)
+		}
+		waitForAgentQuiescence(waitCtx, &cfg, tracker)
 	}
 
 	// Tell the agent to stop and wait for the consumer goroutine to drain so

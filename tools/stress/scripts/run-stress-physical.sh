@@ -331,9 +331,20 @@ cleanup_controller() {
 }
 trap cleanup_controller EXIT
 
+# By default we `go run` the controller from the current checkout so the
+# operator iterates without a separate build step. Set CONTROLLER_BINARY
+# to a prebuilt path (e.g. from another branch's worktree) to swap in an
+# alternate controller for an experiment.
+if [ -n "${CONTROLLER_BINARY:-}" ]; then
+    [ -x "$CONTROLLER_BINARY" ] || die "CONTROLLER_BINARY is not executable: $CONTROLLER_BINARY"
+    log "controller binary (override): $CONTROLLER_BINARY"
+    CONTROLLER_CMD=("$CONTROLLER_BINARY")
+else
+    CONTROLLER_CMD=(go run ./controlplane/controller/cmd/controller)
+fi
 (
     cd "$WORKSPACE_DIR"
-    nohup go run ./controlplane/controller/cmd/controller start \
+    nohup "${CONTROLLER_CMD[@]}" start \
         --program-id "$DZ_PROGRAM_ID" \
         --solana-rpc-endpoint "$DZ_RPC_URL" \
         --device-local-asn 65000 \
@@ -344,11 +355,12 @@ trap cleanup_controller EXIT
         > "$CONTROLLER_LOG" 2>&1 &
     echo $! > "$CONTROLLER_PID_FILE"
 )
-# Provisionally tracks the `go run` parent PID. `go run` compiles a temp
-# binary then exec's it as a child process; the actual port listener is
-# the child. We overwrite this once the port is up.
+# Provisionally tracks the controller's parent PID. With `go run` this is
+# the `go` wrapper which exec's the compiled binary as a child; with a
+# prebuilt binary it is the listener itself. We overwrite once the port
+# is up so the recorded pid always points at the actual listener.
 CONTROLLER_PARENT_PID="$(cat "$CONTROLLER_PID_FILE")"
-log "controller (go run) pid: $CONTROLLER_PARENT_PID (log: $CONTROLLER_LOG)"
+log "controller parent pid: $CONTROLLER_PARENT_PID (log: $CONTROLLER_LOG)"
 
 # Wait for the controller's listen port to accept connections (gRPC handshake).
 # The cleanup trap stays armed through every following phase (access-pass

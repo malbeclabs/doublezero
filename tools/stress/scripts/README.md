@@ -127,25 +127,27 @@ SDK checks or the agent will run but fail to apply config:
    doublezero-agent ./controlplane/agent/cmd/agent` on a host with the
    repo checked out.
 
-3. **EOS SDK RPC agent (`eapilocal`)** running in the management VRF —
-   the agent dials its local SDK at `127.0.0.1:9543`. cEOS provides
-   this implicitly via `management api eos-sdk-rpc / transport grpc
-   foo / localhost loopback`; physical EOS requires an explicit
-   `daemon eapilocal` block plus a VRF qualifier on the transport:
+3. **EOS native gNMI provider** running in the management VRF — the
+   doublezero-agent always dials its local EOS API at
+   `127.0.0.1:9543` (see `controlplane/agent/cmd/agent/main.go`, the
+   `--device` default). On real Arista EOS, the `provider eos-native`
+   knob inside the gNMI block exposes that listener (cEOS containers
+   ship with it on by default; real hardware does not). Tested
+   stanza — substitute the device's own management IP for
+   `listen-addresses`:
    ```
-   daemon eapilocal
-      exec /usr/bin/EosSdkRpcAgent --daemon-name eapilocal
-      no shutdown
-   !
-   management api eos-sdk-rpc
-      transport grpc eapilocal
-         localhost loopback vrf management
-         service all
-         no disabled
-   !
+   management api gnmi
+      transport grpc default
+         port 57400
+         vrf management
+         listen-addresses 10.0.0.X
+      provider eos-native
    ```
-   Verify with `show management api eos-sdk-rpc` — `Server: running`,
-   `Listening on: ... port: 9543, VRF: management`.
+   Verify the agent's target is reachable: `bash sudo ip netns exec
+   ns-management ss -ltn | grep 9543` from the device should show a
+   LISTEN entry. If the run aborts with `apply_config_errors` and the
+   agent log shows `dial tcp 127.0.0.1:9543: connect: connection
+   refused`, this stanza is missing or misconfigured.
 
 4. **eAPI HTTP-commands enabled.** The device-observer scrapes `show
    gre tunnel static`, `show processes top once`, etc. via eAPI. Make

@@ -179,7 +179,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             tenant_pk: tenant_pubkey,
             multicast_ip: [239, 0, 0, 1].into(),
-            max_bandwidth: 1000000000,
+            max_bandwidth: 1_000_000_000,
             status: doublezero_sdk::MulticastGroupStatus::Activated,
             code: "mcast-test".to_string(),
             publisher_count: 1,

@@ -239,7 +239,7 @@ mod tests {
             code: "testgroup".to_string(),
             tenant_pk: Pubkey::new_unique(),
             multicast_ip: [239, 0, 0, 1].into(),
-            max_bandwidth: 1000000000,
+            max_bandwidth: 1_000_000_000,
             status: MulticastGroupStatus::Activated,
             owner: mgroup_pubkey,
             publisher_count: 1,

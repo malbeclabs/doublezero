@@ -29,7 +29,7 @@ mod test_helpers;
 
 use test_helpers::*;
 
-const EXPECTED_LAMPORTS_FOR_ACCOUNT_CREATION: u64 = 2749200;
+const EXPECTED_LAMPORTS_FOR_ACCOUNT_CREATION: u64 = 2_749_200;
 
 #[tokio::test]
 async fn test_initialize_internet_latency_samples_success_active_exchanges() {

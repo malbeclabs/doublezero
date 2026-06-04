@@ -92,11 +92,11 @@ impl Validate for GlobalConfig {
             msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
-        if self.local_asn == 0 || self.local_asn > 4294967294 {
+        if self.local_asn == 0 || self.local_asn > 4_294_967_294 {
             msg!("Invalid local ASN: {}", self.local_asn);
             return Err(DoubleZeroError::InvalidLocalAsn);
         }
-        if self.remote_asn == 0 || self.remote_asn > 4294967294 {
+        if self.remote_asn == 0 || self.remote_asn > 4_294_967_294 {
             msg!("Invalid remote ASN: {}", self.remote_asn);
             return Err(DoubleZeroError::InvalidRemoteAsn);
         }
@@ -218,7 +218,7 @@ mod tests {
         assert_eq!(err_zero.unwrap_err(), DoubleZeroError::InvalidLocalAsn);
 
         let val_high = GlobalConfig {
-            local_asn: 4294967295, // Invalid
+            local_asn: 4_294_967_295, // Invalid
             ..val_zero
         };
         let err_high = val_high.validate();
@@ -245,7 +245,7 @@ mod tests {
         assert_eq!(err_zero.unwrap_err(), DoubleZeroError::InvalidRemoteAsn);
 
         let val_high = GlobalConfig {
-            remote_asn: 4294967295, // Invalid
+            remote_asn: 4_294_967_295, // Invalid
             ..val_zero
         };
         let err_high = val_high.validate();

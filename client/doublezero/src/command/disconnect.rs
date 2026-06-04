@@ -286,7 +286,7 @@ mod tests {
         StatusResponse {
             doublezero_status: DoubleZeroStatus {
                 session_status: "established".to_string(),
-                last_session_update: Some(1234567890),
+                last_session_update: Some(1_234_567_890),
             },
             tunnel_name: Some("doublezero1".to_string()),
             tunnel_src: Some("1.2.3.4".to_string()),

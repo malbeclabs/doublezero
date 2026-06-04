@@ -742,6 +742,82 @@ func TestRun_WaitsForAgentQuiescenceAfterDeprovision(t *testing.T) {
 		"Run returned %v after gate release; expected ≥ %v (quiet window)", elapsed, quietWindow/2)
 }
 
+// TestRun_QuiescenceBlocksOnPendingCommit proves the wait does NOT
+// declare quiescence while the agent has a config received but not
+// yet committed. Without this, the wait could time out mid-diff-check
+// (which can run >30s at >1MB configs) and the orchestrator would
+// cancel the SSH session while the agent was still applying the
+// deprovision config.
+func TestRun_QuiescenceBlocksOnPendingCommit(t *testing.T) {
+	t.Parallel()
+
+	owner := solana.NewWallet().PublicKey()
+	exec := newFakeExecutor(owner)
+	// Block deprovision so we can emit a ConfigReceived during teardown
+	// and observe whether the wait honors the pending-commit flag.
+	gate := make(chan struct{})
+	exec.deleteGate = gate
+
+	ag := newScriptedAgent()
+
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	w, err := runlog.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	const quietWindow = 100 * time.Millisecond
+	cfg := sweep.Config{
+		RunID:                  "run-pending-commit",
+		Target:                 1,
+		UsersPerBatch:          1,
+		Hold:                   0,
+		AgentQuietWindow:       quietWindow,
+		AgentQuiescenceTimeout: 2 * time.Second,
+		OwnerFilter:            owner,
+		Executor:               exec,
+		Agent:                  ag,
+		Runlog:                 w,
+		Clock:                  sweep.RealClock{},
+	}
+	done := make(chan error, 1)
+	go func() { done <- sweep.Run(context.Background(), cfg) }()
+
+	deadline := time.Now().Add(time.Second)
+	for exec.deleteN.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("sweep did not reach deprovision within 1s")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// Emit a ConfigReceived to set the pending-commit flag, then go
+	// silent. The wait MUST NOT declare quiescence until the matching
+	// EventCommit lands — even after multiple quietWindow durations
+	// have elapsed.
+	ag.Emit(agent.Event{Kind: agent.EventConfigReceived, TunnelID: 0, At: time.Now()})
+
+	close(gate)
+
+	// Stay quiet for several quiet windows; the wait must still be
+	// blocked because the pending-commit flag is sticky.
+	time.Sleep(5 * quietWindow)
+	select {
+	case <-done:
+		t.Fatal("Run returned while a config was pending commit — quiescence wait should block")
+	default:
+	}
+
+	// Emit the matching commit; only now should the wait complete.
+	ag.Emit(agent.Event{Kind: agent.EventCommit, TunnelID: 0, At: time.Now()})
+
+	select {
+	case runErr := <-done:
+		require.NoError(t, runErr)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return within 2s of EventCommit clearing the pending flag")
+	}
+}
+
 // TestRun_SkipsQuiescenceWaitWhenNoAppliedObserved confirms the wait is a
 // no-op when the agent never emitted an Applied — common in --no-agent runs
 // and on early-failure paths where teardown shouldn't pay the wait cost.

@@ -144,24 +144,39 @@ func (c *Config) applyDefaults() {
 }
 
 // quiescenceTracker records the wall-clock time of the most recent observed
-// post-commit agent event (EventApplied or EventCommit). The orchestrator
-// polls it after deprovision returns to wait for the agent to finish
-// converging EOS to the new (post-deprovision) config before cancelling the
-// SSH session.
+// post-commit agent event AND whether the agent is currently mid-cycle
+// (a config has been received but not yet committed or aborted). The
+// orchestrator polls it after deprovision returns to wait for the agent
+// to finish converging EOS to the new (post-deprovision) config before
+// cancelling the SSH session.
 //
-// Both signals are post-commit: EventApplied fires per pending tunnel after
-// a successful commit-finalize; EventCommit fires once per successful
-// commit-finalize regardless of which tunnels (if any) changed. We need
-// both because deprovision diffs produce zero EventApplieds (the parser
-// only tracks `+ interface Tunnel<ID>` lines), so without EventCommit the
-// tracker would see the agent as silent through the entire deprovision
-// phase.
+// Why both: post-commit signals (EventApplied / EventCommit) alone are
+// insufficient because the agent goes silent during the diff-check
+// window between EventConfigReceived and the next EventCommit. At >1 MB
+// configs that window can exceed 30s — past the default 15s quiet
+// window — so the tracker would falsely declare quiescence mid-cycle
+// and the orchestrator would kill the SSH session before the
+// deprovision config was committed to EOS. The pending-commit flag
+// closes that gap: while it's true the wait blocks regardless of how
+// long the agent has been silent.
 type quiescenceTracker struct {
 	lastEventNanos atomic.Int64
+	// pendingCommit is true between an EventConfigReceived and the
+	// next terminal cycle event (EventCommit, EventApplied, or — as
+	// far as the tracker is concerned — a brand-new
+	// EventConfigReceived, which implies the previous cycle finished
+	// without an explicit commit).
+	pendingCommit atomic.Bool
 }
 
-func (q *quiescenceTracker) markEvent(at time.Time) {
+// markEvent records an agent activity beat that resets the silence
+// timer. pending is true for events that *start* a new
+// commit cycle (EventConfigReceived) and false for events that close
+// it (EventCommit / EventApplied). The tracker uses pendingCommit to
+// decide whether quiescence is safe — see HasPendingCommit.
+func (q *quiescenceTracker) markEvent(at time.Time, pending bool) {
 	q.lastEventNanos.Store(at.UnixNano())
+	q.pendingCommit.Store(pending)
 }
 
 func (q *quiescenceTracker) lastEvent() (time.Time, bool) {
@@ -170,6 +185,13 @@ func (q *quiescenceTracker) lastEvent() (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return time.Unix(0, n), true
+}
+
+// HasPendingCommit reports whether the agent has received a config it
+// hasn't yet committed. While true the quiescence wait must block,
+// regardless of how long the agent has been silent.
+func (q *quiescenceTracker) HasPendingCommit() bool {
+	return q.pendingCommit.Load()
 }
 
 // createdUser tracks an orchestrator-owned user so the deprovision phase can
@@ -321,15 +343,19 @@ func Run(ctx context.Context, cfg Config) error {
 // is doing work" for the purpose of timing the SSH cancel.
 func consumeAgentEvents(cfg *Config, registry *tunnelRegistry, tracker *quiescenceTracker) {
 	for ev := range cfg.Agent.Events() {
-		// All three "agent is doing work" signals reset quiescence:
-		// EventConfigReceived covers the multi-second diff-check window
-		// between a config arrival and the next commit (which can run
-		// tens of seconds at >1 MB configs); EventCommit covers the
-		// commit itself (including pure-removal diffs that emit no
-		// Applieds); EventApplied is per-tunnel and the most specific
-		// signal but unnecessary on its own.
-		if ev.Kind == agent.EventApplied || ev.Kind == agent.EventCommit || ev.Kind == agent.EventConfigReceived {
-			tracker.markEvent(cfg.Clock.Now())
+		// All three "agent is doing work" signals reset the silence
+		// timer; only EventConfigReceived sets the pending-commit flag.
+		// EventCommit and EventApplied are terminal — receiving them
+		// means the commit cycle finished, so they clear pending.
+		// EventApplied is per-tunnel and redundant with EventCommit
+		// for tracker purposes, but feeding it through keeps the
+		// silence timer accurate even when a commit's per-tunnel
+		// Applieds arrive out-of-order with the Commit signal.
+		switch ev.Kind {
+		case agent.EventConfigReceived:
+			tracker.markEvent(cfg.Clock.Now(), true)
+		case agent.EventCommit, agent.EventApplied:
+			tracker.markEvent(cfg.Clock.Now(), false)
 		}
 		if ev.Kind == agent.EventCommit || ev.Kind == agent.EventConfigReceived {
 			// Pure activity signals — no per-tunnel runlog row to emit.
@@ -407,7 +433,15 @@ func waitForAgentQuiescence(ctx context.Context, cfg *Config, tracker *quiescenc
 		last, _ = tracker.lastEvent()
 		sinceLast := now.Sub(last)
 		elapsed := now.Sub(start)
-		if elapsed >= cfg.AgentQuietWindow && sinceLast >= cfg.AgentQuietWindow {
+		// Quiescence requires: silent for AgentQuietWindow AND wait
+		// has been running at least AgentQuietWindow AND no commit
+		// cycle is mid-flight (config received, not yet committed).
+		// The last predicate prevents declaring quiescence during a
+		// long diff-check window — the agent goes silent between
+		// `Received N bytes` and the subsequent `Committing config
+		// session` log line for the duration of the diff compute,
+		// which at >1 MB configs can exceed AgentQuietWindow.
+		if elapsed >= cfg.AgentQuietWindow && sinceLast >= cfg.AgentQuietWindow && !tracker.HasPendingCommit() {
 			cfg.Logger.Info("sweep: agent quiesced",
 				"quiet_for", sinceLast,
 				"wait_elapsed", elapsed)

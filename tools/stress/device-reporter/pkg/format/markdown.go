@@ -101,17 +101,20 @@ func Summary(w io.Writer, s analyze.Summary, r *parser.Run) {
 		// the cycle list is empty already).
 		if len(s.CommitCycles) > 0 {
 			bw.printf("### Per-cycle wall time\n\n")
-			bw.printf("| Cycle | Users | Lines | Bytes | Commit time | p50 onchain→on-device | Max |\n")
-			bw.printf("|---:|---:|---:|---:|---:|---:|---:|\n")
+			bw.printf("| Cycle | Users (cycle) | Users (cumulative) | Lines | Bytes | Commit time | p50 onchain→on-device | Max |\n")
+			bw.printf("|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+			cumulative := 0
 			for i, c := range s.CommitCycles {
+				cumulative += c.UsersCommitted
 				p50, maxv := "—", "—"
 				if c.OnchainToOnDeviceMax > 0 {
 					p50 = fmtDur(c.OnchainToOnDeviceP50)
 					maxv = fmtDur(c.OnchainToOnDeviceMax)
 				}
-				bw.printf("| %d | %s | %s | %s | %s | %s | %s |\n",
+				bw.printf("| %d | %s | %s | %s | %s | %s | %s | %s |\n",
 					i+1,
 					fmtInt(c.UsersCommitted),
+					fmtInt(cumulative),
 					fmtInt(c.ReceivedLines),
 					fmtInt(c.ReceivedBytes),
 					fmtDur(c.CommitDuration),

@@ -63,7 +63,7 @@ func TestTickWritesAllFiles(t *testing.T) {
 	runner := &fakeRunner{
 		jsonResp: map[string]json.RawMessage{
 			"show hardware capacity":  json.RawMessage(`{"capacity":1}`),
-			"show gre tunnel static":  json.RawMessage(`{"tunnels":[]}`),
+			"show ip interface brief": json.RawMessage(`{"interfaces":{}}`),
 			"show processes top once": json.RawMessage(`{"processes":[]}`),
 		},
 		textResp: map[string]string{
@@ -90,7 +90,7 @@ func TestTickWritesAllFiles(t *testing.T) {
 
 	expect := map[string]string{
 		"show-hardware-capacity":  `{"capacity":1}`,
-		"show-gre-tunnel-static":  `{"tunnels":[]}`,
+		"show-ip-interface-brief": `{"interfaces":{}}`,
 		"show-processes-top-once": `{"processes":[]}`,
 		"show-logging-errors":     "errlog\n",
 		"show-logging-critical":   "critlog\n",
@@ -118,7 +118,7 @@ func TestSingleCommandFailureContinues(t *testing.T) {
 	dir := t.TempDir()
 	runner := &fakeRunner{
 		errs: map[string]error{
-			"show gre tunnel static": errors.New("boom"),
+			"show ip interface brief": errors.New("boom"),
 		},
 	}
 	frozen := time.Date(2026, 5, 29, 12, 34, 56, 0, time.UTC)
@@ -134,7 +134,7 @@ func TestSingleCommandFailureContinues(t *testing.T) {
 		t.Fatalf("expected 4 files after one failure, got %d", len(entries))
 	}
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "show-gre-tunnel-static") {
+		if strings.HasPrefix(e.Name(), "show-ip-interface-brief") {
 			t.Errorf("failing command should not have produced a file, got %s", e.Name())
 		}
 	}
@@ -290,10 +290,16 @@ type runnable interface {
 
 var _ runnable = (*Sampler)(nil)
 
-// TestParseTunnelCount covers the three shapes the parser must handle:
-// a populated greTunnels map, an empty map (healthy device with no users),
-// and a missing/malformed response (must signal ok=false so the decider
-// suppresses the device_tunnel_gap trigger).
+// TestParseTunnelCount covers the shapes the parser must handle for
+// `show ip interface brief | json`:
+//
+//   - a populated interfaces map containing user tunnels and noise
+//     (Loopback / Ethernet / Management / sub-500 routing-fabric Tunnels);
+//   - a map with only noise (zero user tunnels, but the response is valid);
+//   - an empty map (healthy device with no L3 interfaces — unlikely in
+//     practice but should not be classified as "unknown");
+//   - a missing or malformed response (must signal ok=false so the
+//     decider suppresses the device_tunnel_gap trigger).
 func TestParseTunnelCount(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -302,19 +308,38 @@ func TestParseTunnelCount(t *testing.T) {
 		wantOK bool
 	}{
 		{
-			name:   "populated map",
-			body:   `{"greTunnels":{"500":{"name":"Tunnel500"},"501":{"name":"Tunnel501"},"502":{"name":"Tunnel502"}}}`,
+			name: "populated map filters to user tunnels only",
+			body: `{"interfaces":{
+				"Loopback255":{"name":"Loopback255"},
+				"Loopback256":{"name":"Loopback256"},
+				"Ethernet1":{"name":"Ethernet1"},
+				"Management0":{"name":"Management0"},
+				"Tunnel19":{"name":"Tunnel19"},
+				"Tunnel500":{"name":"Tunnel500"},
+				"Tunnel501":{"name":"Tunnel501"},
+				"Tunnel502":{"name":"Tunnel502"}
+			}}`,
 			wantN:  3,
 			wantOK: true,
 		},
 		{
-			name:   "empty map",
-			body:   `{"greTunnels":{}}`,
+			name: "only routing-fabric tunnels present (no user tunnels)",
+			body: `{"interfaces":{
+				"Tunnel19":{"name":"Tunnel19"},
+				"Tunnel59":{"name":"Tunnel59"},
+				"Tunnel91":{"name":"Tunnel91"}
+			}}`,
 			wantN:  0,
 			wantOK: true,
 		},
 		{
-			name:   "missing greTunnels key",
+			name:   "empty interfaces map",
+			body:   `{"interfaces":{}}`,
+			wantN:  0,
+			wantOK: true,
+		},
+		{
+			name:   "missing interfaces key",
 			body:   `{}`,
 			wantN:  0,
 			wantOK: false,

@@ -10,10 +10,21 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+// userTunnelMinID is the lowest interface index treated as a "user
+// tunnel" when counting interfaces from `show ip interface brief`. The
+// stress harness's user tunnels start at Tunnel500 (the controller's
+// rendered config begins its per-user GRE block at this index); lower
+// Tunnel indices on the device — typically Tunnel1..Tunnel127 used for
+// inter-router routing fabric on physical EOS — are explicitly excluded
+// so the device_tunnel_gap sentinel compares apples to apples against
+// the orchestrator's active-user count.
+const userTunnelMinID = 500
 
 type eapiRunner interface {
 	RunShowJSON(cmd string) (json.RawMessage, error)
@@ -27,7 +38,7 @@ type commandSpec struct {
 
 var commands = []commandSpec{
 	{"show hardware capacity", "show-hardware-capacity", true},
-	{"show gre tunnel static", "show-gre-tunnel-static", true},
+	{"show ip interface brief", "show-ip-interface-brief", true},
 	{"show processes top once", "show-processes-top-once", true},
 	{"show logging errors", "show-logging-errors", false},
 	{"show logging critical", "show-logging-critical", false},
@@ -61,12 +72,20 @@ func (s *Sampler) LatestCPUPercent() (float64, bool) {
 }
 
 // LatestTunnelCount returns the most recently observed number of user
-// tunnels on the device (`show gre tunnel static`'s greTunnels map
-// length). Returns (0, false) before the first successful parse. The
-// abort decider uses this to detect when the orchestrator's expected
+// tunnel interfaces on the device — i.e. interfaces named TunnelN
+// with N >= userTunnelMinID, parsed from `show ip interface brief`.
+// Returns (0, false) before the first successful parse. The abort
+// decider uses this to detect when the orchestrator's expected
 // active-user count diverges from what the agent has actually applied —
 // e.g. when the controller's per-device tunnel-slot cap silently
 // truncates the rendered device config.
+//
+// An earlier version of this used `show gre tunnel static`, but that
+// command only lists statically-configured GRE-keyed tunnels (the
+// device's inter-router fabric, ~3 entries on physical EOS) — user
+// tunnels are interface-mode GRE without a static next-hop and don't
+// show up there. The result was a sentinel that always read zero on
+// any device that did its tunnel via interface-mode GRE.
 func (s *Sampler) LatestTunnelCount() (int, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -128,13 +147,13 @@ func (s *Sampler) runOne(c commandSpec, ts time.Time) error {
 				s.logger.Warn("could not parse CPU from show processes top once")
 			}
 		}
-		if c.cmd == "show gre tunnel static" {
+		if c.cmd == "show ip interface brief" {
 			if n, ok := parseTunnelCount(raw); ok {
 				s.mu.Lock()
 				s.latestTunnelCount, s.tunnelCountValid = n, true
 				s.mu.Unlock()
 			} else {
-				s.logger.Warn("could not parse tunnel count from show gre tunnel static")
+				s.logger.Warn("could not parse tunnel count from show ip interface brief")
 			}
 		}
 	} else {
@@ -183,23 +202,52 @@ func parseCPUPercent(raw json.RawMessage) (float64, bool) {
 	return total, true
 }
 
-// parseTunnelCount returns the number of entries in the `greTunnels` map
-// of the `show gre tunnel static | json` eAPI response, shaped as
-// `{"greTunnels": {"<idx>": {…}, …}}`. Returns (0, true) on an empty map
-// — a healthy device with no user tunnels — and (0, false) only when
-// `greTunnels` is missing entirely or the response is malformed, so the
-// abort decider can distinguish "zero confirmed" from "unknown".
+// parseTunnelCount returns the number of user-tunnel interfaces in the
+// `show ip interface brief | json` eAPI response, shaped as
+// `{"interfaces": {"<name>": {…}, …}}`. An interface is a user tunnel
+// when its name matches `Tunnel<N>` and N >= userTunnelMinID; lower
+// indices and other interface types (Loopback, Ethernet, Management)
+// are ignored.
+//
+// Returns (0, true) on an empty interfaces map and (N, true) on a
+// populated one — including when N=0 because the only Tunnel interfaces
+// present have low indices (the inter-router fabric). Returns (0, false)
+// only when the `interfaces` key is missing entirely or the JSON is
+// malformed, so the abort decider can tell "zero confirmed" apart from
+// "unknown" and suppress the sentinel in the latter case.
 func parseTunnelCount(raw json.RawMessage) (int, bool) {
 	var env struct {
-		GreTunnels map[string]json.RawMessage `json:"greTunnels"`
+		Interfaces map[string]json.RawMessage `json:"interfaces"`
 	}
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return 0, false
 	}
-	if env.GreTunnels == nil {
+	if env.Interfaces == nil {
 		return 0, false
 	}
-	return len(env.GreTunnels), true
+	count := 0
+	for name := range env.Interfaces {
+		idx, ok := userTunnelIndex(name)
+		if !ok || idx < userTunnelMinID {
+			continue
+		}
+		count++
+	}
+	return count, true
+}
+
+// userTunnelIndex parses "Tunnel<N>" and returns N. Returns (0, false)
+// for any other interface name.
+func userTunnelIndex(name string) (int, bool) {
+	const prefix = "Tunnel"
+	if !strings.HasPrefix(name, prefix) {
+		return 0, false
+	}
+	idx, err := strconv.Atoi(name[len(prefix):])
+	if err != nil {
+		return 0, false
+	}
+	return idx, true
 }
 
 // fileTimestamp renders t as ISO 8601 UTC with `:` → `-` for filesystem

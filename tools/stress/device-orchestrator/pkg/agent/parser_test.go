@@ -177,6 +177,29 @@ func TestParser_UnrelatedLinesIgnored(t *testing.T) {
 	}
 }
 
+// TestParser_ReceivedBytesEmitsConfigReceived covers the activity-signal
+// shim the orchestrator's quiescence tracker uses to keep itself awake
+// during the multi-second diff-check window that follows a fresh config
+// pull. Without this, the agent can be silent for tens of seconds while
+// analyzing a >1 MB deprovision diff and the tracker will mistake the
+// silence for "agent quiesced" and tear down the SSH session.
+func TestParser_ReceivedBytesEmitsConfigReceived(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(1_700_000_000, 0)
+	p := agent.NewParser(agent.WithClock(fixedClock(now)))
+
+	// The "lines" sibling should not produce an event (we anchor on
+	// "bytes" so exactly one EventConfigReceived fires per poll cycle).
+	assert.Empty(t, p.Parse(`2026/06/04 22:00:00.000000 eapi.go:217: Received 51553 lines of configuration from controller`))
+
+	events := p.Parse(`2026/06/04 22:00:00.000010 eapi.go:218: Received 1622130 bytes of configuration from controller`)
+	require.Len(t, events, 1)
+	assert.Equal(t, agent.EventConfigReceived, events[0].Kind)
+	assert.Equal(t, uint16(0), events[0].TunnelID)
+	assert.Equal(t, now, events[0].At)
+}
+
 func TestParser_RejectsOversizedTunnelID(t *testing.T) {
 	t.Parallel()
 

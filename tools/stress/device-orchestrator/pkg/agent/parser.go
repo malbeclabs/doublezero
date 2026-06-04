@@ -71,6 +71,15 @@ func WithClock(now func() time.Time) ParserOption {
 // The returned slice is freshly allocated per call and safe for the caller to
 // retain.
 func (p *Parser) Parse(line string) []Event {
+	// Receipt of a fresh config from the controller is an activity
+	// signal. We match the "bytes" line specifically (the agent emits
+	// both "lines" and "bytes" back-to-back per poll; one signal per
+	// cycle is enough) and emit an EventConfigReceived so the
+	// quiescence tracker doesn't time us out during the diff-check
+	// window that follows.
+	if configReceivedRE.MatchString(line) {
+		return []Event{{Kind: EventConfigReceived, TunnelID: 0, At: p.now()}}
+	}
 	if m := committingRE.FindStringSubmatch(line); m != nil {
 		// Open the diff block and scan the inline remainder of the marker line.
 		// cEOS appends the first diff line after the colon; real EOS appends
@@ -202,6 +211,12 @@ var (
 	// Go's log package prefixes a timestamp to the marker line, and the rest of
 	// the multi-line diff arrives on subsequent lines (handled via inDiff).
 	committingRE = regexp.MustCompile(`Committing config session due to diffs detected:\s*(.*)$`)
+
+	// configReceivedRE matches the "Received N bytes of configuration"
+	// agent log line. The agent emits both a "lines" and a "bytes"
+	// counterpart back-to-back per poll cycle; we anchor on bytes so
+	// the EventConfigReceived signal fires exactly once per cycle.
+	configReceivedRE = regexp.MustCompile(`Received \d+ bytes of configuration from controller`)
 
 	// addedTunnelRE matches the cEOS additive header shape, where the
 	// "interface TunnelN" line is itself diff-added: "+interface TunnelN"

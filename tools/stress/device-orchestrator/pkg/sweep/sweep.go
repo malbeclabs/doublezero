@@ -321,11 +321,18 @@ func Run(ctx context.Context, cfg Config) error {
 // is doing work" for the purpose of timing the SSH cancel.
 func consumeAgentEvents(cfg *Config, registry *tunnelRegistry, tracker *quiescenceTracker) {
 	for ev := range cfg.Agent.Events() {
-		if ev.Kind == agent.EventApplied || ev.Kind == agent.EventCommit {
+		// All three "agent is doing work" signals reset quiescence:
+		// EventConfigReceived covers the multi-second diff-check window
+		// between a config arrival and the next commit (which can run
+		// tens of seconds at >1 MB configs); EventCommit covers the
+		// commit itself (including pure-removal diffs that emit no
+		// Applieds); EventApplied is per-tunnel and the most specific
+		// signal but unnecessary on its own.
+		if ev.Kind == agent.EventApplied || ev.Kind == agent.EventCommit || ev.Kind == agent.EventConfigReceived {
 			tracker.markEvent(cfg.Clock.Now())
 		}
-		if ev.Kind == agent.EventCommit {
-			// Pure activity signal — no per-tunnel runlog row to emit.
+		if ev.Kind == agent.EventCommit || ev.Kind == agent.EventConfigReceived {
+			// Pure activity signals — no per-tunnel runlog row to emit.
 			continue
 		}
 		u, ok := registry.lookup(ev.TunnelID)

@@ -194,21 +194,38 @@ func BuildSummary(r *parser.Run) Summary {
 	}
 
 	// Outcome detection: an abort sentinel takes precedence; otherwise the
-	// run is "success" when every observed submit has a matching activate
-	// in both phases AND at least one event of any kind landed (so a run
-	// with zero recorded events is "unfinished", not vacuously successful).
-	// Guarding on `submit > 0` alone would mark a deprovision-only artifact
-	// (a re-run that only tore down a prior run's leftovers) as unfinished
-	// even though it converged.
+	// run is "success" only when both phases have fully converged.
+	// Concretely:
+	//
+	//   * every observed submit has a matching activate, and
+	//   * every observed deprovision_submit has a matching
+	//     deprovision_activate, and
+	//   * deprovision actually happened (deprovision_submit > 0), and
+	//   * either there was no provision in this run (deprovision-only
+	//     re-run that just tore down a prior run's leftovers) or every
+	//     provisioned user was deprovisioned.
+	//
+	// The deprovision_submit > 0 guard distinguishes a complete cycle
+	// from a provision-only mid-run snapshot (e.g. summary inspected
+	// before teardown starts) — without it the previous version of this
+	// branch labelled an in-progress run as `success`. The
+	// (submit == 0 || submit == deprovision_submit) guard preserves the
+	// deprovision-only artifact case (rerun teardown after a prior
+	// failed run) while keeping mid-deprovision out: a half-finished
+	// teardown has deprovision_submit < submit and falls through to
+	// "unfinished".
+	submits := s.EventCounts["submit"]
+	deprovSubmits := s.EventCounts["deprovision_submit"]
 	switch {
 	case r.Abort != nil:
 		s.Outcome = "aborted"
 		s.AbortReason = r.Abort.Reason
 		s.AbortTrigger = r.Abort.Trigger
 		s.AbortDetail = r.Abort.Detail
-	case s.EventCounts["activate"] == s.EventCounts["submit"] &&
-		s.EventCounts["deprovision_activate"] == s.EventCounts["deprovision_submit"] &&
-		(s.EventCounts["submit"]+s.EventCounts["deprovision_submit"]) > 0:
+	case s.EventCounts["activate"] == submits &&
+		s.EventCounts["deprovision_activate"] == deprovSubmits &&
+		deprovSubmits > 0 &&
+		(submits == 0 || submits == deprovSubmits):
 		s.Outcome = "success"
 	default:
 		s.Outcome = "unfinished"

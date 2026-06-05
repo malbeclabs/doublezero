@@ -265,3 +265,89 @@ func abs(x float64) float64 {
 	}
 	return x
 }
+
+// TestBuildSummary_OutcomeClassification covers every shape the outcome
+// detector has to disambiguate. The cases that mattered for the bug:
+// a provision-only run (mid-flight, before teardown) used to be labelled
+// "success" because the previous predicate only required the two phase
+// counts to match each other and the sum to be > 0. Now we additionally
+// require that deprovision actually happened, with parity between
+// submit and deprovision_submit (so a half-finished teardown stays
+// "unfinished").
+func TestBuildSummary_OutcomeClassification(t *testing.T) {
+	cases := []struct {
+		name        string
+		events      []parser.Event
+		abort       *parser.AbortSentinel
+		wantOutcome string
+	}{
+		{
+			name:        "no events at all",
+			events:      nil,
+			wantOutcome: "unfinished",
+		},
+		{
+			name: "provision-only mid-run snapshot (the bug)",
+			events: []parser.Event{
+				{UserIndex: 0, Event: "submit"}, {UserIndex: 0, Event: "activate"},
+				{UserIndex: 1, Event: "submit"}, {UserIndex: 1, Event: "activate"},
+				{UserIndex: 2, Event: "submit"}, {UserIndex: 2, Event: "activate"},
+			},
+			wantOutcome: "unfinished",
+		},
+		{
+			name: "complete provision + deprovision cycle",
+			events: []parser.Event{
+				{UserIndex: 0, Event: "submit"}, {UserIndex: 0, Event: "activate"},
+				{UserIndex: 1, Event: "submit"}, {UserIndex: 1, Event: "activate"},
+				{UserIndex: 1, Event: "deprovision_submit"}, {UserIndex: 1, Event: "deprovision_activate"},
+				{UserIndex: 0, Event: "deprovision_submit"}, {UserIndex: 0, Event: "deprovision_activate"},
+			},
+			wantOutcome: "success",
+		},
+		{
+			name: "deprovision-only re-run (no provision in this run)",
+			events: []parser.Event{
+				{UserIndex: 0, Event: "deprovision_submit"}, {UserIndex: 0, Event: "deprovision_activate"},
+				{UserIndex: 1, Event: "deprovision_submit"}, {UserIndex: 1, Event: "deprovision_activate"},
+			},
+			wantOutcome: "success",
+		},
+		{
+			name: "mid-provision (submit but no activate yet)",
+			events: []parser.Event{
+				{UserIndex: 0, Event: "submit"}, {UserIndex: 0, Event: "activate"},
+				{UserIndex: 1, Event: "submit"},
+			},
+			wantOutcome: "unfinished",
+		},
+		{
+			name: "mid-deprovision (provision complete, teardown half done)",
+			events: []parser.Event{
+				{UserIndex: 0, Event: "submit"}, {UserIndex: 0, Event: "activate"},
+				{UserIndex: 1, Event: "submit"}, {UserIndex: 1, Event: "activate"},
+				{UserIndex: 1, Event: "deprovision_submit"}, {UserIndex: 1, Event: "deprovision_activate"},
+				// User 0 not yet deprovisioned.
+			},
+			wantOutcome: "unfinished",
+		},
+		{
+			name: "abort sentinel takes precedence over a complete cycle",
+			events: []parser.Event{
+				{UserIndex: 0, Event: "submit"}, {UserIndex: 0, Event: "activate"},
+				{UserIndex: 0, Event: "deprovision_submit"}, {UserIndex: 0, Event: "deprovision_activate"},
+			},
+			abort:       &parser.AbortSentinel{Reason: "manual"},
+			wantOutcome: "aborted",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &parser.Run{Events: tc.events, Abort: tc.abort}
+			got := BuildSummary(r)
+			if got.Outcome != tc.wantOutcome {
+				t.Errorf("Outcome = %q, want %q", got.Outcome, tc.wantOutcome)
+			}
+		})
+	}
+}

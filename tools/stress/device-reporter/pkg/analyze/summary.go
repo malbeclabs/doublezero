@@ -1,6 +1,7 @@
 package analyze
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -73,6 +74,13 @@ type Summary struct {
 	// pushes that contained no user-tunnel additions) are still listed
 	// with UsersCommitted == 0 so the operator can see them.
 	CommitCycles []CommitCycle
+
+	// CommitCyclesJoinWarning is non-empty when the positional join
+	// between agent-log commit cycles and runlog applied-buckets failed
+	// to consume all of one side. The markdown writer surfaces it as a
+	// banner so silent off-by-one corruption in the per-cycle table is
+	// always visible to the operator.
+	CommitCyclesJoinWarning string
 
 	// OnchainToOnDeviceFit fits the per-user onchain→on-device gap (y, ns)
 	// against the active-user count when each user activated (x, count).
@@ -211,7 +219,7 @@ func BuildSummary(r *parser.Run) Summary {
 	s.CommitVsBytes, s.CommitVsLines = commitVsSizeFits(r.Cycles)
 	s.DiffCheckVsBytes, s.DiffCheckVsLines = diffCheckVsSizeFits(r.Cycles)
 	s.AgentErrorTopK = topAgentErrors(r.CliErrors, 8)
-	s.CommitCycles = commitCycles(r.Cycles, r.Events)
+	s.CommitCycles, s.CommitCyclesJoinWarning = commitCycles(r.Cycles, r.Events)
 	s.OnchainToOnDeviceFit = onchainToOnDeviceFit(r.Events)
 
 	return s
@@ -438,9 +446,9 @@ func diffCheckVsSizeFits(cycles []parser.AgentCycle) (LinearFit, LinearFit) {
 // emitted so the operator can see them; their UsersCommitted will be
 // zero by construction (the orchestrator doesn't emit Applied on
 // abort/unfinished cycles).
-func commitCycles(cycles []parser.AgentCycle, events []parser.Event) []CommitCycle {
+func commitCycles(cycles []parser.AgentCycle, events []parser.Event) ([]CommitCycle, string) {
 	if len(cycles) == 0 {
-		return nil
+		return nil, ""
 	}
 
 	// Build per-user activate timestamps so we can compute the
@@ -500,6 +508,7 @@ func commitCycles(cycles []parser.AgentCycle, events []parser.Event) []CommitCyc
 	})
 
 	out := make([]CommitCycle, 0, len(sorted))
+	commitCount := 0
 	bi := 0
 	for _, c := range sorted {
 		row := CommitCycle{
@@ -517,19 +526,34 @@ func commitCycles(cycles []parser.AgentCycle, events []parser.Event) []CommitCyc
 		// Only successful commits should consume an applied bucket. Abort
 		// and unfinished cycles emit no applied events, so giving them
 		// a bucket would shift every later cycle's user-count off by one.
-		if c.Outcome == "commit" && bi < len(buckets) {
-			b := buckets[bi]
-			row.UsersCommitted = b.count
-			if len(b.gaps) > 0 {
-				sort.Float64s(b.gaps)
-				row.OnchainToOnDeviceP50 = time.Duration(Percentile(b.gaps, 0.50))
-				row.OnchainToOnDeviceMax = time.Duration(b.gaps[len(b.gaps)-1])
+		if c.Outcome == "commit" {
+			commitCount++
+			if bi < len(buckets) {
+				b := buckets[bi]
+				row.UsersCommitted = b.count
+				if len(b.gaps) > 0 {
+					sort.Float64s(b.gaps)
+					row.OnchainToOnDeviceP50 = time.Duration(Percentile(b.gaps, 0.50))
+					row.OnchainToOnDeviceMax = time.Duration(b.gaps[len(b.gaps)-1])
+				}
+				bi++
 			}
-			bi++
 		}
 		out = append(out, row)
 	}
-	return out
+	// The positional join assumes one applied-bucket per "commit"-outcome
+	// cycle. A mismatch means either the runlog dropped some applied
+	// rows (off-by-one cascade: cycle i's bucket gets used for cycle
+	// i+1, etc.) or a cycle finalized at the same nanosecond as
+	// another and the buckets collapsed. Surface it so the markdown
+	// writer can warn the operator instead of silently rendering
+	// shifted per-cycle data.
+	var warning string
+	if commitCount != len(buckets) {
+		warning = fmt.Sprintf("commit-cycle/applied-bucket count mismatch: %d commit-outcome cycles vs %d applied buckets. Per-cycle UsersCommitted columns may be shifted.",
+			commitCount, len(buckets))
+	}
+	return out, warning
 }
 
 // onchainToOnDeviceFit fits the per-user onchain→on-device gap (y) in

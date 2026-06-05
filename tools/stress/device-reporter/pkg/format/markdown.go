@@ -104,6 +104,9 @@ func Summary(w io.Writer, s analyze.Summary, r *parser.Run) {
 		// the cycle list is empty already).
 		if len(s.CommitCycles) > 0 {
 			bw.printf("### Per-cycle wall time\n\n")
+			if s.CommitCyclesJoinWarning != "" {
+				bw.printf("> ⚠️ %s\n\n", s.CommitCyclesJoinWarning)
+			}
 			// Columns: Cycle | users(cycle) | users(cumulative) | lines | bytes | diff check | commit | p50 onchain→on-device | max
 			// "Diff check" is the gap from `Received N bytes` to `Committing
 			// config session` (diff compute + decide + session-open);
@@ -189,27 +192,6 @@ func classifyR2(r2 float64) string {
 	default:
 		return "not well-fit by a line"
 	}
-}
-
-// Comparison writes a side-by-side markdown table for two runs.
-func Comparison(w io.Writer, c analyze.Comparison) {
-	bw := &writer{w: w}
-	bw.printf("# Stress run comparison\n\n")
-	if c.A != nil && c.A.RunID != "" {
-		bw.printf("- **A**: `%s` (target=%d, batch=%d)\n", c.A.RunID, c.A.Target, c.A.Batch)
-	}
-	if c.B != nil && c.B.RunID != "" {
-		bw.printf("- **B**: `%s` (target=%d, batch=%d)\n", c.B.RunID, c.B.Target, c.B.Batch)
-	}
-	bw.printf("\n| Metric | A | B | Δ |\n|---|---|---|---|\n")
-	for _, row := range c.Rows {
-		delta := "—"
-		if row.PctMeaningful {
-			delta = fmt.Sprintf("%+.1f%%", row.DeltaPct)
-		}
-		bw.printf("| %s | %s | %s | %s |\n", row.Label, row.AValue, row.BValue, delta)
-	}
-	bw.printf("\n")
 }
 
 // writer wraps an io.Writer with a printf shortcut that swallows the error

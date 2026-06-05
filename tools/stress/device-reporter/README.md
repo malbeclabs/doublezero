@@ -5,7 +5,7 @@ Post-run analysis for the stress-test harnesses
 `tools/stress/scripts/run-stress-physical.sh`).
 
 Reads a run directory (`dev/.deploy/.../run/<UTC>/`), produces a
-markdown summary, side-by-side compare, or CSV export.
+markdown summary.
 
 ## Build
 
@@ -13,12 +13,10 @@ markdown summary, side-by-side compare, or CSV export.
 go build -o /tmp/device-reporter ./tools/stress/device-reporter/cmd/device-reporter
 ```
 
-## Subcommands
+## Usage
 
 ```
-device-reporter summary <run-dir>                              # markdown to stdout
-device-reporter compare <run-dir-a> <run-dir-b>                # side-by-side markdown
-device-reporter export  <run-dir> --metric <commit-latency|runlog>  # CSV to stdout
+device-reporter summary <run-dir>     # markdown to stdout
 ```
 
 ## What the summary covers
@@ -37,15 +35,6 @@ device-reporter export  <run-dir> --metric <commit-latency|runlog>  # CSV to std
   collapsed so per-tunnel error spam buckets cleanly).
 - **Abort detail**: trigger / reason / human-readable detail when an abort
   sentinel was written.
-
-## CSV exports
-
-- `--metric commit-latency`: one row per agent commit cycle, with
-  received timing, sizes, commit start/end timestamps, and duration.
-  Pipe into anything that plots — Sheets, gnuplot, pandas — to see the
-  shape of commit-time vs config-size beyond the headline linear fit.
-- `--metric runlog`: one row per orchestrator-runlog event. Useful for
-  reconstructing the per-user timeline.
 
 ## Example
 

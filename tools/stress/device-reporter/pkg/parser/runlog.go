@@ -13,7 +13,6 @@ import (
 // plus pre_commit_log / applied for tunnels the agent finished applying).
 type Event struct {
 	UserIndex   int    `json:"user_index"`
-	UserPubkey  string `json:"user_pubkey"`
 	TunnelID    uint16 `json:"tunnel_id"`
 	Event       string `json:"event"`
 	TNs         int64  `json:"t_ns"`

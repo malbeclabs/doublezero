@@ -1,14 +1,11 @@
-// device-reporter consumes one or more stress-test run directories and
-// emits insights — markdown summaries for paste-into-PR / standups, and
-// CSV exports for spreadsheet / Python analysis.
+// device-reporter consumes a stress-test run directory and emits a
+// markdown summary suitable for paste-into-PR / standups.
 //
-// Subcommands:
+// Usage:
 //
-//	device-reporter summary <run-dir>           # markdown summary to stdout
-//	device-reporter compare <run-dir-a> <run-dir-b>  # side-by-side
-//	device-reporter export  <run-dir> --metric commit-latency
+//	device-reporter summary <run-dir>
 //
-// All output is stdout; pipe or redirect at will.
+// Output goes to stdout; pipe or redirect at will.
 package main
 
 import (
@@ -36,10 +33,6 @@ func run() error {
 	switch os.Args[1] {
 	case "summary":
 		return cmdSummary(os.Args[2:])
-	case "compare":
-		return cmdCompare(os.Args[2:])
-	case "export":
-		return cmdExport(os.Args[2:])
 	case "-h", "--help", "help":
 		usage(os.Stdout)
 		return nil
@@ -54,8 +47,6 @@ func usage(w *os.File) {
 
 Usage:
   device-reporter summary <run-dir>
-  device-reporter compare <run-dir-a> <run-dir-b>
-  device-reporter export  <run-dir> --metric <commit-latency|runlog>  # CSV to stdout
 `)
 }
 
@@ -74,46 +65,4 @@ func cmdSummary(args []string) error {
 	s := analyze.BuildSummary(run)
 	format.Summary(os.Stdout, s, run)
 	return nil
-}
-
-func cmdCompare(args []string) error {
-	fs := flag.NewFlagSet("compare", flag.ExitOnError)
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if fs.NArg() != 2 {
-		return fmt.Errorf("compare takes exactly two <run-dir-a> <run-dir-b>")
-	}
-	a, err := parser.LoadRun(fs.Arg(0))
-	if err != nil {
-		return fmt.Errorf("load A: %w", err)
-	}
-	b, err := parser.LoadRun(fs.Arg(1))
-	if err != nil {
-		return fmt.Errorf("load B: %w", err)
-	}
-	c := analyze.BuildComparison(a, b)
-	format.Comparison(os.Stdout, c)
-	return nil
-}
-
-func cmdExport(args []string) error {
-	// Accept the run-dir as the first positional arg followed by flags
-	// (so `device-reporter export <dir> --metric ...` reads naturally),
-	// then parse the remaining flags. Go's flag package requires flags
-	// to precede positionals by default, so we peel the positional first.
-	if len(args) < 1 || args[0] == "-h" || args[0] == "--help" {
-		return fmt.Errorf("export takes <run-dir> followed by flags (see `device-reporter help`)")
-	}
-	runDir := args[0]
-	fs := flag.NewFlagSet("export", flag.ExitOnError)
-	metric := fs.String("metric", "commit-latency", "metric to export: commit-latency | runlog")
-	if err := fs.Parse(args[1:]); err != nil {
-		return err
-	}
-	run, err := parser.LoadRun(runDir)
-	if err != nil {
-		return err
-	}
-	return format.ExportCSV(os.Stdout, run, format.ExportMetric(*metric))
 }

@@ -263,6 +263,15 @@ func run() error {
 
 	agentRunner := selectAgentRunner(*noAgent, *dutSSHHost, *dutSSHKey, *dutSSHUser, *controllerAddr, *workingDir, *agentBinary, *agentCommandPrefix, *agentPubkey, *agentMetricsAddr, logger)
 
+	// With --no-agent there is no agent to emit Applied events, so the
+	// catch-up wait would pin to its full timeout on every run. Zero it
+	// out automatically rather than asking the operator to remember the
+	// matching flag.
+	if *noAgent && *applyCatchUpTimeoutSeconds > 0 {
+		logger.Info("sweep: --no-agent disables apply catch-up wait", "previous_timeout_seconds", *applyCatchUpTimeoutSeconds)
+		*applyCatchUpTimeoutSeconds = 0
+	}
+
 	cfg := sweep.Config{
 		RunID:                  *runID,
 		Target:                 *targetUserCount,

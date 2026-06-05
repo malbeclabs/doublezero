@@ -54,9 +54,3 @@ func formatNonZeroDuration(d time.Duration) string {
 	}
 	return d.Truncate(time.Second).String()
 }
-
-// fmtInt / fmtDur are kept as unexported aliases so the existing
-// analyze-package call sites don't have to be churned. New code should
-// use the exported names.
-func fmtInt(n int) string           { return FormatInt(n) }
-func fmtDur(d time.Duration) string { return FormatDuration(d) }

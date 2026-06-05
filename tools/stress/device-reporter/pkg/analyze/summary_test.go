@@ -92,6 +92,38 @@ func TestOnchainLatencies_AppliedWithoutActivate(t *testing.T) {
 	}
 }
 
+// TestCommitCycles_WarnsOnCountMismatch exercises the join-mismatch
+// guard added to surface silent off-by-one corruption in the per-cycle
+// table. Two commit cycles + one applied bucket → warning fires and
+// the second cycle's UsersCommitted is zero (it didn't consume a
+// bucket, which is the expected behavior).
+func TestCommitCycles_WarnsOnCountMismatch(t *testing.T) {
+	base := time.Unix(1_700_000_000, 0)
+	cycles := []parser.AgentCycle{
+		{CommitStartedAt: base.Add(1 * time.Second), FinalizedAt: base.Add(2 * time.Second), Outcome: "commit"},
+		{CommitStartedAt: base.Add(11 * time.Second), FinalizedAt: base.Add(12 * time.Second), Outcome: "commit"},
+	}
+	// Only one applied bucket — the orchestrator's consumer dropped
+	// rows for cycle 2 (simulated).
+	events := []parser.Event{
+		{UserIndex: 0, Event: "activate", TNs: base.UnixNano()},
+		{UserIndex: 0, Event: "applied", TNs: base.Add(2 * time.Second).UnixNano()},
+	}
+	rows, warn := commitCycles(cycles, events)
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(rows))
+	}
+	if rows[0].UsersCommitted != 1 {
+		t.Errorf("cycle 1 should have consumed the single available bucket; UsersCommitted=%d", rows[0].UsersCommitted)
+	}
+	if rows[1].UsersCommitted != 0 {
+		t.Errorf("cycle 2 should report 0 users (no bucket left), got %d", rows[1].UsersCommitted)
+	}
+	if warn == "" {
+		t.Errorf("expected a join warning for 2-commit/1-bucket mismatch")
+	}
+}
+
 // TestCommitCycles_DiffCheckDuration verifies that the gap from
 // `Received N bytes ...` to `Committing config session ...` is computed
 // and emitted on each CommitCycle row.
@@ -113,7 +145,7 @@ func TestCommitCycles_DiffCheckDuration(t *testing.T) {
 			Outcome:         "commit",
 		},
 	}
-	rows := commitCycles(cycles, nil)
+	rows, _ := commitCycles(cycles, nil)
 	if got, want := rows[0].DiffCheckDuration, 12*time.Second; got != want {
 		t.Errorf("cycle 1 DiffCheckDuration = %s, want %s", got, want)
 	}
@@ -168,9 +200,12 @@ func TestCommitCycles_JoinsAppliedEventsByTNs(t *testing.T) {
 		{UserIndex: 2, Event: "applied", TNs: base.Add(30 * time.Second).UnixNano()},
 	}
 
-	rows := commitCycles(cycles, events)
+	rows, warn := commitCycles(cycles, events)
 	if len(rows) != 3 {
 		t.Fatalf("want 3 rows (one per cycle, including the abort), got %d", len(rows))
+	}
+	if warn != "" {
+		t.Errorf("expected no join warning for balanced 2-commit/2-bucket input, got %q", warn)
 	}
 	// Cycle 1: 2 users, max gap = 10s.
 	if rows[0].UsersCommitted != 2 {

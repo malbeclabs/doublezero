@@ -60,8 +60,14 @@ AGENT_METRICS_PORT="${AGENT_METRICS_PORT:-50100}"
 # via env on physical hardware. The containerized harness uses a hardcoded
 # admin/admin pair baked into its rendered startup-config; this script does
 # not control the physical device's user table, so the operator supplies it.
-EAPI_USER="${EAPI_USER:-admin}"
-EAPI_PASS="${EAPI_PASS:-}"
+EAPI_USER="${EAPI_USER:-stress}"
+# EAPI_PASS has no default: the observer authenticates over HTTP basic
+# auth on each `show ...` poll, and an empty password silently yields
+# 401-Unauthorized for every sample, producing an empty observer
+# capture set (no show-*.{json,log} files in the run dir). Fail fast
+# at startup so the operator notices before a 4-minute run finishes
+# with nothing to analyze.
+: "${EAPI_PASS:?EAPI_PASS is required — export it (and optionally EAPI_USER) before running. See README.md.}"
 
 DEVICE_CODE="${DZ_STRESS_DEVICE_CODE:-chi-dn-dzd5}"
 DEVICE_LOCATION="${DZ_STRESS_DEVICE_LOCATION:-ewr}"
@@ -149,6 +155,13 @@ solana_cli() {
 }
 
 mkdir -p "$DEPLOY_DIR" "$WORKING_DIR"
+
+# Stamp the per-run directory up front so the controller (phase 4) can drop
+# its log alongside the orchestrator/observer artifacts in the same dir,
+# rather than into a shared file at $WORKING_DIR/controller.log that every
+# subsequent run truncates.
+RUN_DIR="${WORKING_DIR}/$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$RUN_DIR"
 
 # ---------------------------------------------------------------------------
 # Phase 1: connectivity sanity checks
@@ -276,7 +289,9 @@ done
 # `go run` is intentional per the user spec — convenient for iteration; the
 # operator can later swap to a built binary if startup time matters.
 # ---------------------------------------------------------------------------
-CONTROLLER_LOG="${WORKING_DIR}/controller.log"
+CONTROLLER_LOG="${RUN_DIR}/controller.log"
+# Pid file stays at the parent level so the leftover-process detection in
+# the next run can find it even after $RUN_DIR has been pruned/archived.
 CONTROLLER_PID_FILE="${WORKING_DIR}/controller.pid"
 
 # Fail fast if something is already listening on the controller port. Without
@@ -316,9 +331,20 @@ cleanup_controller() {
 }
 trap cleanup_controller EXIT
 
+# By default we `go run` the controller from the current checkout so the
+# operator iterates without a separate build step. Set CONTROLLER_BINARY
+# to a prebuilt path (e.g. from another branch's worktree) to swap in an
+# alternate controller for an experiment.
+if [ -n "${CONTROLLER_BINARY:-}" ]; then
+    [ -x "$CONTROLLER_BINARY" ] || die "CONTROLLER_BINARY is not executable: $CONTROLLER_BINARY"
+    log "controller binary (override): $CONTROLLER_BINARY"
+    CONTROLLER_CMD=("$CONTROLLER_BINARY")
+else
+    CONTROLLER_CMD=(go run ./controlplane/controller/cmd/controller)
+fi
 (
     cd "$WORKSPACE_DIR"
-    nohup go run ./controlplane/controller/cmd/controller start \
+    nohup "${CONTROLLER_CMD[@]}" start \
         --program-id "$DZ_PROGRAM_ID" \
         --solana-rpc-endpoint "$DZ_RPC_URL" \
         --device-local-asn 65000 \
@@ -329,11 +355,12 @@ trap cleanup_controller EXIT
         > "$CONTROLLER_LOG" 2>&1 &
     echo $! > "$CONTROLLER_PID_FILE"
 )
-# Provisionally tracks the `go run` parent PID. `go run` compiles a temp
-# binary then exec's it as a child process; the actual port listener is
-# the child. We overwrite this once the port is up.
+# Provisionally tracks the controller's parent PID. With `go run` this is
+# the `go` wrapper which exec's the compiled binary as a child; with a
+# prebuilt binary it is the listener itself. We overwrite once the port
+# is up so the recorded pid always points at the actual listener.
 CONTROLLER_PARENT_PID="$(cat "$CONTROLLER_PID_FILE")"
-log "controller (go run) pid: $CONTROLLER_PARENT_PID (log: $CONTROLLER_LOG)"
+log "controller parent pid: $CONTROLLER_PARENT_PID (log: $CONTROLLER_LOG)"
 
 # Wait for the controller's listen port to accept connections (gRPC handshake).
 # The cleanup trap stays armed through every following phase (access-pass
@@ -424,8 +451,6 @@ OBS_BIN="${DEPLOY_DIR}/device-observer"
 # ---------------------------------------------------------------------------
 # Phase 7: launch orchestrator + observer
 # ---------------------------------------------------------------------------
-RUN_DIR="${WORKING_DIR}/$(date -u +%Y%m%dT%H%M%SZ)"
-mkdir -p "$RUN_DIR"
 log "run working-dir: $RUN_DIR"
 
 ORCH_ARGS=(

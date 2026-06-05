@@ -31,12 +31,15 @@ func TestLoadProcessTopSamples_RoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := LoadProcessTopSamples(dir)
+	got, skipped, err := LoadProcessTopSamples(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("want 2 samples, got %d", len(got))
+	}
+	if skipped != 0 {
+		t.Errorf("want 0 skipped, got %d", skipped)
 	}
 	if !got[0].At.Before(got[1].At) {
 		t.Fatalf("samples not sorted by time: %v then %v", got[0].At, got[1].At)
@@ -52,6 +55,33 @@ func TestLoadProcessTopSamples_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestLoadProcessTopSamples_CountsSkipped(t *testing.T) {
+	dir := t.TempDir()
+	// One valid sample, one garbage sample. Loader should return the
+	// valid one and report skipped=1 so the writer can warn.
+	good := `{
+		"cpuInfo": {"%Cpu(s)": {"idle": 50.0, "user": 50.0}},
+		"memInfo": {"physicalMem": {"memFree": 1, "memUsed": 1, "memTotal": 1}},
+		"timeInfo": {"currentTime": 1700000000.0}
+	}`
+	if err := os.WriteFile(filepath.Join(dir, "show-processes-top-once-2023-11-14T22-13-20.000000000Z.json"), []byte(good), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "show-processes-top-once-2023-11-14T22-13-30.000000000Z.json"), []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, skipped, err := LoadProcessTopSamples(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Errorf("want 1 sample loaded, got %d", len(got))
+	}
+	if skipped != 1 {
+		t.Errorf("want 1 skipped, got %d", skipped)
+	}
+}
+
 func TestLoadProcessTopSamples_FallsBackToFilenameTimestamp(t *testing.T) {
 	dir := t.TempDir()
 	// Omit timeInfo.currentTime → loader should parse the filename
@@ -63,7 +93,7 @@ func TestLoadProcessTopSamples_FallsBackToFilenameTimestamp(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "show-processes-top-once-2023-11-14T22-13-20.123456789Z.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := LoadProcessTopSamples(dir)
+	got, _, err := LoadProcessTopSamples(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,20 +110,21 @@ func TestLoadProcessTopSamples_MissingDir(t *testing.T) {
 	// Glob against a non-existent directory: filepath.Glob returns no
 	// matches with no error, so the loader yields an empty slice — the
 	// same shape as a run with the observer disabled.
-	got, err := LoadProcessTopSamples(filepath.Join(t.TempDir(), "no-such"))
+	got, skipped, err := LoadProcessTopSamples(filepath.Join(t.TempDir(), "no-such"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 0 {
-		t.Errorf("want 0 samples, got %d", len(got))
+	if len(got) != 0 || skipped != 0 {
+		t.Errorf("want 0/0, got %d/%d", len(got), skipped)
 	}
 }
 
 func TestLoadAgentMetrics_FiltersByMetricName(t *testing.T) {
 	dir := t.TempDir()
-	// Three rows: two for our target metric, one unrelated. The
-	// loader returns the two matching rows in t_ns order, ignoring
-	// the unrelated row and any malformed lines.
+	// Three valid rows (two matching, one not) plus a malformed line.
+	// We expect: two matching rows returned in t_ns order, the
+	// unrelated row dropped silently, and skipped == 1 for the
+	// malformed line.
 	body := "" +
 		`{"t_ns":2000,"metric_name":"process_resident_memory_bytes","value":200,"labels_json":"{}"}` + "\n" +
 		`{"t_ns":1000,"metric_name":"process_resident_memory_bytes","value":100,"labels_json":"{}"}` + "\n" +
@@ -102,12 +133,15 @@ func TestLoadAgentMetrics_FiltersByMetricName(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "observer.agent_metrics.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := LoadAgentMetrics(dir, "process_resident_memory_bytes")
+	got, skipped, err := LoadAgentMetrics(dir, "process_resident_memory_bytes")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("want 2 rows, got %d", len(got))
+	}
+	if skipped != 1 {
+		t.Errorf("want 1 skipped, got %d", skipped)
 	}
 	if got[0].TNS != 1000 || got[1].TNS != 2000 {
 		t.Errorf("rows not sorted by t_ns: %+v", got)
@@ -118,11 +152,11 @@ func TestLoadAgentMetrics_FiltersByMetricName(t *testing.T) {
 }
 
 func TestLoadAgentMetrics_MissingFile(t *testing.T) {
-	got, err := LoadAgentMetrics(t.TempDir(), "anything")
+	got, skipped, err := LoadAgentMetrics(t.TempDir(), "anything")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 0 {
-		t.Errorf("want 0 rows, got %d", len(got))
+	if len(got) != 0 || skipped != 0 {
+		t.Errorf("want 0/0, got %d/%d", len(got), skipped)
 	}
 }

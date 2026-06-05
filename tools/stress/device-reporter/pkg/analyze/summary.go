@@ -249,7 +249,7 @@ func BuildSummary(r *parser.Run, opts Options) Summary {
 	s.AgentErrorTopK = topAgentErrors(r.CliErrors, 8)
 	s.CommitCycles, s.CommitCyclesJoinWarning = commitCycles(r.Cycles, r.Events)
 	s.OnchainToOnDeviceFit = onchainToOnDeviceFit(r.Events)
-	s.Resources = resourceStats(r.ProcessTopSamples, r.AgentRSSSamples, opts.MemFreeFloorKB)
+	s.Resources = resourceStats(r, opts.MemFreeFloorKB)
 
 	return s
 }

@@ -37,46 +37,49 @@ const (
 
 // LoadProcessTopSamples reads every `show-processes-top-once-<ts>.json`
 // in dir and returns the parsed samples sorted by sample-time ascending.
-// Missing files / unparseable JSON are skipped: `--no-observer` runs
-// leave nothing on disk, and a corrupt tick shouldn't fail the load.
-func LoadProcessTopSamples(dir string) ([]ProcessTopSample, error) {
+// `skipped` counts files that were present but unparseable, so the
+// markdown writer can distinguish "observer disabled" (no files) from
+// "files present but corrupt" — important for a forensics tool.
+func LoadProcessTopSamples(dir string) (samples []ProcessTopSample, skipped int, err error) {
 	paths, err := filepath.Glob(filepath.Join(dir, processTopGlob))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	samples := make([]ProcessTopSample, 0, len(paths))
+	samples = make([]ProcessTopSample, 0, len(paths))
 	for _, p := range paths {
 		buf, err := os.ReadFile(p)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			return nil, fmt.Errorf("read %s: %w", p, err)
+			return nil, 0, fmt.Errorf("read %s: %w", p, err)
 		}
 		s, ok := parseProcessTopSample(buf, filepath.Base(p))
 		if !ok {
+			skipped++
 			continue
 		}
 		samples = append(samples, s)
 	}
 	sort.Slice(samples, func(i, j int) bool { return samples[i].At.Before(samples[j].At) })
-	return samples, nil
+	return samples, skipped, nil
 }
 
 // LoadAgentMetrics returns NDJSON rows from observer.agent_metrics.json
-// whose metric_name equals `metric`, sorted by t_ns ascending. Missing
-// file → empty slice + nil error.
-func LoadAgentMetrics(dir, metric string) ([]AgentMetricSample, error) {
+// whose metric_name equals `metric`, sorted by t_ns ascending.
+// `skipped` counts non-empty rows that failed to unmarshal — surfaced
+// so the writer can warn instead of silently producing an empty
+// section. Missing file → empty slice + nil error.
+func LoadAgentMetrics(dir, metric string) (rows []AgentMetricSample, skipped int, err error) {
 	path := filepath.Join(dir, agentMetricsFilename)
 	f, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
+			return nil, 0, nil
 		}
-		return nil, err
+		return nil, 0, err
 	}
 	defer f.Close()
-	var out []AgentMetricSample
 	sc := bufio.NewScanner(f)
 	// Label-heavy histogram bucket rows can exceed the 64 KB default.
 	sc.Buffer(make([]byte, 0, 1<<20), 1<<20)
@@ -91,18 +94,19 @@ func LoadAgentMetrics(dir, metric string) ([]AgentMetricSample, error) {
 			Value      float64 `json:"value"`
 		}
 		if err := json.Unmarshal(line, &row); err != nil {
+			skipped++
 			continue
 		}
 		if row.MetricName != metric {
 			continue
 		}
-		out = append(out, AgentMetricSample{TNS: row.TNS, Value: row.Value})
+		rows = append(rows, AgentMetricSample{TNS: row.TNS, Value: row.Value})
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("scan %s: %w", path, err)
+		return nil, 0, fmt.Errorf("scan %s: %w", path, err)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].TNS < out[j].TNS })
-	return out, nil
+	sort.Slice(rows, func(i, j int) bool { return rows[i].TNS < rows[j].TNS })
+	return rows, skipped, nil
 }
 
 func parseProcessTopSample(buf []byte, basename string) (ProcessTopSample, bool) {

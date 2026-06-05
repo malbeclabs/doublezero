@@ -166,13 +166,22 @@ func Summary(w io.Writer, s analyze.Summary, r *parser.Run) {
 }
 
 // writeResourceUsage renders the `## Resource usage` section. The
-// whole section is suppressed when nothing was loaded so observer-
-// disabled runs don't emit empty headers.
+// whole section is suppressed when no inputs of any kind were loaded
+// so observer-disabled runs don't emit empty headers. Files that
+// were present but corrupt are reported as a banner so the operator
+// can tell "observer disabled" apart from "observer captured garbage".
 func writeResourceUsage(bw *writer, res analyze.ResourceStats) {
-	if res.CPUSampleCount == 0 && res.RSSSampleCount == 0 {
+	if res.CPUSampleCount == 0 && res.RSSSampleCount == 0 &&
+		res.ProcessTopSkipped == 0 && res.AgentMetricsSkipped == 0 {
 		return
 	}
 	bw.printf("## Resource usage\n\n")
+	if res.ProcessTopSkipped > 0 {
+		bw.printf("> ⚠️ %d `show processes top once` sample(s) unparseable; CPU/memory aggregates exclude them.\n\n", res.ProcessTopSkipped)
+	}
+	if res.AgentMetricsSkipped > 0 {
+		bw.printf("> ⚠️ %d agent-metric row(s) unparseable; agent RSS series excludes them.\n\n", res.AgentMetricsSkipped)
+	}
 
 	if res.CPUSampleCount > 0 {
 		bw.printf("- **Device CPU**: peak %.1f%%, p95 %.1f%% (n=%d, threshold %.0f%%)\n",
@@ -194,8 +203,8 @@ func writeResourceUsage(bw *writer, res analyze.ResourceStats) {
 		bw.printf("- **Device memory**: peak free %s, peak used %s",
 			analyze.FormatBytes(res.MemPeakFreeKB*1024),
 			analyze.FormatBytes(res.MemPeakUsedKB*1024))
-		if res.MemFloorKB > 0 {
-			bw.printf(" (floor %s)", analyze.FormatBytes(res.MemFloorKB*1024))
+		if res.MemFreeFloorKB > 0 {
+			bw.printf(" (floor %s)", analyze.FormatBytes(res.MemFreeFloorKB*1024))
 			if res.MemFloorViolations > 0 {
 				bw.printf(" — ⚠️ %d sub-floor sample(s), first at %s UTC",
 					res.MemFloorViolations,

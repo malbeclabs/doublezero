@@ -35,11 +35,10 @@ type ResourceStats struct {
 	CPUP95Pct      float64
 	HotWindows     []CPUHotWindow
 
-	MemSampleCount int
-	MemPeakFreeKB  uint64
-	MemPeakUsedKB  uint64
-	// MemFloorKB is the configured floor (0 = check disabled).
-	MemFloorKB          uint64
+	MemPeakFreeKB uint64
+	MemPeakUsedKB uint64
+	// MemFreeFloorKB is the configured floor (0 = check disabled).
+	MemFreeFloorKB      uint64
 	MemFloorViolations  int
 	MemFirstViolationAt time.Time
 
@@ -50,14 +49,23 @@ type ResourceStats struct {
 	// wall-clock seconds. Positive = growing across the run. Zero when
 	// fewer than two samples exist.
 	RSSSlopeBytesPerSec float64
+
+	// ProcessTopSkipped / AgentMetricsSkipped pass through the loader
+	// counts so the writer can warn the operator about corrupt inputs
+	// rather than silently rendering an empty section.
+	ProcessTopSkipped   int
+	AgentMetricsSkipped int
 }
 
-func resourceStats(samples []parser.ProcessTopSample, rss []parser.AgentMetricSample, memFloorKB uint64) ResourceStats {
+func resourceStats(r *parser.Run, memFloorKB uint64) ResourceStats {
+	samples := r.ProcessTopSamples
+	rss := r.AgentRSSSamples
 	out := ResourceStats{
-		CPUSampleCount: len(samples),
-		MemSampleCount: len(samples),
-		MemFloorKB:     memFloorKB,
-		RSSSampleCount: len(rss),
+		CPUSampleCount:      len(samples),
+		MemFreeFloorKB:      memFloorKB,
+		RSSSampleCount:      len(rss),
+		ProcessTopSkipped:   r.ProcessTopSkipped,
+		AgentMetricsSkipped: r.AgentMetricsSkipped,
 	}
 
 	if len(samples) > 0 {

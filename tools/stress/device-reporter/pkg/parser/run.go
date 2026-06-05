@@ -41,10 +41,17 @@ type Run struct {
 	// capture, one entry per observer tick. Empty when the observer
 	// was disabled.
 	ProcessTopSamples []ProcessTopSample
+	// ProcessTopSkipped counts capture files that were present on
+	// disk but failed to parse — surfaced so a forensics report can
+	// warn about corrupt input rather than silently emit an empty
+	// section.
+	ProcessTopSkipped int
 	// AgentRSSSamples is the doublezero-agent's resident-memory series
 	// pulled from observer.agent_metrics.json. Empty for `--no-agent`
 	// runs or agents without the default process collector.
 	AgentRSSSamples []AgentMetricSample
+	// AgentMetricsSkipped counts NDJSON rows that failed to unmarshal.
+	AgentMetricsSkipped int
 }
 
 // agentRSSMetric is the Go prometheus client's default process-
@@ -96,16 +103,18 @@ func LoadRun(dir string) (*Run, error) {
 		r.Abort = ab
 	}
 
-	if samples, err := LoadProcessTopSamples(absDir); err != nil {
+	if samples, skipped, err := LoadProcessTopSamples(absDir); err != nil {
 		return nil, fmt.Errorf("show-processes-top-once-*.json: %w", err)
 	} else {
 		r.ProcessTopSamples = samples
+		r.ProcessTopSkipped = skipped
 	}
 
-	if metrics, err := LoadAgentMetrics(absDir, agentRSSMetric); err != nil {
+	if metrics, skipped, err := LoadAgentMetrics(absDir, agentRSSMetric); err != nil {
 		return nil, fmt.Errorf("observer.agent_metrics.json: %w", err)
 	} else {
 		r.AgentRSSSamples = metrics
+		r.AgentMetricsSkipped = skipped
 	}
 
 	return r, nil

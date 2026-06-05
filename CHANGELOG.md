@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - CLI
-  - Extract `doublezero-daemon-cli` crate housing `DaemonClient` trait and the `status`, `enable`, `disable`, `latency`, and `routes` daemon verbs. The new crate owns all daemon HTTP interaction (Unix-socket client, response types) and is consumed by the `doublezero` binary. `check_daemon` binds `get_environment()` once per invocation instead of calling it per-check.
+  - Extract `doublezero-daemon-cli` crate housing `DaemonClient` trait and the `status`, `enable`, `disable`, `latency`, and `routes` daemon verbs. The new crate owns all daemon HTTP interaction (Unix-socket client, response types, shared output helpers) and is consumed by the `doublezero` binary. `check_daemon` binds `get_environment()` once per invocation instead of calling it per-check.
   - Fold `version`, `account`, `accounts`, `log`, and `subscribe` diagnostic verbs from the binary's top-level `Command` enum into `ServiceabilityCommand` per RFC-20. Each verb now takes `&CliContext` + generic `&C: CliCommand` + `&mut W` writer and is async. Add `--json` to `account`, `accounts`, and `log` (RFC-20 §Output). The binary-level `subscribe` override uses the real blocking `DZClient::subscribe` for live event streaming; the module crate's implementation falls back to a `get_all()` snapshot for testability.
   - Change `geolocation user update-payment` to `update-payment-status` for clarity. 
   - geolocation `user get`: Show probe code, rather than probe pubkey in target list. 

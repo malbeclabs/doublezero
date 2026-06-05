@@ -8,7 +8,9 @@ use clap::Subcommand;
 use doublezero_cli_core::CliContext;
 use std::io::Write;
 
-use crate::{client::DaemonClient, disable::Disable, enable::Enable, ledger::LedgerClient};
+use crate::{
+    client::DaemonClient, disable::Disable, enable::Enable, ledger::LedgerClient, status::Status,
+};
 
 /// Daemon-control verbs hoisted to the binary's top level.
 ///
@@ -19,6 +21,8 @@ pub enum DaemonCommand {
     Enable(Enable),
     /// Disable the reconciler (tear down tunnels and stop managing them)
     Disable(Disable),
+    /// Get the status of your service
+    Status(Status),
 }
 
 impl DaemonCommand {
@@ -32,6 +36,7 @@ impl DaemonCommand {
         match self {
             Self::Enable(cmd) => cmd.execute(ctx, daemon, ledger, out).await,
             Self::Disable(cmd) => cmd.execute(ctx, daemon, ledger, out).await,
+            Self::Status(cmd) => cmd.execute(ctx, daemon, ledger, out).await,
         }
     }
 }

@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.26.0](https://github.com/malbeclabs/doublezero/compare/client/v0.25.1...client/v0.26.0) - 2026-06-05
+
+### Breaking
+
+### Changes
+
 - Onchain programs
   - Deprecate the `AccessPassStatus::Expired` access-pass status (renamed `ExpiredDeprecated`; discriminant `3` retained for wire compatibility). Access-pass epoch expiry no longer demotes users to `OutOfCredits`: `update_status` stops producing the status, and both `try_activate` (user creation) and `CheckUserAccessPass` (periodic re-check) keep users `Activated`. Epoch validity is still enforced at user creation for unicast users only; multicast publishers and subscribers are governed by `mgroup_*_allowlist`, not by epoch.
 - SDK
@@ -19,12 +25,13 @@ All notable changes to this project will be documented in this file.
   - Change `geolocation user update-payment` to `update-payment-status` for clarity. 
   - geolocation `user get`: Show probe code, rather than probe pubkey in target list. 
   - geolocation `probe get`: Show exchange code, rather than exchange pubkeys.
-- ci(e2e): report trusted fork e2e/shreds shard results onto the PR head SHA so branch protection's required `e2e (shard N)` / `shard-e2e (shard N)` checks are satisfied by a `/run-e2e` dispatch, removing the need for a maintainer to bypass the ruleset to merge fork PRs; also make the dispatcher's confirmation comment non-fatal so a capped `GITHUB_TOKEN` no longer fails the job after the runs have already launched (follow-up to [#3777](https://github.com/malbeclabs/doublezero/pull/3777))
-  - Add `--json` output to `globalconfig feature-flags get` and `accesspass user-balances` per RFC-20 §Output. `feature-flags get` now renders a two-column (`flags`, `raw`) table by default instead of the prior `Enabled feature flags: <names> (raw: <N>)` / `No feature flags enabled (raw: <N>)` sentence.
   - Remove `env`/`argv` reads and `eprintln!` from the serviceability CLI module per RFC-20 §67. The keypair-source pre-flight check moves from a standalone `has_keypair_source()` (which read `std::env::args` and `stdin`) to a `CliCommand::has_keypair_source` method computed once by the binary at startup; diagnostic output in `check_id`, `check_balance`, `check_allowlist`, and `print_error` now routes through `tracing::error!` instead of writing to stderr directly.
+  - Add `--json` output to `globalconfig feature-flags get` and `accesspass user-balances` per RFC-20 §Output. `feature-flags get` now renders a two-column (`flags`, `raw`) table by default instead of the prior `Enabled feature flags: <names> (raw: <N>)` / `No feature flags enabled (raw: <N>)` sentence.
+- CI
+  - e2e: report trusted fork e2e/shreds shard results onto the PR head SHA so branch protection's required `e2e (shard N)` / `shard-e2e (shard N)` checks are satisfied by a `/run-e2e` dispatch, removing the need for a maintainer to bypass the ruleset to merge fork PRs; also make the dispatcher's confirmation comment non-fatal so a capped `GITHUB_TOKEN` no longer fails the job after the runs have already launched (follow-up to [#3777](https://github.com/malbeclabs/doublezero/pull/3777))
 - Tools
   - Complete the device-stress orchestrator (part 3): replace the stubbed agent runner with an SSH-backed runner that execs `doublezero-agent -verbose` on the DUT and tees its output to `orchestrator.agent.log`, and a log parser that turns the agent's commit-diff lines into `pre_commit_log` / `applied` runlog events. Adds `--dut-ssh-user` and `--no-agent` flags.
-  - Add `tools/stress/device-observer/`, a per-device sampling tool for the GRE Tunnel Capacity Study. Each tick issues five eAPI `show` commands, scrapes the doublezero-agent Prometheus endpoint, polls EOS syslog via `show logging last` with cross-tick dedupe, tails the orchestrator's agent log for abort-trigger patterns, and tails the orchestrator's runlog to compute provision/deprovision durations. The abort decider evaluates the trigger list on every tick (provision/deprovision p95 and single-user thresholds, sustained CPU, agent error-counter increments, agent-log pattern matches, agent silence, ledger heartbeat staleness) and writes a JSON sentinel at `<working-dir>/abort` on the first match; the observer process then exits so the orchestrator's `abort.Watch` can archive. A `--force` flag is required to start over an existing sentinel from a previous run. The trigger consumes `<working-dir>/orchestrator.ledger_heartbeat` (file written by the orchestrator) when present; an absent file suppresses the heartbeat trigger so the contract is forward-compatible.
+  - Add `tools/stress/device-observer/`, a per-device sampling tool that analyzes the output of the device-stress orchestrator and observer
 - Telemetry
   - Drop the redundant `ip-msdp-sa-cache` kind from the state-ingest server's default state-collect command list. `show ip msdp sa-cache rejected` already returns the full SA cache (accepted SAs in the `acceptedSaMsg` array plus any rejected SAs in `rejectedSaMsg`), so the bare `show ip msdp sa-cache` collection is redundant — devices were running both commands per tick and uploading the same accepted-SA data twice. The `ip-msdp-sa-cache-rejected` kind is retained.
 - Telemetry (geoprobe)

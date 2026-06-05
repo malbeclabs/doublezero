@@ -150,7 +150,7 @@ SDK checks or the agent will run but fail to apply config:
    refused`, this stanza is missing or misconfigured.
 
 4. **eAPI HTTP-commands enabled + a stress user.** The device-observer
-   scrapes `show ip interface brief`, `show processes top once`, etc.
+   scrapes `show interfaces description`, `show processes top once`, etc.
    over HTTP basic auth on each sample. Add a dedicated stress user
    (so the harness doesn't share the `admin` password) and enable
    the HTTP transport:

@@ -47,7 +47,7 @@ The observer writes the following files into `--working-dir`:
 | ---------------------------------------- | --------- | ----------------------------------------------- |
 | `observer-config.json`                   | observer  | selected flag values (excludes `eapi_pass` and `eapi_port`) + PID + start timestamp |
 | `show-hardware-capacity-<ts>.json`       | observer  | one per tick                                    |
-| `show-ip-interface-brief-<ts>.json`      | observer  | one per tick                                    |
+| `show-interfaces-description-<ts>.json`  | observer  | one per tick                                    |
 | `show-processes-top-once-<ts>.json`      | observer  | one per tick                                    |
 | `show-logging-errors-<ts>.log`           | observer  | one per tick                                    |
 | `show-logging-critical-<ts>.log`         | observer  | one per tick                                    |
@@ -288,7 +288,7 @@ cancels the observer's root context so the process exits.
 | `lock_not_taken`             | agent-log substring `not overriding lock since its age` | same                                                                                     |
 | `agent_silence`              | `AgentTail.Snapshot().LastLineAt`                     | `LastLineAt` non-zero AND `now - LastLineAt > 120 s` (suppressed before any line is seen). Threshold accommodates the legitimate silent window during a large config apply at high user counts — at ~290 users the agent processes ~22k lines per cycle without intermediate logs. |
 | `ledger_heartbeat_stale`     | mtime of `<working-dir>/orchestrator.ledger_heartbeat` | file present AND `now - mtime > 30 s` (absent file is suppressed forward-compatibly)      |
-| `device_tunnel_gap`          | runlog `n_after_event` vs sampler's `show ip interface brief` filtered to TunnelN with N >= 500 | orchestrator active-user count exceeds the device's tunnel count by `≥ 4` AND `now - last_activate ≥ 120 s` (suppressed before the first activate is seen). Grace matches `agent_silence` — past that, a stuck agent fires `agent_silence` first; a persistent gap with a healthy agent is the controller's slot cap or similar truncation. |
+| `device_tunnel_gap`          | runlog `n_after_event` vs sampler's `show interfaces description` filtered to interfaces whose description begins `USER-UCAST-` | orchestrator active-user count exceeds the device's tunnel count by `≥ 4` AND `now - last_activate ≥ 120 s` (suppressed before the first activate is seen). Grace matches `agent_silence` — past that, a stuck agent fires `agent_silence` first; a persistent gap with a healthy agent is the controller's slot cap or similar truncation. |
 
 **Startup grace.** The four counter and log-pattern triggers
 (`apply_config_errors`, `get_config_errors`, `diff_timeout`,

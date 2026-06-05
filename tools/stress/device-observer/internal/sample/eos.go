@@ -10,21 +10,20 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-// userTunnelMinID is the lowest interface index treated as a "user
-// tunnel" when counting interfaces from `show ip interface brief`. The
-// stress harness's user tunnels start at Tunnel500 (the controller's
-// rendered config begins its per-user GRE block at this index); lower
-// Tunnel indices on the device — typically Tunnel1..Tunnel127 used for
-// inter-router routing fabric on physical EOS — are explicitly excluded
-// so the device_tunnel_gap sentinel compares apples to apples against
-// the orchestrator's active-user count.
-const userTunnelMinID = 500
+// userTunnelDescriptionPrefix identifies user-tunnel interfaces by the
+// description string the controller renders on each user's `interface
+// TunnelN` block. Using the description rather than a numeric range on
+// the tunnel ID lets the observer compare apples-to-apples against the
+// orchestrator's user count regardless of where in the Tunnel<N>
+// namespace the controller chooses to place them (legacy controllers
+// started at 500; the gm/tunnel-id-start-1 fix starts at 1, which
+// overlaps the inter-router routing-fabric range on physical EOS).
+const userTunnelDescriptionPrefix = "USER-UCAST-"
 
 type eapiRunner interface {
 	RunShowJSON(cmd string) (json.RawMessage, error)
@@ -38,7 +37,7 @@ type commandSpec struct {
 
 var commands = []commandSpec{
 	{"show hardware capacity", "show-hardware-capacity", true},
-	{"show ip interface brief", "show-ip-interface-brief", true},
+	{"show interfaces description", "show-interfaces-description", true},
 	{"show processes top once", "show-processes-top-once", true},
 	{"show logging errors", "show-logging-errors", false},
 	{"show logging critical", "show-logging-critical", false},
@@ -72,20 +71,24 @@ func (s *Sampler) LatestCPUPercent() (float64, bool) {
 }
 
 // LatestTunnelCount returns the most recently observed number of user
-// tunnel interfaces on the device — i.e. interfaces named TunnelN
-// with N >= userTunnelMinID, parsed from `show ip interface brief`.
-// Returns (0, false) before the first successful parse. The abort
-// decider uses this to detect when the orchestrator's expected
-// active-user count diverges from what the agent has actually applied —
-// e.g. when the controller's per-device tunnel-slot cap silently
-// truncates the rendered device config.
+// tunnel interfaces on the device — i.e. interfaces whose description
+// starts with "USER-UCAST-" (the prefix the controller renders on
+// every per-user `interface TunnelN` block), counted from
+// `show interfaces description`. Returns (0, false) before the first
+// successful parse. The abort decider uses this to detect when the
+// orchestrator's expected active-user count diverges from what the
+// agent has actually applied — e.g. when the controller's per-device
+// tunnel-slot cap silently truncates the rendered device config.
 //
-// An earlier version of this used `show gre tunnel static`, but that
-// command only lists statically-configured GRE-keyed tunnels (the
-// device's inter-router fabric, ~3 entries on physical EOS) — user
-// tunnels are interface-mode GRE without a static next-hop and don't
-// show up there. The result was a sentinel that always read zero on
-// any device that did its tunnel via interface-mode GRE.
+// Earlier iterations used `show gre tunnel static` (only lists
+// statically-configured GRE-keyed routing-fabric tunnels) and
+// `show ip interface brief` filtered on a Tunnel-index >= 500
+// (worked while user tunnel IDs started at 500 but broke when the
+// controller started allocating from 1, overlapping the routing
+// fabric's low-numbered range). Filtering on the controller's
+// rendered description string is the most stable discriminator:
+// it tracks the controller's namespacing decisions regardless of
+// where in the Tunnel<N> ID space user tunnels happen to land.
 func (s *Sampler) LatestTunnelCount() (int, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -147,13 +150,13 @@ func (s *Sampler) runOne(c commandSpec, ts time.Time) error {
 				s.logger.Warn("could not parse CPU from show processes top once")
 			}
 		}
-		if c.cmd == "show ip interface brief" {
+		if c.cmd == "show interfaces description" {
 			if n, ok := parseTunnelCount(raw); ok {
 				s.mu.Lock()
 				s.latestTunnelCount, s.tunnelCountValid = n, true
 				s.mu.Unlock()
 			} else {
-				s.logger.Warn("could not parse tunnel count from show ip interface brief")
+				s.logger.Warn("could not parse tunnel count from show interfaces description")
 			}
 		}
 	} else {
@@ -203,51 +206,39 @@ func parseCPUPercent(raw json.RawMessage) (float64, bool) {
 }
 
 // parseTunnelCount returns the number of user-tunnel interfaces in the
-// `show ip interface brief | json` eAPI response, shaped as
-// `{"interfaces": {"<name>": {…}, …}}`. An interface is a user tunnel
-// when its name matches `Tunnel<N>` and N >= userTunnelMinID; lower
-// indices and other interface types (Loopback, Ethernet, Management)
-// are ignored.
+// `show interfaces description | json` eAPI response, shaped as
+// `{"interfaceDescriptions": {"<name>": {"description": "..."}, …}}`.
+// An interface is a user tunnel when its description begins with
+// `userTunnelDescriptionPrefix` — every per-user `interface TunnelN`
+// block the controller renders carries `description USER-UCAST-<idx>`,
+// so this filter is robust against changes in the Tunnel<N> id
+// range (legacy: 500+; current: 1+).
 //
 // Returns (0, true) on an empty interfaces map and (N, true) on a
-// populated one — including when N=0 because the only Tunnel interfaces
-// present have low indices (the inter-router fabric). Returns (0, false)
-// only when the `interfaces` key is missing entirely or the JSON is
-// malformed, so the abort decider can tell "zero confirmed" apart from
-// "unknown" and suppress the sentinel in the latter case.
+// populated one. Returns (0, false) only when the
+// `interfaceDescriptions` key is missing or the JSON is malformed, so
+// the abort decider can tell "zero confirmed" apart from "unknown" and
+// suppress the sentinel in the latter case.
 func parseTunnelCount(raw json.RawMessage) (int, bool) {
+	type desc struct {
+		Description string `json:"description"`
+	}
 	var env struct {
-		Interfaces map[string]json.RawMessage `json:"interfaces"`
+		InterfaceDescriptions map[string]desc `json:"interfaceDescriptions"`
 	}
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return 0, false
 	}
-	if env.Interfaces == nil {
+	if env.InterfaceDescriptions == nil {
 		return 0, false
 	}
 	count := 0
-	for name := range env.Interfaces {
-		idx, ok := userTunnelIndex(name)
-		if !ok || idx < userTunnelMinID {
-			continue
+	for _, d := range env.InterfaceDescriptions {
+		if strings.HasPrefix(d.Description, userTunnelDescriptionPrefix) {
+			count++
 		}
-		count++
 	}
 	return count, true
-}
-
-// userTunnelIndex parses "Tunnel<N>" and returns N. Returns (0, false)
-// for any other interface name.
-func userTunnelIndex(name string) (int, bool) {
-	const prefix = "Tunnel"
-	if !strings.HasPrefix(name, prefix) {
-		return 0, false
-	}
-	idx, err := strconv.Atoi(name[len(prefix):])
-	if err != nil {
-		return 0, false
-	}
-	return idx, true
 }
 
 // fileTimestamp renders t as ISO 8601 UTC with `:` → `-` for filesystem

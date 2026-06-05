@@ -91,6 +91,20 @@ type Config struct {
 	AgentQuietWindow       time.Duration
 	AgentQuiescenceTimeout time.Duration
 
+	// ApplyCatchUpTimeout bounds how long Run waits between
+	// provision-complete and deprovision-start for the agent's
+	// `applied` event count to catch up to the provision-target
+	// count. With hold=0 and a slow agent (>1 MB configs take ~40s
+	// to diff-check) the orchestrator can finish provisioning all
+	// 1024 users and start deleting them before the agent ever
+	// applies the peak config — users get added and removed in the
+	// same diff and never show up on the device. The wait blocks
+	// until applied >= len(created) OR the timeout fires. Zero
+	// disables the wait (the legacy behavior). A small grace count
+	// (4) is allowed since the last batch's applied events lag by
+	// roughly one poll cycle even on a healthy agent.
+	ApplyCatchUpTimeout time.Duration
+
 	Executor Executor
 	Agent    agent.Runner
 	Runlog   *runlog.Writer
@@ -110,6 +124,8 @@ func (c *Config) validate() error {
 		return errors.New("sweep: AgentQuietWindow must be >= 0")
 	case c.AgentQuiescenceTimeout < 0:
 		return errors.New("sweep: AgentQuiescenceTimeout must be >= 0")
+	case c.ApplyCatchUpTimeout < 0:
+		return errors.New("sweep: ApplyCatchUpTimeout must be >= 0")
 	case c.AgentQuietWindow > 0 && c.AgentQuiescenceTimeout <= 0:
 		// The wait loop only enforces the deadline when timeout > 0. A zero
 		// timeout paired with a positive window would loop until ctx
@@ -167,6 +183,11 @@ type quiescenceTracker struct {
 	// EventConfigReceived, which implies the previous cycle finished
 	// without an explicit commit).
 	pendingCommit atomic.Bool
+	// appliedCount counts EventApplied observations across the run.
+	// Used by waitForAppliedToCatchUp at the provision→deprovision
+	// boundary to ensure the agent has had time to apply the peak
+	// config before the orchestrator starts removing users.
+	appliedCount atomic.Int64
 }
 
 // markEvent records an agent activity beat that resets the silence
@@ -192,6 +213,17 @@ func (q *quiescenceTracker) lastEvent() (time.Time, bool) {
 // regardless of how long the agent has been silent.
 func (q *quiescenceTracker) HasPendingCommit() bool {
 	return q.pendingCommit.Load()
+}
+
+// markApplied increments the per-run EventApplied counter. Called
+// alongside markEvent for EventApplied observations.
+func (q *quiescenceTracker) markApplied() {
+	q.appliedCount.Add(1)
+}
+
+// AppliedCount returns the running total of EventApplied observations.
+func (q *quiescenceTracker) AppliedCount() int64 {
+	return q.appliedCount.Load()
 }
 
 // createdUser tracks an orchestrator-owned user so the deprovision phase can
@@ -283,6 +315,18 @@ func Run(ctx context.Context, cfg Config) error {
 
 	created, err := provision(runCtx, &cfg, registry)
 
+	// Wait for the agent to apply the peak config before tearing down.
+	// At 1k users / hold=0 the orchestrator's provision finishes ~40s
+	// ahead of the agent's slowest diff-check + commit, so without this
+	// wait deprovision starts removing users while the agent is still
+	// trying to add them — users get added and removed in the same
+	// running diff and never show up on the device. We only wait on
+	// the success path: a provision error or context cancel means
+	// we're aborting, and the goal there is to clean up quickly.
+	if err == nil && cfg.ApplyCatchUpTimeout > 0 {
+		waitForAppliedToCatchUp(runCtx, &cfg, tracker, len(created))
+	}
+
 	// Always attempt deprovision so a provision error (or an abort during
 	// provision) still cleans up what the sweep created; the consumer keeps
 	// draining in parallel so any straggling agent events for already-created
@@ -361,6 +405,9 @@ func consumeAgentEvents(cfg *Config, registry *tunnelRegistry, tracker *quiescen
 			// agent gave up on the session (no-op diff in steady-
 			// state polling, most commonly post-deprovision).
 			tracker.markEvent(cfg.Clock.Now(), false)
+		}
+		if ev.Kind == agent.EventApplied {
+			tracker.markApplied()
 		}
 		if ev.Kind == agent.EventCommit || ev.Kind == agent.EventConfigReceived || ev.Kind == agent.EventCommitAborted {
 			// Pure activity signals — no per-tunnel runlog row to emit.
@@ -462,6 +509,59 @@ func waitForAgentQuiescence(ctx context.Context, cfg *Config, tracker *quiescenc
 		case <-cfg.Clock.After(time.Second):
 		case <-ctx.Done():
 			cfg.Logger.Warn("sweep: agent quiescence wait cancelled", "err", ctx.Err())
+			return
+		}
+	}
+}
+
+// waitForAppliedToCatchUp blocks at the provision→deprovision boundary
+// until either (a) the agent has emitted at least `target` EventApplied
+// observations OR (b) cfg.ApplyCatchUpTimeout elapses. The function is
+// a no-op when cfg.ApplyCatchUpTimeout == 0 (the legacy behavior).
+//
+// We allow a small grace (`applyCatchUpGrace`) so the last batch's
+// applied events, which lag by roughly one poll cycle even on a healthy
+// agent, don't pin the wait to its timeout. `target` is len(created):
+// the orchestrator's count of users it actually provisioned (excludes
+// users the executor declined to create).
+//
+// The wait returns silently on hit, warns on ctx cancel or timeout, and
+// never fails the run — deprovision still runs afterwards regardless.
+const applyCatchUpGrace = int64(4)
+
+func waitForAppliedToCatchUp(ctx context.Context, cfg *Config, tracker *quiescenceTracker, target int) {
+	if cfg.ApplyCatchUpTimeout <= 0 || target == 0 {
+		return
+	}
+	start := cfg.Clock.Now()
+	deadline := start.Add(cfg.ApplyCatchUpTimeout)
+	cfg.Logger.Info("sweep: waiting for agent applied to catch up to provision",
+		"target", target,
+		"applied", tracker.AppliedCount(),
+		"grace", applyCatchUpGrace,
+		"timeout", cfg.ApplyCatchUpTimeout)
+	for {
+		applied := tracker.AppliedCount()
+		if applied+applyCatchUpGrace >= int64(target) {
+			cfg.Logger.Info("sweep: applied caught up",
+				"applied", applied,
+				"target", target,
+				"elapsed", cfg.Clock.Now().Sub(start))
+			return
+		}
+		now := cfg.Clock.Now()
+		if !now.Before(deadline) {
+			cfg.Logger.Warn("sweep: apply catch-up timed out; proceeding with deprovision anyway",
+				"applied", applied,
+				"target", target,
+				"shortfall", int64(target)-applied,
+				"elapsed", now.Sub(start))
+			return
+		}
+		select {
+		case <-cfg.Clock.After(time.Second):
+		case <-ctx.Done():
+			cfg.Logger.Warn("sweep: apply catch-up wait cancelled", "err", ctx.Err())
 			return
 		}
 	}

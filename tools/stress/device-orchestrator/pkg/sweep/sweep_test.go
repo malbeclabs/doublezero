@@ -742,6 +742,106 @@ func TestRun_WaitsForAgentQuiescenceAfterDeprovision(t *testing.T) {
 		"Run returned %v after gate release; expected ≥ %v (quiet window)", elapsed, quietWindow/2)
 }
 
+// TestRun_BlocksDeprovisionUntilAppliedCatchesUp proves the
+// provision→deprovision wait blocks until enough EventApplied
+// observations have landed to cover the provisioned users. Without
+// this gate (hold=0) the orchestrator finishes provisioning ~40s
+// ahead of the agent's slowest commit at high user counts and starts
+// removing users before they've ever been added to the device.
+func TestRun_BlocksDeprovisionUntilAppliedCatchesUp(t *testing.T) {
+	t.Parallel()
+
+	owner := solana.NewWallet().PublicKey()
+	exec := newFakeExecutor(owner)
+	ag := newScriptedAgent()
+
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	w, err := runlog.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	cfg := sweep.Config{
+		RunID:               "run-catch-up",
+		Target:              5,
+		UsersPerBatch:       5,
+		Hold:                0,
+		ApplyCatchUpTimeout: 2 * time.Second,
+		OwnerFilter:         owner,
+		Executor:            exec,
+		Agent:               ag,
+		Runlog:              w,
+		Clock:               sweep.RealClock{},
+	}
+	done := make(chan error, 1)
+	go func() { done <- sweep.Run(context.Background(), cfg) }()
+
+	// Wait for provision to finish (5 create calls) but no deprovision
+	// yet — the catch-up wait should be blocking.
+	deadline := time.Now().Add(2 * time.Second)
+	for exec.createN.Load() < 5 {
+		if time.Now().After(deadline) {
+			t.Fatalf("provision did not reach 5 users in 2s (got %d)", exec.createN.Load())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// Give the wait a beat to enter the loop, then confirm deprovision
+	// hasn't started.
+	time.Sleep(50 * time.Millisecond)
+	require.Equal(t, int32(0), exec.deleteN.Load(), "deprovision started before applied caught up")
+
+	// Emit enough Applied events to satisfy target - grace (5 - 4 = 1).
+	ag.Emit(agent.Event{Kind: agent.EventApplied, TunnelID: 500, At: time.Now()})
+
+	select {
+	case runErr := <-done:
+		require.NoError(t, runErr)
+	case <-time.After(3 * time.Second):
+		t.Fatal("Run did not return within 3s after Applied caught up")
+	}
+	assert.Equal(t, int32(5), exec.deleteN.Load(), "all 5 users should have been deprovisioned")
+}
+
+// TestRun_CatchUpWaitHonorsTimeout confirms the wait gives up and
+// proceeds with deprovision when ApplyCatchUpTimeout fires, instead of
+// pinning the orchestrator indefinitely on a stuck agent.
+func TestRun_CatchUpWaitHonorsTimeout(t *testing.T) {
+	t.Parallel()
+
+	owner := solana.NewWallet().PublicKey()
+	exec := newFakeExecutor(owner)
+	ag := newScriptedAgent()
+
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	w, err := runlog.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	cfg := sweep.Config{
+		RunID:               "run-catch-up-timeout",
+		Target:              10,
+		UsersPerBatch:       10,
+		Hold:                0,
+		ApplyCatchUpTimeout: 200 * time.Millisecond,
+		OwnerFilter:         owner,
+		Executor:            exec,
+		Agent:               ag, // never emits Applied
+		Runlog:              w,
+		Clock:               sweep.RealClock{},
+	}
+	start := time.Now()
+	require.NoError(t, sweep.Run(context.Background(), cfg))
+	elapsed := time.Since(start)
+	// Wait should have taken roughly the timeout. The lower bound is
+	// timeout/2 (loose, absorbs scheduler jitter); the upper bound is
+	// timeout * 4 (loose enough to absorb the 1s tick interval).
+	assert.GreaterOrEqual(t, elapsed, 100*time.Millisecond,
+		"Run returned %v; expected at least the catch-up timeout floor", elapsed)
+	assert.Less(t, elapsed, 5*time.Second,
+		"Run took %v; expected catch-up wait to time out, not hang", elapsed)
+	assert.Equal(t, int32(10), exec.deleteN.Load(),
+		"deprovision should still run after the catch-up wait times out")
+}
+
 // TestRun_QuiescenceBlocksOnPendingCommit proves the wait does NOT
 // declare quiescence while the agent has a config received but not
 // yet committed. Without this, the wait could time out mid-diff-check

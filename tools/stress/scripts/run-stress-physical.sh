@@ -115,6 +115,12 @@ ACCESS_PASS_PARALLEL="${DZ_STRESS_ACCESS_PASS_PARALLEL:-16}"
 CLIENT_IP_BASE="${DZ_STRESS_CLIENT_IP_BASE:-9.200.0.0}"
 
 NO_AGENT=false
+# Off by default — matches the orchestrator's default 'stress the agent'
+# shape. When set, the orchestrator pauses after every provision batch
+# until the agent's applied count covers the cumulative target. Slows
+# the run but yields per-cycle data that better matches production
+# (where users arrive at human cadence, not in burst-fashion).
+APPLY_PER_BATCH_CATCH_UP=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --no-agent) NO_AGENT=true; shift ;;
@@ -122,6 +128,7 @@ while [[ $# -gt 0 ]]; do
         --users-per-batch) USERS_PER_BATCH="$2"; shift 2 ;;
         --hold) HOLD_SECONDS="$2"; shift 2 ;;
         --sample-interval) SAMPLE_INTERVAL="$2"; shift 2 ;;
+        --apply-per-batch-catch-up) APPLY_PER_BATCH_CATCH_UP=true; shift ;;
         -h|--help) sed -n '1,/^set -euo/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown flag: $1" >&2; exit 2 ;;
     esac
@@ -475,6 +482,9 @@ ORCH_ARGS=(
 )
 if [ "$NO_AGENT" = true ]; then
     ORCH_ARGS+=(--no-agent)
+fi
+if [ "$APPLY_PER_BATCH_CATCH_UP" = true ]; then
+    ORCH_ARGS+=(--apply-per-batch-catch-up)
 fi
 
 log "launching orchestrator (background)"

@@ -125,6 +125,17 @@ type Config struct {
 	// still applies. With ApplyCatchUpTimeout == 0 this flag is a no-op.
 	ApplyPerBatchCatchUp bool
 
+	// NoAgent declares that the run is being driven without a real
+	// agent (the caller wired up agent.NewNoop). Used by
+	// waitForAgentQuiescence to skip the wait without inferring the
+	// answer from tracker state — the previous inference races with
+	// the consumer goroutine that updates the tracker, and at high
+	// schedule pressure can fire even on a real-agent run that has
+	// emitted events that the consumer hasn't yet drained. main.go
+	// already turns this flag on when --no-agent is set, alongside
+	// zeroing ApplyCatchUpTimeout.
+	NoAgent bool
+
 	Executor Executor
 	Agent    agent.Runner
 	Runlog   *runlog.Writer
@@ -477,32 +488,42 @@ func consumeAgentEvents(cfg *Config, registry *tunnelRegistry, tracker *quiescen
 //
 // The wait returns early on cfg.AgentQuiescenceTimeout (warned) or
 // ctx.Done() (warned). It is a no-op when cfg.AgentQuietWindow is zero
-// (the library default) or when no agent event has ever been observed
-// (e.g. --no-agent runs).
+// (the library default) or when cfg.NoAgent is true (the caller wired a
+// noop runner). An older version of this function also skipped when
+// tracker.lastEvent() reported no events; that inference raced with
+// the consumer goroutine that updates the tracker (event sitting in
+// the channel buffer but not yet observed) and could falsely fast-path
+// during a real-agent run, killing the SSH session mid-commit. The
+// explicit NoAgent flag from main.go replaces that inference.
 //
 // The wait polls in 1s ticks. Polling avoids needing a separate
 // "applied observed" signal channel — the tracker's atomic.Int64 is
 // read each tick and compared against the current clock. At 1024
 // users / batch=32 the agent emits commits in clumps tens of seconds
 // apart, so a 1s poll is well below the natural event cadence.
+//
+// When tracker.lastEvent() reports no events yet (zero-time), the
+// loop still progresses correctly: sinceLast is "now - zero" which is
+// trivially larger than AgentQuietWindow, so the wait blocks for
+// AgentQuietWindow against the elapsed-since-start guard before
+// returning. That gives the consumer goroutine a generous window to
+// pick up any in-flight events before we declare quiescence.
 func waitForAgentQuiescence(ctx context.Context, cfg *Config, tracker *quiescenceTracker) {
 	if cfg.AgentQuietWindow <= 0 {
 		return
 	}
-	last, ok := tracker.lastEvent()
-	if !ok {
-		cfg.Logger.Info("sweep: no agent events observed; skipping agent quiescence wait")
+	if cfg.NoAgent {
+		cfg.Logger.Info("sweep: --no-agent set; skipping agent quiescence wait")
 		return
 	}
 	start := cfg.Clock.Now()
 	deadline := start.Add(cfg.AgentQuiescenceTimeout)
 	cfg.Logger.Info("sweep: waiting for agent to quiesce",
 		"quiet_window", cfg.AgentQuietWindow,
-		"timeout", cfg.AgentQuiescenceTimeout,
-		"last_event_at", last)
+		"timeout", cfg.AgentQuiescenceTimeout)
 	for {
 		now := cfg.Clock.Now()
-		last, _ = tracker.lastEvent()
+		last, _ := tracker.lastEvent()
 		sinceLast := now.Sub(last)
 		elapsed := now.Sub(start)
 		// Quiescence requires: silent for AgentQuietWindow AND wait

@@ -1008,10 +1008,13 @@ func TestRun_QuiescenceBlocksOnPendingCommit(t *testing.T) {
 	}
 }
 
-// TestRun_SkipsQuiescenceWaitWhenNoAppliedObserved confirms the wait is a
-// no-op when the agent never emitted an Applied — common in --no-agent runs
-// and on early-failure paths where teardown shouldn't pay the wait cost.
-func TestRun_SkipsQuiescenceWaitWhenNoAppliedObserved(t *testing.T) {
+// TestRun_SkipsQuiescenceWaitWhenNoAgent confirms the wait is a no-op
+// when the caller declared the run as --no-agent (Config.NoAgent=true).
+// The wait used to skip on an inferred "no events observed" signal,
+// but that inference raced with the consumer goroutine; the explicit
+// flag replaces it. With a 30s quiet window the wait would dominate
+// the run if NoAgent did not short-circuit it.
+func TestRun_SkipsQuiescenceWaitWhenNoAgent(t *testing.T) {
 	t.Parallel()
 
 	owner := solana.NewWallet().PublicKey()
@@ -1032,6 +1035,7 @@ func TestRun_SkipsQuiescenceWaitWhenNoAppliedObserved(t *testing.T) {
 		OwnerFilter:            owner,
 		Executor:               exec,
 		Agent:                  agent.NewNoop(nil),
+		NoAgent:                true,
 		Runlog:                 w,
 		Clock:                  sweep.RealClock{},
 	}
@@ -1040,7 +1044,7 @@ func TestRun_SkipsQuiescenceWaitWhenNoAppliedObserved(t *testing.T) {
 	require.NoError(t, sweep.Run(context.Background(), cfg))
 	elapsed := time.Since(start)
 	assert.Less(t, elapsed, time.Second,
-		"Run took %v with a 30s quiet window but no Applied events — wait should have skipped", elapsed)
+		"Run took %v with a 30s quiet window and NoAgent=true — wait should have skipped", elapsed)
 }
 
 // TestRun_WaitsForAgentQuiescenceEvenOnAbort proves that the quiescence

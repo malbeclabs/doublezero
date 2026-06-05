@@ -289,6 +289,7 @@ func run() error {
 		AgentQuiescenceTimeout: time.Duration(*agentQuiescenceTimeoutSeconds) * time.Second,
 		ApplyCatchUpTimeout:    time.Duration(*applyCatchUpTimeoutSeconds) * time.Second,
 		ApplyPerBatchCatchUp:   *applyPerBatchCatchUp,
+		NoAgent:                *noAgent,
 		OwnerFilter:            signer.PublicKey(),
 		Executor:               liveExec,
 		Agent:                  agentRunner,

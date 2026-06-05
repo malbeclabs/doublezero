@@ -62,9 +62,9 @@ func TestTickWritesAllFiles(t *testing.T) {
 	dir := t.TempDir()
 	runner := &fakeRunner{
 		jsonResp: map[string]json.RawMessage{
-			"show hardware capacity":  json.RawMessage(`{"capacity":1}`),
-			"show gre tunnel static":  json.RawMessage(`{"tunnels":[]}`),
-			"show processes top once": json.RawMessage(`{"processes":[]}`),
+			"show hardware capacity":      json.RawMessage(`{"capacity":1}`),
+			"show interfaces description": json.RawMessage(`{"interfaceDescriptions":{}}`),
+			"show processes top once":     json.RawMessage(`{"processes":[]}`),
 		},
 		textResp: map[string]string{
 			"show logging errors":   "errlog\n",
@@ -89,11 +89,11 @@ func TestTickWritesAllFiles(t *testing.T) {
 	}
 
 	expect := map[string]string{
-		"show-hardware-capacity":  `{"capacity":1}`,
-		"show-gre-tunnel-static":  `{"tunnels":[]}`,
-		"show-processes-top-once": `{"processes":[]}`,
-		"show-logging-errors":     "errlog\n",
-		"show-logging-critical":   "critlog\n",
+		"show-hardware-capacity":      `{"capacity":1}`,
+		"show-interfaces-description": `{"interfaceDescriptions":{}}`,
+		"show-processes-top-once":     `{"processes":[]}`,
+		"show-logging-errors":         "errlog\n",
+		"show-logging-critical":       "critlog\n",
 	}
 	for prefix, want := range expect {
 		matches, _ := filepath.Glob(filepath.Join(dir, prefix+"-*"))
@@ -118,7 +118,7 @@ func TestSingleCommandFailureContinues(t *testing.T) {
 	dir := t.TempDir()
 	runner := &fakeRunner{
 		errs: map[string]error{
-			"show gre tunnel static": errors.New("boom"),
+			"show interfaces description": errors.New("boom"),
 		},
 	}
 	frozen := time.Date(2026, 5, 29, 12, 34, 56, 0, time.UTC)
@@ -134,7 +134,7 @@ func TestSingleCommandFailureContinues(t *testing.T) {
 		t.Fatalf("expected 4 files after one failure, got %d", len(entries))
 	}
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "show-gre-tunnel-static") {
+		if strings.HasPrefix(e.Name(), "show-interfaces-description") {
 			t.Errorf("failing command should not have produced a file, got %s", e.Name())
 		}
 	}
@@ -290,10 +290,22 @@ type runnable interface {
 
 var _ runnable = (*Sampler)(nil)
 
-// TestParseTunnelCount covers the three shapes the parser must handle:
-// a populated greTunnels map, an empty map (healthy device with no users),
-// and a missing/malformed response (must signal ok=false so the decider
-// suppresses the device_tunnel_gap trigger).
+// TestParseTunnelCount covers the shapes the parser must handle for
+// `show interfaces description | json`:
+//
+//   - a populated map containing user tunnels (description begins
+//     "USER-UCAST-") mixed with non-user interfaces (Loopback,
+//     Ethernet, Management, inter-router fabric tunnels);
+//   - a map containing no user tunnels (the device has only routing
+//     fabric — valid state, not unknown);
+//   - an empty map;
+//   - a missing or malformed response (must signal ok=false so the
+//     decider suppresses the device_tunnel_gap trigger).
+//
+// Coverage explicitly includes the low-id case (Tunnel1, Tunnel2)
+// since the controller's gm/tunnel-id-start-1 fix allocates user
+// tunnels from index 1 — the previous numeric-range filter rejected
+// these but the description-prefix filter must accept them.
 func TestParseTunnelCount(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -302,19 +314,38 @@ func TestParseTunnelCount(t *testing.T) {
 		wantOK bool
 	}{
 		{
-			name:   "populated map",
-			body:   `{"greTunnels":{"500":{"name":"Tunnel500"},"501":{"name":"Tunnel501"},"502":{"name":"Tunnel502"}}}`,
+			name: "populated map filters by USER-UCAST- description",
+			body: `{"interfaceDescriptions":{
+				"Loopback255":{"description":""},
+				"Loopback256":{"description":""},
+				"Ethernet1":{"description":""},
+				"Management0":{"description":""},
+				"Tunnel19":{"description":"to-chi-dn-dzd9"},
+				"Tunnel1":{"description":"USER-UCAST-1"},
+				"Tunnel2":{"description":"USER-UCAST-2"},
+				"Tunnel500":{"description":"USER-UCAST-500"}
+			}}`,
 			wantN:  3,
 			wantOK: true,
 		},
 		{
-			name:   "empty map",
-			body:   `{"greTunnels":{}}`,
+			name: "only routing-fabric tunnels present (no USER-UCAST- description)",
+			body: `{"interfaceDescriptions":{
+				"Tunnel19":{"description":"to-chi-dn-dzd9"},
+				"Tunnel59":{"description":"to-chi-dn-dzd1"},
+				"Tunnel91":{"description":"to-chi-dn-dzd5"}
+			}}`,
 			wantN:  0,
 			wantOK: true,
 		},
 		{
-			name:   "missing greTunnels key",
+			name:   "empty interfaceDescriptions map",
+			body:   `{"interfaceDescriptions":{}}`,
+			wantN:  0,
+			wantOK: true,
+		},
+		{
+			name:   "missing interfaceDescriptions key",
 			body:   `{}`,
 			wantN:  0,
 			wantOK: false,

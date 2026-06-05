@@ -30,11 +30,18 @@ tools/stress/scripts/run-stress-local.sh --no-build
 tools/stress/scripts/run-stress-local.sh --target-users 8 --hold 60
 ```
 
-The script ends by printing the orchestrator/observer PIDs and the
-run working directory (under
-`dev/.deploy/dz-local/stress/run/<UTC timestamp>/`). Both keep
+The script ends by printing the orchestrator/observer/watcher PIDs and
+the run working directory (under
+`dev/.deploy/dz-local/stress/run/<UTC timestamp>/`). All three keep
 running in the background. Stop them with the `kill $(cat …)` snippet
 the script prints.
+
+When the orchestrator exits (sweep finished or aborted), a background
+**watcher** stops the observer and emits a post-run markdown summary
+via [`tools/stress/device-reporter`](../device-reporter/) at
+`<run-dir>/summary.md`. `tail -F summary.md` to read it as soon as it
+lands, or invoke `device-reporter summary <run-dir>` ad hoc at any
+point during the run for a partial view.
 
 ## What the stress device differs from the e2e device
 
@@ -202,13 +209,18 @@ The script:
 4. Launches the controller on the host with
    `--max-user-tunnel-slots $TARGET_USERS` and waits for the gRPC port.
 5. Sets up access passes in parallel against the devnet RPC.
-6. Builds the orchestrator + observer binaries.
-7. Launches the orchestrator + observer in the background.
+6. Builds the orchestrator + observer + reporter binaries.
+7. Launches the orchestrator + observer in the background, plus a
+   background watcher that waits for the orchestrator to exit, then
+   stops the observer and emits a markdown summary at
+   `<run-dir>/summary.md` via
+   [`tools/stress/device-reporter`](../device-reporter/).
 
 The controller pid is recorded in `dev/.deploy/stress-physical/run/controller.pid`;
-the orchestrator + observer pids land in the per-run subdirectory
+the orchestrator + observer + watcher pids land in the per-run subdirectory
 (`run/<UTC timestamp>/`). Stop everything with the `kill $(cat …)`
-snippet the script prints.
+snippet the script prints. `tail -F <run-dir>/summary.md` to watch the
+post-run summary land.
 
 ## Overrides
 
@@ -227,9 +239,8 @@ All knobs are env vars (defaults in the script header):
 | `CONTROLLER_BIND_ADDR`    | Controller listen address (default `0.0.0.0`)             |
 | `CONTROLLER_ADVERTISE_ADDR` | Address advertised to the device (default: auto-detect) |
 | `CONTROLLER_LISTEN_PORT`  | Controller listen port (default `7000`)                   |
-| `CONTROLLER_BINARY`       | Path to a prebuilt controller binary (default: `go run` from local checkout) |
 | `SOLANA_KEYPAIR`          | Operator keypair (signs init + access-passes)             |
-| `EAPI_USER`               | eAPI HTTP basic-auth user (default `stress`)              |
+| `EAPI_USER`               | eAPI HTTP basic-auth user (default `admin`)               |
 | `EAPI_PASS`               | eAPI HTTP basic-auth password (no default — required)     |
 | `DEVICE_CODE`             | Device code onchain (default `chi-dn-dzd5`)               |
 | `DEVICE_DZ_PREFIX`        | Device's dz-prefix /29 (carved from the tunnel block)     |

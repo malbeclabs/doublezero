@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 )
@@ -298,4 +300,118 @@ func AssignDevicesToClients(devices []*Device, clients []*Client, clientLatencie
 		}
 	}
 	return batchData
+}
+
+// HostFailureStats aggregates per-host failure information after deduping
+// repeated tests of the same (host, device) pair.
+type HostFailureStats struct {
+	Total         int      // unique devices assigned to this host
+	Failed        int      // unique devices that never succeeded on this host
+	FailedDevices []string // sorted, deduped device codes
+}
+
+// DeviceRetest describes a (host, device) pair that was tested more than once.
+type DeviceRetest struct {
+	Host       string
+	DeviceCode string
+	Attempts   int
+	Successes  int
+	Failures   int
+}
+
+// FailureStats summarizes the outcome of a QA all-devices run after applying
+// the "any success counts as success" rule:
+//   - A device that succeeded at least once is treated as a success overall.
+//   - A device that never succeeded counts as a single failure, regardless of
+//     how many times it was retested.
+//
+// DeviceResults is sorted by DeviceCode. Each HostFailureStats.FailedDevices
+// slice is sorted by device code. Retests is sorted by (Host, DeviceCode).
+type FailureStats struct {
+	DeviceResults []DeviceTestResult          // one per unique device code
+	PerHost       map[string]HostFailureStats // keyed by host
+	Retests       []DeviceRetest              // entries where Attempts > 1
+}
+
+// ComputeFailureStats walks batchData once and applies the "any success
+// counts as success" rule per device. Repeated tests of the same
+// (host, device) collapse into a single result for both the overall device
+// list and per-host stats.
+func ComputeFailureStats(batchData BatchData) FailureStats {
+	// hostDeviceAttempts[host][code] = number of attempts
+	hostDeviceAttempts := make(map[string]map[string]int)
+	// hostDeviceSuccesses[host][code] = number of successful attempts
+	hostDeviceSuccesses := make(map[string]map[string]int)
+	deviceSucceeded := make(map[string]bool)
+	devicePubkey := make(map[string]string)
+
+	batchNums := slices.Sorted(maps.Keys(batchData))
+	for _, batchNum := range batchNums {
+		hosts := slices.Sorted(maps.Keys(batchData[batchNum]))
+		for _, host := range hosts {
+			assignment := batchData[batchNum][host]
+			code := assignment.Device.Code
+			if hostDeviceAttempts[host] == nil {
+				hostDeviceAttempts[host] = make(map[string]int)
+				hostDeviceSuccesses[host] = make(map[string]int)
+			}
+			hostDeviceAttempts[host][code]++
+			devicePubkey[code] = assignment.Device.PubKey
+			if assignment.Success() {
+				hostDeviceSuccesses[host][code]++
+				deviceSucceeded[code] = true
+			} else if _, seen := deviceSucceeded[code]; !seen {
+				deviceSucceeded[code] = false
+			}
+		}
+	}
+
+	deviceCodes := slices.Sorted(maps.Keys(deviceSucceeded))
+	deviceResults := make([]DeviceTestResult, 0, len(deviceCodes))
+	for _, code := range deviceCodes {
+		deviceResults = append(deviceResults, DeviceTestResult{
+			DeviceCode:   code,
+			DevicePubkey: devicePubkey[code],
+			Success:      deviceSucceeded[code],
+		})
+	}
+
+	perHost := make(map[string]HostFailureStats, len(hostDeviceAttempts))
+	for host, attempts := range hostDeviceAttempts {
+		stats := HostFailureStats{Total: len(attempts)}
+		codes := slices.Sorted(maps.Keys(attempts))
+		for _, code := range codes {
+			if hostDeviceSuccesses[host][code] == 0 {
+				stats.Failed++
+				stats.FailedDevices = append(stats.FailedDevices, code)
+			}
+		}
+		perHost[host] = stats
+	}
+
+	var retests []DeviceRetest
+	hosts := slices.Sorted(maps.Keys(hostDeviceAttempts))
+	for _, host := range hosts {
+		codes := slices.Sorted(maps.Keys(hostDeviceAttempts[host]))
+		for _, code := range codes {
+			n := hostDeviceAttempts[host][code]
+			if n <= 1 {
+				continue
+			}
+			successes := hostDeviceSuccesses[host][code]
+			retests = append(retests, DeviceRetest{
+				Host:       host,
+				DeviceCode: code,
+				Attempts:   n,
+				Successes:  successes,
+				Failures:   n - successes,
+			})
+		}
+	}
+
+	return FailureStats{
+		DeviceResults: deviceResults,
+		PerHost:       perHost,
+		Retests:       retests,
+	}
 }

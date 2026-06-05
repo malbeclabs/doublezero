@@ -16,7 +16,9 @@ go build -o /tmp/device-reporter ./tools/stress/device-reporter/cmd/device-repor
 ## Usage
 
 ```
-device-reporter summary <run-dir>     # markdown to stdout
+device-reporter summary <run-dir>                       # markdown to stdout
+device-reporter summary -free-mem-floor-mb=512 <run-dir>  # tune memory floor
+device-reporter summary -free-mem-floor-mb=0 <run-dir>    # disable floor check
 ```
 
 ## What the summary covers
@@ -33,6 +35,17 @@ device-reporter summary <run-dir>     # markdown to stdout
   linear, or not well-fit by a line.
 - **Agent CLI errors**: top normalized command patterns (tunnel IDs are
   collapsed so per-tunnel error spam buckets cleanly).
+- **Resource usage** (when the observer was enabled):
+  - Device CPU peak / p95 and any sustained ≥ 80 % windows (matches the
+    observer's `cpu_sustained` abort threshold).
+  - Device memory peak free / peak used. A free-memory floor flags
+    runs where free dropped below the configured limit; default is
+    `-free-mem-floor-mb=1024` (1 GiB), tuned for production-class
+    Arista DUTs. Pass `-free-mem-floor-mb=0` to silence the floor
+    line on small/virtual test devices that never have that much
+    free memory to begin with.
+  - doublezero-agent RSS peak / end / per-minute slope across the run,
+    so a long-running stress can flag a slow leak.
 - **Abort detail**: trigger / reason / human-readable detail when an abort
   sentinel was written.
 

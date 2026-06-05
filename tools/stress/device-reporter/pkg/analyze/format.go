@@ -39,6 +39,28 @@ func FormatDurationOrZero(d time.Duration) string {
 	return formatNonZeroDuration(d)
 }
 
+// FormatBytes renders a byte count in IEC units (KiB, MiB, GiB). Used
+// for memory readouts where the operator wants something easier to
+// eyeball than a 10-digit kilobyte total. Zero renders as "—" so the
+// "missing data" convention is consistent with FormatDuration.
+func FormatBytes(b uint64) string {
+	if b == 0 {
+		return "—"
+	}
+	const unit = 1024.0
+	f := float64(b)
+	switch {
+	case f < unit:
+		return fmt.Sprintf("%d B", b)
+	case f < unit*unit:
+		return fmt.Sprintf("%.1f KiB", f/unit)
+	case f < unit*unit*unit:
+		return fmt.Sprintf("%.1f MiB", f/(unit*unit))
+	default:
+		return fmt.Sprintf("%.2f GiB", f/(unit*unit*unit))
+	}
+}
+
 func formatNonZeroDuration(d time.Duration) string {
 	if d < time.Microsecond {
 		return fmt.Sprintf("%dns", d.Nanoseconds())

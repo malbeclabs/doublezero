@@ -52,6 +52,8 @@ Usage:
 
 func cmdSummary(args []string) error {
 	fs := flag.NewFlagSet("summary", flag.ExitOnError)
+	// 1 GiB default targets production-class Arista DUTs; `=0` disables.
+	memFloorMB := fs.Uint64("free-mem-floor-mb", 1024, "free-memory floor in MiB; sub-floor `show processes top once` samples are counted as violations (0 disables)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -62,7 +64,8 @@ func cmdSummary(args []string) error {
 	if err != nil {
 		return err
 	}
-	s := analyze.BuildSummary(run)
+	// EOS reports memInfo in kilobytes; convert MiB → KiB once here.
+	s := analyze.BuildSummary(run, analyze.Options{MemFreeFloorKB: *memFloorMB * 1024})
 	format.Summary(os.Stdout, s, run)
 	return nil
 }

@@ -37,7 +37,19 @@ type Run struct {
 	CliErrors []AgentCLIError
 	// Abort holds the abort sentinel JSON if it was written, else nil.
 	Abort *AbortSentinel
+	// ProcessTopSamples is the parsed `show processes top once`
+	// capture, one entry per observer tick. Empty when the observer
+	// was disabled.
+	ProcessTopSamples []ProcessTopSample
+	// AgentRSSSamples is the doublezero-agent's resident-memory series
+	// pulled from observer.agent_metrics.json. Empty for `--no-agent`
+	// runs or agents without the default process collector.
+	AgentRSSSamples []AgentMetricSample
 }
+
+// agentRSSMetric is the Go prometheus client's default process-
+// collector gauge name — stable across agent versions.
+const agentRSSMetric = "process_resident_memory_bytes"
 
 // LoadRun reads every artifact present under `dir` into a Run. Missing
 // individual artifacts leave the matching field nil/empty; the directory
@@ -82,6 +94,18 @@ func LoadRun(dir string) (*Run, error) {
 		return nil, fmt.Errorf("abort: %w", err)
 	} else if ab != nil {
 		r.Abort = ab
+	}
+
+	if samples, err := LoadProcessTopSamples(absDir); err != nil {
+		return nil, fmt.Errorf("show-processes-top-once-*.json: %w", err)
+	} else {
+		r.ProcessTopSamples = samples
+	}
+
+	if metrics, err := LoadAgentMetrics(absDir, agentRSSMetric); err != nil {
+		return nil, fmt.Errorf("observer.agent_metrics.json: %w", err)
+	} else {
+		r.AgentRSSSamples = metrics
 	}
 
 	return r, nil

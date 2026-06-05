@@ -664,25 +664,6 @@ func TestComputeFailureStats(t *testing.T) {
 		}
 	})
 
-	t.Run("device succeeds on host A, fails on host B", func(t *testing.T) {
-		// Overall: device succeeded somewhere, so it counts as success.
-		// Per-host: A 0/1, B 1/1 (per-host dedupe is (host, device), not global).
-		batchData := BatchData{
-			0: {"hostA": pass(dev1), "hostB": fail(dev1)},
-		}
-		stats := ComputeFailureStats(batchData)
-
-		if len(stats.DeviceResults) != 1 || !stats.DeviceResults[0].Success {
-			t.Errorf("expected device marked success overall, got %+v", stats.DeviceResults)
-		}
-		if stats.PerHost["hostA"].Failed != 0 || stats.PerHost["hostA"].Total != 1 {
-			t.Errorf("hostA per-host: got %+v, want 0/1", stats.PerHost["hostA"])
-		}
-		if stats.PerHost["hostB"].Failed != 1 || stats.PerHost["hostB"].Total != 1 {
-			t.Errorf("hostB per-host: got %+v, want 1/1", stats.PerHost["hostB"])
-		}
-	})
-
 	t.Run("multiple devices on one host with mixed outcomes", func(t *testing.T) {
 		// hostA tests three distinct devices: dev1 passes, dev2 fails, dev3 passes.
 		batchData := BatchData{

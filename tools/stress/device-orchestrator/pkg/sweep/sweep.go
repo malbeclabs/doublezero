@@ -105,6 +105,26 @@ type Config struct {
 	// roughly one poll cycle even on a healthy agent.
 	ApplyCatchUpTimeout time.Duration
 
+	// ApplyPerBatchCatchUp, when true, makes the provision phase pause
+	// after every batch (not just at provision-complete) until the
+	// agent's applied count covers the cumulative user count submitted
+	// so far. This paces the orchestrator at the agent's throughput,
+	// which matches production better than the current "flood the
+	// agent" shape — users in real life arrive at human cadence, not
+	// in 32/64-user bursts.
+	//
+	// Trade-off: per-batch waits dramatically reduce the diff-check
+	// load per cycle (more, smaller cycles instead of fewer, larger
+	// ones), which is the load-bearing measurement the harness was
+	// built to surface. Off by default; flip on when measuring per-
+	// user latency under steady-state load rather than peak throughput
+	// under burst load.
+	//
+	// Each per-batch wait honors the same ApplyCatchUpTimeout as the
+	// provision-complete wait; that knob's grace (applyCatchUpGrace)
+	// still applies. With ApplyCatchUpTimeout == 0 this flag is a no-op.
+	ApplyPerBatchCatchUp bool
+
 	Executor Executor
 	Agent    agent.Runner
 	Runlog   *runlog.Writer
@@ -313,7 +333,7 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 	}()
 
-	created, err := provision(runCtx, &cfg, registry)
+	created, err := provision(runCtx, &cfg, registry, tracker)
 
 	// Wait for the agent to apply the peak config before tearing down.
 	// At 1k users / hold=0 the orchestrator's provision finishes ~40s
@@ -575,7 +595,7 @@ func waitForAppliedToCatchUp(ctx context.Context, cfg *Config, tracker *quiescen
 // to ~14 s. Each created user is registered with the tunnel registry so
 // the agent-event consumer can attribute pre_commit_log / applied events
 // back to a user_index.
-func provision(ctx context.Context, cfg *Config, registry *tunnelRegistry) ([]createdUser, error) {
+func provision(ctx context.Context, cfg *Config, registry *tunnelRegistry, tracker *quiescenceTracker) ([]createdUser, error) {
 	if cfg.Target == 0 {
 		return nil, nil
 	}
@@ -611,6 +631,18 @@ func provision(ctx context.Context, cfg *Config, registry *tunnelRegistry) ([]cr
 		}
 
 		runningTarget = nextTarget
+		// Per-batch catch-up: pace the orchestrator at the agent's
+		// throughput so each batch's users land on the device before
+		// the next batch is submitted. Skipped on the final batch
+		// (the provision-complete wait covers it) and when the
+		// flag's off. Honors the same ApplyCatchUpTimeout as the
+		// provision-complete wait.
+		if cfg.ApplyPerBatchCatchUp && cfg.ApplyCatchUpTimeout > 0 && runningTarget < cfg.Target {
+			waitForAppliedToCatchUp(ctx, cfg, tracker, len(created))
+			if err := ctx.Err(); err != nil {
+				return created, err
+			}
+		}
 		if runningTarget >= cfg.Target {
 			break
 		}

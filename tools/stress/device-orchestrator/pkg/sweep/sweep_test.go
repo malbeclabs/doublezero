@@ -742,6 +742,96 @@ func TestRun_WaitsForAgentQuiescenceAfterDeprovision(t *testing.T) {
 		"Run returned %v after gate release; expected ≥ %v (quiet window)", elapsed, quietWindow/2)
 }
 
+// TestRun_PerBatchCatchUpWaitsBetweenBatches proves that when
+// ApplyPerBatchCatchUp is set, the sweep blocks after each batch
+// until the agent has emitted enough Applied events to cover the
+// cumulative count submitted so far — i.e. the orchestrator stops
+// pre-creating batches faster than the agent can apply them. Without
+// this, batch 2 would start as soon as batch 1's onchain activates
+// land regardless of agent progress (the default behavior).
+func TestRun_PerBatchCatchUpWaitsBetweenBatches(t *testing.T) {
+	t.Parallel()
+
+	owner := solana.NewWallet().PublicKey()
+	exec := newFakeExecutor(owner)
+	ag := newScriptedAgent()
+
+	// Signal when batch 2 starts (the 9th CreateUser call). We use a
+	// large enough batch size (8) and target (16) that batch 1's
+	// cumulative target (8) sits above the catch-up grace (4), so
+	// applied=0 actually blocks rather than passing-with-grace.
+	const batchSize = 8
+	const target = 16
+	batch2Reached := make(chan struct{})
+	var once sync.Once
+	exec.afterCreate = func(calls int) {
+		if calls == batchSize+1 {
+			once.Do(func() { close(batch2Reached) })
+		}
+	}
+
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	w, err := runlog.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	cfg := sweep.Config{
+		RunID:                "run-per-batch-catch-up",
+		Target:               target,
+		UsersPerBatch:        batchSize,
+		Hold:                 0,
+		ApplyCatchUpTimeout:  3 * time.Second,
+		ApplyPerBatchCatchUp: true,
+		OwnerFilter:          owner,
+		Executor:             exec,
+		Agent:                ag,
+		Runlog:               w,
+		Clock:                sweep.RealClock{},
+	}
+	done := make(chan error, 1)
+	go func() { done <- sweep.Run(context.Background(), cfg) }()
+
+	// Wait for batch 1 to land (batchSize create calls), then confirm
+	// batch 2 hasn't started — the per-batch wait should block it.
+	deadline := time.Now().Add(2 * time.Second)
+	for exec.createN.Load() < batchSize {
+		if time.Now().After(deadline) {
+			t.Fatalf("batch 1 did not complete within 2s (got %d creates)", exec.createN.Load())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-batch2Reached:
+		t.Fatal("batch 2 started before any Applied event — per-batch wait did not block")
+	default:
+	}
+
+	// Emit batchSize-grace+1 Applied events to push applied+grace
+	// past the cumulative target and unblock the wait.
+	for i := 0; i < batchSize; i++ {
+		ag.Emit(agent.Event{Kind: agent.EventApplied, TunnelID: uint16(500 + i), At: time.Now()})
+	}
+
+	select {
+	case <-batch2Reached:
+		// Expected.
+	case <-time.After(3 * time.Second):
+		t.Fatal("batch 2 did not start within 3s of Applied events")
+	}
+
+	// Let the run finish; emit enough Applieds to clear remaining waits.
+	for i := 0; i < target; i++ {
+		ag.Emit(agent.Event{Kind: agent.EventApplied, TunnelID: uint16(500 + batchSize + i), At: time.Now()})
+	}
+	select {
+	case runErr := <-done:
+		require.NoError(t, runErr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return within 5s after all Applieds emitted")
+	}
+}
+
 // TestRun_BlocksDeprovisionUntilAppliedCatchesUp proves the
 // provision→deprovision wait blocks until enough EventApplied
 // observations have landed to cover the provisioned users. Without

@@ -44,6 +44,7 @@ type orchestratorConfig struct {
 	AgentQuietSeconds             int    `json:"agent_quiet_seconds"`
 	AgentQuiescenceTimeoutSeconds int    `json:"agent_quiescence_timeout_seconds"`
 	ApplyCatchUpTimeoutSeconds    int    `json:"apply_catch_up_timeout_seconds"`
+	ApplyPerBatchCatchUp          bool   `json:"apply_per_batch_catch_up"`
 	DUTPubkey                     string `json:"dut_pubkey"`
 	DUTSSHHost                    string `json:"dut_ssh_host"`
 	DUTSSHKey                     string `json:"dut_ssh_key"`
@@ -107,6 +108,12 @@ func run() error {
 		// Set to 0 to disable; useful when reproducing pre-3796
 		// behavior or for --no-agent runs where applied never lands.
 		applyCatchUpTimeoutSeconds = flag.Int("apply-catch-up-timeout-seconds", 300, "Hard cap on the provision→deprovision wait for the agent's applied count to catch up to the provisioned-user count. 0 disables the wait.")
+		// Off by default. Real production traffic adds users at
+		// human cadence, not in burst-fashion, so this flag is the
+		// closer match for measuring per-user latency under steady-
+		// state load. Off matches the default "stress the agent" shape
+		// the harness was originally built for.
+		applyPerBatchCatchUp = flag.Bool("apply-per-batch-catch-up", false, "Pause after each provision batch until the agent's applied count covers the cumulative target; honors --apply-catch-up-timeout-seconds per batch.")
 		// The containerized harness ships a device-side wrapper (see
 		// tools/stress/docker/device/agent-wrapper.sh) that injects -pubkey from
 		// /etc/doublezero/agent/pubkey and re-execs through sudo, so the
@@ -154,6 +161,7 @@ func run() error {
 		AgentQuietSeconds:             *agentQuietSeconds,
 		AgentQuiescenceTimeoutSeconds: *agentQuiescenceTimeoutSeconds,
 		ApplyCatchUpTimeoutSeconds:    *applyCatchUpTimeoutSeconds,
+		ApplyPerBatchCatchUp:          *applyPerBatchCatchUp,
 		DUTPubkey:                     *dutPubkey,
 		DUTSSHHost:                    *dutSSHHost,
 		DUTSSHKey:                     *dutSSHKey,
@@ -280,6 +288,7 @@ func run() error {
 		AgentQuietWindow:       time.Duration(*agentQuietSeconds) * time.Second,
 		AgentQuiescenceTimeout: time.Duration(*agentQuiescenceTimeoutSeconds) * time.Second,
 		ApplyCatchUpTimeout:    time.Duration(*applyCatchUpTimeoutSeconds) * time.Second,
+		ApplyPerBatchCatchUp:   *applyPerBatchCatchUp,
 		OwnerFilter:            signer.PublicKey(),
 		Executor:               liveExec,
 		Agent:                  agentRunner,

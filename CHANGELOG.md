@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Telemetry
+  - Retry `EADDRNOTAVAIL` / `EADDRINUSE` failures on the device-telemetry-agent's Prometheus metrics-listener bind with capped exponential backoff (1s → 30s, indefinite until context cancel), so a startup race against `ns-management` IP assignment no longer leaves the agent running silently without a `/metrics` endpoint ([malbeclabs/infra#1542](https://github.com/malbeclabs/infra/issues/1542))
+
 ## [v0.26.0](https://github.com/malbeclabs/doublezero/compare/client/v0.25.1...client/v0.26.0) - 2026-06-05
 
 ### Breaking

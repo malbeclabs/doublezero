@@ -230,25 +230,18 @@ func main() {
 	if *metricsEnable {
 		metrics.BuildInfo.WithLabelValues(version, commit, date).Set(1)
 		go func() {
-			var listener net.Listener
+			var listen listenFunc
 			if *managementNamespace != "" {
-				// If the management namespace is provided, we need to run the metrics server in that namespace.
-				listener, err = netns.RunInNamespace(*managementNamespace, func() (net.Listener, error) {
-					return net.Listen("tcp", *metricsAddr)
-				})
-				if err != nil {
-					log.Error("Failed to start prometheus metrics server listener in namespace", "error", err, "namespace", *managementNamespace)
-					return
-				}
-				log.Info("Prometheus metrics server listening", "namespace", *managementNamespace, "address", listener.Addr().String())
+				listen = namespacedListen(*metricsAddr, *managementNamespace)
 			} else {
-				listener, err = net.Listen("tcp", *metricsAddr)
-				if err != nil {
-					log.Error("Failed to start prometheus metrics server listener", "error", err)
-					return
-				}
-				log.Info("Prometheus metrics server listening", "address", listener.Addr().String())
+				listen = plainListen(*metricsAddr)
 			}
+			listener, err := listenWithRetry(ctx, log, listen)
+			if err != nil {
+				log.Error("Failed to start prometheus metrics server listener", "error", err, "namespace", *managementNamespace)
+				return
+			}
+			log.Info("Prometheus metrics server listening", "namespace", *managementNamespace, "address", listener.Addr().String())
 			http.Handle("/metrics", promhttp.Handler())
 			if err := http.Serve(listener, nil); err != nil {
 				log.Error("Failed to start prometheus metrics server", "error", err)

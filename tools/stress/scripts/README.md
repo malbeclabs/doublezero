@@ -239,8 +239,9 @@ All knobs are env vars (defaults in the script header):
 | `CONTROLLER_BIND_ADDR`    | Controller listen address (default `0.0.0.0`)             |
 | `CONTROLLER_ADVERTISE_ADDR` | Address advertised to the device (default: auto-detect) |
 | `CONTROLLER_LISTEN_PORT`  | Controller listen port (default `7000`)                   |
+| `CONTROLLER_BINARY`       | Path to a prebuilt controller binary (default: `go run` from local checkout) |
 | `SOLANA_KEYPAIR`          | Operator keypair (signs init + access-passes)             |
-| `EAPI_USER`               | eAPI HTTP basic-auth user (default `admin`)               |
+| `EAPI_USER`               | eAPI HTTP basic-auth user (default `stress`)              |
 | `EAPI_PASS`               | eAPI HTTP basic-auth password (no default — required)     |
 | `DEVICE_CODE`             | Device code onchain (default `chi-dn-dzd5`)               |
 | `DEVICE_DZ_PREFIX`        | Device's dz-prefix /29 (carved from the tunnel block)     |

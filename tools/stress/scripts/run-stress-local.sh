@@ -567,7 +567,7 @@ cat <<EOF
     working dir      : ${RUN_DIR}
     abort sentinel   : ${RUN_DIR}/abort
 
-To stop both: kill \$(cat ${RUN_DIR}/orchestrator.pid ${RUN_DIR}/observer.pid ${RUN_DIR}/watcher.pid)
+To stop everything: kill \$(cat ${RUN_DIR}/orchestrator.pid ${RUN_DIR}/observer.pid ${RUN_DIR}/watcher.pid)
 To follow:    tail -F ${RUN_DIR}/orchestrator.stderr ${RUN_DIR}/observer.stderr
 To read the post-run summary (once ready): tail -F ${SUMMARY_PATH}
 Or invoke it ad-hoc:                       ${REPORTER_BIN} summary ${RUN_DIR}

@@ -1,4 +1,4 @@
-use std::{collections::HashSet, net::Ipv4Addr};
+use std::collections::HashSet;
 
 use crate::{
     commands::{
@@ -56,20 +56,13 @@ impl DeleteUserCommand {
             }
         }
 
+        // GetAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
+        // back to the exact client-IP pass.
         let (accesspass_pk, _) = GetAccessPassCommand {
-            client_ip: Ipv4Addr::UNSPECIFIED,
+            client_ip: user.client_ip,
             user_payer: user.owner,
         }
         .execute(client)?
-        .or_else(|| {
-            GetAccessPassCommand {
-                client_ip: user.client_ip,
-                user_payer: user.owner,
-            }
-            .execute(client)
-            .ok()
-            .flatten()
-        })
         .ok_or_else(|| eyre::eyre!("You have no Access Pass"))?;
 
         let (_, device) = GetDeviceCommand {

@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
   - `access-pass set` gains `--max-unicast-users` / `--max-multicast-users`; `get`/`list` show the per-category counts and caps.
 - SDK
   - Decode the four new `AccessPass` cap fields (and the previously-missing `tenant_allowlist`) in the Go, Python, and TypeScript layouts.
+  - `GetAccessPassCommand` resolves a shared dynamic-seat AccessPass (the `UNSPECIFIED` PDA) before the exact-IP pass, matching the onchain `create_user` lookup. (#3853)
 
 ## [v0.26.0](https://github.com/malbeclabs/doublezero/compare/client/v0.25.1...client/v0.26.0) - 2026-06-05
 

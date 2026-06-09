@@ -437,6 +437,18 @@ mod tests {
             .with(predicate::eq(accesspass_pubkey))
             .returning(move |_| Ok(AccountData::AccessPass(ap_for_get.clone())));
 
+        // GetAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
+        // exists there, so it falls back to the exact-IP PDA above.
+        let (dynamic_accesspass_pubkey, _) = get_accesspass_pda(
+            &client.get_program_id(),
+            &Ipv4Addr::UNSPECIFIED,
+            &client.get_payer(),
+        );
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_accesspass_pubkey))
+            .returning(|_| Err(eyre::eyre!("account not found")));
+
         // 1. ListAccessPassCommand: gets(AccountType::AccessPass)
         let ap_for_list = accesspass.clone();
         client

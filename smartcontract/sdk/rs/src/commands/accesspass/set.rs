@@ -99,6 +99,7 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use std::net::Ipv4Addr;
 
     #[test]
     fn test_commands_set_accesspass_command() {
@@ -133,6 +134,15 @@ mod tests {
             .expect_get()
             .with(predicate::eq(pda_pubkey))
             .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+        // GetAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
+        // exists there, so it falls back to the exact-IP PDA above.
+        let (dynamic_pubkey, _) =
+            get_accesspass_pda(&client.get_program_id(), &Ipv4Addr::UNSPECIFIED, &payer);
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_pubkey))
+            .returning(|_| Err(eyre::eyre!("account not found")));
 
         client
             .expect_execute_transaction()

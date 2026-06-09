@@ -31,21 +31,13 @@ impl CreateUserCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        // First try to get AccessPass for the client IP
+        // GetAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
+        // back to the exact client-IP pass, matching the onchain create_user path.
         let (accesspass_pk, _) = GetAccessPassCommand {
             client_ip: self.client_ip,
             user_payer: client.get_payer(),
         }
         .execute(client)?
-        .or_else(|| {
-            GetAccessPassCommand {
-                client_ip: Ipv4Addr::UNSPECIFIED,
-                user_payer: client.get_payer(),
-            }
-            .execute(client)
-            .ok()
-            .flatten()
-        })
         .ok_or_else(|| eyre::eyre!("You have no Access Pass"))?;
 
         let (pda_pubkey, _) =
@@ -180,6 +172,15 @@ mod tests {
             .expect_get()
             .with(predicate::eq(accesspass_pubkey))
             .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+        // GetAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
+        // exists there, so it falls back to the exact-IP PDA above.
+        let (dynamic_accesspass_pubkey, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_accesspass_pubkey))
+            .returning(|_| Err(eyre::eyre!("account not found")));
 
         let device = Device {
             account_type: AccountType::Device,

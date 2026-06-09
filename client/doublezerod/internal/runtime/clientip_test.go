@@ -114,7 +114,7 @@ func TestDiscoverClientIP_Explicit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ip, method, err := DiscoverClientIP(tt.explicit)
+			ip, method, behindNAT, err := DiscoverClientIP(tt.explicit)
 			if tt.expectErr {
 				if err == nil {
 					t.Fatalf("expected error, got ip=%v method=%s", ip, method)
@@ -126,6 +126,9 @@ func TestDiscoverClientIP_Explicit(t *testing.T) {
 			}
 			if method != "explicit flag" {
 				t.Errorf("method = %q, want %q", method, "explicit flag")
+			}
+			if behindNAT {
+				t.Errorf("behindNAT = true, want false for explicit flag")
 			}
 			if ip.String() != tt.expectIP {
 				t.Errorf("ip = %s, want %s", ip.String(), tt.expectIP)
@@ -139,6 +142,80 @@ func withTestExternalURL(t *testing.T, url string) {
 	orig := externalDiscoveryURL
 	externalDiscoveryURL = url
 	t.Cleanup(func() { externalDiscoveryURL = orig })
+}
+
+func withTestDefaultRouteSource(t *testing.T, src net.IP, err error) {
+	t.Helper()
+	orig := defaultRouteSource
+	defaultRouteSource = func() (net.IP, error) { return src, err }
+	t.Cleanup(func() { defaultRouteSource = orig })
+}
+
+func TestDiscoverClientIP_AutoDiscovery(t *testing.T) {
+	const publicIP = "93.184.216.34"
+
+	tests := []struct {
+		name         string
+		source       net.IP
+		sourceErr    error
+		expectIP     string
+		expectMethod string
+		expectBehind bool
+	}{
+		{
+			name:         "public default-route source used directly",
+			source:       net.ParseIP("44.0.0.1"),
+			expectIP:     "44.0.0.1",
+			expectMethod: "default route",
+			expectBehind: false,
+		},
+		{
+			name:         "rfc1918 source falls back to external and flags NAT",
+			source:       net.ParseIP("192.168.1.50"),
+			expectIP:     publicIP,
+			expectMethod: "external discovery (ifconfig.me)",
+			expectBehind: true,
+		},
+		{
+			name:         "cgnat source falls back but does not flag NAT",
+			source:       net.ParseIP("100.64.0.1"),
+			expectIP:     publicIP,
+			expectMethod: "external discovery (ifconfig.me)",
+			expectBehind: false,
+		},
+		{
+			name:         "no default route falls back without flagging NAT",
+			sourceErr:    fmt.Errorf("no route"),
+			expectIP:     publicIP,
+			expectMethod: "external discovery (ifconfig.me)",
+			expectBehind: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withTestDefaultRouteSource(t, tt.source, tt.sourceErr)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprint(w, publicIP)
+			}))
+			defer srv.Close()
+			withTestExternalURL(t, srv.URL)
+
+			ip, method, behindNAT, err := DiscoverClientIP("")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if ip.String() != tt.expectIP {
+				t.Errorf("ip = %s, want %s", ip, tt.expectIP)
+			}
+			if method != tt.expectMethod {
+				t.Errorf("method = %q, want %q", method, tt.expectMethod)
+			}
+			if behindNAT != tt.expectBehind {
+				t.Errorf("behindNAT = %v, want %v", behindNAT, tt.expectBehind)
+			}
+		})
+	}
 }
 
 func TestDiscoverFromExternal_Success(t *testing.T) {

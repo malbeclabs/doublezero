@@ -27,6 +27,10 @@ var (
 	externalDiscoveryURL = "https://ifconfig.me/ip"
 )
 
+// defaultRouteSource returns the default route's source IP. It is a package
+// var so tests can inject a source without performing a real route lookup.
+var defaultRouteSource = discoverDefaultRouteSource
+
 func init() {
 	for _, cidr := range []string{
 		"0.0.0.0/8",       // "this" network (RFC 1122)
@@ -80,24 +84,38 @@ func IsPublicIPv4(ip net.IP) bool {
 // pick an address on an interface that doesn't match the default route,
 // causing a mismatch with the onchain User's ClientIp.
 //
-// The second return value describes the discovery method for logging.
-func DiscoverClientIP(explicit string) (net.IP, string, error) {
+// The second return value describes the discovery method for logging. The
+// third return value (behindNAT) is true when the IP was auto-discovered and
+// the default-route source was a private RFC1918 address — i.e. the host sits
+// behind NAT. It is always false when an explicit IP was supplied, so callers
+// can use it to decide whether to default to an allocated DoubleZero address.
+func DiscoverClientIP(explicit string) (net.IP, string, bool, error) {
 	// 1. Explicit flag.
 	if explicit != "" {
 		ip := net.ParseIP(explicit)
 		if ip == nil {
-			return nil, "", fmt.Errorf("invalid client-ip flag value: %s", explicit)
+			return nil, "", false, fmt.Errorf("invalid client-ip flag value: %s", explicit)
 		}
 		ip = ip.To4()
 		if ip == nil {
-			return nil, "", fmt.Errorf("client-ip must be IPv4: %s", explicit)
+			return nil, "", false, fmt.Errorf("client-ip must be IPv4: %s", explicit)
 		}
-		return ip, "explicit flag", nil
+		return ip, "explicit flag", false, nil
 	}
 
 	// 2. Default route source hint.
-	if ip, err := discoverFromDefaultRoute(); err == nil {
-		return ip, "default route", nil
+	behindNAT := false
+	if src, err := defaultRouteSource(); err == nil {
+		if IsPublicIPv4(src) {
+			return src, "default route", false, nil
+		}
+		// The default-route source is not publicly routable. If it is a
+		// private RFC1918 address the host is behind NAT; record that so the
+		// caller can default to an allocated address. The public IP itself
+		// still comes from external discovery below.
+		behindNAT = src.IsPrivate()
+		slog.Debug("client-ip: default route source not publicly routable, falling back to external",
+			"source", src.String(), "behind_nat", behindNAT)
 	} else {
 		slog.Debug("client-ip: default route discovery failed, falling back to external", "error", err)
 	}
@@ -105,16 +123,17 @@ func DiscoverClientIP(explicit string) (net.IP, string, error) {
 	// 3. External discovery.
 	ip, err := discoverFromExternal()
 	if err != nil {
-		return nil, "", fmt.Errorf("client IP discovery failed: %w", err)
+		return nil, "", false, fmt.Errorf("client IP discovery failed: %w", err)
 	}
-	return ip, "external discovery (ifconfig.me)", nil
+	return ip, "external discovery (ifconfig.me)", behindNAT, nil
 }
 
-// discoverFromDefaultRoute performs a kernel route lookup by dialing a
+// discoverDefaultRouteSource performs a kernel route lookup by dialing a
 // well-known public IP over UDP (no packets are actually sent). The local
 // address chosen by the kernel reflects the default route's source hint,
-// which is the address that outbound traffic would actually use.
-func discoverFromDefaultRoute() (net.IP, error) {
+// which is the address that outbound traffic would actually use. It returns
+// the raw IPv4 source without judging whether it is publicly routable.
+func discoverDefaultRouteSource() (net.IP, error) {
 	conn, err := net.Dial("udp4", "8.8.8.8:80")
 	if err != nil {
 		return nil, fmt.Errorf("route lookup failed: %w", err)
@@ -129,9 +148,6 @@ func discoverFromDefaultRoute() (net.IP, error) {
 	ip := localAddr.IP.To4()
 	if ip == nil {
 		return nil, fmt.Errorf("default route source is not IPv4: %v", localAddr.IP)
-	}
-	if !IsPublicIPv4(ip) {
-		return nil, fmt.Errorf("default route source %s is not publicly routable", ip)
 	}
 	return ip, nil
 }

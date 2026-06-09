@@ -208,6 +208,7 @@ mod tests {
                 reconciler_enabled: true,
                 client_ip: String::new(),
                 network: "testnet".to_string(),
+                behind_nat: false,
                 services: vec![make_v2_service(
                     "BGP Session Up",
                     Some("tunnel_name"),
@@ -257,6 +258,7 @@ mod tests {
                 reconciler_enabled: true,
                 client_ip: String::new(),
                 network: "testnet".to_string(),
+                behind_nat: false,
                 services: vec![V2ServiceStatus {
                     status: StatusResponse {
                         doublezero_status: DoubleZeroStatus {
@@ -312,6 +314,7 @@ mod tests {
                 reconciler_enabled: true,
                 client_ip: String::new(),
                 network: "testnet".to_string(),
+                behind_nat: false,
                 services: vec![make_v2_service(
                     "BGP Session Up",
                     Some("tunnel_name"),
@@ -348,6 +351,7 @@ mod tests {
                 reconciler_enabled: true,
                 client_ip: String::new(),
                 network: "testnet".to_string(),
+                behind_nat: false,
                 services: vec![V2ServiceStatus {
                     status: StatusResponse {
                         doublezero_status: DoubleZeroStatus {
@@ -571,6 +575,7 @@ mod tests {
                 reconciler_enabled: false,
                 client_ip: String::new(),
                 network: "testnet".to_string(),
+                behind_nat: false,
                 services: vec![make_v2_service(
                     "BGP Session Up",
                     Some("doublezero1"),
@@ -606,6 +611,7 @@ mod tests {
                 reconciler_enabled: false,
                 client_ip: String::new(),
                 network: "testnet".to_string(),
+                behind_nat: false,
                 services: vec![],
             })
         });
@@ -642,6 +648,7 @@ mod tests {
                 reconciler_enabled: true,
                 client_ip: String::new(),
                 network: "testnet".to_string(),
+                behind_nat: false,
                 services: vec![make_v2_service(
                     "BGP Session Up",
                     Some("doublezero1"),
@@ -671,6 +678,7 @@ mod tests {
                 reconciler_enabled: true,
                 client_ip: String::new(),
                 network: "testnet".to_string(),
+                behind_nat: false,
                 services: vec![make_v2_service(
                     "BGP Session Up",
                     Some("doublezero1"),
@@ -702,6 +710,7 @@ mod tests {
                 reconciler_enabled: true,
                 client_ip: String::new(),
                 network: "testnet".to_string(),
+                behind_nat: false,
                 services: vec![V2ServiceStatus {
                     status: StatusResponse {
                         doublezero_status: DoubleZeroStatus {
@@ -827,6 +836,7 @@ mod tests {
                     reconciler_enabled: true,
                     client_ip: String::new(),
                     network: "testnet".to_string(),
+                    behind_nat: false,
                     services: vec![make_v2_service(
                         "BGP Session Up",
                         Some("doublezero1"),

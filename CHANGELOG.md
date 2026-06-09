@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Client
+  - Auto-enable allocated-IP mode for `doublezero connect ibrl` when the daemon detects a private RFC1918 default-route source (behind NAT), unless `-a` or `--client-ip` is set.
+
 ## [v0.26.0](https://github.com/malbeclabs/doublezero/compare/client/v0.25.1...client/v0.26.0) - 2026-06-05
 
 ### Breaking

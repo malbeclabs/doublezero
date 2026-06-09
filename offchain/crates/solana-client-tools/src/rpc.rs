@@ -34,6 +34,7 @@ pub enum NetworkEnvironment {
     #[default]
     MainnetBeta,
     Testnet,
+    Devnet,
     Localnet,
 }
 
@@ -42,6 +43,7 @@ impl NetworkEnvironment {
 
     pub const PUBLIC_SOLANA_MAINNET_BETA_URL: &str = "https://api.mainnet-beta.solana.com";
     pub const PUBLIC_SOLANA_TESTNET_URL: &str = "https://api.testnet.solana.com";
+    pub const PUBLIC_SOLANA_DEVNET_URL: &str = "https://api.devnet.solana.com";
 
     pub const PUBLIC_DOUBLEZERO_LEDGER_MAINNET_BETA_URL: &str =
         "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab";
@@ -52,6 +54,8 @@ impl NetworkEnvironment {
         match self {
             NetworkEnvironment::MainnetBeta => Self::PUBLIC_DOUBLEZERO_LEDGER_MAINNET_BETA_URL,
             NetworkEnvironment::Testnet => Self::PUBLIC_DOUBLEZERO_LEDGER_TESTNET_URL,
+            // There is no DoubleZero Ledger devnet. Reuse the testnet ledger.
+            NetworkEnvironment::Devnet => Self::PUBLIC_DOUBLEZERO_LEDGER_TESTNET_URL,
             NetworkEnvironment::Localnet => Self::DEFAULT_LOCALNET_URL,
         }
     }
@@ -63,6 +67,7 @@ impl NetworkEnvironment {
         match self {
             NetworkEnvironment::MainnetBeta => Self::PUBLIC_SOLANA_MAINNET_BETA_URL,
             NetworkEnvironment::Testnet => Self::PUBLIC_DOUBLEZERO_LEDGER_TESTNET_URL,
+            NetworkEnvironment::Devnet => Self::PUBLIC_SOLANA_DEVNET_URL,
             NetworkEnvironment::Localnet => Self::DEFAULT_LOCALNET_URL,
         }
     }
@@ -71,6 +76,7 @@ impl NetworkEnvironment {
         match self {
             NetworkEnvironment::MainnetBeta => Self::PUBLIC_SOLANA_MAINNET_BETA_URL,
             NetworkEnvironment::Testnet => Self::PUBLIC_SOLANA_TESTNET_URL,
+            NetworkEnvironment::Devnet => Self::PUBLIC_SOLANA_DEVNET_URL,
             NetworkEnvironment::Localnet => Self::DEFAULT_LOCALNET_URL,
         }
     }
@@ -107,6 +113,7 @@ impl FromStr for NetworkEnvironment {
         match s {
             "m" | "mainnet-beta" => Ok(NetworkEnvironment::MainnetBeta),
             "t" | "testnet" => Ok(NetworkEnvironment::Testnet),
+            "d" | "devnet" => Ok(NetworkEnvironment::Devnet),
             "l" | "localhost" => Ok(NetworkEnvironment::Localnet),
             _ => bail!("Cannot convert moniker '{s}' to network environment"),
         }
@@ -116,7 +123,7 @@ impl FromStr for NetworkEnvironment {
 #[derive(Debug, Args, Clone, Default)]
 pub struct SolanaConnectionOptions {
     /// URL for Solana's JSON RPC or moniker (or their first letter):
-    /// [mainnet-beta, testnet, localhost].
+    /// [mainnet-beta, testnet, devnet, localhost].
     #[arg(long = "url", short = 'u', value_name = "URL_OR_MONIKER", env)]
     pub solana_url_or_moniker: Option<String>,
 }
@@ -124,7 +131,7 @@ pub struct SolanaConnectionOptions {
 impl SolanaConnectionOptions {
     const DEFAULT_MONIKER: &str = "m";
 
-    /// If the URL is a known moniker (m/t/l), return the corresponding network
+    /// If the URL is a known moniker (m/t/d/l), return the corresponding network
     /// environment. Returns `None` when a raw URL was provided.
     pub fn moniker_env(&self) -> Option<NetworkEnvironment> {
         let url_or_moniker = self
@@ -161,6 +168,8 @@ impl SolanaConnection {
         pubkey!("4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY");
     pub const DZ_LEDGER_TESTNET_GENESIS_HASH: Pubkey =
         pubkey!("GG2A8FHDoSH3cbQrTsxmMYZ6iy2yyRh7NY1yP7sXSH3v");
+    pub const SOLANA_DEVNET_GENESIS_HASH: Pubkey =
+        pubkey!("EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG");
 
     pub fn new(url: String) -> Self {
         Self::new_with_commitment(url, CommitmentConfig::confirmed())
@@ -178,6 +187,7 @@ impl SolanaConnection {
             Self::SOLANA_TESTNET_GENESIS_HASH | Self::DZ_LEDGER_TESTNET_GENESIS_HASH => {
                 Ok(NetworkEnvironment::Testnet)
             }
+            Self::SOLANA_DEVNET_GENESIS_HASH => Ok(NetworkEnvironment::Devnet),
             _ => Ok(NetworkEnvironment::Localnet),
         }
     }
@@ -378,6 +388,8 @@ mod tests {
             ("mainnet-beta", NetworkEnvironment::MainnetBeta),
             ("t", NetworkEnvironment::Testnet),
             ("testnet", NetworkEnvironment::Testnet),
+            ("d", NetworkEnvironment::Devnet),
+            ("devnet", NetworkEnvironment::Devnet),
             ("l", NetworkEnvironment::Localnet),
             ("localhost", NetworkEnvironment::Localnet),
         ] {

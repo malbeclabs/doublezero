@@ -150,7 +150,7 @@ fn build_ctx(
     json: bool,
     json_compact: bool,
 ) -> Result<CliContext> {
-    let env = map_env(conn.moniker_env());
+    let env = try_map_env(conn.moniker_env())?;
     let solana_l1_rpc_url = SolanaConnection::from(conn).url();
 
     let mut builder = CliContextBuilder::new()
@@ -163,10 +163,12 @@ fn build_ctx(
     builder.build().map_err(|e| anyhow::anyhow!("{e:#}"))
 }
 
-fn map_env(n: Option<NetworkEnvironment>) -> Environment {
-    match n {
-        Some(NetworkEnvironment::MainnetBeta) | None => Environment::MainnetBeta,
-        Some(NetworkEnvironment::Testnet) => Environment::Testnet,
-        Some(NetworkEnvironment::Localnet) => Environment::Local,
-    }
+fn try_map_env(n: Option<NetworkEnvironment>) -> Result<Environment> {
+    let env = match n.unwrap_or(NetworkEnvironment::MainnetBeta) {
+        NetworkEnvironment::MainnetBeta => Environment::MainnetBeta,
+        NetworkEnvironment::Testnet => Environment::Testnet,
+        NetworkEnvironment::Devnet => anyhow::bail!("passport is not available on Solana devnet"),
+        NetworkEnvironment::Localnet => Environment::Local,
+    };
+    Ok(env)
 }

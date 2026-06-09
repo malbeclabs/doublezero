@@ -129,6 +129,7 @@ pub(in crate::command::shreds) fn shred_oracle_key(env: NetworkEnvironment) -> O
         NetworkEnvironment::Testnet => Some(solana_sdk::pubkey!(
             "BUtAWK4GaUV42YRp7jSHZhchspsshabn67HnBHnKxzsY"
         )),
+        NetworkEnvironment::Devnet => None,
         NetworkEnvironment::Localnet => None,
     }
 }
@@ -177,6 +178,9 @@ pub(in crate::command::shreds) fn serviceability_program_id(
             Ok(doublezero_serviceability::addresses::mainnet::program_id::id())
         }
         NetworkEnvironment::Testnet => {
+            Ok(doublezero_serviceability::addresses::testnet::program_id::id())
+        }
+        NetworkEnvironment::Devnet => {
             Ok(doublezero_serviceability::addresses::testnet::program_id::id())
         }
         NetworkEnvironment::Localnet => {

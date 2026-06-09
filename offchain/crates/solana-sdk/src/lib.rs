@@ -22,7 +22,9 @@ pub const fn compute_units_for_bump_seed(bump: u8) -> u32 {
 
 pub fn environment_2z_token_mint_key(network_env: NetworkEnvironment) -> Pubkey {
     match network_env {
-        NetworkEnvironment::Testnet => revenue_distribution::env::development::DOUBLEZERO_MINT_KEY,
+        NetworkEnvironment::Testnet | NetworkEnvironment::Devnet => {
+            revenue_distribution::env::development::DOUBLEZERO_MINT_KEY
+        }
         _ => revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY,
     }
 }
@@ -30,6 +32,7 @@ pub fn environment_2z_token_mint_key(network_env: NetworkEnvironment) -> Pubkey 
 pub fn environment_usdc_token_mint_key(network_env: NetworkEnvironment) -> Pubkey {
     match network_env {
         NetworkEnvironment::Testnet => shred_subscription::env::development::USDC_MINT_KEY,
+        NetworkEnvironment::Devnet => shred_subscription::env::solana_devnet::USDC_MINT_KEY,
         _ => shred_subscription::env::mainnet::USDC_MINT_KEY,
     }
 }

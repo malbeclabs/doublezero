@@ -97,6 +97,10 @@ var programErrors = map[uint32]string{
 	84: "FeatureNotEnabled",
 	85: "MaxMulticastPublishersExceeded",
 	86: "ArithmeticOverflow",
+	87: "InvalidName",
+	88: "InvalidDeviceTunnelBlock",
+	89: "AccessPassMaxUnicastUsersExceeded",
+	90: "AccessPassMaxMulticastUsersExceeded",
 }
 
 // ProgramErrorMessage returns a human-readable message for the given custom error code.

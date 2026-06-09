@@ -76,6 +76,8 @@ async fn test_accesspass() {
             client_ip,
             last_access_epoch: 10,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -108,6 +110,8 @@ async fn test_accesspass() {
             client_ip,
             last_access_epoch: u64::MAX,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -164,6 +168,8 @@ async fn test_accesspass() {
             client_ip,
             last_access_epoch: 101,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -197,6 +203,8 @@ async fn test_accesspass() {
             client_ip,
             last_access_epoch: 0,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -386,6 +394,8 @@ async fn test_accesspass_with_tenant() {
             client_ip: client_ip_1,
             last_access_epoch: 10,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey_1, false),
@@ -426,6 +436,8 @@ async fn test_accesspass_with_tenant() {
             client_ip: client_ip_2,
             last_access_epoch: 20,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey_2, false),
@@ -466,6 +478,8 @@ async fn test_accesspass_with_tenant() {
             client_ip: client_ip_3,
             last_access_epoch: 30,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey_3, false),
@@ -500,6 +514,8 @@ async fn test_accesspass_with_tenant() {
             client_ip: client_ip_1,
             last_access_epoch: 15,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey_1, false),
@@ -535,6 +551,8 @@ async fn test_accesspass_with_tenant() {
             client_ip: client_ip_1,
             last_access_epoch: 25,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey_1, false),
@@ -575,6 +593,8 @@ async fn test_accesspass_with_tenant() {
             client_ip: client_ip_4,
             last_access_epoch: u64::MAX,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey_4, false),
@@ -659,6 +679,10 @@ async fn test_close_accesspass_rejects_nonzero_connection_count() {
         mgroup_sub_allowlist: vec![],
         flags: 0,
         tenant_allowlist: vec![],
+        unicast_user_count: 0,
+        max_unicast_users: 1,
+        multicast_user_count: 0,
+        max_multicast_users: 1,
     };
 
     let accesspass_data = borsh::to_vec(&seeded_accesspass).unwrap();
@@ -769,6 +793,8 @@ async fn test_tx_lamports_to_pda_before_creation() {
             client_ip,
             last_access_epoch: 10,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -799,6 +825,8 @@ async fn test_tx_lamports_to_pda_before_creation() {
             client_ip,
             last_access_epoch: 10,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1010,6 +1038,8 @@ async fn test_user_create_with_matching_tenant_in_allowlist() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1093,6 +1123,8 @@ async fn test_user_create_with_wrong_tenant_in_allowlist() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1167,6 +1199,8 @@ async fn test_user_create_with_empty_tenant_allowlist_rejects_tenant() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1257,6 +1291,8 @@ async fn test_set_accesspass_unauthorized_payer_fails() {
             client_ip,
             last_access_epoch: 10,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1340,6 +1376,8 @@ async fn test_set_accesspass_with_tenant_admin_succeeds() {
             client_ip,
             last_access_epoch: 10,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1414,6 +1452,8 @@ async fn test_set_accesspass_with_tenant_non_admin_fails() {
             client_ip,
             last_access_epoch: 10,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1527,6 +1567,8 @@ async fn test_set_accesspass_tenant_admin_cannot_replace_other_tenant() {
             client_ip,
             last_access_epoch: 10,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1550,6 +1592,8 @@ async fn test_set_accesspass_tenant_admin_cannot_replace_other_tenant() {
             client_ip,
             last_access_epoch: 20,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1623,6 +1667,8 @@ async fn test_set_accesspass_with_sentinel_authority_succeeds() {
             client_ip,
             last_access_epoch: 100,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1685,6 +1731,8 @@ async fn test_set_accesspass_with_feed_authority_succeeds() {
             client_ip,
             last_access_epoch: 100,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1763,6 +1811,8 @@ async fn test_set_accesspass_tenant_admin_without_tenant_accounts_fails() {
             client_ip,
             last_access_epoch: 100,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1786,4 +1836,96 @@ async fn test_set_accesspass_tenant_admin_without_tenant_accounts_fails() {
     );
 
     println!("✅ SetAccessPass correctly rejected tenant admin without tenant accounts");
+}
+
+/// The SetAccessPass airdrop scales with the per-category caps only when `allow_multiple_ip` is
+/// set: a flag-off pass gets the fixed 1x airdrop (regardless of its max fields), while a flag-on
+/// pass gets an airdrop scaled by `max_unicast_users + max_multicast_users`.
+#[tokio::test]
+async fn test_set_accesspass_airdrop_scales_with_allow_multiple_ip() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Baseline pass: allow_multiple_ip = false → multiplier is 1 even though caps are > 1.
+    let base_user_payer = Pubkey::new_unique();
+    let base_ip = Ipv4Addr::new(100, 0, 0, 1);
+    let (base_pass, _) = get_accesspass_pda(&program_id, &base_ip, &base_user_payer);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: base_ip,
+            last_access_epoch: u64::MAX,
+            allow_multiple_ip: false,
+            max_unicast_users: 3,
+            max_multicast_users: 2,
+        }),
+        vec![
+            AccountMeta::new(base_pass, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(base_user_payer, false),
+        ],
+        &payer,
+    )
+    .await;
+    let base_balance = banks_client
+        .get_account(base_user_payer)
+        .await
+        .unwrap()
+        .expect("base user_payer should be funded")
+        .lamports;
+
+    // Scaled pass: allow_multiple_ip = true → multiplier is max_unicast + max_multicast = 5.
+    let scaled_user_payer = Pubkey::new_unique();
+    let scaled_ip = Ipv4Addr::new(100, 0, 0, 2);
+    let (scaled_pass, _) = get_accesspass_pda(&program_id, &scaled_ip, &scaled_user_payer);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: scaled_ip,
+            last_access_epoch: u64::MAX,
+            allow_multiple_ip: true,
+            max_unicast_users: 3,
+            max_multicast_users: 2,
+        }),
+        vec![
+            AccountMeta::new(scaled_pass, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(scaled_user_payer, false),
+        ],
+        &payer,
+    )
+    .await;
+    let scaled_balance = banks_client
+        .get_account(scaled_user_payer)
+        .await
+        .unwrap()
+        .expect("scaled user_payer should be funded")
+        .lamports;
+
+    assert_eq!(
+        scaled_balance,
+        base_balance * 5,
+        "allow_multiple_ip pass should airdrop (max_unicast + max_multicast)x the base"
+    );
 }

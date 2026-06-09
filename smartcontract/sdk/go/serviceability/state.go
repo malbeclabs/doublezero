@@ -1140,6 +1140,11 @@ type AccessPass struct {
 	MGroupPubAllowlist [][32]byte
 	MGroupSubAllowlist [][32]byte
 	Flags              uint8
+	TenantAllowlist    [][32]byte
+	UnicastUserCount   uint16
+	MaxUnicastUsers    uint16
+	MulticastUserCount uint16
+	MaxMulticastUsers  uint16
 	PubKey             [32]byte
 }
 

@@ -1062,6 +1062,10 @@ export interface AccessPass {
   mGroupSubAllowlist: PublicKey[];
   flags: number;
   tenantAllowlist: PublicKey[];
+  unicastUserCount: number;
+  maxUnicastUsers: number;
+  multicastUserCount: number;
+  maxMulticastUsers: number;
 }
 
 export function deserializeAccessPass(data: Uint8Array): AccessPass {
@@ -1091,6 +1095,11 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
   const mGroupSubAllowlist = readPubkeyVec(r);
   const flags = r.readU8();
   const tenantAllowlist = readPubkeyVec(r);
+  const unicastUserCount = r.readU16();
+  // Caps default to 1 when absent (pre-migration accounts), matching the program's unwrap_or(1).
+  const maxUnicastUsers = r.remaining >= 2 ? r.readU16() : 1;
+  const multicastUserCount = r.readU16();
+  const maxMulticastUsers = r.remaining >= 2 ? r.readU16() : 1;
   return {
     accountType,
     owner,
@@ -1108,6 +1117,10 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
     mGroupSubAllowlist,
     flags,
     tenantAllowlist,
+    unicastUserCount,
+    maxUnicastUsers,
+    multicastUserCount,
+    maxMulticastUsers,
   };
 }
 

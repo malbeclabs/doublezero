@@ -45,20 +45,13 @@ impl UpdateMulticastGroupRolesCommand {
         .execute(client)
         .map_err(|_err| eyre::eyre!("User not found"))?;
 
+        // GetAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
+        // back to the exact client-IP pass.
         let (accesspass_pubkey, accesspass) = GetAccessPassCommand {
-            client_ip: Ipv4Addr::UNSPECIFIED,
+            client_ip: self.client_ip,
             user_payer: user.owner,
         }
         .execute(client)?
-        .or_else(|| {
-            GetAccessPassCommand {
-                client_ip: self.client_ip,
-                user_payer: user.owner,
-            }
-            .execute(client)
-            .ok()
-            .flatten()
-        })
         .ok_or_else(|| eyre::eyre!("AccessPass not found"))?;
 
         if self.publisher && !accesspass.mgroup_pub_allowlist.contains(&self.group_pk) {
@@ -190,6 +183,10 @@ mod tests {
             mgroup_sub_allowlist: vec![mgroup_pubkey],
             tenant_allowlist: vec![],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         // First call in UpdateMulticastGroupRolesCommand::execute tries the dynamic (UNSPECIFIED) PDA,

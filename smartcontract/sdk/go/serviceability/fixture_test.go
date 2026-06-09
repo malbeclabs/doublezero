@@ -161,3 +161,71 @@ func TestFixtureDeviceFutureVersion(t *testing.T) {
 	assert.Equal(t, "Ethernet1", ni1.Name)
 	assert.True(t, ni1.UserTunnelEndpoint)
 }
+
+func TestFixtureAccessPass(t *testing.T) {
+	data, meta := loadFixture(t, "access_pass")
+	require.Equal(t, "AccessPass", meta.Name)
+
+	var ap serviceability.AccessPass
+	serviceability.DeserializeAccessPass(serviceability.NewByteReader(data), &ap)
+
+	assert.Equal(t, serviceability.AccessPassType, ap.AccountType)
+	assert.Equal(t, uint8(244), ap.BumpSeed)
+	assert.Equal(t, serviceability.AccessPassTypePrepaid, ap.AccessPassTypeTag)
+	assert.Equal(t, uint16(3), ap.ConnectionCount)
+	assert.Equal(t, uint8(1), ap.Flags)
+	assert.Empty(t, ap.TenantAllowlist)
+	assert.Equal(t, uint16(2), ap.UnicastUserCount)
+	assert.Equal(t, uint16(4), ap.MaxUnicastUsers)
+	assert.Equal(t, uint16(1), ap.MulticastUserCount)
+	assert.Equal(t, uint16(3), ap.MaxMulticastUsers)
+}
+
+func TestFixtureAccessPassValidator(t *testing.T) {
+	data, meta := loadFixture(t, "access_pass_validator")
+	require.Equal(t, "AccessPassValidator", meta.Name)
+
+	var ap serviceability.AccessPass
+	serviceability.DeserializeAccessPass(serviceability.NewByteReader(data), &ap)
+
+	assert.Equal(t, serviceability.AccessPassTypeSolanaValidator, ap.AccessPassTypeTag)
+	assert.NotEqual(t, [32]byte{}, ap.AssociatedPubkey)
+	assert.Equal(t, uint16(1), ap.ConnectionCount)
+	assert.Equal(t, uint8(3), ap.Flags)
+	assert.Equal(t, uint16(0), ap.UnicastUserCount)
+	assert.Equal(t, uint16(5), ap.MaxUnicastUsers)
+	assert.Equal(t, uint16(0), ap.MulticastUserCount)
+	assert.Equal(t, uint16(2), ap.MaxMulticastUsers)
+}
+
+func TestFixtureAccessPassEdgeSeat(t *testing.T) {
+	data, meta := loadFixture(t, "access_pass_edge_seat")
+	require.Equal(t, "AccessPassEdgeSeat", meta.Name)
+
+	var ap serviceability.AccessPass
+	serviceability.DeserializeAccessPass(serviceability.NewByteReader(data), &ap)
+
+	// EdgeSeat is Rust discriminant 4; the seat pubkey is read as the associated pubkey.
+	assert.Equal(t, serviceability.AccessPassTypeTag(4), ap.AccessPassTypeTag)
+	assert.NotEqual(t, [32]byte{}, ap.AssociatedPubkey)
+	assert.Equal(t, uint8(2), ap.Flags) // ALLOW_MULTIPLE_IP
+	assert.Equal(t, uint16(2), ap.UnicastUserCount)
+	assert.Equal(t, uint16(4), ap.MaxUnicastUsers)
+	assert.Equal(t, uint16(1), ap.MulticastUserCount)
+	assert.Equal(t, uint16(3), ap.MaxMulticastUsers)
+}
+
+// A pre-migration account (lacking the 8 trailing cap bytes) decodes with counts 0 and caps 1,
+// matching the Rust program's TryFrom unwrap_or defaults.
+func TestFixtureAccessPassLegacyCapDefaults(t *testing.T) {
+	data, _ := loadFixture(t, "access_pass")
+	legacy := data[:len(data)-8] // drop the four u16 cap fields
+
+	var ap serviceability.AccessPass
+	serviceability.DeserializeAccessPass(serviceability.NewByteReader(legacy), &ap)
+
+	assert.Equal(t, uint16(0), ap.UnicastUserCount)
+	assert.Equal(t, uint16(1), ap.MaxUnicastUsers)
+	assert.Equal(t, uint16(0), ap.MulticastUserCount)
+	assert.Equal(t, uint16(1), ap.MaxMulticastUsers)
+}

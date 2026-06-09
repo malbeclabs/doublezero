@@ -53,6 +53,8 @@ impl DeleteTenantCommand {
                     last_access_epoch: ap.last_access_epoch,
                     allow_multiple_ip: ap.allow_multiple_ip(),
                     tenant: Pubkey::default(),
+                    max_unicast_users: ap.max_unicast_users,
+                    max_multicast_users: ap.max_multicast_users,
                 }
                 .execute(client)?;
             }
@@ -96,6 +98,8 @@ impl DeleteTenantCommand {
                     last_access_epoch: ap.last_access_epoch,
                     allow_multiple_ip: ap.allow_multiple_ip(),
                     tenant: Pubkey::default(),
+                    max_unicast_users: ap.max_unicast_users,
+                    max_multicast_users: ap.max_multicast_users,
                 }
                 .execute(client)?;
             }
@@ -238,6 +242,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![tenant_pubkey],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         let tenant_after = Tenant {
@@ -346,6 +354,8 @@ mod tests {
                     client_ip: Ipv4Addr::UNSPECIFIED,
                     last_access_epoch: 0,
                     allow_multiple_ip: false,
+                    max_unicast_users: 1,
+                    max_multicast_users: 1,
                 })),
                 predicate::always(),
             )
@@ -412,6 +422,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![tenant_pubkey],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         let mut seq = Sequence::new();
@@ -422,6 +436,18 @@ mod tests {
             .expect_get()
             .with(predicate::eq(accesspass_pubkey))
             .returning(move |_| Ok(AccountData::AccessPass(ap_for_get.clone())));
+
+        // GetAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
+        // exists there, so it falls back to the exact-IP PDA above.
+        let (dynamic_accesspass_pubkey, _) = get_accesspass_pda(
+            &client.get_program_id(),
+            &Ipv4Addr::UNSPECIFIED,
+            &client.get_payer(),
+        );
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_accesspass_pubkey))
+            .returning(|_| Err(eyre::eyre!("account not found")));
 
         // 1. ListAccessPassCommand: gets(AccountType::AccessPass)
         let ap_for_list = accesspass.clone();
@@ -448,6 +474,8 @@ mod tests {
                     client_ip,
                     last_access_epoch: 0,
                     allow_multiple_ip: false,
+                    max_unicast_users: 1,
+                    max_multicast_users: 1,
                 })),
                 predicate::always(),
             )

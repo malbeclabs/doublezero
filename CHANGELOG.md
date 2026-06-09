@@ -10,6 +10,13 @@ All notable changes to this project will be documented in this file.
 
 - Client
   - Auto-enable allocated-IP mode for `doublezero connect ibrl` when the daemon detects a private RFC1918 default-route source (behind NAT), unless `-a` or `--client-ip` is set.
+- Onchain programs
+  - Add per-category seat caps to `EdgeSeat` access passes (errors 89/90 on overflow), scale the `SetAccessPass` airdrop by the cap sum when `allow_multiple_ip` is set, and drop the dynamic-pass IP-lock and `IS_DYNAMIC` flag. (#3859)
+- CLI
+  - `access-pass set` gains `--max-unicast-users` / `--max-multicast-users`; `get`/`list` show the per-category counts and caps.
+- SDK
+  - Decode the four new `AccessPass` cap fields (and the previously-missing `tenant_allowlist`) in the Go, Python, and TypeScript layouts.
+  - `GetAccessPassCommand` and the multicast allowlist resolver both resolve a shared dynamic-seat AccessPass (the `UNSPECIFIED` PDA) before the exact-IP pass, matching the onchain `create_user` lookup. (#3853)
 
 ## [v0.26.0](https://github.com/malbeclabs/doublezero/compare/client/v0.25.1...client/v0.26.0) - 2026-06-05
 

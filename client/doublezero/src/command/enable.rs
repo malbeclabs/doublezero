@@ -51,6 +51,7 @@ mod tests {
                 reconciler_enabled: false,
                 client_ip: String::new(),
                 network: String::new(),
+                behind_nat: false,
                 services: vec![],
             })
         });

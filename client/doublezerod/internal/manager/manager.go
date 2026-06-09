@@ -68,6 +68,14 @@ func WithClientIP(ip net.IP) Option {
 	}
 }
 
+// WithBehindNAT sets whether the client's default-route source is a private
+// RFC1918 address (i.e. the host is behind NAT).
+func WithBehindNAT(behindNAT bool) Option {
+	return func(n *NetlinkManager) {
+		n.behindNAT = behindNAT
+	}
+}
+
 // WithFetcher sets the onchain data fetcher for the reconciler.
 func WithFetcher(f Fetcher) Option {
 	return func(n *NetlinkManager) {
@@ -142,6 +150,11 @@ type NetlinkManager struct {
 	// Status enrichment fields
 	latencyProvider LatencyProvider
 	network         string
+
+	// behindNAT is true when the client IP was auto-discovered and the
+	// default-route source was a private RFC1918 address. Exposed via
+	// /v2/status so the CLI can default to an allocated DoubleZero address.
+	behindNAT bool
 }
 
 // CreateService creates the appropriate service based on the provisioned

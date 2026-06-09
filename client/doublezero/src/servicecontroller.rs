@@ -179,6 +179,11 @@ pub struct V2StatusResponse {
     pub client_ip: String,
     #[serde(default)]
     pub network: String,
+    /// True when the daemon auto-discovered its client IP and the default-route
+    /// source was a private RFC1918 address (i.e. the host is behind NAT).
+    /// `serde(default)` keeps the CLI compatible with older daemons that omit it.
+    #[serde(default)]
+    pub behind_nat: bool,
     pub services: Vec<V2ServiceStatus>,
 }
 

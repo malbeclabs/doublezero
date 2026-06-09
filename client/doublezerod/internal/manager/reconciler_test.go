@@ -1203,6 +1203,45 @@ func TestServeV2Status_Disabled_NoServices(t *testing.T) {
 	}
 }
 
+func TestServeV2Status_BehindNAT(t *testing.T) {
+	dir := t.TempDir()
+	fetcher := &mockFetcher{data: &serviceability.ProgramData{GlobalConfig: testGlobalConfig()}}
+	req := httptest.NewRequest(http.MethodGet, "/v2/status", nil)
+
+	// Default: behind_nat is false.
+	def := newTestNLM(fetcher,
+		WithClientIP(net.IPv4(1, 2, 3, 4).To4()),
+		WithPollInterval(time.Hour),
+		WithStateDir(dir),
+	)
+	w := httptest.NewRecorder()
+	def.ServeV2Status(w, req)
+	var defResp V2StatusResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &defResp); err != nil {
+		t.Fatal(err)
+	}
+	if defResp.BehindNAT {
+		t.Fatal("expected behind_nat=false by default")
+	}
+
+	// With WithBehindNAT(true): behind_nat is reported true.
+	nat := newTestNLM(fetcher,
+		WithClientIP(net.IPv4(1, 2, 3, 4).To4()),
+		WithBehindNAT(true),
+		WithPollInterval(time.Hour),
+		WithStateDir(dir),
+	)
+	w = httptest.NewRecorder()
+	nat.ServeV2Status(w, req)
+	var natResp V2StatusResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &natResp); err != nil {
+		t.Fatal(err)
+	}
+	if !natResp.BehindNAT {
+		t.Fatal("expected behind_nat=true")
+	}
+}
+
 func TestServeV2Status_Enrichment(t *testing.T) {
 	devicePK := [32]byte{1}
 	exchangePK := [32]byte{2}

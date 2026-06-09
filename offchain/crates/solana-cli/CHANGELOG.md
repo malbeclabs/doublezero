@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.7](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.7)
+
+- uptick crate to v0.5.7 (#385)
 - `shreds publisher-rewards status`: new read-only per-epoch reward table for a validator (`--node-id`, default last 20 epochs via `--num-epochs`). Every epoch with an on-chain `ShredDistribution` gets a row with status `not ready` / `ready` / `claimed` / `no rewards` / `no data`, plus the reward mint and amount — `claimed` amounts read exactly from the distribute transaction, `ready` amounts estimated (`~`) from the on-chain pool/slots/proportion/burn math (#381)
 - `revenue-distribution fetch validator-debts`: remove the written-off debt sanity check that aborted the command. It compared a windowed sum (the last 100 epochs of debt records) against the deposit's lifetime cumulative `written_off_sol_debt`, so it fired whenever a validator had a write-off older than the window (#380)
 - `passport`: route verbs through a typed `PassportCliError` (no more `"{e:#}"` cause-chain flattening), remove the remaining `.expect()`/`.unwrap()` panics, add golden-output tests for `fetch --config` and the find-validator gossip warnings, and emit a single combined JSON object when `fetch` is given both `--config` and `--access-request` (#378)
-- support the `-ud`/`devnet` network environment ([#384](https://github.com/doublezerofoundation/doublezero-offchain/pull/384))
+- support the `-ud`/`devnet` network environment (#384)
 
 ## [0.5.6](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.6)
 

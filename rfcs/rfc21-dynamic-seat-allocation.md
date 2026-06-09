@@ -1,8 +1,8 @@
-# RFC XX: Dynamic Seat Allocation
+# RFC 21: Dynamic Seat Allocation
 
 ## Summary
 
-**Status: `Draft`**
+**Status: `Approved`**
 
 A DoubleZero AccessPass is currently bound to a single `(client_ip, user_payer)` pair, and the Feed
 Oracle creates exactly one AccessPass and one serviceability `User` per IP. A buyer must therefore know

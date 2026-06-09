@@ -4,7 +4,7 @@
 
 **Status: `Draft`**
 
-This RFC defines the DoubleZero Edge **feed-subscription** system. This is an evolution of the existing shred subscription system, with the updated system including - an onchain catalog of purchasable feeds (the `feed-subscription` program), per-feed purchase and entitlement, an offchain oracle (`feed-oracle`) that reconciles that catalog to onchain state and to network access. 
+This RFC defines the DoubleZero Edge **feed-subscription** system. This is an evolution of the existing shred subscription system, with the updated system including - an onchain catalog of purchasable feeds (the `feed-subscription` program), per-feed purchase and entitlement, an offchain oracle (`feed-oracle`) that reads the onchain catalog and provisions network access for funded seats.
 
 The body of this RFC describes the desired end state. The existing shred subscription architecture on which this RFC is based is summarized in Appendix A for context. Shreds is retrofitted as the first registered feed.
 
@@ -17,11 +17,11 @@ There is also a documentation gap. No RFC describes this subsystem, even though 
 ## New Terminology
 
 - **Feed:** A named, priced subscription target identified by exactly one multicast group.
-- **Feed catalog / registry:** The set of feeds. Authored offchain as configuration and held authoritatively onchain in a `FeedRegistry` account.
+- **Feed catalog / registry:** The set of feeds, held onchain in a `FeedRegistry` account and managed via the admin CLI.
 - **Feed pricing mode:** How a feed is priced. `DynamicDeviceSeats` (the existing device-seat machinery; used by shreds) or `Flat` (a fixed per-subscription-epoch price).
 - **Client seat:** A funded subscription on a device, tracked onchain (`ClientSeat`), with an associated USDC payment escrow.
 - **Subscription epoch:** The billing period, aligned to a DoubleZero epoch.
-- **Feed oracle (today: shred oracle):** The offchain service that drives the epoch state machine and pricing, reconciles the feed catalog onchain, and provisions network access for funded seats.
+- **Feed oracle (today: shred oracle):** The offchain service that drives the epoch state machine and pricing, reads the onchain feed catalog, and provisions network access for funded seats.
 - **Serviceability access pass:** The DoubleZero Ledger access primitive whose per-seat multicast subscribe allowlist the oracle writes.
 - **Rebop:** DoubleZero's regional rebroadcast of shreds, delivered over per-region multicast groups and assigned to a seat by the seat's exchange.
 
@@ -31,9 +31,9 @@ There is also a documentation gap. No RFC describes this subsystem, even though 
 
 **Greenfield service instead of generalizing in place.** Build a new entitlement service rather than extending the existing program and oracle. Rejected. The oracle is already deployed and owns the serviceability bridge, the idempotent reconciliation, the retry logic, and the formal specs; a greenfield service would re-implement all of it.
 
-**Offchain-only catalog.** Keep the catalog purely in oracle configuration or a database. Rejected as the authoritative model; the set of purchasable feeds would not be onchain-auditable or readable by other onchain logic. An offchain config is retained as an authoring convenience, reconciled into the onchain registry.
+**Offchain-only catalog.** Keep the catalog purely in oracle configuration or a database. Rejected; the set of purchasable feeds would not be onchain-auditable or readable by other onchain logic.
 
-**Feed as a bundle of multicast groups.** Model a feed as a set of groups (for example, a regional bundle). Rejected. Keeping feed identity equal to exactly one multicast group makes the group the account's identity, guarantees uniqueness, and makes the config-to-onchain reconcile a simple set difference on group pubkeys. Bundles are better expressed at the entitlement layer as a set of feeds.
+**Feed as a bundle of multicast groups.** Model a feed as a set of groups (for example, a regional bundle). Rejected. Keeping feed identity equal to exactly one multicast group makes the group the account's identity and guarantees uniqueness. Bundles are better expressed at the entitlement layer as a set of feeds.
 
 **Repurpose existing device/seat state.** Rejected. A feed is parallel to, not entangled with, the device-seat machinery, which this RFC leaves untouched.
 
@@ -43,11 +43,9 @@ There is also a documentation gap. No RFC describes this subsystem, even though 
 
 ## Detailed Design
 
-This section describes the target state. Implementation guidance is intentionally high-level; the program source is the precise specification.
+This section describes the target state.
 
 ### Architecture overview
-
-The system keeps its three-layer shape across two chains (see Appendix A), with feeds added to the program, the oracle generalized to drive subscriptions from the catalog, and the program and oracle renamed.
 
 ```
             GENERALIZED ARCHITECTURE — Feed Subscription   (✦ = new)
@@ -64,40 +62,39 @@ The system keeps its three-layer shape across two chains (see Appendix A), with 
    │ SOLANA                              │       │ delivers ALL         │
    │ feed-subscription program ✦         │       │ purchased feeds      │
    │  ClientSeat · PaymentEscrow         │       └───────────▲──────────┘
-   │  ShredDistribution · pricing        │       (5) subscribe│
-   │  ✦ Feed + FeedRegistry              │       (6) tunnel   │
-   │  ✦ Buy / Withdraw Feed instructions │       ┌────────────┴─────────┐
-   └────┬─────────────▲──────────▲───────┘       │ DoubleZero Ledger    │
-        │ (2) read    │ (3)      │ (b) ✦         │ serviceability:      │
-        │ seats+feeds │ drive    │ reconcile     │  AccessPass +        │
-        ▼             │ epoch    │ catalog→reg.  │  allowlist (per      │
-   ┌──────────────────┴──────────┴───┐           │  purchased feed)     │
-   │ feed-oracle (offchain) ✦        │           └────────────▲─────────┘
-   │  oracle key · pricing · rewards │  (4) write allowlist   │
-   │  ✦ catalog → registry reconcile │    for purchased feeds─┘
-   │  ✦ seat → feeds subscription    │
-   │  + rebop (exchange groups)      │◀── ✦ Feed catalog (offchain config)
-   └─────────────────────────────────┘
+   │  ShredDistribution · pricing        │      (5) subscribe│
+   │  ✦ Feed + FeedRegistry              │      (6) tunnel   │
+   │  ✦ Buy / Withdraw Feed instructions │       ┌───────────┴──────────┐
+   └────┬─────────────▲──────────────────┘       │ DoubleZero Ledger    │
+        │ (2) read    │ (3)                      │ serviceability:      │
+        │ seats+feeds │ drive                    │  AccessPass +        │
+        ▼             │ epoch                    │  allowlist (per      │
+   ┌──────────────────┴─────────────┐            │  purchased feed)     │
+   │ feed-oracle (offchain) ✦       │            └────────────▲─────────┘
+   │  oracle key · pricing · rewards│   (4) write allowlist   │
+   │  ✦ read catalog → provision    │     for purchased feeds─┘
+   │  ✦ seat → feeds subscription   │
+   │  + rebop (exchange groups)     │
+   └────────────────────────────────┘
 
    ✦ Feed + FeedRegistry — onchain catalog of purchasable feeds (shreds + new)
    ✦ Buy / Withdraw Feed IX — per-feed purchase for Flat-priced feeds
    (a) operator registers feeds onchain via the admin CLI (oracle-signed)
-   (b) oracle reconciles the offchain feed catalog into the onchain registry
    ✦ subscriptions are driven by the catalog (unioned with rebop), so a seat
      is provisioned for exactly the feeds its purchase entitles
 ```
 
 ### The onchain feed catalog
 
-A **feed** is a named, priced subscription target identified by exactly one multicast group, where the group is the feed account's identity. One feed per group. Feeds are held in per-feed accounts and enumerated through a single global **`FeedRegistry`** account: a client reads the registry once to get every feed's group, then fetches each feed. The registry is a fixed-capacity structure (on the order of 256 feeds), chosen over a growable structure for simplicity at current scale.
+A **feed** is a named, priced subscription target identified by exactly one multicast group, where the group is the feed account's identity. One feed per group. Feeds are held in per-feed accounts and enumerated through a single global **`FeedRegistry`** account: a client reads the registry once to get every feed's group, then fetches each feed. The registry is capped at 256 feeds; this limit can be raised or replaced with a growable index in the future.
 
-Each feed carries its multicast group, an enabled flag, a pricing mode, a per-epoch price (meaningful only for `Flat` feeds), and a display name. Removal is a **soft disable** (a flag), not deletion, so a feed keeps its registry slot; the shreds (`DynamicDeviceSeats`) feed cannot be disabled. A feed's name and pricing mode are immutable after registration; its enabled flag and `Flat` price are mutable.
+Each feed carries its multicast group, an enabled flag, a pricing mode, a per-epoch price (meaningful only for `Flat` feeds), and a display name, and is identifiable by its PDA. Removal is a **soft disable** (a flag), not deletion, so a feed keeps its registry slot; the shreds (`DynamicDeviceSeats`) feed cannot be disabled. A feed's name and pricing mode are immutable after registration; its enabled flag and `Flat` price are mutable.
 
 ```
                 ONCHAIN FEED REGISTRY — data model & access
 
    ┌────────────────────────────────┐
-   │ feed oracle key (only writer)  │   via admin CLI  /  oracle reconcile
+   │ feed oracle key (only writer)  │   via admin CLI
    └───────────────┬────────────────┘
                    │  initialize registry · register feed
                    │  set feed enabled · update flat price
@@ -142,15 +139,11 @@ Buy and Withdraw feed instructions, backed by a payment escrow, let a buyer purc
 
 ### Oracle responsibilities
 
-Unchanged: drive the epoch state machine, pricing, validator-reward distribution, and settlement. New: reconcile the offchain feed catalog into the onchain registry (register added feeds, soft-disable removed ones, update prices), and drive each funded seat's serviceability subscriptions from the catalog rather than from a hardcoded group.
+Unchanged: drive the epoch state machine, pricing, validator-reward distribution, and settlement. New: read the onchain feed catalog and drive each funded seat's serviceability subscriptions from it rather than from a hardcoded group.
 
 ### Delivery and regional scoping (rebop)
 
-Shreds is delivered as a global feed plus per-region `rebop` rebroadcast groups assigned by a seat's exchange. In the near term the oracle continues to source rebop groups from its existing per-exchange configuration and unions them with the catalog-derived feeds. Whether regional scoping becomes an onchain feed attribute or stays an offchain delivery concern is unresolved (see Open Questions).
-
-### Offchain config versus onchain registry
-
-The offchain feed config is the authoring source; the onchain `FeedRegistry` is authoritative. The oracle reconcile loop converges the two. During transition, the offchain config also directly drives subscriptions while the onchain reconcile is wired up.
+Shreds is delivered as a global feed plus per-region `rebop` rebroadcast groups assigned by a seat's exchange. In the near term the oracle continues to source rebop groups from its existing per-exchange configuration and unions them with the catalog-derived feeds. In the future, shreds can be decomposed into separate feeds (one global, one per region), eliminating the special-case rebop path. Whether regional scoping becomes an onchain feed attribute or stays an offchain delivery concern is unresolved (see Open Questions).
 
 ### Rename: shred-subscription to feed-subscription, shred-oracle to feed-oracle
 
@@ -160,7 +153,7 @@ The rename touches crate names, binary names, oracle environment variables, the 
 
 The design requires the following components:
 - Onchain feed registry
-- Oracle feed config and reconcile
+- Oracle reads onchain feed catalog for subscription provisioning
 - Seat-to-feed subscription wiring
 - Buy Feed instruction
 - Withdraw Feed instruction
@@ -171,7 +164,7 @@ The design requires the following components:
 
 ## Impact
 
-**Codebase.** Broad but mostly additive: the onchain program (new feed accounts, instructions, buy/withdraw), the oracle (feed config, reconcile, catalog-driven subscriptions), the admin CLI, the regenerated IDL and Go SDK, and the formal specs where touched. The rename has the widest blast radius and is the main non-additive change.
+**Codebase.** Broad but mostly additive: the onchain program (new feed accounts, instructions, buy/withdraw), the oracle (catalog-driven subscriptions), the admin CLI, the regenerated IDL and Go SDK, and the formal specs where touched. The rename has the widest blast radius and is the main non-additive change.
 
 **Operational.** Coordinated onchain-plus-oracle deploys for each component, one-time registry initialization, and the shreds retrofit. Infra deployment manifests change as feeds move from CLI arguments to the catalog, and again at the rename.
 
@@ -190,13 +183,13 @@ Feed additions are additive and do not change existing instructions or account l
 ## Open Questions
 
 - **Seat-to-feed linkage for per-feed purchase.** Where a purchase records which feeds it entitles: a field on the seat, an offchain mapping, or a separate onchain entitlement account. This is the core unresolved design choice for `Flat`-feed purchase.
-- **Regional scoping onchain versus offchain.** The offchain catalog scopes feeds to exchanges (rebop); the onchain feed does not. Decide whether scoping is a permanent delivery concern or an onchain feed attribute.
+- **Regional scoping onchain versus offchain.** Rebop scopes feeds to exchanges offchain; the onchain feed does not carry exchange information. Decide whether scoping is a permanent delivery concern or an onchain feed attribute.
 - **Pricing-mode duplication.** The oracle defines its own pricing-mode enum; it must stay consistent with the onchain enum, or consume it directly once the two are coupled.
 - **Fiat payment path.** How a fiat rail plugs into per-feed purchase while the seat remains the onchain authority.
 - **Program ID on rename.** Confirm the rename keeps the program ID and authority configuration unchanged.
 - **Usage metering.** Bandwidth or usage-based billing is a possible future direction, out of scope here.
 
-## Appendix A: Current architecture (baseline)
+## Appendix A: Shreds architecture (baseline)
 
 The subsystem today spans three layers across two chains:
 

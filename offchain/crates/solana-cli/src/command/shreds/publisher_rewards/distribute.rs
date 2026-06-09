@@ -1,18 +1,7 @@
-// Per-epoch distribute pass run after a successful `configure`. Walks back
-// `DISTRIBUTE_LOOKBACK_EPOCHS` recent subscription epochs, fans out S3 leaf
-// fetches to find this validator's leaf position per epoch, then batches
-// state reads (publisher journals across 2Z/USDC/WSOL, parent
-// distributions, claim holdings) into a handful of upfront RPCs so the
-// per-epoch loop runs in memory. For each (epoch, journal-mint) where the
-// publisher-accumulation bitmap's leaf bit is still set, submits a
-// `DistributeValidatorRewards` ix (prepended with `InitializeClaimHolding`
-// on the first distribute per epoch when the 2Z claim holding doesn't yet
-// exist).
-//
-// Subscription epoch == Solana epoch in this codebase (the S3 export and
-// `ShredDistribution.subscription_epoch` use the same value), so we
-// resolve the current epoch via `getEpochInfo` on a Solana RPC (NOT the
-// DZ-Ledger one that hosts the program — on testnet/localnet those are
+// Not a standalone subcommand: `try_distribute_pending` is invoked only by
+// `configure` as a post-configure pass. Subscription epoch == Solana epoch
+// here, so the current epoch is resolved via `getEpochInfo` on a Solana RPC,
+// not the DZ-Ledger RPC that hosts the program (on testnet/localnet those are
 // distinct chains with independent epoch numbers).
 
 use std::collections::{HashMap, HashSet};
@@ -564,7 +553,7 @@ async fn submit_distribute_tx(
     Ok(())
 }
 
-fn bitmap_bit_set(bitmap: &[u8], leaf_index: usize) -> bool {
+pub(crate) fn bitmap_bit_set(bitmap: &[u8], leaf_index: usize) -> bool {
     let byte_idx = leaf_index / 8;
     let bit_idx = leaf_index % 8;
     bitmap

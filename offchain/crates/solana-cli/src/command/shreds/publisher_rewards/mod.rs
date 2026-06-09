@@ -5,6 +5,7 @@ pub mod prepare_offchain_message;
 pub mod rewards_mint_arg;
 pub mod s3;
 pub mod show;
+pub mod status;
 
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
@@ -28,6 +29,8 @@ pub enum PublisherRewardsSubcommand {
     Configure(configure::ConfigureCommand),
     /// Print current ValidatorPublisherRewards fields.
     Show(show::ShowCommand),
+    /// Print a per-epoch reward status table (not ready / ready / claimed).
+    Status(status::StatusCommand),
 }
 
 impl PublisherRewardsCommand {
@@ -37,6 +40,7 @@ impl PublisherRewardsCommand {
             PublisherRewardsSubcommand::PrepareOffchainMessage(c) => c.try_into_execute().await,
             PublisherRewardsSubcommand::Configure(c) => c.try_into_execute().await,
             PublisherRewardsSubcommand::Show(c) => c.try_into_execute().await,
+            PublisherRewardsSubcommand::Status(c) => c.try_into_execute().await,
         }
     }
 }

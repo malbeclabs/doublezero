@@ -113,6 +113,11 @@ func DiscoverClientIP(explicit string) (net.IP, string, bool, error) {
 		// private RFC1918 address the host is behind NAT; record that so the
 		// caller can default to an allocated address. The public IP itself
 		// still comes from external discovery below.
+		//
+		// Scoped to RFC1918 deliberately: IsPrivate excludes CGNAT
+		// (100.64.0.0/10) and other reserved ranges. CGNAT hosts can't run
+		// plain IBRL either, but flagging them is a separate product decision;
+		// widen the predicate here if we choose to cover them later.
 		behindNAT = src.IsPrivate()
 		slog.Debug("client-ip: default route source not publicly routable, falling back to external",
 			"source", src.String(), "behind_nat", behindNAT)

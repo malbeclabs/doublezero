@@ -132,10 +132,12 @@ impl ProvisioningCliCommand {
 
         // When behind NAT the client cannot advertise its own (private) address,
         // so plain IBRL won't work — default to an allocated DoubleZero address
-        // as if `-a`/`--allocate-addr` were passed. Skip this when `-a` was set
-        // already (mode is already IBRLWithAllocatedIP) or the user supplied a
-        // client IP on the CLI, signalling they want to control the address.
-        if behind_nat && self.client_ip.is_none() {
+        // as if `-a`/`--allocate-addr` were passed. `behind_nat` is only set
+        // when the daemon auto-discovered the IP (it is false whenever an
+        // explicit IP was supplied to the daemon), so the legitimate
+        // "use my own IP" override is already handled daemon-side. The only
+        // no-op case left is `-a` already set, which the user_type guard covers.
+        if behind_nat {
             if let ParsedDzMode::Ibrl(user_type, _) = &mut parsed_mode {
                 if *user_type == UserType::IBRL {
                     spinner.println(
@@ -1837,14 +1839,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_connect_command_ibrl_behind_nat_skipped_when_client_ip_set() {
-        // behind_nat=true but the user supplied --client-ip, signalling they
-        // want to control the address — keep plain IBRL.
+    async fn test_connect_command_ibrl_behind_nat_ignores_deprecated_cli_client_ip() {
+        // The deprecated CLI --client-ip flag is otherwise ignored, so it must
+        // not suppress the NAT upgrade: behind_nat (which the daemon only sets
+        // when it auto-discovered the IP) still steers to IBRLWithAllocatedIP.
         let mut fixture = TestFixture::new_behind_nat();
 
         let (tenant_pk, tenant) = fixture.add_tenant("nat-tenant");
         let (device1_pk, _device1) = fixture.add_device(DeviceType::Edge, 100, true);
-        let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+        let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
         fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &user, Some(tenant_pk));
 
         println!();

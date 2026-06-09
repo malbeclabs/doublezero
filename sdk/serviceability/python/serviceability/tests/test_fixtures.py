@@ -519,3 +519,15 @@ class TestFixtureAccessPassEdgeSeat:
         assert ap.max_unicast_users == 4
         assert ap.multicast_user_count == 1
         assert ap.max_multicast_users == 3
+
+
+class TestFixtureAccessPassLegacyCapDefaults:
+    def test_deserialize(self):
+        # A pre-migration account lacks the 8 trailing cap bytes; counts default to 0 and caps to 1,
+        # matching the Rust program's TryFrom unwrap_or defaults.
+        data, _ = _load_fixture("access_pass")
+        ap = AccessPass.from_bytes(data[:-8])
+        assert ap.unicast_user_count == 0
+        assert ap.max_unicast_users == 1
+        assert ap.multicast_user_count == 0
+        assert ap.max_multicast_users == 1

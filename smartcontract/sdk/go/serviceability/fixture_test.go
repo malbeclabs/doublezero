@@ -214,3 +214,18 @@ func TestFixtureAccessPassEdgeSeat(t *testing.T) {
 	assert.Equal(t, uint16(1), ap.MulticastUserCount)
 	assert.Equal(t, uint16(3), ap.MaxMulticastUsers)
 }
+
+// A pre-migration account (lacking the 8 trailing cap bytes) decodes with counts 0 and caps 1,
+// matching the Rust program's TryFrom unwrap_or defaults.
+func TestFixtureAccessPassLegacyCapDefaults(t *testing.T) {
+	data, _ := loadFixture(t, "access_pass")
+	legacy := data[:len(data)-8] // drop the four u16 cap fields
+
+	var ap serviceability.AccessPass
+	serviceability.DeserializeAccessPass(serviceability.NewByteReader(legacy), &ap)
+
+	assert.Equal(t, uint16(0), ap.UnicastUserCount)
+	assert.Equal(t, uint16(1), ap.MaxUnicastUsers)
+	assert.Equal(t, uint16(0), ap.MulticastUserCount)
+	assert.Equal(t, uint16(1), ap.MaxMulticastUsers)
+}

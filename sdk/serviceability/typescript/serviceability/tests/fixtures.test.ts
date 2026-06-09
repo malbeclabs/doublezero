@@ -547,3 +547,17 @@ describe("AccessPassEdgeSeat fixture", () => {
     expect(ap.maxMulticastUsers).toBe(3);
   });
 });
+
+describe("AccessPass legacy cap defaults", () => {
+  test("pre-migration account decodes caps to 1", () => {
+    // A pre-migration account lacks the 8 trailing cap bytes; counts default to 0 and caps to 1,
+    // matching the Rust program's TryFrom unwrap_or defaults.
+    const [data] = loadFixture("access_pass");
+    const legacy = data.slice(0, data.length - 8);
+    const ap = deserializeAccessPass(legacy);
+    expect(ap.unicastUserCount).toBe(0);
+    expect(ap.maxUnicastUsers).toBe(1);
+    expect(ap.multicastUserCount).toBe(0);
+    expect(ap.maxMulticastUsers).toBe(1);
+  });
+});

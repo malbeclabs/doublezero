@@ -383,9 +383,10 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 	ap.Flags = reader.ReadU8()
 	ap.TenantAllowlist = reader.ReadPubkeySlice()
 	ap.UnicastUserCount = reader.ReadU16()
-	ap.MaxUnicastUsers = reader.ReadU16()
+	// Caps default to 1 when absent (pre-migration accounts), matching the program's unwrap_or(1).
+	ap.MaxUnicastUsers = reader.ReadU16OrDefault(1)
 	ap.MulticastUserCount = reader.ReadU16()
-	ap.MaxMulticastUsers = reader.ReadU16()
+	ap.MaxMulticastUsers = reader.ReadU16OrDefault(1)
 }
 
 // ResourceExtension binary layout (from Rust):

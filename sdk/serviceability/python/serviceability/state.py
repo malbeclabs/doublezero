@@ -1077,9 +1077,10 @@ class AccessPass:
         ap.flags = r.read_u8()
         ap.tenant_allowlist = _read_pubkey_vec(r)
         ap.unicast_user_count = r.read_u16()
-        ap.max_unicast_users = r.read_u16()
+        # Caps default to 1 when absent (pre-migration accounts), matching the program's unwrap_or(1).
+        ap.max_unicast_users = r.read_u16() if r.remaining >= 2 else 1
         ap.multicast_user_count = r.read_u16()
-        ap.max_multicast_users = r.read_u16()
+        ap.max_multicast_users = r.read_u16() if r.remaining >= 2 else 1
         return ap
 
 

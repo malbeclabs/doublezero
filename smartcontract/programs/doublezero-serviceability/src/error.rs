@@ -182,6 +182,10 @@ pub enum DoubleZeroError {
     InvalidName, // variant 87
     #[error("Device tunnel block must be a private or link-local address")]
     InvalidDeviceTunnelBlock, // variant 88
+    #[error("Access pass max unicast users exceeded")]
+    AccessPassMaxUnicastUsersExceeded, // variant 89
+    #[error("Access pass max multicast users exceeded")]
+    AccessPassMaxMulticastUsersExceeded, // variant 90
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -276,6 +280,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::ArithmeticOverflow => ProgramError::Custom(86),
             DoubleZeroError::InvalidName => ProgramError::Custom(87),
             DoubleZeroError::InvalidDeviceTunnelBlock => ProgramError::Custom(88),
+            DoubleZeroError::AccessPassMaxUnicastUsersExceeded => ProgramError::Custom(89),
+            DoubleZeroError::AccessPassMaxMulticastUsersExceeded => ProgramError::Custom(90),
         }
     }
 }
@@ -371,6 +377,8 @@ impl From<u32> for DoubleZeroError {
             86 => DoubleZeroError::ArithmeticOverflow,
             87 => DoubleZeroError::InvalidName,
             88 => DoubleZeroError::InvalidDeviceTunnelBlock,
+            89 => DoubleZeroError::AccessPassMaxUnicastUsersExceeded,
+            90 => DoubleZeroError::AccessPassMaxMulticastUsersExceeded,
             _ => DoubleZeroError::Custom(e),
         }
     }

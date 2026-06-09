@@ -111,6 +111,8 @@ impl DeleteTenantCliCommand {
                         last_access_epoch: ap.last_access_epoch,
                         allow_multiple_ip: ap.allow_multiple_ip(),
                         tenant: Pubkey::default(),
+                        max_unicast_users: ap.max_unicast_users,
+                        max_multicast_users: ap.max_multicast_users,
                     })?;
                     spinner.inc(1);
                 }
@@ -194,6 +196,8 @@ impl DeleteTenantCliCommand {
                         last_access_epoch: ap.last_access_epoch,
                         allow_multiple_ip: ap.allow_multiple_ip(),
                         tenant: Pubkey::default(),
+                        max_unicast_users: ap.max_unicast_users,
+                        max_multicast_users: ap.max_multicast_users,
                     })?;
                     spinner.inc(1);
                 }

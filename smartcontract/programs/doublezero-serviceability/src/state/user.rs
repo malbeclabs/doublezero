@@ -1185,6 +1185,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             flags: 0,
             tenant_allowlist: vec![],
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         }
     }
 

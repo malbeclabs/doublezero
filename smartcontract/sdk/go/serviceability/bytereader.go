@@ -53,6 +53,16 @@ func (br *ByteReader) ReadU16() uint16 {
 	return val
 }
 
+// ReadU16OrDefault reads a u16, returning def when the field bytes are absent (EOF). Mirrors the
+// Rust program's TryFrom `unwrap_or(def)` so SDK reads of not-yet-migrated accounts match the
+// program's effective default rather than collapsing an absent field to 0.
+func (br *ByteReader) ReadU16OrDefault(def uint16) uint16 {
+	if br.offset+2 > len(br.data) {
+		return def
+	}
+	return br.ReadU16()
+}
+
 func (br *ByteReader) ReadU32() uint32 {
 	if br.offset+4 > len(br.data) {
 		return 0

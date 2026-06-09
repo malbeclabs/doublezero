@@ -280,6 +280,8 @@ async fn test_user() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -773,6 +775,8 @@ async fn test_user_create_tenant_allowlist_validation() {
             client_ip: user_ip_1,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_1_pubkey, false),
@@ -841,6 +845,8 @@ async fn test_user_create_tenant_allowlist_validation() {
             client_ip: user_ip_2,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_2_pubkey, false),
@@ -1092,6 +1098,8 @@ async fn setup_activated_user() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1262,6 +1270,8 @@ async fn test_user_check_access_pass_expired_epoch_stays_activated_and_delete() 
             client_ip: user_ip,
             last_access_epoch: 0,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

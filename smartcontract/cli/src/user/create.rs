@@ -220,6 +220,10 @@ mod tests {
             tenant_allowlist: vec![],
             owner: client.get_payer(),
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
         client
             .expect_get_accesspass()

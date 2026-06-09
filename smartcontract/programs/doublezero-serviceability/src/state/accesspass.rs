@@ -1,7 +1,7 @@
 use crate::{
     error::{DoubleZeroError, Validate},
     helper::deserialize_vec_with_capacity,
-    state::accounttype::AccountType,
+    state::{accounttype::AccountType, user::UserType},
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -152,7 +152,6 @@ impl Validate for AccessPassType {
     }
 }
 
-pub const IS_DYNAMIC: u8 = 1 << 0; // 0000_0001
 pub const ALLOW_MULTIPLE_IP: u8 = 1 << 1; // 0000_0010
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
@@ -185,6 +184,10 @@ pub struct AccessPass {
     pub mgroup_sub_allowlist: Vec<Pubkey>, // Vec<32> - List of multicast groups this AccessPass can subscribe to
     pub flags: u8,                         // 1
     pub tenant_allowlist: Vec<Pubkey>, // Vec<32> - List of tenants this AccessPass can connect to
+    pub unicast_user_count: u16,       // 2 - live count of unicast users (EdgeSeat only)
+    pub max_unicast_users: u16,        // 2 - max unicast users admitted (EdgeSeat only)
+    pub multicast_user_count: u16,     // 2 - live count of multicast users (EdgeSeat only)
+    pub max_multicast_users: u16,      // 2 - max multicast users admitted (EdgeSeat only)
 }
 
 impl fmt::Display for AccessPass {
@@ -230,6 +233,10 @@ impl TryFrom<&[u8]> for AccessPass {
             mgroup_sub_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             tenant_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
+            unicast_user_count: BorshDeserialize::deserialize(&mut data).unwrap_or(0),
+            max_unicast_users: BorshDeserialize::deserialize(&mut data).unwrap_or(1),
+            multicast_user_count: BorshDeserialize::deserialize(&mut data).unwrap_or(0),
+            max_multicast_users: BorshDeserialize::deserialize(&mut data).unwrap_or(1),
         };
 
         if out.account_type != AccountType::AccessPass {
@@ -267,21 +274,55 @@ impl AccessPass {
         Ok(())
     }
 
-    pub fn is_dynamic(&self) -> bool {
-        (self.flags & IS_DYNAMIC) != 0
-    }
     pub fn allow_multiple_ip(&self) -> bool {
         (self.flags & ALLOW_MULTIPLE_IP) != 0
     }
     pub fn flags_string(&self) -> String {
         let mut flags = Vec::new();
-        if self.is_dynamic() {
-            flags.push("dynamic");
-        }
         if self.allow_multiple_ip() {
             flags.push("allow_multiple_ip");
         }
         flags.join(", ")
+    }
+
+    /// Admit a user against the per-category seat caps. EdgeSeat-only: for all other access-pass
+    /// types this is a no-op and always succeeds. Does NOT touch `connection_count` — that counter
+    /// is maintained independently by the user create/delete processors.
+    pub fn try_add_user(&mut self, user_type: UserType) -> Result<(), DoubleZeroError> {
+        if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
+            return Ok(());
+        }
+        match user_type {
+            UserType::Multicast => {
+                if self.multicast_user_count >= self.max_multicast_users {
+                    return Err(DoubleZeroError::AccessPassMaxMulticastUsersExceeded);
+                }
+                self.multicast_user_count += 1;
+            }
+            _ => {
+                if self.unicast_user_count >= self.max_unicast_users {
+                    return Err(DoubleZeroError::AccessPassMaxUnicastUsersExceeded);
+                }
+                self.unicast_user_count += 1;
+            }
+        }
+        Ok(())
+    }
+
+    /// Release a seat held by a user. EdgeSeat-only: no-op for all other access-pass types. Does NOT
+    /// touch `connection_count`.
+    pub fn remove_user(&mut self, user_type: UserType) {
+        if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
+            return;
+        }
+        match user_type {
+            UserType::Multicast => {
+                self.multicast_user_count = self.multicast_user_count.saturating_sub(1);
+            }
+            _ => {
+                self.unicast_user_count = self.unicast_user_count.saturating_sub(1);
+            }
+        }
     }
 }
 
@@ -330,6 +371,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -374,6 +419,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -410,6 +459,87 @@ mod tests {
         assert_eq!(val.connection_count, 0);
         assert_eq!(val.flags, 0);
         assert_eq!(val.status, AccessPassStatus::default());
+        // Counts default to 0, maxes default to 1 so pre-existing accounts admit at least one
+        // user per category once gated.
+        assert_eq!(val.unicast_user_count, 0);
+        assert_eq!(val.max_unicast_users, 1);
+        assert_eq!(val.multicast_user_count, 0);
+        assert_eq!(val.max_multicast_users, 1);
+    }
+
+    fn test_accesspass(accesspass_type: AccessPassType) -> AccessPass {
+        AccessPass {
+            account_type: AccountType::AccessPass,
+            owner: Pubkey::new_unique(),
+            bump_seed: 1,
+            accesspass_type,
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            user_payer: Pubkey::new_unique(),
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: AccessPassStatus::Requested,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 2,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        }
+    }
+
+    #[test]
+    fn test_edge_seat_user_caps() {
+        let mut ap = test_accesspass(AccessPassType::EdgeSeat(Pubkey::new_unique()));
+
+        // Unicast: cap is 2.
+        ap.try_add_user(UserType::IBRL).unwrap();
+        ap.try_add_user(UserType::EdgeFiltering).unwrap();
+        assert_eq!(ap.unicast_user_count, 2);
+        assert_eq!(
+            ap.try_add_user(UserType::IBRL).unwrap_err(),
+            DoubleZeroError::AccessPassMaxUnicastUsersExceeded
+        );
+
+        // Multicast: cap is 1.
+        ap.try_add_user(UserType::Multicast).unwrap();
+        assert_eq!(ap.multicast_user_count, 1);
+        assert_eq!(
+            ap.try_add_user(UserType::Multicast).unwrap_err(),
+            DoubleZeroError::AccessPassMaxMulticastUsersExceeded
+        );
+
+        // remove_user frees a seat in the matching category.
+        ap.remove_user(UserType::IBRL);
+        assert_eq!(ap.unicast_user_count, 1);
+        ap.remove_user(UserType::Multicast);
+        assert_eq!(ap.multicast_user_count, 0);
+        // saturating: never underflows below 0.
+        ap.remove_user(UserType::Multicast);
+        assert_eq!(ap.multicast_user_count, 0);
+
+        // connection_count is never touched by the seat helpers.
+        assert_eq!(ap.connection_count, 0);
+    }
+
+    #[test]
+    fn test_non_edge_seat_user_caps_are_noop() {
+        for accesspass_type in [
+            AccessPassType::Prepaid,
+            AccessPassType::SolanaValidator(Pubkey::new_unique()),
+        ] {
+            let mut ap = test_accesspass(accesspass_type);
+            ap.max_unicast_users = 0;
+            ap.max_multicast_users = 0;
+            // Even with zero caps, non-EdgeSeat passes admit any user and never increment counters.
+            ap.try_add_user(UserType::IBRL).unwrap();
+            ap.try_add_user(UserType::Multicast).unwrap();
+            assert_eq!(ap.unicast_user_count, 0);
+            assert_eq!(ap.multicast_user_count, 0);
+            ap.remove_user(UserType::IBRL);
+            assert_eq!(ap.unicast_user_count, 0);
+        }
     }
 
     #[test]
@@ -428,6 +558,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             flags: 0,
             tenant_allowlist: vec![],
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         let mut data = borsh::to_vec(&val).unwrap();
@@ -467,6 +601,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -489,6 +627,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
         let err = val.validate();
         assert!(err.is_err());

@@ -53,6 +53,12 @@ pub struct SetAccessPassCliCommand {
     /// Tenant code allowed for this access pass
     #[arg(long = "tenant")]
     pub tenant: Option<String>,
+    /// Max unicast users admitted by an EdgeSeat access pass.
+    #[arg(long, default_value_t = 1)]
+    pub max_unicast_users: u16,
+    /// Max multicast users admitted by an EdgeSeat access pass.
+    #[arg(long, default_value_t = 1)]
+    pub max_multicast_users: u16,
 }
 
 impl SetAccessPassCliCommand {
@@ -127,6 +133,8 @@ impl SetAccessPassCliCommand {
             last_access_epoch,
             allow_multiple_ip: self.allow_multiple_ip,
             tenant,
+            max_unicast_users: self.max_unicast_users,
+            max_multicast_users: self.max_multicast_users,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -182,6 +190,8 @@ mod tests {
                 last_access_epoch: u64::MAX,
                 allow_multiple_ip: false,
                 tenant: Pubkey::default(),
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }))
             .returning(move |_| Ok(signature));
 
@@ -199,6 +209,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -237,6 +249,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -279,6 +293,8 @@ mod tests {
                 last_access_epoch: 11,
                 allow_multiple_ip: false,
                 tenant: Pubkey::default(),
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }))
             .returning(move |_| Ok(signature));
 
@@ -296,6 +312,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -337,6 +355,8 @@ mod tests {
                 last_access_epoch: 11,
                 allow_multiple_ip: false,
                 tenant: Pubkey::default(),
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }))
             .returning(move |_| Ok(signature));
 
@@ -354,6 +374,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -392,6 +414,8 @@ mod tests {
                 last_access_epoch: 11,
                 allow_multiple_ip: false,
                 tenant: Pubkey::default(),
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }))
             .returning(move |_| Ok(signature));
 
@@ -409,6 +433,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -447,6 +473,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -484,6 +512,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -527,6 +557,8 @@ mod tests {
                 last_access_epoch: 11,
                 allow_multiple_ip: false,
                 tenant: Pubkey::default(),
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }))
             .returning(move |_| Ok(signature));
 
@@ -544,6 +576,8 @@ mod tests {
                 others_key: Some("custom-key".to_string()),
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -579,6 +613,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -610,6 +646,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -642,6 +680,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: Some(too_long.clone()),
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -674,6 +714,8 @@ mod tests {
                 last_access_epoch: u64::MAX,
                 allow_multiple_ip: true,
                 tenant: Pubkey::default(),
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }))
             .returning(move |_| Ok(signature));
 
@@ -691,6 +733,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -721,6 +765,8 @@ mod tests {
                 last_access_epoch: u64::MAX,
                 allow_multiple_ip: false,
                 tenant: tenant_pda,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }))
             .returning(move |_| Ok(signature));
 
@@ -738,6 +784,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: Some("acme".to_string()),
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -765,6 +813,8 @@ mod tests {
                 last_access_epoch: u64::MAX,
                 allow_multiple_ip: false,
                 tenant: Pubkey::default(),
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }))
             .returning(move |_| Ok(signature));
 
@@ -782,6 +832,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -810,6 +862,8 @@ mod tests {
                 last_access_epoch: 0,
                 allow_multiple_ip: false,
                 tenant: Pubkey::default(),
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }))
             .returning(move |_| Ok(signature));
 
@@ -827,6 +881,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -856,6 +912,8 @@ mod tests {
                 last_access_epoch: u64::MAX,
                 allow_multiple_ip: false,
                 tenant: Pubkey::default(),
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }))
             .returning(move |_| Ok(signature));
 
@@ -873,6 +931,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -906,6 +966,8 @@ mod tests {
                 others_key: None,
                 seat: None,
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -948,6 +1010,8 @@ mod tests {
                 last_access_epoch: 11,
                 allow_multiple_ip: false,
                 tenant: Pubkey::default(),
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }))
             .returning(move |_| Ok(signature));
 
@@ -965,6 +1029,8 @@ mod tests {
                 others_key: None,
                 seat: Some(seat_pk),
                 tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }
             .execute(&ctx, &client, &mut output),
         );

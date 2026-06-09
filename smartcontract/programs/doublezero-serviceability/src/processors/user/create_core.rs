@@ -167,10 +167,13 @@ pub fn create_user_core(
         );
         return Err(DoubleZeroError::Unauthorized.into());
     }
-    if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
-        accesspass.client_ip = client_ip; // lock to the first used IP
-    }
-    if !accesspass.allow_multiple_ip() && accesspass.client_ip != client_ip {
+    // A pass stored at the UNSPECIFIED PDA (0.0.0.0) is valid for any client IP by construction;
+    // it is no longer locked to the first connecting IP. Specific-IP passes must match unless the
+    // pass allows multiple IPs. Mirrors the validation in delete.rs.
+    if accesspass.client_ip != Ipv4Addr::UNSPECIFIED
+        && accesspass.client_ip != client_ip
+        && !accesspass.allow_multiple_ip()
+    {
         msg!(
             "Invalid client_ip accesspass.{{client_ip: {}}} = {{ client_ip: {} }}",
             accesspass.client_ip,
@@ -287,6 +290,10 @@ pub fn create_user_core(
             }
         }
     }
+
+    // Enforce per-category seat caps (EdgeSeat only; no-op otherwise). On error the processor
+    // returns before any account is written, so no state is persisted.
+    accesspass.try_add_user(user_type)?;
 
     // All validations passed - now update counters
     accesspass.connection_count += 1;

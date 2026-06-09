@@ -2,18 +2,24 @@
 
 ## Summary
 
-**Status: `Approved`**
+**Status: `Draft`**
 
 A DoubleZero AccessPass is currently bound to a single `(client_ip, user_payer)` pair, and the Feed
 Oracle creates exactly one AccessPass and one serviceability `User` per IP. A buyer must therefore know
 the client's public IP before access can be granted, and one purchase serves exactly one machine.
 
-This RFC introduces dynamic seat allocation: a buyer purchases one seat that admits several users, and a
-node onboards without registering its IP ahead of time. It adds per-category user caps to the AccessPass
-(enforced for seat passes), reuses the existing dynamic IP-less AccessPass primitive, adds a
-pubkey-keyed `ClientSeatV2` to the Feed Subscription Program, and scales the existing serviceability
-`SetAccessPass` airdrop by the seat's caps so the seat keypair holds enough SOL to provision its own
-users through the standard `doublezero connect` workflow. No new endpoint is added to the Feed Oracle.
+This RFC introduces dynamic seat allocation: a buyer purchases one entitlement that admits several
+users, and a node onboards without registering its IP or device ahead of time. It adds per-category user
+caps to the AccessPass (enforced for seat passes), reuses the existing dynamic IP-less AccessPass
+primitive, and adds a `ConnectionTicket` account to the Feed Subscription Program. The ticket takes
+custody of USDC up front and encodes the seat's caps, its funding authority, and the service key. The
+Feed Oracle turns each ticket into an EdgeSeat AccessPass and then reconciles the DoubleZero ledger's
+`User` accounts against tickets, creating a per-connection `ClientSeat` and `PaymentEscrow` and charging
+prorated USDC from the ticket's custody for each node that actually connects. The existing
+`SetAccessPass` airdrop is scaled by the seat's caps so the service keypair holds enough SOL to provision
+its own users through the standard `doublezero connect` workflow. No new endpoint is added to the Feed
+Oracle. The entire `ConnectionTicket` surface and the oracle's new reconciliation are gated behind the
+`development` cargo feature.
 
 ## Motivation
 
@@ -24,42 +30,60 @@ Three limitations block common subscriber workflows today:
    public IP before granting access. Operators behind NAT, with addresses assigned late in provisioning,
    or running fleets of machines cannot be onboarded cleanly.
 
-2. **One seat serves one user.** A `ClientSeat` in the Feed Subscription Program is keyed on the
-   subscriber's IP, and the Feed Oracle creates one AccessPass and one `User` per seat. An operator
-   running several nodes must buy a seat per node; there is no concept of a seat that admits N machines.
+2. **One purchase serves one machine, on one fixed device.** A `ClientSeat` in the Feed Subscription
+   Program is keyed on the subscriber's IP, and the Feed Oracle creates one AccessPass and one `User` per
+   seat. An operator running several nodes must buy a seat per node; there is no concept of a single
+   purchase that admits N machines. The device is also pinned at purchase, so an operator cannot let a
+   node attach to whichever device its latency resolves.
 
 3. **Onboarding needs a funded keypair.** Creating a `User` with `doublezero connect` is a transaction
    the operator's own keypair must pay for, so that keypair has to hold SOL. The serviceability program
    already addresses this for ordinary passes: `process_set_access_pass` airdrops enough lamports to the
    `user_payer` account to cover `User`-account rent and a configured amount for connect transactions.
-   Scaling that airdrop by the seat's caps funds the seat keypair to pay for every node it provisions, so
-   the operator never has to source SOL and the standard connect path is reused. This is preferred over a
-   bespoke oracle endpoint that creates the `User` on the operator's behalf, which would add an
+   Scaling that airdrop by the seat's caps funds the service keypair to pay for every node it provisions,
+   so the operator never has to source SOL and the standard connect path is reused. This is preferred
+   over a bespoke oracle endpoint that creates the `User` on the operator's behalf, which would add an
    authenticated HTTP surface for no benefit over the existing onchain airdrop.
 
 The serviceability program already contains most of the primitives this needs. An AccessPass can be
 created with `client_ip = 0.0.0.0` and `ALLOW_MULTIPLE_IP` set, and `create_user` already
 accepts either the exact-IP PDA or the `UNSPECIFIED` PDA when validating a new `User`. The
 `AccessPassType::EdgeSeat(Pubkey)` variant already exists. What is missing is a way to bound how many
-users a single pass admits, a seat account identified by a key rather than an IP, and a path to create
-the `User` at connect time from the node's own IP. This RFC supplies those pieces and wires them
-together.
+users a single pass admits, a purchase object that custodies funds and is not bound to an IP or device,
+and a path that draws on the existing per-connection `ClientSeat`/`PaymentEscrow`/settlement machinery as
+nodes connect. This RFC supplies those pieces and wires them together.
 
 ## New Terminology
 
 - **Feed Oracle** — the off-chain service that watches the Feed Subscription Program and provisions
   access on the DoubleZero ledger.
 - **Feed Subscription Program** — the Solana program that sells and settles feed subscription seats.
-- **Seat** — a purchased subscription entitlement. **`ClientSeatV2`** is the new seat account, keyed on a
-  client public key rather than an IP.
+- **ConnectionTicket** — the new, development-gated purchase object. Keyed on the service key, it
+  custodies USDC and carries `max_unicast_users`, `max_multicast_users`, `funding_authority_key`, and
+  `service_key`. It is not bound to an IP or device.
+- **Per-connection seat** — the existing `ClientSeat` (plus its `PaymentEscrow`), created on demand by
+  the Feed Oracle for each connected `(device, client_ip)`. The ticket sits above these; one ticket
+  yields up to its cap of per-connection seats.
+- **Service key** — the doublezero client keypair the operator configures (`= User.owner =
+  AccessPass.user_payer`). The holder connects, disconnects, and moves nodes.
+- **Funding authority** — the entity that funded the ticket's USDC. It becomes each per-connection
+  `PaymentEscrow`'s `withdraw_authority_key`, so it can request withdrawal and receive refunds.
 - **Dynamic AccessPass** — an AccessPass created with `client_ip = 0.0.0.0` (UNSPECIFIED) and
   `ALLOW_MULTIPLE_IP` set, so users from any source IP may attach.
-- **EdgeSeat AccessPass** — an AccessPass whose `accesspass_type` is `EdgeSeat(seat_pubkey)`. Per-category
-  user caps are enforced only for this type.
+- **EdgeSeat AccessPass** — an AccessPass whose `accesspass_type` is `EdgeSeat(connection_ticket_pda)`.
+  Per-category user caps are enforced only for this type.
 - **Per-category caps** — separate current and maximum user counts for IBRL (unicast) users and for
   multicast users.
 
 ## Alternatives Considered
+
+- **A pubkey-keyed `ClientSeatV2` seat.** An earlier version of this design added a `ClientSeatV2`
+  account keyed on the client public key, created directly by the buyer and turned into an EdgeSeat pass
+  by the oracle, with the device fixed at purchase. The `ConnectionTicket` model is preferred: a
+  custody-holding ticket that sits above the existing per-connection `ClientSeat`s decouples purchase
+  from connection, lets the device float (it is resolved by latency at connect time and may change), and
+  reuses the v1 seat, escrow, and settlement machinery per connection instead of forking a parallel v2
+  lifecycle.
 
 - **Enforce caps for all AccessPass types.** Applying a `max_users` to every pass (Prepaid, validator,
   RPC) would retroactively cap existing single-user passes and risk regressions. Gating enforcement on
@@ -75,29 +99,52 @@ together.
 
 ## Detailed Design
 
+The `ConnectionTicket` account, its instructions (sections D), and the Feed Oracle's new reconciliation
+(section E) are gated behind the `development` cargo feature, following the same pattern the program
+already uses for the feed-registry instructions. The serviceability changes (sections A, B, C) are
+additive and backward-compatible and are **not** gated.
+
 ### End-to-end flow
 
-1. A buyer creates a `ClientSeatV2` in the Feed Subscription Program, keyed on their client public key
-   `C`, specifying `max_unicast_users` and `max_multicast_users`, on a chosen device.
-2. The Feed Oracle observes the new seat and creates a **dynamic EdgeSeat AccessPass** on the DoubleZero
-   ledger: PDA `accesspass(UNSPECIFIED, C)`, `accesspass_type = EdgeSeat(seat_pda)`,
-   `allow_multiple_ip = true`, the two maxes copied from the seat, `user_payer = C`, `owner = oracle`.
-   The `SetAccessPass` airdrop funds `C`, scaled by `max_unicast_users + max_multicast_users`, so the seat
-   keypair holds enough SOL to pay for every node it will provision. The oracle also allowlists the feed
-   multicast group on the pass (`mgroup_sub_allowlist`) so the subscribe in step 4 is permitted.
-3. On each node, the operator configures the seat keypair `C` as the doublezero client keypair and runs
-   `doublezero connect` (multicast subscriber).
+1. A buyer calls `InitializeConnectionTicket { max_unicast_users, max_multicast_users, usdc_amount }` in
+   the Feed Subscription Program. This creates a `ConnectionTicket` keyed on the service key `C`, funds a
+   ticket-owned USDC token account with `usdc_amount`, and records the funding authority, the service
+   key, and the two caps.
+2. The Feed Oracle observes the new ticket and creates a **dynamic EdgeSeat AccessPass** on the
+   DoubleZero ledger: PDA `accesspass(UNSPECIFIED, C)`, `accesspass_type = EdgeSeat(ticket_pda)`,
+   `allow_multiple_ip = true`, the two maxes copied from the ticket, `user_payer = C`, `owner = oracle`.
+   The `SetAccessPass` airdrop funds `C`, scaled by `max_unicast_users + max_multicast_users`, so the
+   service keypair holds enough SOL to pay for every node it will provision. The oracle also allowlists
+   the feed multicast group on the pass (`mgroup_sub_allowlist`) so the subscribe in step 4 is permitted.
+3. On each node, the operator configures the service keypair `C` as the doublezero client keypair and
+   runs `doublezero connect` (multicast subscriber). The device is resolved by the standard latency-based
+   device selection at connect time; it is not fixed at purchase and may differ per node or change on
+   reconnect.
 4. `connect` resolves the node's public IP, looks up the AccessPass with the UNSPECIFIED-first lookup
    (section B) and finds the dynamic EdgeSeat pass at `accesspass(UNSPECIFIED, C)`, then submits a
-   `create_user` transaction paid by the funded seat keypair `C`.
+   `create_user` transaction paid by the funded service keypair `C`.
 5. Onchain, `create_user_core` invokes `accesspass.try_add_user(Multicast)`, which enforces
-   `multicast_user_count < max_multicast_users` because the pass is `EdgeSeat`.
-6. The operator turns on the reconciler with the normal `doublezero enable`; the daemon brings up the
+   `multicast_user_count < max_multicast_users` because the pass is `EdgeSeat`, and writes the `User`
+   (`owner = C`).
+6. The Feed Oracle's reconcile loop fetches all `User` accounts on the DoubleZero ledger, joins
+   `User.owner == ticket.service_key`, and for each newly observed `User` calls the new development-gated
+   subscription instruction, which: derives `ClientSeat(device_pk, client_ip)` and creates it if it does
+   not exist; creates `PaymentEscrow(client_seat, withdraw_authority = ticket.funding_authority_key)`;
+   charges a prorated USDC amount drawn from the ticket-owned token account (same proration as the
+   instant-allocation path); and sets the seat's `tenure_epochs`, `active_epoch`, and
+   `subscription_start_slot`.
+7. The operator turns on the reconciler with the normal `doublezero enable`; the daemon brings up the
    tunnel and routes.
+8. If the operator later disconnects a node, moves it to another machine, or it reconnects to a different
+   device, the reconcile loop observes the `User` disappear or its `device_pk`/`client_ip` change. It
+   withdraws the stale per-connection seat with a prorated refund back to the ticket's custody (reusing
+   the existing withdrawal path) and allocates a fresh seat for the new `(device, client_ip)`. No client
+   action beyond the normal connect/disconnect is required; the operator's activity on the ledger is what
+   drives the oracle to sync.
 
 ### NAT semantics
 
-A dynamic seat admits several nodes, but each node must present its own public IP. DoubleZero connects
+A dynamic ticket admits several nodes, but each node must present its own public IP. DoubleZero connects
 nodes over GRE tunnels. GRE has no TCP/UDP ports, so a NAT can only map one address to one address; it
 cannot multiplex many nodes onto a single public address by port. Only one node per host public IP can
 hold a tunnel at a time. An operator running several nodes behind a single NAT public IP cannot bring
@@ -105,7 +152,9 @@ them all up simultaneously; each node needs a distinct public address.
 
 ### A. Serviceability — per-category user caps on AccessPass
 
-File: `smartcontract/programs/doublezero-serviceability/src/state/accesspass.rs`.
+File: `smartcontract/programs/doublezero-serviceability/src/state/accesspass.rs`. This section is **not**
+behind the `development` feature; it is an additive, backward-compatible change to the serviceability
+program.
 
 Append four fields to `AccessPass`, after `tenant_allowlist`, so existing accounts remain
 deserialize-compatible:
@@ -186,12 +235,13 @@ there to carry a non-default pubkey; the set-time logic that derived the removed
 (`AIRDROP_USER_RENT_LAMPORTS_BYTES`) plus the configured `globalstate.user_airdrop_lamports`, topping the
 account up to that target (`saturating_sub(user_payer.lamports())`). For an `EdgeSeat` pass, scale this
 target by the seat's total admitted users (`max_unicast_users + max_multicast_users`) — both the
-rent-exemption sizing and the per-connect `user_airdrop_lamports` scale per user — so the seat keypair
+rent-exemption sizing and the per-connect `user_airdrop_lamports` scale per user — so the service keypair
 (`user_payer = C`) holds enough SOL to pay for the `create_user` transaction of every node it provisions.
 Non-`EdgeSeat` passes keep today's fixed airdrop. The top-up semantics are preserved, so re-setting a
-pass (for example when the oracle updates the caps) refills the seat toward its scaled target. This is
-what makes the seat keypair self-funding for the standard `doublezero connect` path; the oracle makes no
-separate transfer.
+pass (for example when the oracle updates the caps) refills the service keypair toward its scaled target.
+This is what makes the service keypair self-funding for the standard `doublezero connect` path; the
+oracle makes no separate SOL transfer. This SOL airdrop is independent of the ticket's USDC custody: SOL
+pays for gas, USDC pays the subscription fee.
 
 **CLI.** `smartcontract/cli/src/accesspass/set.rs` gains `--max-unicast-users` and
 `--max-multicast-users`; `get.rs` and `list.rs` render the four new fields.
@@ -221,108 +271,156 @@ PDAs, so this change aligns the read side with the write side; it does not alter
 ### C. Client — no changes beyond the SDK lookup
 
 The client requires no new code for seats beyond the section-B lookup change. The operator configures the
-funded seat keypair `C` as the doublezero client keypair and provisions each node with the standard
+funded service keypair `C` as the doublezero client keypair and provisions each node with the standard
 `doublezero connect` (multicast subscriber). `connect` resolves the node's public IP the same way it
-always does (via the daemon's `DiscoverClientIP`, so NAT is handled as today), and its `check_accesspass`
-finds the dynamic seat pass through the section-B UNSPECIFIED-first lookup. The `create_user` transaction
-is paid by `C`, which the scaled `SetAccessPass` airdrop has already funded. `doublezero enable` is
-unchanged: it still just turns on the reconciler. There is no client-to-oracle call.
+always does (via the daemon's `DiscoverClientIP`, so NAT is handled as today) and selects a device with
+the standard latency-based device resolution — the device is not fixed by the purchase and may differ per
+node or change on reconnect. Its `check_accesspass` finds the dynamic seat pass through the section-B
+UNSPECIFIED-first lookup. The `create_user` transaction is paid by `C`, which the scaled `SetAccessPass`
+airdrop has already funded. `doublezero enable` is unchanged: it still just turns on the reconciler.
+There is no client-to-oracle call; the operator's connect, disconnect, and move activity on the ledger is
+what drives the oracle to sync (section E).
 
-### D. Feed Subscription Program — `ClientSeatV2`
+### D. Feed Subscription Program — `ConnectionTicket`
 
-Files under `programs/shred-subscription/src/` (`state/`, `instruction/`, `processor/`).
+Files under `programs/shred-subscription/src/` (`state/`, `instruction/`, `processor/`). This entire
+section is gated behind the `development` cargo feature, mirroring the existing feed-registry
+instructions: the new instruction enum variants are `#[cfg(feature = "development")]`, as are their
+processor dispatch arms, imports, and the new state module. A mainnet-beta build excludes them entirely.
 
-Add `ClientSeatV2`, modeled on `ClientSeat` but keyed on a client public key instead of an IP:
+**`ConnectionTicket` account.** Modeled on the existing `Pod`/`Zeroable` `#[repr(C, align(8))]` state
+(see `state/client_seat.rs` and `state/payment_escrow.rs`):
 
-| Aspect            | `ClientSeat` (v1)                                  | `ClientSeatV2`                                         |
-| ----------------- | -------------------------------------------------- | ----------------------------------------------------- |
-| PDA seeds         | `[b"client_seat", device_key, client_ip_bits]`     | `[b"client_seat_v2", device_key, client_pubkey]`      |
-| Identity field    | `client_ip_bits: u32`                              | `client_pubkey: Pubkey`                               |
-| User limits       | none                                               | `max_unicast_users: u16`, `max_multicast_users: u16`  |
-| Discriminator     | `dz::account::client_seat`                         | `dz::account::client_seat_v2`                         |
-| Lifecycle fields  | tenure, funding, settlement, escrow, price, etc.   | same (shared lifecycle)                               |
+| Aspect          | `ConnectionTicket`                                                              |
+| --------------- | ------------------------------------------------------------------------------- |
+| Discriminator   | `dz::account::connection_ticket`                                                |
+| PDA seeds       | `[b"connection_ticket", service_key]`                                           |
+| Identity        | `service_key: Pubkey` (the doublezero client keypair)                           |
+| Funding         | `funding_authority_key: Pubkey` (becomes each escrow's withdraw authority)      |
+| Caps            | `max_unicast_users: u16`, `max_multicast_users: u16`                            |
+| USDC custody    | a token account owned by the ticket PDA; the ticket stores its bump             |
 
-`device_key` is retained because it determines which device a created `User` attaches to. Add an
-instruction `InitializeClientSeatV2 { client_pubkey, max_unicast_users, max_multicast_users }`, mirroring
-`InitializeClientSeat` (`instruction/mod.rs` plus a processor handler analogous to
-`try_initialize_client_seat`).
+The ticket is not bound to an IP or device. It carries no settlement state of its own; settlement and
+proration live on the per-connection `ClientSeat`s.
 
-The program supports both seat types simultaneously: existing v1 instructions and handlers are unchanged,
-and v2 is added beside them. The funding, settlement, and tenure logic is the largest surface; v2 seats
-flow through the same lifecycle, differing only in identity and the new max fields. The settlement and
-auction integration for v2 is the heaviest implementation item and should be scoped carefully (see
-Impact).
+**`InitializeConnectionTicket { max_unicast_users, max_multicast_users, usdc_amount }`.** Modeled on
+`try_initialize_client_seat` plus the `FundPaymentEscrowUsdc` SPL transfer. It creates the ticket PDA and
+its USDC token account, transfers `usdc_amount` USDC from the caller's token account into the ticket's
+token account, and records `service_key`, `funding_authority_key` (the funding signer), and the two caps.
+The instruction is deliberately basic: it takes custody of an arbitrary USDC amount and stores the caps;
+it performs no allocation or settlement.
+
+**`AllocateTicketSeat`** (oracle-only). The instruction the oracle calls in step 6, for each newly
+observed `User`. It validates the ticket and the `User`'s `(device_pk, client_ip)`, creates the
+`ClientSeat(device_pk, client_ip)` if it does not exist, creates the
+`PaymentEscrow(client_seat, withdraw_authority = ticket.funding_authority_key)`, draws a prorated USDC
+amount from the ticket's token account using the same calculation as
+`try_request_instant_seat_allocation` (`prorated_usdc_amount_ceil`, over the slots remaining in the
+epoch), and sets the seat's `tenure_epochs`, `active_epoch`, and `subscription_start_slot`. The price and
+proration reuse the per-connection `ClientSeat`'s existing fields and methods, so a ticket-funded seat
+flows through the same settlement and auction logic as any other.
+
+**Move and disconnect.** Reuse the existing withdrawal path (`prorated_usdc_amount`, which rounds down so
+the protocol never over-refunds) to return the prorated remainder of a stale per-connection seat to the
+ticket's custody, after which the oracle allocates a fresh seat for the new `(device, client_ip)`.
+
+The v1 `ClientSeat` instant/batch/fund/withdraw instructions are unchanged; the ticket flow is additive
+and dev-gated, and reuses their machinery rather than duplicating it.
 
 ### E. Feed Oracle changes
 
-Files under `crates/shred-oracle/src/` (`dz_ledger.rs`, `oracle.rs`).
+Files under `crates/shred-oracle/src/` (`dz_ledger.rs`, `oracle.rs`, `chain.rs`). The oracle crate's
+`development` feature forwards to the program's (`development =
+["doublezero-shred-subscription/development"]`), and the new loops below are guarded by
+`#[cfg(feature = "development")]`, exactly like the existing `reconcile_feeds()` call. A default
+(mainnet) build excludes them.
 
-**1. Create an EdgeSeat AccessPass for each v2 seat.** Today `dz_ledger.rs::set_access_pass` builds a
-`SetAccessPass` instruction with `accesspass_type = Prepaid`, a specific `client_ip`, and
-`allow_multiple_ip = false`. When the oracle observes a `ClientSeatV2`, it instead creates or updates a
-dynamic EdgeSeat pass:
+**1. Create an EdgeSeat AccessPass for each ticket.** A new watch loop polls `ConnectionTicket` accounts
+via `getProgramAccounts` with a discriminator filter, mirroring `get_all_client_seats` in `chain.rs`.
+Today `dz_ledger.rs::set_access_pass` builds a `SetAccessPass` instruction with
+`accesspass_type = Prepaid`, a specific `client_ip`, and `allow_multiple_ip = false`. For a ticket, the
+oracle instead creates or updates a dynamic EdgeSeat pass:
 
-- `accesspass_type = EdgeSeat(client_seat_v2_pda)`
+- `accesspass_type = EdgeSeat(connection_ticket_pda)`
 - `client_ip = UNSPECIFIED`
 - `allow_multiple_ip = true`
-- `max_unicast_users` and `max_multicast_users` copied from the seat (using the extended
+- `max_unicast_users` and `max_multicast_users` copied from the ticket (using the extended
   `SetAccessPassArgs` from section A)
-- `user_payer = client_pubkey` (the seat's key, rather than the oracle's key or the validator's withdraw
-  authority used in the v1 path)
+- `user_payer = service_key` (the ticket's service key, rather than the oracle's key or the validator's
+  withdraw authority used in the v1 path)
 
 The oracle signs as the GlobalState `feed_authority` (or a foundation-allowlist member, as it already
 must be to set passes today). `set_access_pass` records `owner = payer = oracle`, while `user_payer` is
-the seat key — `process_set_access_pass` already supports this split and lets the feed authority create
-and later update passes it owns.
+the service key — `process_set_access_pass` already supports this split and lets the feed authority create
+and later update passes it owns. Creating the pass funds the service keypair automatically: the
+`SetAccessPass` airdrop (scaled by the caps, section A) tops up `user_payer = service_key` so it can pay
+for its own `create_user` transactions. The oracle makes no separate SOL transfer. Because the operator
+subscribes to the feed multicast group through the standard `connect`, the oracle must also allowlist that
+group on the pass: add it to `mgroup_sub_allowlist` (via the subscriber-allowlist instruction), or the
+onchain subscribe check rejects the subscription (`processors/multicastgroup/subscribe.rs` requires the
+group be present in the pass's `mgroup_sub_allowlist`).
 
-Creating the pass funds the seat keypair automatically: the `SetAccessPass` airdrop (scaled by the caps,
-section A) tops up `user_payer = client_pubkey` so it can pay for its own `create_user` transactions. The
-oracle makes no separate SOL transfer. Because the operator subscribes to the feed multicast group
-through the standard `connect`, the oracle must also allowlist that group on the pass: add it to
-`mgroup_sub_allowlist` (via the subscriber-allowlist instruction), or the onchain subscribe check rejects
-the subscription (`processors/multicastgroup/subscribe.rs` requires the group be present in the pass's
-`mgroup_sub_allowlist`).
+**2. Reconcile users against tickets.** A second loop fetches all `User` accounts on the DoubleZero
+ledger with `fetch_all_users()` (this is RPC-intensive — it pulls every `User` regardless of owner) and
+joins them against the tickets by `User.owner == ticket.service_key`. For each newly observed `User` with
+no per-connection seat, it calls `AllocateTicketSeat` (section D) to create the `ClientSeat` and
+`PaymentEscrow` and charge the prorated USDC. When a previously seen `User` disappears (disconnect) or its
+`device_pk`/`client_ip` changes (move), it withdraws the stale seat with a prorated refund to the ticket's
+custody and then allocates the new one. This passive reconciliation is the "poke": the operator's
+ordinary connect, disconnect, and move activity on the ledger is what the oracle observes and syncs; there
+is no client-to-oracle call.
 
-**2. Stop auto-creating users for v2 seats.** `oracle.rs::create_serviceability_users` currently creates
-serviceability `User`s automatically via `create_subscribe_user`. Branch on seat version: v1 `ClientSeat`
-keeps today's automatic path unchanged; v2 `ClientSeatV2` creates no users automatically — each node is
-provisioned by its operator through the standard `doublezero connect` workflow (section C), paid by the
-funded seat keypair.
+**3. Leave the v1 auto-create path unchanged.** `oracle.rs::create_serviceability_users` continues to
+create serviceability `User`s automatically via `create_subscribe_user` for v1 `ClientSeat`s. The ticket
+flow does **not** auto-create users — each node is provisioned by its operator through the standard
+`doublezero connect` workflow (section C), paid by the funded service keypair — and instead reconciles
+the resulting `User`s after the fact.
 
 ## Impact
 
 - **Serviceability program.** Four appended AccessPass fields, two small methods, two error variants, a
   hook in `create_user_core` and `delete`, two new `SetAccessPassArgs` fields, and the EdgeSeat-scoped
-  scaling of the existing `SetAccessPass` airdrop. The change is additive and confined to the access-pass
-  and user paths.
+  scaling of the existing `SetAccessPass` airdrop. The change is additive, ungated, and confined to the
+  access-pass and user paths.
 - **CLI and SDKs.** New flags on `access-pass set`, new display fields, three SDK layout updates, and a
   fixture regeneration. The `GetAccessPassCommand` UNSPECIFIED-first lookup is the only client-facing
   change.
-- **Client.** No changes beyond the SDK lookup; provisioning uses the standard `doublezero connect`.
-- **Feed Subscription Program.** A new account and instruction plus settlement and auction integration
-  for v2 seats — the largest single work item.
-- **Feed Oracle.** Changed AccessPass creation (dynamic EdgeSeat pass, feed-group allowlisting, and the
-  auto-scaled airdrop that funds the seat) and a version branch in user provisioning. No new HTTP service.
+- **Client.** No changes beyond the SDK lookup; provisioning uses the standard `doublezero connect` with
+  latency-based device selection.
+- **Feed Subscription Program.** A new development-gated `ConnectionTicket` account and two instructions
+  (`InitializeConnectionTicket`, `AllocateTicketSeat`) that reuse the existing per-connection
+  `ClientSeat`/`PaymentEscrow`/settlement machinery.
+- **Feed Oracle.** Two new development-gated loops: ticket-to-EdgeSeat-AccessPass creation (with
+  feed-group allowlisting and the auto-scaled airdrop), and an RPC-intensive full-`User` reconciliation
+  that allocates, refunds, and reallocates per-connection seats. The v1 auto-create path is unchanged. No
+  new HTTP service.
 
 This spans two repositories and well exceeds the project's ~500-line-per-PR guideline, so it should be
 delivered as a sequence of PRs, roughly: (1) AccessPass caps, methods, set args, scaled airdrop, CLI,
-SDK, and fixtures; (2) the `GetAccessPassCommand` fallback; (3) `ClientSeatV2` and its initialize
-instruction, with settlement integration possibly split out; (4) oracle EdgeSeat AccessPass creation
-(with feed-group allowlisting) and the v2 no-auto-create branch.
+SDK, and fixtures; (2) the `GetAccessPassCommand` fallback; (3) the `ConnectionTicket` account and
+`InitializeConnectionTicket` (dev-gated); (4) `AllocateTicketSeat`, prorated charge, and the
+withdraw-refund path (dev-gated); (5) the oracle's ticket and user reconcile loops (dev-gated).
 
 ## Security Considerations
 
 - **No new provisioning surface.** Users are created by the operator's own funded keypair through the
   standard `connect` path, using the same authorization as any other user. There is no bespoke HTTP
-  endpoint to secure and no signed, replayable provisioning request. This is the main reason the design
-  prefers funding the seat keypair over the earlier oracle `/user/create` endpoint, which carried an
+  endpoint to secure and no signed, replayable provisioning request. The oracle learns of connects,
+  disconnects, and moves passively, by reconciling ledger `User` accounts. This is the main reason the
+  design prefers passive reconciliation over the earlier oracle `/user/create` endpoint, which carried an
   observed-source-IP replay window (see Alternatives Considered).
 - **Cap enforcement is onchain.** `try_add_user` runs inside `create_user_core`, so the per-category
   limit holds regardless of how the user-create transaction is submitted.
-- **Seat funding.** Creating an EdgeSeat pass airdrops SOL to the seat keypair, scaled by its caps. That
-  SOL is controlled by the seat keyholder (the operator who purchased the seat) and is spendable on
-  anything, not just `connect`. The airdrop cost is borne by the pass creator (the feed authority) and is
-  bounded by the seat purchase and the caps, so a larger seat costs proportionally more to fund.
+- **USDC custody.** The ticket holds USDC in a token account owned by the ticket PDA; only program
+  instructions move it. Each per-connection escrow's withdraw authority is pinned to the ticket's
+  `funding_authority_key`, so only the funder can request withdrawal and receive refunds.
+- **Seat funding (SOL).** Creating an EdgeSeat pass airdrops SOL to the service keypair, scaled by its
+  caps. That SOL is controlled by the service keyholder and is spendable on anything, not just `connect`.
+  The airdrop cost is borne by the pass creator (the feed authority) and is bounded by the caps, so a
+  larger ticket costs proportionally more to fund.
+- **RPC load.** The user-reconciliation loop fetches every `User` on the DoubleZero ledger each cycle.
+  This is an RPC and processing cost that grows with the network's user count and should be bounded
+  (paginated or made incremental) before mainnet. It is dev-gated for now.
 
 ## Backward Compatibility
 
@@ -332,18 +430,22 @@ instruction, with settlement integration possibly split out; (4) oracle EdgeSeat
   and RPC passes are unaffected and keep the existing fixed airdrop.
 - **`GetAccessPassCommand`.** The new dynamic-first lookup falls back to the exact-IP PDA, so existing
   per-IP passes still resolve.
-- **Seats.** `ClientSeat` (v1) is fully retained, including the Feed Oracle's automatic user creation, so
-  current subscribers see no change. `ClientSeatV2` is opt-in.
+- **`ConnectionTicket` and its instructions.** Gated behind the `development` feature and excluded from
+  mainnet-beta builds, so they cannot affect a production program. The v1 `ClientSeat` lifecycle,
+  including the Feed Oracle's automatic user creation, is fully retained, so current subscribers see no
+  change.
 - **`doublezero connect` / `enable`.** Both are unchanged. A seat node provisions through the same
   `connect` path as any other user; `enable` still only turns on the reconciler.
 
 ## Out of Scope
 
-- **Device discovery.** Before a node's container is running, the operator may not know which device to
-  connect to. Discovering or auto-selecting the device is out of scope here; for a seat, the device is
-  fixed by the `ClientSeatV2` `device_key` chosen at purchase.
-- **Partial withdrawal.** Withdrawing against only some of the passes purchased under a seat is out of
-  scope for this RFC.
+- **Device discovery before connect.** Before a node's container is running, the operator may not know
+  which device it will attach to. The device is now resolved by the standard latency-based selection at
+  connect time and may differ per node or change on reconnect; any richer auto-selection or
+  pre-provisioning of the device is out of scope here.
+- **Partial withdrawal of a ticket.** Withdrawing only some of the per-connection seats funded under a
+  ticket, or partially refunding a ticket's remaining custody, is out of scope for this RFC. (Per-seat
+  refund on move/disconnect is in scope.)
 
 ## Open Questions
 
@@ -354,7 +456,10 @@ instruction, with settlement integration possibly split out; (4) oracle EdgeSeat
   already exists, so the new node's `connect` collides with it rather than provisioning cleanly.
   Resolving this depends on BGP status marking the stale user down, and is deferred until BGP status
   information is fully enabled on mainnet.
-- How the scaled airdrop should be tuned for large seats, and whether spent-down seat balances should be
-  refilled on a schedule or only when the pass is re-set.
-- The settlement and auction integration for `ClientSeatV2`, which is the largest implementation surface
-  and may warrant its own design note.
+- How the scaled SOL airdrop and the ticket's USDC custody should be tuned for large tickets, and whether
+  spent-down balances should be topped up on a schedule or only when the pass/ticket is re-set.
+- Bounding the RPC cost of the full-`User` reconciliation (pagination or an incremental/cursor approach)
+  before this leaves the `development` feature.
+- Behavior when a node connects to a device that is already at its seat capacity during reconciliation.
+- The settlement and auction integration for ticket-funded per-connection seats, which is the largest
+  implementation surface and may warrant its own design note.

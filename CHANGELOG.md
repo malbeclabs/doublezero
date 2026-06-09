@@ -38,6 +38,8 @@ All notable changes to this project will be documented in this file.
   - Retry transient `bind: invalid argument` failures when allocating per-probe UDP sockets in `Publisher.AddProbe`, matching the existing retry-on-bind pattern in `Pinger`. The shared retry helper is lifted into `retry.go` so the publisher and pinger paths use the same exponential-backoff logic. Fixes intermittent `TestPublisher_RemoveProbe`/`TestPublisher_AddProbe` CI flakes caused by concurrent ephemeral-port allocation ([#3765](https://github.com/malbeclabs/doublezero/issues/3765))
 - Makefile
   - Add `unreadable_literal` to make cargo clippy alert on large numbers written without `_`.
+- RFCs
+  - RFC - Feed subscription system
 
 ## [v0.25.1](https://github.com/malbeclabs/doublezero/compare/client/v0.24.0...client/v0.25.1) - 2026-06-01
 

@@ -156,8 +156,8 @@ pub fn process_delete_user(
             return Err(DoubleZeroError::Unauthorized.into());
         }
         // Skip IP validation when the pass is stored at the UNSPECIFIED PDA (0.0.0.0): it is
-        // a dynamic pass valid for any IP by construction. This includes legacy passes created
-        // before the IS_DYNAMIC flag existed, which have client_ip=0.0.0.0 but flags=0.
+        // a dynamic pass valid for any IP by construction. This includes legacy passes which
+        // have client_ip=0.0.0.0.
         if accesspass.client_ip != Ipv4Addr::UNSPECIFIED
             && accesspass.client_ip != user.client_ip
             && !accesspass.allow_multiple_ip()
@@ -171,6 +171,8 @@ pub fn process_delete_user(
         }
 
         accesspass.connection_count = accesspass.connection_count.saturating_sub(1);
+        // Release the per-category seat (EdgeSeat only; no-op otherwise).
+        accesspass.remove_user(user.user_type);
         accesspass.status = if accesspass.connection_count > 0 {
             AccessPassStatus::Connected
         } else {

@@ -457,7 +457,15 @@ describe("AccessPass fixture", () => {
       ConnectionCount: ap.connectionCount,
       Status: ap.status,
       Flags: ap.flags,
+      UnicastUserCount: ap.unicastUserCount,
+      MaxUnicastUsers: ap.maxUnicastUsers,
+      MulticastUserCount: ap.multicastUserCount,
+      MaxMulticastUsers: ap.maxMulticastUsers,
     });
+    expect(ap.unicastUserCount).toBe(2);
+    expect(ap.maxUnicastUsers).toBe(4);
+    expect(ap.multicastUserCount).toBe(1);
+    expect(ap.maxMulticastUsers).toBe(3);
   });
 });
 
@@ -476,6 +484,10 @@ describe("AccessPassValidator fixture", () => {
       ConnectionCount: ap.connectionCount,
       Status: ap.status,
       Flags: ap.flags,
+      UnicastUserCount: ap.unicastUserCount,
+      MaxUnicastUsers: ap.maxUnicastUsers,
+      MulticastUserCount: ap.multicastUserCount,
+      MaxMulticastUsers: ap.maxMulticastUsers,
     });
 
     // Verify specific values
@@ -501,5 +513,37 @@ describe("AccessPassValidator fixture", () => {
     expect(ap.mGroupSubAllowlist[0].toBase58()).toBe(
       "C3Bs2Dzqa8C5zSinRkgDpyEVSbfQnohgmFadYytDCwRZ",
     );
+    expect(ap.maxUnicastUsers).toBe(5);
+    expect(ap.maxMulticastUsers).toBe(2);
+  });
+});
+
+describe("AccessPassEdgeSeat fixture", () => {
+  test("deserialize", () => {
+    const [data, meta] = loadFixture("access_pass_edge_seat");
+    const ap = deserializeAccessPass(data);
+    assertFields(meta.fields, {
+      AccountType: ap.accountType,
+      Owner: ap.owner,
+      BumpSeed: ap.bumpSeed,
+      AccessPassType: ap.accessPassType,
+      AccessPassTypeSeatPubkey: ap.associatedPubkey,
+      UserPayer: ap.userPayer,
+      ConnectionCount: ap.connectionCount,
+      Status: ap.status,
+      Flags: ap.flags,
+      UnicastUserCount: ap.unicastUserCount,
+      MaxUnicastUsers: ap.maxUnicastUsers,
+      MulticastUserCount: ap.multicastUserCount,
+      MaxMulticastUsers: ap.maxMulticastUsers,
+    });
+
+    // EdgeSeat is tag 4; the seat pubkey is read as the associated pubkey.
+    expect(ap.accessPassType).toBe(4);
+    expect(ap.associatedPubkey).not.toBeNull();
+    expect(ap.unicastUserCount).toBe(2);
+    expect(ap.maxUnicastUsers).toBe(4);
+    expect(ap.multicastUserCount).toBe(1);
+    expect(ap.maxMulticastUsers).toBe(3);
   });
 });

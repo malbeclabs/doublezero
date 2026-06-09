@@ -95,6 +95,7 @@ fn main() {
     generate_contributor(&fixtures_dir);
     generate_access_pass(&fixtures_dir);
     generate_access_pass_validator(&fixtures_dir);
+    generate_access_pass_edge_seat(&fixtures_dir);
     generate_tenant(&fixtures_dir);
     generate_resource_extension_id(&fixtures_dir);
     generate_resource_extension_ip(&fixtures_dir);
@@ -1092,6 +1093,10 @@ fn generate_access_pass(dir: &Path) {
         mgroup_sub_allowlist: vec![],
         flags: 0x01,
         tenant_allowlist: vec![],
+        unicast_user_count: 2,
+        max_unicast_users: 4,
+        multicast_user_count: 1,
+        max_multicast_users: 3,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1112,6 +1117,11 @@ fn generate_access_pass(dir: &Path) {
             FieldValue { name: "MgroupPubAllowlistLen".into(), value: "0".into(), typ: "u32".into() },
             FieldValue { name: "MgroupSubAllowlistLen".into(), value: "0".into(), typ: "u32".into() },
             FieldValue { name: "Flags".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "TenantAllowlistLen".into(), value: "0".into(), typ: "u32".into() },
+            FieldValue { name: "UnicastUserCount".into(), value: "2".into(), typ: "u16".into() },
+            FieldValue { name: "MaxUnicastUsers".into(), value: "4".into(), typ: "u16".into() },
+            FieldValue { name: "MulticastUserCount".into(), value: "1".into(), typ: "u16".into() },
+            FieldValue { name: "MaxMulticastUsers".into(), value: "3".into(), typ: "u16".into() },
         ],
     };
 
@@ -1139,6 +1149,10 @@ fn generate_access_pass_validator(dir: &Path) {
         mgroup_sub_allowlist: vec![mgroup_sub],
         flags: 0x03,
         tenant_allowlist: vec![],
+        unicast_user_count: 0,
+        max_unicast_users: 5,
+        multicast_user_count: 0,
+        max_multicast_users: 2,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1162,10 +1176,71 @@ fn generate_access_pass_validator(dir: &Path) {
             FieldValue { name: "MgroupSubAllowlistLen".into(), value: "1".into(), typ: "u32".into() },
             FieldValue { name: "MgroupSubAllowlist0".into(), value: pubkey_bs58(&mgroup_sub), typ: "pubkey".into() },
             FieldValue { name: "Flags".into(), value: "3".into(), typ: "u8".into() },
+            FieldValue { name: "TenantAllowlistLen".into(), value: "0".into(), typ: "u32".into() },
+            FieldValue { name: "UnicastUserCount".into(), value: "0".into(), typ: "u16".into() },
+            FieldValue { name: "MaxUnicastUsers".into(), value: "5".into(), typ: "u16".into() },
+            FieldValue { name: "MulticastUserCount".into(), value: "0".into(), typ: "u16".into() },
+            FieldValue { name: "MaxMulticastUsers".into(), value: "2".into(), typ: "u16".into() },
         ],
     };
 
     write_fixture(dir, "access_pass_validator", &data, &meta);
+}
+
+fn generate_access_pass_edge_seat(dir: &Path) {
+    let owner = pubkey_from_byte(0xB0);
+    let user_payer = pubkey_from_byte(0xB1);
+    let seat_pk = pubkey_from_byte(0xB2);
+
+    // EdgeSeat pass with allow_multiple_ip set and per-category caps populated.
+    let val = AccessPass {
+        account_type: AccountType::AccessPass,
+        owner,
+        bump_seed: 242,
+        accesspass_type: AccessPassType::EdgeSeat(seat_pk),
+        client_ip: Ipv4Addr::UNSPECIFIED,
+        user_payer,
+        last_access_epoch: u64::MAX,
+        connection_count: 3,
+        status: AccessPassStatus::Connected,
+        mgroup_pub_allowlist: vec![],
+        mgroup_sub_allowlist: vec![],
+        flags: 0x02, // ALLOW_MULTIPLE_IP
+        tenant_allowlist: vec![],
+        unicast_user_count: 2,
+        max_unicast_users: 4,
+        multicast_user_count: 1,
+        max_multicast_users: 3,
+    };
+
+    let data = borsh::to_vec(&val).unwrap();
+
+    let meta = FixtureMeta {
+        name: "AccessPassEdgeSeat".into(),
+        account_type: 11,
+        fields: vec![
+            FieldValue { name: "AccountType".into(), value: "11".into(), typ: "u8".into() },
+            FieldValue { name: "Owner".into(), value: pubkey_bs58(&owner), typ: "pubkey".into() },
+            FieldValue { name: "BumpSeed".into(), value: "242".into(), typ: "u8".into() },
+            FieldValue { name: "AccessPassType".into(), value: "4".into(), typ: "u8".into() },
+            FieldValue { name: "AccessPassTypeSeatPubkey".into(), value: pubkey_bs58(&seat_pk), typ: "pubkey".into() },
+            FieldValue { name: "ClientIp".into(), value: "0.0.0.0".into(), typ: "ipv4".into() },
+            FieldValue { name: "UserPayer".into(), value: pubkey_bs58(&user_payer), typ: "pubkey".into() },
+            FieldValue { name: "LastAccessEpoch".into(), value: "18446744073709551615".into(), typ: "u64".into() },
+            FieldValue { name: "ConnectionCount".into(), value: "3".into(), typ: "u16".into() },
+            FieldValue { name: "Status".into(), value: "1".into(), typ: "u8".into() },
+            FieldValue { name: "MgroupPubAllowlistLen".into(), value: "0".into(), typ: "u32".into() },
+            FieldValue { name: "MgroupSubAllowlistLen".into(), value: "0".into(), typ: "u32".into() },
+            FieldValue { name: "Flags".into(), value: "2".into(), typ: "u8".into() },
+            FieldValue { name: "TenantAllowlistLen".into(), value: "0".into(), typ: "u32".into() },
+            FieldValue { name: "UnicastUserCount".into(), value: "2".into(), typ: "u16".into() },
+            FieldValue { name: "MaxUnicastUsers".into(), value: "4".into(), typ: "u16".into() },
+            FieldValue { name: "MulticastUserCount".into(), value: "1".into(), typ: "u16".into() },
+            FieldValue { name: "MaxMulticastUsers".into(), value: "3".into(), typ: "u16".into() },
+        ],
+    };
+
+    write_fixture(dir, "access_pass_edge_seat", &data, &meta);
 }
 
 fn generate_tenant(dir: &Path) {

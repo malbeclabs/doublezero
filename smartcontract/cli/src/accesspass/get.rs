@@ -38,6 +38,8 @@ struct AccessPassDisplay {
     pub remaining_epoch: String,
     pub flags: String,
     pub connections: u16,
+    pub unicast_users: String,
+    pub multicast_users: String,
     pub status: String,
     pub owner: String,
 }
@@ -107,6 +109,14 @@ impl GetAccessPassCliCommand {
             remaining_epoch,
             flags: accesspass.flags_string(),
             connections: accesspass.connection_count,
+            unicast_users: format!(
+                "{} / {}",
+                accesspass.unicast_user_count, accesspass.max_unicast_users
+            ),
+            multicast_users: format!(
+                "{} / {}",
+                accesspass.multicast_user_count, accesspass.max_multicast_users
+            ),
             status: accesspass.status.to_string(),
             owner: accesspass.owner.to_string(),
         };
@@ -200,6 +210,10 @@ mod tests {
             tenant_allowlist: vec![tenant_pubkey],
             owner: Pubkey::new_unique(),
             flags: 0,
+            unicast_user_count: 2,
+            max_unicast_users: 5,
+            multicast_user_count: 1,
+            max_multicast_users: 3,
         };
 
         let accesspass_clone = accesspass.clone();
@@ -277,6 +291,14 @@ mod tests {
         assert!(
             has_row("connections", "3"),
             "connections row should contain value"
+        );
+        assert!(
+            has_row("unicast_users", "2 / 5"),
+            "unicast_users row should contain count / max"
+        );
+        assert!(
+            has_row("multicast_users", "1 / 3"),
+            "multicast_users row should contain count / max"
         );
         assert!(
             has_row("status", "connected"),

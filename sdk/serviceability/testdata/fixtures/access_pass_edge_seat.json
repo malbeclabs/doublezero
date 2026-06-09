@@ -1,5 +1,5 @@
 {
-  "name": "AccessPass",
+  "name": "AccessPassEdgeSeat",
   "account_type": 11,
   "fields": [
     {
@@ -9,27 +9,32 @@
     },
     {
       "name": "Owner",
-      "value": "Ah7i6KV9hQHopcKJFfMHvSKvGQMzfofZ5uQsV5gJnrCf",
+      "value": "Cr2knAhrJA8etkAUXosaa6BEYiSfGCvZmfHHbKc9rbMh",
       "typ": "pubkey"
     },
     {
       "name": "BumpSeed",
-      "value": "244",
+      "value": "242",
       "typ": "u8"
     },
     {
       "name": "AccessPassType",
-      "value": "0",
+      "value": "4",
       "typ": "u8"
     },
     {
+      "name": "AccessPassTypeSeatPubkey",
+      "value": "Cyqa5AA25q85i8QRYpQUMwfh4jaCg78NwPu4biE9JCgP",
+      "typ": "pubkey"
+    },
+    {
       "name": "ClientIp",
-      "value": "198.51.100.20",
+      "value": "0.0.0.0",
       "typ": "ipv4"
     },
     {
       "name": "UserPayer",
-      "value": "Am27jpDEbEnXEJSGmAcjpN59XQvmNkmTfmikzGzJWes1",
+      "value": "CuwARfRwBzdNJSHT3K92U1vToj1RyA2UMXbB6Wv9aQ23",
       "typ": "pubkey"
     },
     {
@@ -59,7 +64,7 @@
     },
     {
       "name": "Flags",
-      "value": "1",
+      "value": "2",
       "typ": "u8"
     },
     {

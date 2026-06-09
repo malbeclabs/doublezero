@@ -1042,6 +1042,11 @@ class AccessPass:
     mgroup_pub_allowlist: list[Pubkey] = field(default_factory=list)
     mgroup_sub_allowlist: list[Pubkey] = field(default_factory=list)
     flags: int = 0
+    tenant_allowlist: list[Pubkey] = field(default_factory=list)
+    unicast_user_count: int = 0
+    max_unicast_users: int = 1
+    multicast_user_count: int = 0
+    max_multicast_users: int = 1
 
     @classmethod
     def from_bytes(cls, data: bytes) -> AccessPass:
@@ -1070,6 +1075,11 @@ class AccessPass:
         ap.mgroup_pub_allowlist = _read_pubkey_vec(r)
         ap.mgroup_sub_allowlist = _read_pubkey_vec(r)
         ap.flags = r.read_u8()
+        ap.tenant_allowlist = _read_pubkey_vec(r)
+        ap.unicast_user_count = r.read_u16()
+        ap.max_unicast_users = r.read_u16()
+        ap.multicast_user_count = r.read_u16()
+        ap.max_multicast_users = r.read_u16()
         return ap
 
 

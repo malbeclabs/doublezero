@@ -107,6 +107,10 @@ pub fn process_add_multicastgroup_sub_allowlist(
             mgroup_sub_allowlist: vec![*mgroup_account.key],
             tenant_allowlist: vec![],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         try_acc_create(

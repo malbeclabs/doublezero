@@ -19,6 +19,8 @@ pub struct SetAccessPassCommand {
     pub last_access_epoch: u64,
     pub allow_multiple_ip: bool,
     pub tenant: Pubkey,
+    pub max_unicast_users: u16,
+    pub max_multicast_users: u16,
 }
 
 impl SetAccessPassCommand {
@@ -71,6 +73,8 @@ impl SetAccessPassCommand {
                 client_ip: self.client_ip,
                 last_access_epoch: self.last_access_epoch,
                 allow_multiple_ip: self.allow_multiple_ip,
+                max_unicast_users: self.max_unicast_users,
+                max_multicast_users: self.max_multicast_users,
             }),
             accounts,
         )
@@ -120,6 +124,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
         client
             .expect_get()
@@ -134,6 +142,8 @@ mod tests {
                     client_ip,
                     last_access_epoch: 0,
                     allow_multiple_ip: false,
+                    max_unicast_users: 1,
+                    max_multicast_users: 1,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -150,6 +160,8 @@ mod tests {
             last_access_epoch: 0,
             allow_multiple_ip: false,
             tenant: Pubkey::default(),
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }
         .execute(&client);
         assert!(res.is_ok());

@@ -381,6 +381,11 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 	ap.MGroupPubAllowlist = reader.ReadPubkeySlice()
 	ap.MGroupSubAllowlist = reader.ReadPubkeySlice()
 	ap.Flags = reader.ReadU8()
+	ap.TenantAllowlist = reader.ReadPubkeySlice()
+	ap.UnicastUserCount = reader.ReadU16()
+	ap.MaxUnicastUsers = reader.ReadU16()
+	ap.MulticastUserCount = reader.ReadU16()
+	ap.MaxMulticastUsers = reader.ReadU16()
 }
 
 // ResourceExtension binary layout (from Rust):

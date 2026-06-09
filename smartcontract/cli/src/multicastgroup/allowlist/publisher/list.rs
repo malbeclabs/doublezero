@@ -132,6 +132,10 @@ mod tests {
             connection_count: 0,
             status: AccessPassStatus::Requested,
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         let accesspass2_pk = Pubkey::from_str_const("11111112D1oxKts8YPdTJRG5FzxTNpMtWmq8hkVx3");
@@ -149,6 +153,10 @@ mod tests {
             connection_count: 0,
             status: AccessPassStatus::Requested,
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         client

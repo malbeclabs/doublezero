@@ -73,6 +73,8 @@ async fn test_multicast_publisher_allowlist() {
             client_ip,
             last_access_epoch: 100,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -218,6 +220,8 @@ async fn test_multicast_publisher_allowlist_sentinel_authority() {
             client_ip,
             last_access_epoch: 100,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -381,6 +385,8 @@ async fn test_multicast_publisher_allowlist_allow_multiple_ip() {
             client_ip: dynamic_ip,
             last_access_epoch: 100,
             allow_multiple_ip: true,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -514,6 +520,8 @@ async fn test_multicast_publisher_allowlist_allow_multiple_ip_real_ip_in_args() 
             client_ip: dynamic_ip,
             last_access_epoch: 100,
             allow_multiple_ip: true,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -645,6 +653,8 @@ async fn test_multicast_publisher_allowlist_wrong_pda_rejected() {
             client_ip: ip_a,
             last_access_epoch: 100,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_a, false),
@@ -666,6 +676,8 @@ async fn test_multicast_publisher_allowlist_wrong_pda_rejected() {
             client_ip: ip_b,
             last_access_epoch: 100,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_b, false),

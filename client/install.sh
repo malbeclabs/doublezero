@@ -166,20 +166,25 @@ fi
 
 case "$SECRET" in
   DZ_*)
-    # base64 keypair token: strip the 'DZ_' prefix, decode + validate, and install
-    # to the client's standard keypair location.
+    # 'DZ_' + base64url(raw 64 keypair bytes). Restore the base64 alphabet and
+    # padding, decode to raw bytes, render the Solana keypair JSON array, and
+    # install it to the client's standard keypair location.
+    b64="$(printf '%s' "${SECRET#DZ_}" | tr '_-' '/+')"
+    case $(( ${#b64} % 4 )) in
+      2) b64="${b64}==" ;;
+      3) b64="${b64}=" ;;
+      1) die "Invalid DZ_ token (bad base64url length)." ;;
+    esac
+    # raw bytes -> single-line "[b1,b2,...]" (collapse od's multi-line output)
+    arr="$(printf '%s' "$b64" | base64 -d 2>/dev/null | od -An -v -t u1 | tr -s ' \n' ' ' | sed 's/^ //; s/ $//; s/ /,/g')"
+    case "$arr" in [0-9]*) : ;; *) die "DZ_ token did not decode to a valid keypair." ;; esac
+    n=$(printf '%s' "$arr" | tr ',' '\n' | grep -c .)
+    [ "$n" -eq 64 ] || die "DZ_ token decoded to $n bytes, expected 64 (not a Solana keypair)."
     KEYFILE="$REAL_HOME/.config/doublezero/id.json"
-    tmp_key="$(mktemp)"
-    if printf '%s' "${SECRET#DZ_}" | tr -d '[:space:]' | base64 -d > "$tmp_key" 2>/dev/null \
-       && grep -qE '^[[:space:]]*\[[0-9]+,' "$tmp_key"; then
-      mkdir -p "$(dirname "$KEYFILE")"
-      mv "$tmp_key" "$KEYFILE"
-      chmod 600 "$KEYFILE"
-      info "Decoded token to $KEYFILE"
-    else
-      rm -f "$tmp_key"
-      die "DZ_ token did not decode to a valid keypair."
-    fi
+    mkdir -p "$(dirname "$KEYFILE")"
+    printf '[%s]' "$arr" > "$KEYFILE"
+    chmod 600 "$KEYFILE"
+    info "Decoded token to $KEYFILE ($n-byte keypair)"
     ;;
   *)
     # otherwise it's a path to an existing keypair file

@@ -71,10 +71,16 @@ jobs:
                 .split('\n')
                 .filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l))
                 .every((l) => /^[+-]version = "/.test(l));
-              const isBump = files.length > 0 && files.every((f) =>
-                f.status === 'modified' &&
-                allowed.has(f.filename) &&
-                (f.filename === 'CHANGELOG.md' || versionLinesOnly(f.patch)));
+              const names = new Set(files.map((f) => f.filename));
+              // Cargo.toml and Cargo.lock must change together: a requirement
+              // change that leaves the lock untouched can still alter what
+              // unlocked CI builds resolve, and is not a version bump.
+              const isBump = files.length > 0 &&
+                names.has('Cargo.toml') === names.has('Cargo.lock') &&
+                files.every((f) =>
+                  f.status === 'modified' &&
+                  allowed.has(f.filename) &&
+                  (f.filename === 'CHANGELOG.md' || versionLinesOnly(f.patch)));
               core.setOutput('skip', String(isBump));
               if (!isBump) return;
               core.notice('Version-bump-only PR; skipping shreds e2e and reporting shard checks as successful.');

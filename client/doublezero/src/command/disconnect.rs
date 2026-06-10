@@ -406,7 +406,6 @@ mod tests {
             reconciler_enabled: true,
             client_ip: client_ip.to_string(),
             network: "mainnet".to_string(),
-            behind_nat: false,
             services: vec![],
         }
     }

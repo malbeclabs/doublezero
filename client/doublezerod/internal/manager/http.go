@@ -37,7 +37,6 @@ type V2StatusResponse struct {
 	ReconcilerEnabled bool              `json:"reconciler_enabled"`
 	ClientIP          string            `json:"client_ip"`
 	Network           string            `json:"network"`
-	BehindNAT         bool              `json:"behind_nat"`
 	Services          []V2ServiceStatus `json:"services"`
 }
 
@@ -175,7 +174,6 @@ func (n *NetlinkManager) ServeV2Status(w http.ResponseWriter, _ *http.Request) {
 		ReconcilerEnabled: n.enabled.Load(),
 		ClientIP:          n.clientIP.String(),
 		Network:           n.network,
-		BehindNAT:         n.behindNAT,
 		Services:          enriched,
 	})
 }

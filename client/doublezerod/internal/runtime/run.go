@@ -79,11 +79,11 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	svcClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), pid)
 	cachingFetcher := onchain.NewCachingFetcher(svcClient, onchain.DefaultCacheTTL, onchainRPCTimeout)
 
-	ip, method, behindNAT, err := DiscoverClientIP(clientIP)
+	ip, method, err := DiscoverClientIP(clientIP)
 	if err != nil {
 		return fmt.Errorf("client IP discovery failed: %w", err)
 	}
-	slog.Info("reconciler: discovered client IP", "ip", ip.String(), "method", method, "behind_nat", behindNAT)
+	slog.Info("reconciler: discovered client IP", "ip", ip.String(), "method", method)
 
 	reconcilerEnabled, err := manager.LoadOrMigrateState(stateDir)
 	if err != nil {
@@ -116,7 +116,6 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	fetchTimeout := time.Duration(reconcilerFetchTimeout) * time.Second
 	nlmOpts := []manager.Option{
 		manager.WithClientIP(ip),
-		manager.WithBehindNAT(behindNAT),
 		manager.WithFetcher(cachingFetcher),
 		manager.WithPollInterval(pollInterval),
 		manager.WithFetchTimeout(fetchTimeout),

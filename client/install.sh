@@ -120,7 +120,7 @@ $SUDO docker info >/dev/null 2>&1 || die "Docker is installed but the daemon isn
 # ----------------------------------------------------------------------------
 # 3. host kernel / network prep (host-side; safe to attempt)
 # ----------------------------------------------------------------------------
-info "Preparing host for GRE tunnels..."
+info "Preparing host for DoubleZero Edge Connect"
 $SUDO modprobe tun 2>/dev/null    || warn "Could not load 'tun' module (may be built-in)."
 $SUDO modprobe ip_gre 2>/dev/null || warn "Could not load 'ip_gre' module (will auto-load on tunnel create)."
 [ -e /dev/net/tun ] || warn "/dev/net/tun is missing; tunnel creation may fail."

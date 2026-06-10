@@ -4,7 +4,7 @@
 
 **Status: `Draft`**
 
-This RFC defines the DoubleZero Edge **feed-subscription** system. This is an evolution of the existing shred subscription system, with the updated system including - an onchain catalog of purchasable feeds (the `feed-subscription` program), per-feed purchase and entitlement, an offchain oracle (`feed-oracle`) that reads the onchain catalog and provisions network access for funded seats.
+This RFC defines the DoubleZero Edge **feed-subscription** system. This is an evolution of the existing shred subscription system, with the updated system including an onchain catalog of purchasable feeds (the `feed-subscription` program), an identity-keyed purchase primitive (`ConnectionTicket`) from which both seats and feed subscriptions draw, and an offchain oracle (`feed-oracle`) that reads the onchain catalog and provisions network access for funded subscribers.
 
 The body of this RFC describes the desired end state. The existing shred subscription architecture on which this RFC is based is summarized in Appendix A for context. Shreds is retrofitted as the first registered feed.
 
@@ -19,8 +19,9 @@ There is also a documentation gap. No RFC describes this subsystem, even though 
 - **Feed:** A named, priced subscription target identified by exactly one multicast group.
 - **Feed catalog / registry:** The set of feeds, held onchain in a `FeedRegistry` account and managed via the admin CLI.
 - **Feed pricing mode:** How a feed is priced. `DynamicDeviceSeats` (the existing device-seat machinery; used by shreds) or `Flat` (a fixed per-subscription-epoch price).
-- **Client seat:** A funded subscription on a device, tracked onchain (`ClientSeat`), with an associated USDC payment escrow.
-- **Subscription epoch:** The billing period, aligned to a DoubleZero epoch.
+- **ConnectionTicket:** The identity-keyed purchase and entitlement primitive. Keyed by `service_key` (the subscriber's wallet identity), holds a single prepaid USDC balance, and carries `max_unicast_users` / `max_multicast_users`. Both client seats and feed subscriptions are allocated from the ticket.
+- **Client seat:** A funded subscription on a device, tracked onchain (`ClientSeat`), allocated from a `ConnectionTicket`.
+- **Subscription epoch:** The billing period, aligned to a Solana epoch. Charging and proration run on Solana slots via `EpochSchedule`. The DoubleZero Ledger epoch is only the downstream contributor-reward-distribution cadence.
 - **Feed oracle (today: shred oracle):** The offchain service that drives the epoch state machine and pricing, reads the onchain feed catalog, and provisions network access for funded seats.
 - **Serviceability access pass:** The DoubleZero Ledger access primitive whose per-seat multicast subscribe allowlist the oracle writes.
 - **Rebop:** DoubleZero's regional rebroadcast of shreds, delivered over per-region multicast groups and assigned to a seat by the seat's exchange.
@@ -37,6 +38,8 @@ There is also a documentation gap. No RFC describes this subsystem, even though 
 
 **Repurpose existing device/seat state.** Rejected. A feed is parallel to, not entangled with, the device-seat machinery, which this RFC leaves untouched.
 
+**Per-feed escrow accounts.** Give each feed subscription its own escrow or ATA. Rejected. A single ConnectionTicket balance per subscriber is simpler and avoids account proliferation. Per-feed billing state (price and active epoch) still exists, but the money is one balance.
+
 **Onchain enforcement of per-feed payment.** Out of scope. Payment validation remains offchain, consistent with the protocol's direct-payment model; this RFC models the catalog and entitlement, not billing enforcement.
 
 **Defer the rename.** Keep the `shred-*` names indefinitely. Rejected as the end state; once feeds are first-class the shred-specific naming is misleading. The rename is staged so it does not interleave with the feature work.
@@ -52,36 +55,37 @@ This section describes the target state.
 
    Buyer / validator host        Operator           Feed publishers ✦
    ┌────────────────────────┐   ┌────────────┐     ┌──────────────────┐
-   │ CLI: pay / ✦ buy feed  │   │ admin CLI ✦│     │ per-feed supply: │
-   │ doublezerod daemon     │   └─────┬──────┘     │ shreds, perp, …  │
-   └──────────┬─────────────┘  (a) register/       └────────┬─────────┘
-              │ (1) pay /       enable/price                │ push feeds
-              │     ✦ buy feed        │                     ▼
-              ▼                       ▼          ┌──────────────────────┐
-   ┌─────────────────────────────────────┐       │ DZ Edge (data plane) │
-   │ SOLANA                              │       │ delivers ALL         │
-   │ feed-subscription program ✦         │       │ purchased feeds      │
-   │  ClientSeat · PaymentEscrow         │       └───────────▲──────────┘
-   │  ShredDistribution · pricing        │      (5) subscribe│
-   │  ✦ Feed + FeedRegistry              │      (6) tunnel   │
-   │  ✦ Buy / Withdraw Feed instructions │       ┌───────────┴──────────┐
+   │ CLI / web: buy ticket, │   │ admin CLI ✦│     │ per-feed supply: │
+   │  subscribe to feeds    │   └─────┬──────┘     │ shreds, perp, …  │
+   │ doublezerod daemon     │  (a) register/       └────────┬─────────┘
+   └──────────┬─────────────┘   enable/price                │ push feeds
+              │ (1) buy ticket        │                     ▼
+              │     + feeds           ▼          ┌──────────────────────┐
+              ▼                                  │ DZ Edge (data plane) │
+   ┌─────────────────────────────────────┐       │ delivers ALL         │
+   │ SOLANA                              │       │ purchased feeds      │
+   │ feed-subscription program ✦         │       └───────────▲──────────┘
+   │  ✦ ConnectionTicket (USDC balance)  │      (5) subscribe│
+   │  ClientSeat · ShredDistribution     │      (6) tunnel   │
+   │  ✦ Feed + FeedRegistry              │       ┌───────────┴──────────┐
    └────┬─────────────▲──────────────────┘       │ DoubleZero Ledger    │
         │ (2) read    │ (3)                      │ serviceability:      │
-        │ seats+feeds │ drive                    │  AccessPass +        │
-        ▼             │ epoch                    │  allowlist (per      │
-   ┌──────────────────┴─────────────┐            │  purchased feed)     │
-   │ feed-oracle (offchain) ✦       │            └────────────▲─────────┘
-   │  oracle key · pricing · rewards│   (4) write allowlist   │
-   │  ✦ read catalog → provision    │     for purchased feeds─┘
-   │  ✦ seat → feeds subscription   │
+        │ tickets,    │ drive                    │  AccessPass +        │
+        │ seats+feeds │ epoch                    │  allowlist (per      │
+        ▼             │                          │  purchased feed)     │
+   ┌──────────────────┴─────────────┐            └────────────▲─────────┘
+   │ feed-oracle (offchain) ✦       │   (4) write allowlist   │
+   │  oracle key · pricing · rewards│     for purchased feeds─┘
+   │  ✦ read catalog → provision    │
+   │  ✦ ticket → feeds subscription │
    │  + rebop (exchange groups)     │
    └────────────────────────────────┘
 
+   ✦ ConnectionTicket — identity-keyed single USDC balance; seats + feeds draw from it
    ✦ Feed + FeedRegistry — onchain catalog of purchasable feeds (shreds + new)
-   ✦ Buy / Withdraw Feed IX — per-feed purchase for Flat-priced feeds
    (a) operator registers feeds onchain via the admin CLI (oracle-signed)
-   ✦ subscriptions are driven by the catalog (unioned with rebop), so a seat
-     is provisioned for exactly the feeds its purchase entitles
+   ✦ subscriptions are driven by the catalog (unioned with rebop), so a subscriber
+     is provisioned for exactly the feeds their ticket entitles
 ```
 
 ### The onchain feed catalog
@@ -133,9 +137,19 @@ The program performs no onchain validation of the multicast group, because group
 
 `DynamicDeviceSeats` keeps shreds on the existing device-seat pricing path: price is computed per metro and device by the existing machinery and is not stored on the feed. `Flat` gives new feeds a fixed whole-dollar USDC price per subscription epoch, stored on the feed. New feeds are `Flat`; shreds is the only `DynamicDeviceSeats` feed for now.
 
-### Per-feed purchase and entitlement
+### Purchase and entitlement: ConnectionTicket
 
-Buy and Withdraw feed instructions, backed by a payment escrow, let a buyer purchase a `Flat` feed. The open design question is the linkage from a purchase to the set of feeds a seat is entitled to (see Open Questions); the registry defines what feeds exist, not who is entitled to them.
+The purchase primitive is the **`ConnectionTicket`**, an identity-keyed onchain account. It is keyed by `service_key` (the subscriber's wallet identity, including Crossmint embedded wallets), holds a single prepaid USDC balance, and carries `max_unicast_users` / `max_multicast_users`. The ticket has no `client_ip` -- subscribers do not know their IP in advance, so IP is never a purchase input or PDA key. IP is supplied only at connect time, per machine, when a seat is allocated from the ticket (handled at the serviceability/access layer via the dynamic-IP access pass).
+
+Both client seats and feed subscriptions draw from the same ConnectionTicket balance. There is one escrow per subscriber (the ticket's USDC balance), not per feed. Per-feed billing state still exists (each feed's price and active epoch), but the money comes from the single ticket balance.
+
+### Lapse policy
+
+On insufficient funds at settlement, all of a subscriber's subscriptions lapse -- seats and feeds alike. There is no per-feed prioritization or intent-guessing. Each epoch the oracle draws the sum of the subscriber's active feed prices (plus seat costs) from the ticket; if the balance is less than the total, everything lapses for that subscriber.
+
+### Billing cadence
+
+Charging and proration run on the Solana epoch, with proration by Solana slots via `EpochSchedule`. The DoubleZero Ledger epoch is only the downstream contributor-reward-distribution cadence, reached via the distribution account's Solana-to-DZ epoch association.
 
 ### Oracle responsibilities
 
@@ -153,18 +167,18 @@ The rename touches crate names, binary names, oracle environment variables, the 
 
 The design requires the following components:
 - Onchain feed registry
+- ConnectionTicket as the purchase/entitlement primitive
 - Oracle reads onchain feed catalog for subscription provisioning
-- Seat-to-feed subscription wiring
-- Buy Feed instruction
-- Withdraw Feed instruction
+- Ticket-to-feed subscription wiring (allocate feeds from ticket balance)
+- All-or-nothing lapse on insufficient funds
 - CLI: list, buy, withdraw, update
 - Oracle dynamic API to manage feeds
 - Rename to feed-subscription
-- E2E: purchase multiple feeds for one pubkey
+- E2E: purchase multiple feeds for one subscriber
 
 ## Impact
 
-**Codebase.** Broad but mostly additive: the onchain program (new feed accounts, instructions, buy/withdraw), the oracle (catalog-driven subscriptions), the admin CLI, the regenerated IDL and Go SDK, and the formal specs where touched. The rename has the widest blast radius and is the main non-additive change.
+**Codebase.** Broad but mostly additive: the onchain program (feed accounts, ConnectionTicket, feed allocation from ticket), the oracle (catalog-driven subscriptions, all-or-nothing lapse), the admin CLI, the regenerated IDL and Go SDK, and the formal specs where touched. The rename has the widest blast radius and is the main non-additive change.
 
 **Operational.** Coordinated onchain-plus-oracle deploys for each component, one-time registry initialization, and the shreds retrofit. Infra deployment manifests change as feeds move from CLI arguments to the catalog, and again at the rename.
 
@@ -174,7 +188,7 @@ The design requires the following components:
 
 ## Security Considerations
 
-Feed management is gated to the oracle key, concentrating trust there. The program cannot read the DoubleZero Ledger, so multicast groups are validated offchain by the oracle before registration. Payment validation is offchain, consistent with the protocol's direct-payment model. The feed registry has a finite, oracle-only-writable capacity. Disabling a feed could in principle strand subscribers; today `Flat` feeds have no subscription mechanic so disabling one strands nothing, and the `DynamicDeviceSeats` (shreds) feed cannot be disabled. Per-feed purchase introduces escrow handling that must reuse the existing audited escrow patterns. The rename must not change the program ID, authority assumptions, or account layouts.
+Feed management is gated to the oracle key, concentrating trust there. The program cannot read the DoubleZero Ledger, so multicast groups are validated offchain by the oracle before registration. Payment validation is offchain, consistent with the protocol's direct-payment model. The feed registry has a finite, oracle-only-writable capacity. Disabling a feed could in principle strand subscribers; the `DynamicDeviceSeats` (shreds) feed cannot be disabled. The ConnectionTicket's single-balance model means a subscriber's entire set of subscriptions lapses on insufficient funds; there is no partial-lapse path that could leave a subscriber in an inconsistent state. The rename must not change the program ID, authority assumptions, or account layouts.
 
 ## Backward Compatibility
 
@@ -182,12 +196,14 @@ Feed additions are additive and do not change existing instructions or account l
 
 ## Open Questions
 
-- **Seat-to-feed linkage for per-feed purchase.** Where a purchase records which feeds it entitles: a field on the seat, an offchain mapping, or a separate onchain entitlement account. This is the core unresolved design choice for `Flat`-feed purchase.
 - **Regional scoping onchain versus offchain.** Rebop scopes feeds to exchanges offchain; the onchain feed does not carry exchange information. Decide whether scoping is a permanent delivery concern or an onchain feed attribute.
-- **Pricing-mode duplication.** The oracle defines its own pricing-mode enum; it must stay consistent with the onchain enum, or consume it directly once the two are coupled.
-- **Fiat payment path.** How a fiat rail plugs into per-feed purchase while the seat remains the onchain authority.
+- **Pricing-mode duplication.** The oracle defines its own pricing-mode enum with reversed discriminants relative to the onchain enum. Fix the offchain enum to match the onchain discriminants before the reconcile ever decodes onchain `pricing_mode`.
 - **Program ID on rename.** Confirm the rename keeps the program ID and authority configuration unchanged.
 - **Usage metering.** Bandwidth or usage-based billing is a possible future direction, out of scope here.
+
+### Resolved
+
+- **Seat-to-feed linkage for per-feed purchase.** Resolved: the `ConnectionTicket` is the identity-keyed purchase primitive. Both seats and feeds draw from the ticket's single USDC balance. IP is not a purchase input; it enters only at connect time when a seat is allocated from the ticket.
 
 ## Appendix A: Shreds architecture (baseline)
 

@@ -527,7 +527,6 @@ describe("AccessPassEdgeSeat fixture", () => {
       Owner: ap.owner,
       BumpSeed: ap.bumpSeed,
       AccessPassType: ap.accessPassType,
-      AccessPassTypeSeatPubkey: ap.associatedPubkey,
       UserPayer: ap.userPayer,
       ConnectionCount: ap.connectionCount,
       Status: ap.status,
@@ -538,9 +537,9 @@ describe("AccessPassEdgeSeat fixture", () => {
       MaxMulticastUsers: ap.maxMulticastUsers,
     });
 
-    // EdgeSeat is tag 4; the seat pubkey is read as the associated pubkey.
+    // EdgeSeat is tag 4 and carries no payload; the seat is the user_payer.
     expect(ap.accessPassType).toBe(4);
-    expect(ap.associatedPubkey).not.toBeNull();
+    expect(ap.associatedPubkey).toBeNull();
     expect(ap.unicastUserCount).toBe(2);
     expect(ap.maxUnicastUsers).toBe(4);
     expect(ap.multicastUserCount).toBe(1);

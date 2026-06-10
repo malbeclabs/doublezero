@@ -39,16 +39,8 @@ pub enum AccessPassType {
         Pubkey,
     ),
     Others(String, String), // (type_name, key)
-    EdgeSeat(
-        #[cfg_attr(
-            feature = "serde",
-            serde(
-                serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
-                deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
-            )
-        )]
-        Pubkey,
-    ),
+    // The seat is identified by the access pass `user_payer`, so the variant carries no payload.
+    EdgeSeat,
 }
 
 impl AccessPassType {
@@ -58,7 +50,7 @@ impl AccessPassType {
             AccessPassType::SolanaValidator(_) => "solana_validator".to_string(),
             AccessPassType::SolanaRPC(_) => "solana_rpc".to_string(),
             AccessPassType::Others(type_name, _) => type_name.clone(),
-            AccessPassType::EdgeSeat(_) => "edge_seat".to_string(),
+            AccessPassType::EdgeSeat => "edge_seat".to_string(),
         }
     }
 }
@@ -72,7 +64,7 @@ impl fmt::Display for AccessPassType {
             AccessPassType::Others(type_name, key) => {
                 write!(f, "others: {} ({})", type_name, key)
             }
-            AccessPassType::EdgeSeat(seat_pk) => write!(f, "edge_seat: {seat_pk}"),
+            AccessPassType::EdgeSeat => write!(f, "edge_seat"),
         }
     }
 }
@@ -140,13 +132,6 @@ impl Validate for AccessPassType {
                 }
                 Ok(())
             }
-            AccessPassType::EdgeSeat(seat_pk) => {
-                if *seat_pk == Pubkey::default() {
-                    msg!("Invalid EdgeSeat Pubkey: {}", seat_pk);
-                    return Err(DoubleZeroError::InvalidSolanaPubkey);
-                }
-                Ok(())
-            }
             _ => Ok(()),
         }
     }
@@ -209,7 +194,7 @@ impl fmt::Display for AccessPass {
             AccessPassType::Others(type_name, details) => {
                 write!(f, "Others: {} ({})", type_name, details)
             }
-            AccessPassType::EdgeSeat(seat_pk) => write!(f, "EdgeSeat: ({seat_pk})"),
+            AccessPassType::EdgeSeat => write!(f, "EdgeSeat"),
         }
     }
 }
@@ -289,7 +274,7 @@ impl AccessPass {
     /// types this is a no-op and always succeeds. Does NOT touch `connection_count` — that counter
     /// is maintained independently by the user create/delete processors.
     pub fn try_add_user(&mut self, user_type: UserType) -> Result<(), DoubleZeroError> {
-        if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
+        if !matches!(self.accesspass_type, AccessPassType::EdgeSeat) {
             return Ok(());
         }
         match user_type {
@@ -312,7 +297,7 @@ impl AccessPass {
     /// Release a seat held by a user. EdgeSeat-only: no-op for all other access-pass types. Does NOT
     /// touch `connection_count`.
     pub fn remove_user(&mut self, user_type: UserType) {
-        if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
+        if !matches!(self.accesspass_type, AccessPassType::EdgeSeat) {
             return;
         }
         match user_type {
@@ -353,6 +338,10 @@ mod tests {
 
         let b = AccessPassType::SolanaValidator(Pubkey::default());
         assert_eq!(object_length(&b).unwrap(), 33);
+
+        // EdgeSeat carries no payload: a bare discriminant byte.
+        let c = AccessPassType::EdgeSeat;
+        assert_eq!(object_length(&c).unwrap(), 1);
     }
 
     #[test]
@@ -491,7 +480,7 @@ mod tests {
 
     #[test]
     fn test_edge_seat_user_caps() {
-        let mut ap = test_accesspass(AccessPassType::EdgeSeat(Pubkey::new_unique()));
+        let mut ap = test_accesspass(AccessPassType::EdgeSeat);
 
         // Unicast: cap is 2.
         ap.try_add_user(UserType::IBRL).unwrap();

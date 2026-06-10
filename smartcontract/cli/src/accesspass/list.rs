@@ -26,9 +26,6 @@ pub struct ListAccessPassCliCommand {
     /// List EdgeSeat access passes
     #[arg(long, default_value_t = false)]
     pub edge_seat: bool,
-    /// Seat public key
-    #[arg(long)]
-    pub seat_pubkey: Option<Pubkey>,
     /// Client IP address
     #[arg(long)]
     pub client_ip: Option<Ipv4Addr>,
@@ -118,12 +115,8 @@ impl ListAccessPassCliCommand {
         // Filter access passes by EdgeSeat type
         if self.edge_seat {
             access_passes.retain(|(_, access_pass)| {
-                matches!(access_pass.accesspass_type, AccessPassType::EdgeSeat(_))
+                matches!(access_pass.accesspass_type, AccessPassType::EdgeSeat)
             });
-        }
-        // Filter access passes by seat pubkey
-        if let Some(seat_pk) = self.seat_pubkey {
-            access_passes.retain(|(_, ap)| ap.accesspass_type == AccessPassType::EdgeSeat(seat_pk));
         }
         // Filter access passes by client IP
         if let Some(client_ip) = self.client_ip {
@@ -407,7 +400,6 @@ mod tests {
                 solana_validator: false,
                 solana_identity: None,
                 edge_seat: false,
-                seat_pubkey: None,
                 multicast_group_publisher: None,
                 multicast_group_subscriber: None,
                 not_multicast_group_publisher: None,
@@ -428,7 +420,6 @@ mod tests {
                 solana_validator: false,
                 solana_identity: None,
                 edge_seat: false,
-                seat_pubkey: None,
                 tenant: None,
                 json: false,
                 json_compact: true,

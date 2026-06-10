@@ -1092,12 +1092,11 @@ type ProgramConfig struct {
 type AccessPassTypeTag uint8
 
 const (
-	AccessPassTypePrepaid            AccessPassTypeTag = 0
-	AccessPassTypeSolanaValidator    AccessPassTypeTag = 1
-	AccessPassTypeSolanaRPC          AccessPassTypeTag = 2
-	AccessPassTypeSolanaMulticastPub AccessPassTypeTag = 3
-	AccessPassTypeSolanaMulticastSub AccessPassTypeTag = 4
-	AccessPassTypeOthers             AccessPassTypeTag = 5
+	AccessPassTypePrepaid         AccessPassTypeTag = 0
+	AccessPassTypeSolanaValidator AccessPassTypeTag = 1
+	AccessPassTypeSolanaRPC       AccessPassTypeTag = 2
+	AccessPassTypeOthers          AccessPassTypeTag = 3
+	AccessPassTypeEdgeSeat        AccessPassTypeTag = 4
 )
 
 type AccessPassStatus uint8
@@ -1129,7 +1128,7 @@ type AccessPass struct {
 	Owner              [32]byte
 	BumpSeed           uint8
 	AccessPassTypeTag  AccessPassTypeTag
-	AssociatedPubkey   [32]byte // for SolanaValidator, SolanaRPC, SolanaMulticast*
+	AssociatedPubkey   [32]byte // for SolanaValidator, SolanaRPC
 	OthersTypeName     string   // for Others variant
 	OthersKey          string   // for Others variant
 	ClientIp           [4]uint8

@@ -44,18 +44,26 @@ func TestE2E_Multicast_AutoJoinFromAccessPass(t *testing.T) {
 	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
 	require.NoError(t, err)
 
-	// Resolve the onchain pubkeys for the two groups by code.
+	// Resolve the onchain pubkeys for the two groups by code. The `group create`
+	// commands above confirm their transactions, but the program data read can
+	// still race ahead of ledger propagation, so poll until the group appears.
 	groupPubKeyByCode := func(t *testing.T, code string) [32]byte {
 		t.Helper()
-		data, err := serviceabilityClient.GetProgramData(t.Context())
-		require.NoError(t, err)
-		for _, g := range data.MulticastGroups {
-			if g.Code == code {
-				return g.PubKey
+		var pk [32]byte
+		require.Eventually(t, func() bool {
+			data, err := serviceabilityClient.GetProgramData(t.Context())
+			if err != nil {
+				return false
 			}
-		}
-		t.Fatalf("multicast group %q not found in program data", code)
-		return [32]byte{}
+			for _, g := range data.MulticastGroups {
+				if g.Code == code {
+					pk = g.PubKey
+					return true
+				}
+			}
+			return false
+		}, 30*time.Second, 2*time.Second, "multicast group %q not found in program data", code)
+		return pk
 	}
 	pubGroupPK := groupPubKeyByCode(t, pubGroup)
 	subGroupPK := groupPubKeyByCode(t, subGroup)

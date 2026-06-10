@@ -167,10 +167,11 @@ impl ProvisioningCliCommand {
         spinner.println(format!("    DoubleZero ID: {}", client.get_payer()));
         spinner.println(format!("⚡  Provisioning for IP: {client_ip_str}"));
 
-        match parsed_mode {
+        let provisioned = match parsed_mode {
             ParsedDzMode::Ibrl(user_type, tenant) => {
                 self.execute_ibrl(client, controller, user_type, client_ip, tenant, &spinner)
-                    .await
+                    .await?;
+                true
             }
             ParsedDzMode::Multicast {
                 pub_groups,
@@ -184,11 +185,13 @@ impl ProvisioningCliCommand {
                     client_ip,
                     &spinner,
                 )
-                .await
+                .await?
             }
-        }?;
+        };
 
-        spinner.println("✅  User Provisioned");
+        if provisioned {
+            spinner.println("✅  User Provisioned");
+        }
         spinner.finish_and_clear();
 
         Ok(())
@@ -226,34 +229,100 @@ impl ProvisioningCliCommand {
         sub_groups: &[String],
         client_ip: Ipv4Addr,
         spinner: &ProgressBar,
-    ) -> eyre::Result<()> {
+    ) -> eyre::Result<bool> {
         let mcast_groups = client.list_multicastgroup(ListMulticastGroupCommand)?;
 
-        // Resolve pub group codes to pubkeys
-        let mut pub_group_pks = Vec::new();
-        for group_code in pub_groups {
-            let (pk, _) = mcast_groups
-                .iter()
-                .find(|(_, g)| g.code == *group_code)
-                .ok_or_else(|| eyre::eyre!("Multicast group not found: {}", group_code))?;
-            if pub_group_pks.contains(pk) {
-                eyre::bail!("Duplicate multicast pub group: {}", group_code);
-            }
-            pub_group_pks.push(*pk);
-        }
+        let (pub_group_pks, sub_group_pks) = if pub_groups.is_empty() && sub_groups.is_empty() {
+            // No groups specified: auto-join every group authorized in the caller's
+            // AccessPass — publish to its publisher allowlist and subscribe to its
+            // subscriber allowlist. The pass is guaranteed to exist (validated by
+            // check_accesspass before dispatch); the ok_or_else is defensive.
+            let (_, accesspass) = client
+                .get_accesspass(GetAccessPassCommand {
+                    client_ip,
+                    user_payer: client.get_payer(),
+                })?
+                .ok_or_else(|| {
+                    eyre::eyre!(
+                        "No valid AccessPass found for IP: {} user_payer: {}",
+                        client_ip,
+                        client.get_payer()
+                    )
+                })?;
 
-        // Resolve sub group codes to pubkeys
-        let mut sub_group_pks = Vec::new();
-        for group_code in sub_groups {
-            let (pk, _) = mcast_groups
+            // Keep only allowlist entries that still resolve to a known group; drop
+            // pubkeys left over from deleted groups.
+            let pub_group_pks: Vec<Pubkey> = accesspass
+                .mgroup_pub_allowlist
                 .iter()
-                .find(|(_, g)| g.code == *group_code)
-                .ok_or_else(|| eyre::eyre!("Multicast group not found: {}", group_code))?;
-            if sub_group_pks.contains(pk) {
-                eyre::bail!("Duplicate multicast sub group: {}", group_code);
+                .filter(|pk| mcast_groups.contains_key(pk))
+                .copied()
+                .collect();
+            let sub_group_pks: Vec<Pubkey> = accesspass
+                .mgroup_sub_allowlist
+                .iter()
+                .filter(|pk| mcast_groups.contains_key(pk))
+                .copied()
+                .collect();
+
+            if pub_group_pks.is_empty() && sub_group_pks.is_empty() {
+                spinner.println(
+                    "ℹ️  The AccessPass has no authorized multicast groups; nothing to connect to.",
+                );
+                return Ok(false);
             }
-            sub_group_pks.push(*pk);
-        }
+
+            let code_of = |pk: &Pubkey| {
+                mcast_groups
+                    .get(pk)
+                    .map(|g| g.code.clone())
+                    .unwrap_or_else(|| pk.to_string())
+            };
+            if !pub_group_pks.is_empty() {
+                let codes: Vec<String> = pub_group_pks.iter().map(code_of).collect();
+                spinner.println(format!(
+                    "    Publishing to (from AccessPass): {}",
+                    codes.join(", ")
+                ));
+            }
+            if !sub_group_pks.is_empty() {
+                let codes: Vec<String> = sub_group_pks.iter().map(code_of).collect();
+                spinner.println(format!(
+                    "    Subscribing to (from AccessPass): {}",
+                    codes.join(", ")
+                ));
+            }
+
+            (pub_group_pks, sub_group_pks)
+        } else {
+            // Resolve pub group codes to pubkeys
+            let mut pub_group_pks = Vec::new();
+            for group_code in pub_groups {
+                let (pk, _) = mcast_groups
+                    .iter()
+                    .find(|(_, g)| g.code == *group_code)
+                    .ok_or_else(|| eyre::eyre!("Multicast group not found: {}", group_code))?;
+                if pub_group_pks.contains(pk) {
+                    eyre::bail!("Duplicate multicast pub group: {}", group_code);
+                }
+                pub_group_pks.push(*pk);
+            }
+
+            // Resolve sub group codes to pubkeys
+            let mut sub_group_pks = Vec::new();
+            for group_code in sub_groups {
+                let (pk, _) = mcast_groups
+                    .iter()
+                    .find(|(_, g)| g.code == *group_code)
+                    .ok_or_else(|| eyre::eyre!("Multicast group not found: {}", group_code))?;
+                if sub_group_pks.contains(pk) {
+                    eyre::bail!("Duplicate multicast sub group: {}", group_code);
+                }
+                sub_group_pks.push(*pk);
+            }
+
+            (pub_group_pks, sub_group_pks)
+        };
 
         // Look for user and subscribe to all groups
         let (_user_pubkey, user) = self
@@ -271,7 +340,7 @@ impl ProvisioningCliCommand {
             UserStatus::Activated => {
                 self.user_activated(controller, UserType::Multicast, spinner)
                     .await;
-                Ok(())
+                Ok(true)
             }
             _ => eyre::bail!("User status not expected"),
         }
@@ -326,7 +395,12 @@ impl ProvisioningCliCommand {
                         sub_groups: sub_groups.clone(),
                     })
                 } else {
-                    eyre::bail!("At least one of --publish or --subscribe is required, or use legacy syntax: multicast <publisher|subscriber> <groups...>")
+                    // No groups specified: auto-join every group authorized in the
+                    // caller's AccessPass (resolved in execute_multicast).
+                    Ok(ParsedDzMode::Multicast {
+                        pub_groups: vec![],
+                        sub_groups: vec![],
+                    })
                 }
             }
         }
@@ -1983,6 +2057,171 @@ mod tests {
             .execute_with_service_controller(&fixture.client, &fixture.controller)
             .await;
         assert!(result.is_ok());
+    }
+
+    /// `connect multicast` with no groups auto-joins every group authorized in the
+    /// AccessPass: publishes to mgroup_pub_allowlist and subscribes to mgroup_sub_allowlist.
+    #[tokio::test]
+    async fn test_connect_command_multicast_autojoin_from_accesspass() {
+        let mut fixture = TestFixture::new();
+
+        let (g1_pk, _) = fixture.add_multicast_group("group-1", "239.0.0.1");
+        let (g2_pk, _) = fixture.add_multicast_group("group-2", "239.0.0.2");
+
+        // Authorize publishing to g1 and subscribing to g1 + g2.
+        {
+            let mut ap = fixture.accesspass.lock().unwrap();
+            ap.mgroup_pub_allowlist = vec![g1_pk];
+            ap.mgroup_sub_allowlist = vec![g1_pk, g2_pk];
+        }
+
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+
+        // First group (g1) created via create_subscribe_user as publisher + subscriber.
+        let user_pk = Pubkey::new_unique();
+        fixture.expect_create_subscribe_user(user_pk, &user, g1_pk, true, true);
+        // Remaining group (g2) added via update_multicastgroup_roles as subscriber-only.
+        fixture.expect_update_multicastgroup_roles(
+            user_pk,
+            g2_pk,
+            Ipv4Addr::new(1, 2, 3, 4),
+            false,
+            true,
+        );
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: None,
+                multicast_groups: vec![],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: None,
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_ok(),
+            "auto-join from access pass must succeed: {:?}",
+            result.err()
+        );
+    }
+
+    /// Auto-join is a no-op success when the AccessPass authorizes no groups: no user
+    /// is created and no subscriptions are issued.
+    #[tokio::test]
+    async fn test_connect_command_multicast_autojoin_empty_allowlist_is_noop() {
+        let mut fixture = TestFixture::new();
+        // AccessPass has empty allowlists by default; a device exists but must not be used.
+        fixture.add_device(DeviceType::Hybrid, 100, true);
+
+        // No expect_create_subscribe_user / expect_update_multicastgroup_roles: any such
+        // call would panic the mock.
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: None,
+                multicast_groups: vec![],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: None,
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_ok(),
+            "empty allowlist must be a no-op success: {:?}",
+            result.err()
+        );
+    }
+
+    /// Allowlist entries that no longer resolve to a known multicast group are dropped
+    /// during auto-join; only the still-valid groups are used.
+    #[tokio::test]
+    async fn test_connect_command_multicast_autojoin_filters_stale_allowlist_pubkeys() {
+        let mut fixture = TestFixture::new();
+
+        let (g1_pk, _) = fixture.add_multicast_group("group-1", "239.0.0.1");
+        // Not registered in list_multicastgroup — simulates a deleted group.
+        let stale_pk = Pubkey::new_unique();
+
+        {
+            let mut ap = fixture.accesspass.lock().unwrap();
+            ap.mgroup_sub_allowlist = vec![stale_pk, g1_pk];
+        }
+
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+
+        // Only g1 survives filtering → single create_subscribe_user as subscriber-only,
+        // no further update calls.
+        let user_pk = Pubkey::new_unique();
+        fixture.expect_create_subscribe_user(user_pk, &user, g1_pk, false, true);
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: None,
+                multicast_groups: vec![],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: None,
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_ok(),
+            "stale allowlist pubkeys must be filtered: {:?}",
+            result.err()
+        );
+    }
+
+    /// `parse_dz_mode` accepts multicast with no groups, yielding empty pub/sub vectors
+    /// that trigger the AccessPass-driven auto-join downstream.
+    #[test]
+    fn test_parse_dz_mode_multicast_no_args_yields_empty_groups() {
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: None,
+                multicast_groups: vec![],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: None,
+            device: None,
+            verbose: false,
+        };
+
+        match command.parse_dz_mode().unwrap() {
+            ParsedDzMode::Multicast {
+                pub_groups,
+                sub_groups,
+            } => {
+                assert!(pub_groups.is_empty());
+                assert!(sub_groups.is_empty());
+            }
+            ParsedDzMode::Ibrl(..) => panic!("expected ParsedDzMode::Multicast, got Ibrl"),
+        }
     }
 
     /// Multicast connect succeeds when the AccessPass has last_access_epoch = 0 (expired).

@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - Client
   - Auto-enable allocated-IP mode for `doublezero connect ibrl` when the daemon detects a private RFC1918 default-route source (behind NAT), unless `-a` or `--client-ip` is set.
+  - `doublezero connect multicast` with no groups now auto-joins every group authorized in the caller's AccessPass — publishing to `mgroup_pub_allowlist` and subscribing to `mgroup_sub_allowlist`. An AccessPass with no authorized groups is a no-op.
 - Onchain programs
   - Add per-category seat caps to `EdgeSeat` access passes (errors 89/90 on overflow), scale the `SetAccessPass` airdrop by the cap sum when `allow_multiple_ip` is set, and drop the dynamic-pass IP-lock and `IS_DYNAMIC` flag. (#3859)
 - CLI

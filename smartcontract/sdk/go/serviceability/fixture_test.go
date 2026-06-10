@@ -205,9 +205,9 @@ func TestFixtureAccessPassEdgeSeat(t *testing.T) {
 	var ap serviceability.AccessPass
 	serviceability.DeserializeAccessPass(serviceability.NewByteReader(data), &ap)
 
-	// EdgeSeat is Rust discriminant 4; the seat pubkey is read as the associated pubkey.
-	assert.Equal(t, serviceability.AccessPassTypeTag(4), ap.AccessPassTypeTag)
-	assert.NotEqual(t, [32]byte{}, ap.AssociatedPubkey)
+	// EdgeSeat is Rust discriminant 4 and carries no payload; the seat is the user_payer.
+	assert.Equal(t, serviceability.AccessPassTypeEdgeSeat, ap.AccessPassTypeTag)
+	assert.Equal(t, [32]byte{}, ap.AssociatedPubkey)
 	assert.Equal(t, uint8(2), ap.Flags) // ALLOW_MULTIPLE_IP
 	assert.Equal(t, uint16(2), ap.UnicastUserCount)
 	assert.Equal(t, uint16(4), ap.MaxUnicastUsers)

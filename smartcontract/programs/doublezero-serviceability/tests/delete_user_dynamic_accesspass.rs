@@ -689,7 +689,6 @@ async fn try_create_user(
 async fn test_edge_seat_user_caps_enforced() {
     let mut env = setup_test_env().await;
     let payer_pk = env.payer.pubkey();
-    let seat_pk = Pubkey::new_unique();
 
     let (accesspass_pubkey, _) =
         get_accesspass_pda(&env.program_id, &Ipv4Addr::UNSPECIFIED, &payer_pk);
@@ -700,7 +699,7 @@ async fn test_edge_seat_user_caps_enforced() {
         recent_blockhash,
         env.program_id,
         DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-            accesspass_type: AccessPassType::EdgeSeat(seat_pk),
+            accesspass_type: AccessPassType::EdgeSeat,
             client_ip: Ipv4Addr::UNSPECIFIED,
             last_access_epoch: 9999,
             allow_multiple_ip: false,

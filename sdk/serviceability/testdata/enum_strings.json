@@ -17,7 +17,7 @@
   "CyoaType": {"0": "none", "1": "gre_over_dia", "2": "gre_over_fabric", "3": "gre_over_private_peering", "4": "gre_over_public_peering", "5": "gre_over_cable", "99": "unknown"},
   "UserStatus": {"0": "pending (deprecated)", "1": "activated", "3": "deleting", "4": "rejected (deprecated)", "5": "pending_ban (deprecated)", "6": "banned", "7": "updating (deprecated)", "8": "out_of_credits", "99": "unknown"},
   "MulticastGroupStatus": {"0": "pending (deprecated)", "1": "activated", "2": "suspended", "3": "deleting", "4": "rejected (deprecated)", "99": "unknown"},
-  "AccessPassTypeTag": {"0": "prepaid", "1": "solana_validator", "2": "solana_rpc", "3": "solana_multicast_publisher", "4": "solana_multicast_subscriber", "5": "others", "99": "unknown"},
+  "AccessPassTypeTag": {"0": "prepaid", "1": "solana_validator", "2": "solana_rpc", "3": "others", "4": "edge_seat", "99": "unknown"},
   "AccessPassStatus": {"0": "requested", "1": "connected", "2": "disconnected", "3": "expired (deprecated)", "99": "unknown"},
   "TenantPaymentStatus": {"0": "delinquent", "1": "paid"}
 }

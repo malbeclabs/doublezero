@@ -1190,14 +1190,13 @@ fn generate_access_pass_validator(dir: &Path) {
 fn generate_access_pass_edge_seat(dir: &Path) {
     let owner = pubkey_from_byte(0xB0);
     let user_payer = pubkey_from_byte(0xB1);
-    let seat_pk = pubkey_from_byte(0xB2);
 
     // EdgeSeat pass with allow_multiple_ip set and per-category caps populated.
     let val = AccessPass {
         account_type: AccountType::AccessPass,
         owner,
         bump_seed: 242,
-        accesspass_type: AccessPassType::EdgeSeat(seat_pk),
+        accesspass_type: AccessPassType::EdgeSeat,
         client_ip: Ipv4Addr::UNSPECIFIED,
         user_payer,
         last_access_epoch: u64::MAX,
@@ -1223,7 +1222,6 @@ fn generate_access_pass_edge_seat(dir: &Path) {
             FieldValue { name: "Owner".into(), value: pubkey_bs58(&owner), typ: "pubkey".into() },
             FieldValue { name: "BumpSeed".into(), value: "242".into(), typ: "u8".into() },
             FieldValue { name: "AccessPassType".into(), value: "4".into(), typ: "u8".into() },
-            FieldValue { name: "AccessPassTypeSeatPubkey".into(), value: pubkey_bs58(&seat_pk), typ: "pubkey".into() },
             FieldValue { name: "ClientIp".into(), value: "0.0.0.0".into(), typ: "ipv4".into() },
             FieldValue { name: "UserPayer".into(), value: pubkey_bs58(&user_payer), typ: "pubkey".into() },
             FieldValue { name: "LastAccessEpoch".into(), value: "18446744073709551615".into(), typ: "u64".into() },

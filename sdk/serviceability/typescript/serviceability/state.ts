@@ -274,9 +274,8 @@ const ACCESS_PASS_TYPE_TAG_NAMES: Record<number, string> = {
   0: "prepaid",
   1: "solana_validator",
   2: "solana_rpc",
-  3: "solana_multicast_publisher",
-  4: "solana_multicast_subscriber",
-  5: "others",
+  3: "others",
+  4: "edge_seat",
 };
 export function accessPassTypeTagString(v: number): string {
   return ACCESS_PASS_TYPE_TAG_NAMES[v] ?? "unknown";
@@ -1041,16 +1040,15 @@ export function deserializeTenant(data: Uint8Array): Tenant {
 export const ACCESS_PASS_TYPE_PREPAID = 0;
 export const ACCESS_PASS_TYPE_SOLANA_VALIDATOR = 1;
 export const ACCESS_PASS_TYPE_SOLANA_RPC = 2;
-export const ACCESS_PASS_TYPE_SOLANA_MULTICAST_PUBLISHER = 3;
-export const ACCESS_PASS_TYPE_SOLANA_MULTICAST_SUBSCRIBER = 4;
-export const ACCESS_PASS_TYPE_OTHERS = 5;
+export const ACCESS_PASS_TYPE_OTHERS = 3;
+export const ACCESS_PASS_TYPE_EDGE_SEAT = 4;
 
 export interface AccessPass {
   accountType: number;
   owner: PublicKey;
   bumpSeed: number;
   accessPassType: number;
-  associatedPubkey: PublicKey | null; // for SolanaValidator, SolanaRPC, SolanaMulticast*
+  associatedPubkey: PublicKey | null; // for SolanaValidator, SolanaRPC
   othersTypeName: string; // for Others variant
   othersKey: string; // for Others variant
   clientIp: Uint8Array;
@@ -1077,15 +1075,16 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
   let associatedPubkey: PublicKey | null = null;
   let othersTypeName = "";
   let othersKey = "";
-  // Variants 1-4 have an associated pubkey
-  if (accessPassType >= 1 && accessPassType <= 4) {
+  // SolanaValidator and SolanaRPC carry an associated pubkey.
+  if (accessPassType === 1 || accessPassType === 2) {
     associatedPubkey = readPubkey(r);
   }
-  // Variant 5 (Others) has two strings
-  else if (accessPassType === 5) {
+  // Others carries two strings (type_name, key).
+  else if (accessPassType === 3) {
     othersTypeName = r.readString();
     othersKey = r.readString();
   }
+  // Prepaid (0) and EdgeSeat (4) carry no associated data.
   const clientIp = r.readIPv4();
   const userPayer = readPubkey(r);
   const lastAccessEpoch = r.readU64();

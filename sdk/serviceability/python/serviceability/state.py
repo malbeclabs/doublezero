@@ -370,18 +370,16 @@ class AccessPassTypeTag(IntEnum):
     PREPAID = 0
     SOLANA_VALIDATOR = 1
     SOLANA_RPC = 2
-    SOLANA_MULTICAST_PUBLISHER = 3
-    SOLANA_MULTICAST_SUBSCRIBER = 4
-    OTHERS = 5
+    OTHERS = 3
+    EDGE_SEAT = 4
 
     def __str__(self) -> str:
         _names = {
             0: "prepaid",
             1: "solana_validator",
             2: "solana_rpc",
-            3: "solana_multicast_publisher",
-            4: "solana_multicast_subscriber",
-            5: "others",
+            3: "others",
+            4: "edge_seat",
         }
         return _names.get(self.value, "unknown")
 
@@ -1031,7 +1029,7 @@ class AccessPass:
     owner: Pubkey = Pubkey.default()
     bump_seed: int = 0
     access_pass_type_tag: AccessPassTypeTag = AccessPassTypeTag.PREPAID
-    associated_pubkey: Pubkey | None = None  # for SolanaValidator, SolanaRPC, SolanaMulticast*
+    associated_pubkey: Pubkey | None = None  # for SolanaValidator, SolanaRPC
     others_type_name: str = ""  # for Others variant
     others_key: str = ""  # for Others variant
     client_ip: bytes = b"\x00" * 4
@@ -1060,13 +1058,14 @@ class AccessPass:
             ap.access_pass_type_tag = AccessPassTypeTag(tag)
         except ValueError:
             ap.access_pass_type_tag = AccessPassTypeTag.PREPAID
-        # Variants 1-4 have an associated pubkey
-        if tag in (1, 2, 3, 4):
+        # SolanaValidator and SolanaRPC carry an associated pubkey.
+        if tag in (1, 2):
             ap.associated_pubkey = _read_pubkey(r)
-        # Variant 5 (Others) has two strings
-        elif tag == 5:
+        # Others carries two strings (type_name, key).
+        elif tag == 3:
             ap.others_type_name = r.read_string()
             ap.others_key = r.read_string()
+        # Prepaid (0) and EdgeSeat (4) carry no associated data.
         ap.client_ip = r.read_ipv4()
         ap.user_payer = _read_pubkey(r)
         ap.last_access_epoch = r.read_u64()

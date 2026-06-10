@@ -501,7 +501,6 @@ class TestFixtureAccessPassEdgeSeat:
                 "Owner": ap.owner,
                 "BumpSeed": ap.bump_seed,
                 "AccessPassType": ap.access_pass_type_tag,
-                "AccessPassTypeSeatPubkey": ap.associated_pubkey,
                 "UserPayer": ap.user_payer,
                 "ConnectionCount": ap.connection_count,
                 "Status": ap.status,
@@ -512,9 +511,9 @@ class TestFixtureAccessPassEdgeSeat:
                 "MaxMulticastUsers": ap.max_multicast_users,
             },
         )
-        # EdgeSeat is tag 4; the seat pubkey is read as the associated pubkey.
+        # EdgeSeat is tag 4 and carries no payload; the seat is the user_payer.
         assert ap.access_pass_type_tag == 4
-        assert ap.associated_pubkey is not None
+        assert ap.associated_pubkey is None
         assert ap.unicast_user_count == 2
         assert ap.max_unicast_users == 4
         assert ap.multicast_user_count == 1

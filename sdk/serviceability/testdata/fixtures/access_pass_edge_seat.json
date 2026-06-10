@@ -23,11 +23,6 @@
       "typ": "u8"
     },
     {
-      "name": "AccessPassTypeSeatPubkey",
-      "value": "Cyqa5AA25q85i8QRYpQUMwfh4jaCg78NwPu4biE9JCgP",
-      "typ": "pubkey"
-    },
-    {
       "name": "ClientIp",
       "value": "0.0.0.0",
       "typ": "ipv4"

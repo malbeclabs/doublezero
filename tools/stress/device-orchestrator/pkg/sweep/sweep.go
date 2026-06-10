@@ -91,6 +91,51 @@ type Config struct {
 	AgentQuietWindow       time.Duration
 	AgentQuiescenceTimeout time.Duration
 
+	// ApplyCatchUpTimeout bounds how long Run waits between
+	// provision-complete and deprovision-start for the agent's
+	// `applied` event count to catch up to the provision-target
+	// count. With hold=0 and a slow agent (>1 MB configs take ~40s
+	// to diff-check) the orchestrator can finish provisioning all
+	// 1024 users and start deleting them before the agent ever
+	// applies the peak config — users get added and removed in the
+	// same diff and never show up on the device. The wait blocks
+	// until applied >= len(created) OR the timeout fires. Zero
+	// disables the wait (the legacy behavior). A small grace count
+	// (4) is allowed since the last batch's applied events lag by
+	// roughly one poll cycle even on a healthy agent.
+	ApplyCatchUpTimeout time.Duration
+
+	// ApplyPerBatchCatchUp, when true, makes the provision phase pause
+	// after every batch (not just at provision-complete) until the
+	// agent's applied count covers the cumulative user count submitted
+	// so far. This paces the orchestrator at the agent's throughput,
+	// which matches production better than the current "flood the
+	// agent" shape — users in real life arrive at human cadence, not
+	// in 32/64-user bursts.
+	//
+	// Trade-off: per-batch waits dramatically reduce the diff-check
+	// load per cycle (more, smaller cycles instead of fewer, larger
+	// ones), which is the load-bearing measurement the harness was
+	// built to surface. Off by default; flip on when measuring per-
+	// user latency under steady-state load rather than peak throughput
+	// under burst load.
+	//
+	// Each per-batch wait honors the same ApplyCatchUpTimeout as the
+	// provision-complete wait; that knob's grace (applyCatchUpGrace)
+	// still applies. With ApplyCatchUpTimeout == 0 this flag is a no-op.
+	ApplyPerBatchCatchUp bool
+
+	// NoAgent declares that the run is being driven without a real
+	// agent (the caller wired up agent.NewNoop). Used by
+	// waitForAgentQuiescence to skip the wait without inferring the
+	// answer from tracker state — the previous inference races with
+	// the consumer goroutine that updates the tracker, and at high
+	// schedule pressure can fire even on a real-agent run that has
+	// emitted events that the consumer hasn't yet drained. main.go
+	// already turns this flag on when --no-agent is set, alongside
+	// zeroing ApplyCatchUpTimeout.
+	NoAgent bool
+
 	Executor Executor
 	Agent    agent.Runner
 	Runlog   *runlog.Writer
@@ -110,6 +155,8 @@ func (c *Config) validate() error {
 		return errors.New("sweep: AgentQuietWindow must be >= 0")
 	case c.AgentQuiescenceTimeout < 0:
 		return errors.New("sweep: AgentQuiescenceTimeout must be >= 0")
+	case c.ApplyCatchUpTimeout < 0:
+		return errors.New("sweep: ApplyCatchUpTimeout must be >= 0")
 	case c.AgentQuietWindow > 0 && c.AgentQuiescenceTimeout <= 0:
 		// The wait loop only enforces the deadline when timeout > 0. A zero
 		// timeout paired with a positive window would loop until ctx
@@ -144,24 +191,44 @@ func (c *Config) applyDefaults() {
 }
 
 // quiescenceTracker records the wall-clock time of the most recent observed
-// post-commit agent event (EventApplied or EventCommit). The orchestrator
-// polls it after deprovision returns to wait for the agent to finish
-// converging EOS to the new (post-deprovision) config before cancelling the
-// SSH session.
+// post-commit agent event AND whether the agent is currently mid-cycle
+// (a config has been received but not yet committed or aborted). The
+// orchestrator polls it after deprovision returns to wait for the agent
+// to finish converging EOS to the new (post-deprovision) config before
+// cancelling the SSH session.
 //
-// Both signals are post-commit: EventApplied fires per pending tunnel after
-// a successful commit-finalize; EventCommit fires once per successful
-// commit-finalize regardless of which tunnels (if any) changed. We need
-// both because deprovision diffs produce zero EventApplieds (the parser
-// only tracks `+ interface Tunnel<ID>` lines), so without EventCommit the
-// tracker would see the agent as silent through the entire deprovision
-// phase.
+// Why both: post-commit signals (EventApplied / EventCommit) alone are
+// insufficient because the agent goes silent during the diff-check
+// window between EventConfigReceived and the next EventCommit. At >1 MB
+// configs that window can exceed 30s — past the default 15s quiet
+// window — so the tracker would falsely declare quiescence mid-cycle
+// and the orchestrator would kill the SSH session before the
+// deprovision config was committed to EOS. The pending-commit flag
+// closes that gap: while it's true the wait blocks regardless of how
+// long the agent has been silent.
 type quiescenceTracker struct {
 	lastEventNanos atomic.Int64
+	// pendingCommit is true between an EventConfigReceived and the
+	// next terminal cycle event (EventCommit, EventApplied, or — as
+	// far as the tracker is concerned — a brand-new
+	// EventConfigReceived, which implies the previous cycle finished
+	// without an explicit commit).
+	pendingCommit atomic.Bool
+	// appliedCount counts EventApplied observations across the run.
+	// Used by waitForAppliedToCatchUp at the provision→deprovision
+	// boundary to ensure the agent has had time to apply the peak
+	// config before the orchestrator starts removing users.
+	appliedCount atomic.Int64
 }
 
-func (q *quiescenceTracker) markEvent(at time.Time) {
+// markEvent records an agent activity beat that resets the silence
+// timer. pending is true for events that *start* a new
+// commit cycle (EventConfigReceived) and false for events that close
+// it (EventCommit / EventApplied). The tracker uses pendingCommit to
+// decide whether quiescence is safe — see HasPendingCommit.
+func (q *quiescenceTracker) markEvent(at time.Time, pending bool) {
 	q.lastEventNanos.Store(at.UnixNano())
+	q.pendingCommit.Store(pending)
 }
 
 func (q *quiescenceTracker) lastEvent() (time.Time, bool) {
@@ -170,6 +237,24 @@ func (q *quiescenceTracker) lastEvent() (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return time.Unix(0, n), true
+}
+
+// HasPendingCommit reports whether the agent has received a config it
+// hasn't yet committed. While true the quiescence wait must block,
+// regardless of how long the agent has been silent.
+func (q *quiescenceTracker) HasPendingCommit() bool {
+	return q.pendingCommit.Load()
+}
+
+// markApplied increments the per-run EventApplied counter. Called
+// alongside markEvent for EventApplied observations.
+func (q *quiescenceTracker) markApplied() {
+	q.appliedCount.Add(1)
+}
+
+// AppliedCount returns the running total of EventApplied observations.
+func (q *quiescenceTracker) AppliedCount() int64 {
+	return q.appliedCount.Load()
 }
 
 // createdUser tracks an orchestrator-owned user so the deprovision phase can
@@ -259,7 +344,19 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 	}()
 
-	created, err := provision(runCtx, &cfg, registry)
+	created, err := provision(runCtx, &cfg, registry, tracker)
+
+	// Wait for the agent to apply the peak config before tearing down.
+	// At 1k users / hold=0 the orchestrator's provision finishes ~40s
+	// ahead of the agent's slowest diff-check + commit, so without this
+	// wait deprovision starts removing users while the agent is still
+	// trying to add them — users get added and removed in the same
+	// running diff and never show up on the device. We only wait on
+	// the success path: a provision error or context cancel means
+	// we're aborting, and the goal there is to clean up quickly.
+	if err == nil && cfg.ApplyCatchUpTimeout > 0 {
+		waitForAppliedToCatchUp(runCtx, &cfg, tracker, len(created))
+	}
 
 	// Always attempt deprovision so a provision error (or an abort during
 	// provision) still cleans up what the sweep created; the consumer keeps
@@ -321,11 +418,30 @@ func Run(ctx context.Context, cfg Config) error {
 // is doing work" for the purpose of timing the SSH cancel.
 func consumeAgentEvents(cfg *Config, registry *tunnelRegistry, tracker *quiescenceTracker) {
 	for ev := range cfg.Agent.Events() {
-		if ev.Kind == agent.EventApplied || ev.Kind == agent.EventCommit {
-			tracker.markEvent(cfg.Clock.Now())
+		// All three "agent is doing work" signals reset the silence
+		// timer; only EventConfigReceived sets the pending-commit flag.
+		// EventCommit and EventApplied are terminal — receiving them
+		// means the commit cycle finished, so they clear pending.
+		// EventApplied is per-tunnel and redundant with EventCommit
+		// for tracker purposes, but feeding it through keeps the
+		// silence timer accurate even when a commit's per-tunnel
+		// Applieds arrive out-of-order with the Commit signal.
+		switch ev.Kind {
+		case agent.EventConfigReceived:
+			tracker.markEvent(cfg.Clock.Now(), true)
+		case agent.EventCommit, agent.EventApplied, agent.EventCommitAborted:
+			// All three close a commit cycle from the tracker's
+			// perspective: EventCommit and EventApplied report a
+			// successful finalize; EventCommitAborted reports the
+			// agent gave up on the session (no-op diff in steady-
+			// state polling, most commonly post-deprovision).
+			tracker.markEvent(cfg.Clock.Now(), false)
 		}
-		if ev.Kind == agent.EventCommit {
-			// Pure activity signal — no per-tunnel runlog row to emit.
+		if ev.Kind == agent.EventApplied {
+			tracker.markApplied()
+		}
+		if ev.Kind == agent.EventCommit || ev.Kind == agent.EventConfigReceived || ev.Kind == agent.EventCommitAborted {
+			// Pure activity signals — no per-tunnel runlog row to emit.
 			continue
 		}
 		u, ok := registry.lookup(ev.TunnelID)
@@ -372,35 +488,53 @@ func consumeAgentEvents(cfg *Config, registry *tunnelRegistry, tracker *quiescen
 //
 // The wait returns early on cfg.AgentQuiescenceTimeout (warned) or
 // ctx.Done() (warned). It is a no-op when cfg.AgentQuietWindow is zero
-// (the library default) or when no agent event has ever been observed
-// (e.g. --no-agent runs).
+// (the library default) or when cfg.NoAgent is true (the caller wired a
+// noop runner). An older version of this function also skipped when
+// tracker.lastEvent() reported no events; that inference raced with
+// the consumer goroutine that updates the tracker (event sitting in
+// the channel buffer but not yet observed) and could falsely fast-path
+// during a real-agent run, killing the SSH session mid-commit. The
+// explicit NoAgent flag from main.go replaces that inference.
 //
 // The wait polls in 1s ticks. Polling avoids needing a separate
 // "applied observed" signal channel — the tracker's atomic.Int64 is
 // read each tick and compared against the current clock. At 1024
 // users / batch=32 the agent emits commits in clumps tens of seconds
 // apart, so a 1s poll is well below the natural event cadence.
+//
+// When tracker.lastEvent() reports no events yet (zero-time), the
+// loop still progresses correctly: sinceLast is "now - zero" which is
+// trivially larger than AgentQuietWindow, so the wait blocks for
+// AgentQuietWindow against the elapsed-since-start guard before
+// returning. That gives the consumer goroutine a generous window to
+// pick up any in-flight events before we declare quiescence.
 func waitForAgentQuiescence(ctx context.Context, cfg *Config, tracker *quiescenceTracker) {
 	if cfg.AgentQuietWindow <= 0 {
 		return
 	}
-	last, ok := tracker.lastEvent()
-	if !ok {
-		cfg.Logger.Info("sweep: no agent events observed; skipping agent quiescence wait")
+	if cfg.NoAgent {
+		cfg.Logger.Info("sweep: --no-agent set; skipping agent quiescence wait")
 		return
 	}
 	start := cfg.Clock.Now()
 	deadline := start.Add(cfg.AgentQuiescenceTimeout)
 	cfg.Logger.Info("sweep: waiting for agent to quiesce",
 		"quiet_window", cfg.AgentQuietWindow,
-		"timeout", cfg.AgentQuiescenceTimeout,
-		"last_event_at", last)
+		"timeout", cfg.AgentQuiescenceTimeout)
 	for {
 		now := cfg.Clock.Now()
-		last, _ = tracker.lastEvent()
+		last, _ := tracker.lastEvent()
 		sinceLast := now.Sub(last)
 		elapsed := now.Sub(start)
-		if elapsed >= cfg.AgentQuietWindow && sinceLast >= cfg.AgentQuietWindow {
+		// Quiescence requires: silent for AgentQuietWindow AND wait
+		// has been running at least AgentQuietWindow AND no commit
+		// cycle is mid-flight (config received, not yet committed).
+		// The last predicate prevents declaring quiescence during a
+		// long diff-check window — the agent goes silent between
+		// `Received N bytes` and the subsequent `Committing config
+		// session` log line for the duration of the diff compute,
+		// which at >1 MB configs can exceed AgentQuietWindow.
+		if elapsed >= cfg.AgentQuietWindow && sinceLast >= cfg.AgentQuietWindow && !tracker.HasPendingCommit() {
 			cfg.Logger.Info("sweep: agent quiesced",
 				"quiet_for", sinceLast,
 				"wait_elapsed", elapsed)
@@ -421,6 +555,59 @@ func waitForAgentQuiescence(ctx context.Context, cfg *Config, tracker *quiescenc
 	}
 }
 
+// waitForAppliedToCatchUp blocks at the provision→deprovision boundary
+// until either (a) the agent has emitted at least `target` EventApplied
+// observations OR (b) cfg.ApplyCatchUpTimeout elapses. The function is
+// a no-op when cfg.ApplyCatchUpTimeout == 0 (the legacy behavior).
+//
+// We allow a small grace (`applyCatchUpGrace`) so the last batch's
+// applied events, which lag by roughly one poll cycle even on a healthy
+// agent, don't pin the wait to its timeout. `target` is len(created):
+// the orchestrator's count of users it actually provisioned (excludes
+// users the executor declined to create).
+//
+// The wait returns silently on hit, warns on ctx cancel or timeout, and
+// never fails the run — deprovision still runs afterwards regardless.
+const applyCatchUpGrace = int64(4)
+
+func waitForAppliedToCatchUp(ctx context.Context, cfg *Config, tracker *quiescenceTracker, target int) {
+	if cfg.ApplyCatchUpTimeout <= 0 || target == 0 {
+		return
+	}
+	start := cfg.Clock.Now()
+	deadline := start.Add(cfg.ApplyCatchUpTimeout)
+	cfg.Logger.Info("sweep: waiting for agent applied to catch up to provision",
+		"target", target,
+		"applied", tracker.AppliedCount(),
+		"grace", applyCatchUpGrace,
+		"timeout", cfg.ApplyCatchUpTimeout)
+	for {
+		applied := tracker.AppliedCount()
+		if applied+applyCatchUpGrace >= int64(target) {
+			cfg.Logger.Info("sweep: applied caught up",
+				"applied", applied,
+				"target", target,
+				"elapsed", cfg.Clock.Now().Sub(start))
+			return
+		}
+		now := cfg.Clock.Now()
+		if !now.Before(deadline) {
+			cfg.Logger.Warn("sweep: apply catch-up timed out; proceeding with deprovision anyway",
+				"applied", applied,
+				"target", target,
+				"shortfall", int64(target)-applied,
+				"elapsed", now.Sub(start))
+			return
+		}
+		select {
+		case <-cfg.Clock.After(time.Second):
+		case <-ctx.Done():
+			cfg.Logger.Warn("sweep: apply catch-up wait cancelled", "err", ctx.Err())
+			return
+		}
+	}
+}
+
 // provision walks 0 → Target in batches, returning the slice of created users
 // so deprovision can iterate in reverse. Returns ctx.Err() if cancelled
 // between batches. Within each batch, all UsersPerBatch creates run
@@ -429,7 +616,7 @@ func waitForAgentQuiescence(ctx context.Context, cfg *Config, tracker *quiescenc
 // to ~14 s. Each created user is registered with the tunnel registry so
 // the agent-event consumer can attribute pre_commit_log / applied events
 // back to a user_index.
-func provision(ctx context.Context, cfg *Config, registry *tunnelRegistry) ([]createdUser, error) {
+func provision(ctx context.Context, cfg *Config, registry *tunnelRegistry, tracker *quiescenceTracker) ([]createdUser, error) {
 	if cfg.Target == 0 {
 		return nil, nil
 	}
@@ -465,6 +652,18 @@ func provision(ctx context.Context, cfg *Config, registry *tunnelRegistry) ([]cr
 		}
 
 		runningTarget = nextTarget
+		// Per-batch catch-up: pace the orchestrator at the agent's
+		// throughput so each batch's users land on the device before
+		// the next batch is submitted. Skipped on the final batch
+		// (the provision-complete wait covers it) and when the
+		// flag's off. Honors the same ApplyCatchUpTimeout as the
+		// provision-complete wait.
+		if cfg.ApplyPerBatchCatchUp && cfg.ApplyCatchUpTimeout > 0 && runningTarget < cfg.Target {
+			waitForAppliedToCatchUp(ctx, cfg, tracker, len(created))
+			if err := ctx.Err(); err != nil {
+				return created, err
+			}
+		}
 		if runningTarget >= cfg.Target {
 			break
 		}

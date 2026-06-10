@@ -15,6 +15,16 @@ import (
 	"time"
 )
 
+// userTunnelDescriptionPrefix identifies user-tunnel interfaces by the
+// description string the controller renders on each user's `interface
+// TunnelN` block. Using the description rather than a numeric range on
+// the tunnel ID lets the observer compare apples-to-apples against the
+// orchestrator's user count regardless of where in the Tunnel<N>
+// namespace the controller chooses to place them (legacy controllers
+// started at 500; the gm/tunnel-id-start-1 fix starts at 1, which
+// overlaps the inter-router routing-fabric range on physical EOS).
+const userTunnelDescriptionPrefix = "USER-UCAST-"
+
 type eapiRunner interface {
 	RunShowJSON(cmd string) (json.RawMessage, error)
 	RunShowText(cmd string) (string, error)
@@ -27,7 +37,7 @@ type commandSpec struct {
 
 var commands = []commandSpec{
 	{"show hardware capacity", "show-hardware-capacity", true},
-	{"show gre tunnel static", "show-gre-tunnel-static", true},
+	{"show interfaces description", "show-interfaces-description", true},
 	{"show processes top once", "show-processes-top-once", true},
 	{"show logging errors", "show-logging-errors", false},
 	{"show logging critical", "show-logging-critical", false},
@@ -61,12 +71,24 @@ func (s *Sampler) LatestCPUPercent() (float64, bool) {
 }
 
 // LatestTunnelCount returns the most recently observed number of user
-// tunnels on the device (`show gre tunnel static`'s greTunnels map
-// length). Returns (0, false) before the first successful parse. The
-// abort decider uses this to detect when the orchestrator's expected
-// active-user count diverges from what the agent has actually applied —
-// e.g. when the controller's per-device tunnel-slot cap silently
-// truncates the rendered device config.
+// tunnel interfaces on the device — i.e. interfaces whose description
+// starts with "USER-UCAST-" (the prefix the controller renders on
+// every per-user `interface TunnelN` block), counted from
+// `show interfaces description`. Returns (0, false) before the first
+// successful parse. The abort decider uses this to detect when the
+// orchestrator's expected active-user count diverges from what the
+// agent has actually applied — e.g. when the controller's per-device
+// tunnel-slot cap silently truncates the rendered device config.
+//
+// Earlier iterations used `show gre tunnel static` (only lists
+// statically-configured GRE-keyed routing-fabric tunnels) and
+// `show ip interface brief` filtered on a Tunnel-index >= 500
+// (worked while user tunnel IDs started at 500 but broke when the
+// controller started allocating from 1, overlapping the routing
+// fabric's low-numbered range). Filtering on the controller's
+// rendered description string is the most stable discriminator:
+// it tracks the controller's namespacing decisions regardless of
+// where in the Tunnel<N> ID space user tunnels happen to land.
 func (s *Sampler) LatestTunnelCount() (int, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -128,13 +150,13 @@ func (s *Sampler) runOne(c commandSpec, ts time.Time) error {
 				s.logger.Warn("could not parse CPU from show processes top once")
 			}
 		}
-		if c.cmd == "show gre tunnel static" {
+		if c.cmd == "show interfaces description" {
 			if n, ok := parseTunnelCount(raw); ok {
 				s.mu.Lock()
 				s.latestTunnelCount, s.tunnelCountValid = n, true
 				s.mu.Unlock()
 			} else {
-				s.logger.Warn("could not parse tunnel count from show gre tunnel static")
+				s.logger.Warn("could not parse tunnel count from show interfaces description")
 			}
 		}
 	} else {
@@ -183,23 +205,40 @@ func parseCPUPercent(raw json.RawMessage) (float64, bool) {
 	return total, true
 }
 
-// parseTunnelCount returns the number of entries in the `greTunnels` map
-// of the `show gre tunnel static | json` eAPI response, shaped as
-// `{"greTunnels": {"<idx>": {…}, …}}`. Returns (0, true) on an empty map
-// — a healthy device with no user tunnels — and (0, false) only when
-// `greTunnels` is missing entirely or the response is malformed, so the
-// abort decider can distinguish "zero confirmed" from "unknown".
+// parseTunnelCount returns the number of user-tunnel interfaces in the
+// `show interfaces description | json` eAPI response, shaped as
+// `{"interfaceDescriptions": {"<name>": {"description": "..."}, …}}`.
+// An interface is a user tunnel when its description begins with
+// `userTunnelDescriptionPrefix` — every per-user `interface TunnelN`
+// block the controller renders carries `description USER-UCAST-<idx>`,
+// so this filter is robust against changes in the Tunnel<N> id
+// range (legacy: 500+; current: 1+).
+//
+// Returns (0, true) on an empty interfaces map and (N, true) on a
+// populated one. Returns (0, false) only when the
+// `interfaceDescriptions` key is missing or the JSON is malformed, so
+// the abort decider can tell "zero confirmed" apart from "unknown" and
+// suppress the sentinel in the latter case.
 func parseTunnelCount(raw json.RawMessage) (int, bool) {
+	type desc struct {
+		Description string `json:"description"`
+	}
 	var env struct {
-		GreTunnels map[string]json.RawMessage `json:"greTunnels"`
+		InterfaceDescriptions map[string]desc `json:"interfaceDescriptions"`
 	}
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return 0, false
 	}
-	if env.GreTunnels == nil {
+	if env.InterfaceDescriptions == nil {
 		return 0, false
 	}
-	return len(env.GreTunnels), true
+	count := 0
+	for _, d := range env.InterfaceDescriptions {
+		if strings.HasPrefix(d.Description, userTunnelDescriptionPrefix) {
+			count++
+		}
+	}
+	return count, true
 }
 
 // fileTimestamp renders t as ISO 8601 UTC with `:` → `-` for filesystem

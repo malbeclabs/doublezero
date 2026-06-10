@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.27.0](https://github.com/malbeclabs/doublezero/compare/client/v0.26.0...client/v0.27.0) - 2026-06-10
+
+### Breaking
+
+### Changes
+
 - Client
   - Auto-enable allocated-IP mode for `doublezero connect ibrl` when the daemon detects a private RFC1918 default-route source (behind NAT), unless `-a` or `--client-ip` is set.
   - `doublezero connect multicast` with no groups now auto-joins every group authorized in the caller's AccessPass — publishing to `mgroup_pub_allowlist` and subscribing to `mgroup_sub_allowlist`. An AccessPass with no authorized groups is a no-op.

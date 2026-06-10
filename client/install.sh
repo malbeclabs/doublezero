@@ -22,6 +22,10 @@
 #   DZ_NAME=doublezero                   container name
 #   DZ_ASSUME_YES=1                      skip confirmation prompts (e.g. Docker install)
 #
+# A DZ_-token-derived keypair is injected straight into the container and is never
+# written to the host disk; a keypair supplied as a file path is bind-mounted
+# read-only. Either way the plaintext key is not printed.
+#
 # NOTE: connecting requires the host's public IP to have an access pass / allowlisted
 # user onchain for the chosen environment. That provisioning is a separate step; if
 # `connect` reports an access-pass error, the rest of the setup is still in place.
@@ -167,8 +171,9 @@ fi
 case "$SECRET" in
   DZ_*)
     # 'DZ_' + base64url(raw 64 keypair bytes). Restore the base64 alphabet and
-    # padding, decode to raw bytes, render the Solana keypair JSON array, and
-    # install it to the client's standard keypair location.
+    # padding, decode to raw bytes, and build the Solana keypair JSON array in
+    # memory. It is injected into the container after start and is NEVER written
+    # to the host disk.
     b64="$(printf '%s' "${SECRET#DZ_}" | tr '_-' '/+')"
     case $(( ${#b64} % 4 )) in
       2) b64="${b64}==" ;;
@@ -176,21 +181,18 @@ case "$SECRET" in
       1) die "Invalid DZ_ token (bad base64url length)." ;;
     esac
     # raw bytes -> single-line "[b1,b2,...]" (collapse od's multi-line output)
-    arr="$(printf '%s' "$b64" | base64 -d 2>/dev/null | od -An -v -t u1 | tr -s ' \n' ' ' | sed 's/^ //; s/ $//; s/ /,/g')"
-    case "$arr" in [0-9]*) : ;; *) die "DZ_ token did not decode to a valid keypair." ;; esac
-    n=$(printf '%s' "$arr" | tr ',' '\n' | grep -c .)
-    [ "$n" -eq 64 ] || die "DZ_ token decoded to $n bytes, expected 64 (not a Solana keypair)."
-    KEYFILE="$REAL_HOME/.config/doublezero/id.json"
-    mkdir -p "$(dirname "$KEYFILE")"
-    printf '[%s]' "$arr" > "$KEYFILE"
-    chmod 600 "$KEYFILE"
-    info "Decoded token to $KEYFILE ($n-byte keypair)"
+    KEY_JSON="[$(printf '%s' "$b64" | base64 -d 2>/dev/null | od -An -v -t u1 | tr -s ' \n' ' ' | sed 's/^ //; s/ $//; s/ /,/g')]"
+    n=$(printf '%s' "$KEY_JSON" | tr ',' '\n' | grep -c '[0-9]')
+    [ "$n" -eq 64 ] || die "DZ_ token did not decode to a 64-byte keypair (got $n)."
+    KEY_SRC=token
+    info "Decoded token to a $n-byte keypair (held in memory; not written to host disk)."
     ;;
   *)
-    # otherwise it's a path to an existing keypair file
+    # otherwise it's a path to an existing keypair file (bind-mounted read-only)
     case "$SECRET" in "~"*) SECRET_PATH="${REAL_HOME}${SECRET#\~}";; *) SECRET_PATH="$SECRET";; esac
     [ -f "$SECRET_PATH" ] || die "Secret is not a DZ_-prefixed token, and no keypair file exists at: $SECRET"
     KEYFILE="$(realpath -m "$SECRET_PATH")"
+    KEY_SRC=file
     info "Using keypair file: $KEYFILE"
     ;;
 esac
@@ -207,13 +209,17 @@ $SUDO docker pull -q "$DZ_IMAGE" >/dev/null
 
 info "Starting doublezero client (env=$DZ_ENV)..."
 $SUDO docker rm -f "$DZ_NAME" >/dev/null 2>&1 || true
+# Bind-mount the keypair only when the secret was a file; a token-derived key is
+# injected into the container after it starts (so it never touches the host disk).
+mount_args=()
+[ "$KEY_SRC" = file ] && mount_args=(-v "$KEYFILE":"$KEYPAIR_DEST":"$MNT_OPT")
 $SUDO docker run -d --name "$DZ_NAME" \
   --restart unless-stopped \
   --network host \
   --cap-add NET_ADMIN --cap-add NET_RAW \
   --device /dev/net/tun \
   -e DZ_ENV="$DZ_ENV" \
-  -v "$KEYFILE":"$KEYPAIR_DEST":"$MNT_OPT" \
+  "${mount_args[@]}" \
   "$DZ_IMAGE" >/dev/null
 
 # wait for the daemon socket
@@ -223,6 +229,15 @@ for _ in $(seq 1 30); do
   $SUDO docker ps -q --filter "name=^${DZ_NAME}$" | grep -q . || die "Container exited early. Logs: sudo docker logs $DZ_NAME"
   sleep 1
 done
+
+# Deliver a token-derived key by piping it straight into the container's
+# filesystem, so the plaintext keypair lives only in the container (and is gone
+# when the container is removed). A file secret is already bind-mounted above.
+if [ "$KEY_SRC" = token ]; then
+  printf '%s' "$KEY_JSON" | $SUDO docker exec -i "$DZ_NAME" \
+    sh -c 'umask 077; mkdir -p /root/.config/doublezero && cat > /root/.config/doublezero/id.json'
+  info "Installed keypair into the container (not stored on the host)."
+fi
 
 # ----------------------------------------------------------------------------
 # 7. connect (always `doublezero connect multicast`)

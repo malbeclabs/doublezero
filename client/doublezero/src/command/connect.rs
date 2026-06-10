@@ -122,34 +122,11 @@ impl ProvisioningCliCommand {
             );
         }
 
-        // Get public IP from daemon, along with whether the daemon detected a
-        // private (RFC1918) default-route source (i.e. the host is behind NAT).
-        let (client_ip, behind_nat) =
-            super::helpers::resolve_client_ip_with_nat(controller).await?;
+        // Get public IP from daemon
+        let client_ip = super::helpers::resolve_client_ip(controller).await?;
         let client_ip_str = client_ip.to_string();
 
-        let mut parsed_mode = self.parse_dz_mode()?;
-
-        // When behind NAT the client cannot advertise its own (private) address,
-        // so plain IBRL won't work — default to an allocated DoubleZero address
-        // as if `-a`/`--allocate-addr` were passed. `behind_nat` is only set
-        // when the daemon auto-discovered the IP (it is false whenever an
-        // explicit IP was supplied to the daemon), so the legitimate
-        // "use my own IP" override is already handled daemon-side. The only
-        // no-op case left is `-a` already set, which the user_type guard covers.
-        if behind_nat {
-            if let ParsedDzMode::Ibrl(user_type, _) = &mut parsed_mode {
-                if *user_type == UserType::IBRL {
-                    spinner.println(
-                        "ℹ️  Local address is private (RFC1918); you appear to be behind NAT. \
-                         Enabling --allocate-addr (-a) so DoubleZero assigns a routable IP. \
-                         Pass -a explicitly to silence this, or set --client-ip on the daemon to override.",
-                    );
-                    *user_type = UserType::IBRLWithAllocatedIP;
-                }
-            }
-        }
-
+        let parsed_mode = self.parse_dz_mode()?;
         // Multicast users are not subject to epoch expiry — only verify the AccessPass exists.
         let enforce_epoch = !matches!(parsed_mode, ParsedDzMode::Multicast { .. });
 
@@ -1093,24 +1070,13 @@ mod tests {
 
     impl TestFixture {
         pub fn new() -> Self {
-            Self::new_with_nat(false)
-        }
-
-        /// Like [`TestFixture::new`], but the daemon's v2_status reports
-        /// `behind_nat`, exercising the auto-allocate-on-NAT path.
-        pub fn new_behind_nat() -> Self {
-            Self::new_with_nat(true)
-        }
-
-        fn new_with_nat(behind_nat: bool) -> Self {
             let mut fixture = Self::new_base();
             fixture.setup_enable(|| Ok(()));
-            fixture.controller.expect_v2_status().returning(move || {
+            fixture.controller.expect_v2_status().returning(|| {
                 Ok(V2StatusResponse {
                     reconciler_enabled: false,
                     client_ip: "1.2.3.4".to_string(),
                     network: String::new(),
-                    behind_nat,
                     services: vec![],
                 })
             });
@@ -1129,7 +1095,6 @@ mod tests {
                     reconciler_enabled: false,
                     client_ip: "1.2.3.4".to_string(),
                     network: String::new(),
-                    behind_nat: false,
                     services: vec![],
                 })
             });
@@ -1873,94 +1838,6 @@ mod tests {
                 allocate_addr: true,
             },
             client_ip: Some(user.client_ip.to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_connect_command_ibrl_behind_nat_auto_allocates() {
-        // Daemon reports behind_nat=true and no client IP is supplied, so a
-        // plain `ibrl` connect should be steered to IBRLWithAllocatedIP.
-        let mut fixture = TestFixture::new_behind_nat();
-
-        let (tenant_pk, tenant) = fixture.add_tenant("nat-tenant");
-        let (device1_pk, _device1) = fixture.add_device(DeviceType::Edge, 100, true);
-        let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
-        fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &user, Some(tenant_pk));
-
-        println!();
-
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::IBRL {
-                tenant: Some(tenant.code.clone()),
-                allocate_addr: false,
-            },
-            client_ip: None,
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_connect_command_ibrl_behind_nat_ignores_deprecated_cli_client_ip() {
-        // The deprecated CLI --client-ip flag is otherwise ignored, so it must
-        // not suppress the NAT upgrade: behind_nat (which the daemon only sets
-        // when it auto-discovered the IP) still steers to IBRLWithAllocatedIP.
-        let mut fixture = TestFixture::new_behind_nat();
-
-        let (tenant_pk, tenant) = fixture.add_tenant("nat-tenant");
-        let (device1_pk, _device1) = fixture.add_device(DeviceType::Edge, 100, true);
-        let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
-        fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &user, Some(tenant_pk));
-
-        println!();
-
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::IBRL {
-                tenant: Some(tenant.code.clone()),
-                allocate_addr: false,
-            },
-            client_ip: Some("1.2.3.4".to_string()),
-            device: None,
-            verbose: false,
-        };
-
-        let result = command
-            .execute_with_service_controller(&fixture.client, &fixture.controller)
-            .await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_connect_command_ibrl_behind_nat_with_explicit_allocate() {
-        // behind_nat=true and -a already set: stays IBRLWithAllocatedIP (the
-        // auto-enable guard is a no-op when allocate is already requested).
-        let mut fixture = TestFixture::new_behind_nat();
-
-        let (tenant_pk, tenant) = fixture.add_tenant("nat-tenant");
-        let (device1_pk, _device1) = fixture.add_device(DeviceType::Edge, 100, true);
-        let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
-        fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &user, Some(tenant_pk));
-
-        println!();
-
-        let command = ProvisioningCliCommand {
-            dz_mode: DzMode::IBRL {
-                tenant: Some(tenant.code.clone()),
-                allocate_addr: true,
-            },
-            client_ip: None,
             device: None,
             verbose: false,
         };

@@ -344,7 +344,7 @@ func TestBuildSummary_OutcomeClassification(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			r := &parser.Run{Events: tc.events, Abort: tc.abort}
-			got := BuildSummary(r)
+			got := BuildSummary(r, Options{})
 			if got.Outcome != tc.wantOutcome {
 				t.Errorf("Outcome = %q, want %q", got.Outcome, tc.wantOutcome)
 			}

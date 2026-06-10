@@ -154,6 +154,8 @@ func Summary(w io.Writer, s analyze.Summary, r *parser.Run) {
 		bw.printf("\n")
 	}
 
+	writeResourceUsage(bw, s.Resources)
+
 	if s.Outcome == "aborted" {
 		bw.printf("## Abort\n\n")
 		bw.printf("- **Reason**: `%s`\n", s.AbortReason)
@@ -161,6 +163,82 @@ func Summary(w io.Writer, s analyze.Summary, r *parser.Run) {
 		bw.printf("- **Detail**: %s\n", s.AbortDetail)
 		bw.printf("\n")
 	}
+}
+
+// writeResourceUsage renders the `## Resource usage` section. The
+// whole section is suppressed when no inputs of any kind were loaded
+// so observer-disabled runs don't emit empty headers. Files that
+// were present but corrupt are reported as a banner so the operator
+// can tell "observer disabled" apart from "observer captured garbage".
+func writeResourceUsage(bw *writer, res analyze.ResourceStats) {
+	if res.CPUSampleCount == 0 && res.RSSSampleCount == 0 &&
+		res.ProcessTopSkipped == 0 && res.AgentMetricsSkipped == 0 {
+		return
+	}
+	bw.printf("## Resource usage\n\n")
+	if res.ProcessTopSkipped > 0 {
+		bw.printf("> ⚠️ %d `show processes top once` sample(s) unparseable; CPU/memory aggregates exclude them.\n\n", res.ProcessTopSkipped)
+	}
+	if res.AgentMetricsSkipped > 0 {
+		bw.printf("> ⚠️ %d agent-metric row(s) unparseable; agent RSS series excludes them.\n\n", res.AgentMetricsSkipped)
+	}
+
+	if res.CPUSampleCount > 0 {
+		bw.printf("- **Device CPU**: peak %.1f%%, p95 %.1f%% (n=%d, threshold %.0f%%)\n",
+			res.CPUPeakPct, res.CPUP95Pct, res.CPUSampleCount, analyze.CPUHotThresholdPct)
+		if len(res.HotWindows) > 0 {
+			bw.printf("\n")
+			bw.printf("Sustained ≥ %.0f%% windows:\n\n", analyze.CPUHotThresholdPct)
+			bw.printf("| Start (UTC) | Duration | Peak |\n")
+			bw.printf("|---|---:|---:|\n")
+			for _, w := range res.HotWindows {
+				bw.printf("| %s | %s | %.1f%% |\n",
+					w.Start.UTC().Format("2006-01-02 15:04:05"),
+					fmtDur(w.Duration()),
+					w.PeakPct)
+			}
+			bw.printf("\n")
+		}
+
+		bw.printf("- **Device memory**: peak free %s, peak used %s",
+			analyze.FormatBytes(res.MemPeakFreeKB*1024),
+			analyze.FormatBytes(res.MemPeakUsedKB*1024))
+		if res.MemFreeFloorKB > 0 {
+			bw.printf(" (floor %s)", analyze.FormatBytes(res.MemFreeFloorKB*1024))
+			if res.MemFloorViolations > 0 {
+				bw.printf(" — ⚠️ %d sub-floor sample(s), first at %s UTC",
+					res.MemFloorViolations,
+					res.MemFirstViolationAt.UTC().Format("2006-01-02 15:04:05"))
+			}
+		}
+		bw.printf("\n")
+	}
+
+	if res.RSSSampleCount > 0 {
+		bw.printf("- **doublezero-agent RSS**: peak %s, end %s",
+			analyze.FormatBytes(uint64(res.RSSPeakBytes)),
+			analyze.FormatBytes(uint64(res.RSSEndBytes)))
+		if res.RSSSampleCount >= 2 {
+			perMin := res.RSSSlopeBytesPerSec * 60
+			abs := uint64(math.Abs(perMin))
+			// FormatBytes renders 0 as "—" (missing) — use a real
+			// label so a flat slope looks like a measurement.
+			slope := "0 B"
+			if abs > 0 {
+				slope = analyze.FormatBytes(abs)
+			}
+			direction := "flat"
+			switch {
+			case perMin > 0:
+				direction = "increasing"
+			case perMin < 0:
+				direction = "decreasing"
+			}
+			bw.printf(", slope %s/min %s", slope, direction)
+		}
+		bw.printf(" (n=%d)\n", res.RSSSampleCount)
+	}
+	bw.printf("\n")
 }
 
 // writeFit prints a one-line summary of a LinearFit. The slope is

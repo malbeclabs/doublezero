@@ -88,6 +88,17 @@ type Summary struct {
 	// gap grows as the run progresses. Empty (N < 2) when fewer than two
 	// users had both `activate` and `applied`.
 	OnchainToOnDeviceFit LinearFit
+
+	// Resources rolls up device CPU/memory and agent RSS from the
+	// observer's per-tick captures.
+	Resources ResourceStats
+}
+
+// Options carries knobs the CLI passes through to BuildSummary.
+type Options struct {
+	// MemFreeFloorKB is the free-memory floor (kilobytes) below which
+	// a sample counts as a violation. Zero disables the check.
+	MemFreeFloorKB uint64
 }
 
 // CommitCycle is the joined view of one agent commit cycle: the agent
@@ -160,7 +171,7 @@ type AgentErrorBucket struct {
 }
 
 // BuildSummary is the top-level analysis entry point.
-func BuildSummary(r *parser.Run) Summary {
+func BuildSummary(r *parser.Run, opts Options) Summary {
 	s := Summary{
 		EventCounts: parser.CountEvents(r.Events),
 	}
@@ -238,6 +249,7 @@ func BuildSummary(r *parser.Run) Summary {
 	s.AgentErrorTopK = topAgentErrors(r.CliErrors, 8)
 	s.CommitCycles, s.CommitCyclesJoinWarning = commitCycles(r.Cycles, r.Events)
 	s.OnchainToOnDeviceFit = onchainToOnDeviceFit(r.Events)
+	s.Resources = resourceStats(r, opts.MemFreeFloorKB)
 
 	return s
 }

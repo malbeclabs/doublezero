@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.27.1](https://github.com/malbeclabs/doublezero/compare/client/v0.27.0...client/v0.27.1) - 2026-06-10
+
+### Breaking
+
+### Changes
+
 - Client
   - Revert auto-enabling allocated-IP mode on `doublezero connect ibrl` behind NAT (#3861): the RFC1918 heuristic misfires on 1:1 NAT hosts where plain IBRL works, silently changing the user type.
 

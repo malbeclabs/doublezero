@@ -2059,6 +2059,171 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    /// `connect multicast` with no groups auto-joins every group authorized in the
+    /// AccessPass: publishes to mgroup_pub_allowlist and subscribes to mgroup_sub_allowlist.
+    #[tokio::test]
+    async fn test_connect_command_multicast_autojoin_from_accesspass() {
+        let mut fixture = TestFixture::new();
+
+        let (g1_pk, _) = fixture.add_multicast_group("group-1", "239.0.0.1");
+        let (g2_pk, _) = fixture.add_multicast_group("group-2", "239.0.0.2");
+
+        // Authorize publishing to g1 and subscribing to g1 + g2.
+        {
+            let mut ap = fixture.accesspass.lock().unwrap();
+            ap.mgroup_pub_allowlist = vec![g1_pk];
+            ap.mgroup_sub_allowlist = vec![g1_pk, g2_pk];
+        }
+
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+
+        // First group (g1) created via create_subscribe_user as publisher + subscriber.
+        let user_pk = Pubkey::new_unique();
+        fixture.expect_create_subscribe_user(user_pk, &user, g1_pk, true, true);
+        // Remaining group (g2) added via update_multicastgroup_roles as subscriber-only.
+        fixture.expect_update_multicastgroup_roles(
+            user_pk,
+            g2_pk,
+            Ipv4Addr::new(1, 2, 3, 4),
+            false,
+            true,
+        );
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: None,
+                multicast_groups: vec![],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: None,
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_ok(),
+            "auto-join from access pass must succeed: {:?}",
+            result.err()
+        );
+    }
+
+    /// Auto-join is a no-op success when the AccessPass authorizes no groups: no user
+    /// is created and no subscriptions are issued.
+    #[tokio::test]
+    async fn test_connect_command_multicast_autojoin_empty_allowlist_is_noop() {
+        let mut fixture = TestFixture::new();
+        // AccessPass has empty allowlists by default; a device exists but must not be used.
+        fixture.add_device(DeviceType::Hybrid, 100, true);
+
+        // No expect_create_subscribe_user / expect_update_multicastgroup_roles: any such
+        // call would panic the mock.
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: None,
+                multicast_groups: vec![],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: None,
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_ok(),
+            "empty allowlist must be a no-op success: {:?}",
+            result.err()
+        );
+    }
+
+    /// Allowlist entries that no longer resolve to a known multicast group are dropped
+    /// during auto-join; only the still-valid groups are used.
+    #[tokio::test]
+    async fn test_connect_command_multicast_autojoin_filters_stale_allowlist_pubkeys() {
+        let mut fixture = TestFixture::new();
+
+        let (g1_pk, _) = fixture.add_multicast_group("group-1", "239.0.0.1");
+        // Not registered in list_multicastgroup — simulates a deleted group.
+        let stale_pk = Pubkey::new_unique();
+
+        {
+            let mut ap = fixture.accesspass.lock().unwrap();
+            ap.mgroup_sub_allowlist = vec![stale_pk, g1_pk];
+        }
+
+        let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+        let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+
+        // Only g1 survives filtering → single create_subscribe_user as subscriber-only,
+        // no further update calls.
+        let user_pk = Pubkey::new_unique();
+        fixture.expect_create_subscribe_user(user_pk, &user, g1_pk, false, true);
+
+        println!();
+
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: None,
+                multicast_groups: vec![],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: None,
+            device: None,
+            verbose: false,
+        };
+
+        let result = command
+            .execute_with_service_controller(&fixture.client, &fixture.controller)
+            .await;
+        assert!(
+            result.is_ok(),
+            "stale allowlist pubkeys must be filtered: {:?}",
+            result.err()
+        );
+    }
+
+    /// `parse_dz_mode` accepts multicast with no groups, yielding empty pub/sub vectors
+    /// that trigger the AccessPass-driven auto-join downstream.
+    #[test]
+    fn test_parse_dz_mode_multicast_no_args_yields_empty_groups() {
+        let command = ProvisioningCliCommand {
+            dz_mode: DzMode::Multicast {
+                mode: None,
+                multicast_groups: vec![],
+                pub_groups: vec![],
+                sub_groups: vec![],
+            },
+            client_ip: None,
+            device: None,
+            verbose: false,
+        };
+
+        match command.parse_dz_mode().unwrap() {
+            ParsedDzMode::Multicast {
+                pub_groups,
+                sub_groups,
+            } => {
+                assert!(pub_groups.is_empty());
+                assert!(sub_groups.is_empty());
+            }
+            ParsedDzMode::Ibrl(..) => panic!("expected ParsedDzMode::Multicast, got Ibrl"),
+        }
+    }
+
     /// Multicast connect succeeds when the AccessPass has last_access_epoch = 0 (expired).
     /// Multicast access is gated by mgroup_*_allowlist, not by epoch.
     #[tokio::test]

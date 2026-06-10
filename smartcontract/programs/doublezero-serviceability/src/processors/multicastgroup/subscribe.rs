@@ -207,15 +207,6 @@ pub fn process_update_multicastgroup_roles(
         "Invalid AccessPass PDA",
     );
 
-    if !accesspass.allow_multiple_ip() && accesspass.client_ip != user.client_ip {
-        msg!(
-            "AccessPass client_ip does not match. accesspass.client_ip: {} user.client_ip: {}",
-            accesspass.client_ip,
-            user.client_ip
-        );
-        return Err(DoubleZeroError::Unauthorized.into());
-    }
-
     // The access pass must belong to the payer. If the payer differs, the payer
     // must be in the foundation allowlist.
     if accesspass.user_payer != *payer_account.key

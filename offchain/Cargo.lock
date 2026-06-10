@@ -1371,7 +1371,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "115e54d64eb62cdebad391c19efc9dce4981c690c85a33a12199d99bb9546fee"
 dependencies = [
  "borsh-derive 0.10.4",
- "hashbrown 0.12.3",
+ "hashbrown 0.13.2",
 ]
 
 [[package]]
@@ -2503,7 +2503,7 @@ dependencies = [
 [[package]]
 name = "doublezero-passport"
 version = "0.2.0"
-source = "git+https://github.com/doublezerofoundation/doublezero-solana?tag=revenue-distribution%2Fv0.3.6#199479840c911720ae5507d8cb9d5f43e51f6199"
+source = "git+https://github.com/doublezerofoundation/doublezero-solana?tag=revenue-distribution%2Fv0.3.7#4368da2c446b799f354aecb6156fc0e77343634b"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",
@@ -2581,7 +2581,7 @@ dependencies = [
 [[package]]
 name = "doublezero-program-tools"
 version = "0.0.0"
-source = "git+https://github.com/doublezerofoundation/doublezero-solana?tag=revenue-distribution%2Fv0.3.6#199479840c911720ae5507d8cb9d5f43e51f6199"
+source = "git+https://github.com/doublezerofoundation/doublezero-solana?tag=revenue-distribution%2Fv0.3.7#4368da2c446b799f354aecb6156fc0e77343634b"
 dependencies = [
  "bincode 1.3.3",
  "borsh 1.5.7",
@@ -2614,8 +2614,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-revenue-distribution"
-version = "0.3.6"
-source = "git+https://github.com/doublezerofoundation/doublezero-solana?tag=revenue-distribution%2Fv0.3.6#199479840c911720ae5507d8cb9d5f43e51f6199"
+version = "0.3.7"
+source = "git+https://github.com/doublezerofoundation/doublezero-solana?tag=revenue-distribution%2Fv0.3.7#4368da2c446b799f354aecb6156fc0e77343634b"
 dependencies = [
  "borsh 1.5.7",
  "bytemuck",

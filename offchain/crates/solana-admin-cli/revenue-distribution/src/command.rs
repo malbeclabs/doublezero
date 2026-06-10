@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use clap::{Args, Subcommand};
 use doublezero_solana_client_tools::{
     payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
@@ -15,10 +15,11 @@ use doublezero_solana_sdk::{
             account::{
                 ConfigureProgramAccounts, InitializeContributorRewardsAccounts,
                 InitializeJournalAccounts, InitializeProgramAccounts,
-                InitializeSwapDestinationAccounts, SetAdminAccounts, SetRewardsManagerAccounts,
+                InitializeRewardsIntegrationAccounts, InitializeSwapDestinationAccounts,
+                SetAdminAccounts, SetRewardsManagerAccounts,
             },
         },
-        state::{self, ContributorRewards, Journal, ProgramConfig},
+        state::{self, ContributorRewards, Journal, ProgramConfig, RewardsIntegration},
         types::DoubleZeroEpoch,
     },
     try_build_instruction,
@@ -68,6 +69,16 @@ pub enum RevenueDistributionAdminSubcommand {
         solana_payer_options: SolanaPayerOptions,
     },
 
+    /// Register an external program as a rewards integration.
+    InitializeRewardsIntegration {
+        /// Program ID of the integration to register. Must be an executable account.
+        #[arg(long)]
+        program_id: Pubkey,
+
+        #[command(flatten)]
+        solana_payer_options: SolanaPayerOptions,
+    },
+
     /// Migrate program accounts.
     MigrateProgramAccounts {
         #[command(flatten)]
@@ -108,6 +119,10 @@ impl RevenueDistributionAdminSubcommand {
                 )
                 .await
             }
+            Self::InitializeRewardsIntegration {
+                program_id,
+                solana_payer_options,
+            } => try_execute_initialize_rewards_integration(program_id, solana_payer_options).await,
             Self::MigrateProgramAccounts {
                 solana_payer_options,
             } => try_execute_migrate_program_accounts(solana_payer_options).await,
@@ -686,6 +701,60 @@ pub async fn try_execute_set_rewards_manager(
 
     if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
         println!("Set rewards manager: {tx_sig}");
+
+        wallet.print_verbose_output(&[tx_sig]).await?;
+    }
+
+    Ok(())
+}
+
+//
+// RevenueDistributionAdminSubcommand::InitializeRewardsIntegration.
+//
+
+pub async fn try_execute_initialize_rewards_integration(
+    program_id: Pubkey,
+    solana_payer_options: SolanaPayerOptions,
+) -> Result<()> {
+    let wallet = Wallet::try_from(solana_payer_options)?;
+    let wallet_key = wallet.pubkey();
+
+    // Pre-flight: ensure the supplied account exists and is executable so the
+    // operator gets a clear error before we send the transaction.
+    let program_account = wallet
+        .connection
+        .get_account(&program_id)
+        .await
+        .with_context(|| format!("Failed to fetch program account {program_id}"))?;
+    ensure!(
+        program_account.executable,
+        "Account {program_id} is not executable",
+    );
+
+    let initialize_rewards_integration_ix = try_build_instruction(
+        &ID,
+        InitializeRewardsIntegrationAccounts::new(&wallet_key, &wallet_key, &program_id),
+        &RevenueDistributionInstructionData::InitializeRewardsIntegration,
+    )?;
+
+    let mut compute_unit_limit = 10_000;
+    let (_, bump) = RewardsIntegration::find_address(&program_id);
+    compute_unit_limit += Wallet::compute_units_for_bump_seed(bump);
+
+    let mut instructions = vec![
+        initialize_rewards_integration_ix,
+        ComputeBudgetInstruction::set_compute_unit_limit(compute_unit_limit),
+    ];
+
+    if let Some(ref compute_unit_price_ix) = wallet.compute_unit_price_ix {
+        instructions.push(compute_unit_price_ix.clone());
+    }
+
+    let transaction = wallet.new_transaction(&instructions).await?;
+    let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
+
+    if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
+        println!("Initialized rewards integration for {program_id}: {tx_sig}");
 
         wallet.print_verbose_output(&[tx_sig]).await?;
     }

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- add `initialize-rewards-integration` command (#361)
+
 ## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-revenue-distribution-admin-cli%2Fv0.0.1) - 2025-10-21
 
 - add `--solana_validator_debt_write_off_feature_activation_epoch` ([#237](https://github.com/doublezerofoundation/doublezero-offchain/pull/237))

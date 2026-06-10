@@ -30,10 +30,11 @@ tools/stress/scripts/run-stress-local.sh --no-build
 tools/stress/scripts/run-stress-local.sh --target-users 8 --hold 60
 ```
 
-The script ends by printing the orchestrator/observer PIDs and the run
-working directory (under `dev/.deploy/dz-local/stress/run/<UTC timestamp>/`).
-Both processes keep running in the background. Stop them with the
-`kill $(cat …)` snippet the script prints.
+The script ends by printing the orchestrator/observer PIDs and the
+run working directory (under
+`dev/.deploy/dz-local/stress/run/<UTC timestamp>/`). Both keep
+running in the background. Stop them with the `kill $(cat …)` snippet
+the script prints.
 
 ## What the stress device differs from the e2e device
 
@@ -119,31 +120,43 @@ SDK checks or the agent will run but fail to apply config:
    doublezero-agent ./controlplane/agent/cmd/agent` on a host with the
    repo checked out.
 
-3. **EOS SDK RPC agent (`eapilocal`)** running in the management VRF —
-   the agent dials its local SDK at `127.0.0.1:9543`. cEOS provides
-   this implicitly via `management api eos-sdk-rpc / transport grpc
-   foo / localhost loopback`; physical EOS requires an explicit
-   `daemon eapilocal` block plus a VRF qualifier on the transport:
+3. **EOS native gNMI provider** running in the management VRF — the
+   doublezero-agent always dials its local EOS API at
+   `127.0.0.1:9543` (see `controlplane/agent/cmd/agent/main.go`, the
+   `--device` default). On real Arista EOS, the `provider eos-native`
+   knob inside the gNMI block exposes that listener (cEOS containers
+   ship with it on by default; real hardware does not). Tested
+   stanza — substitute the device's own management IP for
+   `listen-addresses`:
    ```
-   daemon eapilocal
-      exec /usr/bin/EosSdkRpcAgent --daemon-name eapilocal
-      no shutdown
-   !
-   management api eos-sdk-rpc
-      transport grpc eapilocal
-         localhost loopback vrf management
-         service all
-         no disabled
-   !
+   management api gnmi
+      transport grpc default
+         port 57400
+         vrf management
+         listen-addresses 10.0.0.X
+      provider eos-native
    ```
-   Verify with `show management api eos-sdk-rpc` — `Server: running`,
-   `Listening on: ... port: 9543, VRF: management`.
+   Verify the agent's target is reachable: `bash sudo ip netns exec
+   ns-management ss -ltn | grep 9543` from the device should show a
+   LISTEN entry. If the run aborts with `apply_config_errors` and the
+   agent log shows `dial tcp 127.0.0.1:9543: connect: connection
+   refused`, this stanza is missing or misconfigured.
 
-4. **eAPI HTTP-commands enabled.** The device-observer scrapes `show
-   gre tunnel static`, `show processes top once`, etc. via eAPI. Make
-   sure `management api http-commands` is `no shutdown` and an admin
-   user with a password the harness can use exists. Export
-   `EAPI_USER` / `EAPI_PASS` before running.
+4. **eAPI HTTP-commands enabled + a stress user.** The device-observer
+   scrapes `show interfaces description`, `show processes top once`, etc.
+   over HTTP basic auth on each sample. Add a dedicated stress user
+   (so the harness doesn't share the `admin` password) and enable
+   the HTTP transport:
+   ```
+   username stress secret 0 stress
+   !
+   management api http-commands
+      no shutdown
+   ```
+   The harness defaults `EAPI_USER=stress`; export `EAPI_PASS` before
+   running (the script bails out fast if it's unset, since an empty
+   password silently produces 401s and leaves the run dir with zero
+   `show-*.{json,log}` captures).
 
 5. **Management netns.** The orchestrator wraps the agent command in
    `ip netns exec <netns>` so it can reach the controller via the
@@ -165,10 +178,10 @@ SDK checks or the agent will run but fail to apply config:
 # private infra repo, not here. Export it before running.
 export DZ_PROGRAM_ID='<stress-program-id-from-infra-repo>'
 
-# Required: eAPI credentials for the observer. EAPI_USER defaults to
-# $DUT_SSH_USER; password must be supplied (no plaintext default).
-export EAPI_USER=admin
-read -s EAPI_PASS; export EAPI_PASS
+# Required: eAPI password for the observer. EAPI_USER defaults to
+# `stress` (the username the README's prerequisite step adds to the
+# device); password has no default — the script fails fast if unset.
+export EAPI_PASS=stress
 
 # Optional overrides (defaults shown in the script header):
 # export DZ_RPC_URL='https://...'
@@ -189,8 +202,8 @@ The script:
 4. Launches the controller on the host with
    `--max-user-tunnel-slots $TARGET_USERS` and waits for the gRPC port.
 5. Sets up access passes in parallel against the devnet RPC.
-6. Builds the orchestrator + observer binaries and launches them in the
-   background, pointing at the physical DUT.
+6. Builds the orchestrator + observer binaries.
+7. Launches the orchestrator + observer in the background.
 
 The controller pid is recorded in `dev/.deploy/stress-physical/run/controller.pid`;
 the orchestrator + observer pids land in the per-run subdirectory
@@ -214,8 +227,9 @@ All knobs are env vars (defaults in the script header):
 | `CONTROLLER_BIND_ADDR`    | Controller listen address (default `0.0.0.0`)             |
 | `CONTROLLER_ADVERTISE_ADDR` | Address advertised to the device (default: auto-detect) |
 | `CONTROLLER_LISTEN_PORT`  | Controller listen port (default `7000`)                   |
+| `CONTROLLER_BINARY`       | Path to a prebuilt controller binary (default: `go run` from local checkout) |
 | `SOLANA_KEYPAIR`          | Operator keypair (signs init + access-passes)             |
-| `EAPI_USER`               | eAPI HTTP basic-auth user (default `admin`)               |
+| `EAPI_USER`               | eAPI HTTP basic-auth user (default `stress`)              |
 | `EAPI_PASS`               | eAPI HTTP basic-auth password (no default — required)     |
 | `DEVICE_CODE`             | Device code onchain (default `chi-dn-dzd5`)               |
 | `DEVICE_DZ_PREFIX`        | Device's dz-prefix /29 (carved from the tunnel block)     |

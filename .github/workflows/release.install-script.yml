@@ -1,0 +1,43 @@
+name: release.install-script
+
+# Publishes client/install.sh to the CDN behind https://get.doublezero.xyz/install.
+# Uploads to the doublezero-install S3 bucket and invalidates the CloudFront
+# distribution. Auth is GitHub OIDC into a main-only deploy role (no static keys).
+# Infra is documented in the infra repo runbook: install-script-hosting.md.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "client/install.sh"
+      - ".github/workflows/release.install-script.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write # assume the AWS deploy role via OIDC
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  DEPLOY_ROLE: arn:aws:iam::879381273509:role/github-doublezero-install-deploy
+  BUCKET: doublezero-install
+  DISTRIBUTION_ID: E393SM6O109RQ3
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload install.sh and invalidate cache
+        run: |
+          aws s3 cp client/install.sh "s3://${BUCKET}/install" \
+            --content-type text/x-shellscript \
+            --cache-control "public,max-age=120"
+          aws cloudfront create-invalidation \
+            --distribution-id "$DISTRIBUTION_ID" \
+            --paths '/install'

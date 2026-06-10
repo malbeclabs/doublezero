@@ -6,17 +6,25 @@
 #
 #     curl -fsSL https://get.doublezero.xyz/install | bash
 #
-# It checks for Docker (offering to install it), preps the host for GRE,
-# loads the user's keypair, runs the thin doublezero client container
-# (ghcr.io/malbeclabs/doublezero), and connects.
+# It checks for Docker (offering to install it), preps the host for GRE, loads the
+# access secret, runs the thin doublezero client container
+# (ghcr.io/malbeclabs-latam/doublezero-edge-connect), and runs `doublezero connect multicast`.
 #
-# Non-interactive overrides (env vars):
-#   DZ_ENV=testnet|devnet|mainnet-beta   default: prompt (falls back to mainnet-beta)
-#   DZ_KEYPAIR=/abs/path/to/id.json      default: prompt
-#   DZ_CONNECT="connect multicast"       connect args to run (default: "connect multicast")
-#   DZ_IMAGE=ghcr.io/malbeclabs/doublezero:latest
+# Attendantless: the only input is the access secret. Provide it via DZ_SECRET to
+# run with no prompts at all; otherwise you're prompted once. Everything else has
+# a default.
+#
+# Env vars:
+#   DZ_SECRET=<DZ_token|path> base64 keypair token (always prefixed with 'DZ_')
+#                             OR a path to a keypair file. If set, runs non-interactively.
+#   DZ_ENV=testnet|devnet|mainnet-beta   default: testnet
+#   DZ_IMAGE=ghcr.io/malbeclabs-latam/doublezero-edge-connect:latest
 #   DZ_NAME=doublezero                   container name
 #   DZ_ASSUME_YES=1                      skip confirmation prompts (e.g. Docker install)
+#
+# A DZ_-token-derived keypair is injected straight into the container and is never
+# written to the host disk; a keypair supplied as a file path is bind-mounted
+# read-only. Either way the plaintext key is not printed.
 #
 # NOTE: connecting requires the host's public IP to have an access pass / allowlisted
 # user onchain for the chosen environment. That provisioning is a separate step; if
@@ -27,11 +35,10 @@ set -euo pipefail
 # ----------------------------------------------------------------------------
 # config / defaults
 # ----------------------------------------------------------------------------
-DZ_IMAGE="${DZ_IMAGE:-ghcr.io/malbeclabs/doublezero:latest}"
+DZ_IMAGE="${DZ_IMAGE:-ghcr.io/malbeclabs-latam/doublezero-edge-connect:latest}"
 DZ_NAME="${DZ_NAME:-doublezero}"
-DZ_ENV="${DZ_ENV:-}"
-DZ_KEYPAIR="${DZ_KEYPAIR:-}"
-DZ_CONNECT="${DZ_CONNECT:-}"
+DZ_ENV="${DZ_ENV:-testnet}"
+DZ_SECRET="${DZ_SECRET:-}"
 DZ_ASSUME_YES="${DZ_ASSUME_YES:-0}"
 KEYPAIR_DEST="/root/.config/doublezero/id.json"   # client's default keypair path (container runs as root)
 LIVENESS_UDP_PORT=44880
@@ -113,7 +120,7 @@ $SUDO docker info >/dev/null 2>&1 || die "Docker is installed but the daemon isn
 # ----------------------------------------------------------------------------
 # 3. host kernel / network prep (host-side; safe to attempt)
 # ----------------------------------------------------------------------------
-info "Preparing host for GRE tunnels..."
+info "Preparing host for DoubleZero Edge Connect"
 $SUDO modprobe tun 2>/dev/null    || warn "Could not load 'tun' module (may be built-in)."
 $SUDO modprobe ip_gre 2>/dev/null || warn "Could not load 'ip_gre' module (will auto-load on tunnel create)."
 [ -e /dev/net/tun ] || warn "/dev/net/tun is missing; tunnel creation may fail."
@@ -147,18 +154,48 @@ case "$CLOUD" in
 esac
 
 # ----------------------------------------------------------------------------
-# 5. inputs: keypair + environment + connect target
+# 5. input: the access secret (the only thing we ask for)
 # ----------------------------------------------------------------------------
-# environment
-if [ -z "$DZ_ENV" ]; then DZ_ENV="$(ask 'DoubleZero environment (testnet/devnet/mainnet-beta)' 'mainnet-beta')"; fi
-case "$DZ_ENV" in testnet|devnet|mainnet-beta) : ;; *) die "Invalid DZ_ENV '$DZ_ENV'";; esac
+# Environment: default testnet, override via DZ_ENV; never prompted.
+case "$DZ_ENV" in testnet|devnet|mainnet-beta) : ;; *) die "Invalid DZ_ENV '$DZ_ENV' (testnet|devnet|mainnet-beta)";; esac
 
-# keypair
-if [ -z "$DZ_KEYPAIR" ]; then DZ_KEYPAIR="$(ask 'Path to your DoubleZero keypair (id.json)' "$REAL_HOME/.config/doublezero/id.json")"; fi
-# expand ~ and relativize to absolute (against the human user's home)
-case "$DZ_KEYPAIR" in "~"*) DZ_KEYPAIR="${REAL_HOME}${DZ_KEYPAIR#\~}";; esac
-DZ_KEYPAIR="$(realpath -m "$DZ_KEYPAIR" 2>/dev/null || echo "$DZ_KEYPAIR")"
-[ -f "$DZ_KEYPAIR" ] || die "No keypair file at: $DZ_KEYPAIR (a wrong path makes Docker mount an empty dir over id.json)."
+# The secret is either a base64 keypair token (always prefixed with 'DZ_') or a
+# path to an existing keypair file. Provide via DZ_SECRET (no prompt) or once at
+# the prompt.
+SECRET="$DZ_SECRET"
+if [ -z "$SECRET" ]; then
+  SECRET="$(ask 'Access secret (DZ_-prefixed token, or path to a keypair file)' '')"
+fi
+[ -n "$SECRET" ] || die "No secret provided. Set DZ_SECRET or supply one when prompted."
+
+case "$SECRET" in
+  DZ_*)
+    # 'DZ_' + base64url(raw 64 keypair bytes). Restore the base64 alphabet and
+    # padding, decode to raw bytes, and build the Solana keypair JSON array in
+    # memory. It is injected into the container after start and is NEVER written
+    # to the host disk.
+    b64="$(printf '%s' "${SECRET#DZ_}" | tr '_-' '/+')"
+    case $(( ${#b64} % 4 )) in
+      2) b64="${b64}==" ;;
+      3) b64="${b64}=" ;;
+      1) die "Invalid DZ_ token (bad base64url length)." ;;
+    esac
+    # raw bytes -> single-line "[b1,b2,...]" (collapse od's multi-line output)
+    KEY_JSON="[$(printf '%s' "$b64" | base64 -d 2>/dev/null | od -An -v -t u1 | tr -s ' \n' ' ' | sed 's/^ //; s/ $//; s/ /,/g')]"
+    n=$(printf '%s' "$KEY_JSON" | tr ',' '\n' | grep -c '[0-9]')
+    [ "$n" -eq 64 ] || die "DZ_ token did not decode to a 64-byte keypair (got $n)."
+    KEY_SRC=token
+    info "Decoded token to a $n-byte keypair (held in memory; not written to host disk)."
+    ;;
+  *)
+    # otherwise it's a path to an existing keypair file (bind-mounted read-only)
+    case "$SECRET" in "~"*) SECRET_PATH="${REAL_HOME}${SECRET#\~}";; *) SECRET_PATH="$SECRET";; esac
+    [ -f "$SECRET_PATH" ] || die "Secret is not a DZ_-prefixed token, and no keypair file exists at: $SECRET"
+    KEYFILE="$(realpath -m "$SECRET_PATH")"
+    KEY_SRC=file
+    info "Using keypair file: $KEYFILE"
+    ;;
+esac
 
 # SELinux relabel for the bind mount
 MNT_OPT=ro
@@ -172,13 +209,17 @@ $SUDO docker pull -q "$DZ_IMAGE" >/dev/null
 
 info "Starting doublezero client (env=$DZ_ENV)..."
 $SUDO docker rm -f "$DZ_NAME" >/dev/null 2>&1 || true
+# Bind-mount the keypair only when the secret was a file; a token-derived key is
+# injected into the container after it starts (so it never touches the host disk).
+mount_args=()
+[ "$KEY_SRC" = file ] && mount_args=(-v "$KEYFILE":"$KEYPAIR_DEST":"$MNT_OPT")
 $SUDO docker run -d --name "$DZ_NAME" \
   --restart unless-stopped \
   --network host \
   --cap-add NET_ADMIN --cap-add NET_RAW \
   --device /dev/net/tun \
   -e DZ_ENV="$DZ_ENV" \
-  -v "$DZ_KEYPAIR":"$KEYPAIR_DEST":"$MNT_OPT" \
+  "${mount_args[@]}" \
   "$DZ_IMAGE" >/dev/null
 
 # wait for the daemon socket
@@ -189,23 +230,27 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
-# ----------------------------------------------------------------------------
-# 7. connect  (TODO: finalize the verb/args + access-pass flow)
-# ----------------------------------------------------------------------------
-if [ -z "$DZ_CONNECT" ]; then
-  DZ_CONNECT="$(ask 'Connect command to run now (Enter to accept, blank-then-Enter to skip)' 'connect multicast')"
+# Deliver a token-derived key by piping it straight into the container's
+# filesystem, so the plaintext keypair lives only in the container (and is gone
+# when the container is removed). A file secret is already bind-mounted above.
+if [ "$KEY_SRC" = token ]; then
+  printf '%s' "$KEY_JSON" | $SUDO docker exec -i "$DZ_NAME" \
+    sh -c 'umask 077; mkdir -p /root/.config/doublezero && cat > /root/.config/doublezero/id.json'
+  info "Installed keypair into the container (not stored on the host)."
 fi
-if [ -n "$DZ_CONNECT" ]; then
-  info "Connecting: doublezero $DZ_CONNECT"
-  # Allocate a pseudo-TTY when our stdout is a terminal so the CLI streams its
-  # normal output to the screen (without -t, docker exec gives it no TTY and the
-  # command's progress/result output is suppressed).
-  EXEC_TTY=""; [ -t 1 ] && EXEC_TTY="-t"
-  # NOTE: connect requires the host's public IP to have an access pass / allowlisted
-  # user onchain for $DZ_ENV. If this errors with an access-pass message, that
-  # provisioning step still needs to happen.
-  $SUDO docker exec $EXEC_TTY "$DZ_NAME" doublezero $DZ_CONNECT || warn "connect failed (often: no access pass for this IP, or provider firewall/NAT). See notes above."
-fi
+
+# ----------------------------------------------------------------------------
+# 7. connect (always `doublezero connect multicast`)
+# ----------------------------------------------------------------------------
+info "Connecting: doublezero connect multicast"
+# Allocate a pseudo-TTY when our stdout is a terminal so the CLI streams its
+# normal output to the screen (without -t, docker exec gives it no TTY and the
+# command's output is suppressed).
+EXEC_TTY=""; [ -t 1 ] && EXEC_TTY="-t"
+# NOTE: connect requires the host's public IP to have an access pass / allowlisted
+# user onchain for $DZ_ENV. If this errors with an access-pass message, that
+# provisioning step still needs to happen.
+$SUDO docker exec $EXEC_TTY "$DZ_NAME" doublezero connect multicast || warn "connect failed (often: no access pass for this IP, or provider firewall/NAT). See notes above."
 
 # ----------------------------------------------------------------------------
 # 8. status + management hints

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- refactor(contributor-rewards): use the shared create-ATA compute-unit helper from `solana-client-tools` ([#386](https://github.com/doublezerofoundation/doublezero-offchain/pull/386))
 - fix(contributor-rewards): bump network shapley ([#377](https://github.com/doublezerofoundation/doublezero-offchain/pull/377))
 
 ## [0.5.5](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.5.5) - 2026-05-20

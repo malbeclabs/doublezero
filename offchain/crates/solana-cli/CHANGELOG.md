@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- use the shared create-ATA compute-unit helper from `solana-client-tools` (#386)
+
 ## [0.5.7](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.7)
 
 - uptick crate to v0.5.7 (#385)

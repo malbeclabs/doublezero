@@ -19,10 +19,7 @@ use doublezero_solana_sdk::{
     try_build_instruction,
 };
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
-use spl_associated_token_account_interface::{
-    address::get_associated_token_address_and_bump_seed,
-    instruction::create_associated_token_account_idempotent,
-};
+use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 use tracing::{debug, info, warn};
 
 use crate::calculator::{ledger_operations::try_fetch_shapley_output, proof::ShapleyOutputStorage};
@@ -254,7 +251,6 @@ async fn try_distribute_contributor_rewards(
     reward_share: &RewardShare,
 ) -> Result<bool> {
     const DISTRIBUTE_REWARDS_CU_BASE: u32 = 30_000;
-    const CREATE_ATA_CU_BASE: u32 = 25_000;
     const PER_RECIPIENT_CU: u32 = 12_500;
 
     let wallet_key = wallet.pubkey();
@@ -317,17 +313,13 @@ async fn try_distribute_contributor_rewards(
         },
     )?;
 
-    // Derive ATA keys and bumps. We will need these bumps to set the CU
-    // precisely.
-    let (ata_keys, ata_bumps) = recipient_keys
+    // Derive ATA addresses together with their create-ATA compute-unit
+    // estimates. The address is needed for the existence check below. The CU is
+    // carried through to the recipients whose ATA must be created.
+    let (ata_keys, recipient_create_compute_units) = recipient_keys
         .iter()
         .map(|recipient_key| {
-            get_associated_token_address_and_bump_seed(
-                recipient_key,
-                dz_mint_key,
-                &spl_associated_token_account_interface::program::ID,
-                &spl_token_interface::ID,
-            )
+            Wallet::ata_address_and_create_compute_units(recipient_key, dz_mint_key)
         })
         .unzip::<_, _, Vec<_>, Vec<_>>();
 
@@ -339,15 +331,17 @@ async fn try_distribute_contributor_rewards(
         .await?
         .into_iter()
         .zip(recipient_keys.iter())
-        .zip(ata_bumps)
-        .filter_map(|((account_info, recipient_key), bump)| match account_info {
-            Some(account_info) if account_info.owner == Pubkey::default() => {
-                Some((recipient_key, bump))
-            }
-            None => Some((recipient_key, bump)),
-            _ => None,
-        })
-        .map(|(recipient_key, bump)| {
+        .zip(recipient_create_compute_units)
+        .filter_map(
+            |((account_info, recipient_key), create_compute_units)| match account_info {
+                Some(account_info) if account_info.owner == Pubkey::default() => {
+                    Some((recipient_key, create_compute_units))
+                }
+                None => Some((recipient_key, create_compute_units)),
+                _ => None,
+            },
+        )
+        .map(|(recipient_key, create_compute_units)| {
             let ix = create_associated_token_account_idempotent(
                 &wallet_key,
                 recipient_key,
@@ -355,9 +349,7 @@ async fn try_distribute_contributor_rewards(
                 &spl_token_interface::ID,
             );
 
-            let compute_unit_limit = CREATE_ATA_CU_BASE + Wallet::compute_units_for_bump_seed(bump);
-
-            (ix, compute_unit_limit)
+            (ix, create_compute_units)
         })
         .unzip::<_, _, Vec<_>, Vec<_>>();
 

@@ -18,6 +18,7 @@ use solana_sdk::{
     transaction::{TransactionError, VersionedTransaction},
 };
 use solana_transaction_status_client_types::UiTransactionEncoding;
+use spl_associated_token_account_interface::address::get_associated_token_address_and_bump_seed;
 
 // Re-export for backward compatibility
 pub use crate::keypair::try_load_keypair;
@@ -326,6 +327,24 @@ impl Wallet {
         1_500 * u32::from(255 - bump)
     }
 
+    // Base compute units for create_associated_token_account_idempotent, before
+    // the bump-dependent address re-derivation cost.
+    const CREATE_ATA_CU_BASE: u32 = 25_000;
+
+    pub fn create_ata_compute_units(bump: u8) -> u32 {
+        Self::CREATE_ATA_CU_BASE + Self::compute_units_for_bump_seed(bump)
+    }
+
+    pub fn ata_address_and_create_compute_units(owner: &Pubkey, mint: &Pubkey) -> (Pubkey, u32) {
+        let (address, bump) = get_associated_token_address_and_bump_seed(
+            owner,
+            mint,
+            &spl_associated_token_account_interface::program::ID,
+            &spl_token_interface::ID,
+        );
+        (address, Self::create_ata_compute_units(bump))
+    }
+
     pub fn default_send_transaction_config(&self) -> RpcSendTransactionConfig {
         RpcSendTransactionConfig {
             preflight_commitment: Some(self.connection.commitment().commitment),
@@ -366,4 +385,39 @@ fn try_load_specified_keypair(path: &PathBuf) -> Result<Keypair> {
         .with_context(|| format!("Invalid keypair found at {}", path.display()))?;
 
     Ok(default_keypair)
+}
+
+#[cfg(test)]
+mod tests {
+    use spl_associated_token_account_interface::address::get_associated_token_address_and_bump_seed;
+
+    use super::*;
+
+    #[test]
+    fn test_create_ata_compute_units_adds_base_to_bump_cost() {
+        // Bump 255 has zero re-derivation cost, so the result is just the base.
+        assert_eq!(Wallet::create_ata_compute_units(255), 25_000);
+        // Each bump candidate below 255 adds 1_500 CU.
+        assert_eq!(Wallet::create_ata_compute_units(254), 26_500);
+    }
+
+    #[test]
+    fn test_ata_address_and_create_compute_units_uses_classic_spl_token() {
+        let owner = Pubkey::new_unique();
+        let mint = Pubkey::new_unique();
+
+        let (address, compute_units) = Wallet::ata_address_and_create_compute_units(&owner, &mint);
+
+        let (expected_address, expected_bump) = get_associated_token_address_and_bump_seed(
+            &owner,
+            &mint,
+            &spl_associated_token_account_interface::program::ID,
+            &spl_token_interface::ID,
+        );
+        assert_eq!(address, expected_address);
+        assert_eq!(
+            compute_units,
+            Wallet::create_ata_compute_units(expected_bump)
+        );
+    }
 }

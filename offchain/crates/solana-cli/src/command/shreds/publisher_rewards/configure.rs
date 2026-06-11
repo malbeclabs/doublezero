@@ -22,10 +22,7 @@ use doublezero_solana_sdk::{
     try_build_instruction,
 };
 use solana_sdk::{compute_budget::ComputeBudgetInstruction, signature::Signature, signer::Signer};
-use spl_associated_token_account_interface::{
-    address::get_associated_token_address_and_bump_seed,
-    instruction::create_associated_token_account_idempotent,
-};
+use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 
 use super::rewards_mint_arg::RewardsMintArg;
 
@@ -185,12 +182,11 @@ impl ConfigureCommand {
         // of each PDA derivation rather than a single conservative ceiling.
         let (srt_pda, srt_bump) = find_shred_reward_token_address(&rewards_token_mint);
         let (vpr_pda, vpr_bump) = find_validator_publisher_rewards_address(&self.node_id);
-        let (rewards_token_ata, ata_bump) = get_associated_token_address_and_bump_seed(
-            &self.rewards_token_owner,
-            &rewards_token_mint,
-            &spl_associated_token_account_interface::program::ID,
-            &spl_token_interface::ID,
-        );
+        let (rewards_token_ata, ata_create_compute_units) =
+            Wallet::ata_address_and_create_compute_units(
+                &self.rewards_token_owner,
+                &rewards_token_mint,
+            );
 
         println!("Shred subscription - Configure Validator Publisher Rewards");
         println!("Node ID:           {}", self.node_id);
@@ -224,7 +220,6 @@ impl ConfigureCommand {
         const INIT_VPR_CU_BASE: u32 = 20_000;
         const CONFIGURE_VPR_CU_BASE: u32 = 20_000;
         const ED25519_VERIFY_CU: u32 = 150_000;
-        const CREATE_ATA_CU_BASE: u32 = 25_000;
         const CHECK_CLI_VERSION_CU: u32 = 5_000;
 
         let mut compute_unit_limit: u32 = CHECK_CLI_VERSION_CU;
@@ -286,8 +281,7 @@ impl ConfigureCommand {
                 &rewards_token_mint,
                 &spl_token_interface::ID,
             ));
-            compute_unit_limit +=
-                CREATE_ATA_CU_BASE + Wallet::compute_units_for_bump_seed(ata_bump);
+            compute_unit_limit += ata_create_compute_units;
         }
 
         instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(

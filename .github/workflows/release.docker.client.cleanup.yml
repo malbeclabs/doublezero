@@ -1,7 +1,8 @@
 name: release.docker.client.cleanup
 
 # Weekly retention for the client images. Deletes orphaned untagged versions and
-# keeps the last 10 pinned versions per env family, never touching moving tags.
+# keeps the last 10 pinned versions per env family (testnet-* and mainnet-beta-*
+# each get their own 10-slot budget), never touching moving tags.
 on:
   schedule:
     - cron: "17 4 * * 1" # Mondays 04:17 UTC
@@ -14,15 +15,30 @@ jobs:
   cleanup-public:
     runs-on: ubuntu-latest
     steps:
-      - name: Prune ghcr.io/${{ github.repository_owner }}/doublezero
+      # Each step scopes keep-n-tagged to one family by combining delete-tags
+      # (which restricts what the action considers) with exclude-tags (which
+      # hard-protects the other family and all moving tags from deletion).
+      - name: Prune testnet-* tags in ghcr.io/${{ github.repository_owner }}/doublezero
         uses: dataaxiom/ghcr-cleanup-action@v1
         with:
           package: doublezero
           owner: ${{ github.repository_owner }}
           token: ${{ secrets.GITHUB_TOKEN }}
           delete-untagged: true
+          delete-tags: testnet-*
           keep-n-tagged: 10
-          exclude-tags: latest,testnet,mainnet-beta
+          exclude-tags: latest,testnet,mainnet-beta,mainnet-beta-*
+
+      - name: Prune mainnet-beta-* tags in ghcr.io/${{ github.repository_owner }}/doublezero
+        uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          package: doublezero
+          owner: ${{ github.repository_owner }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          delete-untagged: false
+          delete-tags: mainnet-beta-*
+          keep-n-tagged: 10
+          exclude-tags: latest,testnet,mainnet-beta,testnet-*
 
   cleanup-devnet:
     runs-on: ubuntu-latest

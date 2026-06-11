@@ -35,7 +35,7 @@ jobs:
           role-to-assume: ${{ env.DEPLOY_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Upload install scripts and invalidate cache
+      - name: Upload install scripts
         run: |
           for variant in "install:install.sh" "install-testnet:install-testnet.sh" "install-devnet:install-devnet.sh"; do
             key="${variant%%:*}"; file="client/${variant##*:}"
@@ -43,6 +43,9 @@ jobs:
               --content-type text/x-shellscript \
               --cache-control "public,max-age=120"
           done
+
+      - name: Invalidate CloudFront cache
+        run: |
           aws cloudfront create-invalidation \
             --distribution-id "$DISTRIBUTION_ID" \
             --paths '/install' '/install-testnet' '/install-devnet'

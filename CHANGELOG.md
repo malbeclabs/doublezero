@@ -331,8 +331,6 @@ All notable changes to this project will be documented in this file.
   - Polish terminal output of `connect` and `disconnect`: fix emoji semantics, normalize message phrasing across IBRL and multicast code paths, resolve tenant to human-readable code on connect (errors if tenant not found), and fix progress bar not clearing before output in `disconnect` ([#3529](https://github.com/malbeclabs/doublezero/pull/3529))
 - Client
   - Reduce default probing interval to 5m from 30s since DZDs don't generally move.
-- Device agents
-  - Reduce device config agent CPU usage by continuing to fetch the full config every 5 seconds but only applying when it has changed or after 60s timeout
 - Dependencies
   - Bump vulnerable packages across Rust, Go, and Python to address Dependabot security alerts (14 packages fixed)
 - DevContainer

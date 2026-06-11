@@ -160,6 +160,14 @@ pub fn process_update_device_interface(
 
     let mut device: Device = Device::try_from(device_account)?;
 
+    // The supplied contributor must be the one the device belongs to,
+    // unless the payer is on the foundation allowlist.
+    if !globalstate.foundation_allowlist.contains(payer_account.key)
+        && device.contributor_pk != *contributor_account.key
+    {
+        return Err(DoubleZeroError::InvalidContributorPubkey.into());
+    }
+
     let (idx, _) = device
         .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;

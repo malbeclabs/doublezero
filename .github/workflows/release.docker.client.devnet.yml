@@ -35,7 +35,7 @@ jobs:
             apt-get update -qq >/dev/null 2>&1
             apt-cache madison doublezero | head -1 | awk "{print \$3}"')"
           [[ -n "$RAW" ]] || { echo "could not resolve devnet version"; exit 1; }
-          TAG="$(printf '%s' "$RAW" | tr '~' '-')"
+          TAG="$(printf '%s' "$RAW" | tr '~:' '--')"
           echo "version=$RAW" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Resolved devnet version: $RAW (tag: $TAG)"

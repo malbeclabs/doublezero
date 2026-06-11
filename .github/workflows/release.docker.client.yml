@@ -80,7 +80,6 @@ jobs:
           build-args: |
             DZ_CLOUDSMITH_REPO=doublezero-testnet
             DZ_DEFAULT_ENV=testnet
-            DZ_VERSION=${{ steps.v.outputs.version }}-1
             BUILD_VERSION=${{ steps.v.outputs.version }}
             BUILD_COMMIT=${{ github.event.workflow_run.head_sha }}
           tags: |

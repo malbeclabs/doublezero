@@ -18,6 +18,13 @@ inputs:
   token:
     description: 'Token with actions:write on the target repo'
     required: true
+  slack-webhook:
+    description: >-
+      Optional Slack webhook. When set, posts a link to the dispatched run before
+      watching it, so a run gated on a required-reviewer environment in the target
+      repo gets approved instead of stalling unnoticed.
+    required: false
+    default: ''
 runs:
   using: composite
   steps:
@@ -28,6 +35,7 @@ runs:
         WORKFLOW: ${{ inputs.workflow }}
         REF: ${{ inputs.ref }}
         FIELDS: ${{ inputs.fields }}
+        SLACK_WEBHOOK: ${{ inputs.slack-webhook }}
       run: |
         set -euo pipefail
         CID="cid-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
@@ -49,5 +57,11 @@ runs:
           echo "::error::could not find dispatched run for correlation id $CID in $REPO/$WORKFLOW"
           exit 1
         fi
-        echo "Watching https://github.com/$REPO/actions/runs/$RUN_ID"
+        RUN_URL="https://github.com/$REPO/actions/runs/$RUN_ID"
+        if [ -n "$SLACK_WEBHOOK" ]; then
+          PAYLOAD=$(jq -n --arg text "$WORKFLOW run in $REPO may need environment approval: $RUN_URL" '{text: $text}')
+          curl -sf -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK" \
+            || echo "::warning::failed to post Slack approval ping for $RUN_URL"
+        fi
+        echo "Watching $RUN_URL"
         gh run watch "$RUN_ID" -R "$REPO" --exit-status --interval 30

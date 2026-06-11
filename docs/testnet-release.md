@@ -5,6 +5,14 @@ The testnet release is driven by a single orchestrator workflow,
 everything that can be automated and pauses at two human gates: one before tags
 are pushed, and one around the Solana program deploy (which stays manual).
 
+Beyond the two gates, several jobs run in approval-protected environments, so a
+full release is roughly 6–7 approval interactions across the two repos: merge
+both version PRs, approve gate 1, approve the `testnet` environment on the tag
+jobs, approve infra's `testnet` environment three times (`stage-programs`,
+`deploy-core`, `deploy-clients` — each dispatched infra run posts a link to
+`#int-tech` when it may be waiting), and approve gate 2 after the program
+deploy.
+
 ## Starting a release
 
 ```bash
@@ -28,11 +36,11 @@ gh workflow run release.testnet.yml -R malbeclabs/doublezero -f version=X.Y.Z
 | `push-tags` | Pushes the 9 component tags (`controller`, `internet-latency-collector`, `agent`, `device-telemetry-agent`, `geoprobe-agent`, `geoprobe-target`, `funder`, `monitor`, `client`) via the reusable tag workflow, which runs in the protected `testnet` environment. | **Approve the `testnet` environment prompt** on the tag jobs. |
 | `verify-cloudsmith` | Polls CloudSmith (up to ~60 min) until all 9 packages exist at the new version. | — |
 | `build-programs` | Builds the three Solana programs (`serviceability` default features; `telemetry` and `geolocation` with `--features testnet`) from main and uploads them with checksums and a `DEPLOY.md` manifest. | — |
-| `stage-programs` | Dispatches the infra `stage-programs.testnet.yml` workflow, which copies the artifacts to `nyc-tn-bm2:/opt/doublezero/program-releases/vX.Y.Z/`, then pings Slack. | **Deploy the programs** on nyc-tn-bm2 from that directory per the Notion runbook ("Build and deploy DoubleZero solana programs - testnet"), and set the onchain version. |
+| `stage-programs` | Dispatches the infra `stage-programs.testnet.yml` workflow, which copies the artifacts to `nyc-tn-bm2:/opt/doublezero/program-releases/vX.Y.Z/`, then pings Slack. | **Approve infra's `testnet` environment** on the dispatched run (link posted to `#int-tech`). Then **deploy the programs** on nyc-tn-bm2 from that directory per the Notion runbook ("Build and deploy DoubleZero solana programs - testnet"), and set the onchain version. |
 | `gate-programs` | Waits on the `testnet-program-deploy` environment. | **Approve gate 2** once the programs are deployed and the onchain version is set. |
 | `verify-onchain` | Installs the released client from CloudSmith and checks `doublezero --env testnet version` reports the new program version. | — |
-| `deploy-core` | Dispatches infra `deploy-core.testnet.yml` and waits for it. | — |
-| `deploy-clients` | Dispatches infra `deploy-clients.testnet.yml` and waits for it. | — |
+| `deploy-core` | Dispatches infra `deploy-core.testnet.yml` and waits for it. | **Approve infra's `testnet` environment** on the dispatched run (link posted to `#int-tech`). |
+| `deploy-clients` | Dispatches infra `deploy-clients.testnet.yml` and waits for it. | **Approve infra's `testnet` environment** on the dispatched run (link posted to `#int-tech`). |
 | `qa` | Dispatches infra `qa.testnet.yml` and waits for it (may queue behind the hourly cron run). | — |
 | `announce` | Posts success to Slack with the dashboard link. | **Watch the system dashboard for ~30 min** (https://doublezero.grafana.net/d/bf3dece9-51ac-4087-b6b1-579b3859ce14/). The foundation posts the community announcement. |
 

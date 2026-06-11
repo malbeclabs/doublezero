@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CI
+  - Add a testnet release orchestrator workflow (`release.testnet.yml`) that drives the release end to end: preflight checks, version-bump PRs for doublezero and infra, a human-approved gate before pushing the 9 component tags, CloudSmith package verification, Solana program build and staging with a manual deploy gate, onchain version verification, infra core/client deploys, QA, and Slack notifications. Supports `dry_run` for plumbing validation and safe re-runs (existing PRs are reused; already-pushed tags are skipped via a new `skip_existing` input on the tag workflow). Runbook at `docs/testnet-release.md`.
+
 ## [v0.27.1](https://github.com/malbeclabs/doublezero/compare/client/v0.27.0...client/v0.27.1) - 2026-06-10
 
 ### Breaking

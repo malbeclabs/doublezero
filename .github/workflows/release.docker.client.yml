@@ -66,6 +66,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve exact testnet deb version
+        id: deb
+        if: steps.v.outputs.publish == 'true'
+        shell: bash
+        run: |
+          SEMVER='${{ steps.v.outputs.version }}'
+          DEB="$(docker run --rm --entrypoint bash ubuntu:24.04 -c "
+            apt-get update -qq >/dev/null 2>&1
+            apt-get install -y -qq --no-install-recommends ca-certificates curl >/dev/null 2>&1
+            curl -1sLf 'https://dl.cloudsmith.io/public/malbeclabs/doublezero-testnet/setup.deb.sh' | bash >/dev/null 2>&1
+            apt-get update -qq >/dev/null 2>&1
+            apt-cache madison doublezero | awk '{print \$3}' | grep -E '^${SEMVER}-' | head -1")"
+          [ -n "$DEB" ] || { echo "no doublezero-testnet deb found for ${SEMVER}"; exit 1; }
+          echo "debversion=$DEB" >> "$GITHUB_OUTPUT"
+          echo "Pinned testnet deb: $DEB"
+
       - name: Build & push (:testnet + :testnet-version)
         if: steps.v.outputs.publish == 'true'
         uses: docker/build-push-action@v6
@@ -80,6 +96,7 @@ jobs:
           build-args: |
             DZ_CLOUDSMITH_REPO=doublezero-testnet
             DZ_DEFAULT_ENV=testnet
+            DZ_VERSION=${{ steps.deb.outputs.debversion }}
             BUILD_VERSION=${{ steps.v.outputs.version }}
             BUILD_COMMIT=${{ github.event.workflow_run.head_sha }}
           tags: |
@@ -109,6 +126,7 @@ jobs:
           fi
           [[ -n "$VERSION" ]] || { echo "could not resolve mainnet-beta version"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$(printf '%s' "$VERSION" | tr '~:' '--')" >> "$GITHUB_OUTPUT"
           echo "Resolved mainnet-beta version: $VERSION"
 
       - uses: docker/setup-buildx-action@v3
@@ -136,7 +154,7 @@ jobs:
             BUILD_COMMIT=${{ github.sha }}
           tags: |
             ${{ env.IMAGE }}:mainnet-beta
-            ${{ env.IMAGE }}:mainnet-beta-${{ steps.v.outputs.version }}
+            ${{ env.IMAGE }}:mainnet-beta-${{ steps.v.outputs.tag }}
             ${{ env.IMAGE }}:latest
 
   # Validation path: on PRs touching the image, build all three variants for

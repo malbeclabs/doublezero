@@ -7,6 +7,11 @@ on:
   schedule:
     - cron: "17 4 * * 1" # Mondays 04:17 UTC
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List what would be deleted without deleting"
+        type: boolean
+        default: true
 
 permissions:
   packages: write
@@ -15,9 +20,11 @@ jobs:
   cleanup-public:
     runs-on: ubuntu-latest
     steps:
-      # Each step scopes keep-n-tagged to one family by combining delete-tags
-      # (which restricts what the action considers) with exclude-tags (which
-      # hard-protects the other family and all moving tags from deletion).
+      # Two passes to scope keep-n-tagged independently per tag family.
+      # delete-tags + keep-n-tagged limits retention within that family;
+      # exclude-tags hard-protects moving tags and the other family.
+      # Note: delete-untagged: true (first step only) removes ALL untagged
+      # manifests package-wide — it is not scoped by delete-tags.
       - name: Prune testnet-* tags in ghcr.io/${{ github.repository_owner }}/doublezero
         uses: dataaxiom/ghcr-cleanup-action@v1
         with:
@@ -28,6 +35,7 @@ jobs:
           delete-tags: testnet-*
           keep-n-tagged: 10
           exclude-tags: latest,testnet,mainnet-beta,mainnet-beta-*
+          dry-run: ${{ inputs.dry_run || false }}
 
       - name: Prune mainnet-beta-* tags in ghcr.io/${{ github.repository_owner }}/doublezero
         uses: dataaxiom/ghcr-cleanup-action@v1
@@ -39,6 +47,7 @@ jobs:
           delete-tags: mainnet-beta-*
           keep-n-tagged: 10
           exclude-tags: latest,testnet,mainnet-beta,testnet-*
+          dry-run: ${{ inputs.dry_run || false }}
 
   cleanup-devnet:
     runs-on: ubuntu-latest
@@ -52,3 +61,4 @@ jobs:
           delete-untagged: true
           keep-n-tagged: 10
           exclude-tags: latest
+          dry-run: ${{ inputs.dry_run || false }}

@@ -23,7 +23,7 @@
 #   DZ_ASSUME_YES=1                      skip confirmation prompts (e.g. Docker install)
 #   DZ_GHCR_TOKEN=<token>   ghcr token with read:packages (required: the devnet
 #                           image is private). DZ_GHCR_USER defaults to the token owner.
-#   DZ_GHCR_USER=<user>     optional; ghcr username for the login
+#   DZ_GHCR_USER=<user>     optional; ghcr username for the login (default: malbeclabs)
 #
 # A DZ_-token-derived keypair is injected straight into the container and is never
 # written to the host disk; a keypair supplied as a file path is bind-mounted
@@ -44,7 +44,7 @@ DZ_ENV="${DZ_ENV:-devnet}"
 DZ_SECRET="${DZ_SECRET:-}"
 DZ_ASSUME_YES="${DZ_ASSUME_YES:-0}"
 DZ_GHCR_TOKEN="${DZ_GHCR_TOKEN:-}"
-DZ_GHCR_USER="${DZ_GHCR_USER:-doublezero}"
+DZ_GHCR_USER="${DZ_GHCR_USER:-malbeclabs}"
 KEYPAIR_DEST="/root/.config/doublezero/id.json"   # client's default keypair path (container runs as root)
 LIVENESS_UDP_PORT=44880
 

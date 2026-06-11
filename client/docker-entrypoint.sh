@@ -11,8 +11,9 @@
 #
 set -euo pipefail
 
-# mainnet-beta matches the compiled default of the doublezero package published to
-# the public Cloudsmith repo; the daemon and CLI must use the same environment.
+# Default environment. Baked into the image via `ENV DZ_ENV` per variant
+# (testnet / mainnet-beta / devnet); overridable at runtime with -e DZ_ENV. The
+# daemon and CLI must use the same environment.
 DZ_ENV="${DZ_ENV:-mainnet-beta}"
 DZ_SOCK="${DZ_SOCK:-/run/doublezerod/doublezerod.sock}"
 

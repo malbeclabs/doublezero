@@ -1,0 +1,53 @@
+name: dispatch-and-wait
+description: Dispatch a workflow_dispatch workflow in another repo and wait for it to complete.
+inputs:
+  repo:
+    description: 'owner/repo to dispatch in'
+    required: true
+  workflow:
+    description: 'Workflow file name (e.g. deploy-core.testnet.yml). Must accept a correlation_id input surfaced in its run-name.'
+    required: true
+  ref:
+    description: 'Git ref to run the workflow from'
+    required: false
+    default: 'main'
+  fields:
+    description: 'Extra inputs, one key=value per line'
+    required: false
+    default: ''
+  token:
+    description: 'Token with actions:write on the target repo'
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ inputs.repo }}
+        WORKFLOW: ${{ inputs.workflow }}
+        REF: ${{ inputs.ref }}
+        FIELDS: ${{ inputs.fields }}
+      run: |
+        set -euo pipefail
+        CID="cid-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
+        ARGS=(-f "correlation_id=$CID")
+        while IFS= read -r kv; do
+          [ -n "$kv" ] && ARGS+=(-f "$kv")
+        done <<< "$FIELDS"
+        echo "Dispatching $WORKFLOW in $REPO with correlation id $CID"
+        gh workflow run "$WORKFLOW" -R "$REPO" --ref "$REF" "${ARGS[@]}"
+        RUN_ID=""
+        for _ in $(seq 1 30); do
+          sleep 10
+          RUN_ID=$(gh run list -R "$REPO" --workflow "$WORKFLOW" --limit 20 \
+            --json databaseId,displayTitle \
+            --jq "[.[] | select(.displayTitle | contains(\"$CID\"))][0].databaseId // empty")
+          [ -n "$RUN_ID" ] && break
+        done
+        if [ -z "$RUN_ID" ]; then
+          echo "::error::could not find dispatched run for correlation id $CID in $REPO/$WORKFLOW"
+          exit 1
+        fi
+        echo "Watching https://github.com/$REPO/actions/runs/$RUN_ID"
+        gh run watch "$RUN_ID" -R "$REPO" --exit-status --interval 30

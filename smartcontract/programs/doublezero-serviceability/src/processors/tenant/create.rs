@@ -139,6 +139,7 @@ pub fn process_create_tenant(
         metro_routing: value.metro_routing,
         route_liveness: value.route_liveness,
         billing: TenantBillingConfig::default(),
+        include_topologies: vec![],
     };
 
     let deposit = Rent::get()

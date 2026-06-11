@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
 use serde::Serialize;
 use std::io::Write;
@@ -24,7 +25,12 @@ pub struct ConfigDisplay {
 }
 
 impl GetGlobalConfigCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (_, config) = client.get_globalconfig(GetGlobalConfigCommand)?;
 
         let config_display = ConfigDisplay {
@@ -55,6 +61,8 @@ impl GetGlobalConfigCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand, globalconfig::get::GetGlobalConfigCliCommand,
         tests::utils::create_test_client,
@@ -89,7 +97,9 @@ mod tests {
 
         // Table output
         let mut output = Vec::new();
-        let res = GetGlobalConfigCliCommand { json: false }.execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res =
+            block_on(GetGlobalConfigCliCommand { json: false }.execute(&ctx, &client, &mut output));
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -112,7 +122,8 @@ mod tests {
 
         // JSON output
         let mut output = Vec::new();
-        let res = GetGlobalConfigCliCommand { json: true }.execute(&client, &mut output);
+        let res =
+            block_on(GetGlobalConfigCliCommand { json: true }.execute(&ctx, &client, &mut output));
         assert!(res.is_ok());
         let json: serde_json::Value =
             serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();

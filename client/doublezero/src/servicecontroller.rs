@@ -7,10 +7,12 @@ use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use hyperlocal::{UnixConnector, Uri};
 use mockall::automock;
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs::File, path::Path};
+use std::{fmt, fs::File, path::Path, sync::OnceLock};
 use tabled::{derive::display, Tabled};
 
-const NANOS_TO_MS: f32 = 1000000.0;
+const DEFAULT_SOCKET_PATH: &str = "/var/run/doublezerod/doublezerod.sock";
+const NANOS_TO_MS: f64 = 1_000_000.0;
+static GLOBAL_SOCKET_PATH: OnceLock<String> = OnceLock::new();
 
 #[derive(Clone, Tabled, Deserialize, Serialize, Debug)]
 pub struct LatencyRecord {
@@ -21,16 +23,16 @@ pub struct LatencyRecord {
     #[tabled(rename = "IP")]
     pub device_ip: String,
     #[tabled(display = "display_as_ms", rename = "Min")]
-    pub min_latency_ns: i32,
+    pub min_latency_ns: i64,
     #[tabled(display = "display_as_ms", rename = "Max")]
-    pub max_latency_ns: i32,
+    pub max_latency_ns: i64,
     #[tabled(display = "display_as_ms", rename = "Avg")]
-    pub avg_latency_ns: i32,
+    pub avg_latency_ns: i64,
     pub reachable: bool,
 }
 
-fn display_as_ms(latency: &i32) -> String {
-    format!("{:.2}ms", (*latency as f32 / NANOS_TO_MS))
+fn display_as_ms(latency: &i64) -> String {
+    format!("{:.2}ms", (*latency as f64 / NANOS_TO_MS))
 }
 
 impl fmt::Display for LatencyRecord {
@@ -47,6 +49,12 @@ impl fmt::Display for LatencyRecord {
             self.reachable
         )
     }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct LatencyResponse {
+    pub ready: bool,
+    pub results: Vec<LatencyRecord>,
 }
 
 #[derive(Tabled, Serialize, Deserialize, Debug, Clone)]
@@ -140,6 +148,14 @@ fn parse_daemon_response<T: serde::de::DeserializeOwned>(
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct MulticastGroups {
+    #[serde(default)]
+    pub publisher: Vec<String>,
+    #[serde(default)]
+    pub subscriber: Vec<String>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct V2ServiceStatus {
     #[serde(flatten)]
@@ -152,6 +168,8 @@ pub struct V2ServiceStatus {
     pub metro: String,
     #[serde(default)]
     pub tenant: String,
+    #[serde(default)]
+    pub multicast_groups: MulticastGroups,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -170,7 +188,7 @@ pub trait ServiceController {
     fn service_controller_can_open(&self) -> bool;
     async fn get_config(&self) -> eyre::Result<GetConfigResponse>;
     async fn get_env(&self) -> eyre::Result<Environment>;
-    async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>>;
+    async fn latency(&self) -> eyre::Result<LatencyResponse>;
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
     async fn v2_status(&self) -> eyre::Result<V2StatusResponse>;
     async fn enable(&self) -> eyre::Result<()>;
@@ -183,23 +201,32 @@ pub struct ServiceControllerImpl {
 }
 
 impl ServiceControllerImpl {
+    pub fn set_global_socket_path(socket_path: impl Into<String>) {
+        let _ = GLOBAL_SOCKET_PATH.set(socket_path.into());
+    }
+
     pub fn new(socket_path: Option<String>) -> ServiceControllerImpl {
         ServiceControllerImpl {
-            socket_path: socket_path.unwrap_or("/var/run/doublezerod/doublezerod.sock".to_string()),
+            socket_path: socket_path.unwrap_or_else(|| {
+                GLOBAL_SOCKET_PATH
+                    .get()
+                    .cloned()
+                    .unwrap_or_else(|| DEFAULT_SOCKET_PATH.to_string())
+            }),
         }
     }
 }
 
 impl ServiceController for ServiceControllerImpl {
     fn service_controller_check(&self) -> bool {
-        Path::new("/var/run/doublezerod/doublezerod.sock").exists()
+        Path::new(&self.socket_path).exists()
     }
 
     fn service_controller_can_open(&self) -> bool {
         let file = File::options()
             .read(true)
             .write(true)
-            .open("/var/run/doublezerod/doublezerod.sock");
+            .open(&self.socket_path);
         match file {
             Ok(_) => true,
             Err(e) => !matches!(e.kind(), std::io::ErrorKind::PermissionDenied),
@@ -230,8 +257,8 @@ impl ServiceController for ServiceControllerImpl {
         Ok(Environment::from_program_id(&config.program_id).unwrap_or_default())
     }
 
-    async fn latency(&self) -> eyre::Result<Vec<LatencyRecord>> {
-        let uri = Uri::new(&self.socket_path, "/latency").into();
+    async fn latency(&self) -> eyre::Result<LatencyResponse> {
+        let uri = Uri::new(&self.socket_path, "/v2/latency").into();
         let client: Client<UnixConnector, Full<Bytes>> =
             Client::builder(TokioExecutor::new()).build(UnixConnector);
         let res = client
@@ -246,7 +273,7 @@ impl ServiceController for ServiceControllerImpl {
             .map_err(|e| eyre!("Unable to read response body: {e}"))?
             .to_bytes();
 
-        parse_daemon_response::<Vec<LatencyRecord>>(&data, "/latency")
+        parse_daemon_response::<LatencyResponse>(&data, "/v2/latency")
     }
 
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>> {
@@ -346,6 +373,25 @@ impl ServiceController for ServiceControllerImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn test_service_controller_uses_explicit_socket_path_for_checks() {
+        let socket_path =
+            std::env::temp_dir().join(format!("doublezerod-test-{}.sock", std::process::id()));
+        {
+            let mut file = File::create(&socket_path).expect("create socket placeholder");
+            file.write_all(b"test").expect("write socket placeholder");
+        }
+
+        let controller =
+            ServiceControllerImpl::new(Some(socket_path.to_string_lossy().into_owned()));
+
+        assert!(controller.service_controller_check());
+        assert!(controller.service_controller_can_open());
+
+        std::fs::remove_file(socket_path).expect("remove socket placeholder");
+    }
 
     /// Test that validates the JSON output format for LatencyRecord.
     /// This test catches breaking changes to the JSON API contract.
@@ -355,9 +401,9 @@ mod tests {
             device_pk: "DevicePubkey123".to_string(),
             device_code: "device1".to_string(),
             device_ip: "5.6.7.8".to_string(),
-            min_latency_ns: 1000000,
-            max_latency_ns: 5000000,
-            avg_latency_ns: 3000000,
+            min_latency_ns: 1_000_000,
+            max_latency_ns: 5_000_000,
+            avg_latency_ns: 3_000_000,
             reachable: true,
         };
 
@@ -397,9 +443,9 @@ mod tests {
         assert_eq!(json_output.get("device_pk").unwrap(), "DevicePubkey123");
         assert_eq!(json_output.get("device_code").unwrap(), "device1");
         assert_eq!(json_output.get("device_ip").unwrap(), "5.6.7.8");
-        assert_eq!(json_output.get("min_latency_ns").unwrap(), 1000000);
-        assert_eq!(json_output.get("max_latency_ns").unwrap(), 5000000);
-        assert_eq!(json_output.get("avg_latency_ns").unwrap(), 3000000);
+        assert_eq!(json_output.get("min_latency_ns").unwrap(), 1_000_000);
+        assert_eq!(json_output.get("max_latency_ns").unwrap(), 5_000_000);
+        assert_eq!(json_output.get("avg_latency_ns").unwrap(), 3_000_000);
         assert_eq!(json_output.get("reachable").unwrap(), true);
     }
 
@@ -513,7 +559,7 @@ mod tests {
         let status = StatusResponse {
             doublezero_status: DoubleZeroStatus {
                 session_status: "BGP Session Up".to_string(),
-                last_session_update: Some(1625247600),
+                last_session_update: Some(1_625_247_600),
             },
             tunnel_name: Some("doublezero1".to_string()),
             tunnel_src: Some("10.0.0.1".to_string()),
@@ -568,6 +614,6 @@ mod tests {
         assert_eq!(json_output.get("doublezero_ip").unwrap(), "10.1.2.3");
         assert_eq!(json_output.get("user_type").unwrap(), "IBRL");
         assert_eq!(dz_status.get("session_status").unwrap(), "BGP Session Up");
-        assert_eq!(dz_status.get("last_session_update").unwrap(), 1625247600);
+        assert_eq!(dz_status.get("last_session_update").unwrap(), 1_625_247_600);
     }
 }

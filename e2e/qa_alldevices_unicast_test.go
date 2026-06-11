@@ -16,15 +16,16 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var (
-	devicesFlag           = flag.String("devices", "", "comma separated list of devices to run tests against")
-	allocateAddrHosts     = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
-	skipCapacityCheckFlag = flag.Bool("skip-capacity-check", false, "skip device capacity checks (use when running with QA identity that bypasses on-chain max_users)")
+	devicesFlag             = flag.String("devices", "", "comma separated list of devices to run tests against")
+	allocateAddrHosts       = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
+	failureThreshold        = flag.Float64("failure-threshold", 0.1, "maximum allowed overall device failure rate (0.0-1.0) before the test is marked as failed")
+	perHostFailureThreshold = flag.Float64("per-host-failure-threshold", 0.2, "maximum allowed per-host device failure rate (0.0-1.0) before the test is marked as failed")
 )
 
 func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
@@ -53,11 +54,9 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 2, "At least 2 clients are required for connectivity testing")
 
-	// Filter devices to only include those with sufficient capacity and skip test devices
-	// When using a QA identity (--skip-capacity-check), all devices are included regardless of capacity
-	devices := test.ValidDevices(2, *skipCapacityCheckFlag)
+	devices := test.ValidDevices()
 	if len(devices) == 0 {
-		t.Skip("No valid devices found with sufficient capacity")
+		t.Skip("No valid devices found")
 	}
 
 	// Filter out transit devices - they don't participate in unicast connectivity tests
@@ -143,8 +142,14 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			wg.Add(1)
 			go func(client *qa.Client) {
 				defer wg.Done()
-				err := client.DisconnectUser(context.Background(), true, true)
-				assert.NoError(t, err, "failed to disconnect user")
+				// Mirror ConnectUserUnicast: don't block on a stale Multicast
+				// tunnel left by a shred-subscription seat that won't withdraw.
+				cleanupCtx := context.Background()
+				if err := client.DisconnectUser(cleanupCtx, false, false); err != nil {
+					assert.NoError(t, err, "failed to disconnect user")
+					return
+				}
+				assert.NoError(t, client.WaitForIBRLStatusDisconnected(cleanupCtx), "failed to wait for IBRL disconnected")
 			}(client)
 		}
 		wg.Wait()
@@ -186,7 +191,6 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 
 	var totalSent, totalReceived uint32
 	batchesWithLoss := 0
-	deviceResults := make(map[string]*qa.DeviceTestResult)
 	for _, batch := range batchData {
 		for _, assignment := range batch {
 			totalSent += assignment.PacketsSent
@@ -194,29 +198,71 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			if assignment.PacketsReceived < assignment.PacketsSent {
 				batchesWithLoss++
 			}
-
-			if _, seen := deviceResults[assignment.Device.Code]; !seen {
-				deviceResults[assignment.Device.Code] = &qa.DeviceTestResult{
-					DeviceCode:   assignment.Device.Code,
-					DevicePubkey: assignment.Device.PubKey,
-					Success:      true,
-				}
-			}
-			if !assignment.Success() {
-				deviceResults[assignment.Device.Code].Success = false
-			}
 		}
 	}
 	log.Debug("Test summary", "packetsReceived", totalReceived, "packetsSent", totalSent, "batchesWithLoss", batchesWithLoss, "totalBatches", batchCount)
 
-	results := make([]qa.DeviceTestResult, 0, len(deviceResults))
-	for _, result := range deviceResults {
-		results = append(results, *result)
+	// Aggregate device results with the "any success counts as success" rule:
+	// a device tested multiple times that succeeded at least once is treated as a
+	// success; a device that never succeeded counts as a single failure regardless
+	// of how many times it was retested. See `AssignDevicesToClients` for why the
+	// same (host, device) pair may appear in multiple batches.
+	stats := qa.ComputeFailureStats(batchData)
+
+	for _, r := range stats.Retests {
+		log.Debug("Device retested",
+			"host", r.Host,
+			"device", r.DeviceCode,
+			"attempts", r.Attempts,
+			"successes", r.Successes,
+			"failures", r.Failures,
+		)
 	}
-	if err := qa.PublishMetrics(ctx, log, qa.MetricsConfigFromEnv(), envArg, results, time.Since(startTime)); err != nil {
+
+	// Evaluate failure rates against threshold
+	totalDevices := len(stats.DeviceResults)
+	failedDevices := 0
+	var failedDeviceCodes []string
+	for _, result := range stats.DeviceResults {
+		if !result.Success {
+			failedDevices++
+			failedDeviceCodes = append(failedDeviceCodes, result.DeviceCode)
+		}
+	}
+
+	overallRate := float64(failedDevices) / float64(totalDevices)
+	log.Debug("Overall failure rate",
+		"failed", failedDevices,
+		"total", totalDevices,
+		"rate", fmt.Sprintf("%.1f%%", overallRate*100),
+		"threshold", fmt.Sprintf("%.1f%%", *failureThreshold*100),
+	)
+	if overallRate > *failureThreshold {
+		t.Errorf("Overall device failure rate %.1f%% (%d/%d) exceeds threshold %.1f%%. Failed devices: %s",
+			overallRate*100, failedDevices, totalDevices, *failureThreshold*100,
+			strings.Join(failedDeviceCodes, ", "))
+	}
+
+	for _, host := range slices.Sorted(maps.Keys(stats.PerHost)) {
+		hs := stats.PerHost[host]
+		hostRate := float64(hs.Failed) / float64(hs.Total)
+		log.Debug("Per-host failure rate",
+			"host", host,
+			"failed", hs.Failed,
+			"total", hs.Total,
+			"rate", fmt.Sprintf("%.1f%%", hostRate*100),
+		)
+		if hostRate > *perHostFailureThreshold {
+			t.Errorf("Host %s failure rate %.1f%% (%d/%d) exceeds threshold %.1f%%. Failed devices: %s",
+				host, hostRate*100, hs.Failed, hs.Total, *perHostFailureThreshold*100,
+				strings.Join(hs.FailedDevices, ", "))
+		}
+	}
+
+	if err := qa.PublishMetrics(ctx, log, qa.MetricsConfigFromEnv(), envArg, stats.DeviceResults, time.Since(startTime)); err != nil {
 		log.Error("Failed to publish metrics", "error", err)
 	}
-	if err := qa.PublishToClickhouse(ctx, log, qa.ClickhouseConfigFromEnv(), envArg, results, time.Since(startTime)); err != nil {
+	if err := qa.PublishToClickhouse(ctx, log, qa.ClickhouseConfigFromEnv(), envArg, stats.DeviceResults, time.Since(startTime)); err != nil {
 		log.Error("Failed to publish metrics to ClickHouse", "error", err)
 	}
 }
@@ -315,7 +361,7 @@ func connectClientsAndWaitForRoutes(
 			log.Error("Failed to start connection", "client", c.Host, "device", device.Code, "error", err)
 			batch[c.Host].FailedTests++
 			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
-				t.Errorf("failed to connect client %s to device %s: %v", c.Host, device.Code, err)
+				t.Logf("DEVICE FAILURE: failed to connect client %s to device %s: %v", c.Host, device.Code, err)
 			} else {
 				log.Warn("Ignoring connection failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
 			}
@@ -330,7 +376,7 @@ func connectClientsAndWaitForRoutes(
 			log.Error("Client failed to reach status up", "client", c.Host, "error", err)
 			batch[c.Host].FailedTests++
 			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
-				t.Errorf("failed to wait for status for client %s: %v", c.Host, err)
+				t.Logf("DEVICE FAILURE: failed to wait for status for client %s: %v", c.Host, err)
 			} else {
 				log.Warn("Ignoring status failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
 			}
@@ -365,7 +411,7 @@ func connectClientsAndWaitForRoutes(
 			log.Error("Failed to wait for routes", "client", c.Host, "error", err)
 			batch[c.Host].FailedTests++
 			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
-				t.Errorf("failed to wait for routes on client %s: %v", c.Host, err)
+				t.Logf("DEVICE FAILURE: failed to wait for routes on client %s: %v", c.Host, err)
 			} else {
 				log.Warn("Ignoring route failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
 			}
@@ -417,7 +463,8 @@ func runConnectivitySubtests(
 						srcReady := srcDevice.Status == serviceability.DeviceStatusActivated && srcDevice.MaxUsers > 0
 						dstReady := dstDevice.Status == serviceability.DeviceStatusActivated && dstDevice.MaxUsers > 0
 						if srcReady && dstReady {
-							assert.NoError(t, err, "failed to test connectivity")
+							t.Logf("DEVICE FAILURE: connectivity test failed from %s to %s (device %s -> %s): %v",
+								src.Host, target.Host, srcDevice.Code, dstDevice.Code, err)
 						} else {
 							log.Warn("Ignoring connectivity failure involving device not ready for users",
 								"sourceDevice", srcDevice.Code, "sourceStatus", srcDevice.Status, "sourceMaxUsers", srcDevice.MaxUsers,

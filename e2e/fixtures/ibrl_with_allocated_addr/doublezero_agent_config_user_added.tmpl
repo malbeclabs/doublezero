@@ -57,8 +57,11 @@ ip access-list MAIN-CONTROL-PLANE-ACL
 system control-plane
    ip access-group MAIN-CONTROL-PLANE-ACL in
 !
+management api gnmi
+   provider eos-native
+!
 interface Ethernet2
-   mtu 2048
+   mtu 9000
    no switchport
    ip address {{.Ethernet2IP}}
    pim ipv4 sparse-mode
@@ -71,7 +74,7 @@ interface Ethernet2
    isis network point-to-point
 !
 interface Ethernet4
-   mtu 2048
+   mtu 9000
    no switchport
    ip address {{.Ethernet4IP}}
    pim ipv4 sparse-mode
@@ -84,7 +87,7 @@ interface Ethernet4
    isis network point-to-point
 !
 interface Ethernet5
-   mtu 2048
+   mtu 9000
    no switchport
    ip address {{.Ethernet5IP}}
    pim ipv4 sparse-mode
@@ -97,7 +100,7 @@ interface Ethernet5
    isis network point-to-point
 !
 interface Ethernet6
-   mtu 2048
+   mtu 9000
    no switchport
    ip address {{.Ethernet6IP}}
    pim ipv4 sparse-mode
@@ -119,7 +122,7 @@ interface Loopback256
    isis enable 1
 !
 interface Vlan4001
-   mtu 2048
+   mtu 9000
    ip address {{.Vlan4001IP}}
    pim ipv4 sparse-mode
    isis enable 1

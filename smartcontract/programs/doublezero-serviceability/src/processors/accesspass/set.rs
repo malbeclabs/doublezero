@@ -4,7 +4,7 @@ use crate::{
     seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
-        accesspass::{AccessPass, AccessPassStatus, AccessPassType, ALLOW_MULTIPLE_IP, IS_DYNAMIC},
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType, ALLOW_MULTIPLE_IP},
         accounttype::AccountType,
         globalstate::GlobalState,
         tenant::Tenant,
@@ -28,7 +28,7 @@ use std::net::Ipv4Addr;
 
 // Value to rent exempt two `User` accounts + configurable amount for connect/disconnect txns
 // `User` account size assumes a single publisher and subscriber pubkey registered
-const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 240 * 3; // 240 bytes per User account x 3 accounts = 720 bytes
+const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 266 * 3; // 266 bytes per User account x 3 accounts = 798 bytes
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct SetAccessPassArgs {
@@ -37,14 +37,23 @@ pub struct SetAccessPassArgs {
     pub client_ip: Ipv4Addr, // 4
     pub last_access_epoch: u64,          // 8
     pub allow_multiple_ip: bool,         // 1
+    #[incremental(default = 1)]
+    pub max_unicast_users: u16, // 2
+    #[incremental(default = 1)]
+    pub max_multicast_users: u16, // 2
 }
 
 impl fmt::Debug for SetAccessPassArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "accesspass_type: {}, ip: {}, last_access_epoch: {}, allow_multiple_ip: {}",
-            self.accesspass_type, self.client_ip, self.last_access_epoch, self.allow_multiple_ip,
+            "accesspass_type: {}, ip: {}, last_access_epoch: {}, allow_multiple_ip: {}, max_unicast_users: {}, max_multicast_users: {}",
+            self.accesspass_type,
+            self.client_ip,
+            self.last_access_epoch,
+            self.allow_multiple_ip,
+            self.max_unicast_users,
+            self.max_multicast_users,
         )
     }
 }
@@ -107,12 +116,33 @@ pub fn process_set_access_pass(
         "Invalid System Program Account Owner"
     );
 
-    // Parse the global state account & check if the payer is in the allowlist
+    // Parse the global state account & resolve authorization. A caller is allowed if any of:
+    //   - they are the sentinel authority,
+    //   - they are the feed authority,
+    //   - they are in the foundation allowlist, or
+    //   - they are an administrator of the tenant being added (tenant_add_account).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if globalstate.sentinel_authority_pk != *payer_account.key
-        && globalstate.feed_authority_pk != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
+
+    let is_privileged = globalstate.sentinel_authority_pk == *payer_account.key
+        || globalstate.feed_authority_pk == *payer_account.key
+        || globalstate.foundation_allowlist.contains(payer_account.key);
+
+    // Pre-deserialize the tenant_add account when present so we can both authorize the caller
+    // and later increment its reference_count without double-reading it.
+    let tenant_add_pre = match tenant_add_account {
+        Some(acc) if acc.key != &Pubkey::default() => {
+            assert_eq!(*acc.owner, *program_id, "Invalid Tenant Add Account Owner");
+            Some(Tenant::try_from(acc)?)
+        }
+        _ => None,
+    };
+
+    let is_tenant_admin = tenant_add_pre
+        .as_ref()
+        .map(|t| t.administrators.contains(payer_account.key))
+        .unwrap_or(false);
+
+    if !is_privileged && !is_tenant_admin {
         msg!(
             "sentinel_authority_pk: {} feed_authority_pk: {} payer: {} foundation_allowlist: {:?}",
             globalstate.sentinel_authority_pk,
@@ -139,9 +169,6 @@ pub fn process_set_access_pass(
 
     // Flags
     let mut flags = 0;
-    if value.client_ip == Ipv4Addr::UNSPECIFIED {
-        flags |= IS_DYNAMIC;
-    }
     if value.allow_multiple_ip {
         flags |= ALLOW_MULTIPLE_IP;
     }
@@ -166,6 +193,10 @@ pub fn process_set_access_pass(
                 vec![]
             },
             flags,
+            unicast_user_count: 0,
+            max_unicast_users: value.max_unicast_users,
+            multicast_user_count: 0,
+            max_multicast_users: value.max_multicast_users,
         };
 
         try_acc_create(
@@ -219,13 +250,20 @@ pub fn process_set_access_pass(
                 mgroup_pub_allowlist: vec![],
                 mgroup_sub_allowlist: vec![],
                 tenant_allowlist: vec![],
+                unicast_user_count: 0,
+                max_unicast_users: value.max_unicast_users,
+                multicast_user_count: 0,
+                max_multicast_users: value.max_multicast_users,
             }
         };
 
-        // Update fields
+        // Update fields. The max caps are overwritten from args; the live counts are left
+        // untouched so an in-flight pass keeps its current seat usage.
         accesspass.accesspass_type = value.accesspass_type.clone();
         accesspass.last_access_epoch = value.last_access_epoch;
         accesspass.flags = flags;
+        accesspass.max_unicast_users = value.max_unicast_users;
+        accesspass.max_multicast_users = value.max_multicast_users;
 
         if let Some(tenant_remove) = tenant_remove_account {
             accesspass
@@ -250,7 +288,6 @@ pub fn process_set_access_pass(
     // Manage tenant reference counting for added/removed tenants (if provided)
     if let Some(tenant_remove_acc) = tenant_remove_account {
         if tenant_remove_acc.key != &Pubkey::default() {
-            // Validate removed tenant account
             assert_eq!(
                 *tenant_remove_acc.owner, *program_id,
                 "Invalid Tenant Remove Account Owner"
@@ -260,6 +297,19 @@ pub fn process_set_access_pass(
                 "Tenant Remove Account is not writable"
             );
             let mut tenant_remove = Tenant::try_from(tenant_remove_acc)?;
+
+            // Non-privileged callers may only remove a tenant they administer. Privileged
+            // callers (sentinel/feed/foundation) retain unrestricted removal authority to
+            // preserve prior behavior.
+            if !is_privileged && !tenant_remove.administrators.contains(payer_account.key) {
+                msg!(
+                    "Payer {} is not an administrator of tenant {} being removed",
+                    payer_account.key,
+                    tenant_remove_acc.key
+                );
+                return Err(DoubleZeroError::NotAllowed.into());
+            }
+
             tenant_remove.reference_count = tenant_remove.reference_count.saturating_sub(1);
             try_acc_write(&tenant_remove, tenant_remove_acc, payer_account, accounts)?;
         }
@@ -267,18 +317,17 @@ pub fn process_set_access_pass(
 
     if let Some(tenant_add_acc) = tenant_add_account {
         if tenant_add_acc.key != &Pubkey::default() {
-            // Validate added tenant account
-            assert_eq!(
-                *tenant_add_acc.owner, *program_id,
-                "Invalid Tenant Add Account Owner"
-            );
+            // We deserialized the tenant up front for authorization. Take it back here
+            // so we can mutate and persist the updated reference_count.
+            let mut tenant_add =
+                tenant_add_pre.expect("tenant_add_pre is Some when tenant_add_acc is non-default");
             assert!(
                 tenant_add_acc.is_writable,
                 "Tenant Add Account is not writable"
             );
-            let mut tenant_add = Tenant::try_from(tenant_add_acc)?;
 
-            // Validate payer is administrator of the tenant
+            // Foundation/sentinel/feed callers must still administer the tenant they add,
+            // matching the prior behavior.
             if !tenant_add.administrators.contains(payer_account.key) {
                 msg!(
                     "Payer {} is not an administrator of tenant {}",
@@ -296,11 +345,21 @@ pub fn process_set_access_pass(
         }
     }
 
-    // Airdrop rent exempt + configured lamports to user_payer account
-    let deposit = Rent::get()
+    // Airdrop rent exempt + configured lamports to user_payer account. For passes that allow
+    // multiple IPs (e.g. seat keypairs that provision many nodes), scale the target by the sum of
+    // the per-category caps so the keypair holds enough SOL to pay for every create_user it admits.
+    // Passes without the flag keep today's fixed (1x) airdrop.
+    let base_target = Rent::get()
         .unwrap()
         .minimum_balance(AIRDROP_USER_RENT_LAMPORTS_BYTES)
-        .saturating_add(globalstate.user_airdrop_lamports)
+        .saturating_add(globalstate.user_airdrop_lamports);
+    let multiplier = if value.allow_multiple_ip {
+        (value.max_unicast_users as u64).saturating_add(value.max_multicast_users as u64)
+    } else {
+        1
+    };
+    let deposit = base_target
+        .saturating_mul(multiplier)
         .saturating_sub(user_payer.lamports());
 
     msg!("Airdropping {} lamports to user account", deposit);
@@ -351,6 +410,11 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         // User with 1 subscriber only (publisher use case)
@@ -372,6 +436,11 @@ mod tests {
             subscribers: vec![Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         // User with both 1 publisher and 1 subscriber (future simultaneous pub/sub)
@@ -393,6 +462,11 @@ mod tests {
             subscribers: vec![Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let size_with_publisher = borsh::object_length(&user_with_publisher).unwrap();
@@ -400,25 +474,25 @@ mod tests {
         let size_with_both = borsh::object_length(&user_with_both).unwrap();
 
         // Verify our understanding of the sizes
-        // Base User size (empty vecs) = 176 bytes
+        // Base User size (empty vecs) = 202 bytes (includes tunnel_flags, bgp_status, last_bgp_up_at, last_bgp_reported_at, bgp_rtt_ns)
         // Each Pubkey in publishers/subscribers adds 32 bytes
         assert_eq!(
-            size_with_publisher, 208,
-            "User with 1 publisher should be 208 bytes"
+            size_with_publisher, 234,
+            "User with 1 publisher should be 234 bytes"
         );
         assert_eq!(
-            size_with_subscriber, 208,
-            "User with 1 subscriber should be 208 bytes"
+            size_with_subscriber, 234,
+            "User with 1 subscriber should be 234 bytes"
         );
         assert_eq!(
-            size_with_both, 240,
-            "User with 1 publisher + 1 subscriber should be 240 bytes"
+            size_with_both, 266,
+            "User with 1 publisher + 1 subscriber should be 266 bytes"
         );
 
-        // The constant should be sized for 3 accounts with both pub+sub (240 * 3 = 720)
+        // The constant should be sized for 3 accounts with both pub+sub (266 * 3 = 798)
         assert_eq!(
             AIRDROP_USER_RENT_LAMPORTS_BYTES,
-            240 * 3,
+            266 * 3,
             "AIRDROP_USER_RENT_LAMPORTS_BYTES should be sized for 3 User accounts with pub+sub"
         );
 

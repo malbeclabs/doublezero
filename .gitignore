@@ -23,6 +23,7 @@ revdist-cli
 .env
 
 dist/
+build/
 node_modules/
 __pycache__/
 .pytest_cache/

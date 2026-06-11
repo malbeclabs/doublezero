@@ -58,6 +58,16 @@
       "typ": "u32"
     },
     {
+      "name": "AgentVersion",
+      "value": "1.0.0-test",
+      "typ": "string"
+    },
+    {
+      "name": "AgentCommit",
+      "value": "abcd1234",
+      "typ": "string"
+    },
+    {
       "name": "SamplesCount",
       "value": "5",
       "typ": "u32"

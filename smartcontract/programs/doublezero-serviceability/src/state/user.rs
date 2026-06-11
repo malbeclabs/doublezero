@@ -2,7 +2,7 @@ use crate::{
     error::{DoubleZeroError, Validate},
     helper::{deserialize_vec_with_capacity, is_global},
     state::{
-        accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+        accesspass::{AccessPass, AccessPassType},
         accounttype::AccountType,
     },
 };
@@ -37,6 +37,30 @@ impl From<u8> for UserType {
             _ => panic!("Unknown UserType"),
         }
     }
+}
+
+impl UserType {
+    /// Whether connecting as this user type is gated by the access-pass epoch.
+    ///
+    /// Multicast access (publisher or subscriber) is governed by the access-pass
+    /// `mgroup_*_allowlist`, not by `last_access_epoch`, so multicast users are
+    /// exempt. All other (unicast) user types are epoch-gated.
+    pub fn is_epoch_gated(&self) -> bool {
+        *self != UserType::Multicast
+    }
+}
+
+/// Whether a user of `user_type` may connect given the access-pass epoch.
+///
+/// Multicast users are always allowed (allowlist-gated). Unicast users require
+/// `last_access_epoch >= current_epoch`; in particular `last_access_epoch == 0`
+/// (no epoch defined) blocks every unicast type.
+pub fn epoch_allows_connection(
+    user_type: UserType,
+    last_access_epoch: u64,
+    current_epoch: u64,
+) -> bool {
+    !user_type.is_epoch_gated() || last_access_epoch >= current_epoch
 }
 
 impl fmt::Display for UserType {
@@ -95,31 +119,31 @@ impl fmt::Display for UserCYOA {
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UserStatus {
+    PendingDeprecated = 0, // deprecated; unreachable for new accounts
     #[default]
-    Pending = 0,
     Activated = 1,
-    SuspendedDeprecated = 2, // deprecated
+    SuspendedDeprecated = 2,
     Deleting = 3,
-    Rejected = 4,
-    PendingBan = 5,
+    RejectedDeprecated = 4,   // deprecated; unreachable for new accounts
+    PendingBanDeprecated = 5, // deprecated
     Banned = 6,
-    Updating = 7,
+    UpdatingDeprecated = 7, // deprecated intermediate state
     OutOfCredits = 8,
 }
 
 impl From<u8> for UserStatus {
     fn from(value: u8) -> Self {
         match value {
-            0 => UserStatus::Pending,
+            0 => UserStatus::PendingDeprecated,
             1 => UserStatus::Activated,
             2 => UserStatus::SuspendedDeprecated,
             3 => UserStatus::Deleting,
-            4 => UserStatus::Rejected,
-            5 => UserStatus::PendingBan,
+            4 => UserStatus::RejectedDeprecated,
+            5 => UserStatus::PendingBanDeprecated,
             6 => UserStatus::Banned,
-            7 => UserStatus::Updating,
+            7 => UserStatus::UpdatingDeprecated,
             8 => UserStatus::OutOfCredits,
-            _ => UserStatus::Pending,
+            _ => UserStatus::PendingDeprecated,
         }
     }
 }
@@ -127,16 +151,60 @@ impl From<u8> for UserStatus {
 impl fmt::Display for UserStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UserStatus::Pending => write!(f, "pending"),
+            UserStatus::PendingDeprecated => write!(f, "pending (deprecated)"),
             UserStatus::Activated => write!(f, "activated"),
-            UserStatus::SuspendedDeprecated => write!(f, "suspended"),
+            UserStatus::SuspendedDeprecated => write!(f, "suspended (deprecated)"),
             UserStatus::Deleting => write!(f, "deleting"),
-            UserStatus::Rejected => write!(f, "rejected"),
-            UserStatus::PendingBan => write!(f, "pending ban"),
-            UserStatus::Updating => write!(f, "updating"),
+            UserStatus::RejectedDeprecated => write!(f, "rejected (deprecated)"),
+            UserStatus::PendingBanDeprecated => write!(f, "pending ban (deprecated)"),
+            UserStatus::UpdatingDeprecated => write!(f, "updating (deprecated)"),
             UserStatus::Banned => write!(f, "banned"),
             UserStatus::OutOfCredits => write!(f, "out_of_credits"),
         }
+    }
+}
+
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum BGPStatus {
+    #[default]
+    Unknown = 0,
+    Up = 1,
+    Down = 2,
+}
+
+impl fmt::Display for BGPStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BGPStatus::Unknown => write!(f, "unknown"),
+            BGPStatus::Up => write!(f, "up"),
+            BGPStatus::Down => write!(f, "down"),
+        }
+    }
+}
+
+/// Bitflags stored in [`User::tunnel_flags`] to record durable tunnel
+/// properties that cannot be derived from mutable state at delete time.
+#[repr(u8)]
+pub enum TunnelFlags {
+    /// The user was activated as a multicast publisher (had non-empty
+    /// publishers list at activation time). Used at delete/close time to
+    /// correctly decrement device counters, since the publishers list is
+    /// always empty by then.
+    CreatedAsPublisher = 1,
+}
+
+impl TunnelFlags {
+    /// Returns `true` if `flag` is set in `flags`.
+    pub fn is_set(flags: u8, flag: TunnelFlags) -> bool {
+        flags & (flag as u8) != 0
+    }
+
+    /// Returns `flags` with `flag` set.
+    pub fn set(flags: u8, flag: TunnelFlags) -> u8 {
+        flags | (flag as u8)
     }
 }
 
@@ -203,6 +271,17 @@ pub struct User {
     pub validator_pubkey: Pubkey, // 32
     /// Tunnel endpoint IP (device-side GRE endpoint). 0.0.0.0 means use device.public_ip for backwards compatibility.
     pub tunnel_endpoint: Ipv4Addr, // 4
+    /// Bitflags recording durable tunnel properties. See [`TunnelFlags`].
+    pub tunnel_flags: u8, // 1
+    /// BGP session status as last reported by the device agent.
+    pub bgp_status: BGPStatus, // 1
+    /// Slot number of the most recent BGP session up event.
+    pub last_bgp_up_at: u64, // 8
+    /// Slot number of the most recent BGP status report from the device agent.
+    pub last_bgp_reported_at: u64, // 8
+    /// Smoothed BGP TCP RTT in nanoseconds, sourced from the kernel via INET_DIAG.
+    /// 0 means no sample has been observed yet. Same unit as `Link.delay_ns`.
+    pub bgp_rtt_ns: u64, // 8
 }
 
 impl fmt::Display for User {
@@ -250,6 +329,11 @@ impl TryFrom<&[u8]> for User {
             // Tunnel endpoint - defaults to 0.0.0.0 for backwards compatibility (use device.public_ip)
             tunnel_endpoint: BorshDeserialize::deserialize(&mut data)
                 .unwrap_or([0, 0, 0, 0].into()),
+            tunnel_flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bgp_status: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            last_bgp_up_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            last_bgp_reported_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bgp_rtt_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::User {
@@ -299,17 +383,22 @@ impl Validate for User {
             return Err(DoubleZeroError::InvalidClientIp);
         }
         // dz_ip must be global unicast
-        if self.status != UserStatus::Pending && !is_global(self.dz_ip) {
+        if !is_global(self.dz_ip) {
             msg!("dz_ip: {}", self.dz_ip);
             return Err(DoubleZeroError::InvalidDzIp);
         }
         // tunnel net must be private
-        if self.status != UserStatus::Pending && !self.tunnel_net.ip().is_link_local() {
+        if !self.tunnel_net.ip().is_link_local() {
             msg!("tunnel_net: {}", self.tunnel_net);
             return Err(DoubleZeroError::InvalidTunnelNet);
         }
-        // tunnel_id must be less than or equal to 1024
-        if self.tunnel_id > 1024 {
+        // tunnel_id must lie within the per-device TunnelIds resource extension
+        // range, which the resource module sizes as [500, 4596) — see
+        // crate::processors::resource::mod.rs. The previous cap of 1024 admitted
+        // only the first ~525 tunnels (500..=1024) per device, blocking the
+        // stress harness from exercising the device past that count even
+        // though the bitmap has 4 096 slots.
+        if self.tunnel_id >= 4596 {
             msg!("tunnel_id: {}", self.tunnel_id);
             return Err(DoubleZeroError::InvalidTunnelId);
         }
@@ -386,11 +475,10 @@ impl User {
             _ => Pubkey::default(),
         };
 
-        self.status = if accesspass.status == AccessPassStatus::Expired {
-            UserStatus::OutOfCredits
-        } else {
-            UserStatus::Activated
-        };
+        // Access-pass epoch expiry is deprecated and no longer demotes users.
+        // Epoch is enforced at creation for unicast users only (see
+        // create_user_core); multicast access is governed by mgroup_*_allowlist.
+        self.status = UserStatus::Activated;
 
         Ok(())
     }
@@ -431,7 +519,7 @@ mod tests {
             val.tunnel_net,
             NetworkV4::new(Ipv4Addr::new(0, 0, 0, 0), 0).unwrap()
         );
-        assert_eq!(val.status, UserStatus::Pending);
+        assert_eq!(val.status, UserStatus::Activated);
         assert_eq!(val.publishers, Vec::<Pubkey>::new());
         assert_eq!(val.subscribers, Vec::<Pubkey>::new());
         assert_eq!(val.validator_pubkey, Pubkey::default());
@@ -457,6 +545,11 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -504,6 +597,11 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let err = val.validate();
@@ -531,6 +629,11 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -557,6 +660,11 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -583,6 +691,11 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -609,6 +722,11 @@ mod tests {
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -628,13 +746,18 @@ mod tests {
             cyoa_type: UserCYOA::GREOverDIA,
             dz_ip: [3, 2, 4, 2].into(),
             client_ip: [1, 2, 3, 4].into(),
-            tunnel_id: 2048, // Invalid
+            tunnel_id: 4596, // Invalid: at/above the per-device TunnelIds resource extension's upper bound
             tunnel_net: "169.254.0.0/25".parse().unwrap(),
             status: UserStatus::Activated,
             publishers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             subscribers: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -662,6 +785,11 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::new_unique(),
             tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // Private IP - invalid
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -670,6 +798,11 @@ mod tests {
         // Test with loopback IP (should fail validation)
         let val_loopback = User {
             tunnel_endpoint: Ipv4Addr::new(127, 0, 0, 1), // Loopback - invalid
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
             ..val.clone()
         };
         let err = val_loopback.validate();
@@ -679,6 +812,11 @@ mod tests {
         // Test with link-local IP (should fail validation)
         let val_link_local = User {
             tunnel_endpoint: Ipv4Addr::new(169, 254, 1, 1), // Link-local - invalid
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
             ..val.clone()
         };
         let err = val_link_local.validate();
@@ -688,6 +826,11 @@ mod tests {
         // Test with UNSPECIFIED (0.0.0.0) - should pass (backwards compat)
         let val_unspecified = User {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
             ..val.clone()
         };
         assert!(val_unspecified.validate().is_ok());
@@ -695,6 +838,11 @@ mod tests {
         // Test with global IP - should pass
         let val_global = User {
             tunnel_endpoint: Ipv4Addr::new(8, 8, 8, 8), // Global IP - valid
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
             ..val
         };
         assert!(val_global.validate().is_ok());
@@ -719,11 +867,16 @@ mod tests {
             dz_ip: [192, 168, 1, 1].into(),
             tunnel_id: 0,
             tunnel_net: NetworkV4::default(),
-            status: UserStatus::Pending,
+            status: UserStatus::Activated,
             publishers: vec![],
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         }
     }
 
@@ -862,6 +1015,11 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 1), // invalid: private IP
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         assert!(val.validate().is_ok());
@@ -890,5 +1048,234 @@ mod tests {
         // But if they're also a subscriber, they DO need multicast
         user.subscribers.push(Pubkey::new_unique());
         assert!(user.needs_multicast());
+    }
+
+    #[test]
+    fn test_tunnel_flags_defaults_to_zero_for_old_accounts() {
+        // Simulate an old serialized User account that does not have the tunnel_flags byte.
+        // Build a User, serialize it, strip the last byte (the new field), then deserialize.
+        // The field must default to 0.
+        let user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::Multicast,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::None,
+            client_ip: [1, 2, 3, 4].into(),
+            dz_ip: [1, 2, 3, 4].into(),
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: TunnelFlags::CreatedAsPublisher as u8,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
+        };
+        let data = borsh::to_vec(&user).unwrap();
+        // Remove tunnel_flags (1) + bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
+        // + bgp_rtt_ns (8) to simulate an old account that predates tunnel_flags.
+        let old_data = &data[..data.len() - 26];
+        let deserialized = User::try_from(old_data).unwrap();
+        assert_eq!(
+            deserialized.tunnel_flags, 0,
+            "Old accounts must default tunnel_flags to 0"
+        );
+        assert_eq!(
+            deserialized.bgp_status,
+            BGPStatus::Unknown,
+            "Old accounts must default bgp_status to Unknown"
+        );
+        assert_eq!(
+            deserialized.last_bgp_up_at, 0,
+            "Old accounts must default last_bgp_up_at to 0"
+        );
+        assert_eq!(
+            deserialized.last_bgp_reported_at, 0,
+            "Old accounts must default last_bgp_reported_at to 0"
+        );
+        assert_eq!(
+            deserialized.bgp_rtt_ns, 0,
+            "Old accounts must default bgp_rtt_ns to 0"
+        );
+    }
+
+    #[test]
+    fn test_tunnel_flags_roundtrip() {
+        let user = User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::Multicast,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::None,
+            client_ip: [1, 2, 3, 4].into(),
+            dz_ip: [5, 6, 7, 8].into(),
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: TunnelFlags::CreatedAsPublisher as u8,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
+        };
+        let data = borsh::to_vec(&user).unwrap();
+        let deserialized = User::try_from(&data[..]).unwrap();
+        assert!(TunnelFlags::is_set(
+            deserialized.tunnel_flags,
+            TunnelFlags::CreatedAsPublisher
+        ));
+    }
+
+    use crate::state::accesspass::AccessPassStatus;
+
+    fn user_with_type(user_type: UserType) -> User {
+        User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            user_type,
+            device_pk: Pubkey::new_unique(),
+            cyoa_type: UserCYOA::None,
+            client_ip: [1, 2, 3, 4].into(),
+            dz_ip: [5, 6, 7, 8].into(),
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: UserStatus::OutOfCredits,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
+        }
+    }
+
+    fn accesspass_with_epoch(last_access_epoch: u64) -> AccessPass {
+        AccessPass {
+            account_type: AccountType::AccessPass,
+            owner: Pubkey::new_unique(),
+            bump_seed: 1,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: [1, 2, 3, 4].into(),
+            user_payer: Pubkey::new_unique(),
+            last_access_epoch,
+            connection_count: 0,
+            status: AccessPassStatus::Requested,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            flags: 0,
+            tenant_allowlist: vec![],
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        }
+    }
+
+    /// Epoch gating applies to unicast user types only; multicast is exempt.
+    #[test]
+    fn test_user_type_is_epoch_gated() {
+        assert!(UserType::IBRL.is_epoch_gated());
+        assert!(UserType::IBRLWithAllocatedIP.is_epoch_gated());
+        assert!(UserType::EdgeFiltering.is_epoch_gated());
+        assert!(!UserType::Multicast.is_epoch_gated());
+    }
+
+    /// Connection decision matrix for the access-pass epoch (current_epoch = 1).
+    ///
+    /// 1) last_access_epoch = 0 blocks IBRL.
+    /// 2) multicast (publisher or subscriber) connects without an epoch check.
+    /// 3) all other (unicast) user types are blocked with last_access_epoch = 0.
+    #[test]
+    fn test_epoch_allows_connection_matrix() {
+        let current_epoch = 1;
+
+        // 1) IBRL with no epoch defined cannot connect.
+        assert!(!epoch_allows_connection(UserType::IBRL, 0, current_epoch));
+
+        // 2) Multicast connects regardless of epoch (covers publisher + subscriber:
+        //    both use UserType::Multicast).
+        assert!(epoch_allows_connection(
+            UserType::Multicast,
+            0,
+            current_epoch
+        ));
+        assert!(epoch_allows_connection(
+            UserType::Multicast,
+            u64::MAX,
+            current_epoch
+        ));
+
+        // 3) Other unicast types with no epoch defined cannot connect.
+        assert!(!epoch_allows_connection(
+            UserType::IBRLWithAllocatedIP,
+            0,
+            current_epoch
+        ));
+        assert!(!epoch_allows_connection(
+            UserType::EdgeFiltering,
+            0,
+            current_epoch
+        ));
+
+        // Unicast with a current/future epoch is allowed.
+        assert!(epoch_allows_connection(
+            UserType::IBRL,
+            current_epoch,
+            current_epoch
+        ));
+        assert!(epoch_allows_connection(
+            UserType::IBRL,
+            current_epoch + 1,
+            current_epoch
+        ));
+    }
+
+    /// try_activate activates every user type: epoch expiry is deprecated and no
+    /// longer demotes users to OutOfCredits. validator_pubkey is taken from the pass.
+    #[test]
+    fn test_try_activate_always_activates() {
+        for user_type in [
+            UserType::IBRL,
+            UserType::IBRLWithAllocatedIP,
+            UserType::EdgeFiltering,
+            UserType::Multicast,
+        ] {
+            let mut user = user_with_type(user_type);
+            // last_access_epoch = 0 would previously have produced Expired/OutOfCredits.
+            let mut accesspass = accesspass_with_epoch(0);
+            user.try_activate(&mut accesspass).unwrap();
+            assert_eq!(user.status, UserStatus::Activated);
+            // Deprecated status is never produced.
+            assert_ne!(accesspass.status, AccessPassStatus::ExpiredDeprecated);
+        }
+
+        // validator_pubkey is populated from a SolanaValidator access pass.
+        let validator = Pubkey::new_unique();
+        let mut user = user_with_type(UserType::IBRL);
+        let mut accesspass = accesspass_with_epoch(0);
+        accesspass.accesspass_type = AccessPassType::SolanaValidator(validator);
+        user.try_activate(&mut accesspass).unwrap();
+        assert_eq!(user.validator_pubkey, validator);
     }
 }

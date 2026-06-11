@@ -1,9 +1,9 @@
 use crate::{
     doublezerocommand::CliCommand,
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{validate_code, validate_pubkey_or_code},
 };
 use clap::Args;
+use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::tenant::{create::CreateTenantCommand, list::ListTenantCommand};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
@@ -28,9 +28,16 @@ pub struct CreateTenantCliCommand {
 }
 
 impl CreateTenantCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
         let tenants = client.list_tenant(ListTenantCommand {})?;
         if tenants.iter().any(|(_, d)| d.code == self.code) {
@@ -39,13 +46,11 @@ impl CreateTenantCliCommand {
                 self.code
             ));
         }
-        // Create tenant
-        let administrator = {
-            if self.administrator.eq_ignore_ascii_case("me") {
-                client.get_payer()
-            } else {
-                Pubkey::from_str(&self.administrator)?
-            }
+
+        let administrator = if self.administrator.eq_ignore_ascii_case("me") {
+            client.get_payer()
+        } else {
+            Pubkey::from_str(&self.administrator)?
         };
 
         let token_account = self
@@ -54,16 +59,14 @@ impl CreateTenantCliCommand {
             .transpose()?;
 
         let (signature, _pubkey) = client.create_tenant(CreateTenantCommand {
-            code: self.code.clone(),
+            code: self.code,
             administrator,
             token_account,
             metro_routing: self.metro_routing,
             route_liveness: self.route_liveness,
         })?;
 
-        writeln!(out, "Signature: {signature}")?;
-
-        Ok(())
+        print_signature(out, &signature)
     }
 }
 
@@ -74,6 +77,7 @@ mod tests {
         tenant::create::CreateTenantCliCommand,
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
         commands::tenant::{create::CreateTenantCommand, list::ListTenantCommand},
         AccountType,
@@ -109,6 +113,7 @@ mod tests {
             metro_routing: false,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
 
         client
@@ -136,29 +141,32 @@ mod tests {
             .times(1)
             .returning(move |_| Ok((signature, tenant_pubkey)));
 
-        /*****************************************************************************************************/
-        // Duplicate code should fail
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateTenantCliCommand {
-            code: "existing".to_string(),
-            administrator: "me".to_string(),
-            token_account: None,
-            metro_routing: false,
-            route_liveness: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateTenantCliCommand {
+                code: "existing".to_string(),
+                administrator: "me".to_string(),
+                token_account: None,
+                metro_routing: false,
+                route_liveness: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
 
-        // New code should succeed
         let mut output = Vec::new();
-        let res = CreateTenantCliCommand {
-            code: "new-tenant".to_string(),
-            administrator: "me".to_string(),
-            token_account: None,
-            metro_routing: false,
-            route_liveness: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateTenantCliCommand {
+                code: "new-tenant".to_string(),
+                administrator: "me".to_string(),
+                token_account: None,
+                metro_routing: false,
+                route_liveness: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

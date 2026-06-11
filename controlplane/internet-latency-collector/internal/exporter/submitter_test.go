@@ -435,7 +435,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 		}
 
 		key := newTestPartitionKey()
-		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](sdktelemetry.MaxSamplesPerBatch)
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](sdktelemetry.MaxInternetLatencySamplesPerBatch)
 
 		// Set up the submitter.
 		submitter, err := exporter.NewSubmitter(log, &exporter.SubmitterConfig{
@@ -480,7 +480,7 @@ func TestInternetLatency_Submitter(t *testing.T) {
 
 		require.Equal(t, 23, calls, "expected 23 submission calls for 5500 samples with max 245 per call")
 		for i := range 22 {
-			assert.Equal(t, sdktelemetry.MaxSamplesPerBatch, samplesPerCall[i])
+			assert.Equal(t, sdktelemetry.MaxInternetLatencySamplesPerBatch, samplesPerCall[i])
 		}
 		assert.Equal(t, 110, samplesPerCall[22], "last call should contain 110 samples")
 	})

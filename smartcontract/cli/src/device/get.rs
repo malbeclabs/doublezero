@@ -1,5 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::{serializer, types::parse_utils::bandwidth_to_string};
 use doublezero_sdk::{
     commands::{
@@ -47,9 +48,6 @@ struct InterfaceDisplay {
 
 impl From<&Interface> for InterfaceDisplay {
     fn from(iface: &Interface) -> Self {
-        // Convert to current version to ensure all fields are populated, even if the stored version is older
-        let iface = iface.into_current_version();
-
         Self {
             name: iface.name.clone(),
             status: iface.status.to_string(),
@@ -91,6 +89,8 @@ struct DeviceDisplay {
     pub device_type: String,
     pub public_ip: String,
     pub dz_prefixes: String,
+    #[tabled(display = "crate::util::display_string_vec")]
+    pub cyoa_ips: Vec<String>,
     pub metrics_publisher: String,
     pub mgmt_vrf: String,
     #[tabled(skip)]
@@ -113,7 +113,12 @@ struct DeviceDisplay {
 }
 
 impl GetDeviceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (pubkey, device) = client.get_device(GetDeviceCommand {
             pubkey_or_code: self.code,
         })?;
@@ -142,6 +147,12 @@ impl GetDeviceCliCommand {
             device_type: device.device_type.to_string(),
             public_ip: device.public_ip.to_string(),
             dz_prefixes: device.dz_prefixes.to_string(),
+            cyoa_ips: device
+                .interfaces
+                .iter()
+                .filter(|iface| iface.user_tunnel_endpoint)
+                .map(|iface| iface.ip_net.to_string())
+                .collect(),
             metrics_publisher: device.metrics_publisher_pk.to_string(),
             mgmt_vrf: device.mgmt_vrf,
             interfaces: device
@@ -190,6 +201,8 @@ impl GetDeviceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{device::get::GetDeviceCliCommand, tests::utils::create_test_client};
     use doublezero_sdk::{
         commands::{
@@ -243,6 +256,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let contributor = Contributor {
@@ -315,21 +329,26 @@ mod tests {
             .returning(move |_| Ok((exchange_pk, exchange.clone())));
 
         // Expected failure
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = GetDeviceCliCommand {
-            code: Pubkey::new_unique().to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetDeviceCliCommand {
+                code: Pubkey::new_unique().to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err(), "I shouldn't find anything.");
 
         // Expected success (table)
         let mut output = Vec::new();
-        let res = GetDeviceCliCommand {
-            code: device1_pubkey.to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetDeviceCliCommand {
+                code: device1_pubkey.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -349,11 +368,13 @@ mod tests {
 
         // Expected success by pubkey (JSON)
         let mut output = Vec::new();
-        let res = GetDeviceCliCommand {
-            code: device1_pubkey.to_string(),
-            json: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetDeviceCliCommand {
+                code: device1_pubkey.to_string(),
+                json: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(
             res.is_ok(),
             "I should find a device by pubkey with JSON output"
@@ -370,5 +391,6 @@ mod tests {
         assert_eq!(json["location"].as_str().unwrap(), "test-location");
         assert_eq!(json["exchange"].as_str().unwrap(), "test-exchange");
         assert_eq!(json["interfaces"].as_array().unwrap().len(), 0);
+        assert_eq!(json["cyoa_ips"].as_array().unwrap().len(), 0);
     }
 }

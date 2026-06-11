@@ -8,12 +8,22 @@ use std::{
     env, fs,
     io::Write,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 #[cfg(feature = "default-mainnet-beta")]
 const DEFAULT_ENVIRONMENT: Environment = Environment::MainnetBeta;
 #[cfg(not(feature = "default-mainnet-beta"))]
 const DEFAULT_ENVIRONMENT: Environment = Environment::Testnet;
+
+/// The environment the binary defaults to when neither `--env` nor a persisted
+/// config selects one. Build-feature-aware: `Testnet` by default, `MainnetBeta`
+/// under `default-mainnet-beta`. Mirrors the legacy `DZClient::new` defaults
+/// (`default_program_id`, `ClientConfig::default`), which all key off the same
+/// compiled-in environment.
+pub fn default_environment() -> Environment {
+    DEFAULT_ENVIRONMENT
+}
 
 /// Returns the default program ID based on the compiled-in environment.
 pub fn default_program_id() -> Pubkey {
@@ -60,7 +70,7 @@ pub struct ClientConfig {
     pub geo_program_id: Option<String>,
 }
 
-fn default_keypair_path() -> PathBuf {
+pub(crate) fn default_keypair_path() -> PathBuf {
     let mut keypair_path = dirs_next::home_dir().unwrap_or_default();
     keypair_path.extend([".config", "doublezero", "id.json"]);
     keypair_path
@@ -136,24 +146,22 @@ pub fn convert_ws_moniker(url: String) -> String {
 }
 
 pub fn convert_program_moniker(pubkey: String) -> String {
-    match pubkey.as_str() {
-        "devnet" => crate::devnet::program_id::id().to_string(),
-        "testnet" => crate::testnet::program_id::id().to_string(),
-        _ => pubkey,
+    // Accept environment monikers in both their full (`devnet`) and short
+    // (`d`) forms via the canonical `Environment` parser. Anything that is not
+    // a known moniker (e.g. a literal pubkey) is returned unchanged.
+    match Environment::from_str(&pubkey) {
+        Ok(e) => e.config().unwrap().serviceability_program_id.to_string(),
+        Err(_) => pubkey,
     }
 }
 
 pub fn convert_geo_program_moniker(pubkey: String) -> String {
-    let env = match pubkey.as_str() {
-        "mainnet-beta" => Some(Environment::MainnetBeta),
-        "testnet" => Some(Environment::Testnet),
-        "devnet" => Some(Environment::Devnet),
-        "local" => Some(Environment::Local),
-        _ => None,
-    };
-    match env {
-        Some(e) => e.config().unwrap().geolocation_program_id.to_string(),
-        None => pubkey,
+    // Accept environment monikers in both their full (`devnet`) and short
+    // (`d`) forms via the canonical `Environment` parser. Anything that is not
+    // a known moniker (e.g. a literal pubkey) is returned unchanged.
+    match Environment::from_str(&pubkey) {
+        Ok(e) => e.config().unwrap().geolocation_program_id.to_string(),
+        Err(_) => pubkey,
     }
 }
 
@@ -227,6 +235,39 @@ mod tests {
     use solana_sdk::signature::Signer;
     use std::{env, fs};
     use tempfile::TempDir;
+
+    #[test]
+    fn convert_program_monikers_resolve_full_and_short_forms() {
+        for env in [
+            Environment::MainnetBeta,
+            Environment::Testnet,
+            Environment::Devnet,
+            Environment::Local,
+        ] {
+            let cfg = env.config().unwrap();
+            let full = env.to_string();
+            let short = full.chars().next().unwrap().to_string();
+            for moniker in [full.clone(), short] {
+                assert_eq!(
+                    convert_program_moniker(moniker.clone()),
+                    cfg.serviceability_program_id.to_string(),
+                    "serviceability moniker {moniker}",
+                );
+                assert_eq!(
+                    convert_geo_program_moniker(moniker.clone()),
+                    cfg.geolocation_program_id.to_string(),
+                    "geo moniker {moniker}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn convert_program_monikers_pass_through_non_monikers() {
+        let pk = Pubkey::new_unique().to_string();
+        assert_eq!(convert_program_moniker(pk.clone()), pk);
+        assert_eq!(convert_geo_program_moniker(pk.clone()), pk);
+    }
 
     #[test]
     #[serial]

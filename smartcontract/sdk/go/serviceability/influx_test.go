@@ -147,6 +147,7 @@ func TestToLineProtocol(t *testing.T) {
 				SideAIfaceName:    "xe-0/0/0",
 				SideZIfaceName:    "xe-0/0/1",
 				DelayOverrideNs:   2000000,
+				LinkHealth:        LinkHealthPending,
 				PubKey:            pubKey1,
 			},
 			ts: ts,
@@ -174,10 +175,11 @@ func TestToLineProtocol(t *testing.T) {
 				DelayNs:           0,
 				JitterNs:          0,
 				TunnelId:          7,
-				Status:            LinkStatusPending,
+				Status:            LinkStatusPendingDeprecated,
 				Code:              "link-empty",
 				ContributorPubKey: pubKey1Uint8,
 				DelayOverrideNs:   0,
+				LinkHealth:        LinkHealthPending,
 				PubKey:            pubKey1,
 			},
 			ts: ts,
@@ -189,7 +191,7 @@ func TestToLineProtocol(t *testing.T) {
 				`,pubkey=` + pubKey1B58 +
 				`,side_a_pubkey=` + pubKey1B58 +
 				`,side_z_pubkey=` + pubKey1B58 +
-				`,status=pending,tunnel_id=7 bandwidth=0,delay_ns=0,delay_override_ns=0,jitter_ns=0,link_health="pending",mtu=0`,
+				`,status=pending\ (deprecated),tunnel_id=7 bandwidth=0,delay_ns=0,delay_override_ns=0,jitter_ns=0,link_health="pending",mtu=0`,
 			expectErr: false,
 		},
 		{
@@ -197,7 +199,7 @@ func TestToLineProtocol(t *testing.T) {
 			measurement: "devices",
 			input:       testDevice{},
 			ts:          ts,
-			expected:    `devices,device_type=0,owner=11111111111111111111111111111111,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0,users_count=0`,
+			expected:    `devices,device_type=0,owner=11111111111111111111111111111111,public_ip=0.0.0.0,status=pending\ (deprecated) dz_prefixes="",max_users=0,users_count=0`,
 			expectErr:   false,
 		},
 		{
@@ -214,7 +216,7 @@ func TestToLineProtocol(t *testing.T) {
 				"env":         "mainnet",
 				"device_type": "2", // override a numeric tag
 			},
-			expected:  `devices,code=dev-01,device_type=2,env=mainnet,owner=` + pubKey2B58 + `,public_ip=0.0.0.0,status=pending dz_prefixes="",max_users=0,users_count=0`,
+			expected:  `devices,code=dev-01,device_type=2,env=mainnet,owner=` + pubKey2B58 + `,public_ip=0.0.0.0,status=pending\ (deprecated) dz_prefixes="",max_users=0,users_count=0`,
 			expectErr: false,
 		},
 		{

@@ -28,19 +28,26 @@ if [ -n "${DZ_GEOLOCATION_PROGRAM_KEYPAIR_PATH:-}" ]; then
 fi
 
 # Initialize doublezero CLI config.
+#
+# `--env local` provides the localnet defaults as a base; the per-field flags
+# override the container-specific ledger URLs and the program IDs. Most stacks
+# deploy serviceability/geolocation at the fixed localnet pubkeys (see
+# e2e/data/*-program-keypair.json), but some deploy at a generated keypair, so we
+# always pass the actually-deployed program ID as an explicit override.
+geo_flag=()
+if [ -n "${geolocation_program_id:-}" ]; then
+  geo_flag=(--geo-program-id "$geolocation_program_id")
+fi
 doublezero config set \
+  --env local \
   --keypair /root/.config/doublezero/id.json \
   --url $DZ_LEDGER_URL \
   --ws $DZ_LEDGER_WS \
-  --program-id $serviceability_program_id
+  --program-id $serviceability_program_id \
+  "${geo_flag[@]}"
 echo "==> Config:"
 cat /root/.config/doublezero/cli/config.yml
 echo
-
-# Configure geolocation program ID if available.
-if [ -n "${geolocation_program_id:-}" ]; then
-  doublezero-geolocation config set --geo-program-id $geolocation_program_id
-fi
 
 # Configure the solana CLI.
 echo "==> Configuring solana CLI"

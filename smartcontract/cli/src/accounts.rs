@@ -1,16 +1,22 @@
+use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_config::Environment;
-use doublezero_sdk::*;
+use doublezero_cli_core::CliContext;
+use doublezero_serviceability::state::accountdata::AccountData;
 use serde_json::to_writer_pretty;
 use std::io::Write;
 
+/// Dump all program accounts.
+///
+/// This is a diagnostic verb that returns every account owned by the
+/// serviceability program. The plural `Accounts` name is intentional — it
+/// is a genuine "list all accounts" dump, not a single-resource verb.
 #[derive(Args, Debug)]
 pub struct GetAccountsCliCommand {
-    // Filter by account type
+    /// Filter by account type
     #[arg(long)]
     pub account_type: Option<String>,
 
-    // Suppress output
+    /// Suppress output
     #[arg(long, default_value_t = false)]
     pub no_output: bool,
 }
@@ -29,7 +35,14 @@ pub struct AccountsCliResponse {
 }
 
 impl GetAccountsCliCommand {
-    pub fn execute<W: Write>(self, client: &DZClient, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        tracing::debug!(env = %ctx.env, "accounts");
+
         let mut accounts: Vec<(String, Box<AccountData>)> = client
             .get_all()?
             .into_iter()
@@ -42,7 +55,7 @@ impl GetAccountsCliCommand {
         }
 
         let res = GetAccountsCliResponse {
-            env: Environment::from_program_id(&client.get_program_id().to_string())?.to_string(),
+            env: ctx.env.to_string(),
             accounts: accounts
                 .into_iter()
                 .map(|(pubkey, account)| AccountsCliResponse {
@@ -59,5 +72,50 @@ impl GetAccountsCliCommand {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::utils::create_test_client;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_accounts_uses_ctx_env() {
+        let mut client = create_test_client();
+        client.expect_get_all().returning(|| Ok(HashMap::new()));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            GetAccountsCliCommand {
+                account_type: None,
+                no_output: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains(&ctx.env.to_string()));
+    }
+
+    #[test]
+    fn test_accounts_no_output() {
+        let mut client = create_test_client();
+        client.expect_get_all().returning(|| Ok(HashMap::new()));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            GetAccountsCliCommand {
+                account_type: None,
+                no_output: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        assert!(output.is_empty());
     }
 }

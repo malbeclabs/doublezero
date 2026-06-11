@@ -107,19 +107,18 @@ func (m *MulticastListener) JoinGroup(ctx context.Context, group net.IP, port st
 		defer m.wg.Done()
 		buf := make([]byte, maxUdpPayload)
 		for {
-			n, cm, src, err := p.ReadFrom(buf)
+			_, cm, _, err := p.ReadFrom(buf)
 			if err != nil {
 				if ctx.Err() != nil {
 					log.Printf("Shutting down multicast listener for group %s on %s.", group.String(), ifName)
 					return
 				}
 				log.Printf("Failed to read from connection for group %s on %s: %v", group.String(), ifName, err)
+				continue
 			}
 			m.mu.Lock()
 			m.packetCounts[cm.Dst.String()]++
-			count := m.packetCounts[cm.Dst.String()]
 			m.mu.Unlock()
-			log.Printf("Received %d bytes for group %s from src %s (total: %d)", n, cm.Dst, src, count)
 		}
 	}()
 	return nil

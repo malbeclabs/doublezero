@@ -19,7 +19,7 @@ func (c *StartCmd) Command() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Start the core devnet components; ledger, manager, activator, and controller",
+		Short: "Start the core devnet components; ledger, manager, and controller",
 		RunE: withDevnet(func(ctx context.Context, dn *LocalDevnet, cmd *cobra.Command, args []string) error {
 			verbose, err := cmd.Root().PersistentFlags().GetBool("verbose")
 			if err != nil {

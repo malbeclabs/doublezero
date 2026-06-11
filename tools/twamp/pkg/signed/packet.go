@@ -14,6 +14,12 @@ const (
 	LocationOffsetSize = 174 // size of a 0-reference LocationOffset, Borsh-encoded
 	MaxOffsets         = 5
 
+	// Bit layout for the NumOffsets byte (byte 212) of a reply packet:
+	// the most-significant bit is the Challenged flag, and the lower 7
+	// bits are the offset count (0..MaxOffsets).
+	numOffsetsChallengedBit = 0x80
+	numOffsetsCountMask     = 0x7F
+
 	// Probe(108) + AuthorityPubkey(32) + GeoprobePubkey(32) +
 	// MeasurementSlot(8) + Lat(8) + Lng(8) + SinceLastRxNs(8) + RttNs(8) + NumOffsets(1)
 	replyHeaderSize = 213
@@ -61,8 +67,8 @@ func ntpTimestamp(t time.Time) (uint32, uint32) {
 // ProbePacket is sent from Target to Probe in the inbound probing flow.
 type ProbePacket struct {
 	Seq          uint32   // Bytes 0-3: Sequence number (big-endian)
-	Sec          uint32   // Bytes 4-7: NTP timestamp seconds
-	Frac         uint32   // Bytes 8-11: NTP timestamp fractional
+	Sec          uint32   // Bytes 4-7: NTP timestamp seconds; on challenged Probe 1, upper 4 bytes of echoed Reply 0 nonce
+	Frac         uint32   // Bytes 8-11: NTP timestamp fractional; on challenged Probe 1, lower 4 bytes of echoed Reply 0 nonce
 	SenderPubkey [32]byte // Bytes 12-43: Target's Ed25519 public key
 	Signature    [64]byte // Bytes 44-107: Ed25519 signature over bytes 0-43
 }
@@ -80,7 +86,7 @@ type ProbePacket struct {
 //	Bytes 188-195: Lng (8B)
 //	Bytes 196-203: SinceLastRxNs (8B)
 //	Bytes 204-211: RttNs (8B)
-//	Byte  212:     NumOffsets (1B)
+//	Byte  212:     NumOffsets[6:0] | Challenged<<7 (1B)
 //	Bytes 213-...: Offset blobs (N × LocationOffsetSize bytes)
 //	Bytes ...-end: Signature (64B) over all preceding bytes
 type ReplyPacket struct {
@@ -93,6 +99,7 @@ type ReplyPacket struct {
 	SinceLastRxNs   uint64   // Nanoseconds between reflector Tx (reply N-1) and Rx (probe N); approximates network RTT
 	RttNs           uint64   // Accumulated RTT from Lat/Lng in nanoseconds
 	Offsets         [][]byte // 0-5 opaque offset blobs, each exactly LocationOffsetSize bytes
+	Challenged      bool     // encoded as top bit of NumOffsets (byte 212)
 	Signature       [64]byte
 }
 
@@ -121,6 +128,30 @@ func NewProbePacket(seq uint32, signer Signer) *ProbePacket {
 	sig := signer.Sign(payload[:])
 	copy(p.Signature[:], sig)
 
+	return p
+}
+
+// newChallengedProbePacket constructs a probe whose Sec/Frac carry the
+// challenge nonce (BigEndian: Sec = upper 4 bytes, Frac = lower 4 bytes)
+// rather than an NTP timestamp. The signature is computed over the
+// nonce-bearing payload. Used by senders running in challenged mode.
+func newChallengedProbePacket(seq uint32, signer Signer, nonce uint64) *ProbePacket {
+	pub := signer.Public()
+	p := &ProbePacket{
+		Seq:  seq,
+		Sec:  uint32(nonce >> 32),
+		Frac: uint32(nonce & 0xFFFFFFFF),
+	}
+	copy(p.SenderPubkey[:], pub)
+
+	var payload [probePayloadSize]byte
+	binary.BigEndian.PutUint32(payload[0:4], p.Seq)
+	binary.BigEndian.PutUint32(payload[4:8], p.Sec)
+	binary.BigEndian.PutUint32(payload[8:12], p.Frac)
+	copy(payload[12:44], p.SenderPubkey[:])
+
+	sig := signer.Sign(payload[:])
+	copy(p.Signature[:], sig)
 	return p
 }
 
@@ -180,7 +211,11 @@ func (r *ReplyPacket) marshalPayload(buf []byte) (int, error) {
 	binary.BigEndian.PutUint64(buf[188:196], math.Float64bits(r.Lng))
 	binary.BigEndian.PutUint64(buf[196:204], r.SinceLastRxNs)
 	binary.BigEndian.PutUint64(buf[204:212], r.RttNs)
-	buf[212] = uint8(len(r.Offsets))
+	numOffsets := uint8(len(r.Offsets))
+	if r.Challenged {
+		numOffsets |= numOffsetsChallengedBit
+	}
+	buf[212] = numOffsets
 
 	off := replyHeaderSize
 	for _, blob := range r.Offsets {
@@ -210,7 +245,9 @@ func UnmarshalReplyPacket(buf []byte) (*ReplyPacket, error) {
 		return nil, errInvalidPacket
 	}
 
-	numOffsets := int(buf[212])
+	rawNumOffsets := buf[212]
+	challenged := rawNumOffsets&numOffsetsChallengedBit != 0
+	numOffsets := int(rawNumOffsets & numOffsetsCountMask)
 	if numOffsets > MaxOffsets {
 		return nil, errInvalidPacket
 	}
@@ -235,6 +272,7 @@ func UnmarshalReplyPacket(buf []byte) (*ReplyPacket, error) {
 	}
 	copy(r.AuthorityPubkey[:], buf[108:140])
 	copy(r.GeoprobePubkey[:], buf[140:172])
+	r.Challenged = challenged
 
 	if numOffsets > 0 {
 		r.Offsets = make([][]byte, numOffsets)
@@ -251,7 +289,7 @@ func UnmarshalReplyPacket(buf []byte) (*ReplyPacket, error) {
 	return r, nil
 }
 
-func NewReplyPacket(probe *ProbePacket, signer Signer, geoprobePubkey [32]byte, offsets [][]byte, slot uint64, lat, lng float64, sinceLastRxNs, rttNs uint64) (*ReplyPacket, error) {
+func NewReplyPacket(probe *ProbePacket, signer Signer, geoprobePubkey [32]byte, offsets [][]byte, slot uint64, lat, lng float64, sinceLastRxNs, rttNs uint64, challenged bool) (*ReplyPacket, error) {
 	if len(offsets) > MaxOffsets {
 		return nil, fmt.Errorf("too many offsets: %d > %d", len(offsets), MaxOffsets)
 	}
@@ -272,6 +310,7 @@ func NewReplyPacket(probe *ProbePacket, signer Signer, geoprobePubkey [32]byte, 
 		SinceLastRxNs:   sinceLastRxNs,
 		RttNs:           rttNs,
 		Offsets:         offsets,
+		Challenged:      challenged,
 	}
 	copy(r.AuthorityPubkey[:], pub)
 

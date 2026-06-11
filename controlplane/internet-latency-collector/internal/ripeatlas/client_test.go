@@ -233,7 +233,7 @@ func TestInternetLatency_RIPEAtlas_GetProbesInRadius(t *testing.T) {
 				log:        log,
 			}
 
-			probes, err := client.GetProbesInRadius(t.Context(), tt.lat, tt.lng, tt.radius)
+			probes, err := client.GetProbesInRadius(t.Context(), tt.lat, tt.lng, tt.radius, true)
 
 			if tt.wantErr {
 				require.Error(t, err, "GetProbesInRadius() should return error")
@@ -291,7 +291,7 @@ func TestInternetLatency_RIPEAtlas_GetProbesInRadius_Pagination(t *testing.T) {
 		},
 	}
 
-	probes, err := client.GetProbesInRadius(t.Context(), 40.7128, -74.0060, 10)
+	probes, err := client.GetProbesInRadius(t.Context(), 40.7128, -74.0060, 10, true)
 
 	require.NoError(t, err, "GetProbesInRadius() failed")
 
@@ -685,6 +685,97 @@ func TestInternetLatency_RIPEAtlas_FetchProbesWithErrorHandling(t *testing.T) {
 			require.Len(t, probes, tt.wantLen, "Unexpected number of probes")
 		})
 	}
+}
+
+// TestInternetLatency_RIPEAtlas_FetchProbesWithErrorHandling_AnchorFallback verifies that
+// when the anchor-only query returns no probes, the fallback query (without is_anchor=true)
+// runs and its results are returned. This protects locations that have no RIPE Atlas anchors
+// nearby (or whose sole anchor is unresponsive).
+func TestInternetLatency_RIPEAtlas_FetchProbesWithErrorHandling_AnchorFallback(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	var anchorCalls, fallbackCalls int
+	client := &Client{
+		log:     log,
+		BaseURL: "https://atlas.ripe.net/api/v2",
+		HTTPClient: &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				var results []Probe
+				if strings.Contains(req.URL.RawQuery, "is_anchor=true") {
+					anchorCalls++
+					results = []Probe{} // no anchors in radius
+				} else {
+					fallbackCalls++
+					results = []Probe{
+						{ID: 1012231, Address: "1.1.1.1", Latitude: 40.7, Longitude: -74.0,
+							Status: struct {
+								ID    int    `json:"id"`
+								Name  string `json:"name"`
+								Since string `json:"since"`
+							}{Name: "Connected"}},
+					}
+				}
+				body, _ := json.Marshal(ProbesResponse{Count: len(results), Results: results})
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader(body)),
+				}, nil
+			},
+		},
+	}
+
+	probes, err := client.fetchProbesWithErrorHandling(t.Context(), 40.7128, -74.0060, "slc")
+	require.NoError(t, err)
+	require.Equal(t, 1, anchorCalls, "should have issued anchor-only query first")
+	require.Equal(t, 1, fallbackCalls, "should have fallen back when anchors were empty")
+	require.Len(t, probes, 1, "should have returned the fallback probe")
+	require.Equal(t, 1012231, probes[0].ID)
+}
+
+// TestInternetLatency_RIPEAtlas_FetchProbesWithErrorHandling_AnchorsFoundNoFallback verifies
+// that when the anchor-only query returns probes, no fallback request is issued.
+func TestInternetLatency_RIPEAtlas_FetchProbesWithErrorHandling_AnchorsFoundNoFallback(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	var anchorCalls, fallbackCalls int
+	client := &Client{
+		log:     log,
+		BaseURL: "https://atlas.ripe.net/api/v2",
+		HTTPClient: &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				var results []Probe
+				if strings.Contains(req.URL.RawQuery, "is_anchor=true") {
+					anchorCalls++
+					results = []Probe{
+						{ID: 7549, Address: "2.2.2.2", Latitude: 40.7, Longitude: -111.9,
+							Status: struct {
+								ID    int    `json:"id"`
+								Name  string `json:"name"`
+								Since string `json:"since"`
+							}{Name: "Connected"}},
+					}
+				} else {
+					fallbackCalls++
+				}
+				body, _ := json.Marshal(ProbesResponse{Count: len(results), Results: results})
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader(body)),
+				}, nil
+			},
+		},
+	}
+
+	probes, err := client.fetchProbesWithErrorHandling(t.Context(), 40.7128, -74.0060, "slc")
+	require.NoError(t, err)
+	require.Equal(t, 1, anchorCalls, "should have issued anchor-only query")
+	require.Equal(t, 0, fallbackCalls, "should NOT have fallen back when anchors were present")
+	require.Len(t, probes, 1)
+	require.Equal(t, 7549, probes[0].ID)
 }
 
 func TestInternetLatency_RIPEAtlas_GetProbesForLocations(t *testing.T) {

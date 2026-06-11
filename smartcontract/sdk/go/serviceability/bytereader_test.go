@@ -2,7 +2,6 @@ package serviceability
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"reflect"
 	"testing"
 )
@@ -246,107 +245,6 @@ func TestReadString(t *testing.T) {
 	val = reader.ReadString()
 	if val != "" {
 		t.Errorf("ReadString should have returned empty string, got %s", val)
-	}
-}
-
-// TestDeserializeInterfaceV2CrossLanguage tests deserializing bytes that Rust produces.
-// To get the expected bytes, run in Rust:
-//
-//	cargo test test_interface_v2_serialization_bytes -- --nocapture
-//
-// Then copy the hex output here.
-func TestDeserializeInterfaceV2CrossLanguage(t *testing.T) {
-	t.Parallel()
-
-	// These bytes are ACTUAL output from Rust test:
-	// Hex: [01, 03, 0b, 00, 00, 00, 4c, 6f, 6f, 70, 62, 61, 63, 6b, 31, 30, 36, 01, 00, 00, 02, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 00, 28, 23, 00, 00, 00, cb, 00, 71, 28, 20, 00, 00, 01]
-	//
-	// Field breakdown from Rust:
-	//   [0] enum discriminant (V2=1): 01
-	//   [1] status (Activated=3): 03
-	//   [2-5] name length: 11 (0x0000000b)
-	//   [6-16] name: "Loopback106"
-	//   [17] interface_type (Loopback=1): 01
-	//   [18] interface_cyoa (None=0): 00
-	//   [19] interface_dia (None=0): 00
-	//   [20] loopback_type (Ipv4=2): 02
-	//   [21-28] bandwidth: 0
-	//   [29-36] cir: 0
-	//   [37-38] mtu: 9000 (0x2328)
-	//   [39] routing_mode (Static=0): 00
-	//   [40-41] vlan_id: 0
-	//   [42-46] ip_net: [cb, 00, 71, 28, 20] = 203.0.113.40/32
-	//   [47-48] node_segment_idx: 0
-	//   [49] user_tunnel_endpoint: 01 (true)
-
-	// Use EXACT bytes from Rust serialization
-	data := []byte{
-		0x01,                   // [0] enum discriminant V2=1
-		0x03,                   // [1] status Activated=3
-		0x0b, 0x00, 0x00, 0x00, // [2-5] name length = 11
-		0x4c, 0x6f, 0x6f, 0x70, 0x62, 0x61, 0x63, 0x6b, 0x31, 0x30, 0x36, // [6-16] "Loopback106"
-		0x01,                                           // [17] interface_type Loopback=1
-		0x00,                                           // [18] interface_cyoa None=0
-		0x00,                                           // [19] interface_dia None=0
-		0x02,                                           // [20] loopback_type Ipv4=2
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // [21-28] bandwidth=0
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // [29-36] cir=0
-		0x28, 0x23, // [37-38] mtu=9000
-		0x00,       // [39] routing_mode Static=0
-		0x00, 0x00, // [40-41] vlan_id=0
-		0xcb, 0x00, 0x71, 0x28, 0x20, // [42-46] ip_net 203.0.113.40/32
-		0x00, 0x00, // [47-48] node_segment_idx=0
-		0x01, // [49] user_tunnel_endpoint=true
-	}
-
-	t.Logf("Test data (%d bytes): %s", len(data), hex.EncodeToString(data))
-
-	reader := NewByteReader(data)
-	var iface Interface
-	DeserializeInterface(reader, &iface)
-
-	t.Logf("Deserialized interface:")
-	t.Logf("  Version: %d", iface.Version)
-	t.Logf("  Status: %d", iface.Status)
-	t.Logf("  Name: %s", iface.Name)
-	t.Logf("  InterfaceType: %d", iface.InterfaceType)
-	t.Logf("  InterfaceCYOA: %d", iface.InterfaceCYOA)
-	t.Logf("  InterfaceDIA: %d", iface.InterfaceDIA)
-	t.Logf("  LoopbackType: %d", iface.LoopbackType)
-	t.Logf("  Bandwidth: %d", iface.Bandwidth)
-	t.Logf("  Cir: %d", iface.Cir)
-	t.Logf("  Mtu: %d", iface.Mtu)
-	t.Logf("  RoutingMode: %d", iface.RoutingMode)
-	t.Logf("  VlanId: %d", iface.VlanId)
-	t.Logf("  IpNet: %v", iface.IpNet)
-	t.Logf("  NodeSegmentIdx: %d", iface.NodeSegmentIdx)
-	t.Logf("  UserTunnelEndpoint: %v", iface.UserTunnelEndpoint)
-	t.Logf("  Remaining bytes: %d", reader.Remaining())
-
-	// Assertions
-	if iface.Version != 1 {
-		t.Errorf("Version: got %d, expected 1 (V2 enum discriminant)", iface.Version)
-	}
-	if iface.Status != InterfaceStatusActivated {
-		t.Errorf("Status: got %d, expected %d (Activated)", iface.Status, InterfaceStatusActivated)
-	}
-	if iface.Name != "Loopback106" {
-		t.Errorf("Name: got %s, expected Loopback106", iface.Name)
-	}
-	if iface.InterfaceType != InterfaceTypeLoopback {
-		t.Errorf("InterfaceType: got %d, expected %d (Loopback)", iface.InterfaceType, InterfaceTypeLoopback)
-	}
-	if iface.LoopbackType != LoopbackTypeIpv4 {
-		t.Errorf("LoopbackType: got %d, expected %d (Ipv4)", iface.LoopbackType, LoopbackTypeIpv4)
-	}
-	if iface.Mtu != 9000 {
-		t.Errorf("Mtu: got %d, expected 9000", iface.Mtu)
-	}
-	if !iface.UserTunnelEndpoint {
-		t.Errorf("UserTunnelEndpoint: got %v, expected true", iface.UserTunnelEndpoint)
-	}
-	if reader.Remaining() != 0 {
-		t.Errorf("Should have consumed all bytes, but %d remaining", reader.Remaining())
 	}
 }
 

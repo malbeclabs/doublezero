@@ -12,8 +12,16 @@ macro_rules! validate_program_account {
         if $writable {
             assert!(account.is_writable, "{label} Account is not writable");
         }
-        if let Some(expected_pda) = $pda {
-            assert_eq!(account.key, expected_pda, "Invalid {label} PDA");
+        assert_eq!(account.key, $pda, "Invalid {label} PDA");
+    }};
+    ($account:expr, $program_id:expr, writable = $writable:expr, $label:expr) => {{
+        let account = $account;
+        let program_id = $program_id;
+        let label = $label;
+        assert_eq!(account.owner, program_id, "Invalid {label} Account Owner");
+        assert!(!account.data_is_empty(), "{label} Account is empty");
+        if $writable {
+            assert!(account.is_writable, "{label} Account is not writable");
         }
     }};
 }
@@ -53,13 +61,7 @@ mod tests {
         let account = make_account_info(&key, true, &mut lamports, &mut data, &program_id);
 
         // Should not panic
-        validate_program_account!(
-            &account,
-            &program_id,
-            writable = true,
-            pda = Some(&key),
-            "Test"
-        );
+        validate_program_account!(&account, &program_id, writable = true, pda = &key, "Test");
     }
 
     #[test]
@@ -77,7 +79,7 @@ mod tests {
             &account,
             &program_id,
             writable = true,
-            pda = Some(&wrong_pda),
+            pda = &wrong_pda,
             "Test"
         );
     }
@@ -93,13 +95,7 @@ mod tests {
 
         let account = make_account_info(&key, true, &mut lamports, &mut data, &wrong_owner);
 
-        validate_program_account!(
-            &account,
-            &program_id,
-            writable = true,
-            pda = None::<&Pubkey>,
-            "Test"
-        );
+        validate_program_account!(&account, &program_id, writable = true, "Test");
     }
 
     #[test]
@@ -112,13 +108,7 @@ mod tests {
 
         let account = make_account_info(&key, true, &mut lamports, &mut data, &program_id);
 
-        validate_program_account!(
-            &account,
-            &program_id,
-            writable = true,
-            pda = None::<&Pubkey>,
-            "Test"
-        );
+        validate_program_account!(&account, &program_id, writable = true, "Test");
     }
 
     #[test]
@@ -131,12 +121,6 @@ mod tests {
 
         let account = make_account_info(&key, false, &mut lamports, &mut data, &program_id);
 
-        validate_program_account!(
-            &account,
-            &program_id,
-            writable = true,
-            pda = None::<&Pubkey>,
-            "Test"
-        );
+        validate_program_account!(&account, &program_id, writable = true, "Test");
     }
 }

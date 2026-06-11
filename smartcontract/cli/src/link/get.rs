@@ -1,5 +1,8 @@
-use crate::{doublezerocommand::CliCommand, validators::validate_code};
+use crate::{
+    doublezerocommand::CliCommand, topology::resolve_topology_names, validators::validate_code,
+};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::link::get::GetLinkCommand;
 use serde::Serialize;
@@ -47,13 +50,24 @@ struct LinkDisplay {
     pub status: String,
     pub health: String,
     pub owner: String,
+    pub link_topologies: String,
+    pub unicast_drained: bool,
 }
 
 impl GetLinkCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (pubkey, link) = client.get_link(GetLinkCommand {
             pubkey_or_code: self.code,
         })?;
+
+        let topology_map = client
+            .list_topology(doublezero_sdk::commands::topology::list::ListTopologyCommand)
+            .unwrap_or_default();
 
         let display = LinkDisplay {
             account: pubkey.to_string(),
@@ -92,6 +106,10 @@ impl GetLinkCliCommand {
             status: link.status.to_string(),
             health: link.link_health.to_string(),
             owner: link.owner.to_string(),
+            link_topologies: resolve_topology_names(&link.link_topologies, &topology_map),
+            unicast_drained: link.link_flags
+                & doublezero_serviceability::state::link::LINK_FLAG_UNICAST_DRAINED
+                != 0,
         };
 
         if self.json {
@@ -112,6 +130,8 @@ impl GetLinkCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand, link::get::GetLinkCliCommand,
         tests::utils::create_test_client,
@@ -126,6 +146,7 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
+    use std::collections::HashMap;
 
     #[test]
     fn test_cli_link_get() {
@@ -145,10 +166,10 @@ mod tests {
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
-            bandwidth: 1000000000,
+            bandwidth: 1_000_000_000,
             mtu: 1500,
-            delay_ns: 10000000000,
-            jitter_ns: 5000000000,
+            delay_ns: 10_000_000_000,
+            jitter_ns: 5_000_000_000,
             delay_override_ns: 0,
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
@@ -158,6 +179,8 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+            link_topologies: Vec::new(),
+            link_flags: 0,
         };
 
         let contributor = Contributor {
@@ -199,6 +222,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let device2 = Device {
             code: "side-z-device".to_string(),
@@ -240,23 +264,31 @@ mod tests {
                 pubkey_or_code: device2_pk.to_string(),
             }))
             .returning(move |_| Ok((device2_pk, device2.clone())));
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
         // Expected failure
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = GetLinkCliCommand {
-            code: Pubkey::new_unique().to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetLinkCliCommand {
+                code: Pubkey::new_unique().to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err(), "I shouldn't find anything.");
 
         // Expected success by pubkey (table)
         let mut output = Vec::new();
-        let res = GetLinkCliCommand {
-            code: pda_pubkey.to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetLinkCliCommand {
+                code: pda_pubkey.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -280,11 +312,13 @@ mod tests {
 
         // Expected success by code (JSON)
         let mut output = Vec::new();
-        let res = GetLinkCliCommand {
-            code: "test".to_string(),
-            json: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetLinkCliCommand {
+                code: "test".to_string(),
+                json: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by code");
         let json: serde_json::Value =
             serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();

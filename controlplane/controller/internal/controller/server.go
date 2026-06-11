@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/malbeclabs/doublezero/config"
+	controllerconfig "github.com/malbeclabs/doublezero/controlplane/controller/config"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -39,8 +41,9 @@ const (
 )
 
 var (
-	ErrServiceabilityRequired = errors.New("serviceability program client is required")
-	ErrLoggerRequired         = errors.New("logger is required")
+	ErrServiceabilityRequired    = errors.New("serviceability program client is required")
+	ErrLoggerRequired            = errors.New("logger is required")
+	ErrInvalidMaxUserTunnelSlots = errors.New("max user tunnel slots must be positive")
 )
 
 type ServiceabilityProgramClient interface {
@@ -49,10 +52,11 @@ type ServiceabilityProgramClient interface {
 }
 
 type stateCache struct {
-	Config          serviceability.Config
+	GlobalConfig    *serviceability.GlobalConfig
 	Devices         map[string]*Device
 	MulticastGroups map[string]serviceability.MulticastGroup
 	Tenants         map[string]serviceability.Tenant
+	Topologies      map[string]serviceability.TopologyInfo // keyed by base58 pubkey
 	UnicastVrfs     []uint16
 	Vpnv4BgpPeers   []BgpPeer
 	Ipv4BgpPeers    []BgpPeer
@@ -61,27 +65,33 @@ type stateCache struct {
 type Controller struct {
 	pb.UnimplementedControllerServer
 
-	log            *slog.Logger
-	cache          stateCache
-	mu             sync.RWMutex
-	serviceability ServiceabilityProgramClient
-	listener       net.Listener
-	noHardware     bool
-	updateDone     chan struct{}
-	tlsConfig      *tls.Config
-	environment    string
-	deviceLocalASN uint32
-	clickhouse     *ClickhouseWriter
+	log                *slog.Logger
+	cache              stateCache
+	mu                 sync.RWMutex
+	serviceability     ServiceabilityProgramClient
+	listener           net.Listener
+	noHardware         bool
+	updateDone         chan struct{}
+	tlsConfig          *tls.Config
+	environment        string
+	deviceLocalASN     uint32
+	clickhouse         *ClickhouseWriter
+	featuresConfig     *FeaturesConfig
+	maxUserTunnelSlots int
 }
 
 type Option func(*Controller)
 
 func NewController(options ...Option) (*Controller, error) {
 	controller := &Controller{
-		cache: stateCache{},
+		cache:              stateCache{},
+		maxUserTunnelSlots: controllerconfig.DefaultMaxUserTunnelSlots,
 	}
 	for _, o := range options {
 		o(controller)
+	}
+	if controller.maxUserTunnelSlots < 1 {
+		return nil, fmt.Errorf("%w: got %d", ErrInvalidMaxUserTunnelSlots, controller.maxUserTunnelSlots)
 	}
 	if controller.listener == nil {
 		lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 443))
@@ -160,9 +170,30 @@ func WithClickhouse(cw *ClickhouseWriter) Option {
 	}
 }
 
+// WithFeaturesConfig provides a loaded FeaturesConfig to the controller.
+func WithFeaturesConfig(cfg *FeaturesConfig) Option {
+	return func(c *Controller) {
+		c.featuresConfig = cfg
+	}
+}
+
+func WithMaxUserTunnelSlots(n int) Option {
+	return func(c *Controller) {
+		c.maxUserTunnelSlots = n
+	}
+}
+
 // processDeviceInterfacesAndPeers processes a device's interfaces and extracts BGP peer information.
 // It returns the candidate VPNv4 and IPv4 BGP peers found from the device's loopback interfaces.
 func (c *Controller) processDeviceInterfacesAndPeers(device serviceability.Device, d *Device, devicePubKey string) (candidateVpnv4BgpPeer, candidateIpv4BgpPeer BgpPeer) {
+	// Build parents in a map keyed by parent name so each physical is rendered
+	// exactly once, and so the parent's MTU is the max of its subinterfaces'
+	// MTUs. Parents are not defined onchain; the controller synthesizes them.
+	// seenNames also dedupes same-name direct entries from onchain data and
+	// suppresses a synthesized parent when an explicit entry already claims
+	// that name.
+	parents := make(map[string]*Interface)
+	seenNames := make(map[string]bool)
 	for _, iface := range device.Interfaces {
 		intf, err := toInterface(iface)
 		if err != nil {
@@ -170,16 +201,32 @@ func (c *Controller) processDeviceInterfacesAndPeers(device serviceability.Devic
 			c.log.Error("failed to convert serviceability interface to controller interface", "device pubkey", devicePubKey, "iface", iface, "error", err)
 			continue
 		}
-		// Create a parent interface since they're not defined on-chain.
 		if intf.IsSubInterface {
 			parent, err := intf.GetParent()
 			if err != nil {
 				c.log.Error("failed to get parent interface for subinterface", "device pubkey", devicePubKey, "iface", intf.Name, "error", err)
 				continue
 			}
-			d.Interfaces = append(d.Interfaces, parent)
+			if existing, ok := parents[parent.Name]; ok {
+				existing.Mtu = max(existing.Mtu, intf.Mtu)
+			} else {
+				parent.Mtu = intf.Mtu
+				parents[parent.Name] = &parent
+			}
 		}
+		if seenNames[intf.Name] {
+			c.log.Warn("duplicate interface name in onchain device data, skipping", "device pubkey", devicePubKey, "name", intf.Name)
+			continue
+		}
+		seenNames[intf.Name] = true
 		d.Interfaces = append(d.Interfaces, intf)
+	}
+	for _, p := range parents {
+		if seenNames[p.Name] {
+			c.log.Warn("synthesized subinterface parent collides with explicit onchain interface, skipping synthesized parent", "device pubkey", devicePubKey, "name", p.Name)
+			continue
+		}
+		d.Interfaces = append(d.Interfaces, *p)
 	}
 	sort.Slice(d.Interfaces, func(i, j int) bool {
 		return d.Interfaces[i].Name < d.Interfaces[j].Name
@@ -257,9 +304,14 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		locationMap[location.PubKey] = location
 	}
 	cache := stateCache{
-		Config:          data.Config,
+		GlobalConfig:    data.GlobalConfig,
 		Devices:         make(map[string]*Device),
 		MulticastGroups: make(map[string]serviceability.MulticastGroup),
+		Topologies:      make(map[string]serviceability.TopologyInfo),
+	}
+
+	for _, t := range data.Topologies {
+		cache.Topologies[base58.Encode(t.PubKey[:])] = t
 	}
 
 	// TODO: valid interface checks:
@@ -276,7 +328,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		}
 
 		devicePubKey := base58.Encode(device.PubKey[:])
-		d := NewDevice(ip, devicePubKey)
+		d := NewDevice(ip, devicePubKey, c.maxUserTunnelSlots)
 
 		d.MgmtVrf = device.MgmtVrf
 		d.Code = device.Code
@@ -348,25 +400,25 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		cache.Ipv4BgpPeers = append(cache.Ipv4BgpPeers, candidateIpv4BgpPeer)
 
 		// determine if interface is in an onchain link and assign metrics
-		findLink := func(intf Interface) serviceability.Link {
+		findLink := func(intf Interface) (serviceability.Link, bool) {
 			for _, link := range links {
 				if d.PubKey == base58.Encode(link.SideAPubKey[:]) && intf.Name == link.SideAIfaceName {
-					return link
+					return link, true
 				}
 				if d.PubKey == base58.Encode(link.SideZPubKey[:]) && intf.Name == link.SideZIfaceName {
-					return link
+					return link, true
 				}
 			}
-			return serviceability.Link{}
+			return serviceability.Link{}, false
 		}
 
 		for i, iface := range d.Interfaces {
-			link := findLink(iface)
+			link, linkFound := findLink(iface)
 
-			if link == (serviceability.Link{}) || (link.Status != serviceability.LinkStatusActivated && link.Status != serviceability.LinkStatusSoftDrained && link.Status != serviceability.LinkStatusHardDrained) {
+			if !linkFound || (link.Status != serviceability.LinkStatusActivated && link.Status != serviceability.LinkStatusSoftDrained && link.Status != serviceability.LinkStatusHardDrained) {
 				d.Interfaces[i].IsLink = false
 				d.Interfaces[i].Metric = 0
-				d.Interfaces[i].LinkStatus = serviceability.LinkStatusPending
+				d.Interfaces[i].LinkStatus = linkStatusUnknown
 				continue
 			}
 
@@ -392,12 +444,45 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 
 			d.Interfaces[i].Metric = uint32(microseconds)
-			if link.Mtu > 0 {
-				d.Interfaces[i].Mtu = uint16(link.Mtu)
-			}
 			d.Interfaces[i].IsLink = true
 			d.Interfaces[i].LinkStatus = link.Status
+			d.Interfaces[i].UnicastDrained = link.LinkFlags&serviceability.LinkFlagUnicastDrained != 0
+			d.Interfaces[i].PubKey = base58.Encode(link.PubKey[:])
+
+			// Resolve topology names from link_topologies pubkeys
+			for _, topoKey := range link.LinkTopologies {
+				pk := base58.Encode(topoKey[:])
+				if topo, ok := cache.Topologies[pk]; ok {
+					d.Interfaces[i].LinkTopologies = append(d.Interfaces[i].LinkTopologies, topo.Name)
+				}
+			}
+
 			linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
+		}
+
+		// Populate flex-algo node-segment data for VPNv4 loopback interfaces.
+		// Populated whenever a features config is loaded (not just when enabled) so that
+		// the template can emit cleanup ("no node-segment") lines on rollback.
+		if c.featuresConfig != nil {
+			for i, intf := range d.Interfaces {
+				if !intf.IsVpnv4Loopback() {
+					continue
+				}
+				for _, onchainIface := range device.Interfaces {
+					if onchainIface.Name == intf.Name {
+						for _, seg := range onchainIface.FlexAlgoNodeSegments {
+							pk := base58.Encode(seg.Topology[:])
+							if topo, ok := cache.Topologies[pk]; ok {
+								d.Interfaces[i].FlexAlgoNodeSegments = append(d.Interfaces[i].FlexAlgoNodeSegments, FlexAlgoNodeSegmentModel{
+									NodeSegmentIdx: seg.NodeSegmentIdx,
+									TopologyName:   topo.Name,
+								})
+							}
+						}
+						break
+					}
+				}
+			}
 		}
 
 		cache.Devices[devicePubKey] = d
@@ -512,6 +597,8 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		tunnel.PubKey = userPubKey
 		tunnel.Allocated = true
 
+		tunnel.TenantPubKey = base58.Encode(user.TenantPubKey[:])
+
 		if user.UserType != serviceability.UserTypeMulticast {
 			// Set the VRF ID and metro routing from the user's tenant. Default to VRF 1 with metro routing enabled.
 			tunnel.VrfId = 1
@@ -519,6 +606,12 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			if tenant, ok := cache.Tenants[base58.Encode(user.TenantPubKey[:])]; ok {
 				tunnel.VrfId = tenant.VrfId
 				tunnel.MetroRouting = tenant.MetroRouting
+
+				if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled {
+					tunnel.TenantTopologyColors = resolveTenantColors(tenant.IncludeTopologies, cache.Topologies)
+				}
+			} else if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled {
+				tunnel.TenantTopologyColors = resolveTenantColors(nil, cache.Topologies)
 			}
 		}
 
@@ -553,6 +646,22 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			sort.Slice(tunnel.MulticastBoundaryList, func(i, j int) bool {
 				return tunnel.MulticastBoundaryList[i].String() < tunnel.MulticastBoundaryList[j].String()
 			})
+		}
+	}
+
+	// Check for VPNv4 loopbacks missing flex-algo node-segment data when flex-algo is enabled
+	if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled && len(cache.Topologies) > 0 {
+		for devicePubKey, d := range cache.Devices {
+			if len(d.DevicePathologies) > 0 {
+				continue
+			}
+			for _, intf := range d.Interfaces {
+				if intf.IsVpnv4Loopback() && len(intf.FlexAlgoNodeSegments) == 0 {
+					c.log.Error("flex_algo.enabled=true but VPNv4 loopback has no flex_algo_node_segments — run 'doublezero-admin migrate' and restart",
+						"device_pubkey", devicePubKey,
+						"interface", intf.Name)
+				}
+			}
 		}
 	}
 
@@ -600,6 +709,13 @@ func (c *Controller) Run(ctx context.Context) error {
 			c.log.Error("error fetching accounts", "error", err)
 		}
 		cacheUpdateOps.Inc()
+		if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled {
+			c.mu.RLock()
+			if len(c.cache.Topologies) == 0 {
+				c.log.Warn("flex_algo.enabled=true but no topology accounts found on-chain — verify doublezero-admin migrate has been run")
+			}
+			c.mu.RUnlock()
+		}
 		ticker := time.NewTicker(10 * time.Second)
 		for {
 			select {
@@ -694,6 +810,31 @@ func (c *Controller) deduplicateTunnels(device *Device) []*Tunnel {
 	return unique
 }
 
+const defaultTopologyName = "unicast-default"
+
+// resolveTenantColors computes the "color N color M ..." string for a tenant's include_topologies.
+// If include_topologies is empty, uses the unicast-default topology.
+// Returns empty string if no topologies can be resolved.
+func resolveTenantColors(includeTopologies [][32]byte, topologyMap map[string]serviceability.TopologyInfo) string {
+	var colors []string
+	if len(includeTopologies) > 0 {
+		for _, pk := range includeTopologies {
+			if topo, ok := topologyMap[base58.Encode(pk[:])]; ok {
+				colors = append(colors, fmt.Sprintf("color %d", int(topo.AdminGroupBit)+1))
+			}
+		}
+	} else {
+		// default: use unicast-default topology
+		for _, topo := range topologyMap {
+			if strings.EqualFold(topo.Name, defaultTopologyName) {
+				colors = append(colors, fmt.Sprintf("color %d", int(topo.AdminGroupBit)+1))
+				break
+			}
+		}
+	}
+	return strings.Join(colors, " ")
+}
+
 // GetConfig renders the latest device configuration based on cached device data
 func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.ConfigResponse, error) {
 	reqStart := time.Now()
@@ -761,12 +902,12 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 			continue
 		}
 		// Only remove peers with addresses that DZ has assigned. This will avoid removal of contributor-configured peers like DIA.
-		if isIPInBlock(ip, c.cache.Config.UserTunnelBlock) || isIPInBlock(ip, c.cache.Config.TunnelTunnelBlock) {
+		if isIPInBlock(ip, c.cache.GlobalConfig.UserTunnelBlock) || isIPInBlock(ip, c.cache.GlobalConfig.DeviceTunnelBlock) {
 			unknownPeers = append(unknownPeers, ip)
 		}
 	}
 
-	multicastGroupBlock := formatCIDR(&c.cache.Config.MulticastGroupBlock)
+	multicastGroupBlock := formatCIDR(&c.cache.GlobalConfig.MulticastGroupBlock)
 
 	// This check avoids the situation where the template produces the following useless output, which happens in any test case with a single DZD.
 	// ```
@@ -797,6 +938,20 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		return nil, err
 	}
 
+	var allTopologies []TopologyModel
+	for _, topo := range c.cache.Topologies {
+		allTopologies = append(allTopologies, TopologyModel{
+			Name:           topo.Name,
+			AdminGroupBit:  topo.AdminGroupBit,
+			FlexAlgoNumber: topo.FlexAlgoNumber,
+			Color:          int(topo.AdminGroupBit) + 1,
+			ConstraintStr:  topo.Constraint.String(),
+		})
+	}
+	sort.Slice(allTopologies, func(i, j int) bool {
+		return allTopologies[i].AdminGroupBit < allTopologies[j].AdminGroupBit
+	})
+
 	data := templateData{
 		MulticastGroupBlock:      multicastGroupBlock,
 		Device:                   &deviceForRender,
@@ -808,6 +963,8 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		LocalASN:                 localASN,
 		UnicastVrfs:              c.cache.UnicastVrfs,
 		Strings:                  StringsHelper{},
+		AllTopologies:            allTopologies,
+		Config:                   c.featuresConfig,
 	}
 
 	config, err := renderConfig(data)

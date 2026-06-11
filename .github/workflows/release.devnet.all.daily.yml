@@ -2,6 +2,12 @@ name: release.devnet.all.daily
 
 on:
   workflow_dispatch:
+    inputs:
+      infra_branch:
+        description: 'Branch of malbeclabs/infra to use for ansible playbooks'
+        required: false
+        type: string
+        default: ''
   schedule:
     - cron: '0 14 * * 1-5'  # Every weekday at 10AM ET/9AM CT
 
@@ -18,8 +24,6 @@ jobs:
         include:
           - component: agent
             playbook: playbooks/agents.yml
-          - component: activator
-            playbook: playbooks/activators.yml
           - component: controller
             playbook: playbooks/controllers.yml
           - component: funder
@@ -38,11 +42,10 @@ jobs:
             playbook: playbooks/geoprobe_agents.yml
           - component: geoprobe-target
             playbook: playbooks/geoprobe_targets.yml
-          - component: geolocation-cli
-            playbook: playbooks/noop.yml
     with:
       component: ${{ matrix.component }}
       playbook: ${{ matrix.playbook }}
+      infra_branch: ${{ inputs.infra_branch }}
     secrets: inherit
     permissions:
       contents: write

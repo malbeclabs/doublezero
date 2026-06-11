@@ -12,7 +12,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/stretchr/testify/require"
 )
@@ -297,7 +297,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 			DataProviderName:           dataProvider1Name,
 			Epoch:                      epoch,
 			StartTimestampMicroseconds: secondStartTimestampMicroseconds,
-			Samples:                    make([]uint32, telemetry.MaxSamplesPerBatch),
+			Samples:                    make([]uint32, telemetry.MaxInternetLatencySamplesPerBatch),
 		})
 		require.NoError(t, err)
 		for _, msg := range res.Meta.LogMessages {
@@ -317,7 +317,7 @@ func TestE2E_SDK_Telemetry_InternetLatencySamples(t *testing.T) {
 			DataProviderName:           dataProvider1Name,
 			Epoch:                      epoch,
 			StartTimestampMicroseconds: secondStartTimestampMicroseconds,
-			Samples:                    make([]uint32, telemetry.MaxSamplesPerBatch+1),
+			Samples:                    make([]uint32, telemetry.MaxInternetLatencySamplesPerBatch+1),
 		})
 		require.ErrorIs(t, err, telemetry.ErrSamplesBatchTooLarge)
 	})

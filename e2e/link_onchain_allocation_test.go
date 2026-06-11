@@ -13,13 +13,13 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/allocation"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/require"
 )
 
 // TestE2E_Link_OnchainAllocation tests that links are activated with on-chain resource allocation.
-// When the OnChainAllocation feature flag is enabled in GlobalState, the activator allocates
+// When the OnChainAllocation feature flag is enabled in GlobalState, the program allocates
 // tunnel_id and tunnel_net from the ResourceExtension bitmaps on-chain, rather than from local allocators.
 func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	t.Parallel()
@@ -33,7 +33,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	require.NoError(t, err)
 	serviceabilityProgramKeypairPath := filepath.Join(currentDir, "data", "serviceability-program-keypair.json")
 
-	// Create devnet with on-chain allocation enabled for the activator
+	// Create devnet with on-chain allocation enabled for the program
 	dn, err := devnet.New(devnet.DevnetSpec{
 		DeployID:  deployID,
 		DeployDir: t.TempDir(),
@@ -43,9 +43,6 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 		},
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
-		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(true), // Enable on-chain resource allocation
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -75,15 +72,15 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 		set -euo pipefail
 		doublezero device interface create test-dz01 "Ethernet1" --interface-cyoa gre-over-dia --ip-net "45.33.100.62/31" --bandwidth 10Gbps 2>&1
 		doublezero device interface create test-dz02 "Ethernet1" --interface-cyoa gre-over-dia --ip-net "45.33.100.64/31" --bandwidth 10Gbps 2>&1
-		doublezero device interface create test-dz01 "Ethernet2" --bandwidth 10Gbps --mtu 2048 2>&1
-		doublezero device interface create test-dz02 "Ethernet2" --bandwidth 10Gbps --mtu 2048 2>&1
+		doublezero device interface create test-dz01 "Ethernet2" --bandwidth 10Gbps 2>&1
+		doublezero device interface create test-dz02 "Ethernet2" --bandwidth 10Gbps 2>&1
 	`})
 	log.Debug("Interface creation output", "output", string(output))
 	require.NoError(t, err)
 
-	// Wait for the activator to unlink the interfaces (physical interfaces start as Pending,
-	// activator transitions them to Unlinked so they can be used for links)
-	log.Debug("==> Waiting for interfaces to be unlinked by activator")
+	// Wait for the program to unlink the interfaces (physical interfaces start as Pending,
+	// program transitions them to Unlinked so they can be used for links)
+	log.Debug("==> Waiting for interfaces to be unlinked by program")
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
 		if err != nil {
@@ -166,7 +163,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	}
 
 	// Create a link between the two devices with desired-status activated
-	// The activator should pick this up and activate it with on-chain allocation
+	// The program should pick this up and activate it with on-chain allocation
 	log.Debug("==> Creating link with on-chain allocation")
 	_, err = dn.Manager.Exec(ctx, []string{"bash", "-c", `
 		set -euo pipefail
@@ -178,7 +175,6 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 			--side-z test-dz02 \
 			--side-z-interface Ethernet2 \
 			--bandwidth "10 Gbps" \
-			--mtu 2048 \
 			--delay-ms 10 \
 			--jitter-ms 1 \
 			--desired-status activated \
@@ -279,8 +275,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for link to transition to Deleting status
-	// Note: Go SDK uses LinkStatusDeleting (value 3) which corresponds to Rust's Deleting status
-	log.Debug("==> Waiting for link to transition to Deleting")
+	log.Info("==> Waiting for link to transition to Deleting")
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
 		if err != nil {
@@ -292,7 +287,6 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 		}
 		for _, link := range data.Links {
 			if link.Code == "test-dz01:test-dz02" {
-				// LinkStatusDeleting in Go SDK = Deleting in Rust (value 3)
 				if link.Status == serviceability.LinkStatusDeleting {
 					return true
 				}
@@ -308,7 +302,7 @@ func TestE2E_Link_OnchainAllocation(t *testing.T) {
 	// Note: We don't capture a snapshot here because the link may close very quickly,
 	// causing a race where we capture the snapshot after deallocation already happened.
 	// Instead, we use afterAlloc (captured after link creation) as the baseline.
-	log.Debug("==> Waiting for link to be closed by activator")
+	log.Debug("==> Waiting for link to be closed by program")
 	require.Eventually(t, func() bool {
 		client, err := dn.Ledger.GetServiceabilityClient()
 		if err != nil {

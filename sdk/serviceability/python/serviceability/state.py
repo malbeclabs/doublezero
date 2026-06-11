@@ -42,6 +42,7 @@ class AccountTypeEnum(IntEnum):
     ACCESS_PASS = 11
     TENANT = 13
     PERMISSION = 15
+    TOPOLOGY = 16
 
 
 # ---------------------------------------------------------------------------
@@ -50,22 +51,22 @@ class AccountTypeEnum(IntEnum):
 
 
 class LocationStatus(IntEnum):
-    PENDING = 0
+    PENDING_DEPRECATED = 0  # deprecated; unreachable for new accounts
     ACTIVATED = 1
     SUSPENDED = 2
 
     def __str__(self) -> str:
-        _names = {0: "pending", 1: "activated", 2: "suspended"}
+        _names = {0: "pending (deprecated)", 1: "activated", 2: "suspended"}
         return _names.get(self.value, "unknown")
 
 
 class ExchangeStatus(IntEnum):
-    PENDING = 0
+    PENDING_DEPRECATED = 0  # deprecated; unreachable for new accounts
     ACTIVATED = 1
     SUSPENDED = 2
 
     def __str__(self) -> str:
-        _names = {0: "pending", 1: "activated", 2: "suspended"}
+        _names = {0: "pending (deprecated)", 1: "activated", 2: "suspended"}
         return _names.get(self.value, "unknown")
 
 
@@ -80,20 +81,20 @@ class DeviceDeviceType(IntEnum):
 
 
 class DeviceStatus(IntEnum):
-    PENDING = 0
+    PENDING_DEPRECATED = 0  # deprecated; unreachable for new accounts
     ACTIVATED = 1
     DELETING = 2
-    REJECTED = 3
+    REJECTED_DEPRECATED = 3  # deprecated; unreachable for new accounts
     DRAINED = 4
     DEVICE_PROVISIONING = 5
     LINK_PROVISIONING = 6
 
     def __str__(self) -> str:
         _names = {
-            0: "pending",
+            0: "pending (deprecated)",
             1: "activated",
             2: "deleting",
-            3: "rejected",
+            3: "rejected (deprecated)",
             4: "drained",
             5: "device-provisioning",
             6: "link-provisioning",
@@ -221,10 +222,10 @@ class LinkLinkType(IntEnum):
 
 
 class LinkStatus(IntEnum):
-    PENDING = 0
+    PENDING_DEPRECATED = 0  # deprecated; unreachable for new accounts
     ACTIVATED = 1
     DELETING = 3
-    REJECTED = 4
+    REJECTED_DEPRECATED = 4  # deprecated; unreachable for new accounts
     REQUESTED = 5
     HARD_DRAINED = 6
     SOFT_DRAINED = 7
@@ -232,10 +233,10 @@ class LinkStatus(IntEnum):
 
     def __str__(self) -> str:
         _names = {
-            0: "pending",
+            0: "pending (deprecated)",
             1: "activated",
             3: "deleting",
-            4: "rejected",
+            4: "rejected (deprecated)",
             5: "requested",
             6: "hard-drained",
             7: "soft-drained",
@@ -314,43 +315,53 @@ class CyoaType(IntEnum):
 
 
 class UserStatus(IntEnum):
-    PENDING = 0
+    PENDING_DEPRECATED = 0  # deprecated; unreachable for new accounts
     ACTIVATED = 1
     DELETING = 3
-    REJECTED = 4
-    PENDING_BAN = 5
+    REJECTED_DEPRECATED = 4  # deprecated; unreachable for new accounts
+    PENDING_BAN_DEPRECATED = 5  # deprecated
     BANNED = 6
-    UPDATING = 7
+    UPDATING_DEPRECATED = 7  # deprecated intermediate state
     OUT_OF_CREDITS = 8
 
     def __str__(self) -> str:
         _names = {
-            0: "pending",
+            0: "pending (deprecated)",
             1: "activated",
             3: "deleting",
-            4: "rejected",
-            5: "pending_ban",
+            4: "rejected (deprecated)",
+            5: "pending_ban (deprecated)",
             6: "banned",
-            7: "updating",
+            7: "updating (deprecated)",
             8: "out_of_credits",
         }
         return _names.get(self.value, "unknown")
 
 
+class BGPStatus(IntEnum):
+    UNKNOWN = 0
+    UP = 1
+    DOWN = 2
+
+    def __str__(self) -> str:
+        _names = {0: "unknown", 1: "up", 2: "down"}
+        return _names.get(self.value, "unknown")
+
+
 class MulticastGroupStatus(IntEnum):
-    PENDING = 0
+    PENDING_DEPRECATED = 0  # deprecated; unreachable for new accounts
     ACTIVATED = 1
     SUSPENDED = 2
     DELETING = 3
-    REJECTED = 4
+    REJECTED_DEPRECATED = 4  # deprecated; unreachable for new accounts
 
     def __str__(self) -> str:
         _names = {
-            0: "pending",
+            0: "pending (deprecated)",
             1: "activated",
             2: "suspended",
             3: "deleting",
-            4: "rejected",
+            4: "rejected (deprecated)",
         }
         return _names.get(self.value, "unknown")
 
@@ -359,18 +370,16 @@ class AccessPassTypeTag(IntEnum):
     PREPAID = 0
     SOLANA_VALIDATOR = 1
     SOLANA_RPC = 2
-    SOLANA_MULTICAST_PUBLISHER = 3
-    SOLANA_MULTICAST_SUBSCRIBER = 4
-    OTHERS = 5
+    OTHERS = 3
+    EDGE_SEAT = 4
 
     def __str__(self) -> str:
         _names = {
             0: "prepaid",
             1: "solana_validator",
             2: "solana_rpc",
-            3: "solana_multicast_publisher",
-            4: "solana_multicast_subscriber",
-            5: "others",
+            3: "others",
+            4: "edge_seat",
         }
         return _names.get(self.value, "unknown")
 
@@ -379,10 +388,15 @@ class AccessPassStatus(IntEnum):
     REQUESTED = 0
     CONNECTED = 1
     DISCONNECTED = 2
-    EXPIRED = 3
+    EXPIRED_DEPRECATED = 3  # deprecated; epoch expiry no longer demotes access passes
 
     def __str__(self) -> str:
-        _names = {0: "requested", 1: "connected", 2: "disconnected", 3: "expired"}
+        _names = {
+            0: "requested",
+            1: "connected",
+            2: "disconnected",
+            3: "expired (deprecated)",
+        }
         return _names.get(self.value, "unknown")
 
 
@@ -390,11 +404,27 @@ class AccessPassStatus(IntEnum):
 # Account dataclasses
 # ---------------------------------------------------------------------------
 
-CURRENT_INTERFACE_VERSION = 2
+# On-wire schema version for the size-prefixed Interface format
+# (matches Rust's CURRENT_INTERFACE_SCHEMA_VERSION). Note: prior to issue #3660
+# this constant gated the legacy enum reader at value 2 (max known disc=1); it
+# is now bumped to 4 to match the size-prefixed schema. Legacy enum reads only
+# handle version 0 (V1) and 1 (V2); discriminant 3 was a transient V3 format
+# that never reached production and is no longer recognized.
+CURRENT_INTERFACE_VERSION = 4
+
+
+@dataclass
+class FlexAlgoNodeSegment:
+    topology: Pubkey = Pubkey.default()
+    node_segment_idx: int = 0
 
 
 @dataclass
 class Interface:
+    # size is the on-disk byte length of the size-prefixed encoding (u16 size +
+    # u8 version + body). Populated only when read via from_reader_sized; zero
+    # for legacy enum reads.
+    size: int = 0
     version: int = 0
     status: InterfaceStatus = InterfaceStatus.INVALID
     name: str = ""
@@ -410,14 +440,19 @@ class Interface:
     ip_net: bytes = b"\x00" * 5
     node_segment_idx: int = 0
     user_tunnel_endpoint: bool = False
+    flex_algo_node_segments: list[FlexAlgoNodeSegment] = field(default_factory=list)
 
     @classmethod
-    def from_reader(cls, r: IncrementalReader) -> Interface:
+    def from_reader(cls, r: DefensiveReader) -> Interface:
         iface = cls()
         iface.version = r.read_u8()
         if iface.version > CURRENT_INTERFACE_VERSION - 1:
             return iface
-        if iface.version == 0:  # V1
+        # Discriminants: 0=V1, 1 or 2=V2. Discriminant 3 was a transient V3
+        # format (V2 body + flex_algo_node_segments vec); the type is gone but
+        # pre-existing on-chain accounts still contain V3 entries, so we consume
+        # the bytes and project to V2 (segments dropped).
+        if iface.version == 0:
             iface.status = InterfaceStatus(r.read_u8())
             iface.name = r.read_string()
             iface.interface_type = InterfaceType(r.read_u8())
@@ -426,7 +461,7 @@ class Interface:
             iface.ip_net = r.read_network_v4()
             iface.node_segment_idx = r.read_u16()
             iface.user_tunnel_endpoint = r.read_bool()
-        elif iface.version == 1:  # V2
+        elif iface.version in (1, 2, 3):
             iface.status = InterfaceStatus(r.read_u8())
             iface.name = r.read_string()
             iface.interface_type = InterfaceType(r.read_u8())
@@ -441,6 +476,58 @@ class Interface:
             iface.ip_net = r.read_network_v4()
             iface.node_segment_idx = r.read_u16()
             iface.user_tunnel_endpoint = r.read_bool()
+            if iface.version == 3:
+                seg_count = r.read_u32()
+                for _ in range(seg_count):
+                    _read_pubkey(r)
+                    r.read_u16()
+        return iface
+
+    @classmethod
+    def from_reader_sized(cls, r: DefensiveReader) -> Interface:
+        """Read a single size-prefixed Interface element.
+
+        Wire format: u16 size (incl. 3-byte prefix) + u8 version + body. After
+        reading the known body fields, the reader is advanced to start+size so
+        unknown future versions are skipped in O(1).
+        """
+        iface = cls()
+        start = r.offset
+        iface.size = r.read_u16()
+        iface.version = r.read_u8()
+
+        # Body fields (current schema, version 4): same order as InterfaceV2,
+        # plus a trailing flex_algo_node_segments vec.
+        iface.status = InterfaceStatus(r.read_u8())
+        iface.name = r.read_string()
+        iface.interface_type = InterfaceType(r.read_u8())
+        iface.interface_cyoa = InterfaceCYOA(r.read_u8())
+        iface.interface_dia = InterfaceDIA(r.read_u8())
+        iface.loopback_type = LoopbackType(r.read_u8())
+        iface.bandwidth = r.read_u64()
+        iface.cir = r.read_u64()
+        iface.mtu = r.read_u16()
+        iface.routing_mode = RoutingMode(r.read_u8())
+        iface.vlan_id = r.read_u16()
+        iface.ip_net = r.read_network_v4()
+        iface.node_segment_idx = r.read_u16()
+        iface.user_tunnel_endpoint = r.read_bool()
+        seg_count = r.read_u32()
+        for _ in range(seg_count):
+            # Defensive guard against garbage seg_count when the body is shorter
+            # than expected (e.g. older size-prefixed encoding).
+            if r.remaining < 34:  # 32 (pubkey) + 2 (u16)
+                break
+            seg = FlexAlgoNodeSegment()
+            seg.topology = _read_pubkey(r)
+            seg.node_segment_idx = r.read_u16()
+            iface.flex_algo_node_segments.append(seg)
+
+        # Advance the reader to start+size regardless of how many body bytes
+        # we consumed.
+        target = start + iface.size
+        if r.offset < target:
+            r.read_bytes(target - r.offset)
         return iface
 
 
@@ -519,7 +606,7 @@ class Location:
     lat: float = 0.0
     lng: float = 0.0
     loc_id: int = 0
-    status: LocationStatus = LocationStatus.PENDING
+    status: LocationStatus = LocationStatus.PENDING_DEPRECATED
     code: str = ""
     name: str = ""
     country: str = ""
@@ -553,7 +640,7 @@ class Exchange:
     lat: float = 0.0
     lng: float = 0.0
     bgp_community: int = 0
-    status: ExchangeStatus = ExchangeStatus.PENDING
+    status: ExchangeStatus = ExchangeStatus.PENDING_DEPRECATED
     code: str = ""
     name: str = ""
     reference_count: int = 0
@@ -591,13 +678,13 @@ class Device:
     exchange_pub_key: Pubkey = Pubkey.default()
     device_type: DeviceDeviceType = DeviceDeviceType.HYBRID
     public_ip: bytes = b"\x00" * 4
-    status: DeviceStatus = DeviceStatus.PENDING
+    status: DeviceStatus = DeviceStatus.PENDING_DEPRECATED
     code: str = ""
     dz_prefixes: list[bytes] = field(default_factory=list)
     metrics_publisher_pub_key: Pubkey = Pubkey.default()
     contributor_pub_key: Pubkey = Pubkey.default()
     mgmt_vrf: str = ""
-    interfaces: list[Interface] = field(default_factory=list)
+    deprecated_interfaces: list[Interface] = field(default_factory=list)
     reference_count: int = 0
     users_count: int = 0
     max_users: int = 0
@@ -610,6 +697,11 @@ class Device:
     reserved_seats: int = 0
     multicast_publishers_count: int = 0
     max_multicast_publishers: int = 0
+    # interfaces is the trailing size-prefixed vec parallel to deprecated_interfaces.
+    # For legacy accounts (no trailing bytes), this is rebuilt from deprecated_interfaces
+    # by from_bytes. When populated from the wire, len(interfaces) ==
+    # len(deprecated_interfaces) is enforced.
+    interfaces: list[Interface] = field(default_factory=list)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Device:
@@ -630,7 +722,7 @@ class Device:
         dev.contributor_pub_key = _read_pubkey(r)
         dev.mgmt_vrf = r.read_string()
         iface_len = r.read_u32()
-        dev.interfaces = [Interface.from_reader(r) for _ in range(iface_len)]
+        dev.deprecated_interfaces = [Interface.from_reader(r) for _ in range(iface_len)]
         dev.reference_count = r.read_u32()
         dev.users_count = r.read_u16()
         dev.max_users = r.read_u16()
@@ -643,6 +735,45 @@ class Device:
         dev.reserved_seats = r.read_u16()
         dev.multicast_publishers_count = r.read_u16()
         dev.max_multicast_publishers = r.read_u16()
+
+        # Trailing interfaces vec (size-prefixed). Empty trailing => rebuild
+        # from deprecated_interfaces. Non-empty trailing whose declared length
+        # differs from the deprecated_interfaces length is a corrupt-account
+        # condition; raise per Rust device-reader semantics (length mismatch is fatal).
+        if r.remaining == 0:
+            dev.interfaces = []
+            for legacy in dev.deprecated_interfaces:
+                rebuilt = Interface(
+                    size=0,
+                    version=CURRENT_INTERFACE_VERSION,
+                    status=legacy.status,
+                    name=legacy.name,
+                    interface_type=legacy.interface_type,
+                    interface_cyoa=legacy.interface_cyoa,
+                    interface_dia=legacy.interface_dia,
+                    loopback_type=legacy.loopback_type,
+                    bandwidth=legacy.bandwidth,
+                    cir=legacy.cir,
+                    mtu=legacy.mtu,
+                    routing_mode=legacy.routing_mode,
+                    vlan_id=legacy.vlan_id,
+                    ip_net=legacy.ip_net,
+                    node_segment_idx=legacy.node_segment_idx,
+                    user_tunnel_endpoint=legacy.user_tunnel_endpoint,
+                    flex_algo_node_segments=list(legacy.flex_algo_node_segments),
+                )
+                dev.interfaces.append(rebuilt)
+        else:
+            new_len = r.read_u32()
+            if new_len != len(dev.deprecated_interfaces):
+                raise ValueError(
+                    f"Device interfaces length {new_len} != "
+                    f"deprecated_interfaces length {len(dev.deprecated_interfaces)}"
+                )
+            dev.interfaces = [
+                Interface.from_reader_sized(r) for _ in range(new_len)
+            ]
+
         return dev
 
 
@@ -661,7 +792,7 @@ class Link:
     jitter_ns: int = 0
     tunnel_id: int = 0
     tunnel_net: bytes = b"\x00" * 5
-    status: LinkStatus = LinkStatus.PENDING
+    status: LinkStatus = LinkStatus.PENDING_DEPRECATED
     code: str = ""
     contributor_pub_key: Pubkey = Pubkey.default()
     side_a_iface_name: str = ""
@@ -669,6 +800,8 @@ class Link:
     delay_override_ns: int = 0
     link_health: LinkHealth = LinkHealth.UNKNOWN
     link_desired_status: LinkDesiredStatus = LinkDesiredStatus.PENDING
+    link_topologies: list[Pubkey] = field(default_factory=list)
+    link_flags: int = 0
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Link:
@@ -695,6 +828,8 @@ class Link:
         lk.delay_override_ns = r.read_u64()
         lk.link_health = LinkHealth(r.read_u8())
         lk.link_desired_status = LinkDesiredStatus(r.read_u8())
+        lk.link_topologies = _read_pubkey_vec(r)
+        lk.link_flags = r.read_u8()
         return lk
 
 
@@ -712,10 +847,18 @@ class User:
     dz_ip: bytes = b"\x00" * 4
     tunnel_id: int = 0
     tunnel_net: bytes = b"\x00" * 5
-    status: UserStatus = UserStatus.PENDING
+    status: UserStatus = UserStatus.PENDING_DEPRECATED
     publishers: list[Pubkey] = field(default_factory=list)
     subscribers: list[Pubkey] = field(default_factory=list)
     validator_pub_key: Pubkey = Pubkey.default()
+    tunnel_endpoint: bytes = b"\x00" * 4
+    tunnel_flags: int = 0
+    bgp_status: BGPStatus = BGPStatus.UNKNOWN
+    last_bgp_up_at: int = 0
+    last_bgp_reported_at: int = 0
+    # Smoothed BGP TCP RTT in nanoseconds, as last reported by the device agent.
+    # 0 means no sample. Same unit as Link.delay_ns.
+    bgp_rtt_ns: int = 0
 
     @classmethod
     def from_bytes(cls, data: bytes) -> User:
@@ -737,6 +880,14 @@ class User:
         u.publishers = _read_pubkey_vec(r)
         u.subscribers = _read_pubkey_vec(r)
         u.validator_pub_key = _read_pubkey(r)
+        u.tunnel_endpoint = r.read_ipv4()
+        u.tunnel_flags = r.read_u8()
+        u.bgp_status = BGPStatus(r.read_u8())
+        u.last_bgp_up_at = r.read_u64()
+        u.last_bgp_reported_at = r.read_u64()
+        # DefensiveReader returns 0 on EOF, so old accounts that predate
+        # bgp_rtt_ns deserialize with the field defaulted to 0.
+        u.bgp_rtt_ns = r.read_u64()
         return u
 
 
@@ -749,7 +900,7 @@ class MulticastGroup:
     tenant_pub_key: Pubkey = Pubkey.default()
     multicast_ip: bytes = b"\x00" * 4
     max_bandwidth: int = 0
-    status: MulticastGroupStatus = MulticastGroupStatus.PENDING
+    status: MulticastGroupStatus = MulticastGroupStatus.PENDING_DEPRECATED
     code: str = ""
     publisher_count: int = 0
     subscriber_count: int = 0
@@ -848,6 +999,7 @@ class Tenant:
     billing_discriminant: int = 0
     billing_rate: int = 0
     billing_last_deduction_dz_epoch: int = 0
+    include_topologies: list[Pubkey] = field(default_factory=list)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Tenant:
@@ -867,6 +1019,7 @@ class Tenant:
         t.billing_discriminant = r.read_u8()
         t.billing_rate = r.read_u64()
         t.billing_last_deduction_dz_epoch = r.read_u64()
+        t.include_topologies = _read_pubkey_vec(r)
         return t
 
 
@@ -876,7 +1029,7 @@ class AccessPass:
     owner: Pubkey = Pubkey.default()
     bump_seed: int = 0
     access_pass_type_tag: AccessPassTypeTag = AccessPassTypeTag.PREPAID
-    associated_pubkey: Pubkey | None = None  # for SolanaValidator, SolanaRPC, SolanaMulticast*
+    associated_pubkey: Pubkey | None = None  # for SolanaValidator, SolanaRPC
     others_type_name: str = ""  # for Others variant
     others_key: str = ""  # for Others variant
     client_ip: bytes = b"\x00" * 4
@@ -887,6 +1040,11 @@ class AccessPass:
     mgroup_pub_allowlist: list[Pubkey] = field(default_factory=list)
     mgroup_sub_allowlist: list[Pubkey] = field(default_factory=list)
     flags: int = 0
+    tenant_allowlist: list[Pubkey] = field(default_factory=list)
+    unicast_user_count: int = 0
+    max_unicast_users: int = 1
+    multicast_user_count: int = 0
+    max_multicast_users: int = 1
 
     @classmethod
     def from_bytes(cls, data: bytes) -> AccessPass:
@@ -900,13 +1058,14 @@ class AccessPass:
             ap.access_pass_type_tag = AccessPassTypeTag(tag)
         except ValueError:
             ap.access_pass_type_tag = AccessPassTypeTag.PREPAID
-        # Variants 1-4 have an associated pubkey
-        if tag in (1, 2, 3, 4):
+        # SolanaValidator and SolanaRPC carry an associated pubkey.
+        if tag in (1, 2):
             ap.associated_pubkey = _read_pubkey(r)
-        # Variant 5 (Others) has two strings
-        elif tag == 5:
+        # Others carries two strings (type_name, key).
+        elif tag == 3:
             ap.others_type_name = r.read_string()
             ap.others_key = r.read_string()
+        # Prepaid (0) and EdgeSeat (4) carry no associated data.
         ap.client_ip = r.read_ipv4()
         ap.user_payer = _read_pubkey(r)
         ap.last_access_epoch = r.read_u64()
@@ -915,6 +1074,12 @@ class AccessPass:
         ap.mgroup_pub_allowlist = _read_pubkey_vec(r)
         ap.mgroup_sub_allowlist = _read_pubkey_vec(r)
         ap.flags = r.read_u8()
+        ap.tenant_allowlist = _read_pubkey_vec(r)
+        ap.unicast_user_count = r.read_u16()
+        # Caps default to 1 when absent (pre-migration accounts), matching the program's unwrap_or(1).
+        ap.max_unicast_users = r.read_u16() if r.remaining >= 2 else 1
+        ap.multicast_user_count = r.read_u16()
+        ap.max_multicast_users = r.read_u16() if r.remaining >= 2 else 1
         return ap
 
 
@@ -975,3 +1140,42 @@ class Permission:
         hi = r.read_u64()
         p.permissions = lo | (hi << 64)
         return p
+
+
+# ---------------------------------------------------------------------------
+# TopologyInfo
+# ---------------------------------------------------------------------------
+
+
+class TopologyConstraint(IntEnum):
+    INCLUDE_ANY = 0
+    EXCLUDE = 1
+
+    def __str__(self) -> str:
+        _names = {0: "include-any", 1: "exclude"}
+        return _names.get(self.value, "unknown")
+
+
+@dataclass
+class TopologyInfo:
+    account_type: int = 0
+    owner: Pubkey = Pubkey.default()
+    bump_seed: int = 0
+    name: str = ""
+    admin_group_bit: int = 0
+    flex_algo_number: int = 0
+    constraint: TopologyConstraint = TopologyConstraint.INCLUDE_ANY
+    pub_key: Pubkey = Pubkey.default()  # set from account address after deserialization
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> TopologyInfo:
+        r = DefensiveReader(data)
+        t = cls()
+        t.account_type = r.read_u8()
+        t.owner = _read_pubkey(r)
+        t.bump_seed = r.read_u8()
+        t.name = r.read_string()
+        t.admin_group_bit = r.read_u8()
+        t.flex_algo_number = r.read_u8()
+        t.constraint = TopologyConstraint(r.read_u8())
+        return t

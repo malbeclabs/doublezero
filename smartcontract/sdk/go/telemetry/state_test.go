@@ -31,7 +31,9 @@ func TestSDK_Telemetry_State_DeviceLatencySamples(t *testing.T) {
 				SamplingIntervalMicroseconds: 250_000,
 				StartTimestampMicroseconds:   1_625_000_000,
 				NextSampleIndex:              5,
-				Unused:                       [128]byte{88},
+				AgentVersion:                 [16]uint8{},
+				AgentCommit:                  [8]uint8{},
+				Unused:                       [104]byte{88},
 			},
 			Samples: []uint32{100, 200, 300, 400, 500},
 		}

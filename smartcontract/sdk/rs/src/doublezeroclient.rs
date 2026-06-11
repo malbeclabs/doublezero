@@ -22,6 +22,7 @@ pub trait DoubleZeroClient {
     fn get_payer(&self) -> Pubkey;
     fn get_balance(&self) -> eyre::Result<u64>;
     fn get_epoch(&self) -> eyre::Result<u64>;
+    fn get_block_time(&self, slot: u64) -> eyre::Result<Option<i64>>;
     fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>>;
 
     fn get(&self, pubkey: Pubkey) -> eyre::Result<AccountData>;

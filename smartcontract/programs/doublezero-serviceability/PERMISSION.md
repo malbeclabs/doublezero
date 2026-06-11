@@ -204,7 +204,7 @@ Closes the account and refunds rent to the payer.
 
 4. **Update the SDKs:**
 
-   - **Go** (`sdk/serviceability/go/state.go`):
+   - **Go** (`smartcontract/sdk/go/serviceability/state.go`):
      ```go
      PermissionFlagFooAdmin uint64 = 1 << 15
      ```

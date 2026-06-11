@@ -23,6 +23,8 @@ pub enum AccountType {
     ResourceExtension = 12,
     Tenant = 13,
     Permission = 15,
+    Index = 16,
+    Topology = 17,
 }
 
 pub trait AccountTypeInfo {
@@ -50,6 +52,8 @@ impl From<u8> for AccountType {
             12 => AccountType::ResourceExtension,
             13 => AccountType::Tenant,
             15 => AccountType::Permission,
+            16 => AccountType::Index,
+            17 => AccountType::Topology,
             _ => AccountType::None,
         }
     }
@@ -73,6 +77,8 @@ impl fmt::Display for AccountType {
             AccountType::ResourceExtension => write!(f, "resourceextension"),
             AccountType::Tenant => write!(f, "tenant"),
             AccountType::Permission => write!(f, "permission"),
+            AccountType::Index => write!(f, "index"),
+            AccountType::Topology => write!(f, "topology"),
         }
     }
 }

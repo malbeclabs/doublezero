@@ -1,12 +1,9 @@
 use crate::{
-    doublezerocommand::CliCommand,
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::validate_pubkey_or_code,
+    doublezerocommand::CliCommand, helpers::resolve_tenant_pk, validators::validate_pubkey_or_code,
 };
 use clap::Args;
-use doublezero_sdk::commands::tenant::{
-    get::GetTenantCommand, update_payment_status::UpdatePaymentStatusCommand,
-};
+use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
+use doublezero_sdk::commands::tenant::update_payment_status::UpdatePaymentStatusCommand;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -20,13 +17,18 @@ pub struct UpdatePaymentStatusCliCommand {
 }
 
 impl UpdatePaymentStatusCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
-        let (tenant_pubkey, _tenant) = client.get_tenant(GetTenantCommand {
-            pubkey_or_code: self.pubkey,
-        })?;
+        let tenant_pubkey = resolve_tenant_pk(client, &self.pubkey)?;
 
         let signature = client.update_payment_status_tenant(UpdatePaymentStatusCommand {
             tenant_pubkey,
@@ -34,9 +36,7 @@ impl UpdatePaymentStatusCliCommand {
             last_deduction_dz_epoch: None,
         })?;
 
-        writeln!(out, "Signature: {signature}")?;
-
-        Ok(())
+        print_signature(out, &signature)
     }
 }
 
@@ -47,6 +47,7 @@ mod tests {
         tenant::update_payment_status::UpdatePaymentStatusCliCommand,
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
         commands::tenant::{
             get::GetTenantCommand, update_payment_status::UpdatePaymentStatusCommand,
@@ -84,6 +85,7 @@ mod tests {
             metro_routing: false,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
 
         client
@@ -105,13 +107,15 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdatePaymentStatusCliCommand {
-            pubkey: tenant_pubkey.to_string(),
-            payment_status: 1,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdatePaymentStatusCliCommand {
+                pubkey: tenant_pubkey.to_string(),
+                payment_status: 1,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

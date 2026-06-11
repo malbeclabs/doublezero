@@ -35,29 +35,30 @@ func TestGenerateKeypairJSON(t *testing.T) {
 }
 
 func TestPubkeyFromKeypairJSON(t *testing.T) {
-	// Example 64-byte Solana keypair (ed25519 private + public)
-	// This one corresponds to pubkey: 7T2Wzq8Km74GZ3HYDpyMRH6nRRZ9yRBYwvvBhfbNNrMf
-	keypair := []byte{
+	// Example 64-byte Solana keypair (ed25519 private + public).
+	// Corresponds to pubkey: FM5r7bfrBWXVFKuSTvPGsLKFuEXsqsu2Uum1BseXNhAh
+	keypairInts := []int{
 		29, 171, 53, 34, 67, 211, 110, 65, 102, 84, 130, 137, 38, 38, 28, 93,
 		55, 25, 62, 78, 71, 73, 130, 35, 109, 107, 58, 136, 29, 114, 213, 5,
 		213, 40, 182, 163, 124, 25, 195, 52, 201, 132, 140, 90, 85, 251, 162, 240,
 		117, 90, 156, 181, 193, 61, 146, 90, 60, 126, 57, 132, 52, 239, 78, 154,
 	}
 
-	keypairJSON, err := json.Marshal(keypair)
-	if err != nil {
-		t.Fatalf("Failed to marshal keypair: %v", err)
-	}
+	keypairJSON, err := json.Marshal(keypairInts)
+	require.NoError(t, err)
 
 	addr, err := solana.PubkeyFromKeypairJSON(keypairJSON)
-	if err != nil {
-		t.Fatalf("Function returned error: %v", err)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "FM5r7bfrBWXVFKuSTvPGsLKFuEXsqsu2Uum1BseXNhAh", addr)
+}
 
-	expected := "FM5r7bfrBWXVFKuSTvPGsLKFuEXsqsu2Uum1BseXNhAh"
-	if addr != expected {
-		t.Errorf("Expected address %s, got %s", expected, addr)
-	}
+func TestGenerateAndParsePubkey_RoundTrip(t *testing.T) {
+	keypairJSON, err := solana.GenerateKeypairJSON()
+	require.NoError(t, err)
+
+	pubkey, err := solana.PubkeyFromKeypairJSON(keypairJSON)
+	require.NoError(t, err)
+	require.NotEmpty(t, pubkey)
 }
 
 func equalBytes(a, b []byte) bool {

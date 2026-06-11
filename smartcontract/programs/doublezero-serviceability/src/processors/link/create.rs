@@ -1,6 +1,7 @@
 use crate::{
     error::DoubleZeroError,
-    pda::get_link_pda,
+    pda::{get_link_pda, get_topology_pda},
+    processors::validation::validate_program_account,
     seeds::{SEED_LINK, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -8,8 +9,9 @@ use crate::{
         contributor::Contributor,
         device::Device,
         globalstate::GlobalState,
-        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus},
+        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LINK_MTU},
         link::*,
+        topology::TopologyInfo,
     },
 };
 use borsh::BorshSerialize;
@@ -59,6 +61,10 @@ pub fn process_create_link(
     accounts: &[AccountInfo],
     value: &LinkCreateArgs,
 ) -> ProgramResult {
+    if !value.use_onchain_allocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let link_account = next_account_info(accounts_iter)?;
@@ -67,19 +73,11 @@ pub fn process_create_link(
     let side_z_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for onchain allocation (before payer)
-    // Account layout WITH ResourceExtension (use_onchain_allocation = true):
-    //   [link, contributor, side_a, side_z, globalstate, device_tunnel_block, link_ids, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_allocation = false):
-    //   [link, contributor, side_a, side_z, globalstate, payer, system]
-    let resource_extension_accounts = if value.use_onchain_allocation {
-        let device_tunnel_block_ext = next_account_info(accounts_iter)?;
-        let link_ids_ext = next_account_info(accounts_iter)?;
-        Some((device_tunnel_block_ext, link_ids_ext))
-    } else {
-        None
-    };
-
+    // Account layout: [link, contributor, side_a, side_z, globalstate, unicast_default,
+    //                  device_tunnel_block, link_ids, payer, system]
+    let unicast_default_topology_account = next_account_info(accounts_iter)?;
+    let device_tunnel_block_ext = next_account_info(accounts_iter)?;
+    let link_ids_ext = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -94,21 +92,19 @@ pub fn process_create_link(
         validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
     code.make_ascii_lowercase();
 
-    assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
+    validate_program_account!(
+        contributor_account,
+        program_id,
+        writable = true,
+        "Contributor"
     );
-    assert_eq!(
-        side_a_account.owner, program_id,
-        "Invalid Side A Account Owner"
-    );
-    assert_eq!(
-        side_z_account.owner, program_id,
-        "Invalid Side Z Account Owner"
-    );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(side_a_account, program_id, writable = true, "SideA");
+    validate_program_account!(side_z_account, program_id, writable = true, "SideZ");
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = true,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
@@ -153,7 +149,6 @@ pub fn process_create_link(
     let side_a_iface = side_a_dev
         .interfaces
         .iter()
-        .map(|iface| iface.into_current_version())
         .find(|iface| iface.name == value.side_a_iface_name)
         .ok_or_else(|| {
             #[cfg(test)]
@@ -167,12 +162,15 @@ pub fn process_create_link(
         return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
     }
 
+    if side_a_iface.bandwidth < value.bandwidth {
+        return Err(DoubleZeroError::InvalidBandwidth.into());
+    }
+
     let side_z_iface_name = value.side_z_iface_name.clone().unwrap_or_default();
     if let Some(ref z_name) = value.side_z_iface_name {
         let side_z_iface = side_z_dev
             .interfaces
             .iter()
-            .map(|iface| iface.into_current_version())
             .find(|iface| iface.name == *z_name)
             .ok_or_else(|| {
                 #[cfg(test)]
@@ -185,15 +183,23 @@ pub fn process_create_link(
         {
             return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
         }
+
+        if side_z_iface.bandwidth < value.bandwidth {
+            return Err(DoubleZeroError::InvalidBandwidth.into());
+        }
     }
     if value.link_type == LinkLinkType::DZX && value.side_z_iface_name.is_some() {
         return Err(DoubleZeroError::InvalidInterfaceZForExternal.into());
     }
 
+    if value.mtu != LINK_MTU {
+        return Err(DoubleZeroError::InvalidMtu.into());
+    }
+
     let status = if value.link_type == LinkLinkType::DZX {
         LinkStatus::Requested
     } else {
-        LinkStatus::Pending
+        LinkStatus::Activated
     };
 
     contributor.reference_count += 1;
@@ -224,19 +230,50 @@ pub fn process_create_link(
         // link_health: LinkHealth::Pending,
         link_health: LinkHealth::ReadyForService, // Force the link to be ready for service until the health oracle is implemented,
         desired_status: value.desired_status.unwrap_or(LinkDesiredStatus::Activated),
+        link_topologies: Vec::new(),
+        link_flags: 0,
     };
 
     link.check_status_transition();
 
-    // Atomic create+allocate+activate if onchain allocation is enabled
-    if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_extension_accounts {
-        let globalstate_ref = GlobalState::try_from(globalstate_account)?;
+    // Auto-tag with UNICAST-DEFAULT topology at creation.
+    // Always validate the PDA derivation to prevent callers passing a wrong account.
+    // Tagging is conditional: if the topology hasn't been created yet (e.g. fresh deployment),
+    // creation proceeds without the tag rather than failing.
+    let (expected_unicast_default_pda, _) = get_topology_pda(program_id, "unicast-default");
+    if unicast_default_topology_account.key != &expected_unicast_default_pda {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+    if unicast_default_topology_account.owner == program_id
+        && !unicast_default_topology_account.data_is_empty()
+    {
+        assert!(
+            unicast_default_topology_account.is_writable,
+            "unicast-default topology must be writable"
+        );
+        let mut unicast_default = TopologyInfo::try_from(unicast_default_topology_account)?;
+        unicast_default.reference_count = unicast_default
+            .reference_count
+            .checked_add(1)
+            .ok_or(DoubleZeroError::ArithmeticOverflow)?;
+        try_acc_write(
+            &unicast_default,
+            unicast_default_topology_account,
+            payer_account,
+            accounts,
+        )?;
+
+        link.link_topologies = vec![*unicast_default_topology_account.key];
+    }
+
+    // Atomic create+allocate+activate. DZX links stay in Requested until accepted by side Z;
+    // all other links activate immediately.
+    if link.status != LinkStatus::Requested {
         resource_onchain_helpers::validate_and_allocate_link_resources(
             program_id,
             &mut link,
             device_tunnel_block_ext,
             link_ids_ext,
-            &globalstate_ref,
         )?;
 
         // Validate interfaces are Unlinked (required for activation)
@@ -254,7 +291,7 @@ pub fn process_create_link(
             updated_iface_a.ip_net =
                 NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix()).unwrap();
         }
-        side_a_dev.interfaces[idx_a] = updated_iface_a.to_interface();
+        side_a_dev.interfaces[idx_a] = updated_iface_a;
 
         // Set side Z interface to Activated with IP from tunnel_net
         if let Ok((idx_z, side_z_iface)) = side_z_dev.find_interface(&link.side_z_iface_name) {
@@ -268,7 +305,7 @@ pub fn process_create_link(
                     NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix())
                         .unwrap();
             }
-            side_z_dev.interfaces[idx_z] = updated_iface_z.to_interface();
+            side_z_dev.interfaces[idx_z] = updated_iface_z;
         }
 
         link.status = LinkStatus::Activated;

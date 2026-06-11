@@ -2,10 +2,10 @@ use crate::{
     error::DoubleZeroError,
     state::{
         accesspass::AccessPass, accounttype::AccountType, contributor::Contributor, device::Device,
-        exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState, link::Link,
-        location::Location, multicastgroup::MulticastGroup, permission::Permission,
+        exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState, index::Index,
+        link::Link, location::Location, multicastgroup::MulticastGroup, permission::Permission,
         programconfig::ProgramConfig, resource_extension::ResourceExtensionOwned, tenant::Tenant,
-        user::User,
+        topology::TopologyInfo, user::User,
     },
 };
 use solana_program::program_error::ProgramError;
@@ -29,6 +29,8 @@ pub enum AccountData {
     ResourceExtension(ResourceExtensionOwned),
     Tenant(Tenant),
     Permission(Permission),
+    Index(Index),
+    Topology(TopologyInfo),
 }
 
 impl AccountData {
@@ -49,6 +51,8 @@ impl AccountData {
             AccountData::ResourceExtension(_) => "ResourceExtension",
             AccountData::Tenant(_) => "Tenant",
             AccountData::Permission(_) => "Permission",
+            AccountData::Index(_) => "Index",
+            AccountData::Topology(_) => "Topology",
         }
     }
 
@@ -69,6 +73,8 @@ impl AccountData {
             AccountData::ResourceExtension(resource_extension) => resource_extension.to_string(),
             AccountData::Tenant(tenant) => tenant.to_string(),
             AccountData::Permission(permission) => permission.to_string(),
+            AccountData::Index(index) => index.to_string(),
+            AccountData::Topology(topology) => topology.to_string(),
         }
     }
 
@@ -183,6 +189,22 @@ impl AccountData {
             Err(DoubleZeroError::InvalidAccountType)
         }
     }
+
+    pub fn get_index(&self) -> Result<Index, DoubleZeroError> {
+        if let AccountData::Index(index) = self {
+            Ok(index.clone())
+        } else {
+            Err(DoubleZeroError::InvalidAccountType)
+        }
+    }
+
+    pub fn get_topology(&self) -> Result<crate::state::topology::TopologyInfo, DoubleZeroError> {
+        if let AccountData::Topology(topology) = self {
+            Ok(topology.clone())
+        } else {
+            Err(DoubleZeroError::InvalidAccountType)
+        }
+    }
 }
 
 impl TryFrom<&[u8]> for AccountData {
@@ -222,6 +244,10 @@ impl TryFrom<&[u8]> for AccountData {
             )),
             AccountType::Tenant => Ok(AccountData::Tenant(Tenant::try_from(bytes as &[u8])?)),
             AccountType::Permission => Ok(AccountData::Permission(Permission::try_from(
+                bytes as &[u8],
+            )?)),
+            AccountType::Index => Ok(AccountData::Index(Index::try_from(bytes as &[u8])?)),
+            AccountType::Topology => Ok(AccountData::Topology(TopologyInfo::try_from(
                 bytes as &[u8],
             )?)),
         }

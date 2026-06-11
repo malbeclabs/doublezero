@@ -12,7 +12,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 )
 
@@ -69,6 +69,15 @@ func (t *Test) RandomClient() *Client {
 	return clients[t.rand.Intn(len(clients))]
 }
 
+func (t *Test) ClientByHost(host string) (*Client, bool) {
+	for _, client := range t.clients {
+		if client.Host == host {
+			return client, true
+		}
+	}
+	return nil, false
+}
+
 func (t *Test) RandomMulticastGroupCode() string {
 	suffix := t.rand.Intn(1000000)
 	return fmt.Sprintf("qa-test-group-%06d", suffix)
@@ -78,27 +87,17 @@ func (t *Test) Devices() map[string]*Device {
 	return t.devices
 }
 
-// ValidDevices returns devices that pass filtering criteria.
-// If skipCapacityCheck is true (e.g., when using a QA identity that bypasses on-chain capacity checks),
-// devices are not filtered by available capacity.
-func (t *Test) ValidDevices(minCapacity int, skipCapacityCheck bool) []*Device {
+// ValidDevices returns all activated devices except those whose code contains
+// "test" (typically not real hardware). Capacity is not checked here — the QA
+// user pubkey should be on the onchain qa_allowlist so that the smart contract
+// bypasses capacity limits for QA connections.
+func (t *Test) ValidDevices() []*Device {
 	devices := make([]*Device, 0, len(t.devices))
 
 	for _, device := range t.Devices() {
-		// Skip devices with "test" in the code as these are typically not real hardware
 		if strings.Contains(strings.ToLower(device.Code), "test") {
 			t.log.Debug("Skipping test device", "device", device.Code)
 			continue
-		}
-
-		// Skip capacity check if using QA identity (bypasses on-chain max_users check)
-		if !skipCapacityCheck {
-			// Check if device has capacity for at least minCapacity users
-			availableSlots := device.MaxUsers - device.UsersCount
-			if availableSlots < minCapacity {
-				t.log.Debug("Skipping device with insufficient capacity", "device", device.Code, "users", device.UsersCount, "maxUsers", device.MaxUsers)
-				continue
-			}
 		}
 		devices = append(devices, device)
 	}
@@ -144,13 +143,19 @@ func getDevices(ctx context.Context, serviceabilityClient *serviceability.Client
 	for _, device := range data.Devices {
 		exchangeCode := exchanges[device.ExchangePubKey]
 		devices[device.Code] = &Device{
-			PubKey:       base58.Encode(device.PubKey[:]),
-			Code:         device.Code,
-			ExchangeCode: exchangeCode,
-			MaxUsers:     int(device.MaxUsers),
-			UsersCount:   int(device.UsersCount),
-			Status:       device.Status,
-			DeviceType:   device.DeviceType,
+			PubKey:                    base58.Encode(device.PubKey[:]),
+			Code:                      device.Code,
+			ExchangeCode:              exchangeCode,
+			MaxUsers:                  int(device.MaxUsers),
+			UsersCount:                int(device.UsersCount),
+			MaxUnicastUsers:           int(device.MaxUnicastUsers),
+			UnicastUsersCount:         int(device.UnicastUsersCount),
+			MaxMulticastPublishers:    int(device.MaxMulticastPublishers),
+			MulticastPublishersCount:  int(device.MulticastPublishersCount),
+			MaxMulticastSubscribers:   int(device.MaxMulticastSubscribers),
+			MulticastSubscribersCount: int(device.MulticastSubscribersCount),
+			Status:                    device.Status,
+			DeviceType:                device.DeviceType,
 		}
 	}
 	return devices, nil

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -27,7 +28,7 @@ var (
 	device                      = flag.String("device", "127.0.0.1:9543", "IP Address and port of the Arist EOS API. Should always be the local switch at 127.0.0.1:9543.")
 	sleepIntervalInSeconds      = flag.Float64("sleep-interval-in-seconds", 5, "How long to sleep in between polls")
 	controllerTimeoutInSeconds  = flag.Float64("controller-timeout-in-seconds", 30, "How long to wait for a response from the controller before giving up")
-	configCacheTimeoutInSeconds = flag.Int("config-cache-timeout-in-seconds", 60, "Force full config fetch after this many seconds, even if hash unchanged")
+	configCacheTimeoutInSeconds = flag.Int("config-cache-timeout-in-seconds", 60, "Force config apply after this many seconds, even if hash unchanged")
 	maxLockAge                  = flag.Int("max-lock-age-in-seconds", 3600, "If agent detects a config lock that older than the specified age, it will force unlock.")
 	verbose                     = flag.Bool("verbose", false, "Enable verbose logging")
 	showVersion                 = flag.Bool("version", false, "Print the version of the doublezero-agent and exit")
@@ -53,12 +54,32 @@ func fetchConfigFromController(ctx context.Context, dzclient pb.ControllerClient
 		return "", "", err
 	}
 
+	configLines := 0
+	if configText != "" {
+		configLines = strings.Count(configText, "\n") + 1
+	}
+	agent.ConfigSizeInLines.Set(float64(configLines))
+	agent.ConfigSizeInBytes.Set(float64(len(configText)))
+
 	if *verbose {
 		log.Printf("controller returned the following config: '%s'", configText)
 	}
 
 	configHash = computeChecksum(configText)
 	return configText, configHash, nil
+}
+
+func shouldApplyConfig(cachedHash, newHash string, lastApplied time.Time, timeout time.Duration, now time.Time) bool {
+	if cachedHash == "" {
+		return true
+	}
+	if newHash != cachedHash {
+		return true
+	}
+	if now.Sub(lastApplied) >= timeout {
+		return true
+	}
+	return false
 }
 
 func applyConfig(ctx context.Context, eapiClient *arista.EAPIClient, configText string, maxLockAge int) error {
@@ -144,20 +165,7 @@ func main() {
 				continue
 			}
 
-			// Only apply if config changed or timeout elapsed
-			shouldApply := false
-			if cachedConfigHash == "" {
-				// First run
-				shouldApply = true
-			} else if configHash != cachedConfigHash {
-				// Config changed
-				shouldApply = true
-			} else if time.Since(configCacheTime) >= configCacheTimeout {
-				// Force apply after timeout
-				shouldApply = true
-			}
-
-			if !shouldApply {
+			if !shouldApplyConfig(cachedConfigHash, configHash, configCacheTime, configCacheTimeout, time.Now()) {
 				continue
 			}
 

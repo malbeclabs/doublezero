@@ -12,8 +12,8 @@ pub const BGP_COMMUNITY_MAX: u16 = 10999;
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExchangeStatus {
+    PendingDeprecated = 0, // deprecated; unreachable for new accounts
     #[default]
-    Pending = 0,
     Activated = 1,
     Suspended = 2,
 }
@@ -21,10 +21,10 @@ pub enum ExchangeStatus {
 impl From<u8> for ExchangeStatus {
     fn from(value: u8) -> Self {
         match value {
-            0 => ExchangeStatus::Pending,
+            0 => ExchangeStatus::PendingDeprecated,
             1 => ExchangeStatus::Activated,
             2 => ExchangeStatus::Suspended,
-            _ => ExchangeStatus::Pending,
+            _ => ExchangeStatus::PendingDeprecated,
         }
     }
 }
@@ -32,7 +32,7 @@ impl From<u8> for ExchangeStatus {
 impl fmt::Display for ExchangeStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ExchangeStatus::Pending => write!(f, "pending"),
+            ExchangeStatus::PendingDeprecated => write!(f, "pending (deprecated)"),
             ExchangeStatus::Activated => write!(f, "activated"),
             ExchangeStatus::Suspended => write!(f, "suspended"),
         }
@@ -476,14 +476,14 @@ mod tests {
             owner: Pubkey::new_from_array(owner_bytes),
             index: 12u128,
             bump_seed: 255,
-            lat: 50.1215356432098,
-            lng: 8.642047117175098,
+            lat: 50.121_535_643_209_8,
+            lng: 8.642_047_117_175_098,
             bgp_community: 0,
             unused: 0,
             status: ExchangeStatus::Activated,
             code: "xfra".to_string(),
             name: "Frankfurt".to_string(),
-            reference_count: 0x05050505,
+            reference_count: 0x0505_0505,
             device1_pk: Pubkey::new_from_array([0x11; 32]),
             device2_pk: Pubkey::new_from_array([0x22; 32]),
         };

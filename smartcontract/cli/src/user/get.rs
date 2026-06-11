@@ -1,5 +1,8 @@
-use crate::{doublezerocommand::CliCommand, validators::validate_pubkey};
+use crate::{
+    doublezerocommand::CliCommand, helpers::slot_to_datetime, validators::validate_pubkey,
+};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
     accesspass::get::GetAccessPassCommand, device::list::ListDeviceCommand,
@@ -26,6 +29,7 @@ struct UserDisplay {
     pub account: String,
     pub user_type: String,
     pub tenant: String,
+    #[tabled(skip)]
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub device_pk: Pubkey,
     pub device: String,
@@ -40,20 +44,56 @@ struct UserDisplay {
     pub publishers: String,
     pub subscribers: String,
     pub status: String,
+    pub bgp_status: String,
+    #[tabled(skip)]
+    pub last_bgp_reported_at: u64,
+    #[tabled(rename = "last_bgp_reported_at")]
+    pub last_bgp_reported_at_str: String,
+    #[tabled(skip)]
+    pub last_bgp_up_at: u64,
+    #[tabled(rename = "last_bgp_up_at")]
+    pub last_bgp_up_at_str: String,
+    /// Raw BGP RTT in nanoseconds (kept in JSON output for tooling).
+    #[tabled(skip)]
+    pub bgp_rtt_ns: u64,
+    /// Pretty-printed BGP RTT (e.g. "5.50 ms" or "-" when no sample yet).
+    #[tabled(rename = "bgp_rtt")]
+    pub bgp_rtt_str: String,
     pub owner: String,
 }
 
+/// Formats a BGP RTT value in nanoseconds as a human-readable millisecond
+/// string. Returns "-" for 0 (the sentinel for "no sample observed").
+fn format_bgp_rtt_ns(ns: u64) -> String {
+    if ns == 0 {
+        return "-".to_string();
+    }
+    format!("{:.2} ms", ns as f64 / 1_000_000.0)
+}
+
 impl GetUserCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let pubkey = Pubkey::from_str(&self.pubkey)?;
         let (pubkey, user) = client.get_user(GetUserCommand { pubkey })?;
 
-        let (_, accesspass) = client
+        let accesspass_str = client
             .get_accesspass(GetAccessPassCommand {
                 client_ip: user.client_ip,
                 user_payer: user.owner,
             })?
-            .ok_or_else(|| eyre::eyre!("Access Pass not found"))?;
+            .map(|(_, ap)| ap.to_string());
+        if accesspass_str.is_none() {
+            tracing::warn!(
+                client_ip = %user.client_ip,
+                payer = %user.owner,
+                "no access pass found for user"
+            );
+        }
         let multicast_groups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
         let tenants = client.list_tenant(ListTenantCommand {})?;
         let devices = client.list_device(ListDeviceCommand {})?;
@@ -80,7 +120,7 @@ impl GetUserCliCommand {
             dz_ip: user.dz_ip.to_string(),
             tunnel_endpoint: user.tunnel_endpoint.to_string(),
             validator_pubkey: user.validator_pubkey.to_string(),
-            accesspass: accesspass.to_string(),
+            accesspass: accesspass_str.unwrap_or_default(),
             publishers: user
                 .publishers
                 .iter()
@@ -102,6 +142,13 @@ impl GetUserCliCommand {
                 .collect::<Vec<_>>()
                 .join(", "),
             status: user.status.to_string(),
+            bgp_status: user.bgp_status.to_string(),
+            last_bgp_reported_at: user.last_bgp_reported_at,
+            last_bgp_reported_at_str: slot_to_datetime(client, user.last_bgp_reported_at),
+            last_bgp_up_at: user.last_bgp_up_at,
+            last_bgp_up_at_str: slot_to_datetime(client, user.last_bgp_up_at),
+            bgp_rtt_ns: user.bgp_rtt_ns,
+            bgp_rtt_str: format_bgp_rtt_ns(user.bgp_rtt_ns),
             owner: user.owner.to_string(),
         };
 
@@ -123,6 +170,8 @@ impl GetUserCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand, tests::utils::create_test_client,
         user::get::GetUserCliCommand,
@@ -174,6 +223,7 @@ mod tests {
             metro_routing: false,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
 
         let device_pubkey = Pubkey::new_unique();
@@ -205,6 +255,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let mgroup_pubkey = Pubkey::new_unique();
@@ -240,6 +291,11 @@ mod tests {
             subscribers: vec![mgroup_pubkey],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let (accesspass_pubkey, _) =
@@ -258,6 +314,10 @@ mod tests {
             tenant_allowlist: vec![],
             owner: client.get_payer(),
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         client
@@ -304,11 +364,14 @@ mod tests {
 
         // Expected success (table)
         let mut output = Vec::new();
-        let res = GetUserCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            GetUserCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -339,6 +402,145 @@ mod tests {
         assert!(
             has_row("subscribers", "test"),
             "subscribers row should contain group name"
+        );
+    }
+
+    #[test]
+    fn test_cli_user_get_no_accesspass() {
+        let mut client = create_test_client();
+
+        let (pda_pubkey, _bump_seed) = get_user_old_pda(&client.get_program_id(), 1);
+
+        let tenant_pubkey = Pubkey::new_unique();
+        let tenant = Tenant {
+            account_type: AccountType::Tenant,
+            owner: client.get_payer(),
+            bump_seed: 0,
+            code: "test-tenant".to_string(),
+            vrf_id: 100,
+            reference_count: 0,
+            administrators: vec![],
+            token_account: Pubkey::default(),
+            payment_status: TenantPaymentStatus::Paid,
+            metro_routing: false,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
+        };
+
+        let device_pubkey = Pubkey::new_unique();
+        let device = Device {
+            account_type: AccountType::Device,
+            owner: client.get_payer(),
+            index: 1,
+            bump_seed: 0,
+            location_pk: Pubkey::default(),
+            exchange_pk: Pubkey::default(),
+            device_type: DeviceType::Hybrid,
+            public_ip: "192.168.1.1".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            code: "test-device".to_string(),
+            dz_prefixes: vec![].into(),
+            metrics_publisher_pk: Pubkey::default(),
+            contributor_pk: Pubkey::default(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            reference_count: 0,
+            users_count: 0,
+            max_users: 1000,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_subscribers_count: 0,
+            max_unicast_users: 1000,
+            max_multicast_subscribers: 1000,
+            reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
+            ..Default::default()
+        };
+
+        let user = User {
+            account_type: AccountType::User,
+            index: 1,
+            bump_seed: 255,
+            user_type: UserType::IBRL,
+            tenant_pk: tenant_pubkey,
+            cyoa_type: UserCYOA::GREOverDIA,
+            device_pk: device_pubkey,
+            client_ip: [10, 0, 0, 1].into(),
+            dz_ip: [10, 0, 0, 2].into(),
+            tunnel_id: 0,
+            tunnel_net: "10.2.3.4/24".parse().unwrap(),
+            status: UserStatus::Activated,
+            owner: pda_pubkey,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
+        };
+
+        client
+            .expect_list_multicastgroup()
+            .with(predicate::eq(ListMulticastGroupCommand {}))
+            .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_tenant()
+            .with(predicate::eq(ListTenantCommand {}))
+            .returning(move |_| {
+                let mut map = std::collections::HashMap::new();
+                map.insert(tenant_pubkey, tenant.clone());
+                Ok(map)
+            });
+        client
+            .expect_list_device()
+            .with(predicate::eq(ListDeviceCommand {}))
+            .returning(move |_| {
+                let mut map = std::collections::HashMap::new();
+                map.insert(device_pubkey, device.clone());
+                Ok(map)
+            });
+        client
+            .expect_get_accesspass()
+            .with(predicate::eq(accesspass::get::GetAccessPassCommand {
+                client_ip: user.client_ip,
+                user_payer: user.owner,
+            }))
+            .returning(|_| Ok(None));
+
+        client
+            .expect_get_user()
+            .with(predicate::eq(GetUserCommand { pubkey: pda_pubkey }))
+            .returning(move |_| Ok((pda_pubkey, user.clone())));
+
+        let mut output = Vec::new();
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            GetUserCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok(), "should succeed even without an access pass");
+        let output_str = String::from_utf8(output).unwrap();
+        let has_row = |header: &str, value: &str| {
+            output_str
+                .lines()
+                .any(|l| l.contains(header) && l.contains(value))
+        };
+        assert!(
+            has_row("account", &pda_pubkey.to_string()),
+            "account row should contain pubkey"
+        );
+        assert!(
+            has_row("status", "activated"),
+            "status row should contain value"
         );
     }
 }

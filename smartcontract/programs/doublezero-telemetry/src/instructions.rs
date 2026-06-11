@@ -85,12 +85,16 @@ mod tests {
             InitializeDeviceLatencySamplesArgs {
                 epoch: 100,
                 sampling_interval_microseconds: 1000,
+                agent_version: [0; 16],
+                agent_commit: [0; 8],
             },
         ));
         test_instruction(TelemetryInstruction::WriteDeviceLatencySamples(
             WriteDeviceLatencySamplesArgs {
                 start_timestamp_microseconds: 1000,
                 samples: vec![],
+                agent_version: [0; 16],
+                agent_commit: [0; 8],
             },
         ));
         test_instruction(TelemetryInstruction::InitializeInternetLatencySamples(

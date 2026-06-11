@@ -150,59 +150,6 @@ func TestParentDiscovery_HappyPath(t *testing.T) {
 	}
 }
 
-func TestParentDiscovery_MergeWithCLIParents(t *testing.T) {
-	t.Parallel()
-
-	geoProbePK := solana.NewWallet().PublicKey()
-	onchainParentPK := solana.NewWallet().PublicKey()
-	cliParentPK := solana.NewWallet().PublicKey()
-	var onchainMetricsKey, cliMetricsKey [32]byte
-	onchainMetricsKey = solana.NewWallet().PublicKey()
-	cliMetricsKey = solana.NewWallet().PublicKey()
-
-	client := &mockGeoProbeAccountClient{
-		probe: &geolocation.GeoProbe{
-			ParentDevices: []solana.PublicKey{onchainParentPK},
-		},
-	}
-
-	resolver := &mockDeviceResolver{
-		devices: map[solana.PublicKey]*serviceability.Device{
-			onchainParentPK: {
-				PublicIp:               [4]uint8{10, 0, 0, 1},
-				MetricsPublisherPubKey: onchainMetricsKey,
-			},
-		},
-	}
-
-	cliParents := map[[32]byte][32]byte{
-		cliParentPK: cliMetricsKey,
-	}
-
-	ch := make(chan ParentUpdate, 1)
-	pd, err := NewParentDiscovery(&ParentDiscoveryConfig{
-		Logger:         slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		Client:         client,
-		Resolver:       resolver,
-		GeoProbePubkey: geoProbePK,
-		CLIParents:     cliParents,
-	})
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	pd.Tick(ctx, ch)
-
-	select {
-	case update := <-ch:
-		assert.Len(t, update.Authorities, 2, "should have onchain + CLI parent")
-		assert.Equal(t, onchainMetricsKey, update.Authorities[onchainParentPK])
-		assert.Equal(t, cliMetricsKey, update.Authorities[cliParentPK])
-		assert.Len(t, update.AllowedKeys, 2)
-	default:
-		t.Fatal("expected parent update")
-	}
-}
-
 func TestParentDiscovery_GeoProbeNotFound(t *testing.T) {
 	t.Parallel()
 
@@ -222,49 +169,11 @@ func TestParentDiscovery_GeoProbeNotFound(t *testing.T) {
 	ctx := context.Background()
 	pd.Tick(ctx, ch)
 
-	// Should receive CLI-only update (empty since no CLI parents).
+	// Should receive empty update since the geoprobe account doesn't exist yet.
 	select {
 	case update := <-ch:
 		assert.Empty(t, update.Authorities)
 		assert.Empty(t, update.AllowedKeys)
-	default:
-		t.Fatal("expected parent update")
-	}
-}
-
-func TestParentDiscovery_GeoProbeNotFound_WithCLIParents(t *testing.T) {
-	t.Parallel()
-
-	cliParentPK := solana.NewWallet().PublicKey()
-	var cliMetricsKey [32]byte
-	cliMetricsKey = solana.NewWallet().PublicKey()
-
-	client := &mockGeoProbeAccountClient{
-		err: geolocation.ErrAccountNotFound,
-	}
-
-	cliParents := map[[32]byte][32]byte{
-		cliParentPK: cliMetricsKey,
-	}
-
-	ch := make(chan ParentUpdate, 1)
-	pd, err := NewParentDiscovery(&ParentDiscoveryConfig{
-		Logger:         slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		Client:         client,
-		Resolver:       &mockDeviceResolver{},
-		GeoProbePubkey: solana.NewWallet().PublicKey(),
-		CLIParents:     cliParents,
-	})
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	pd.Tick(ctx, ch)
-
-	select {
-	case update := <-ch:
-		assert.Len(t, update.Authorities, 1)
-		assert.Equal(t, cliMetricsKey, update.Authorities[cliParentPK])
-		assert.Len(t, update.AllowedKeys, 1)
 	default:
 		t.Fatal("expected parent update")
 	}
@@ -439,18 +348,10 @@ func TestParentDiscovery_RPCError(t *testing.T) {
 func TestParentDiscovery_EmptyParentDevices(t *testing.T) {
 	t.Parallel()
 
-	cliParentPK := solana.NewWallet().PublicKey()
-	var cliMetricsKey [32]byte
-	cliMetricsKey = solana.NewWallet().PublicKey()
-
 	client := &mockGeoProbeAccountClient{
 		probe: &geolocation.GeoProbe{
 			ParentDevices: []solana.PublicKey{}, // empty onchain
 		},
-	}
-
-	cliParents := map[[32]byte][32]byte{
-		cliParentPK: cliMetricsKey,
 	}
 
 	ch := make(chan ParentUpdate, 1)
@@ -459,7 +360,6 @@ func TestParentDiscovery_EmptyParentDevices(t *testing.T) {
 		Client:         client,
 		Resolver:       &mockDeviceResolver{},
 		GeoProbePubkey: solana.NewWallet().PublicKey(),
-		CLIParents:     cliParents,
 	})
 	require.NoError(t, err)
 
@@ -468,61 +368,11 @@ func TestParentDiscovery_EmptyParentDevices(t *testing.T) {
 
 	select {
 	case update := <-ch:
-		// Only CLI parent should be present.
-		assert.Len(t, update.Authorities, 1)
-		assert.Equal(t, cliMetricsKey, update.Authorities[cliParentPK])
+		assert.Empty(t, update.Authorities)
+		assert.Empty(t, update.AllowedKeys)
 	default:
 		t.Fatal("expected parent update")
 	}
-}
-
-func TestParentDiscovery_CLIDedupWithOnchain(t *testing.T) {
-	t.Parallel()
-
-	geoProbePK := solana.NewWallet().PublicKey()
-	sharedParentPK := solana.NewWallet().PublicKey()
-	var onchainMetricsKey, cliMetricsKey [32]byte
-	onchainMetricsKey = solana.NewWallet().PublicKey()
-	cliMetricsKey = solana.NewWallet().PublicKey()
-
-	client := &mockGeoProbeAccountClient{
-		probe: &geolocation.GeoProbe{
-			ParentDevices: []solana.PublicKey{sharedParentPK},
-		},
-	}
-
-	resolver := &mockDeviceResolver{
-		devices: map[solana.PublicKey]*serviceability.Device{
-			sharedParentPK: {
-				PublicIp:               [4]uint8{10, 0, 0, 1},
-				MetricsPublisherPubKey: onchainMetricsKey,
-			},
-		},
-	}
-
-	// CLI parent has the same pubkey but different metrics key.
-	cliParents := map[[32]byte][32]byte{
-		sharedParentPK: cliMetricsKey,
-	}
-
-	pd, err := NewParentDiscovery(&ParentDiscoveryConfig{
-		Logger:         slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		Client:         client,
-		Resolver:       resolver,
-		GeoProbePubkey: geoProbePK,
-		CLIParents:     cliParents,
-	})
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	update, err := pd.discover(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, update)
-
-	// Onchain should win since it's resolved first, CLI only fills in missing keys.
-	assert.Len(t, update.Authorities, 1)
-	assert.Equal(t, onchainMetricsKey, update.Authorities[sharedParentPK],
-		"onchain metrics key should take precedence over CLI")
 }
 
 // --- pubkeySlicesEqual tests ---

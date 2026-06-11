@@ -8,26 +8,25 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	influxdb2api "github.com/influxdata/influxdb-client-go/v2/api"
-	"github.com/influxdata/influxdb-client-go/v2/api/write"
+	chwriter "github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/clickhouse"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/dz"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/netlink"
 	"github.com/malbeclabs/doublezero/telemetry/global-monitor/internal/sol"
 )
 
 type SolanaValidatorTPUQUICPlanner struct {
-	log       *slog.Logger
-	influxAPI influxdb2api.WriteAPI
+	log      *slog.Logger
+	chWriter chwriter.ProbeWriter
 
 	maxIdleTimeout       time.Duration
 	handshakeIdleTimeout time.Duration
 	keepAlivePeriod      time.Duration
 }
 
-func NewSolanaValidatorTPUQUICPlanner(log *slog.Logger, influxAPI influxdb2api.WriteAPI, maxIdleTimeout time.Duration, handshakeIdleTimeout time.Duration, keepAlivePeriod time.Duration) *SolanaValidatorTPUQUICPlanner {
+func NewSolanaValidatorTPUQUICPlanner(log *slog.Logger, chWriter chwriter.ProbeWriter, maxIdleTimeout time.Duration, handshakeIdleTimeout time.Duration, keepAlivePeriod time.Duration) *SolanaValidatorTPUQUICPlanner {
 	return &SolanaValidatorTPUQUICPlanner{
-		log:       log,
-		influxAPI: influxAPI,
+		log:      log,
+		chWriter: chWriter,
 
 		maxIdleTimeout:       maxIdleTimeout,
 		handshakeIdleTimeout: handshakeIdleTimeout,
@@ -78,9 +77,6 @@ func (p *SolanaValidatorTPUQUICPlanner) BuildPlans(
 				Kind: PlanKindSolValTPUQUIC,
 				Path: path,
 				Record: func(res *ProbeResult) {
-					if p.influxAPI == nil {
-						return
-					}
 					p.recordResult(source, val, tgt, targetUser, res)
 				},
 			})
@@ -261,8 +257,6 @@ func (p *SolanaValidatorTPUQUICPlanner) recordResult(source *Source, val *sol.Va
 		fields["target_geoip_longitude"] = val.GeoIP.Longitude
 	}
 
-	point := write.NewPoint(string(InfluxTableSolanaValidatorTPUQUICProbe), tags, fields, result.Timestamp)
-
 	switch result.FailReason {
 	case "":
 		// No failure. Proceed to record probe success.
@@ -270,11 +264,7 @@ func (p *SolanaValidatorTPUQUICPlanner) recordResult(source *Source, val *sol.Va
 		// Probe not ready. Skip recording probe result.
 		return
 	default:
-		point.AddField("probe_ok", false)
-		point.AddField("probe_fail_reason", result.FailReason)
-		if p.influxAPI != nil {
-			p.influxAPI.WritePoint(point)
-		}
+		p.recordClickHouseRow(tags, fields, result, false, string(result.FailReason), nil)
 		return
 	}
 
@@ -284,17 +274,80 @@ func (p *SolanaValidatorTPUQUICPlanner) recordResult(source *Source, val *sol.Va
 	}
 	stats := result.Stats
 
-	point.AddField("probe_ok", true)
-	point.AddField("probe_rtt_avg_ms", float64(stats.RTTAvg.Milliseconds()))
-	point.AddField("probe_rtt_latest_ms", float64(stats.RTTAvg.Milliseconds()))
-	point.AddField("probe_rtt_min_ms", float64(stats.RTTMin.Milliseconds()))
-	point.AddField("probe_rtt_dev_ms", float64(stats.RTTStdDev.Milliseconds()))
-	point.AddField("probe_packets_sent", int64(stats.PacketsSent))
-	point.AddField("probe_packets_recv", int64(stats.PacketsRecv))
-	point.AddField("probe_packets_lost", int64(stats.PacketsLost))
-	point.AddField("probe_loss_ratio", float64(stats.LossRatio))
+	p.recordClickHouseRow(tags, fields, result, true, "", stats)
+}
 
-	if p.influxAPI != nil {
-		p.influxAPI.WritePoint(point)
+func (p *SolanaValidatorTPUQUICPlanner) recordClickHouseRow(tags map[string]string, fields map[string]any, result *ProbeResult, probeOK bool, failReason string, stats *ProbeStats) {
+	if p.chWriter == nil {
+		return
 	}
+
+	row := chwriter.SolanaValidatorTPUQUICProbeRow{
+		Timestamp:              result.Timestamp,
+		ProbeType:              tags["probe_type"],
+		ProbePath:              tags["probe_path"],
+		ValidatorPubkey:        tags["validator_pubkey"],
+		ValidatorVotePubkey:    tags["validator_vote_pubkey"],
+		TargetIP:               tags["target_ip"],
+		TargetIPBlock24:        tags["target_ip_block_24"],
+		TargetEndpoint:         tags["target_endpoint"],
+		SourceMetro:            tags["source_metro"],
+		SourceMetroName:        tags["source_metro_name"],
+		SourceHost:             tags["source_host"],
+		SourceIface:            tags["source_iface"],
+		SourceIP:               tags["source_ip"],
+		SourceDZDCode:          tags["source_dzd_code"],
+		SourceDZDMetroCode:     tags["source_dzd_metro_code"],
+		SourceDZDMetroName:     tags["source_dzd_metro_name"],
+		TargetDZDCode:          tags["target_dzd_code"],
+		TargetDZDMetroCode:     tags["target_dzd_metro_code"],
+		TargetDZDMetroName:     tags["target_dzd_metro_name"],
+		TargetGeoIPCountry:     tags["target_geoip_country"],
+		TargetGeoIPCountryCode: tags["target_geoip_country_code"],
+		TargetGeoIPRegion:      tags["target_geoip_region"],
+		TargetGeoIPCity:        tags["target_geoip_city"],
+		TargetGeoIPMetro:       tags["target_geoip_metro"],
+		TargetGeoIPASNOrg:      tags["target_geoip_asn_org"],
+		ProbeOK:                probeOK,
+		ProbeFailReason:        failReason,
+	}
+
+	// Parse target port.
+	if v, err := strconv.ParseUint(tags["target_port"], 10, 16); err == nil {
+		row.TargetPort = uint16(v)
+	}
+
+	if v, ok := fields["validator_leader_ratio"].(float64); ok {
+		row.ValidatorLeaderRatio = v
+	}
+	if v, ok := fields["validator_stake_lamports"].(uint64); ok {
+		row.ValidatorStakeLamports = v
+	}
+	if v, ok := fields["target_geoip_latitude"].(float64); ok {
+		row.TargetGeoIPLatitude = v
+	}
+	if v, ok := fields["target_geoip_longitude"].(float64); ok {
+		row.TargetGeoIPLongitude = v
+	}
+
+	// Parse integer tags.
+	if v, err := strconv.Atoi(tags["target_geoip_city_id"]); err == nil {
+		row.TargetGeoIPCityID = int32(v)
+	}
+	if v, err := strconv.Atoi(tags["target_geoip_asn"]); err == nil {
+		row.TargetGeoIPASN = uint32(v)
+	}
+
+	if stats != nil {
+		row.ProbeRTTAvgMs = float64(stats.RTTAvg.Milliseconds())
+		row.ProbeRTTLatestMs = float64(stats.RTTAvg.Milliseconds())
+		row.ProbeRTTMinMs = float64(stats.RTTMin.Milliseconds())
+		row.ProbeRTTDevMs = float64(stats.RTTStdDev.Milliseconds())
+		row.ProbePacketsSent = int64(stats.PacketsSent)
+		row.ProbePacketsRecv = int64(stats.PacketsRecv)
+		row.ProbePacketsLost = int64(stats.PacketsLost)
+		row.ProbeLossRatio = stats.LossRatio
+	}
+
+	p.chWriter.AppendSolanaValidatorTPUQUICProbe(row)
 }

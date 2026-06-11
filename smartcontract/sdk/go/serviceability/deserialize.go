@@ -1,25 +1,50 @@
 package serviceability
 
-import "log"
+import (
+	"fmt"
+	"log"
+)
 
-func DeserializeConfig(reader *ByteReader, cfg *Config) {
+func DeserializeGlobalState(reader *ByteReader, gs *GlobalState) {
+	gs.AccountType = AccountType(reader.ReadU8())
+	gs.BumpSeed = reader.ReadU8()
+	gs.AccountIndex = reader.ReadU128()
+	gs.FoundationAllowlist = reader.ReadPubkeySlice()
+	_ = reader.ReadPubkeySlice() // deprecated device_allowlist
+	_ = reader.ReadPubkeySlice() // deprecated user_allowlist
+	gs.ActivatorAuthorityPK = reader.ReadPubkey()
+	gs.SentinelAuthorityPK = reader.ReadPubkey()
+	gs.ContributorAirdropLamports = reader.ReadU64()
+	gs.UserAirdropLamports = reader.ReadU64()
+	gs.HealthOraclePK = reader.ReadPubkey()
+	gs.QAAllowlist = reader.ReadPubkeySlice()
+	gs.FeatureFlags = reader.ReadU128()
+	gs.FeedAuthorityPK = reader.ReadPubkey()
+}
+
+func DeserializeGlobalConfig(reader *ByteReader, cfg *GlobalConfig) {
 	cfg.AccountType = AccountType(reader.ReadU8())
 	cfg.Owner = reader.ReadPubkey()
-	cfg.Bump_seed = reader.ReadU8()
-	cfg.Local_asn = reader.ReadU32()
-	cfg.Remote_asn = reader.ReadU32()
-	cfg.TunnelTunnelBlock = reader.ReadNetworkV4()
+	cfg.BumpSeed = reader.ReadU8()
+	cfg.LocalASN = reader.ReadU32()
+	cfg.RemoteASN = reader.ReadU32()
+	cfg.DeviceTunnelBlock = reader.ReadNetworkV4()
 	cfg.UserTunnelBlock = reader.ReadNetworkV4()
 	cfg.MulticastGroupBlock = reader.ReadNetworkV4()
 	cfg.NextBGPCommunity = reader.ReadU16()
 	cfg.MulticastPublisherBlock = reader.ReadNetworkV4()
 }
 
+// DeserializeConfig is a backward-compatible alias for DeserializeGlobalConfig.
+func DeserializeConfig(reader *ByteReader, cfg *GlobalConfig) {
+	DeserializeGlobalConfig(reader, cfg)
+}
+
 func DeserializeLocation(reader *ByteReader, loc *Location) {
 	loc.AccountType = AccountType(reader.ReadU8())
 	loc.Owner = reader.ReadPubkey()
 	loc.Index = reader.ReadU128()
-	loc.Bump_seed = reader.ReadU8()
+	loc.BumpSeed = reader.ReadU8()
 	loc.Lat = reader.ReadF64()
 	loc.Lng = reader.ReadF64()
 	loc.LocId = reader.ReadU32()
@@ -27,25 +52,24 @@ func DeserializeLocation(reader *ByteReader, loc *Location) {
 	loc.Code = reader.ReadString()
 	loc.Name = reader.ReadString()
 	loc.Country = reader.ReadString()
-	loc.PubKey = reader.ReadPubkey()
+	loc.ReferenceCount = reader.ReadU32()
 }
 
 func DeserializeExchange(reader *ByteReader, exchange *Exchange) {
 	exchange.AccountType = AccountType(reader.ReadU8())
 	exchange.Owner = reader.ReadPubkey()
 	exchange.Index = reader.ReadU128()
-	exchange.Bump_seed = reader.ReadU8()
+	exchange.BumpSeed = reader.ReadU8()
 	exchange.Lat = reader.ReadF64()
 	exchange.Lng = reader.ReadF64()
 	exchange.BgpCommunity = reader.ReadU16()
-	_ = reader.ReadU16() // unused padding field
+	_ = reader.ReadU16() // unused padding
 	exchange.Status = ExchangeStatus(reader.ReadU8())
 	exchange.Code = reader.ReadString()
 	exchange.Name = reader.ReadString()
-	_ = reader.ReadU32()    // reference_count (not used in Go SDK)
-	_ = reader.ReadPubkey() // device1_pk (not used in Go SDK)
-	_ = reader.ReadPubkey() // device2_pk (not used in Go SDK)
-	// Note: exchange.PubKey is set separately in client.go after deserialization
+	exchange.ReferenceCount = reader.ReadU32()
+	exchange.Device1PK = reader.ReadPubkey()
+	exchange.Device2PK = reader.ReadPubkey()
 }
 
 func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
@@ -55,40 +79,42 @@ func DeserializeContributor(reader *ByteReader, contributor *Contributor) {
 	contributor.BumpSeed = reader.ReadU8()
 	contributor.Status = ContributorStatus(reader.ReadU8())
 	contributor.Code = reader.ReadString()
-	contributor.PubKey = reader.ReadPubkey()
+	contributor.ReferenceCount = reader.ReadU32()
+	contributor.OpsManagerPK = reader.ReadPubkey()
 }
 
-func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
-	tenant.AccountType = AccountType(reader.ReadU8())
-	tenant.Owner = reader.ReadPubkey()
-	tenant.BumpSeed = reader.ReadU8()
-	tenant.Code = reader.ReadString()
-	tenant.VrfId = reader.ReadU16()
-	tenant.ReferenceCount = reader.ReadU32()
-	tenant.Administrators = reader.ReadPubkeySlice()
-	tenant.PaymentStatus = TenantPaymentStatus(reader.ReadU8())
-	tenant.TokenAccount = reader.ReadPubkey()
-	tenant.MetroRouting = (reader.ReadU8() != 0)
-	tenant.RouteLiveness = (reader.ReadU8() != 0)
-	tenant.BillingDiscriminant = reader.ReadU8()
-	tenant.BillingRate = reader.ReadU64()
-	tenant.BillingLastDeductionDzEpoch = reader.ReadU64()
-	// Note: tenant.PubKey is set separately in client.go after deserialization
-}
-
+// DeserializeInterface reads an on-chain Interface account from reader.
+//
+// Interface version history (discriminant byte):
+//
+//	0 — V1: original format (no CYOA/DIA/Bandwidth fields)
+//	1 — V2: adds CYOA, DIA, Bandwidth, Cir, Mtu, RoutingMode
+//	2 — reserved, never written
+//	3 — V3 (legacy): V2 body + a flex_algo_node_segments vec. No longer
+//	    written, but pre-existing on-chain accounts still contain V3 entries
+//	    in the legacy slot. We consume the bytes and surface as V2 — segments
+//	    live in the trailing forward-compat interfaces vec on Device.
+//
+// The on-chain Device serializer projects the legacy deprecated_interfaces slot as V2
+// (per #3653). flex_algo_node_segments lives only in the trailing forward-compat
+// interfaces vec on Device (read via DeserializeInterfaceSized), not in this slot.
 func DeserializeInterface(reader *ByteReader, iface *Interface) {
 	iface.Version = reader.ReadU8()
 
-	if iface.Version > (CurrentInterfaceVersion - 1) { // subtract 1 because the discriminant starts from 0
-		log.Println("DeserializeInterface: Unsupported interface version", iface.Version)
-		return
-	}
-
 	switch iface.Version {
-	case 0: // version 1
+	case 0: // V1
 		DeserializeInterfaceV1(reader, iface)
-	case 1: // version 2
+	case 1, 2: // V2
 		DeserializeInterfaceV2(reader, iface)
+	case 3: // legacy V3 — consume V2 body + drop segments
+		DeserializeInterfaceV2(reader, iface)
+		segCount := reader.ReadU32()
+		for i := uint32(0); i < segCount; i++ {
+			_ = reader.ReadPubkey()
+			_ = reader.ReadU16()
+		}
+	default:
+		log.Println("DeserializeInterface: Unsupported interface version", iface.Version)
 	}
 }
 
@@ -109,8 +135,7 @@ func DeserializeInterfaceV2(reader *ByteReader, iface *Interface) {
 	iface.InterfaceType = InterfaceType(reader.ReadU8())
 	iface.InterfaceCYOA = InterfaceCYOA(reader.ReadU8())
 	iface.InterfaceDIA = InterfaceDIA(reader.ReadU8())
-	loopbackTypeByte := reader.ReadU8()
-	iface.LoopbackType = LoopbackType(loopbackTypeByte)
+	iface.LoopbackType = LoopbackType(reader.ReadU8())
 	iface.Bandwidth = reader.ReadU64()
 	iface.Cir = reader.ReadU64()
 	iface.Mtu = reader.ReadU16()
@@ -121,11 +146,58 @@ func DeserializeInterfaceV2(reader *ByteReader, iface *Interface) {
 	iface.UserTunnelEndpoint = (reader.ReadU8() != 0)
 }
 
+// DeserializeInterfaceSized reads a single size-prefixed Interface element.
+//
+// Wire format: u16 size + u8 version + body, where size includes the 3-byte prefix.
+// Forward-compat readers always advance the cursor to start+size after reading the
+// known body fields, so unknown future versions are skipped in O(1).
+func DeserializeInterfaceSized(reader *ByteReader, iface *Interface) {
+	start := reader.GetOffset()
+	iface.Size = reader.ReadU16()
+	iface.Version = reader.ReadU8()
+
+	// Body fields (current schema, version 4): same order as InterfaceV2, plus a
+	// trailing flex_algo_node_segments vec.
+	iface.Status = InterfaceStatus(reader.ReadU8())
+	iface.Name = reader.ReadString()
+	iface.InterfaceType = InterfaceType(reader.ReadU8())
+	iface.InterfaceCYOA = InterfaceCYOA(reader.ReadU8())
+	iface.InterfaceDIA = InterfaceDIA(reader.ReadU8())
+	iface.LoopbackType = LoopbackType(reader.ReadU8())
+	iface.Bandwidth = reader.ReadU64()
+	iface.Cir = reader.ReadU64()
+	iface.Mtu = reader.ReadU16()
+	iface.RoutingMode = RoutingMode(reader.ReadU8())
+	iface.VlanId = reader.ReadU16()
+	iface.IpNet = reader.ReadNetworkV4()
+	iface.NodeSegmentIdx = reader.ReadU16()
+	iface.UserTunnelEndpoint = (reader.ReadU8() != 0)
+	segCount := reader.ReadU32()
+	iface.FlexAlgoNodeSegments = make([]FlexAlgoNodeSegment, 0, segCount)
+	for i := uint32(0); i < segCount; i++ {
+		// Defensive guard against garbage segCount when the body is shorter than
+		// expected (e.g. older size-prefixed encoding without flex segments).
+		if reader.Remaining() < 34 { // 32 (pubkey) + 2 (u16)
+			break
+		}
+		iface.FlexAlgoNodeSegments = append(iface.FlexAlgoNodeSegments, FlexAlgoNodeSegment{
+			Topology:       reader.ReadPubkey(),
+			NodeSegmentIdx: reader.ReadU16(),
+		})
+	}
+
+	// Advance to start+size regardless of how many body bytes we consumed.
+	target := start + int(iface.Size)
+	if cur := reader.GetOffset(); cur < target {
+		reader.Skip(target - cur)
+	}
+}
+
 func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.AccountType = AccountType(reader.ReadU8())
 	dev.Owner = reader.ReadPubkey()
 	dev.Index = reader.ReadU128()
-	dev.Bump_seed = reader.ReadU8()
+	dev.BumpSeed = reader.ReadU8()
 	dev.LocationPubKey = reader.ReadPubkey()
 	dev.ExchangePubKey = reader.ReadPubkey()
 	dev.DeviceType = DeviceDeviceType(reader.ReadU8())
@@ -136,16 +208,16 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.MetricsPublisherPubKey = reader.ReadPubkey()
 	dev.ContributorPubKey = reader.ReadPubkey()
 	dev.MgmtVrf = reader.ReadString()
-	dev.Interfaces = make([]Interface, 0)
+	dev.DeprecatedInterfaces = make([]Interface, 0)
 	length := reader.ReadU32()
-	if (length * 18) > reader.Remaining() {
+	if length > 0 && (length*18) > reader.Remaining() {
 		log.Println("DeserializeDevice: Not enough data for interfaces (# of interfaces = ", length, ")")
 		return
 	}
 	for i := uint32(0); i < length; i++ {
 		var iface Interface
 		DeserializeInterface(reader, &iface)
-		dev.Interfaces = append(dev.Interfaces, iface)
+		dev.DeprecatedInterfaces = append(dev.DeprecatedInterfaces, iface)
 	}
 	dev.ReferenceCount = reader.ReadU32()
 	dev.UsersCount = reader.ReadU16()
@@ -159,6 +231,31 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	dev.ReservedSeats = reader.ReadU16()
 	dev.MulticastPublishersCount = reader.ReadU16()
 	dev.MaxMulticastPublishers = reader.ReadU16()
+
+	// Trailing interfaces vec (size-prefixed). Empty trailing => rebuild from deprecated_interfaces.
+	// Length mismatch => surface via dev.DeserializeError without aborting earlier fields.
+	if reader.Remaining() == 0 {
+		dev.Interfaces = make([]Interface, len(dev.DeprecatedInterfaces))
+		for i, legacy := range dev.DeprecatedInterfaces {
+			ni := legacy
+			ni.Version = CurrentInterfaceVersion
+			ni.Size = 0
+			dev.Interfaces[i] = ni
+		}
+	} else {
+		newLen := reader.ReadU32()
+		if int(newLen) != len(dev.DeprecatedInterfaces) {
+			dev.DeserializeError = fmt.Errorf(
+				"DeserializeDevice: interfaces length %d != deprecated_interfaces length %d",
+				newLen, len(dev.DeprecatedInterfaces),
+			)
+			return
+		}
+		dev.Interfaces = make([]Interface, newLen)
+		for i := uint32(0); i < newLen; i++ {
+			DeserializeInterfaceSized(reader, &dev.Interfaces[i])
+		}
+	}
 	// Note: dev.PubKey is set separately in client.go after deserialization
 }
 
@@ -166,7 +263,7 @@ func DeserializeLink(reader *ByteReader, link *Link) {
 	link.AccountType = AccountType(reader.ReadU8())
 	link.Owner = reader.ReadPubkey()
 	link.Index = reader.ReadU128()
-	link.Bump_seed = reader.ReadU8()
+	link.BumpSeed = reader.ReadU8()
 	link.SideAPubKey = reader.ReadPubkey()
 	link.SideZPubKey = reader.ReadPubkey()
 	link.LinkType = LinkLinkType(reader.ReadU8())
@@ -182,14 +279,17 @@ func DeserializeLink(reader *ByteReader, link *Link) {
 	link.SideAIfaceName = reader.ReadString()
 	link.SideZIfaceName = reader.ReadString()
 	link.DelayOverrideNs = reader.ReadU64()
-	link.PubKey = reader.ReadPubkey()
+	link.LinkHealth = LinkHealth(reader.ReadU8())
+	link.LinkDesiredStatus = LinkDesiredStatus(reader.ReadU8())
+	link.LinkTopologies = reader.ReadPubkeySlice()
+	link.LinkFlags = reader.ReadU32()
 }
 
 func DeserializeUser(reader *ByteReader, user *User) {
 	user.AccountType = AccountType(reader.ReadU8())
 	user.Owner = reader.ReadPubkey()
 	user.Index = reader.ReadU128()
-	user.Bump_seed = reader.ReadU8()
+	user.BumpSeed = reader.ReadU8()
 	user.UserType = UserUserType(reader.ReadU8())
 	user.TenantPubKey = reader.ReadPubkey()
 	user.DevicePubKey = reader.ReadPubkey()
@@ -203,33 +303,92 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	user.Subscribers = reader.ReadPubkeySlice()
 	user.ValidatorPubKey = reader.ReadPubkey()
 	user.TunnelEndpoint = reader.ReadIPv4()
-	user.PubKey = reader.ReadPubkey()
+	user.TunnelFlags = reader.ReadU8()
+	user.BgpStatus = reader.ReadU8()
+	user.LastBgpUpAt = reader.ReadU64()
+	user.LastBgpReportedAt = reader.ReadU64()
+	// ReadU64 returns 0 on EOF, so old accounts that predate BgpRttNs deserialize
+	// with the field defaulted to 0 — matches the Rust append-only contract.
+	user.BgpRttNs = reader.ReadU64()
+	// Note: user.PubKey is set separately in client.go after deserialization
 }
 
-func DeserializeMulticastGroup(reader *ByteReader, multicastgroup *MulticastGroup) {
-	multicastgroup.AccountType = AccountType(reader.ReadU8())
-	multicastgroup.Owner = reader.ReadPubkey()
-	multicastgroup.Index = reader.ReadU128()
-	multicastgroup.Bump_seed = reader.ReadU8()
-	multicastgroup.TenantPubKey = reader.ReadPubkey()
-	multicastgroup.MulticastIp = reader.ReadIPv4()
-	multicastgroup.MaxBandwidth = reader.ReadU64()
-	multicastgroup.Status = MulticastGroupStatus(reader.ReadU8())
-	multicastgroup.Code = reader.ReadString()
-	multicastgroup.PublisherCount = reader.ReadU32()
-	multicastgroup.SubscriberCount = reader.ReadU32()
+func DeserializeMulticastGroup(reader *ByteReader, mg *MulticastGroup) {
+	mg.AccountType = AccountType(reader.ReadU8())
+	mg.Owner = reader.ReadPubkey()
+	mg.Index = reader.ReadU128()
+	mg.BumpSeed = reader.ReadU8()
+	mg.TenantPubKey = reader.ReadPubkey()
+	mg.MulticastIp = reader.ReadIPv4()
+	mg.MaxBandwidth = reader.ReadU64()
+	mg.Status = MulticastGroupStatus(reader.ReadU8())
+	mg.Code = reader.ReadString()
+	mg.PublisherCount = reader.ReadU32()
+	mg.SubscriberCount = reader.ReadU32()
 }
 
-func DeserializeProgramConfig(reader *ByteReader, programconfig *ProgramConfig) {
-	programconfig.AccountType = AccountType(reader.ReadU8())
-	programconfig.BumpSeed = reader.ReadU8()
-	DeserializeProgramVersion(reader, &programconfig.Version)
+func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
+	tenant.AccountType = AccountType(reader.ReadU8())
+	tenant.Owner = reader.ReadPubkey()
+	tenant.BumpSeed = reader.ReadU8()
+	tenant.Code = reader.ReadString()
+	tenant.VrfId = reader.ReadU16()
+	tenant.ReferenceCount = reader.ReadU32()
+	tenant.Administrators = reader.ReadPubkeySlice()
+	tenant.PaymentStatus = TenantPaymentStatus(reader.ReadU8())
+	tenant.TokenAccount = reader.ReadPubkey()
+	tenant.MetroRouting = (reader.ReadU8() != 0)
+	tenant.RouteLiveness = (reader.ReadU8() != 0)
+	tenant.BillingDiscriminant = reader.ReadU8()
+	tenant.BillingRate = reader.ReadU64()
+	tenant.BillingLastDeductionDzEpoch = reader.ReadU64()
+	tenant.IncludeTopologies = reader.ReadPubkeySlice()
+	// Note: tenant.PubKey is set separately in client.go after deserialization
 }
 
-func DeserializeProgramVersion(reader *ByteReader, programversion *ProgramVersion) {
-	programversion.Major = reader.ReadU32()
-	programversion.Minor = reader.ReadU32()
-	programversion.Patch = reader.ReadU32()
+func DeserializeProgramConfig(reader *ByteReader, pc *ProgramConfig) {
+	pc.AccountType = AccountType(reader.ReadU8())
+	pc.BumpSeed = reader.ReadU8()
+	DeserializeProgramVersion(reader, &pc.Version)
+	DeserializeProgramVersion(reader, &pc.MinCompatVersion)
+}
+
+func DeserializeProgramVersion(reader *ByteReader, pv *ProgramVersion) {
+	pv.Major = reader.ReadU32()
+	pv.Minor = reader.ReadU32()
+	pv.Patch = reader.ReadU32()
+}
+
+func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
+	ap.AccountType = AccountType(reader.ReadU8())
+	ap.Owner = reader.ReadPubkey()
+	ap.BumpSeed = reader.ReadU8()
+	// AccessPassType is a Borsh enum: 1-byte discriminant + optional data.
+	ap.AccessPassTypeTag = AccessPassTypeTag(reader.ReadU8())
+	switch ap.AccessPassTypeTag {
+	case AccessPassTypeSolanaValidator, AccessPassTypeSolanaRPC:
+		// SolanaValidator and SolanaRPC carry an associated pubkey.
+		ap.AssociatedPubkey = reader.ReadPubkey()
+	case AccessPassTypeOthers:
+		// Others carries two strings (type_name, key).
+		ap.OthersTypeName = reader.ReadString()
+		ap.OthersKey = reader.ReadString()
+	}
+	// Prepaid and EdgeSeat carry no associated data.
+	ap.ClientIp = reader.ReadIPv4()
+	ap.UserPayer = reader.ReadPubkey()
+	ap.LastAccessEpoch = reader.ReadU64()
+	ap.ConnectionCount = reader.ReadU16()
+	ap.Status = AccessPassStatus(reader.ReadU8())
+	ap.MGroupPubAllowlist = reader.ReadPubkeySlice()
+	ap.MGroupSubAllowlist = reader.ReadPubkeySlice()
+	ap.Flags = reader.ReadU8()
+	ap.TenantAllowlist = reader.ReadPubkeySlice()
+	ap.UnicastUserCount = reader.ReadU16()
+	// Caps default to 1 when absent (pre-migration accounts), matching the program's unwrap_or(1).
+	ap.MaxUnicastUsers = reader.ReadU16OrDefault(1)
+	ap.MulticastUserCount = reader.ReadU16()
+	ap.MaxMulticastUsers = reader.ReadU16OrDefault(1)
 }
 
 // ResourceExtension binary layout (from Rust):
@@ -251,16 +410,6 @@ func DeserializeProgramVersion(reader *ByteReader, programversion *ProgramVersio
 //
 // Bitmap starts at offset 88 (aligned to 8 bytes)
 const resourceExtensionBitmapOffset = 88
-
-func DeserializePermission(reader *ByteReader, perm *Permission) {
-	perm.AccountType = AccountType(reader.ReadU8())
-	perm.Owner = reader.ReadPubkey()
-	perm.BumpSeed = reader.ReadU8()
-	perm.Status = PermissionStatus(reader.ReadU8())
-	perm.UserPayer = reader.ReadPubkey()
-	perm.PermissionsLo = reader.ReadU64() // bits 0-63 (low u64 of u128)
-	perm.PermissionsHi = reader.ReadU64() // bits 64-127 (high u64 of u128)
-}
 
 func DeserializeResourceExtension(reader *ByteReader, ext *ResourceExtension) {
 	ext.AccountType = AccountType(reader.ReadU8())
@@ -300,4 +449,26 @@ func DeserializeResourceExtension(reader *ByteReader, ext *ResourceExtension) {
 	if remaining > 0 {
 		ext.Storage = reader.ReadBytes(remaining)
 	}
+}
+
+func DeserializePermission(reader *ByteReader, perm *Permission) {
+	perm.AccountType = AccountType(reader.ReadU8())
+	perm.Owner = reader.ReadPubkey()
+	perm.BumpSeed = reader.ReadU8()
+	perm.Status = PermissionStatus(reader.ReadU8())
+	perm.UserPayer = reader.ReadPubkey()
+	perm.PermissionsLo = reader.ReadU64() // bits 0-63 (low u64 of u128)
+	perm.PermissionsHi = reader.ReadU64() // bits 64-127 (high u64 of u128)
+}
+
+func DeserializeTopologyInfo(reader *ByteReader, t *TopologyInfo) {
+	t.AccountType = AccountType(reader.ReadU8())
+	t.Owner = reader.ReadPubkey()
+	t.BumpSeed = reader.ReadU8()
+	t.Name = reader.ReadString()
+	t.AdminGroupBit = reader.ReadU8()
+	t.FlexAlgoNumber = reader.ReadU8()
+	t.Constraint = TopologyConstraint(reader.ReadU8())
+	t.ReferenceCount = reader.ReadU32()
+	// Note: t.PubKey is set from the account address in client.go after deserialization
 }

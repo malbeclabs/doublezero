@@ -33,9 +33,11 @@ func TestTools_Solana_JSONRPC_IsRetryableJSONRPC(t *testing.T) {
 		{"econnrefused", syscall.ECONNREFUSED, true},
 		{"broken pipe msg", errors.New("write: broken pipe"), true},
 		{"closed conn msg", errors.New("use of closed network connection"), true},
+		{"rate limited msg", errors.New("rate limited"), true},
 		{"http 429", statusCodeErr(http.StatusTooManyRequests), true},
 		{"http 503", statusCodeErr(http.StatusServiceUnavailable), true},
 		{"rpc busy -32005", rpcCodeErr(-32005), true},
+		{"rpc busy -32429", rpcCodeErr(-32429), true},
 		{"json syntax", &json.SyntaxError{Offset: 1}, false},
 		{"random non-retryable", errors.New("bad request"), false},
 		{"net.Error non-timeout", net.UnknownNetworkError("wat"), false},
@@ -140,6 +142,25 @@ func TestTools_Solana_JSONRPC_CallBatch_RetriesAndReturnsResponses(t *testing.T)
 	_, err := c.CallBatch(context.Background(), jsonrpc.RPCRequests{})
 	require.NoError(t, err)
 	require.Equal(t, int32(2), inner.callBatchN.Load())
+}
+
+func TestTools_Solana_JSONRPC_DoRetry_CustomIsRetryable(t *testing.T) {
+	t.Parallel()
+
+	sentinel := errors.New("custom retryable error")
+	inner := &seqClient{
+		callForIntoSeq: []error{sentinel, nil},
+	}
+	c := WithRetry(inner, &RetryOptions{
+		MaxAttempts:     3,
+		BaseBackoff:     1 * time.Millisecond,
+		MaxBackoff:      2 * time.Millisecond,
+		IsRetryableFunc: func(err error) bool { return errors.Is(err, sentinel) },
+	})
+
+	var out any
+	require.NoError(t, c.CallForInto(context.Background(), &out, "m", nil))
+	require.Equal(t, int32(2), inner.callForIntoN.Load())
 }
 
 func TestTools_Solana_JSONRPC_CallWithCallback_Retries(t *testing.T) {

@@ -31,7 +31,7 @@ mod test_helpers;
 
 use test_helpers::*;
 
-const EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION: u64 = 3319920;
+const EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION: u64 = 3_319_920;
 
 #[tokio::test]
 async fn test_initialize_device_latency_samples_success_active_devices_and_link() {
@@ -452,6 +452,8 @@ async fn test_initialize_device_latency_samples_fail_agent_not_signer() {
     let args = InitializeDeviceLatencySamplesArgs {
         epoch: 1,
         sampling_interval_microseconds: 5_000_000,
+        agent_version: [0; 16],
+        agent_commit: [0; 8],
     };
 
     let instruction = TelemetryInstruction::InitializeDeviceLatencySamples(args.clone());
@@ -526,6 +528,7 @@ async fn test_initialize_device_latency_samples_fail_origin_device_wrong_owner()
         reserved_seats: 0,
         multicast_publishers_count: 0,
         max_multicast_publishers: 0,
+        ..Default::default()
     };
 
     let mut device_data = Vec::new();
@@ -621,6 +624,7 @@ async fn test_initialize_device_latency_samples_fail_target_device_wrong_owner()
         reserved_seats: 0,
         multicast_publishers_count: 0,
         max_multicast_publishers: 0,
+        ..Default::default()
     };
 
     let mut data = Vec::new();
@@ -703,13 +707,15 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
         jitter_ns: 10000,
         delay_override_ns: 0,
         link_type: LinkLinkType::WAN,
-        mtu: 0,
+        mtu: 9000,
         tunnel_id: 0,
         tunnel_net: NetworkV4::default(),
         side_a_iface_name: "Ethernet0".to_string(),
         side_z_iface_name: "Ethernet1".to_string(),
         link_health: LinkHealth::ReadyForService,
         desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+        link_topologies: Vec::new(),
+        link_flags: 0,
     };
 
     let mut data = Vec::new();
@@ -746,282 +752,6 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_owner() {
         .await;
 
     assert_banksclient_error(result, InstructionError::IncorrectProgramId);
-}
-
-#[tokio::test]
-async fn test_initialize_device_latency_samples_fail_origin_device_not_activated() {
-    let mut ledger = LedgerHelper::new().await.unwrap();
-    let payer = ledger
-        .context
-        .lock()
-        .unwrap()
-        .payer
-        .insecure_clone()
-        .pubkey();
-
-    let contributor_pk = ledger
-        .serviceability
-        .create_contributor("CONTRIB".to_string(), payer)
-        .await
-        .unwrap();
-
-    let location_pk = ledger
-        .serviceability
-        .create_location(LocationCreateArgs {
-            code: "LOC1".to_string(),
-            name: "Test Location".to_string(),
-            country: "US".to_string(),
-            loc_id: 1,
-            ..LocationCreateArgs::default()
-        })
-        .await
-        .unwrap();
-
-    let exchange_pk = ledger
-        .serviceability
-        .create_exchange(ExchangeCreateArgs {
-            code: "EX1".to_string(),
-            name: "Test Exchange".to_string(),
-            reserved: 0,
-            ..ExchangeCreateArgs::default()
-        })
-        .await
-        .unwrap();
-
-    let agent = Keypair::new();
-    ledger
-        .fund_account(&agent.pubkey(), 10_000_000_000)
-        .await
-        .unwrap();
-
-    // Origin device: not activated
-    let origin_device_pk = ledger
-        .serviceability
-        .create_device(
-            DeviceCreateArgs {
-                code: "OriginDevice".to_string(),
-                device_type: DeviceType::Hybrid,
-                public_ip: [100, 0, 0, 1].into(),
-                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
-                metrics_publisher_pk: agent.pubkey(),
-                ..DeviceCreateArgs::default()
-            },
-            contributor_pk,
-            location_pk,
-            exchange_pk,
-        )
-        .await
-        .unwrap();
-
-    ledger
-        .serviceability
-        .create_interface(origin_device_pk, contributor_pk, "Ethernet0".to_string())
-        .await
-        .unwrap();
-
-    // Target device: activated
-    let target_device_pk = ledger
-        .serviceability
-        .create_and_activate_device(
-            DeviceCreateArgs {
-                code: "TargetDevice".to_string(),
-                device_type: DeviceType::Hybrid,
-                public_ip: [100, 0, 0, 1].into(),
-                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
-                metrics_publisher_pk: agent.pubkey(),
-                ..DeviceCreateArgs::default()
-            },
-            contributor_pk,
-            location_pk,
-            exchange_pk,
-        )
-        .await
-        .unwrap();
-
-    ledger
-        .serviceability
-        .create_interface(target_device_pk, contributor_pk, "Ethernet1".to_string())
-        .await
-        .unwrap();
-
-    // Link: between origin device and target device
-    let link_pk = ledger
-        .serviceability
-        .create_and_activate_link(
-            LinkCreateArgs {
-                code: "LINK1".to_string(),
-                link_type: LinkLinkType::WAN,
-                bandwidth: 10_000_000_000,
-                mtu: 1500,
-                delay_ns: 1000000,
-                jitter_ns: 100000,
-                side_a_iface_name: "Ethernet0".to_string(),
-                side_z_iface_name: Some("Ethernet1".to_string()),
-                desired_status: Some(LinkDesiredStatus::Activated),
-                use_onchain_allocation: false,
-            },
-            contributor_pk,
-            origin_device_pk,
-            target_device_pk,
-            1,
-            "10.1.1.0/30".parse().unwrap(),
-        )
-        .await
-        .unwrap();
-
-    ledger.wait_for_new_blockhash().await.unwrap();
-
-    let result = ledger
-        .telemetry
-        .initialize_device_latency_samples(
-            &agent,
-            origin_device_pk,
-            target_device_pk,
-            link_pk,
-            66,
-            5_000_000,
-        )
-        .await;
-
-    assert_telemetry_error(result, TelemetryError::DeviceNotActivated);
-}
-
-#[tokio::test]
-async fn test_initialize_device_latency_samples_fail_target_device_not_activated() {
-    let mut ledger = LedgerHelper::new().await.unwrap();
-    let payer = ledger
-        .context
-        .lock()
-        .unwrap()
-        .payer
-        .insecure_clone()
-        .pubkey();
-
-    let location_pk = ledger
-        .serviceability
-        .create_location(LocationCreateArgs {
-            code: "LOC1".to_string(),
-            name: "Test Location".to_string(),
-            country: "US".to_string(),
-            loc_id: 1,
-            ..LocationCreateArgs::default()
-        })
-        .await
-        .unwrap();
-
-    let exchange_pk = ledger
-        .serviceability
-        .create_exchange(ExchangeCreateArgs {
-            code: "EX1".to_string(),
-            name: "Test Exchange".to_string(),
-            reserved: 0,
-            ..ExchangeCreateArgs::default()
-        })
-        .await
-        .unwrap();
-
-    let agent = Keypair::new();
-    ledger
-        .fund_account(&agent.pubkey(), 10_000_000_000)
-        .await
-        .unwrap();
-
-    let contributor_pk = ledger
-        .serviceability
-        .create_contributor("CONTRIB".to_string(), payer)
-        .await
-        .unwrap();
-
-    // Origin device: activated
-    let origin_device_pk = ledger
-        .serviceability
-        .create_and_activate_device(
-            DeviceCreateArgs {
-                code: "OriginDevice".to_string(),
-                device_type: DeviceType::Hybrid,
-                public_ip: [100, 0, 0, 1].into(),
-                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
-                metrics_publisher_pk: agent.pubkey(),
-                ..DeviceCreateArgs::default()
-            },
-            contributor_pk,
-            location_pk,
-            exchange_pk,
-        )
-        .await
-        .unwrap();
-
-    ledger
-        .serviceability
-        .create_interface(origin_device_pk, contributor_pk, "Ethernet0".to_string())
-        .await
-        .unwrap();
-
-    // Target device: not activated
-    let target_device_pk = ledger
-        .serviceability
-        .create_device(
-            DeviceCreateArgs {
-                code: "TargetDevice".to_string(),
-                device_type: DeviceType::Hybrid,
-                public_ip: [100, 0, 0, 1].into(),
-                dz_prefixes: vec!["108.0.0.0/24".parse().unwrap()].into(),
-                metrics_publisher_pk: agent.pubkey(),
-                ..DeviceCreateArgs::default()
-            },
-            contributor_pk,
-            location_pk,
-            exchange_pk,
-        )
-        .await
-        .unwrap();
-
-    ledger
-        .serviceability
-        .create_interface(target_device_pk, contributor_pk, "Ethernet1".to_string())
-        .await
-        .unwrap();
-
-    // Link between origin device and target device
-    let link_pk = ledger
-        .serviceability
-        .create_and_activate_link(
-            LinkCreateArgs {
-                code: "LINK1".to_string(),
-                link_type: LinkLinkType::WAN,
-                bandwidth: 10_000_000_000,
-                mtu: 1500,
-                delay_ns: 1000000,
-                jitter_ns: 100000,
-                side_a_iface_name: "Ethernet0".to_string(),
-                side_z_iface_name: Some("Ethernet1".to_string()),
-                desired_status: Some(LinkDesiredStatus::Activated),
-                use_onchain_allocation: false,
-            },
-            contributor_pk,
-            origin_device_pk,
-            target_device_pk,
-            1,
-            "10.1.1.0/30".parse().unwrap(),
-        )
-        .await
-        .unwrap();
-
-    ledger.wait_for_new_blockhash().await.unwrap();
-
-    let result = ledger
-        .telemetry
-        .initialize_device_latency_samples(
-            &agent,
-            origin_device_pk,
-            target_device_pk,
-            link_pk,
-            66,
-            5_000_000,
-        )
-        .await;
-
-    assert_telemetry_error(result, TelemetryError::DeviceNotActivated);
 }
 
 #[tokio::test]
@@ -1126,9 +856,9 @@ async fn test_initialize_device_latency_samples_success_provisioning_link() {
                 code: "LINK1".to_string(),
                 link_type: LinkLinkType::WAN,
                 bandwidth: 10_000_000_000,
-                mtu: 1500,
-                delay_ns: 1000000,
-                jitter_ns: 100000,
+                mtu: 9000,
+                delay_ns: 1_000_000,
+                jitter_ns: 100_000,
                 side_a_iface_name: "Ethernet0".to_string(),
                 side_z_iface_name: Some("Ethernet1".to_string()),
                 desired_status: Some(LinkDesiredStatus::Activated),
@@ -1390,9 +1120,9 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 code: "LINK1".to_string(),
                 link_type: LinkLinkType::WAN,
                 bandwidth: 10_000_000_000,
-                mtu: 1500,
-                delay_ns: 1000000,
-                jitter_ns: 100000,
+                mtu: 9000,
+                delay_ns: 1_000_000,
+                jitter_ns: 100_000,
                 side_a_iface_name: "Ethernet0".to_string(),
                 side_z_iface_name: Some("Ethernet1".to_string()),
                 desired_status: Some(LinkDesiredStatus::Activated),
@@ -1526,9 +1256,9 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
                 code: "LINK1".into(),
                 link_type: LinkLinkType::WAN,
                 bandwidth: 10_000_000_000,
-                mtu: 1500,
-                delay_ns: 1000000,
-                jitter_ns: 100000,
+                mtu: 9000,
+                delay_ns: 1_000_000,
+                jitter_ns: 100_000,
                 side_a_iface_name: "Ethernet1".to_string(),
                 side_z_iface_name: Some("Ethernet0".to_string()),
                 desired_status: Some(LinkDesiredStatus::Activated),
@@ -1859,9 +1589,9 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
                 code: "LNK".to_string(),
                 link_type: LinkLinkType::WAN,
                 bandwidth: 10_000_000_000,
-                mtu: 4500,
-                delay_ns: 1000000,
-                jitter_ns: 100000,
+                mtu: 9000,
+                delay_ns: 1_000_000,
+                jitter_ns: 100_000,
                 side_a_iface_name: "Ethernet0".to_string(),
                 side_z_iface_name: Some("Ethernet1".to_string()),
                 desired_status: Some(LinkDesiredStatus::Activated),

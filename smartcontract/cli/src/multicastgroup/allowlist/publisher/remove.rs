@@ -3,6 +3,7 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::multicastgroup::allowlist::publisher::remove::RemoveMulticastGroupPubAllowlistCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr, str::FromStr};
@@ -21,7 +22,12 @@ pub struct RemoveMulticastGroupPubAllowlistCliCommand {
 }
 
 impl RemoveMulticastGroupPubAllowlistCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -48,6 +54,8 @@ impl RemoveMulticastGroupPubAllowlistCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         multicastgroup::allowlist::publisher::remove::RemoveMulticastGroupPubAllowlistCliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -86,12 +94,15 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = RemoveMulticastGroupPubAllowlistCliCommand {
-            code: "test_code".to_string(),
-            client_ip,
-            user_payer: pubkey.to_string(),
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            RemoveMulticastGroupPubAllowlistCliCommand {
+                code: "test_code".to_string(),
+                client_ip,
+                user_payer: pubkey.to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

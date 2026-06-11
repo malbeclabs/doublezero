@@ -1,11 +1,13 @@
 use crate::{
     doublezerocommand::CliCommand,
-    poll_for_activation::poll_for_multicastgroup_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{validate_code, validate_parse_bandwidth, validate_pubkey},
 };
 use clap::Args;
-use doublezero_sdk::commands::multicastgroup::create::CreateMulticastGroupCommand;
+use doublezero_cli_core::CliContext;
+use doublezero_sdk::commands::multicastgroup::{
+    create::CreateMulticastGroupCommand, get::GetMulticastGroupCommand,
+};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
 
@@ -26,7 +28,12 @@ pub struct CreateMulticastGroupCliCommand {
 }
 
 impl CreateMulticastGroupCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -46,8 +53,10 @@ impl CreateMulticastGroupCliCommand {
         writeln!(out, "Signature: {signature}",)?;
 
         if self.wait {
-            let user = poll_for_multicastgroup_activated(client, &pubkey)?;
-            writeln!(out, "Status: {0}", user.status)?;
+            let (_, mgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
+                pubkey_or_code: pubkey.to_string(),
+            })?;
+            writeln!(out, "Status: {0}", mgroup.status)?;
         }
 
         Ok(())
@@ -56,6 +65,8 @@ impl CreateMulticastGroupCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand,
         multicastgroup::create::CreateMulticastGroupCliCommand,
@@ -88,7 +99,7 @@ mod tests {
             .expect_create_multicastgroup()
             .with(predicate::eq(CreateMulticastGroupCommand {
                 code: "test".to_string(),
-                max_bandwidth: 10000000000,
+                max_bandwidth: 10_000_000_000,
                 owner: pda_pubkey,
             }))
             .times(1)
@@ -96,13 +107,16 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = CreateMulticastGroupCliCommand {
-            code: "test".to_string(),
-            max_bandwidth: 10000000000,
-            owner: pda_pubkey.to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            CreateMulticastGroupCliCommand {
+                code: "test".to_string(),
+                max_bandwidth: 10_000_000_000,
+                owner: pda_pubkey.to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

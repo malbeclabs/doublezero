@@ -2,10 +2,11 @@
 
 Read-only SDKs for deserializing DoubleZero onchain program accounts in Go, Python, and TypeScript.
 
-- **serviceability** -- Serviceability program (contributors, access passes, devices, etc.)
-- **telemetry** -- Telemetry program (metrics, reporting)
+- **serviceability** -- Serviceability program (Python, TypeScript only; Go SDK is in `smartcontract/sdk/go/serviceability`)
+- **telemetry** -- Telemetry program (Python, TypeScript only; Go SDK is in `smartcontract/sdk/go/telemetry`)
 - **revdist** -- Revenue distribution program (epochs, claim tickets, etc.)
-- **borsh-incremental** -- Shared Borsh deserialization library used by all three SDKs, implemented in each language
+- **shreds** -- Shred subscription program (seats, pricing, settlement, rewards)
+- **borsh-incremental** -- Shared Borsh deserialization library used by the SDKs, implemented in each language
 
 ## Running Examples
 
@@ -16,17 +17,11 @@ Each SDK includes example CLIs that demonstrate fetching and displaying onchain 
 ```bash
 cd sdk
 
-# Run serviceability example (Go)
-make example-serviceability-go
-
 # Run revdist example (Go)
 make example-revdist-go
 
 # Override environment (default: mainnet-beta)
-make example-serviceability-go sdk_env=testnet
-
-# Run telemetry example with epoch
-make example-telemetry-go sdk_env=mainnet-beta sdk_epoch=12345
+make example-revdist-go sdk_env=testnet
 
 # Run all examples for a language
 make examples-go
@@ -35,18 +30,16 @@ make examples-typescript
 ```
 
 Available targets:
-- `example-serviceability-go`, `example-serviceability-python`, `example-serviceability-typescript`
-- `example-telemetry-go`, `example-telemetry-python`, `example-telemetry-typescript`
+- `example-serviceability-python`, `example-serviceability-typescript`
+- `example-telemetry-python`, `example-telemetry-typescript`
 - `example-revdist-go`, `example-revdist-python`, `example-revdist-typescript`
+- `example-shreds-go`
 
 ### Direct Commands
 
 ### Serviceability (devices, links, users, locations, exchanges)
 
 ```bash
-# Go
-go run ./sdk/serviceability/go/examples/fetch --env mainnet-beta
-
 # Python
 cd sdk/serviceability/python && python examples/fetch.py --env mainnet-beta
 
@@ -56,12 +49,7 @@ cd sdk/serviceability/typescript && bun run examples/fetch.ts --env mainnet-beta
 
 ### Telemetry (device latency samples)
 
-The telemetry examples fetch latency samples for device pairs. Go and Python examples automatically discover devices/links via the serviceability SDK.
-
 ```bash
-# Go (auto-discovers devices/links from serviceability)
-go run ./sdk/telemetry/go/examples/fetch --env mainnet-beta --epoch 12345
-
 # Python (auto-discovers devices/links from serviceability)
 cd sdk/telemetry/python && python examples/fetch.py --env mainnet-beta --epoch 12345
 
@@ -83,6 +71,13 @@ cd sdk/revdist/python && python examples/fetch.py --env mainnet-beta
 cd sdk/revdist/typescript && bun run examples/fetch.ts --env mainnet-beta
 ```
 
+### Shred Subscription (seats, pricing, settlement, rewards)
+
+```bash
+# Go
+go run ./sdk/shreds/go/examples/fetch --env mainnet-beta --epoch 42
+```
+
 ## Running Tests
 
 ```
@@ -94,9 +89,10 @@ Per-SDK test commands:
 
 | SDK | Go | Python | TypeScript |
 |-----|----|----|------------|
-| serviceability | `go test ./sdk/serviceability/go/...` | `cd sdk/serviceability/python && uv run pytest` | `cd sdk/serviceability/typescript && bun test` |
-| telemetry | `go test ./sdk/telemetry/go/...` | `cd sdk/telemetry/python && uv run pytest` | `cd sdk/telemetry/typescript && bun test` |
+| serviceability | `go test ./smartcontract/sdk/go/serviceability/...` | `cd sdk/serviceability/python && uv run pytest` | `cd sdk/serviceability/typescript && bun test` |
+| telemetry | `go test ./smartcontract/sdk/go/telemetry/...` | `cd sdk/telemetry/python && uv run pytest` | `cd sdk/telemetry/typescript && bun test` |
 | revdist | `go test ./sdk/revdist/go/...` | `cd sdk/revdist/python && uv run pytest` | `cd sdk/revdist/typescript && bun test` |
+| shreds | `go test ./sdk/shreds/go/...` | -- | -- |
 
 ## Regenerating Fixtures
 
@@ -149,24 +145,23 @@ Verify that program-derived addresses match known values across all three langua
 ```
 sdk/
 ├── borsh-incremental/     # Shared deserialization library (Go, Python, TypeScript)
-├── serviceability/        # Serviceability program SDK
-│   ├── go/
-│   │   └── examples/fetch/main.go
+├── serviceability/        # Serviceability program SDK (Python, TypeScript; Go is in smartcontract/sdk/go/)
 │   ├── python/
 │   │   └── examples/fetch.py
 │   ├── typescript/
 │   │   └── examples/fetch.ts
 │   └── testdata/fixtures/ # Rust-generated binary + JSON fixtures
-├── telemetry/             # Telemetry program SDK
+├── telemetry/             # Telemetry program SDK (Python, TypeScript; Go is in smartcontract/sdk/go/)
+│   ├── python/examples/
+│   ├── typescript/examples/
+│   └── testdata/fixtures/
+├── revdist/               # Revenue distribution program SDK
 │   ├── go/examples/
 │   ├── python/examples/
 │   ├── typescript/examples/
 │   └── testdata/fixtures/
-└── revdist/               # Revenue distribution program SDK
-    ├── go/examples/
-    ├── python/examples/
-    ├── typescript/examples/
-    └── testdata/fixtures/
+└── shreds/                # Shred subscription program SDK
+    └── go/examples/
 ```
 
 Each SDK follows the same layout with `go/`, `python/`, `typescript/` subdirectories containing example CLIs, and a shared `testdata/fixtures/` directory containing the Rust-generated test data.

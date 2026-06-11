@@ -1,12 +1,9 @@
-pub mod activate;
-pub mod ban;
 pub mod check_access_pass;
-pub mod closeaccount;
 pub mod create;
 pub mod create_core;
 pub mod create_subscribe;
 pub mod delete;
-pub mod reject;
 pub mod requestban;
 pub mod resource_onchain_helpers;
+pub mod set_bgp_status;
 pub mod update;

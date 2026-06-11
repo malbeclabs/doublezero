@@ -6,13 +6,8 @@ use crate::{
     seeds::{SEED_DEVICE, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
-        accounttype::AccountType,
-        contributor::Contributor,
-        device::*,
-        exchange::Exchange,
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        globalstate::GlobalState,
-        location::Location,
+        accounttype::AccountType, contributor::Contributor, device::*, exchange::Exchange,
+        globalstate::GlobalState, location::Location,
     },
 };
 use borsh::BorshSerialize;
@@ -39,8 +34,8 @@ pub struct DeviceCreateArgs {
     pub mgmt_vrf: String,
     pub desired_status: Option<DeviceDesiredStatus>,
     /// Number of resource accounts to create (TunnelIds + DzPrefixBlocks).
-    /// When > 0, performs atomic create+activate with onchain allocation.
-    /// When 0 (default), uses the legacy two-step create+activate flow.
+    /// Must equal `1 + dz_prefixes.len()`: one TunnelIds account plus one
+    /// DzPrefixBlock per advertised prefix.
     #[incremental(default = 0)]
     pub resource_count: u8,
 }
@@ -76,21 +71,15 @@ pub fn process_create_device(
     let exchange_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: globalconfig + resource accounts for onchain allocation (before payer)
-    // Account layout WITH onchain allocation (resource_count > 0):
-    //   [device, contributor, location, exchange, globalstate, globalconfig, resource_0..N, payer, system]
-    // Account layout WITHOUT (legacy, resource_count == 0):
-    //   [device, contributor, location, exchange, globalstate, payer, system]
-    let (globalconfig_account, resource_accounts) = if value.resource_count > 0 {
-        let globalconfig = next_account_info(accounts_iter)?;
-        let mut resources = vec![];
-        for _ in 0..value.resource_count {
-            resources.push(next_account_info(accounts_iter)?);
-        }
-        (Some(globalconfig), resources)
-    } else {
-        (None, vec![])
-    };
+    // Account layout:
+    //   [device, contributor, location, exchange, globalstate,
+    //    globalconfig, tunnel_ids, dz_prefix_block_0..N-1,
+    //    payer, system]
+    let globalconfig_account = next_account_info(accounts_iter)?;
+    let mut resource_accounts = Vec::with_capacity(value.resource_count as usize);
+    for _ in 0..value.resource_count {
+        resource_accounts.push(next_account_info(accounts_iter)?);
+    }
 
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
@@ -169,6 +158,21 @@ pub fn process_create_device(
         }
     }
 
+    // resource_count must match the device's prefix list exactly: one TunnelIds
+    // plus one DzPrefixBlock per dz_prefix. A short count would leave later
+    // user allocations unable to derive a DzPrefixBlock PDA; an over-long
+    // count would create unused resource accounts.
+    let expected_resource_count = 1usize.saturating_add(value.dz_prefixes.len());
+    if value.resource_count as usize != expected_resource_count {
+        #[cfg(test)]
+        msg!(
+            "resource_count {} != 1 + dz_prefixes.len() {}",
+            value.resource_count,
+            expected_resource_count
+        );
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let mut device = Device {
         account_type: AccountType::Device,
         owner: *payer_account.key,
@@ -183,7 +187,7 @@ pub fn process_create_device(
         public_ip: value.public_ip,
         dz_prefixes: value.dz_prefixes.clone(),
         metrics_publisher_pk: value.metrics_publisher_pk,
-        status: DeviceStatus::Pending,
+        status: DeviceStatus::Activated,
         mgmt_vrf: value.mgmt_vrf.clone(),
         interfaces: vec![],
         users_count: 0,
@@ -201,21 +205,8 @@ pub fn process_create_device(
         reserved_seats: 0,
         multicast_publishers_count: 0,
         max_multicast_publishers: 0, // Initially locked, must be set via device update
+        ..Default::default()
     };
-
-    // Atomic create+activate with onchain resource allocation
-    if value.resource_count > 0 {
-        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            return Err(DoubleZeroError::FeatureNotEnabled.into());
-        }
-
-        assert!(
-            value.resource_count >= 2,
-            "Resource count must be at least 2 (TunnelIds and at least one DzPrefixBlock)"
-        );
-
-        device.status = DeviceStatus::Activated;
-    }
 
     device.check_status_transition();
 
@@ -233,22 +224,20 @@ pub fn process_create_device(
         ],
     )?;
 
-    // Create resource accounts after device account exists
-    if let Some(globalconfig_account) = globalconfig_account {
-        for (idx, resource_account) in resource_accounts.iter().enumerate() {
-            create_resource(
-                program_id,
-                resource_account,
-                Some(device_account),
-                globalconfig_account,
-                payer_account,
-                accounts,
-                match idx {
-                    0 => ResourceType::TunnelIds(*device_account.key, 0),
-                    _ => ResourceType::DzPrefixBlock(*device_account.key, idx - 1),
-                },
-            )?;
-        }
+    // Create resource accounts after device account exists.
+    for (idx, resource_account) in resource_accounts.iter().enumerate() {
+        create_resource(
+            program_id,
+            resource_account,
+            Some(device_account),
+            globalconfig_account,
+            payer_account,
+            accounts,
+            match idx {
+                0 => ResourceType::TunnelIds(*device_account.key, 0),
+                _ => ResourceType::DzPrefixBlock(*device_account.key, idx - 1),
+            },
+        )?;
     }
 
     try_acc_write(&contributor, contributor_account, payer_account, accounts)?;

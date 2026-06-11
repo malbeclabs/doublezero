@@ -135,6 +135,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         }
     }
 
@@ -148,10 +149,10 @@ mod tests {
         let location_pk = Pubkey::new_unique();
         let exchange_pk = Pubkey::new_unique();
 
-        // Device with no resources (pending, never activated)
+        // Device with no resources (never activated)
         let mut device =
             make_test_device(client.get_payer(), contributor_pk, location_pk, exchange_pk);
-        device.status = DeviceStatus::Pending;
+        device.status = DeviceStatus::Activated;
 
         let device_clone = device.clone();
         client

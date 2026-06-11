@@ -1,9 +1,10 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_accesspass_pda,
+    processors::validation::validate_program_account,
     serializer::try_acc_write,
     state::{
-        accesspass::{AccessPass, AccessPassStatus},
+        accesspass::AccessPass,
         globalstate::GlobalState,
         user::{User, UserStatus},
     },
@@ -47,27 +48,28 @@ pub fn process_check_access_pass_user(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
+    // Validate accounts
+    validate_program_account!(user_account, program_id, writable = true, "User");
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
-    assert_eq!(
-        accesspass_account.owner, program_id,
-        "Invalid AccessPass Account Owner"
+    validate_program_account!(
+        accesspass_account,
+        program_id,
+        writable = true,
+        "AccessPass"
     );
-
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
-    assert!(user_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
     if globalstate.activator_authority_pk != *payer_account.key {
@@ -96,11 +98,9 @@ pub fn process_check_access_pass_user(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    user.status = if accesspass.status == AccessPassStatus::Expired {
-        UserStatus::OutOfCredits
-    } else {
-        UserStatus::Activated
-    };
+    // Epoch expiry is deprecated and no longer demotes users. Access for all user
+    // types is governed by allowlists, not by accesspass.last_access_epoch.
+    user.status = UserStatus::Activated;
 
     try_acc_write(&user, user_account, payer_account, accounts)?;
     try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;

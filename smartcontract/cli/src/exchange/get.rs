@@ -1,5 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
+use doublezero_cli_core::{render_record, CliContext, OutputFormat};
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
     device::list::ListDeviceCommand, exchange::get::GetExchangeCommand,
@@ -41,7 +42,12 @@ struct ExchangeDisplay {
 }
 
 impl GetExchangeCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (pubkey, exchange) = client.get_exchange(GetExchangeCommand {
             pubkey_or_code: self.code,
         })?;
@@ -79,25 +85,14 @@ impl GetExchangeCliCommand {
             owner: exchange.owner.to_string(),
         };
 
-        if self.json {
-            let json = serde_json::to_string_pretty(&display)?;
-            writeln!(out, "{json}")?;
-        } else {
-            let headers = ExchangeDisplay::headers();
-            let fields = display.fields();
-            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
-            for (header, value) in headers.iter().zip(fields.iter()) {
-                writeln!(out, " {header:<max_len$} | {value}")?;
-            }
-        }
-
-        Ok(())
+        render_record(out, &display, OutputFormat::from_flags(self.json, false))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{exchange::get::GetExchangeCliCommand, tests::utils::create_test_client};
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
         commands::{device::list::ListDeviceCommand, exchange::get::GetExchangeCommand},
         AccountType, Device, DeviceStatus, DeviceType, Exchange, ExchangeStatus,
@@ -129,7 +124,7 @@ mod tests {
             exchange_pk: exchange1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [192, 168, 1, 1].into(),
-            status: DeviceStatus::Pending,
+            status: DeviceStatus::Activated,
             code: "TestDevice".to_string(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
@@ -147,6 +142,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client
@@ -199,22 +195,28 @@ mod tests {
             Ok(list)
         });
 
+        let ctx = cli_context_default_for_tests();
+
         // Expected failure
         let mut output = Vec::new();
-        let res = GetExchangeCliCommand {
-            code: Pubkey::new_unique().to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetExchangeCliCommand {
+                code: Pubkey::new_unique().to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
 
         // Expected success by pubkey (table)
         let mut output = Vec::new();
-        let res = GetExchangeCliCommand {
-            code: exchange1_pubkey.to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetExchangeCliCommand {
+                code: exchange1_pubkey.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -237,11 +239,13 @@ mod tests {
 
         // Expected success by code (JSON)
         let mut output = Vec::new();
-        let res = GetExchangeCliCommand {
-            code: "test".to_string(),
-            json: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetExchangeCliCommand {
+                code: "test".to_string(),
+                json: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let json: serde_json::Value =
             serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();

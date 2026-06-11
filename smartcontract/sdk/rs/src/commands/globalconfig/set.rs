@@ -46,6 +46,8 @@ impl SetGlobalConfigCommand {
         );
         let (vrf_ids_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
+        let (admin_group_bits_pda, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::AdminGroupBits);
 
         client.execute_transaction(
             DoubleZeroInstruction::SetGlobalConfig(set_config_args),
@@ -59,6 +61,7 @@ impl SetGlobalConfigCommand {
                 AccountMeta::new(segment_routing_ids_pda, false),
                 AccountMeta::new(multicast_publisher_block_pda, false),
                 AccountMeta::new(vrf_ids_pda, false),
+                AccountMeta::new(admin_group_bits_pda, false),
             ],
         )
     }
@@ -115,5 +118,44 @@ impl SetGlobalConfigCommand {
                     .unwrap_or(existing_config.multicast_publisher_block),
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SetGlobalConfigCommand;
+    use crate::{tests::utils::create_test_client, DoubleZeroClient};
+    use doublezero_serviceability::pda::get_globalconfig_pda;
+    use mockall::predicate;
+    use solana_sdk::signature::Signature;
+
+    #[test]
+    fn test_commands_setglobalconfig_executes() {
+        let mut client = create_test_client();
+
+        // GetGlobalConfigCommand fetches the globalconfig PDA; return an error so
+        // merge_config_updates takes the "all fields Some" branch rather than merging.
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
+        client
+            .expect_get()
+            .with(predicate::eq(globalconfig_pubkey))
+            .returning(|_| Err(eyre::eyre!("not initialized")));
+
+        client
+            .expect_execute_transaction()
+            .times(1)
+            .returning(|_, _| Ok(Signature::new_unique()));
+
+        let res = SetGlobalConfigCommand {
+            local_asn: Some(65000),
+            remote_asn: Some(65001),
+            device_tunnel_block: Some("10.0.0.0/16".parse().unwrap()),
+            user_tunnel_block: Some("10.1.0.0/16".parse().unwrap()),
+            multicastgroup_block: Some("239.0.0.0/16".parse().unwrap()),
+            next_bgp_community: Some(100),
+            multicast_publisher_block: Some("239.1.0.0/16".parse().unwrap()),
+        }
+        .execute(&client);
+        assert!(res.is_ok(), "execute failed: {:?}", res.err());
     }
 }

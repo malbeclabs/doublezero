@@ -15,6 +15,8 @@ import (
 // interface_state (matches "interfaces" + "interface" + "state") since ifindex paths
 // contain all three elements.
 var DefaultExtractors = []ExtractorDef{
+	{Name: "isis_overload_bit", Match: PathContains("isis", "overload-bit"), Extract: extractIsisOverloadBit},
+	{Name: "isis_global_state", Match: PathContains("isis", "global", "state"), Extract: extractIsisGlobalState},
 	{Name: "isis_adjacencies", Match: PathContains("isis", "adjacencies"), Extract: extractIsisAdjacencies},
 	{Name: "system_state", Match: PathContains("system", "state"), Extract: extractSystemState},
 	{Name: "bgp_neighbors", Match: PathContains("bgp", "neighbors"), Extract: extractBgpNeighbors},
@@ -371,9 +373,100 @@ func extractInterfaceState(device *oc.Device, meta Metadata) []Record {
 			if iface.State.Counters.OutDiscards != nil {
 				record.OutDiscards = *iface.State.Counters.OutDiscards
 			}
+			if iface.State.Counters.InFcsErrors != nil {
+				record.InFcsErrors = *iface.State.Counters.InFcsErrors
+			}
+			if iface.State.Counters.InUnicastPkts != nil {
+				record.InUnicastPkts = *iface.State.Counters.InUnicastPkts
+			}
+			if iface.State.Counters.InMulticastPkts != nil {
+				record.InMulticastPkts = *iface.State.Counters.InMulticastPkts
+			}
+			if iface.State.Counters.InBroadcastPkts != nil {
+				record.InBroadcastPkts = *iface.State.Counters.InBroadcastPkts
+			}
+			if iface.State.Counters.OutUnicastPkts != nil {
+				record.OutUnicastPkts = *iface.State.Counters.OutUnicastPkts
+			}
+			if iface.State.Counters.OutMulticastPkts != nil {
+				record.OutMulticastPkts = *iface.State.Counters.OutMulticastPkts
+			}
+			if iface.State.Counters.OutBroadcastPkts != nil {
+				record.OutBroadcastPkts = *iface.State.Counters.OutBroadcastPkts
+			}
 		}
 
 		records = append(records, record)
+	}
+
+	return records
+}
+
+// extractIsisOverloadBit extracts ISIS overload bit state from an oc.Device.
+func extractIsisOverloadBit(device *oc.Device, meta Metadata) []Record {
+	var records []Record
+
+	if device.NetworkInstances == nil {
+		return nil
+	}
+
+	for niName, ni := range device.NetworkInstances.NetworkInstance {
+		if ni.Protocols == nil {
+			continue
+		}
+		for _, proto := range ni.Protocols.Protocol {
+			if proto.Isis == nil || proto.Isis.Global == nil ||
+				proto.Isis.Global.LspBit == nil || proto.Isis.Global.LspBit.OverloadBit == nil ||
+				proto.Isis.Global.LspBit.OverloadBit.State == nil {
+				continue
+			}
+			state := proto.Isis.Global.LspBit.OverloadBit.State
+			overloadBit := state.SetBit != nil && *state.SetBit
+			records = append(records, IsisOverloadBitRecord{
+				Timestamp:       meta.Timestamp,
+				DevicePubkey:    meta.DevicePubkey,
+				NetworkInstance: niName,
+				OverloadBit:     overloadBit,
+			})
+		}
+	}
+
+	return records
+}
+
+// extractIsisGlobalState extracts ISIS global state records from an oc.Device.
+func extractIsisGlobalState(device *oc.Device, meta Metadata) []Record {
+	var records []Record
+
+	if device.NetworkInstances == nil {
+		return nil
+	}
+
+	for niName, ni := range device.NetworkInstances.NetworkInstance {
+		if ni.Protocols == nil {
+			continue
+		}
+		for _, proto := range ni.Protocols.Protocol {
+			if proto.Isis == nil || proto.Isis.Global == nil || proto.Isis.Global.State == nil {
+				continue
+			}
+			state := proto.Isis.Global.State
+			record := IsisGlobalStateRecord{
+				Timestamp:       meta.Timestamp,
+				DevicePubkey:    meta.DevicePubkey,
+				NetworkInstance: niName,
+			}
+			if state.Instance != nil {
+				record.Instance = *state.Instance
+			}
+			if len(state.Net) > 0 {
+				record.Net = strings.Join(state.Net, ",")
+			}
+			if state.LevelCapability != 0 {
+				record.LevelCapability = state.LevelCapability.String()
+			}
+			records = append(records, record)
+		}
 	}
 
 	return records

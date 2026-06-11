@@ -1,9 +1,10 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::commands::resource::{
-    allocate::AllocateResourceCommand, create::CreateResourceCommand,
-    deallocate::DeallocateResourceCommand,
+    allocate::AllocateResourceCommand, closeaccount::CloseResourceByPubkeyCommand,
+    create::CreateResourceCommand, deallocate::DeallocateResourceCommand,
 };
 use doublezero_serviceability::{
     pda::get_resource_extension_pda,
@@ -14,13 +15,13 @@ use doublezero_serviceability::{
         interface::{InterfaceType, LoopbackType},
         link::Link,
         multicastgroup::MulticastGroup,
-        resource_extension::ResourceExtensionOwned,
-        user::User,
+        resource_extension::{Allocator, ResourceExtensionOwned},
+        user::{User, UserType},
     },
 };
 use solana_sdk::pubkey::Pubkey;
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     io::{BufRead, Write},
 };
 
@@ -41,14 +42,22 @@ pub enum ResourceDiscrepancy {
     },
     /// Resource extension account not found
     ExtensionNotFound { resource_type: ResourceType },
-    /// Resource is used by multiple accounts (duplicate usage)
+    /// Resource is used by multiple accounts (duplicate usage). `accounts`
+    /// lists every owner in insertion order; `accounts.len() >= 2`.
     DuplicateUsage {
         resource_type: ResourceType,
         value: IdOrIp,
-        first_account_pubkey: Pubkey,
-        first_account_type: String,
-        second_account_pubkey: Pubkey,
-        second_account_type: String,
+        accounts: Vec<(Pubkey, String)>,
+    },
+    /// ResourceExtension account exists onchain but does not correspond to any
+    /// currently-expected PDA (global singleton or per-device extension for a
+    /// live device/prefix). Typically caused by device deletion or a shrunk
+    /// dz_prefixes list.
+    OrphanedExtension {
+        pubkey: Pubkey,
+        associated_with: Pubkey,
+        owner: Pubkey,
+        allocator_kind: &'static str,
     },
 }
 
@@ -63,6 +72,10 @@ pub struct VerifyResourceResult {
     pub segment_routing_ids_checked: usize,
     pub link_ids_checked: usize,
     pub multicast_group_block_checked: usize,
+    pub multicast_publisher_block_checked: usize,
+    /// Pubkey → human-readable code, populated for devices and links so the
+    /// display layer can print `code (pubkey)` instead of raw pubkeys.
+    pub pubkey_labels: HashMap<Pubkey, String>,
 }
 
 impl VerifyResourceResult {
@@ -79,7 +92,12 @@ pub struct VerifyResourceCliCommand {
 }
 
 impl VerifyResourceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let result = verify_resources(client)?;
 
         // Print summary
@@ -115,6 +133,11 @@ impl VerifyResourceCliCommand {
             "  MulticastGroupBlock: {}",
             result.multicast_group_block_checked
         )?;
+        writeln!(
+            out,
+            "  MulticastPublisherBlock: {}",
+            result.multicast_publisher_block_checked
+        )?;
         writeln!(out)?;
 
         if result.is_ok() {
@@ -128,6 +151,7 @@ impl VerifyResourceCliCommand {
             let mut used_not_allocated: Vec<&ResourceDiscrepancy> = Vec::new();
             let mut extensions_not_found: Vec<&ResourceDiscrepancy> = Vec::new();
             let mut duplicate_usages: Vec<&ResourceDiscrepancy> = Vec::new();
+            let mut orphaned_extensions: Vec<&ResourceDiscrepancy> = Vec::new();
 
             for d in &result.discrepancies {
                 match d {
@@ -142,6 +166,9 @@ impl VerifyResourceCliCommand {
                     }
                     ResourceDiscrepancy::DuplicateUsage { .. } => {
                         duplicate_usages.push(d);
+                    }
+                    ResourceDiscrepancy::OrphanedExtension { .. } => {
+                        orphaned_extensions.push(d);
                     }
                 }
             }
@@ -204,9 +231,47 @@ impl VerifyResourceCliCommand {
                         writeln!(
                             out,
                             "  {} = {} (used by {} {})",
-                            resource_type, value, account_type, account_pubkey
+                            resource_type,
+                            value,
+                            account_type,
+                            format_pubkey(account_pubkey, &result.pubkey_labels)
                         )?;
                     }
+                }
+                writeln!(out)?;
+            }
+
+            if !orphaned_extensions.is_empty() {
+                writeln!(
+                    out,
+                    "Orphaned resource extensions (not tied to any live device/prefix or global type):"
+                )?;
+                writeln!(
+                    out,
+                    "----------------------------------------------------------------------------------"
+                )?;
+                for d in &orphaned_extensions {
+                    if let ResourceDiscrepancy::OrphanedExtension {
+                        pubkey,
+                        associated_with,
+                        owner: _,
+                        allocator_kind,
+                    } = d
+                    {
+                        writeln!(
+                            out,
+                            "  {} (allocator={}, associated_with={})",
+                            pubkey,
+                            allocator_kind,
+                            format_pubkey(associated_with, &result.pubkey_labels)
+                        )?;
+                    }
+                }
+                if !self.fix {
+                    writeln!(
+                        out,
+                        "  Hint: use --fix to close orphaned resource extensions."
+                    )?;
                 }
                 writeln!(out)?;
             }
@@ -224,21 +289,23 @@ impl VerifyResourceCliCommand {
                     if let ResourceDiscrepancy::DuplicateUsage {
                         resource_type,
                         value,
-                        first_account_pubkey,
-                        first_account_type,
-                        second_account_pubkey,
-                        second_account_type,
+                        accounts,
                     } = d
                     {
+                        let owners = accounts
+                            .iter()
+                            .map(|(pk, ty)| {
+                                format!("{} {}", ty, format_pubkey(pk, &result.pubkey_labels))
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ");
                         writeln!(
                             out,
-                            "  {} = {} (used by {} {} AND {} {})",
+                            "  {} = {} (used by {} owners: {})",
                             resource_type,
                             value,
-                            first_account_type,
-                            first_account_pubkey,
-                            second_account_type,
-                            second_account_pubkey
+                            accounts.len(),
+                            owners
                         )?;
                     }
                 }
@@ -284,6 +351,7 @@ impl VerifyResourceCliCommand {
                 let mut fix_allocated_not_used: Vec<&ResourceDiscrepancy> = Vec::new();
                 let mut fix_used_not_allocated: Vec<&ResourceDiscrepancy> = Vec::new();
                 let mut fix_duplicate_usages: Vec<&ResourceDiscrepancy> = Vec::new();
+                let mut fix_orphaned_extensions: Vec<&ResourceDiscrepancy> = Vec::new();
 
                 for d in &fix_discrepancies {
                     match d {
@@ -296,81 +364,60 @@ impl VerifyResourceCliCommand {
                         ResourceDiscrepancy::DuplicateUsage { .. } => {
                             fix_duplicate_usages.push(d);
                         }
+                        ResourceDiscrepancy::OrphanedExtension { .. } => {
+                            fix_orphaned_extensions.push(d);
+                        }
                         _ => {}
                     }
                 }
 
-                // Step 2: Warn about duplicate usages but don't block
-                // Collect duplicate (resource_type, value) pairs to exclude from fixes
-                let mut duplicate_values: Vec<(ResourceType, IdOrIp)> = Vec::new();
+                // Step 2: Warn about duplicate usages. The duplicate itself must
+                // be resolved manually (by changing one of the conflicting
+                // accounts), but the underlying allocation state is still
+                // corrected below: the shared value stays reserved in the
+                // extension so it cannot be handed out to a third account
+                // before the conflict is resolved.
                 if !fix_duplicate_usages.is_empty() {
                     writeln!(
                         out,
-                        "Warning: skipping duplicate usages (must be resolved manually):"
+                        "Warning: duplicate usages detected (must be resolved manually):"
                     )?;
                     for d in &fix_duplicate_usages {
                         if let ResourceDiscrepancy::DuplicateUsage {
                             resource_type,
                             value,
-                            first_account_pubkey,
-                            first_account_type,
-                            second_account_pubkey,
-                            second_account_type,
+                            accounts,
                         } = d
                         {
+                            let owners = accounts
+                                .iter()
+                                .map(|(pk, ty)| {
+                                    format!("{} {}", ty, format_pubkey(pk, &result.pubkey_labels))
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ");
                             writeln!(
                                 out,
-                                "  {} = {} (used by {} {} AND {} {})",
+                                "  {} = {} (used by {} owners: {})",
                                 resource_type,
                                 value,
-                                first_account_type,
-                                first_account_pubkey,
-                                second_account_type,
-                                second_account_pubkey
+                                accounts.len(),
+                                owners
                             )?;
-                            duplicate_values.push((*resource_type, value.clone()));
                         }
                     }
                     writeln!(out)?;
                 }
 
-                // Step 3: Fix allocate/deallocate discrepancies (excluding duplicates)
-                let fixable_allocated_not_used: Vec<_> = fix_allocated_not_used
-                    .iter()
-                    .filter(|d| {
-                        if let ResourceDiscrepancy::AllocatedButNotUsed {
-                            resource_type,
-                            value,
-                        } = d
-                        {
-                            !duplicate_values
-                                .iter()
-                                .any(|(rt, v)| rt == resource_type && v == value)
-                        } else {
-                            true
-                        }
-                    })
-                    .collect();
+                // Step 3: Fix allocate/deallocate discrepancies. Values flagged
+                // as DuplicateUsage are not excluded — a shared value still
+                // belongs in the allocated set.
+                let fixable_allocated_not_used: Vec<_> = fix_allocated_not_used.iter().collect();
+                let fixable_used_not_allocated: Vec<_> = fix_used_not_allocated.iter().collect();
 
-                let fixable_used_not_allocated: Vec<_> = fix_used_not_allocated
-                    .iter()
-                    .filter(|d| {
-                        if let ResourceDiscrepancy::UsedButNotAllocated {
-                            resource_type,
-                            value,
-                            ..
-                        } = d
-                        {
-                            !duplicate_values
-                                .iter()
-                                .any(|(rt, v)| rt == resource_type && v == value)
-                        } else {
-                            true
-                        }
-                    })
-                    .collect();
-
-                if !fixable_allocated_not_used.is_empty() || !fixable_used_not_allocated.is_empty()
+                if !fixable_allocated_not_used.is_empty()
+                    || !fixable_used_not_allocated.is_empty()
+                    || !fix_orphaned_extensions.is_empty()
                 {
                     writeln!(out, "Proposed fixes:")?;
                     writeln!(out, "--------------")?;
@@ -393,6 +440,12 @@ impl VerifyResourceCliCommand {
                         } = d
                         {
                             writeln!(out, "  ALLOCATE {} = {}", resource_type, value)?;
+                        }
+                    }
+
+                    for d in &fix_orphaned_extensions {
+                        if let ResourceDiscrepancy::OrphanedExtension { pubkey, .. } = d {
+                            writeln!(out, "  CLOSE ResourceExtension {}", pubkey)?;
                         }
                     }
 
@@ -457,6 +510,28 @@ impl VerifyResourceCliCommand {
                             }
                         }
 
+                        // Close orphaned extensions
+                        for d in &fix_orphaned_extensions {
+                            if let ResourceDiscrepancy::OrphanedExtension {
+                                pubkey, owner, ..
+                            } = d
+                            {
+                                writeln!(out, "  Closing ResourceExtension {} ...", pubkey)?;
+                                let cmd = CloseResourceByPubkeyCommand {
+                                    pubkey: *pubkey,
+                                    owner: *owner,
+                                };
+                                match client.close_resource_by_pubkey(cmd) {
+                                    Ok(sig) => {
+                                        writeln!(out, "    OK (signature: {})", sig)?;
+                                    }
+                                    Err(e) => {
+                                        writeln!(out, "    FAILED: {}", e)?;
+                                    }
+                                }
+                            }
+                        }
+
                         writeln!(out)?;
                         writeln!(out, "Done.")?;
                     } else {
@@ -507,6 +582,19 @@ fn verify_resources<C: CliCommand>(client: &C) -> eyre::Result<VerifyResourceRes
 
     let mut result = VerifyResourceResult::default();
 
+    // Build pubkey → code labels so the display layer can annotate device and
+    // link pubkeys with their human-readable codes.
+    for (pk, device) in &devices {
+        if !device.code.is_empty() {
+            result.pubkey_labels.insert(*pk, device.code.clone());
+        }
+    }
+    for (pk, link) in &links {
+        if !link.code.is_empty() {
+            result.pubkey_labels.insert(*pk, link.code.clone());
+        }
+    }
+
     // Verify UserTunnelBlock
     verify_user_tunnel_block(&program_id, &users, &resource_extensions, &mut result);
 
@@ -551,7 +639,75 @@ fn verify_resources<C: CliCommand>(client: &C) -> eyre::Result<VerifyResourceRes
         &mut result,
     );
 
+    // Verify MulticastPublisherBlock
+    verify_multicast_publisher_block(&program_id, &users, &resource_extensions, &mut result);
+
+    // Detect orphaned extensions whose PDA doesn't match any currently-expected
+    // resource type for live state.
+    detect_orphaned_extensions(&program_id, &devices, &resource_extensions, &mut result);
+
     Ok(result)
+}
+
+/// Build the set of PDAs the program is expected to own right now (every global
+/// singleton plus per-device extensions for each live device and dz_prefix
+/// index), then flag any loaded ResourceExtension whose key is not in that set.
+fn detect_orphaned_extensions(
+    program_id: &Pubkey,
+    devices: &HashMap<Pubkey, Device>,
+    resource_extensions: &HashMap<Pubkey, ResourceExtensionOwned>,
+    result: &mut VerifyResourceResult,
+) {
+    let mut expected: HashSet<Pubkey> = HashSet::new();
+
+    // Global singletons. VrfIds and AdminGroupBits aren't verified against
+    // usage above but must still be treated as legitimate, not orphans.
+    for resource_type in [
+        ResourceType::DeviceTunnelBlock,
+        ResourceType::UserTunnelBlock,
+        ResourceType::MulticastGroupBlock,
+        ResourceType::MulticastPublisherBlock,
+        ResourceType::LinkIds,
+        ResourceType::SegmentRoutingIds,
+        ResourceType::VrfIds,
+        ResourceType::AdminGroupBits,
+    ] {
+        let (pda, _, _) = get_resource_extension_pda(program_id, resource_type);
+        expected.insert(pda);
+    }
+
+    // Per-device: TunnelIds(device, 0) + DzPrefixBlock(device, i) for each prefix.
+    for (device_pk, device) in devices {
+        let (tunnel_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::TunnelIds(*device_pk, 0));
+        expected.insert(tunnel_pda);
+
+        for index in 0..device.dz_prefixes.len() {
+            let (prefix_pda, _, _) = get_resource_extension_pda(
+                program_id,
+                ResourceType::DzPrefixBlock(*device_pk, index),
+            );
+            expected.insert(prefix_pda);
+        }
+    }
+
+    for (pda, ext) in resource_extensions {
+        if expected.contains(pda) {
+            continue;
+        }
+        let allocator_kind = match ext.allocator {
+            Allocator::Ip(_) => "Ip",
+            Allocator::Id(_) => "Id",
+        };
+        result
+            .discrepancies
+            .push(ResourceDiscrepancy::OrphanedExtension {
+                pubkey: *pda,
+                associated_with: ext.associated_with,
+                owner: ext.owner,
+                allocator_kind,
+            });
+    }
 }
 
 fn verify_user_tunnel_block(
@@ -574,8 +730,7 @@ fn verify_user_tunnel_block(
     let allocated: HashSet<IdOrIp> = extension.iter_allocated().into_iter().collect();
 
     // Build set of in-use IPs from users
-    let resource_type = ResourceType::UserTunnelBlock;
-    let mut in_use: HashMap<IdOrIp, (Pubkey, String)> = HashMap::new();
+    let mut in_use: HashMap<IdOrIp, Vec<(Pubkey, String)>> = HashMap::new();
     for (user_pk, user) in users {
         let tunnel_ip = user.tunnel_net.ip();
         if !tunnel_ip.is_unspecified() && user.tunnel_net.prefix() > 0 {
@@ -584,14 +739,7 @@ fn verify_user_tunnel_block(
                 if let Some(ip) = user.tunnel_net.nth(i) {
                     let ip_net = NetworkV4::new(ip, 32).unwrap();
                     let id_or_ip = IdOrIp::Ip(ip_net);
-                    insert_usage(
-                        &mut in_use,
-                        resource_type,
-                        id_or_ip,
-                        *user_pk,
-                        "User".to_string(),
-                        result,
-                    );
+                    insert_usage(&mut in_use, id_or_ip, *user_pk, "User".to_string());
                 }
             }
             result.user_tunnel_block_checked += 1;
@@ -626,30 +774,20 @@ fn verify_tunnel_ids(
         let (pda, _, _) = get_resource_extension_pda(program_id, resource_type);
 
         let Some(extension) = resource_extensions.get(&pda) else {
-            // Only report if this device has users
-            if users_by_device.contains_key(device_pk) {
-                result
-                    .discrepancies
-                    .push(ResourceDiscrepancy::ExtensionNotFound { resource_type });
-            }
+            result
+                .discrepancies
+                .push(ResourceDiscrepancy::ExtensionNotFound { resource_type });
             continue;
         };
 
         let allocated: HashSet<IdOrIp> = extension.iter_allocated().into_iter().collect();
 
-        let mut in_use: HashMap<IdOrIp, (Pubkey, String)> = HashMap::new();
+        let mut in_use: HashMap<IdOrIp, Vec<(Pubkey, String)>> = HashMap::new();
         if let Some(device_users) = users_by_device.get(device_pk) {
             for (user_pk, user) in device_users {
                 if user.tunnel_id != 0 {
                     let id_or_ip = IdOrIp::Id(user.tunnel_id);
-                    insert_usage(
-                        &mut in_use,
-                        resource_type,
-                        id_or_ip,
-                        *user_pk,
-                        "User".to_string(),
-                        result,
-                    );
+                    insert_usage(&mut in_use, id_or_ip, *user_pk, "User".to_string());
                     result.tunnel_ids_checked += 1;
                 }
             }
@@ -682,18 +820,16 @@ fn verify_dz_prefix_block(
             let allocated: HashSet<IdOrIp> = extension.iter_allocated().into_iter().collect();
 
             // Find users whose dz_ip falls within this prefix
-            let mut in_use: HashMap<IdOrIp, (Pubkey, String)> = HashMap::new();
+            let mut in_use: HashMap<IdOrIp, Vec<(Pubkey, String)>> = HashMap::new();
 
             // First IP is reserved for the device itself (Loopback100)
             let first_ip = prefix.ip();
             let first_ip_net = NetworkV4::new(first_ip, 32).unwrap();
             insert_usage(
                 &mut in_use,
-                resource_type,
                 IdOrIp::Ip(first_ip_net),
                 *device_pk,
                 "Device (reserved)".to_string(),
-                result,
             );
 
             for (user_pk, user) in users {
@@ -711,14 +847,7 @@ fn verify_dz_prefix_block(
                 if prefix.contains(dz_ip) {
                     let ip_net = NetworkV4::new(dz_ip, 32).unwrap();
                     let id_or_ip = IdOrIp::Ip(ip_net);
-                    insert_usage(
-                        &mut in_use,
-                        resource_type,
-                        id_or_ip,
-                        *user_pk,
-                        "User".to_string(),
-                        result,
-                    );
+                    insert_usage(&mut in_use, id_or_ip, *user_pk, "User".to_string());
                     result.dz_prefix_block_checked += 1;
                 }
             }
@@ -745,14 +874,26 @@ fn verify_device_tunnel_block(
         return;
     };
 
+    // Pull the base network so we can ignore loopback/link IPs that fall
+    // outside the block's range. Both interface and link processors honor a
+    // caller-supplied ip_net/tunnel_net and skip the allocator in that path
+    // (see `processors/device/interface/create.rs` and
+    // `processors/link/resource_onchain_helpers.rs`) — most commonly for
+    // user-tunnel-endpoint loopbacks that land on a globally routable IP.
+    // Those IPs aren't in the DeviceTunnelBlock bitmap and would otherwise
+    // be falsely reported as `UsedButNotAllocated`.
+    let base_net = match &extension.allocator {
+        Allocator::Ip(ip_alloc) => ip_alloc.base_net,
+        Allocator::Id(_) => return,
+    };
+
     let allocated: HashSet<IdOrIp> = extension.iter_allocated().into_iter().collect();
 
-    let mut in_use: HashMap<IdOrIp, (Pubkey, String)> = HashMap::new();
+    let mut in_use: HashMap<IdOrIp, Vec<(Pubkey, String)>> = HashMap::new();
 
     // Check device loopback interfaces (only vpnv4/ipv4 loopback types)
     for (device_pk, device) in devices {
-        for interface in &device.interfaces {
-            let iface = interface.into_current_version();
+        for iface in &device.interfaces {
             if iface.interface_type == InterfaceType::Loopback
                 && (iface.loopback_type == LoopbackType::Vpnv4
                     || iface.loopback_type == LoopbackType::Ipv4)
@@ -762,15 +903,16 @@ fn verify_device_tunnel_block(
                     // Iterate over all IPs in the network
                     for i in 0..iface.ip_net.size() {
                         if let Some(ip) = iface.ip_net.nth(i) {
+                            if !base_net.contains(ip) {
+                                continue;
+                            }
                             let ip_net = NetworkV4::new(ip, 32).unwrap();
                             let id_or_ip = IdOrIp::Ip(ip_net);
                             insert_usage(
                                 &mut in_use,
-                                resource_type,
                                 id_or_ip,
                                 *device_pk,
                                 format!("Device interface {}", iface.name),
-                                result,
                             );
                         }
                     }
@@ -787,16 +929,12 @@ fn verify_device_tunnel_block(
             // Iterate over all IPs in the network (e.g., /31 has 2 IPs)
             for i in 0..link.tunnel_net.size() {
                 if let Some(ip) = link.tunnel_net.nth(i) {
+                    if !base_net.contains(ip) {
+                        continue;
+                    }
                     let ip_net = NetworkV4::new(ip, 32).unwrap();
                     let id_or_ip = IdOrIp::Ip(ip_net);
-                    insert_usage(
-                        &mut in_use,
-                        resource_type,
-                        id_or_ip,
-                        *link_pk,
-                        "Link".to_string(),
-                        result,
-                    );
+                    insert_usage(&mut in_use, id_or_ip, *link_pk, "Link".to_string());
                 }
             }
             result.device_tunnel_block_checked += 1;
@@ -824,27 +962,43 @@ fn verify_segment_routing_ids(
 
     let allocated: HashSet<IdOrIp> = extension.iter_allocated().into_iter().collect();
 
-    let mut in_use: HashMap<IdOrIp, (Pubkey, String)> = HashMap::new();
+    let mut in_use: HashMap<IdOrIp, Vec<(Pubkey, String)>> = HashMap::new();
 
     for (device_pk, device) in devices {
-        for interface in &device.interfaces {
-            let iface = interface.into_current_version();
-            // Only check vpnv4/ipv4 loopbacks, and node_segment_idx == 0 means not allocated
+        for iface in &device.interfaces {
+            // Only check vpnv4/ipv4 loopbacks; node_segment_idx == 0 means
+            // unallocated. flex_algo_node_segments is only populated on Vpnv4
+            // loopbacks (one entry per topology) and pulls from the same
+            // SegmentRoutingIds allocator, so it must be counted here too —
+            // otherwise every flex-algo segment ID looks allocated-but-unused.
             if iface.interface_type == InterfaceType::Loopback
                 && (iface.loopback_type == LoopbackType::Vpnv4
                     || iface.loopback_type == LoopbackType::Ipv4)
-                && iface.node_segment_idx != 0
             {
-                let id_or_ip = IdOrIp::Id(iface.node_segment_idx);
-                insert_usage(
-                    &mut in_use,
-                    resource_type,
-                    id_or_ip,
-                    *device_pk,
-                    format!("Device interface {}", iface.name),
-                    result,
-                );
-                result.segment_routing_ids_checked += 1;
+                if iface.node_segment_idx != 0 {
+                    insert_usage(
+                        &mut in_use,
+                        IdOrIp::Id(iface.node_segment_idx),
+                        *device_pk,
+                        format!("Device interface {}", iface.name),
+                    );
+                    result.segment_routing_ids_checked += 1;
+                }
+                for segment in &iface.flex_algo_node_segments {
+                    if segment.node_segment_idx == 0 {
+                        continue;
+                    }
+                    insert_usage(
+                        &mut in_use,
+                        IdOrIp::Id(segment.node_segment_idx),
+                        *device_pk,
+                        format!(
+                            "Device interface {} flex-algo segment (topology {})",
+                            iface.name, segment.topology
+                        ),
+                    );
+                    result.segment_routing_ids_checked += 1;
+                }
             }
         }
     }
@@ -870,18 +1024,11 @@ fn verify_link_ids(
 
     let allocated: HashSet<IdOrIp> = extension.iter_allocated().into_iter().collect();
 
-    let mut in_use: HashMap<IdOrIp, (Pubkey, String)> = HashMap::new();
+    let mut in_use: HashMap<IdOrIp, Vec<(Pubkey, String)>> = HashMap::new();
 
     for (link_pk, link) in links {
         let id_or_ip = IdOrIp::Id(link.tunnel_id);
-        insert_usage(
-            &mut in_use,
-            resource_type,
-            id_or_ip,
-            *link_pk,
-            "Link".to_string(),
-            result,
-        );
+        insert_usage(&mut in_use, id_or_ip, *link_pk, "Link".to_string());
         result.link_ids_checked += 1;
     }
 
@@ -906,7 +1053,7 @@ fn verify_multicast_group_block(
 
     let allocated: HashSet<IdOrIp> = extension.iter_allocated().into_iter().collect();
 
-    let mut in_use: HashMap<IdOrIp, (Pubkey, String)> = HashMap::new();
+    let mut in_use: HashMap<IdOrIp, Vec<(Pubkey, String)>> = HashMap::new();
 
     for (group_pk, group) in multicast_groups {
         let ip = group.multicast_ip;
@@ -915,11 +1062,9 @@ fn verify_multicast_group_block(
             let id_or_ip = IdOrIp::Ip(ip_net);
             insert_usage(
                 &mut in_use,
-                resource_type,
                 id_or_ip,
                 *group_pk,
                 "MulticastGroup".to_string(),
-                result,
             );
             result.multicast_group_block_checked += 1;
         }
@@ -928,39 +1073,85 @@ fn verify_multicast_group_block(
     check_discrepancies(resource_type, &allocated, &in_use, result);
 }
 
-/// Insert a resource usage into the in_use map, detecting duplicates
+fn verify_multicast_publisher_block(
+    program_id: &Pubkey,
+    users: &HashMap<Pubkey, User>,
+    resource_extensions: &HashMap<Pubkey, ResourceExtensionOwned>,
+    result: &mut VerifyResourceResult,
+) {
+    let resource_type = ResourceType::MulticastPublisherBlock;
+    let (pda, _, _) = get_resource_extension_pda(program_id, resource_type);
+
+    let Some(extension) = resource_extensions.get(&pda) else {
+        result
+            .discrepancies
+            .push(ResourceDiscrepancy::ExtensionNotFound { resource_type });
+        return;
+    };
+
+    // Pull the base network so we can ignore legacy dz_ips that pre-date this
+    // extension and fall outside the block's range.
+    let base_net = match &extension.allocator {
+        Allocator::Ip(ip_alloc) => ip_alloc.base_net,
+        Allocator::Id(_) => return,
+    };
+
+    let allocated: HashSet<IdOrIp> = extension.iter_allocated().into_iter().collect();
+
+    let mut in_use: HashMap<IdOrIp, Vec<(Pubkey, String)>> = HashMap::new();
+    for (user_pk, user) in users {
+        if user.user_type != UserType::Multicast || user.publishers.is_empty() {
+            continue;
+        }
+
+        let dz_ip = user.dz_ip;
+        if dz_ip.is_unspecified() || dz_ip == user.client_ip {
+            continue;
+        }
+
+        if !base_net.contains(dz_ip) {
+            continue;
+        }
+
+        let ip_net = NetworkV4::new(dz_ip, 32).unwrap();
+        insert_usage(
+            &mut in_use,
+            IdOrIp::Ip(ip_net),
+            *user_pk,
+            "User".to_string(),
+        );
+        result.multicast_publisher_block_checked += 1;
+    }
+
+    check_discrepancies(resource_type, &allocated, &in_use, result);
+}
+
+/// Format a pubkey for display, prefixing the device/link code when known.
+fn format_pubkey(pk: &Pubkey, labels: &HashMap<Pubkey, String>) -> String {
+    match labels.get(pk) {
+        Some(code) => format!("{} ({})", code, pk),
+        None => pk.to_string(),
+    }
+}
+
+/// Append a resource usage to the in_use map. Duplicates are detected later in
+/// `check_discrepancies` by inspecting `accounts.len() >= 2`.
 fn insert_usage(
-    in_use: &mut HashMap<IdOrIp, (Pubkey, String)>,
-    resource_type: ResourceType,
+    in_use: &mut HashMap<IdOrIp, Vec<(Pubkey, String)>>,
     value: IdOrIp,
     account_pubkey: Pubkey,
     account_type: String,
-    result: &mut VerifyResourceResult,
 ) {
-    match in_use.entry(value) {
-        Entry::Occupied(entry) => {
-            let (first_pk, first_type) = entry.get();
-            result
-                .discrepancies
-                .push(ResourceDiscrepancy::DuplicateUsage {
-                    resource_type,
-                    value: entry.key().clone(),
-                    first_account_pubkey: *first_pk,
-                    first_account_type: first_type.clone(),
-                    second_account_pubkey: account_pubkey,
-                    second_account_type: account_type,
-                });
-        }
-        Entry::Vacant(entry) => {
-            entry.insert((account_pubkey, account_type));
-        }
-    }
+    in_use
+        .entry(value)
+        .or_default()
+        .push((account_pubkey, account_type));
 }
 
 fn check_discrepancies(
     resource_type: ResourceType,
     allocated: &HashSet<IdOrIp>,
-    in_use: &HashMap<IdOrIp, (Pubkey, String)>,
+    in_use: &HashMap<IdOrIp, Vec<(Pubkey, String)>>,
     result: &mut VerifyResourceResult,
 ) {
     // Find allocated but not used
@@ -975,9 +1166,22 @@ fn check_discrepancies(
         }
     }
 
-    // Find used but not allocated
-    for (id_or_ip, (account_pk, account_type)) in in_use {
+    // Emit one DuplicateUsage per value with multiple owners; otherwise check
+    // used-but-not-allocated. Suppressing the second report avoids the same
+    // value showing up under both sections.
+    for (id_or_ip, owners) in in_use {
+        if owners.len() >= 2 {
+            result
+                .discrepancies
+                .push(ResourceDiscrepancy::DuplicateUsage {
+                    resource_type,
+                    value: id_or_ip.clone(),
+                    accounts: owners.clone(),
+                });
+            continue;
+        }
         if !allocated.contains(id_or_ip) {
+            let (account_pk, account_type) = &owners[0];
             result
                 .discrepancies
                 .push(ResourceDiscrepancy::UsedButNotAllocated {
@@ -994,6 +1198,7 @@ fn check_discrepancies(
 mod tests {
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_program_common::types::NetworkV4;
     use doublezero_sdk::AccountType;
     use doublezero_serviceability::{
@@ -1076,6 +1281,12 @@ mod tests {
             "239.0.0.0/24",
             vec![0],
         );
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0],
+        );
         let segment_routing = create_resource_extension_id(
             &program_id,
             ResourceType::SegmentRoutingIds,
@@ -1097,6 +1308,10 @@ mod tests {
         accounts.insert(
             Box::new(multicast_block.0),
             Box::new(AccountData::ResourceExtension(multicast_block.1)),
+        );
+        accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
         );
         accounts.insert(
             Box::new(segment_routing.0),
@@ -1152,6 +1367,12 @@ mod tests {
             "239.0.0.0/24",
             vec![0],
         );
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0],
+        );
         let segment_routing = create_resource_extension_id(
             &program_id,
             ResourceType::SegmentRoutingIds,
@@ -1170,6 +1391,10 @@ mod tests {
         accounts.insert(
             Box::new(multicast_block.0),
             Box::new(AccountData::ResourceExtension(multicast_block.1)),
+        );
+        accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
         );
         accounts.insert(
             Box::new(segment_routing.0),
@@ -1225,8 +1450,9 @@ mod tests {
             .filter(|d| matches!(d, ResourceDiscrepancy::ExtensionNotFound { .. }))
             .collect();
 
-        // Should find missing: UserTunnelBlock, DeviceTunnelBlock, MulticastGroupBlock, SegmentRoutingIds, LinkIds
-        assert!(extensions_not_found.len() >= 5);
+        // Should find missing: UserTunnelBlock, DeviceTunnelBlock, MulticastGroupBlock,
+        // MulticastPublisherBlock, SegmentRoutingIds, LinkIds
+        assert!(extensions_not_found.len() >= 6);
     }
 
     #[test]
@@ -1252,6 +1478,12 @@ mod tests {
             "239.0.0.0/24",
             vec![0],
         );
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0],
+        );
         let segment_routing = create_resource_extension_id(
             &program_id,
             ResourceType::SegmentRoutingIds,
@@ -1275,6 +1507,10 @@ mod tests {
             Box::new(AccountData::ResourceExtension(multicast_block.1)),
         );
         accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
+        );
+        accounts.insert(
             Box::new(segment_routing.0),
             Box::new(AccountData::ResourceExtension(segment_routing.1)),
         );
@@ -1291,8 +1527,9 @@ mod tests {
             .returning(move || Ok(accounts.clone()));
 
         let cmd = VerifyResourceCliCommand { fix: false };
+        let ctx = cli_context_default_for_tests();
         let mut output = Cursor::new(Vec::new());
-        let result = cmd.execute(&mock_client, &mut output);
+        let result = block_on(cmd.execute(&ctx, &mock_client, &mut output));
         assert!(result.is_ok());
 
         let output_str = String::from_utf8(output.into_inner()).unwrap();
@@ -1327,6 +1564,12 @@ mod tests {
             "239.0.0.0/24",
             vec![0],
         );
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0],
+        );
         let segment_routing = create_resource_extension_id(
             &program_id,
             ResourceType::SegmentRoutingIds,
@@ -1348,6 +1591,10 @@ mod tests {
             Box::new(AccountData::ResourceExtension(multicast_block.1)),
         );
         accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
+        );
+        accounts.insert(
             Box::new(segment_routing.0),
             Box::new(AccountData::ResourceExtension(segment_routing.1)),
         );
@@ -1364,8 +1611,9 @@ mod tests {
             .returning(move || Ok(accounts.clone()));
 
         let cmd = VerifyResourceCliCommand { fix: false };
+        let ctx = cli_context_default_for_tests();
         let mut output = Cursor::new(Vec::new());
-        let result = cmd.execute(&mock_client, &mut output);
+        let result = block_on(cmd.execute(&ctx, &mock_client, &mut output));
         assert!(result.is_ok());
 
         let output_str = String::from_utf8(output.into_inner()).unwrap();
@@ -1374,5 +1622,903 @@ mod tests {
         assert!(output_str.contains("Allocated but not used"));
         assert!(output_str.contains("LinkIds = 0"));
         assert!(output_str.contains("LinkIds = 1"));
+    }
+
+    fn make_publisher_user(
+        device_pk: Pubkey,
+        client_ip: [u8; 4],
+        dz_ip: [u8; 4],
+        publishers: Vec<Pubkey>,
+    ) -> User {
+        use doublezero_serviceability::state::user::{UserCYOA, UserStatus, UserType};
+        User {
+            account_type: AccountType::User,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 255,
+            user_type: UserType::Multicast,
+            tenant_pk: Pubkey::default(),
+            device_pk,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: client_ip.into(),
+            dz_ip: dz_ip.into(),
+            tunnel_id: 0,
+            tunnel_net: "0.0.0.0/0".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers,
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
+        }
+    }
+
+    fn insert_global_ext_minimal(
+        accounts: &mut HashMap<Box<Pubkey>, Box<AccountData>>,
+        program_id: &Pubkey,
+    ) {
+        // Insert every global extension except MulticastPublisherBlock so tests
+        // of that verifier don't get noise from other ExtensionNotFound entries.
+        let user_tunnel_block = create_resource_extension_ip(
+            program_id,
+            ResourceType::UserTunnelBlock,
+            "10.0.0.0/24",
+            vec![0],
+        );
+        let device_tunnel_block = create_resource_extension_ip(
+            program_id,
+            ResourceType::DeviceTunnelBlock,
+            "172.16.0.0/24",
+            vec![0],
+        );
+        let multicast_block = create_resource_extension_ip(
+            program_id,
+            ResourceType::MulticastGroupBlock,
+            "239.0.0.0/24",
+            vec![0],
+        );
+        let segment_routing = create_resource_extension_id(
+            program_id,
+            ResourceType::SegmentRoutingIds,
+            (0, 100),
+            vec![0; 13],
+        );
+        let link_ids =
+            create_resource_extension_id(program_id, ResourceType::LinkIds, (0, 100), vec![0; 13]);
+
+        accounts.insert(
+            Box::new(user_tunnel_block.0),
+            Box::new(AccountData::ResourceExtension(user_tunnel_block.1)),
+        );
+        accounts.insert(
+            Box::new(device_tunnel_block.0),
+            Box::new(AccountData::ResourceExtension(device_tunnel_block.1)),
+        );
+        accounts.insert(
+            Box::new(multicast_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_block.1)),
+        );
+        accounts.insert(
+            Box::new(segment_routing.0),
+            Box::new(AccountData::ResourceExtension(segment_routing.1)),
+        );
+        accounts.insert(
+            Box::new(link_ids.0),
+            Box::new(AccountData::ResourceExtension(link_ids.1)),
+        );
+    }
+
+    #[test]
+    fn test_verify_multicast_publisher_block_happy_path() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        // MulticastPublisherBlock with 148.51.120.5 allocated (bit 5 of byte 0).
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0x20],
+        );
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_global_ext_minimal(&mut accounts, &program_id);
+        accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
+        );
+
+        // A publisher user holding the allocated dz_ip.
+        let publisher = make_publisher_user(
+            Pubkey::new_unique(),
+            [1, 2, 3, 4],
+            [148, 51, 120, 5],
+            vec![Pubkey::new_unique()],
+        );
+        let user_pk = Pubkey::new_unique();
+        accounts.insert(Box::new(user_pk), Box::new(AccountData::User(publisher)));
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        assert!(
+            result.is_ok(),
+            "expected no discrepancies, got {:?}",
+            result.discrepancies
+        );
+        assert_eq!(result.multicast_publisher_block_checked, 1);
+    }
+
+    #[test]
+    fn test_verify_multicast_publisher_ignores_out_of_range_dz_ip() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        // Empty MulticastPublisherBlock.
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0],
+        );
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_global_ext_minimal(&mut accounts, &program_id);
+        accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
+        );
+
+        // Legacy publisher with a dz_ip outside the block's range — must be ignored.
+        let legacy_publisher = make_publisher_user(
+            Pubkey::new_unique(),
+            [1, 2, 3, 4],
+            [10, 0, 0, 5],
+            vec![Pubkey::new_unique()],
+        );
+        let legacy_pk = Pubkey::new_unique();
+        accounts.insert(
+            Box::new(legacy_pk),
+            Box::new(AccountData::User(legacy_publisher)),
+        );
+
+        // Non-publisher Multicast user with a dz_ip in range — also must be ignored
+        // (their dz_ip doesn't come from this block).
+        let non_publisher = make_publisher_user(
+            Pubkey::new_unique(),
+            [1, 2, 3, 5],
+            [148, 51, 120, 9],
+            vec![],
+        );
+        let non_publisher_pk = Pubkey::new_unique();
+        accounts.insert(
+            Box::new(non_publisher_pk),
+            Box::new(AccountData::User(non_publisher)),
+        );
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        assert!(
+            result.is_ok(),
+            "expected no discrepancies, got {:?}",
+            result.discrepancies
+        );
+        assert_eq!(result.multicast_publisher_block_checked, 0);
+    }
+
+    #[test]
+    fn test_verify_tunnel_ids_reports_missing_extension_for_device_without_users() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_global_ext_minimal(&mut accounts, &program_id);
+        let multicast_publisher_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::MulticastPublisherBlock,
+            "148.51.120.0/24",
+            vec![0],
+        );
+        accounts.insert(
+            Box::new(multicast_publisher_block.0),
+            Box::new(AccountData::ResourceExtension(multicast_publisher_block.1)),
+        );
+
+        // Device with no users and no TunnelIds resource extension.
+        let device_pk = Pubkey::new_unique();
+        let device = doublezero_serviceability::state::device::Device::default();
+        accounts.insert(Box::new(device_pk), Box::new(AccountData::Device(device)));
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        assert!(
+            result.discrepancies.iter().any(|d| matches!(
+                d,
+                ResourceDiscrepancy::ExtensionNotFound {
+                    resource_type: ResourceType::TunnelIds(pk, 0),
+                } if *pk == device_pk
+            )),
+            "expected ExtensionNotFound for TunnelIds of device with no users, got {:?}",
+            result.discrepancies
+        );
+    }
+
+    fn insert_all_globals(
+        accounts: &mut HashMap<Box<Pubkey>, Box<AccountData>>,
+        program_id: &Pubkey,
+    ) {
+        for ext in [
+            create_resource_extension_ip(
+                program_id,
+                ResourceType::UserTunnelBlock,
+                "10.0.0.0/24",
+                vec![0],
+            ),
+            create_resource_extension_ip(
+                program_id,
+                ResourceType::DeviceTunnelBlock,
+                "172.16.0.0/24",
+                vec![0],
+            ),
+            create_resource_extension_ip(
+                program_id,
+                ResourceType::MulticastGroupBlock,
+                "239.0.0.0/24",
+                vec![0],
+            ),
+            create_resource_extension_ip(
+                program_id,
+                ResourceType::MulticastPublisherBlock,
+                "148.51.120.0/24",
+                vec![0],
+            ),
+            create_resource_extension_id(
+                program_id,
+                ResourceType::SegmentRoutingIds,
+                (0, 100),
+                vec![0; 13],
+            ),
+            create_resource_extension_id(program_id, ResourceType::LinkIds, (0, 100), vec![0; 13]),
+        ] {
+            accounts.insert(
+                Box::new(ext.0),
+                Box::new(AccountData::ResourceExtension(ext.1)),
+            );
+        }
+    }
+
+    #[test]
+    fn test_orphaned_extension_from_deleted_device() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+
+        // Simulate a TunnelIds extension for a device that no longer exists.
+        let dead_device_pk = Pubkey::new_unique();
+        let orphan_tunnel_ids = create_resource_extension_id(
+            &program_id,
+            ResourceType::TunnelIds(dead_device_pk, 0),
+            (0, 100),
+            vec![0; 13],
+        );
+        let orphan_pda = orphan_tunnel_ids.0;
+        accounts.insert(
+            Box::new(orphan_tunnel_ids.0),
+            Box::new(AccountData::ResourceExtension(orphan_tunnel_ids.1)),
+        );
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+
+        let orphans: Vec<_> = result
+            .discrepancies
+            .iter()
+            .filter_map(|d| match d {
+                ResourceDiscrepancy::OrphanedExtension {
+                    pubkey,
+                    associated_with,
+                    ..
+                } => Some((*pubkey, *associated_with)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(orphans[0].0, orphan_pda);
+        assert_eq!(orphans[0].1, dead_device_pk);
+    }
+
+    #[test]
+    fn test_orphaned_extension_from_stale_dz_prefix() {
+        use doublezero_serviceability::state::device::Device;
+
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+
+        // Create a live device with a single dz_prefix (index 0).
+        let device_pk = Pubkey::new_unique();
+        let prefix_net: NetworkV4 = "10.1.0.0/24".parse().unwrap();
+        let device = Device {
+            dz_prefixes: vec![prefix_net].into(),
+            ..Device::default()
+        };
+        accounts.insert(Box::new(device_pk), Box::new(AccountData::Device(device)));
+
+        // Legitimate DzPrefixBlock for index 0. First IP reserved for the device.
+        let live_prefix_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::DzPrefixBlock(device_pk, 0),
+            "10.1.0.0/24",
+            vec![0x01], // first IP allocated (reserved for device)
+        );
+        accounts.insert(
+            Box::new(live_prefix_block.0),
+            Box::new(AccountData::ResourceExtension(live_prefix_block.1)),
+        );
+        // Legitimate TunnelIds for the device.
+        let live_tunnel_ids = create_resource_extension_id(
+            &program_id,
+            ResourceType::TunnelIds(device_pk, 0),
+            (0, 100),
+            vec![0; 13],
+        );
+        accounts.insert(
+            Box::new(live_tunnel_ids.0),
+            Box::new(AccountData::ResourceExtension(live_tunnel_ids.1)),
+        );
+
+        // Stale DzPrefixBlock at index 5 — the device no longer has that prefix.
+        let stale_prefix_block = create_resource_extension_ip(
+            &program_id,
+            ResourceType::DzPrefixBlock(device_pk, 5),
+            "10.9.0.0/24",
+            vec![0],
+        );
+        let stale_pda = stale_prefix_block.0;
+        accounts.insert(
+            Box::new(stale_prefix_block.0),
+            Box::new(AccountData::ResourceExtension(stale_prefix_block.1)),
+        );
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+
+        let orphan_pdas: Vec<Pubkey> = result
+            .discrepancies
+            .iter()
+            .filter_map(|d| match d {
+                ResourceDiscrepancy::OrphanedExtension { pubkey, .. } => Some(*pubkey),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(orphan_pdas, vec![stale_pda]);
+    }
+
+    #[test]
+    fn test_vrf_ids_and_admin_group_bits_not_flagged_as_orphans() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+
+        // VrfIds and AdminGroupBits aren't verified against usage but must be
+        // recognized as legitimate global singletons.
+        let vrf_ids =
+            create_resource_extension_id(&program_id, ResourceType::VrfIds, (0, 100), vec![0; 13]);
+        accounts.insert(
+            Box::new(vrf_ids.0),
+            Box::new(AccountData::ResourceExtension(vrf_ids.1)),
+        );
+        let admin_group_bits = create_resource_extension_id(
+            &program_id,
+            ResourceType::AdminGroupBits,
+            (0, 64),
+            vec![0; 8],
+        );
+        accounts.insert(
+            Box::new(admin_group_bits.0),
+            Box::new(AccountData::ResourceExtension(admin_group_bits.1)),
+        );
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        assert!(
+            !result
+                .discrepancies
+                .iter()
+                .any(|d| matches!(d, ResourceDiscrepancy::OrphanedExtension { .. })),
+            "VrfIds/AdminGroupBits should not be flagged as orphans: {:?}",
+            result.discrepancies
+        );
+    }
+
+    #[test]
+    fn test_output_includes_orphan_section() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+
+        let dead_device_pk = Pubkey::new_unique();
+        let orphan = create_resource_extension_id(
+            &program_id,
+            ResourceType::TunnelIds(dead_device_pk, 0),
+            (0, 100),
+            vec![0; 13],
+        );
+        let orphan_pda = orphan.0;
+        accounts.insert(
+            Box::new(orphan.0),
+            Box::new(AccountData::ResourceExtension(orphan.1)),
+        );
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let cmd = VerifyResourceCliCommand { fix: false };
+        let ctx = cli_context_default_for_tests();
+        let mut output = Cursor::new(Vec::new());
+        block_on(cmd.execute(&ctx, &mock_client, &mut output)).unwrap();
+        let output_str = String::from_utf8(output.into_inner()).unwrap();
+        assert!(output_str.contains("Orphaned resource extensions"));
+        assert!(output_str.contains(&orphan_pda.to_string()));
+        assert!(output_str.contains(&dead_device_pk.to_string()));
+        assert!(output_str.contains("Hint: use --fix to close orphaned resource extensions."));
+    }
+
+    fn make_segment_routing_ext(
+        program_id: &Pubkey,
+        allocated_ids: &[u16],
+    ) -> (Pubkey, ResourceExtensionOwned) {
+        let (pda, mut ext) = create_resource_extension_id(
+            program_id,
+            ResourceType::SegmentRoutingIds,
+            (0, 100),
+            vec![0; 13],
+        );
+        if let Allocator::Id(ref mut a) = ext.allocator {
+            for id in allocated_ids {
+                a.allocate_specific(&mut ext.storage, *id).unwrap();
+            }
+        } else {
+            panic!("expected Id allocator");
+        }
+        (pda, ext)
+    }
+
+    fn make_vpnv4_loopback(
+        name: &str,
+        node_segment_idx: u16,
+        flex_algo_segments: Vec<doublezero_serviceability::state::topology::FlexAlgoNodeSegment>,
+    ) -> doublezero_serviceability::state::interface::Interface {
+        use doublezero_serviceability::state::interface::{
+            Interface, InterfaceStatus, InterfaceType, LoopbackType,
+        };
+        Interface {
+            status: InterfaceStatus::Activated,
+            name: name.to_string(),
+            interface_type: InterfaceType::Loopback,
+            loopback_type: LoopbackType::Vpnv4,
+            node_segment_idx,
+            flex_algo_node_segments: flex_algo_segments,
+            ..Interface::default()
+        }
+    }
+
+    fn make_vpnv4_loopback_with_ip(
+        name: &str,
+        ip_net: &str,
+    ) -> doublezero_serviceability::state::interface::Interface {
+        let mut iface = make_vpnv4_loopback(name, 0, vec![]);
+        iface.ip_net = ip_net.parse().unwrap();
+        iface
+    }
+
+    fn segment_routing_discrepancies(result: &VerifyResourceResult) -> Vec<&ResourceDiscrepancy> {
+        result
+            .discrepancies
+            .iter()
+            .filter(|d| match d {
+                ResourceDiscrepancy::AllocatedButNotUsed { resource_type, .. }
+                | ResourceDiscrepancy::UsedButNotAllocated { resource_type, .. }
+                | ResourceDiscrepancy::DuplicateUsage { resource_type, .. } => {
+                    matches!(resource_type, ResourceType::SegmentRoutingIds)
+                }
+                _ => false,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_verify_segment_routing_ids_counts_flex_algo_segments() {
+        use doublezero_serviceability::state::topology::FlexAlgoNodeSegment;
+
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        // Override the default SegmentRoutingIds extension to mark IDs 7 and 8
+        // as allocated. 7 is the loopback's base segment, 8 is the flex-algo
+        // segment for one topology.
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+        let sr = make_segment_routing_ext(&program_id, &[7, 8]);
+        accounts.insert(
+            Box::new(sr.0),
+            Box::new(AccountData::ResourceExtension(sr.1)),
+        );
+
+        let device_pk = Pubkey::new_unique();
+        let topology_pk = Pubkey::new_unique();
+        let device = Device {
+            interfaces: vec![make_vpnv4_loopback(
+                "Loopback0",
+                7,
+                vec![FlexAlgoNodeSegment {
+                    topology: topology_pk,
+                    node_segment_idx: 8,
+                }],
+            )],
+            ..Device::default()
+        };
+        accounts.insert(Box::new(device_pk), Box::new(AccountData::Device(device)));
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        let discrepancies = segment_routing_discrepancies(&result);
+        assert!(
+            discrepancies.is_empty(),
+            "expected no SegmentRoutingIds discrepancies, got {:?}",
+            discrepancies
+        );
+        // Both the base segment and the flex-algo segment should be counted.
+        assert_eq!(result.segment_routing_ids_checked, 2);
+    }
+
+    #[test]
+    fn test_verify_segment_routing_ids_flex_algo_used_but_not_allocated() {
+        use doublezero_serviceability::state::topology::FlexAlgoNodeSegment;
+
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        // Allocator has only the base segment (7), not the flex-algo one (8).
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+        let sr = make_segment_routing_ext(&program_id, &[7]);
+        accounts.insert(
+            Box::new(sr.0),
+            Box::new(AccountData::ResourceExtension(sr.1)),
+        );
+
+        let device_pk = Pubkey::new_unique();
+        let topology_pk = Pubkey::new_unique();
+        let device = Device {
+            interfaces: vec![make_vpnv4_loopback(
+                "Loopback0",
+                7,
+                vec![FlexAlgoNodeSegment {
+                    topology: topology_pk,
+                    node_segment_idx: 8,
+                }],
+            )],
+            ..Device::default()
+        };
+        accounts.insert(Box::new(device_pk), Box::new(AccountData::Device(device)));
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        let discrepancies = segment_routing_discrepancies(&result);
+        assert_eq!(discrepancies.len(), 1, "got {:?}", discrepancies);
+        match discrepancies[0] {
+            ResourceDiscrepancy::UsedButNotAllocated {
+                value,
+                account_type,
+                ..
+            } => {
+                assert_eq!(*value, IdOrIp::Id(8));
+                assert!(
+                    account_type.contains("flex-algo"),
+                    "account_type should mention flex-algo: {}",
+                    account_type
+                );
+                assert!(account_type.contains(&topology_pk.to_string()));
+            }
+            other => panic!("unexpected discrepancy: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_duplicate_usage_not_double_reported_as_used_but_not_allocated() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        // Allocator has nothing — the shared ID is used by two devices but
+        // not allocated. We want exactly one DuplicateUsage and zero
+        // UsedButNotAllocated for that value.
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+        let sr = make_segment_routing_ext(&program_id, &[]);
+        accounts.insert(
+            Box::new(sr.0),
+            Box::new(AccountData::ResourceExtension(sr.1)),
+        );
+
+        let dev_a = Pubkey::new_unique();
+        let dev_b = Pubkey::new_unique();
+        for pk in [dev_a, dev_b] {
+            let device = Device {
+                interfaces: vec![make_vpnv4_loopback("Loopback0", 42, vec![])],
+                ..Device::default()
+            };
+            accounts.insert(Box::new(pk), Box::new(AccountData::Device(device)));
+        }
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        let discrepancies = segment_routing_discrepancies(&result);
+
+        let dup_count = discrepancies
+            .iter()
+            .filter(|d| {
+                matches!(
+                    d,
+                    ResourceDiscrepancy::DuplicateUsage {
+                        value: IdOrIp::Id(42),
+                        ..
+                    }
+                )
+            })
+            .count();
+        let used_not_alloc_count = discrepancies
+            .iter()
+            .filter(|d| {
+                matches!(
+                    d,
+                    ResourceDiscrepancy::UsedButNotAllocated {
+                        value: IdOrIp::Id(42),
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert_eq!(dup_count, 1, "discrepancies: {:?}", discrepancies);
+        assert_eq!(
+            used_not_alloc_count, 0,
+            "discrepancies: {:?}",
+            discrepancies
+        );
+
+        // And the single DuplicateUsage should list both owners.
+        let dup = discrepancies
+            .iter()
+            .find_map(|d| match d {
+                ResourceDiscrepancy::DuplicateUsage { accounts, .. } => Some(accounts),
+                _ => None,
+            })
+            .expect("DuplicateUsage present");
+        assert_eq!(dup.len(), 2);
+    }
+
+    #[test]
+    fn test_duplicate_usage_with_three_owners_emits_single_entry() {
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        // Allocator has the ID, so the only expected discrepancy is the
+        // duplicate report.
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+        let sr = make_segment_routing_ext(&program_id, &[42]);
+        accounts.insert(
+            Box::new(sr.0),
+            Box::new(AccountData::ResourceExtension(sr.1)),
+        );
+
+        for _ in 0..3 {
+            let device_pk = Pubkey::new_unique();
+            let device = Device {
+                interfaces: vec![make_vpnv4_loopback("Loopback0", 42, vec![])],
+                ..Device::default()
+            };
+            accounts.insert(Box::new(device_pk), Box::new(AccountData::Device(device)));
+        }
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        let dup_entries: Vec<&Vec<(Pubkey, String)>> = result
+            .discrepancies
+            .iter()
+            .filter_map(|d| match d {
+                ResourceDiscrepancy::DuplicateUsage {
+                    resource_type: ResourceType::SegmentRoutingIds,
+                    value: IdOrIp::Id(42),
+                    accounts,
+                } => Some(accounts),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            dup_entries.len(),
+            1,
+            "want one DuplicateUsage, got {:?}",
+            dup_entries
+        );
+        assert_eq!(dup_entries[0].len(), 3);
+    }
+
+    #[test]
+    fn test_output_includes_device_and_link_codes() {
+        // A duplicate-usage on a SegmentRoutingId across two devices with
+        // codes "dz1" and "dz2" should show both codes alongside their
+        // pubkeys in the rendered "Duplicate usage" section.
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+        let sr = make_segment_routing_ext(&program_id, &[42]);
+        accounts.insert(
+            Box::new(sr.0),
+            Box::new(AccountData::ResourceExtension(sr.1)),
+        );
+
+        let dev_a_pk = Pubkey::new_unique();
+        let dev_b_pk = Pubkey::new_unique();
+        for (pk, code) in [(dev_a_pk, "dz1"), (dev_b_pk, "dz2")] {
+            let device = Device {
+                code: code.to_string(),
+                interfaces: vec![make_vpnv4_loopback("Loopback0", 42, vec![])],
+                ..Device::default()
+            };
+            accounts.insert(Box::new(pk), Box::new(AccountData::Device(device)));
+        }
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let cmd = VerifyResourceCliCommand { fix: false };
+        let ctx = cli_context_default_for_tests();
+        let mut output = Cursor::new(Vec::new());
+        block_on(cmd.execute(&ctx, &mock_client, &mut output)).unwrap();
+        let output_str = String::from_utf8(output.into_inner()).unwrap();
+
+        assert!(
+            output_str.contains(&format!("dz1 ({})", dev_a_pk)),
+            "expected `dz1 ({})` in output, got:\n{}",
+            dev_a_pk,
+            output_str
+        );
+        assert!(
+            output_str.contains(&format!("dz2 ({})", dev_b_pk)),
+            "expected `dz2 ({})` in output, got:\n{}",
+            dev_b_pk,
+            output_str
+        );
+    }
+
+    #[test]
+    fn test_verify_device_tunnel_block_ignores_loopback_ip_outside_base_net() {
+        // User-tunnel-endpoint Vpnv4 loopbacks land on a caller-supplied
+        // globally routable IP and skip the DeviceTunnelBlock allocator
+        // (see processors/device/interface/create.rs). The verifier must
+        // not report those IPs as `UsedButNotAllocated`.
+        let mut mock_client = MockCliCommand::new();
+        let program_id = Pubkey::new_unique();
+
+        let mut accounts: HashMap<Box<Pubkey>, Box<AccountData>> = HashMap::new();
+        insert_all_globals(&mut accounts, &program_id);
+
+        // The DeviceTunnelBlock from insert_all_globals is 172.16.0.0/24.
+        // Give the loopback a globally routable IP outside that block.
+        let device_pk = Pubkey::new_unique();
+        let device = Device {
+            interfaces: vec![make_vpnv4_loopback_with_ip("Loopback0", "203.0.113.5/32")],
+            ..Device::default()
+        };
+        accounts.insert(Box::new(device_pk), Box::new(AccountData::Device(device)));
+
+        mock_client
+            .expect_get_program_id()
+            .returning(move || program_id);
+        mock_client
+            .expect_get_all()
+            .returning(move || Ok(accounts.clone()));
+
+        let result = verify_resources(&mock_client).unwrap();
+        let dtb_used_not_alloc: Vec<_> = result
+            .discrepancies
+            .iter()
+            .filter(|d| {
+                matches!(
+                    d,
+                    ResourceDiscrepancy::UsedButNotAllocated {
+                        resource_type: ResourceType::DeviceTunnelBlock,
+                        ..
+                    }
+                )
+            })
+            .collect();
+        assert!(
+            dtb_used_not_alloc.is_empty(),
+            "loopback IP outside the DeviceTunnelBlock base_net should not produce a UsedButNotAllocated entry, got {:?}",
+            dtb_used_not_alloc
+        );
     }
 }

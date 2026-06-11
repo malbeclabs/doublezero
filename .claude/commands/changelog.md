@@ -1,9 +1,8 @@
 Generate a CHANGELOG.md entry for the current branch.
 
 Analyze the **net changes** between the current branch and origin/main by examining:
-1. First, run `git fetch origin` to ensure remote tracking is up to date
-2. The diff summary: `git diff origin/main...HEAD --stat`
-3. The actual changes: `git diff origin/main...HEAD` (focus on key changes, not every line)
+1. Run `scripts/diff-breakdown.sh` to get the automated categorization (see its JSON output for category tallies and unclassified files)
+2. The actual changes: `git diff origin/main...HEAD` (focus on key changes, not every line)
 
 IMPORTANT: Focus on what the branch adds/changes compared to origin/main as a whole. Do NOT describe individual commits or intermediate work. The reviewer only sees the final diff.
 
@@ -27,7 +26,7 @@ The CHANGELOG uses this format — entries are grouped by component with sub-bul
   - Description of change
 ```
 
-Common component names used in this project: CLI, Client, Onchain programs, Smartcontract, SDK, Telemetry, Activator, Device controller, Device agents, E2E tests, CI, Monitor, Funder, Tools, RFCs.
+Common component names used in this project: CLI, Client, Onchain programs, Smartcontract, SDK, Telemetry, Device controller, Device agents, E2E tests, CI, Monitor, Funder, Tools, RFCs.
 
 Guidelines:
 - Add entries under the existing `## Unreleased` / `### Changes` section, do not create a new section

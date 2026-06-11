@@ -17,37 +17,32 @@ The design includes an optimization to reduce EOS device CPU usage:
 Here's how the agent uses the endpoint:
 
 ```
-┌─────────┐                  ┌────────────┐                 ┌────────────┐                  ┌─────────┐
-│  Agent  │                  │ Controller │                 │ Controller │                  │   EOS   │
-│  main() │                  │ GetConfig()│                 │  Config    │                  │ Device  │
-│         │                  │   (gRPC)   │                 │  Generator │                  │         │
-└────┬────┘                  └─────┬──────┘                 └─────┬──────┘                  └────┬────┘
-     │                             │                              │                              │
-     │ Every 5s:                   │                              │                              │
-     │                             │                              │                              │
-     │ GetBgpNeighbors()           │                              │                              │
-     ├──────────────────────────────────────────────────────────────────────────────────────────►│
-     │◄──────────────────────────────────────────────────────────────────────────────────────────┤
-     │ [peer IPs]                  │                              │                              │
-     │                             │                              │                              │
-     │ GetConfigFromServer()       │                              │                              │
-     ├────────────────────────────►│                              │                              │
-     │                             │ processConfigRequest()       │                              │
-     │                             ├─────────────────────────────►│                              │
-     │                             │                              │ generateConfig()             │
-     │                             │                              │  • deduplicateTunnels()      │
-     │                             │                              │  • renderConfig()            │
-     │                             │                              │    (~50KB config text)       │
-     │                             │◄─────────────────────────────┤                              │
-     │                             │ [config string]              │                              │
-     │◄────────────────────────────┤                              │                              │
-     │ ConfigResponse{config: "..."}│                              │                              │
-     │                             │                              │                              │
-     │ Compute SHA256 hash locally │                              │                              │
-     │ Compare with cached hash    │                              │                              │
-     │ If changed OR 60s elapsed:  │                              │                              │
-     │   AddConfigToDevice(config) │                              │                              │
-     ├──────────────────────────────────────────────────────────────────────────────────────────►│
+┌─────────┐                  ┌────────────┐                  ┌─────────┐
+│  Agent  │                  │ Controller │                  │   EOS   │
+│  main() │                  │ GetConfig()│                  │ Device  │
+│         │                  │   (gRPC)   │                  │         │
+└────┬────┘                  └─────┬──────┘                  └────┬────┘
+     │                             │                              │
+     │ Every 5s:                   │                              │
+     │                             │                              │
+     │ GetBgpNeighbors()           │                              │
+     ├────────────────────────────────────────────────────────────►│
+     │◄────────────────────────────────────────────────────────────┤
+     │ [peer IPs]                  │                              │
+     │                             │                              │
+     │ GetConfigFromServer()       │                              │
+     ├────────────────────────────►│                              │
+     │                             │ deduplicateTunnels()         │
+     │                             │ renderConfig()               │
+     │                             │   (~50KB config text)        │
+     │◄────────────────────────────┤                              │
+     │ ConfigResponse{config: "..."}                              │
+     │                             │                              │
+     │ Compute SHA256 hash locally │                              │
+     │ Compare with cached hash    │                              │
+     │ If changed OR 60s elapsed:  │                              │
+     │   AddConfigToDevice(config) │                              │
+     ├────────────────────────────────────────────────────────────►│
 ```
 
 **Key Benefits:**

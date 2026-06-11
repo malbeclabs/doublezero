@@ -11,8 +11,8 @@ use std::fmt;
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LocationStatus {
+    PendingDeprecated = 0, // deprecated; unreachable for new accounts
     #[default]
-    Pending = 0,
     Activated = 1,
     Suspended = 2,
 }
@@ -20,10 +20,10 @@ pub enum LocationStatus {
 impl From<u8> for LocationStatus {
     fn from(value: u8) -> Self {
         match value {
-            0 => LocationStatus::Pending,
+            0 => LocationStatus::PendingDeprecated,
             1 => LocationStatus::Activated,
             2 => LocationStatus::Suspended,
-            _ => LocationStatus::Pending,
+            _ => LocationStatus::PendingDeprecated,
         }
     }
 }
@@ -31,7 +31,7 @@ impl From<u8> for LocationStatus {
 impl fmt::Display for LocationStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LocationStatus::Pending => write!(f, "pending"),
+            LocationStatus::PendingDeprecated => write!(f, "pending (deprecated)"),
             LocationStatus::Activated => write!(f, "activated"),
             LocationStatus::Suspended => write!(f, "suspended"),
         }
@@ -188,7 +188,7 @@ mod tests {
             reference_count: 0,
             lat: 50.45,
             lng: 50.678,
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             country: "US".to_string(),
@@ -225,7 +225,7 @@ mod tests {
             reference_count: 0,
             lat: 10.0,
             lng: 10.0,
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             country: "US".to_string(),
@@ -246,7 +246,7 @@ mod tests {
             reference_count: 0,
             lat: 10.0,
             lng: 10.0,
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "a".repeat(33), // More than 32
             name: "test-test-test".to_string(),
             country: "US".to_string(),
@@ -267,7 +267,7 @@ mod tests {
             reference_count: 0,
             lat: 10.0,
             lng: 10.0,
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "test-321".to_string(),
             name: "a".repeat(65), // More than 64
             country: "US".to_string(),
@@ -288,7 +288,7 @@ mod tests {
             reference_count: 0,
             lat: 10.0,
             lng: 10.0,
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             country: "USA".to_string(), // More than 2 characters
@@ -309,7 +309,7 @@ mod tests {
             reference_count: 0,
             lat: -91.0, // Less than minimum
             lng: 10.0,
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             country: "US".to_string(),
@@ -338,7 +338,7 @@ mod tests {
             reference_count: 0,
             lat: 10.0,
             lng: -181.0, // Less than minimum
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             country: "US".to_string(),

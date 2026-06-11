@@ -1,5 +1,5 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::{
+use doublezero_serviceability_cli::{
     allowlist::foundation::{
         add::AddFoundationAllowlistCliCommand, list::ListFoundationAllowlistCliCommand,
         remove::RemoveFoundationAllowlistCliCommand,

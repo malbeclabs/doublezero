@@ -12,17 +12,12 @@ use crate::processors::{
         update::ContributorUpdateArgs,
     },
     device::{
-        activate::DeviceActivateArgs,
-        closeaccount::DeviceCloseAccountArgs,
         create::DeviceCreateArgs,
         delete::DeviceDeleteArgs,
         interface::{
-            activate::DeviceInterfaceActivateArgs, create::DeviceInterfaceCreateArgs,
-            delete::DeviceInterfaceDeleteArgs, reject::DeviceInterfaceRejectArgs,
-            remove::DeviceInterfaceRemoveArgs, unlink::DeviceInterfaceUnlinkArgs,
+            create::DeviceInterfaceCreateArgs, delete::DeviceInterfaceDeleteArgs,
             update::DeviceInterfaceUpdateArgs,
         },
-        reject::DeviceRejectArgs,
         sethealth::DeviceSetHealthArgs,
         update::DeviceUpdateArgs,
     },
@@ -35,9 +30,9 @@ use crate::processors::{
         setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs,
         setfeatureflags::SetFeatureFlagsArgs, setversion::SetVersionArgs,
     },
+    index::{create::IndexCreateArgs, delete::IndexDeleteArgs},
     link::{
-        accept::LinkAcceptArgs, activate::LinkActivateArgs, closeaccount::LinkCloseAccountArgs,
-        create::LinkCreateArgs, delete::LinkDeleteArgs, reject::LinkRejectArgs,
+        accept::LinkAcceptArgs, create::LinkCreateArgs, delete::LinkDeleteArgs,
         sethealth::LinkSetHealthArgs, update::LinkUpdateArgs,
     },
     location::{
@@ -46,7 +41,6 @@ use crate::processors::{
     },
     migrate::MigrateArgs,
     multicastgroup::{
-        activate::MulticastGroupActivateArgs,
         allowlist::{
             publisher::{
                 add::AddMulticastGroupPubAllowlistArgs,
@@ -57,12 +51,10 @@ use crate::processors::{
                 remove::RemoveMulticastGroupSubAllowlistArgs,
             },
         },
-        closeaccount::MulticastGroupDeactivateArgs,
         create::MulticastGroupCreateArgs,
         delete::MulticastGroupDeleteArgs,
         reactivate::MulticastGroupReactivateArgs,
-        reject::MulticastGroupRejectArgs,
-        subscribe::MulticastGroupSubscribeArgs,
+        subscribe::UpdateMulticastGroupRolesArgs,
         suspend::MulticastGroupSuspendArgs,
         update::MulticastGroupUpdateArgs,
     },
@@ -79,11 +71,15 @@ use crate::processors::{
         delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
         update::TenantUpdateArgs, update_payment_status::UpdatePaymentStatusArgs,
     },
+    topology::{
+        assign_node_segments::AssignTopologyNodeSegmentsArgs, clear::TopologyClearArgs,
+        create::TopologyCreateArgs, delete::TopologyDeleteArgs,
+    },
     user::{
-        activate::UserActivateArgs, ban::UserBanArgs, check_access_pass::CheckUserAccessPassArgs,
-        closeaccount::UserCloseAccountArgs, create::UserCreateArgs,
-        create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs, reject::UserRejectArgs,
-        requestban::UserRequestBanArgs, update::UserUpdateArgs,
+        check_access_pass::CheckUserAccessPassArgs, create::UserCreateArgs,
+        create_subscribe::UserCreateSubscribeArgs, delete::UserDeleteArgs,
+        requestban::UserRequestBanArgs, set_bgp_status::SetUserBGPStatusArgs,
+        update::UserUpdateArgs,
     },
 };
 use borsh::BorshSerialize;
@@ -117,51 +113,66 @@ pub enum DoubleZeroInstruction {
     ResumeExchange(ExchangeResumeArgs),   // variant 18
     DeleteExchange(ExchangeDeleteArgs),   // variant 19
 
-    CreateDevice(DeviceCreateArgs),             // variant 20
-    ActivateDevice(DeviceActivateArgs),         // variant 21
-    RejectDevice(DeviceRejectArgs),             // variant 22
-    UpdateDevice(DeviceUpdateArgs),             // variant 23
-    SuspendDevice(),                            // variant 24
-    ResumeDevice(),                             // variant 25
-    DeleteDevice(DeviceDeleteArgs),             // variant 26
-    CloseAccountDevice(DeviceCloseAccountArgs), // variant 27
+    CreateDevice(DeviceCreateArgs), // variant 20
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. Variant kept
+    /// so the borsh discriminant for variant 21 stays stable. See #3623.
+    ActivateDevice(), // variant 21
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3623.
+    RejectDevice(), // variant 22
+    UpdateDevice(DeviceUpdateArgs), // variant 23
+    SuspendDevice(),                // variant 24
+    ResumeDevice(),                 // variant 25
+    DeleteDevice(DeviceDeleteArgs), // variant 26
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3623.
+    CloseAccountDevice(), // variant 27
 
-    CreateLink(LinkCreateArgs),             // variant 28
-    ActivateLink(LinkActivateArgs),         // variant 29
-    RejectLink(LinkRejectArgs),             // variant 30
-    UpdateLink(LinkUpdateArgs),             // variant 31
-    SuspendLink(),                          // variant 32
-    ResumeLink(),                           // variant 33
-    DeleteLink(LinkDeleteArgs),             // variant 34
-    CloseAccountLink(LinkCloseAccountArgs), // variant 35
+    CreateLink(LinkCreateArgs), // variant 28
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3623.
+    ActivateLink(), // variant 29
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3623.
+    RejectLink(), // variant 30
+    UpdateLink(LinkUpdateArgs), // variant 31
+    SuspendLink(),              // variant 32
+    ResumeLink(),               // variant 33
+    DeleteLink(LinkDeleteArgs), // variant 34
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3623.
+    CloseAccountLink(), // variant 35
 
-    CreateUser(UserCreateArgs),             // variant 36
-    ActivateUser(UserActivateArgs),         // variant 37
-    RejectUser(UserRejectArgs),             // variant 38
-    UpdateUser(UserUpdateArgs),             // variant 39
-    SuspendUser(),                          // variant 40
-    ResumeUser(),                           // variant 41
-    DeleteUser(UserDeleteArgs),             // variant 42
-    CloseAccountUser(UserCloseAccountArgs), // variant 43
-    RequestBanUser(UserRequestBanArgs),     // variant 44
-    BanUser(UserBanArgs),                   // variant 45
+    CreateUser(UserCreateArgs), // variant 36
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. Variant kept
+    /// so the borsh discriminant for variant 37 stays stable. See #3622.
+    ActivateUser(), // variant 37
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3622.
+    RejectUser(), // variant 38
+    UpdateUser(UserUpdateArgs), // variant 39
+    SuspendUser(),              // variant 40
+    ResumeUser(),               // variant 41
+    DeleteUser(UserDeleteArgs), // variant 42
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3622.
+    CloseAccountUser(), // variant 43
+    RequestBanUser(UserRequestBanArgs), // variant 44
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3622.
+    BanUser(), // variant 45
 
     CreateMulticastGroup(MulticastGroupCreateArgs), // variant 46
-    ActivateMulticastGroup(MulticastGroupActivateArgs), // variant 47
-    RejectMulticastGroup(MulticastGroupRejectArgs), // variant 48
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3623.
+    ActivateMulticastGroup(), // variant 47
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3623.
+    RejectMulticastGroup(), // variant 48
     UpdateMulticastGroup(MulticastGroupUpdateArgs), // variant 49
     SuspendMulticastGroup(MulticastGroupSuspendArgs), // variant 50
     ReactivateMulticastGroup(MulticastGroupReactivateArgs), // variant 51
     DeleteMulticastGroup(MulticastGroupDeleteArgs), // variant 52
-    DeactivateMulticastGroup(MulticastGroupDeactivateArgs), // variant 53
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3623.
+    DeactivateMulticastGroup(), // variant 53
 
     AddMulticastGroupPubAllowlist(AddMulticastGroupPubAllowlistArgs), // variant 54
     RemoveMulticastGroupPubAllowlist(RemoveMulticastGroupPubAllowlistArgs), // variant 55
     AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs), // variant 56
     RemoveMulticastGroupSubAllowlist(RemoveMulticastGroupSubAllowlistArgs), // variant 57
 
-    SubscribeMulticastGroup(MulticastGroupSubscribeArgs), // variant 58
-    CreateSubscribeUser(UserCreateSubscribeArgs),         // variant 59
+    UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs), // variant 58
+    CreateSubscribeUser(UserCreateSubscribeArgs),             // variant 59
 
     CreateContributor(ContributorCreateArgs),   // variant 60
     UpdateContributor(ContributorUpdateArgs),   // variant 61
@@ -177,13 +188,17 @@ pub enum DoubleZeroInstruction {
     CheckStatusAccessPass(CheckStatusAccessPassArgs), // variant 70
     CheckUserAccessPass(CheckUserAccessPassArgs), // variant 71
 
-    ActivateDeviceInterface(DeviceInterfaceActivateArgs), // variant 72
-    CreateDeviceInterface(DeviceInterfaceCreateArgs),     // variant 73
-    DeleteDeviceInterface(DeviceInterfaceDeleteArgs),     // variant 74
-    RemoveDeviceInterface(DeviceInterfaceRemoveArgs),     // variant 75
-    UpdateDeviceInterface(DeviceInterfaceUpdateArgs),     // variant 76
-    UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs),     // variant 77
-    RejectDeviceInterface(DeviceInterfaceRejectArgs),     // variant 78
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3623.
+    ActivateDeviceInterface(), // variant 72
+    CreateDeviceInterface(DeviceInterfaceCreateArgs), // variant 73
+    DeleteDeviceInterface(DeviceInterfaceDeleteArgs), // variant 74
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3623.
+    RemoveDeviceInterface(), // variant 75
+    UpdateDeviceInterface(DeviceInterfaceUpdateArgs), // variant 76
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3623.
+    UnlinkDeviceInterface(), // variant 77
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3623.
+    RejectDeviceInterface(), // variant 78
 
     SetMinVersion(SetVersionArgs), // variant 79
 
@@ -218,6 +233,17 @@ pub enum DoubleZeroInstruction {
 
     Deprecated102(), // variant 102 (was CreateReservedSubscribeUser)
     Deprecated103(), // variant 103 (was DeleteReservedSubscribeUser)
+
+    CreateIndex(IndexCreateArgs),           // variant 104
+    DeleteIndex(IndexDeleteArgs),           // variant 105
+    SetUserBGPStatus(SetUserBGPStatusArgs), // variant 106
+
+    CreateTopology(TopologyCreateArgs), // variant 107
+    DeleteTopology(TopologyDeleteArgs), // variant 108
+    ClearTopology(TopologyClearArgs),   // variant 109
+    AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs), // variant 110
+
+    Deprecated111(), // variant 111, (was MigrateDeviceInterfaces)
 }
 
 impl DoubleZeroInstruction {
@@ -256,49 +282,49 @@ impl DoubleZeroInstruction {
             19 => Ok(Self::DeleteExchange(ExchangeDeleteArgs::try_from(rest).unwrap())),
 
             20 => Ok(Self::CreateDevice(DeviceCreateArgs::try_from(rest).unwrap())),
-            21 => Ok(Self::ActivateDevice(DeviceActivateArgs::try_from(rest).unwrap())),
-            22 => Ok(Self::RejectDevice(DeviceRejectArgs::try_from(rest).unwrap())),
+            21 => Ok(Self::ActivateDevice()),
+            22 => Ok(Self::RejectDevice()),
             23 => Ok(Self::UpdateDevice(DeviceUpdateArgs::try_from(rest).unwrap())),
             24 => Ok(Self::SuspendDevice()),
             25 => Ok(Self::ResumeDevice()),
             26 => Ok(Self::DeleteDevice(DeviceDeleteArgs::try_from(rest).unwrap())),
-            27 => Ok(Self::CloseAccountDevice(DeviceCloseAccountArgs::try_from(rest).unwrap())),
+            27 => Ok(Self::CloseAccountDevice()),
 
             28 => Ok(Self::CreateLink(LinkCreateArgs::try_from(rest).unwrap())),
-            29 => Ok(Self::ActivateLink(LinkActivateArgs::try_from(rest).unwrap())),
-            30 => Ok(Self::RejectLink(LinkRejectArgs::try_from(rest).unwrap())),
+            29 => Ok(Self::ActivateLink()),
+            30 => Ok(Self::RejectLink()),
             31 => Ok(Self::UpdateLink(LinkUpdateArgs::try_from(rest).unwrap())),
             32 => Ok(Self::SuspendLink()),
             33 => Ok(Self::ResumeLink()),
             34 => Ok(Self::DeleteLink(LinkDeleteArgs::try_from(rest).unwrap())),
-            35 => Ok(Self::CloseAccountLink(LinkCloseAccountArgs::try_from(rest).unwrap())),
+            35 => Ok(Self::CloseAccountLink()),
 
             36 => Ok(Self::CreateUser(UserCreateArgs::try_from(rest).unwrap())),
-            37 => Ok(Self::ActivateUser(UserActivateArgs::try_from(rest).unwrap())),
-            38 => Ok(Self::RejectUser(UserRejectArgs::try_from(rest).unwrap())),
+            37 => Ok(Self::ActivateUser()),
+            38 => Ok(Self::RejectUser()),
             39 => Ok(Self::UpdateUser(UserUpdateArgs::try_from(rest).unwrap())),
             40 => Ok(Self::SuspendUser()),
             41 => Ok(Self::ResumeUser()),
             42 => Ok(Self::DeleteUser(UserDeleteArgs::try_from(rest).unwrap())),
-            43 => Ok(Self::CloseAccountUser(UserCloseAccountArgs::try_from(rest).unwrap())),
+            43 => Ok(Self::CloseAccountUser()),
             44 => Ok(Self::RequestBanUser(UserRequestBanArgs::try_from(rest).unwrap())),
-            45 => Ok(Self::BanUser(UserBanArgs::try_from(rest).unwrap())),
+            45 => Ok(Self::BanUser()),
 
 
             46 => Ok(Self::CreateMulticastGroup(MulticastGroupCreateArgs::try_from(rest).unwrap())),
-            47 => Ok(Self::ActivateMulticastGroup(MulticastGroupActivateArgs::try_from(rest).unwrap())),
-            48 => Ok(Self::RejectMulticastGroup(MulticastGroupRejectArgs::try_from(rest).unwrap())),
+            47 => Ok(Self::ActivateMulticastGroup()),
+            48 => Ok(Self::RejectMulticastGroup()),
             49 => Ok(Self::UpdateMulticastGroup(MulticastGroupUpdateArgs::try_from(rest).unwrap())),
             50 => Ok(Self::SuspendMulticastGroup(MulticastGroupSuspendArgs::try_from(rest).unwrap())),
             51 => Ok(Self::ReactivateMulticastGroup(MulticastGroupReactivateArgs::try_from(rest).unwrap())),
             52 => Ok(Self::DeleteMulticastGroup(MulticastGroupDeleteArgs::try_from(rest).unwrap())),
-            53 => Ok(Self::DeactivateMulticastGroup(MulticastGroupDeactivateArgs::try_from(rest).unwrap())),
+            53 => Ok(Self::DeactivateMulticastGroup()),
 
             54 => Ok(Self::AddMulticastGroupPubAllowlist(AddMulticastGroupPubAllowlistArgs::try_from(rest).unwrap())),
             55 => Ok(Self::RemoveMulticastGroupPubAllowlist(RemoveMulticastGroupPubAllowlistArgs::try_from(rest).unwrap())),
             56 => Ok(Self::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs::try_from(rest).unwrap())),
             57 => Ok(Self::RemoveMulticastGroupSubAllowlist(RemoveMulticastGroupSubAllowlistArgs::try_from(rest).unwrap())),
-            58 => Ok(Self::SubscribeMulticastGroup(MulticastGroupSubscribeArgs::try_from(rest).unwrap())),
+            58 => Ok(Self::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs::try_from(rest).unwrap())),
             59 => Ok(Self::CreateSubscribeUser(UserCreateSubscribeArgs::try_from(rest).unwrap())),
 
             60 => Ok(Self::CreateContributor(ContributorCreateArgs::try_from(rest).unwrap())),
@@ -316,13 +342,13 @@ impl DoubleZeroInstruction {
             70 => Ok(Self::CheckStatusAccessPass(CheckStatusAccessPassArgs::try_from(rest).unwrap())),
             71 => Ok(Self::CheckUserAccessPass(CheckUserAccessPassArgs::try_from(rest).unwrap())),
 
-            72 => Ok(Self::ActivateDeviceInterface(DeviceInterfaceActivateArgs::try_from(rest).unwrap())),
+            72 => Ok(Self::ActivateDeviceInterface()),
             73 => Ok(Self::CreateDeviceInterface(DeviceInterfaceCreateArgs::try_from(rest).unwrap())),
             74 => Ok(Self::DeleteDeviceInterface(DeviceInterfaceDeleteArgs::try_from(rest).unwrap())),
-            75 => Ok(Self::RemoveDeviceInterface(DeviceInterfaceRemoveArgs::try_from(rest).unwrap())),
+            75 => Ok(Self::RemoveDeviceInterface()),
             76 => Ok(Self::UpdateDeviceInterface(DeviceInterfaceUpdateArgs::try_from(rest).unwrap())),
-            77 => Ok(Self::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs::try_from(rest).unwrap())),
-            78 => Ok(Self::RejectDeviceInterface(DeviceInterfaceRejectArgs::try_from(rest).unwrap())),
+            77 => Ok(Self::UnlinkDeviceInterface()),
+            78 => Ok(Self::RejectDeviceInterface()),
 
             79 => Ok(Self::SetMinVersion(SetVersionArgs::try_from(rest).unwrap())),
             80 => Ok(Self::AllocateResource(ResourceAllocateArgs::try_from(rest).unwrap())),
@@ -349,6 +375,16 @@ impl DoubleZeroInstruction {
             100 => Ok(Self::ResumePermission(PermissionResumeArgs::try_from(rest).unwrap())),
             101 => Ok(Self::DeletePermission(PermissionDeleteArgs::try_from(rest).unwrap())),
 
+
+            104 => Ok(Self::CreateIndex(IndexCreateArgs::try_from(rest).unwrap())),
+            105 => Ok(Self::DeleteIndex(IndexDeleteArgs::try_from(rest).unwrap())),
+            106 => Ok(Self::SetUserBGPStatus(SetUserBGPStatusArgs::try_from(rest).unwrap())),
+
+            107 => Ok(Self::CreateTopology(TopologyCreateArgs::try_from(rest).unwrap())),
+            108 => Ok(Self::DeleteTopology(TopologyDeleteArgs::try_from(rest).unwrap())),
+            109 => Ok(Self::ClearTopology(TopologyClearArgs::try_from(rest).unwrap())),
+            110 => Ok(Self::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs::try_from(rest).unwrap())),
+            111 => Ok(Self::Deprecated111()),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -381,43 +417,43 @@ impl DoubleZeroInstruction {
             Self::DeleteExchange(_) => "DeleteExchange".to_string(), // variant 19
 
             Self::CreateDevice(_) => "CreateDevice".to_string(), // variant 20
-            Self::ActivateDevice(_) => "ActivateDevice".to_string(), // variant 21
-            Self::RejectDevice(_) => "RejectDevice".to_string(), // variant 22
+            Self::ActivateDevice() => "ActivateDevice".to_string(), // variant 21
+            Self::RejectDevice() => "RejectDevice".to_string(),  // variant 22
             Self::UpdateDevice(_) => "UpdateDevice".to_string(), // variant 23
             Self::SuspendDevice() => "SuspendDevice".to_string(), // variant 24
             Self::ResumeDevice() => "ResumeDevice".to_string(),  // variant 25
             Self::DeleteDevice(_) => "DeleteDevice".to_string(), // variant 26
-            Self::CloseAccountDevice(_) => "CloseAccountDevice".to_string(), // variant 27
+            Self::CloseAccountDevice() => "CloseAccountDevice".to_string(), // variant 27
 
             Self::CreateLink(_) => "CreateLink".to_string(), // variant 28
-            Self::ActivateLink(_) => "ActivateLink".to_string(), // variant 29
-            Self::RejectLink(_) => "RejectLink".to_string(), // variant 30
+            Self::ActivateLink() => "ActivateLink".to_string(), // variant 29
+            Self::RejectLink() => "RejectLink".to_string(),  // variant 30
             Self::UpdateLink(_) => "UpdateLink".to_string(), // variant 31
             Self::SuspendLink() => "SuspendLink".to_string(), // variant 32
             Self::ResumeLink() => "ResumeLink".to_string(),  // variant 33
             Self::DeleteLink(_) => "DeleteLink".to_string(), // variant 34
-            Self::CloseAccountLink(_) => "CloseAccountLink".to_string(), // variant 35
+            Self::CloseAccountLink() => "CloseAccountLink".to_string(), // variant 35
 
             Self::CreateUser(_) => "CreateUser".to_string(), // variant 36
-            Self::ActivateUser(_) => "ActivateUser".to_string(), // variant 37
-            Self::RejectUser(_) => "RejectUser".to_string(), // variant 38
+            Self::ActivateUser() => "ActivateUser".to_string(), // variant 37
+            Self::RejectUser() => "RejectUser".to_string(),  // variant 38
             Self::UpdateUser(_) => "UpdateUser".to_string(), // variant 39
             Self::SuspendUser() => "SuspendUser".to_string(), // variant 40
             Self::ResumeUser() => "ResumeUser".to_string(),  // variant 41
             Self::DeleteUser(_) => "DeleteUser".to_string(), // variant 42
-            Self::CloseAccountUser(_) => "CloseAccountUser".to_string(), // variant 43
+            Self::CloseAccountUser() => "CloseAccountUser".to_string(), // variant 43
 
             Self::RequestBanUser(_) => "RequestBanUser".to_string(), // variant 44
-            Self::BanUser(_) => "BanUser".to_string(),               // variant 45
+            Self::BanUser() => "BanUser".to_string(),                // variant 45
 
             Self::CreateMulticastGroup(_) => "CreateMulticastGroup".to_string(), // variant 46
-            Self::ActivateMulticastGroup(_) => "ActivateMulticastGroup".to_string(), // variant 47
-            Self::RejectMulticastGroup(_) => "RejectMulticastGroup".to_string(), // variant 48
+            Self::ActivateMulticastGroup() => "ActivateMulticastGroup".to_string(), // variant 47
+            Self::RejectMulticastGroup() => "RejectMulticastGroup".to_string(),  // variant 48
             Self::SuspendMulticastGroup(_) => "SuspendMulticastGroup".to_string(), // variant 49
             Self::ReactivateMulticastGroup(_) => "ReactivateMulticastGroup".to_string(), // variant 50
             Self::DeleteMulticastGroup(_) => "DeleteMulticastGroup".to_string(), // variant 51
             Self::UpdateMulticastGroup(_) => "UpdateMulticastGroup".to_string(), // variant 52
-            Self::DeactivateMulticastGroup(_) => "DeactivateMulticastGroup".to_string(), // variant 53
+            Self::DeactivateMulticastGroup() => "DeactivateMulticastGroup".to_string(), // variant 53
 
             Self::AddMulticastGroupPubAllowlist(_) => "AddMulticastGroupPubAllowlist".to_string(), // variant 54
             Self::RemoveMulticastGroupPubAllowlist(_) => {
@@ -428,8 +464,8 @@ impl DoubleZeroInstruction {
                 "RemoveMulticastGroupSubAllowlist".to_string()
             } // variant 57
 
-            Self::SubscribeMulticastGroup(_) => "SubscribeMulticastGroup".to_string(), // variant 58
-            Self::CreateSubscribeUser(_) => "CreateSubscribeUser".to_string(),         // variant 59
+            Self::UpdateMulticastGroupRoles(_) => "UpdateMulticastGroupRoles".to_string(), // variant 58
+            Self::CreateSubscribeUser(_) => "CreateSubscribeUser".to_string(), // variant 59
 
             Self::CreateContributor(_) => "CreateContributor".to_string(), // variant 60
             Self::UpdateContributor(_) => "UpdateContributor".to_string(), // variant 61
@@ -445,13 +481,13 @@ impl DoubleZeroInstruction {
             Self::CheckStatusAccessPass(_) => "CheckStatusAccessPass".to_string(), // variant 70
             Self::CheckUserAccessPass(_) => "CheckUserAccessPass".to_string(), // variant 71
 
-            Self::ActivateDeviceInterface(_) => "ActivateDeviceInterface".to_string(), // variant 72
-            Self::CreateDeviceInterface(_) => "CreateDeviceInterface".to_string(),     // variant 73
-            Self::DeleteDeviceInterface(_) => "DeleteDeviceInterface".to_string(),     // variant 74
-            Self::RemoveDeviceInterface(_) => "RemoveDeviceInterface".to_string(),     // variant 75
-            Self::UpdateDeviceInterface(_) => "UpdateDeviceInterface".to_string(),     // variant 76
-            Self::UnlinkDeviceInterface(_) => "UnlinkDeviceInterface".to_string(),     // variant 77
-            Self::RejectDeviceInterface(_) => "RejectDeviceInterface".to_string(),     // variant 78
+            Self::ActivateDeviceInterface() => "ActivateDeviceInterface".to_string(), // variant 72
+            Self::CreateDeviceInterface(_) => "CreateDeviceInterface".to_string(),    // variant 73
+            Self::DeleteDeviceInterface(_) => "DeleteDeviceInterface".to_string(),    // variant 74
+            Self::RemoveDeviceInterface() => "RemoveDeviceInterface".to_string(),     // variant 75
+            Self::UpdateDeviceInterface(_) => "UpdateDeviceInterface".to_string(),    // variant 76
+            Self::UnlinkDeviceInterface() => "UnlinkDeviceInterface".to_string(),     // variant 77
+            Self::RejectDeviceInterface() => "RejectDeviceInterface".to_string(),     // variant 78
 
             Self::SetMinVersion(_) => "SetMinVersion".to_string(), // variant 79
             Self::AllocateResource(_) => "AllocateResource".to_string(), // variant 80
@@ -483,6 +519,16 @@ impl DoubleZeroInstruction {
 
             Self::Deprecated102() => "Deprecated102".to_string(),
             Self::Deprecated103() => "Deprecated103".to_string(),
+
+            Self::CreateIndex(_) => "CreateIndex".to_string(), // variant 104
+            Self::DeleteIndex(_) => "DeleteIndex".to_string(), // variant 105
+            Self::SetUserBGPStatus(_) => "SetUserBGPStatus".to_string(), // variant 106
+
+            Self::CreateTopology(_) => "CreateTopology".to_string(), // variant 107
+            Self::DeleteTopology(_) => "DeleteTopology".to_string(), // variant 108
+            Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 109
+            Self::AssignTopologyNodeSegments(_) => "AssignTopologyNodeSegments".to_string(), // variant 110
+            Self::Deprecated111() => "Deprecated111".to_string(), // variant 111
         }
     }
 
@@ -513,44 +559,44 @@ impl DoubleZeroInstruction {
             Self::DeleteExchange(args) => format!("{args:?}"), // variant 19
 
             Self::CreateDevice(args) => format!("{args:?}"), // variant 20
-            Self::ActivateDevice(args) => format!("{args:?}"), // variant 21
-            Self::RejectDevice(args) => format!("{args:?}"), // variant 22
+            Self::ActivateDevice() => "".to_string(),        // variant 21
+            Self::RejectDevice() => "".to_string(),          // variant 22
             Self::UpdateDevice(args) => format!("{args:?}"), // variant 23
             Self::SuspendDevice() => "".to_string(),         // variant 24
             Self::ResumeDevice() => "".to_string(),          // variant 25
             Self::DeleteDevice(args) => format!("{args:?}"), // variant 26
-            Self::CloseAccountDevice(args) => format!("{args:?}"), // variant 27
+            Self::CloseAccountDevice() => "".to_string(),    // variant 27
 
             Self::CreateLink(args) => format!("{args:?}"), // variant 28
-            Self::ActivateLink(args) => format!("{args:?}"), // variant 29
-            Self::RejectLink(args) => format!("{args:?}"), // variant 30
+            Self::ActivateLink() => "".to_string(),        // variant 29
+            Self::RejectLink() => "".to_string(),          // variant 30
             Self::UpdateLink(args) => format!("{args:?}"), // variant 31
             Self::SuspendLink() => "".to_string(),         // variant 32
             Self::ResumeLink() => "".to_string(),          // variant 33
             Self::DeleteLink(args) => format!("{args:?}"), // variant 34
-            Self::CloseAccountLink(args) => format!("{args:?}"), // variant 35
+            Self::CloseAccountLink() => "".to_string(),    // variant 35
 
             Self::CreateUser(args) => format!("{args:?}"), // variant 36
-            Self::ActivateUser(args) => format!("{args:?}"), // variant 37
-            Self::RejectUser(args) => format!("{args:?}"), // variant 38
+            Self::ActivateUser() => "".to_string(),        // variant 37
+            Self::RejectUser() => "".to_string(),          // variant 38
             Self::UpdateUser(args) => format!("{args:?}"), // variant 39
             Self::SuspendUser() => "".to_string(),         // variant 40
             Self::ResumeUser() => "".to_string(),          // variant 41
             Self::DeleteUser(args) => format!("{args:?}"), // variant 42
-            Self::CloseAccountUser(args) => format!("{args:?}"), // variant 43
+            Self::CloseAccountUser() => "".to_string(),    // variant 43
 
             Self::RequestBanUser(args) => format!("{args:?}"), // variant 44
-            Self::BanUser(args) => format!("{args:?}"),        // variant 45
+            Self::BanUser() => "".to_string(),                 // variant 45
 
             Self::CreateMulticastGroup(args) => format!("{args:?}"), // variant 46
-            Self::ActivateMulticastGroup(args) => format!("{args:?}"), // variant 47
-            Self::RejectMulticastGroup(args) => format!("{args:?}"), // variant 48
+            Self::ActivateMulticastGroup() => "".to_string(),        // variant 47
+            Self::RejectMulticastGroup() => "".to_string(),          // variant 48
             Self::SuspendMulticastGroup(args) => format!("{args:?}"), // variant 49
             Self::ReactivateMulticastGroup(args) => format!("{args:?}"), // variant 50
             Self::DeleteMulticastGroup(args) => format!("{args:?}"), // variant 51
             Self::UpdateMulticastGroup(args) => format!("{args:?}"), // variant 52
-            Self::DeactivateMulticastGroup(args) => format!("{args:?}"), // variant 53
-            Self::SubscribeMulticastGroup(args) => format!("{args:?}"), // variant 54
+            Self::DeactivateMulticastGroup() => "".to_string(),      // variant 53
+            Self::UpdateMulticastGroupRoles(args) => format!("{args:?}"), // variant 54
             Self::AddMulticastGroupPubAllowlist(args) => format!("{args:?}"), // variant 55
             Self::RemoveMulticastGroupPubAllowlist(args) => format!("{args:?}"), // variant 56
             Self::AddMulticastGroupSubAllowlist(args) => format!("{args:?}"), // variant 57
@@ -571,13 +617,13 @@ impl DoubleZeroInstruction {
             Self::CheckStatusAccessPass(args) => format!("{args:?}"), // variant 70
             Self::CheckUserAccessPass(args) => format!("{args:?}"), // variant 71
 
-            Self::ActivateDeviceInterface(args) => format!("{args:?}"), // variant 72
-            Self::CreateDeviceInterface(args) => format!("{args:?}"),   // variant 73
-            Self::DeleteDeviceInterface(args) => format!("{args:?}"),   // variant 74
-            Self::RemoveDeviceInterface(args) => format!("{args:?}"),   // variant 75
-            Self::UpdateDeviceInterface(args) => format!("{args:?}"),   // variant 76
-            Self::UnlinkDeviceInterface(args) => format!("{args:?}"),   // variant 77
-            Self::RejectDeviceInterface(args) => format!("{args:?}"),   // variant 78
+            Self::ActivateDeviceInterface() => "".to_string(), // variant 72
+            Self::CreateDeviceInterface(args) => format!("{args:?}"), // variant 73
+            Self::DeleteDeviceInterface(args) => format!("{args:?}"), // variant 74
+            Self::RemoveDeviceInterface() => "".to_string(),   // variant 75
+            Self::UpdateDeviceInterface(args) => format!("{args:?}"), // variant 76
+            Self::UnlinkDeviceInterface() => "".to_string(),   // variant 77
+            Self::RejectDeviceInterface() => "".to_string(),   // variant 78
 
             Self::SetMinVersion(args) => format!("{args:?}"), // variant 79
             Self::AllocateResource(args) => format!("{args:?}"), // variant 80
@@ -609,6 +655,16 @@ impl DoubleZeroInstruction {
 
             Self::Deprecated102() => String::new(),
             Self::Deprecated103() => String::new(),
+
+            Self::CreateIndex(args) => format!("{args:?}"), // variant 104
+            Self::DeleteIndex(args) => format!("{args:?}"), // variant 105
+            Self::SetUserBGPStatus(args) => format!("{args:?}"), // variant 106
+
+            Self::CreateTopology(args) => format!("{args:?}"), // variant 107
+            Self::DeleteTopology(args) => format!("{args:?}"), // variant 108
+            Self::ClearTopology(args) => format!("{args:?}"),  // variant 109
+            Self::AssignTopologyNodeSegments(args) => format!("{args:?}"), // variant 110
+            Self::Deprecated111() => String::new(),            // variant 111
         }
     }
 }
@@ -623,7 +679,7 @@ mod tests {
             interface::{LoopbackType, RoutingMode},
             link::{LinkHealth, LinkLinkType},
             permission::permission_flags,
-            user::{UserCYOA, UserType},
+            user::{BGPStatus, UserCYOA, UserType},
         },
     };
     use solana_program::pubkey::Pubkey;
@@ -736,10 +792,7 @@ mod tests {
             }),
             "CreateDevice",
         );
-        test_instruction(
-            DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count: 0 }),
-            "ActivateDevice",
-        );
+        test_instruction(DoubleZeroInstruction::ActivateDevice(), "ActivateDevice");
         test_instruction(
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                 code: Some("test".to_string()),
@@ -785,14 +838,7 @@ mod tests {
             }),
             "CreateLink",
         );
-        test_instruction(
-            DoubleZeroInstruction::ActivateLink(LinkActivateArgs {
-                tunnel_id: 1,
-                tunnel_net: "1.2.3.4/1".parse().unwrap(),
-                use_onchain_allocation: false,
-            }),
-            "ActivateLink",
-        );
+        test_instruction(DoubleZeroInstruction::ActivateLink(), "ActivateLink");
         test_instruction(
             DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
                 code: Some("test".to_string()),
@@ -808,6 +854,8 @@ mod tests {
                 tunnel_id: None,
                 tunnel_net: None,
                 use_onchain_allocation: false,
+                link_topologies: None,
+                unicast_drained: None,
             }),
             "UpdateLink",
         );
@@ -829,16 +877,7 @@ mod tests {
             }),
             "CreateUser",
         );
-        test_instruction(
-            DoubleZeroInstruction::ActivateUser(UserActivateArgs {
-                tunnel_id: 1,
-                tunnel_net: "1.2.3.4/1".parse().unwrap(),
-                dz_ip: [1, 2, 3, 4].into(),
-                dz_prefix_count: 0,
-                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            }),
-            "ActivateUser",
-        );
+        test_instruction(DoubleZeroInstruction::ActivateUser(), "ActivateUser");
         test_instruction(
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
                 user_type: Some(UserType::IBRL),
@@ -850,6 +889,7 @@ mod tests {
                 tenant_pk: Some(Pubkey::new_unique()),
                 dz_prefix_count: 0,
                 multicast_publisher_count: 0,
+                tunnel_endpoint: None,
             }),
             "UpdateUser",
         );
@@ -863,40 +903,20 @@ mod tests {
             "DeleteUser",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs { resource_count: 0 }),
+            DoubleZeroInstruction::CloseAccountDevice(),
             "CloseAccountDevice",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountLink(LinkCloseAccountArgs {
-                use_onchain_deallocation: false,
-            }),
+            DoubleZeroInstruction::CloseAccountLink(),
             "CloseAccountLink",
         );
         test_instruction(
-            DoubleZeroInstruction::CloseAccountUser(UserCloseAccountArgs {
-                dz_prefix_count: 0,
-                multicast_publisher_count: 0,
-            }),
+            DoubleZeroInstruction::CloseAccountUser(),
             "CloseAccountUser",
         );
-        test_instruction(
-            DoubleZeroInstruction::RejectDevice(DeviceRejectArgs {
-                reason: "test".to_string(),
-            }),
-            "RejectDevice",
-        );
-        test_instruction(
-            DoubleZeroInstruction::RejectLink(LinkRejectArgs {
-                reason: "test".to_string(),
-            }),
-            "RejectLink",
-        );
-        test_instruction(
-            DoubleZeroInstruction::RejectUser(UserRejectArgs {
-                reason: "test".to_string(),
-            }),
-            "RejectUser",
-        );
+        test_instruction(DoubleZeroInstruction::RejectDevice(), "RejectDevice");
+        test_instruction(DoubleZeroInstruction::RejectLink(), "RejectLink");
+        test_instruction(DoubleZeroInstruction::RejectUser(), "RejectUser");
         test_instruction(
             DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
                 pubkey: Pubkey::new_unique(),
@@ -941,7 +961,7 @@ mod tests {
             DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs::default()),
             "RequestBanUser",
         );
-        test_instruction(DoubleZeroInstruction::BanUser(UserBanArgs {}), "BanUser");
+        test_instruction(DoubleZeroInstruction::BanUser(), "BanUser");
 
         test_instruction(
             DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
@@ -954,16 +974,12 @@ mod tests {
         );
 
         test_instruction(
-            DoubleZeroInstruction::ActivateMulticastGroup(MulticastGroupActivateArgs {
-                multicast_ip: [1, 2, 3, 4].into(),
-            }),
+            DoubleZeroInstruction::ActivateMulticastGroup(),
             "ActivateMulticastGroup",
         );
 
         test_instruction(
-            DoubleZeroInstruction::RejectMulticastGroup(MulticastGroupRejectArgs {
-                reason: "test".to_string(),
-            }),
+            DoubleZeroInstruction::RejectMulticastGroup(),
             "RejectMulticastGroup",
         );
 
@@ -975,6 +991,7 @@ mod tests {
                 publisher_count: None,
                 subscriber_count: None,
                 use_onchain_allocation: false,
+                owner: None,
             }),
             "UpdateMulticastGroup",
         );
@@ -997,9 +1014,7 @@ mod tests {
         );
 
         test_instruction(
-            DoubleZeroInstruction::DeactivateMulticastGroup(MulticastGroupDeactivateArgs {
-                use_onchain_deallocation: false,
-            }),
+            DoubleZeroInstruction::DeactivateMulticastGroup(),
             "DeactivateMulticastGroup",
         );
 
@@ -1040,13 +1055,13 @@ mod tests {
             "RemoveMulticastGroupSubAllowlist",
         );
         test_instruction(
-            DoubleZeroInstruction::SubscribeMulticastGroup(MulticastGroupSubscribeArgs {
+            DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
                 client_ip: [1, 2, 3, 4].into(),
                 publisher: false,
                 subscriber: true,
                 use_onchain_allocation: false,
             }),
-            "SubscribeMulticastGroup",
+            "UpdateMulticastGroupRoles",
         );
         test_instruction(
             DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
@@ -1057,6 +1072,7 @@ mod tests {
                 subscriber: true,
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 dz_prefix_count: 0,
+                owner: Pubkey::default(),
             }),
             "CreateSubscribeUser",
         );
@@ -1089,6 +1105,7 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
                 side_z_iface_name: "AcceptLink".to_string(),
+                use_onchain_allocation: false,
             }),
             "AcceptLink",
         );
@@ -1107,6 +1124,8 @@ mod tests {
                 client_ip: [1, 2, 3, 4].into(),
                 last_access_epoch: 123,
                 allow_multiple_ip: false,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
             }),
             "SetAccessPass",
         );
@@ -1130,11 +1149,7 @@ mod tests {
             "CheckUserAccessPass",
         );
         test_instruction(
-            DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
-                name: "name".to_string(),
-                ip_net: "10.0.0.0/3".parse().unwrap(),
-                node_segment_idx: 1,
-            }),
+            DoubleZeroInstruction::ActivateDeviceInterface(),
             "ActivateDeviceInterface",
         );
         test_instruction(
@@ -1151,6 +1166,7 @@ mod tests {
                 vlan_id: 0,
                 user_tunnel_endpoint: false,
                 use_onchain_allocation: false,
+                topology_count: 0,
             }),
             "CreateDeviceInterface",
         );
@@ -1162,9 +1178,7 @@ mod tests {
             "DeleteDeviceInterface",
         );
         test_instruction(
-            DoubleZeroInstruction::RemoveDeviceInterface(DeviceInterfaceRemoveArgs {
-                name: "name".to_string(),
-            }),
+            DoubleZeroInstruction::RemoveDeviceInterface(),
             "RemoveDeviceInterface",
         );
         test_instruction(
@@ -1182,19 +1196,17 @@ mod tests {
                 ip_net: Some("10.0.0.0/3".parse().unwrap()),
                 node_segment_idx: Some(1),
                 status: None,
+                topology_count: 0,
+                update_topologies: false,
             }),
             "UpdateDeviceInterface",
         );
         test_instruction(
-            DoubleZeroInstruction::UnlinkDeviceInterface(DeviceInterfaceUnlinkArgs {
-                name: "name".to_string(),
-            }),
+            DoubleZeroInstruction::UnlinkDeviceInterface(),
             "UnlinkDeviceInterface",
         );
         test_instruction(
-            DoubleZeroInstruction::RejectDeviceInterface(DeviceInterfaceRejectArgs {
-                name: "name".to_string(),
-            }),
+            DoubleZeroInstruction::RejectDeviceInterface(),
             "RejectDeviceInterface",
         );
         test_instruction(
@@ -1256,6 +1268,7 @@ mod tests {
                 metro_routing: Some(true),
                 route_liveness: Some(false),
                 billing: None,
+                include_topologies: None,
             }),
             "UpdateTenant",
         );
@@ -1295,6 +1308,38 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::DeletePermission(PermissionDeleteArgs {}),
             "DeletePermission",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetUserBGPStatus(SetUserBGPStatusArgs {
+                bgp_status: BGPStatus::Up,
+                bgp_rtt_ns: 0,
+            }),
+            "SetUserBGPStatus",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+                name: "unicast-default".to_string(),
+                constraint: crate::state::topology::TopologyConstraint::IncludeAny,
+            }),
+            "CreateTopology",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteTopology(TopologyDeleteArgs {
+                name: "unicast-default".to_string(),
+            }),
+            "DeleteTopology",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
+                name: "unicast-default".to_string(),
+            }),
+            "ClearTopology",
+        );
+        test_instruction(
+            DoubleZeroInstruction::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs {
+                name: "unicast-default".to_string(),
+            }),
+            "AssignTopologyNodeSegments",
         );
     }
 }

@@ -1,5 +1,5 @@
 [package]
-name = "doublezero_cli"
+name = "doublezero-serviceability-cli"
 
 # Workspace inherited keys
 version.workspace = true
@@ -10,7 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [lib]
-name = "doublezero_cli"
+name = "doublezero_serviceability_cli"
 
 [dependencies]
 anyhow.workspace = true
@@ -34,10 +34,11 @@ solana-rpc-client-api.workspace = true
 solana-sdk.workspace = true
 tabled.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 
 # Dependencies from this workspace
+doublezero-cli-core.workspace = true
 doublezero-config.workspace = true
-doublezero-geolocation = { workspace = true, features = ["no-entrypoint"] }
 doublezero-program-common.workspace = true
 doublezero_sdk.workspace = true
 doublezero-serviceability = { workspace = true, features = ["serde"] }
@@ -46,6 +47,7 @@ doublezero-serviceability = { workspace = true, features = ["serde"] }
 default-mainnet-beta = ["doublezero_sdk/default-mainnet-beta"]
 
 [dev-dependencies]
+doublezero-cli-core = { workspace = true, features = ["testing"] }
 serial_test.workspace = true
 temp-env.workspace = true
 tempfile.workspace = true

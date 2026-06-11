@@ -12,6 +12,13 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
+// linkStatusUnknown is a controller-local sentinel for the in-memory
+// Interface.LinkStatus field when an interface is not mapped to an
+// activated/soft-drained/hard-drained link. It is intentionally outside
+// the range of onchain LinkStatus discriminants (0–8) and never written
+// to chain.
+const linkStatusUnknown serviceability.LinkStatus = 255
+
 type InterfaceType uint8
 
 const (
@@ -19,6 +26,24 @@ const (
 	InterfaceTypeLoopback
 	InterfaceTypePhysical
 )
+
+// Role-based interface MTU. Mirrors the onchain constants in
+// smartcontract/programs/doublezero-serviceability/src/state/interface.rs
+// (LINK_MTU / INTERFACE_MTU / CYOA_DIA_INTERFACE_MTU). The controller
+// computes the rendered MTU from interface role instead of trusting the
+// onchain Interface.Mtu / Link.Mtu values, so the rendered config remains
+// correct even for V1 interfaces that deserialize with Mtu = 0.
+const (
+	InterfaceMtu        uint16 = 9000
+	CyoaDiaInterfaceMtu uint16 = 1500
+)
+
+func mtuForInterface(isCYOA, isDIA bool) uint16 {
+	if isCYOA || isDIA {
+		return CyoaDiaInterfaceMtu
+	}
+	return InterfaceMtu
+}
 
 type LoopbackType uint8
 
@@ -45,11 +70,17 @@ type Interface struct {
 	LinkStatus           serviceability.LinkStatus
 	IsCYOA               bool
 	IsDIA                bool
+	// RFC-18: set when the interface is an activated link with topology assignments
+	LinkTopologies []string // topology names (resolved from link.link_topologies pubkeys)
+	UnicastDrained bool
+	PubKey         string // base58-encoded link pubkey (set when IsLink is true)
+	// RFC-18: flex-algo node-segment data for VPNv4 loopback interfaces
+	FlexAlgoNodeSegments []FlexAlgoNodeSegmentModel
 }
 
 // toInterface validates onchain data for a serviceability interface and converts it to a controller interface.
 func toInterface(iface serviceability.Interface) (Interface, error) {
-	if iface == (serviceability.Interface{}) {
+	if iface.Name == "" {
 		return Interface{}, errors.New("serviceability interface cannot be nil")
 	}
 
@@ -87,12 +118,11 @@ func toInterface(iface serviceability.Interface) (Interface, error) {
 		return Interface{}, fmt.Errorf("node segment cannot be defined on non-vpnv4 loopbacks")
 	}
 
-	return Interface{
+	out := Interface{
 		Name:                 iface.Name,
 		VlanId:               iface.VlanId,
 		Ip:                   prefix,
 		NodeSegmentIdx:       iface.NodeSegmentIdx,
-		Mtu:                  iface.Mtu,
 		IsSubInterface:       subIntf,
 		IsSubInterfaceParent: false,
 		InterfaceType:        ifType,
@@ -100,31 +130,11 @@ func toInterface(iface serviceability.Interface) (Interface, error) {
 		IsLink:               false,
 		IsCYOA:               iface.InterfaceCYOA != serviceability.InterfaceCYOANone,
 		IsDIA:                iface.InterfaceDIA != serviceability.InterfaceDIANone,
-	}, nil
-
-}
-
-func NewInterface(
-	name string,
-	vlanId uint16,
-	ip netip.Prefix,
-	nodeSegmentIdx uint16,
-	isSubInterface bool,
-	isSubInterfaceParent bool,
-	interfaceType InterfaceType,
-	loopbackType LoopbackType,
-) Interface {
-	return Interface{
-		Name:                 name,
-		VlanId:               vlanId,
-		Ip:                   ip,
-		NodeSegmentIdx:       nodeSegmentIdx,
-		IsSubInterface:       isSubInterface,
-		IsSubInterfaceParent: isSubInterfaceParent,
-		InterfaceType:        interfaceType,
-		LoopbackType:         loopbackType,
-		IsLink:               false,
 	}
+	if ifType == InterfaceTypePhysical {
+		out.Mtu = mtuForInterface(out.IsCYOA, out.IsDIA)
+	}
+	return out, nil
 }
 
 func (i Interface) IsLoopback() bool {
@@ -153,7 +163,6 @@ func (i Interface) GetParent() (Interface, error) {
 	}
 	return Interface{
 		Name:                 parentName,
-		Mtu:                  i.Mtu,
 		IsSubInterface:       false,
 		IsSubInterfaceParent: true,
 		InterfaceType:        i.InterfaceType,
@@ -198,10 +207,10 @@ type Device struct {
 	LocationCode    string
 }
 
-func NewDevice(ip net.IP, publicKey string) *Device {
-	tunnels := []*Tunnel{}
+func NewDevice(ip net.IP, publicKey string, tunnelSlots int) *Device {
+	tunnels := make([]*Tunnel, 0, tunnelSlots)
 	devicePathologies := []string{}
-	for i := 0; i < config.MaxUserTunnelSlots; i++ {
+	for i := 0; i < tunnelSlots; i++ {
 		id := config.StartUserTunnelNum + i
 		tunnel := &Tunnel{
 			Id:        id,
@@ -213,7 +222,7 @@ func NewDevice(ip net.IP, publicKey string) *Device {
 		PublicIP:          ip,
 		PubKey:            publicKey,
 		Tunnels:           tunnels,
-		TunnelSlots:       config.MaxUserTunnelSlots,
+		TunnelSlots:       tunnelSlots,
 		DevicePathologies: devicePathologies,
 	}
 }
@@ -242,6 +251,9 @@ type Tunnel struct {
 	MulticastBoundaryList []net.IP
 	MulticastSubscribers  []net.IP
 	MulticastPublishers   []net.IP
+	// RFC-18: tenant identification and topology color stamping
+	TenantPubKey         string
+	TenantTopologyColors string // e.g. "color 1" or "color 1 color 3", empty if flex-algo disabled
 }
 
 // bgpMartianNets contains the standard BGP martian prefixes — addresses that
@@ -292,6 +304,18 @@ func (StringsHelper) ToUpper(s string) string {
 	return strings.ToUpper(s)
 }
 
+func (StringsHelper) Join(sep string, parts []string) string {
+	return strings.Join(parts, sep)
+}
+
+func (StringsHelper) ToUpperEach(parts []string) []string {
+	result := make([]string, len(parts))
+	for i, s := range parts {
+		result[i] = strings.ToUpper(s)
+	}
+	return result
+}
+
 type templateData struct {
 	Device                   *Device
 	Vpnv4BgpPeers            []BgpPeer
@@ -303,4 +327,26 @@ type templateData struct {
 	LocalASN                 uint32
 	UnicastVrfs              []uint16
 	Strings                  StringsHelper
+	AllTopologies            []TopologyModel
+	Config                   *FeaturesConfig // nil when no features config is loaded
+}
+
+// FlexAlgoEnabled returns true if a features config is loaded and flex_algo.enabled is set.
+func (d templateData) FlexAlgoEnabled() bool {
+	return d.Config != nil && d.Config.Features.FlexAlgo.Enabled
+}
+
+// TopologyModel holds pre-computed topology data for template rendering.
+type TopologyModel struct {
+	Name           string
+	AdminGroupBit  uint8
+	FlexAlgoNumber uint8
+	Color          int    // AdminGroupBit + 1
+	ConstraintStr  string // "include-any" or "exclude"
+}
+
+// FlexAlgoNodeSegmentModel holds pre-computed flex-algo node-segment data for template rendering.
+type FlexAlgoNodeSegmentModel struct {
+	NodeSegmentIdx uint16
+	TopologyName   string
 }

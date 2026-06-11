@@ -4,15 +4,17 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
         validate_code, validate_parse_bandwidth, validate_parse_delay_ms,
-        validate_parse_delay_override_ms, validate_parse_jitter_ms, validate_parse_mtu,
-        validate_pubkey, validate_pubkey_or_code,
+        validate_parse_delay_override_ms, validate_parse_jitter_ms, validate_pubkey,
+        validate_pubkey_or_code,
     },
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::commands::{
     contributor::get::GetContributorCommand,
     link::{get::GetLinkCommand, update::UpdateLinkCommand},
+    topology::list::ListTopologyCommand,
 };
 use doublezero_serviceability::state::link::LinkDesiredStatus;
 use eyre::eyre;
@@ -35,8 +37,8 @@ pub struct UpdateLinkCliCommand {
     /// Updated bandwidth (e.g. 1Gbps, 100Mbps)
     #[arg(long, value_parser = validate_parse_bandwidth)]
     pub bandwidth: Option<u64>,
-    /// Updated MTU (Maximum Transmission Unit) in bytes
-    #[arg(long, value_parser = validate_parse_mtu)]
+    /// Updated MTU (Maximum Transmission Unit) in bytes. Must be 9000.
+    #[arg(long)]
     pub mtu: Option<u32>,
     /// RTT (Round Trip Time) delay in milliseconds
     #[arg(long, value_parser = validate_parse_delay_ms)]
@@ -59,13 +61,24 @@ pub struct UpdateLinkCliCommand {
     /// Reassign tunnel network (foundation-only, e.g. 172.16.1.100/31)
     #[arg(long)]
     pub tunnel_net: Option<NetworkV4>,
+    /// Comma-separated topology names to tag this link with (foundation-only). Use "default" to clear.
+    #[arg(long)]
+    pub link_topology: Option<String>,
+    /// Mark this link as unicast-drained (contributor or foundation)
+    #[arg(long)]
+    pub unicast_drained: Option<bool>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
 }
 
 impl UpdateLinkCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -97,6 +110,12 @@ impl UpdateLinkCliCommand {
             .transpose()
             .map_err(|e| eyre!("Invalid status: {e}"))?;
 
+        if let Some(mtu) = self.mtu {
+            if mtu != 9000 {
+                return Err(eyre!("Link MTU must be 9000"));
+            }
+        }
+
         if let Some(ref code) = self.code {
             if link.code != *code
                 && client
@@ -109,6 +128,26 @@ impl UpdateLinkCliCommand {
             }
         }
 
+        let link_topologies = match self.link_topology {
+            None => None,
+            Some(ref names_str) if names_str.eq_ignore_ascii_case("default") => Some(vec![]),
+            Some(ref names_str) => {
+                let topology_map = client.list_topology(ListTopologyCommand)?;
+                let pubkeys: eyre::Result<Vec<_>> = names_str
+                    .split(',')
+                    .map(|name| {
+                        let name = name.trim().to_uppercase();
+                        topology_map
+                            .iter()
+                            .find(|(_, t)| t.name == name)
+                            .map(|(pk, _)| *pk)
+                            .ok_or_else(|| eyre!("Topology '{}' not found", name))
+                    })
+                    .collect();
+                Some(pubkeys?)
+            }
+        };
+
         let signature = client.update_link(UpdateLinkCommand {
             pubkey,
             code: self.code.clone(),
@@ -116,17 +155,21 @@ impl UpdateLinkCliCommand {
             tunnel_type,
             bandwidth: self.bandwidth,
             mtu: self.mtu,
-            delay_ns: self.delay_ms.map(|delay_ms| (delay_ms * 1000000.0) as u64),
+            delay_ns: self
+                .delay_ms
+                .map(|delay_ms| (delay_ms * 1_000_000.0) as u64),
             jitter_ns: self
                 .jitter_ms
-                .map(|jitter_ms| (jitter_ms * 1000000.0) as u64),
+                .map(|jitter_ms| (jitter_ms * 1_000_000.0) as u64),
             delay_override_ns: self
                 .delay_override_ms
-                .map(|delay_override_ms| (delay_override_ms * 1000000.0) as u64),
+                .map(|delay_override_ms| (delay_override_ms * 1_000_000.0) as u64),
             status,
             desired_status: self.desired_status,
             tunnel_id: self.tunnel_id,
             tunnel_net: self.tunnel_net,
+            link_topologies,
+            unicast_drained: self.unicast_drained,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -141,6 +184,8 @@ impl UpdateLinkCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand,
         link::update::UpdateLinkCliCommand,
@@ -193,10 +238,10 @@ mod tests {
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
-            bandwidth: 1000000000,
-            mtu: 1500,
-            delay_ns: 10000000000,
-            jitter_ns: 5000000000,
+            bandwidth: 1_000_000_000,
+            mtu: 9000,
+            delay_ns: 10_000_000_000,
+            jitter_ns: 5_000_000_000,
             delay_override_ns: 0,
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
@@ -206,6 +251,8 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+            link_topologies: vec![],
+            link_flags: 0,
         };
 
         let link2 = Link {
@@ -217,10 +264,10 @@ mod tests {
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
-            bandwidth: 1000000000,
-            mtu: 1500,
-            delay_ns: 10000000000,
-            jitter_ns: 5000000000,
+            bandwidth: 1_000_000_000,
+            mtu: 9000,
+            delay_ns: 10_000_000_000,
+            jitter_ns: 5_000_000_000,
             delay_override_ns: 0,
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
@@ -230,6 +277,8 @@ mod tests {
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+            link_topologies: vec![],
+            link_flags: 0,
         };
 
         client
@@ -267,37 +316,44 @@ mod tests {
                 code: Some("new_code".to_string()),
                 contributor_pk: Some(contributor_pk),
                 tunnel_type: None,
-                bandwidth: Some(1000000000),
-                mtu: Some(1500),
-                delay_ns: Some(10000000),
-                jitter_ns: Some(5000000),
+                bandwidth: Some(1_000_000_000),
+                mtu: Some(9000),
+                delay_ns: Some(10_000_000),
+                jitter_ns: Some(5_000_000),
                 delay_override_ns: None,
                 status: None,
                 desired_status: None,
                 tunnel_id: None,
                 tunnel_net: None,
+                link_topologies: None,
+                unicast_drained: None,
             }))
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdateLinkCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: Some("new_code".to_string()),
-            contributor: Some(contributor_pk.to_string()),
-            tunnel_type: None,
-            bandwidth: Some(1000000000),
-            mtu: Some(1500),
-            delay_ms: Some(10.0),
-            jitter_ms: Some(5.0),
-            delay_override_ms: None,
-            status: None,
-            desired_status: None,
-            tunnel_id: None,
-            tunnel_net: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateLinkCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: Some("new_code".to_string()),
+                contributor: Some(contributor_pk.to_string()),
+                tunnel_type: None,
+                bandwidth: Some(1_000_000_000),
+                mtu: Some(9000),
+                delay_ms: Some(10.0),
+                jitter_ms: Some(5.0),
+                delay_override_ms: None,
+                status: None,
+                desired_status: None,
+                tunnel_id: None,
+                tunnel_net: None,
+                link_topology: None,
+                unicast_drained: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -306,23 +362,27 @@ mod tests {
 
         // try to rename code to an existing one
         let mut output = Vec::new();
-        let res = UpdateLinkCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: Some("test2".to_string()),
-            contributor: Some(contributor_pk.to_string()),
-            tunnel_type: None,
-            bandwidth: Some(1000000000),
-            mtu: Some(1500),
-            delay_ms: Some(10.0),
-            jitter_ms: Some(5.0),
-            delay_override_ms: None,
-            status: None,
-            desired_status: None,
-            tunnel_id: None,
-            tunnel_net: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateLinkCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: Some("test2".to_string()),
+                contributor: Some(contributor_pk.to_string()),
+                tunnel_type: None,
+                bandwidth: Some(1_000_000_000),
+                mtu: Some(9000),
+                delay_ms: Some(10.0),
+                jitter_ms: Some(5.0),
+                delay_override_ms: None,
+                status: None,
+                desired_status: None,
+                tunnel_id: None,
+                tunnel_net: None,
+                link_topology: None,
+                unicast_drained: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert_eq!(
             res.unwrap_err().to_string(),
             "Link with code 'test2' already exists"

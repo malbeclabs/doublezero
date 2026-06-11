@@ -1,9 +1,6 @@
-use crate::{
-    doublezerocommand::CliCommand,
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::validate_pubkey_or_code,
-};
+use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
+use doublezero_cli_core::{require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::{
     accesspass::{list::ListAccessPassCommand, set::SetAccessPassCommand},
     tenant::{delete::DeleteTenantCommand, get::GetTenantCommand},
@@ -25,10 +22,19 @@ pub struct DeleteTenantCliCommand {
 }
 
 impl DeleteTenantCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
+        // Fetch the tenant once; get_tenant accepts a pubkey or code and
+        // returns the canonical pubkey plus the full tenant.
         let (tenant_pubkey, tenant) = client.get_tenant(GetTenantCommand {
             pubkey_or_code: self.pubkey.clone(),
         })?;
@@ -64,7 +70,7 @@ impl DeleteTenantCliCommand {
                 spinner.println(format!("Deleting {} user(s)...", tenant_users.len()));
 
                 for user_pk in &tenant_users {
-                    spinner.set_message(format!("Deleting user {}", user_pk));
+                    spinner.set_message(format!("Deleting user {user_pk}"));
                     client.delete_user(DeleteUserCommand { pubkey: *user_pk })?;
                     spinner.inc(1);
                 }
@@ -105,6 +111,8 @@ impl DeleteTenantCliCommand {
                         last_access_epoch: ap.last_access_epoch,
                         allow_multiple_ip: ap.allow_multiple_ip(),
                         tenant: Pubkey::default(),
+                        max_unicast_users: ap.max_unicast_users,
+                        max_multicast_users: ap.max_multicast_users,
                     })?;
                     spinner.inc(1);
                 }
@@ -112,7 +120,7 @@ impl DeleteTenantCliCommand {
                 spinner.finish_with_message("Done cleaning up access passes");
             }
 
-            // 3. Wait for activator to process close accounts (reference_count reaches 0)
+            // 3. Wait for account closures to be processed (reference_count reaches 0)
             if !tenant_users.is_empty() {
                 let spinner = ProgressBar::new_spinner();
                 spinner.set_style(
@@ -122,7 +130,7 @@ impl DeleteTenantCliCommand {
                         .tick_strings(&["-", "\\", "|", "/"]),
                 );
                 spinner.enable_steady_tick(Duration::from_millis(100));
-                spinner.set_message("Waiting for activator to process account closures...");
+                spinner.set_message("Waiting for account closures to be processed...");
 
                 // Poll tenant reference_count with exponential backoff
                 let max_attempts = 8; // 1+2+4+8+16+32+32+32 = 127 seconds max
@@ -133,7 +141,7 @@ impl DeleteTenantCliCommand {
                     std::thread::sleep(delay);
 
                     let (_, current_tenant) = client.get_tenant(GetTenantCommand {
-                        pubkey_or_code: self.pubkey.clone(),
+                        pubkey_or_code: tenant_pubkey.to_string(),
                     })?;
 
                     if current_tenant.reference_count == 0 {
@@ -152,7 +160,7 @@ impl DeleteTenantCliCommand {
                     delay = (delay * 2).min(max_delay);
                 }
 
-                spinner.finish_with_message("Activator processing complete");
+                spinner.finish_with_message("Account closure processing complete");
             }
         } else {
             // When not cascading user deletion, still clean up access passes
@@ -188,6 +196,8 @@ impl DeleteTenantCliCommand {
                         last_access_epoch: ap.last_access_epoch,
                         allow_multiple_ip: ap.allow_multiple_ip(),
                         tenant: Pubkey::default(),
+                        max_unicast_users: ap.max_unicast_users,
+                        max_multicast_users: ap.max_multicast_users,
                     })?;
                     spinner.inc(1);
                 }
@@ -196,7 +206,9 @@ impl DeleteTenantCliCommand {
             }
         }
 
-        // Execute the DeleteTenant transaction
+        // Execute the DeleteTenant transaction. The bespoke two-line output
+        // (header + indented signature) is preserved here rather than going
+        // through `print_signature`, which writes a single canonical line.
         let signature = client.delete_tenant(DeleteTenantCommand {
             tenant_pubkey,
             allow_delete_users: false, // We already handled deletion above
@@ -217,6 +229,7 @@ mod tests {
         tenant::delete::DeleteTenantCliCommand,
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
         commands::tenant::{delete::DeleteTenantCommand, get::GetTenantCommand},
         AccountType,
@@ -252,6 +265,7 @@ mod tests {
             metro_routing: false,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
 
         client
@@ -279,13 +293,15 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = DeleteTenantCliCommand {
-            pubkey: tenant_pubkey.to_string(),
-            allow_delete_users: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            DeleteTenantCliCommand {
+                pubkey: tenant_pubkey.to_string(),
+                allow_delete_users: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("Tenant 'test' deleted successfully"));
@@ -311,6 +327,7 @@ mod tests {
             metro_routing: false,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
 
         client
@@ -324,13 +341,15 @@ mod tests {
             }))
             .returning(move |_| Ok((tenant_pubkey, tenant.clone())));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = DeleteTenantCliCommand {
-            pubkey: tenant_pubkey.to_string(),
-            allow_delete_users: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            DeleteTenantCliCommand {
+                pubkey: tenant_pubkey.to_string(),
+                allow_delete_users: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
     }
 
@@ -360,6 +379,7 @@ mod tests {
             metro_routing: false,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
 
         let user = User {
@@ -380,6 +400,11 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let tenant_after = Tenant {
@@ -394,7 +419,7 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
 
-        // First get_tenant call
+        // Initial get_tenant call
         let tenant_cloned = tenant.clone();
         client
             .expect_get_tenant()
@@ -453,13 +478,15 @@ mod tests {
             }))
             .returning(move |_| Ok(signature));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = DeleteTenantCliCommand {
-            pubkey: tenant_pubkey.to_string(),
-            allow_delete_users: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            DeleteTenantCliCommand {
+                pubkey: tenant_pubkey.to_string(),
+                allow_delete_users: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
     }
 }

@@ -1,3 +1,9 @@
+use crate::doublezerocommand::CliCommand;
+use chrono::{TimeZone, Utc};
+use doublezero_sdk::commands::{
+    contributor::get::GetContributorCommand, exchange::get::GetExchangeCommand,
+    location::get::GetLocationCommand, tenant::get::GetTenantCommand,
+};
 use std::{
     io::{Read, Write},
     str,
@@ -11,6 +17,20 @@ use std::{
     time::Duration,
 };
 
+pub fn slot_to_datetime<C: CliCommand>(client: &C, slot: u64) -> String {
+    if slot == 0 {
+        return "never".to_string();
+    }
+    match client.get_block_time(slot) {
+        Ok(Some(ts)) => Utc
+            .timestamp_opt(ts, 0)
+            .single()
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+            .unwrap_or_else(|| slot.to_string()),
+        _ => slot.to_string(),
+    }
+}
+
 pub fn parse_pubkey(input: &str) -> Option<Pubkey> {
     if input.len() < 43 || input.len() > 44 {
         return None;
@@ -19,8 +39,54 @@ pub fn parse_pubkey(input: &str) -> Option<Pubkey> {
     Pubkey::from_str(input).ok()
 }
 
+/// Resolve a `--pubkey`/`--code` argument to the location's on-chain pubkey.
+///
+/// Update and delete verbs accept either a base58 pubkey or a location code.
+/// In both cases the backend is queried for the account so the verb can
+/// reuse the returned pubkey on the mutating call without having to parse
+/// the input itself.
+pub fn resolve_location_pk<C: CliCommand>(
+    client: &C,
+    pubkey_or_code: &str,
+) -> eyre::Result<Pubkey> {
+    let (pubkey, _) = client.get_location(GetLocationCommand {
+        pubkey_or_code: pubkey_or_code.to_string(),
+    })?;
+    Ok(pubkey)
+}
+
+/// Resolve a `--pubkey`/`--code` argument to the exchange's on-chain pubkey.
+pub fn resolve_exchange_pk<C: CliCommand>(
+    client: &C,
+    pubkey_or_code: &str,
+) -> eyre::Result<Pubkey> {
+    let (pubkey, _) = client.get_exchange(GetExchangeCommand {
+        pubkey_or_code: pubkey_or_code.to_string(),
+    })?;
+    Ok(pubkey)
+}
+
+/// Resolve a `--pubkey`/`--code` argument to the contributor's on-chain pubkey.
+pub fn resolve_contributor_pk<C: CliCommand>(
+    client: &C,
+    pubkey_or_code: &str,
+) -> eyre::Result<Pubkey> {
+    let (pubkey, _) = client.get_contributor(GetContributorCommand {
+        pubkey_or_code: pubkey_or_code.to_string(),
+    })?;
+    Ok(pubkey)
+}
+
+/// Resolve a `--pubkey`/`--code` argument to the tenant's on-chain pubkey.
+pub fn resolve_tenant_pk<C: CliCommand>(client: &C, pubkey_or_code: &str) -> eyre::Result<Pubkey> {
+    let (pubkey, _) = client.get_tenant(GetTenantCommand {
+        pubkey_or_code: pubkey_or_code.to_string(),
+    })?;
+    Ok(pubkey)
+}
+
 pub fn print_error(e: eyre::Report) {
-    eprintln!("\nError: {e:?}\n");
+    tracing::error!("{e:?}");
 }
 
 pub fn get_public_ipv4() -> Result<String, Box<dyn std::error::Error>> {
@@ -71,7 +137,7 @@ pub fn init_command(len: u64) -> ProgressBar {
     );
     spinner.enable_steady_tick(Duration::from_millis(100));
 
-    spinner.println("DoubleZero Service Provisioning");
+    spinner.println("DoubleZero Network");
 
     spinner
 }

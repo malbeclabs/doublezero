@@ -29,7 +29,7 @@ const (
 	//
 	// When the buffer is full reaches this capacity, the calls to `Add` will block until the
 	// buffer has space again.
-	partitionBufferCapacity = telemetry.MaxSamplesPerBatch
+	partitionBufferCapacity = telemetry.MaxInternetLatencySamplesPerBatch
 )
 
 type ServiceabilityProgramClient interface {

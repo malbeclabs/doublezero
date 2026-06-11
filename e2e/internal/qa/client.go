@@ -17,7 +17,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -70,14 +70,30 @@ func FindIBRLStatus(statuses []*pb.Status) *pb.Status {
 	return nil
 }
 
+// FindMulticastStatus returns the first Multicast status from the given list.
+func FindMulticastStatus(statuses []*pb.Status) *pb.Status {
+	for _, s := range statuses {
+		if s.UserType == "Multicast" {
+			return s
+		}
+	}
+	return nil
+}
+
 type Device struct {
-	PubKey       string
-	Code         string
-	ExchangeCode string
-	MaxUsers     int
-	UsersCount   int
-	Status       serviceability.DeviceStatus
-	DeviceType   serviceability.DeviceDeviceType
+	PubKey                    string
+	Code                      string
+	ExchangeCode              string
+	MaxUsers                  int
+	UsersCount                int
+	MaxUnicastUsers           int
+	UnicastUsersCount         int
+	MaxMulticastPublishers    int
+	MulticastPublishersCount  int
+	MaxMulticastSubscribers   int
+	MulticastSubscribersCount int
+	Status                    serviceability.DeviceStatus
+	DeviceType                serviceability.DeviceDeviceType
 }
 
 type Client struct {
@@ -101,6 +117,15 @@ type Client struct {
 	// Exported as a simple configuration field (unlike publicIP which uses a setter
 	// because it has a non-nil invariant enforced by SetPublicIP).
 	ClientIP string
+
+	// Settlement config passed to doublezero-solana shreds commands.
+	// SolanaRPCURL is the Solana RPC endpoint for settlement transactions (--url).
+	// On testnet this is the DZ ledger URL; on mainnet it's the public Solana RPC.
+	SolanaRPCURL               string
+	ShredSubscriptionProgramID string
+	DZLedgerURL                string
+	USDCMint                   string
+	Keypair                    string
 }
 
 func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int, networkConfig *config.NetworkConfig, devices map[string]*Device, allocateAddr bool) (*Client, error) {
@@ -125,6 +150,14 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 
 	serviceabilityClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 
+	// Settlement transactions on testnet/devnet use the DZ ledger RPC endpoint
+	// (which hosts the settlement programs). Mainnet and localnet use the
+	// standard Solana RPC.
+	solanaRPCURL := networkConfig.SolanaRPCURL
+	if networkConfig.Moniker == config.EnvTestnet || networkConfig.Moniker == config.EnvDevnet {
+		solanaRPCURL = networkConfig.LedgerPublicRPCURL
+	}
+
 	return &Client{
 		log:            log,
 		grpcClient:     grpcClient,
@@ -133,8 +166,12 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 		serviceability: serviceabilityClient,
 		devices:        devices,
 
-		Host:         hostname,
-		AllocateAddr: allocateAddr,
+		Host:                       hostname,
+		AllocateAddr:               allocateAddr,
+		SolanaRPCURL:               solanaRPCURL,
+		ShredSubscriptionProgramID: networkConfig.ShredSubscriptionProgramID,
+		DZLedgerURL:                networkConfig.LedgerPublicRPCURL,
+		USDCMint:                   networkConfig.USDCMint,
 	}, nil
 }
 
@@ -184,7 +221,7 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	// Always try disconnecting, even if it looks like the user is already disconnected.
 	// We do this to handle the case where the client thinks it's disconnected but the user exists
 	// onchain, which can happen if the previous connect attempt timed out in the CLI but eventually
-	// succeeded in the activator.
+	// succeeded onchain.
 	ctx, cancel := context.WithTimeout(ctx, disconnectTimeout)
 	defer cancel()
 	_, err = c.grpcClient.Disconnect(ctx, &emptypb.Empty{})
@@ -330,6 +367,39 @@ func (c *Client) WaitForStatusUp(ctx context.Context) error {
 	return nil
 }
 
+// WaitForUnicastStatusUp polls until a Unicast (IBRL) status entry exists and
+// its session is up. Prefer this over WaitForStatusUp in multi-tunnel contexts
+// where other tunnel types may already be present.
+func (c *Client) WaitForUnicastStatusUp(ctx context.Context) error {
+	return c.waitForUserTypeStatusUp(ctx, "IBRL", FindIBRLStatus)
+}
+
+// WaitForMulticastStatusUp polls until a Multicast status entry exists and
+// its session is up. Prefer this over WaitForStatusUp in multi-tunnel contexts
+// where other tunnel types may already be present.
+func (c *Client) WaitForMulticastStatusUp(ctx context.Context) error {
+	return c.waitForUserTypeStatusUp(ctx, "Multicast", FindMulticastStatus)
+}
+
+// waitForUserTypeStatusUp polls until find returns a non-nil status whose
+// session is up. userType is used only for log context.
+func (c *Client) waitForUserTypeStatusUp(ctx context.Context, userType string, find func([]*pb.Status) *pb.Status) error {
+	c.log.Debug("Waiting for status to be up", "host", c.Host, "userType", userType)
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
+		if err != nil {
+			return false, err
+		}
+		s := find(resp.Status)
+		return s != nil && IsStatusUp(s.SessionStatus), nil
+	}, waitForStatusUpTimeout, waitInterval)
+	if err != nil {
+		return fmt.Errorf("failed to wait for %s status to be up on host %s: %w", userType, c.Host, err)
+	}
+	c.log.Debug("Confirmed status is up", "host", c.Host, "userType", userType)
+	return nil
+}
+
 // WaitForAllStatusesUp polls until all tunnel statuses are up and at least
 // minExpected statuses exist. Sets doubleZeroIP from the IBRL status preferentially.
 func (c *Client) WaitForAllStatusesUp(ctx context.Context, minExpected int) error {
@@ -403,6 +473,62 @@ func (c *Client) WaitForStatusDisconnected(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for status to be disconnected on host %s: %w", c.Host, err)
 	}
 	c.log.Debug("Confirmed status is disconnected", "host", c.Host)
+	return nil
+}
+
+// WaitForMulticastStatusDisconnected polls until the Multicast status entry is
+// either absent from the status list or has session status disconnected.
+// Prefer this over WaitForStatusDisconnected in multi-tunnel contexts where
+// other tunnel types (e.g. IBRL) remain up after a multicast seat is withdrawn.
+func (c *Client) WaitForMulticastStatusDisconnected(ctx context.Context) error {
+	return c.waitForUserTypeStatusDisconnected(ctx, "Multicast", FindMulticastStatus)
+}
+
+// WaitForIBRLStatusDisconnected polls until no IBRL (or IBRLWithAllocatedIP)
+// status entry remains with a non-disconnected session. Non-IBRL tunnel types
+// (e.g. Multicast) are ignored. Prefer this over WaitForStatusDisconnected in
+// multi-tunnel contexts where a Multicast tunnel can persist independently of
+// the unicast lifecycle — e.g. when a stale shred-subscription seat cannot be
+// withdrawn and its multicast tunnel stays up. Walks the status list directly
+// rather than reusing FindIBRLStatus, which has a single-status fallback that
+// would misclassify a lone Multicast entry as IBRL.
+func (c *Client) WaitForIBRLStatusDisconnected(ctx context.Context) error {
+	c.log.Debug("Waiting for IBRL status to be disconnected", "host", c.Host)
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
+		if err != nil {
+			return false, err
+		}
+		for _, s := range resp.Status {
+			if IsIBRLStatus(s) && s.SessionStatus != UserStatusDisconnected {
+				return false, nil
+			}
+		}
+		return true, nil
+	}, waitForStatusDisconnectedTimeout, waitInterval)
+	if err != nil {
+		return fmt.Errorf("failed to wait for IBRL status to be disconnected on host %s: %w", c.Host, err)
+	}
+	c.log.Debug("Confirmed IBRL status is disconnected", "host", c.Host)
+	return nil
+}
+
+// waitForUserTypeStatusDisconnected polls until find returns nil or a status
+// whose session is disconnected. userType is used only for log context.
+func (c *Client) waitForUserTypeStatusDisconnected(ctx context.Context, userType string, find func([]*pb.Status) *pb.Status) error {
+	c.log.Debug("Waiting for status to be disconnected", "host", c.Host, "userType", userType)
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
+		if err != nil {
+			return false, err
+		}
+		s := find(resp.Status)
+		return s == nil || s.SessionStatus == UserStatusDisconnected, nil
+	}, waitForStatusDisconnectedTimeout, waitInterval)
+	if err != nil {
+		return fmt.Errorf("failed to wait for %s status to be disconnected on host %s: %w", userType, c.Host, err)
+	}
+	c.log.Debug("Confirmed status is disconnected", "host", c.Host, "userType", userType)
 	return nil
 }
 

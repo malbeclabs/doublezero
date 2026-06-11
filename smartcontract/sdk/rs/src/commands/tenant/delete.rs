@@ -53,11 +53,13 @@ impl DeleteTenantCommand {
                     last_access_epoch: ap.last_access_epoch,
                     allow_multiple_ip: ap.allow_multiple_ip(),
                     tenant: Pubkey::default(),
+                    max_unicast_users: ap.max_unicast_users,
+                    max_multicast_users: ap.max_multicast_users,
                 }
                 .execute(client)?;
             }
 
-            // 3. Wait for activator to process close accounts (reference_count reaches 0)
+            // 3. Wait for account closures to be processed (reference_count reaches 0)
             if !tenant_users.is_empty() {
                 let tenant_pubkey = self.tenant_pubkey;
                 let builder = ExponentialBuilder::new()
@@ -96,6 +98,8 @@ impl DeleteTenantCommand {
                     last_access_epoch: ap.last_access_epoch,
                     allow_multiple_ip: ap.allow_multiple_ip(),
                     tenant: Pubkey::default(),
+                    max_unicast_users: ap.max_unicast_users,
+                    max_multicast_users: ap.max_multicast_users,
                 }
                 .execute(client)?;
             }
@@ -136,6 +140,7 @@ mod tests {
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
             accounttype::AccountType,
+            device::Device,
             tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
             user::{User, UserCYOA, UserStatus, UserType},
         },
@@ -187,6 +192,7 @@ mod tests {
 
         let tenant_pubkey = Pubkey::new_unique();
         let user_pubkey = Pubkey::new_unique();
+        let device_pk = Pubkey::new_unique();
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
         let (vrf_ids_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
@@ -199,7 +205,7 @@ mod tests {
             index: 1,
             tenant_pk: tenant_pubkey,
             user_type: UserType::IBRL,
-            device_pk: Pubkey::default(),
+            device_pk,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip,
             dz_ip: client_ip,
@@ -210,6 +216,11 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(
@@ -231,6 +242,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![tenant_pubkey],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         let tenant_after = Tenant {
@@ -246,6 +261,7 @@ mod tests {
             metro_routing: false,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
 
         let mut seq = Sequence::new();
@@ -286,11 +302,27 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(|_| Ok(HashMap::new()));
 
-        // 4. DeleteUserCommand internally: execute_transaction(DeleteUser)
+        // 4. DeleteUserCommand internally: get(device_pk) for dz_prefixes count
+        let device = Device {
+            account_type: AccountType::Device,
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(device_pk))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
+
+        // 5. DeleteUserCommand internally: execute_transaction(DeleteUser)
         client
             .expect_execute_transaction()
             .with(
-                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs::default())),
+                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+                    dz_prefix_count: 1,
+                    multicast_publisher_count: 1,
+                })),
                 predicate::always(),
             )
             .times(1)
@@ -322,6 +354,8 @@ mod tests {
                     client_ip: Ipv4Addr::UNSPECIFIED,
                     last_access_epoch: 0,
                     allow_multiple_ip: false,
+                    max_unicast_users: 1,
+                    max_multicast_users: 1,
                 })),
                 predicate::always(),
             )
@@ -388,6 +422,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![tenant_pubkey],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         let mut seq = Sequence::new();
@@ -398,6 +436,18 @@ mod tests {
             .expect_get()
             .with(predicate::eq(accesspass_pubkey))
             .returning(move |_| Ok(AccountData::AccessPass(ap_for_get.clone())));
+
+        // GetAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
+        // exists there, so it falls back to the exact-IP PDA above.
+        let (dynamic_accesspass_pubkey, _) = get_accesspass_pda(
+            &client.get_program_id(),
+            &Ipv4Addr::UNSPECIFIED,
+            &client.get_payer(),
+        );
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_accesspass_pubkey))
+            .returning(|_| Err(eyre::eyre!("account not found")));
 
         // 1. ListAccessPassCommand: gets(AccountType::AccessPass)
         let ap_for_list = accesspass.clone();
@@ -424,6 +474,8 @@ mod tests {
                     client_ip,
                     last_access_epoch: 0,
                     allow_multiple_ip: false,
+                    max_unicast_users: 1,
+                    max_multicast_users: 1,
                 })),
                 predicate::always(),
             )

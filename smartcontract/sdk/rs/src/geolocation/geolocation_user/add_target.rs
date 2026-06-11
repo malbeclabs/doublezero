@@ -27,7 +27,7 @@ impl AddTargetCommand {
             validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 
         match self.target_type {
-            GeoLocationTargetType::Outbound => {
+            GeoLocationTargetType::Outbound | GeoLocationTargetType::OutboundIcmp => {
                 validate_public_ip(&self.ip_address)?;
             }
             GeoLocationTargetType::Inbound => {

@@ -38,7 +38,7 @@ export const ACCOUNT_TYPE_PERMISSION = 15;
 // ---------------------------------------------------------------------------
 
 const LOCATION_STATUS_NAMES: Record<number, string> = {
-  0: "pending",
+  0: "pending (deprecated)",
   1: "activated",
   2: "suspended",
 };
@@ -47,7 +47,7 @@ export function locationStatusString(v: number): string {
 }
 
 const EXCHANGE_STATUS_NAMES: Record<number, string> = {
-  0: "pending",
+  0: "pending (deprecated)",
   1: "activated",
   2: "suspended",
 };
@@ -65,10 +65,10 @@ export function deviceDeviceTypeString(v: number): string {
 }
 
 const DEVICE_STATUS_NAMES: Record<number, string> = {
-  0: "pending",
+  0: "pending (deprecated)",
   1: "activated",
   2: "deleting",
-  3: "rejected",
+  3: "rejected (deprecated)",
   4: "drained",
   5: "device-provisioning",
   6: "link-provisioning",
@@ -167,10 +167,10 @@ export function linkLinkTypeString(v: number): string {
 }
 
 const LINK_STATUS_NAMES: Record<number, string> = {
-  0: "pending",
+  0: "pending (deprecated)",
   1: "activated",
   3: "deleting",
-  4: "rejected",
+  4: "rejected (deprecated)",
   5: "requested",
   6: "hard-drained",
   7: "soft-drained",
@@ -233,25 +233,38 @@ export function cyoaTypeString(v: number): string {
 }
 
 const USER_STATUS_NAMES: Record<number, string> = {
-  0: "pending",
+  0: "pending (deprecated)",
   1: "activated",
   3: "deleting",
-  4: "rejected",
-  5: "pending_ban",
+  4: "rejected (deprecated)",
+  5: "pending_ban (deprecated)",
   6: "banned",
-  7: "updating",
+  7: "updating (deprecated)",
   8: "out_of_credits",
 };
 export function userStatusString(v: number): string {
   return USER_STATUS_NAMES[v] ?? "unknown";
 }
 
+export const BGP_STATUS_UNKNOWN = 0;
+export const BGP_STATUS_UP = 1;
+export const BGP_STATUS_DOWN = 2;
+
+const BGP_STATUS_NAMES: Record<number, string> = {
+  0: "unknown",
+  1: "up",
+  2: "down",
+};
+export function bgpStatusString(v: number): string {
+  return BGP_STATUS_NAMES[v] ?? "unknown";
+}
+
 const MULTICAST_GROUP_STATUS_NAMES: Record<number, string> = {
-  0: "pending",
+  0: "pending (deprecated)",
   1: "activated",
   2: "suspended",
   3: "deleting",
-  4: "rejected",
+  4: "rejected (deprecated)",
 };
 export function multicastGroupStatusString(v: number): string {
   return MULTICAST_GROUP_STATUS_NAMES[v] ?? "unknown";
@@ -261,9 +274,8 @@ const ACCESS_PASS_TYPE_TAG_NAMES: Record<number, string> = {
   0: "prepaid",
   1: "solana_validator",
   2: "solana_rpc",
-  3: "solana_multicast_publisher",
-  4: "solana_multicast_subscriber",
-  5: "others",
+  3: "others",
+  4: "edge_seat",
 };
 export function accessPassTypeTagString(v: number): string {
   return ACCESS_PASS_TYPE_TAG_NAMES[v] ?? "unknown";
@@ -273,7 +285,7 @@ const ACCESS_PASS_STATUS_NAMES: Record<number, string> = {
   0: "requested",
   1: "connected",
   2: "disconnected",
-  3: "expired",
+  3: "expired (deprecated)",
 };
 export function accessPassStatusString(v: number): string {
   return ACCESS_PASS_STATUS_NAMES[v] ?? "unknown";
@@ -457,7 +469,16 @@ export function deserializeExchange(data: Uint8Array): Exchange {
 // Interface (versioned, embedded in Device)
 // ---------------------------------------------------------------------------
 
+export interface FlexAlgoNodeSegment {
+  topology: PublicKey;
+  nodeSegmentIdx: number;
+}
+
 export interface DeviceInterface {
+  // size is the on-disk byte length of the size-prefixed encoding (u16 size +
+  // u8 version + body). Populated only when read via deserializeInterfaceSized;
+  // zero for legacy enum reads.
+  size: number;
   version: number;
   status: number;
   name: string;
@@ -473,12 +494,18 @@ export interface DeviceInterface {
   ipNet: Uint8Array;
   nodeSegmentIdx: number;
   userTunnelEndpoint: boolean;
+  flexAlgoNodeSegments?: FlexAlgoNodeSegment[];
 }
 
-const CURRENT_INTERFACE_VERSION = 2;
+// On-wire schema version for the size-prefixed Interface format
+// (matches Rust's CURRENT_INTERFACE_SCHEMA_VERSION). Note: prior to issue #3660
+// this constant gated the legacy enum reader at value 2 (max known disc=1); it
+// is now bumped to 4 to match the size-prefixed schema.
+const CURRENT_INTERFACE_VERSION = 4;
 
 function deserializeInterface(r: DefensiveReader): DeviceInterface {
   const iface: DeviceInterface = {
+    size: 0,
     version: 0,
     status: 0,
     name: "",
@@ -494,6 +521,7 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     ipNet: new Uint8Array(5),
     nodeSegmentIdx: 0,
     userTunnelEndpoint: false,
+    flexAlgoNodeSegments: [],
   };
 
   iface.version = r.readU8();
@@ -501,8 +529,11 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     return iface;
   }
 
+  // Discriminants: 0=V1, 1 or 2=V2. Discriminant 3 was a transient V3 format
+  // (V2 body + flex_algo_node_segments vec); the type is gone but pre-existing
+  // on-chain accounts still contain V3 entries, so we consume the bytes and
+  // project to V2 (segments dropped).
   if (iface.version === 0) {
-    // V1
     iface.status = r.readU8();
     iface.name = r.readString();
     iface.interfaceType = r.readU8();
@@ -511,8 +542,7 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
-  } else if (iface.version === 1) {
-    // V2
+  } else if (iface.version === 1 || iface.version === 2 || iface.version === 3) {
     iface.status = r.readU8();
     iface.name = r.readString();
     iface.interfaceType = r.readU8();
@@ -527,9 +557,80 @@ function deserializeInterface(r: DefensiveReader): DeviceInterface {
     iface.ipNet = r.readNetworkV4();
     iface.nodeSegmentIdx = r.readU16();
     iface.userTunnelEndpoint = r.readBool();
+    if (iface.version === 3) {
+      const segCount = r.readU32();
+      for (let i = 0; i < segCount; i++) {
+        if (r.remaining < 34) break;
+        readPubkey(r);
+        r.readU16();
+      }
+    }
   }
 
   return iface;
+}
+
+// deserializeInterfaceSized reads a single size-prefixed Interface element.
+//
+// Wire format: u16 size + u8 version + body, where size includes the 3-byte
+// prefix. Forward-compat readers always advance the cursor to start+size after
+// reading the known body fields, so unknown future versions are skipped in O(1).
+function deserializeInterfaceSized(r: DefensiveReader): DeviceInterface {
+  const start = r.offset;
+  const size = r.readU16();
+  const version = r.readU8();
+
+  // Body fields (current schema, version 4): same order as InterfaceV2, plus
+  // a trailing flex_algo_node_segments vec.
+  const status = r.readU8();
+  const name = r.readString();
+  const interfaceType = r.readU8();
+  const interfaceCyoa = r.readU8();
+  const interfaceDia = r.readU8();
+  const loopbackType = r.readU8();
+  const bandwidth = r.readU64();
+  const cir = r.readU64();
+  const mtu = r.readU16();
+  const routingMode = r.readU8();
+  const vlanId = r.readU16();
+  const ipNet = r.readNetworkV4();
+  const nodeSegmentIdx = r.readU16();
+  const userTunnelEndpoint = r.readBool();
+  const segCount = r.readU32();
+  const flexAlgoNodeSegments: FlexAlgoNodeSegment[] = [];
+  for (let i = 0; i < segCount; i++) {
+    if (r.remaining < 34) break; // 32 (pubkey) + 2 (u16) — defensive guard
+    flexAlgoNodeSegments.push({
+      topology: readPubkey(r),
+      nodeSegmentIdx: r.readU16(),
+    });
+  }
+
+  // Advance to start+size regardless of how many body bytes we consumed.
+  const target = start + size;
+  if (r.offset < target) {
+    r.readBytes(target - r.offset);
+  }
+
+  return {
+    size,
+    version,
+    status,
+    name,
+    interfaceType,
+    interfaceCyoa,
+    interfaceDia,
+    loopbackType,
+    bandwidth,
+    cir,
+    mtu,
+    routingMode,
+    vlanId,
+    ipNet,
+    nodeSegmentIdx,
+    userTunnelEndpoint,
+    flexAlgoNodeSegments,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -551,7 +652,7 @@ export interface Device {
   metricsPublisherPubKey: PublicKey;
   contributorPubKey: PublicKey;
   mgmtVrf: string;
-  interfaces: DeviceInterface[];
+  deprecatedInterfaces: DeviceInterface[];
   referenceCount: number;
   usersCount: number;
   maxUsers: number;
@@ -564,6 +665,11 @@ export interface Device {
   reservedSeats: number;
   multicastPublishersCount: number;
   maxMulticastPublishers: number;
+  // interfaces is the trailing size-prefixed vec parallel to deprecatedInterfaces.
+  // For legacy accounts (no trailing bytes), this is rebuilt from
+  // deprecatedInterfaces by deserializeDevice. When populated from the wire,
+  // length parity with deprecatedInterfaces is enforced.
+  interfaces: DeviceInterface[];
 }
 
 export function deserializeDevice(data: Uint8Array): Device {
@@ -584,9 +690,9 @@ export function deserializeDevice(data: Uint8Array): Device {
   const mgmtVrf = r.readString();
 
   const ifaceLen = r.readU32();
-  const interfaces: DeviceInterface[] = [];
+  const deprecatedInterfaces: DeviceInterface[] = [];
   for (let i = 0; i < ifaceLen; i++) {
-    interfaces.push(deserializeInterface(r));
+    deprecatedInterfaces.push(deserializeInterface(r));
   }
 
   const referenceCount = r.readU32();
@@ -601,6 +707,32 @@ export function deserializeDevice(data: Uint8Array): Device {
   const reservedSeats = r.readU16();
   const multicastPublishersCount = r.readU16();
   const maxMulticastPublishers = r.readU16();
+
+  // Trailing interfaces vec (size-prefixed). Empty trailing => rebuild from
+  // deprecatedInterfaces. Non-empty trailing whose declared length differs from
+  // deprecatedInterfaces length is a corrupt-account condition.
+  let interfaces: DeviceInterface[];
+  if (r.remaining === 0) {
+    interfaces = deprecatedInterfaces.map((legacy) => ({
+      ...legacy,
+      size: 0,
+      version: CURRENT_INTERFACE_VERSION,
+      flexAlgoNodeSegments: legacy.flexAlgoNodeSegments
+        ? [...legacy.flexAlgoNodeSegments]
+        : [],
+    }));
+  } else {
+    const newLen = r.readU32();
+    if (newLen !== deprecatedInterfaces.length) {
+      throw new Error(
+        `Device interfaces length ${newLen} != deprecatedInterfaces length ${deprecatedInterfaces.length}`,
+      );
+    }
+    interfaces = [];
+    for (let i = 0; i < newLen; i++) {
+      interfaces.push(deserializeInterfaceSized(r));
+    }
+  }
 
   return {
     accountType,
@@ -617,7 +749,7 @@ export function deserializeDevice(data: Uint8Array): Device {
     metricsPublisherPubKey,
     contributorPubKey,
     mgmtVrf,
-    interfaces,
+    deprecatedInterfaces,
     referenceCount,
     usersCount,
     maxUsers,
@@ -630,6 +762,7 @@ export function deserializeDevice(data: Uint8Array): Device {
     reservedSeats,
     multicastPublishersCount,
     maxMulticastPublishers,
+    interfaces,
   };
 }
 
@@ -709,6 +842,16 @@ export interface User {
   publishers: PublicKey[];
   subscribers: PublicKey[];
   validatorPubKey: PublicKey;
+  tunnelEndpoint: Uint8Array;
+  tunnelFlags: number;
+  bgpStatus: number;
+  lastBgpUpAt: bigint;
+  lastBgpReportedAt: bigint;
+  /**
+   * Smoothed BGP TCP RTT in nanoseconds, as last reported by the device agent.
+   * 0 means no sample. Same unit as Link.delayNs.
+   */
+  bgpRttNs: bigint;
 }
 
 export function deserializeUser(data: Uint8Array): User {
@@ -730,6 +873,14 @@ export function deserializeUser(data: Uint8Array): User {
     publishers: readPubkeyVec(r),
     subscribers: readPubkeyVec(r),
     validatorPubKey: readPubkey(r),
+    tunnelEndpoint: r.readIPv4(),
+    tunnelFlags: r.readU8(),
+    bgpStatus: r.readU8(),
+    lastBgpUpAt: r.readU64(),
+    lastBgpReportedAt: r.readU64(),
+    // DefensiveReader returns 0n on EOF, so old accounts that predate
+    // bgpRttNs deserialize with the field defaulted to 0.
+    bgpRttNs: r.readU64(),
   };
 }
 
@@ -889,16 +1040,15 @@ export function deserializeTenant(data: Uint8Array): Tenant {
 export const ACCESS_PASS_TYPE_PREPAID = 0;
 export const ACCESS_PASS_TYPE_SOLANA_VALIDATOR = 1;
 export const ACCESS_PASS_TYPE_SOLANA_RPC = 2;
-export const ACCESS_PASS_TYPE_SOLANA_MULTICAST_PUBLISHER = 3;
-export const ACCESS_PASS_TYPE_SOLANA_MULTICAST_SUBSCRIBER = 4;
-export const ACCESS_PASS_TYPE_OTHERS = 5;
+export const ACCESS_PASS_TYPE_OTHERS = 3;
+export const ACCESS_PASS_TYPE_EDGE_SEAT = 4;
 
 export interface AccessPass {
   accountType: number;
   owner: PublicKey;
   bumpSeed: number;
   accessPassType: number;
-  associatedPubkey: PublicKey | null; // for SolanaValidator, SolanaRPC, SolanaMulticast*
+  associatedPubkey: PublicKey | null; // for SolanaValidator, SolanaRPC
   othersTypeName: string; // for Others variant
   othersKey: string; // for Others variant
   clientIp: Uint8Array;
@@ -910,6 +1060,10 @@ export interface AccessPass {
   mGroupSubAllowlist: PublicKey[];
   flags: number;
   tenantAllowlist: PublicKey[];
+  unicastUserCount: number;
+  maxUnicastUsers: number;
+  multicastUserCount: number;
+  maxMulticastUsers: number;
 }
 
 export function deserializeAccessPass(data: Uint8Array): AccessPass {
@@ -921,15 +1075,16 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
   let associatedPubkey: PublicKey | null = null;
   let othersTypeName = "";
   let othersKey = "";
-  // Variants 1-4 have an associated pubkey
-  if (accessPassType >= 1 && accessPassType <= 4) {
+  // SolanaValidator and SolanaRPC carry an associated pubkey.
+  if (accessPassType === 1 || accessPassType === 2) {
     associatedPubkey = readPubkey(r);
   }
-  // Variant 5 (Others) has two strings
-  else if (accessPassType === 5) {
+  // Others carries two strings (type_name, key).
+  else if (accessPassType === 3) {
     othersTypeName = r.readString();
     othersKey = r.readString();
   }
+  // Prepaid (0) and EdgeSeat (4) carry no associated data.
   const clientIp = r.readIPv4();
   const userPayer = readPubkey(r);
   const lastAccessEpoch = r.readU64();
@@ -939,6 +1094,11 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
   const mGroupSubAllowlist = readPubkeyVec(r);
   const flags = r.readU8();
   const tenantAllowlist = readPubkeyVec(r);
+  const unicastUserCount = r.readU16();
+  // Caps default to 1 when absent (pre-migration accounts), matching the program's unwrap_or(1).
+  const maxUnicastUsers = r.remaining >= 2 ? r.readU16() : 1;
+  const multicastUserCount = r.readU16();
+  const maxMulticastUsers = r.remaining >= 2 ? r.readU16() : 1;
   return {
     accountType,
     owner,
@@ -956,6 +1116,10 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
     mGroupSubAllowlist,
     flags,
     tenantAllowlist,
+    unicastUserCount,
+    maxUnicastUsers,
+    multicastUserCount,
+    maxMulticastUsers,
   };
 }
 

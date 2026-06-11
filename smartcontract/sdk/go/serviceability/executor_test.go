@@ -2,9 +2,12 @@ package serviceability
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -259,6 +262,37 @@ func TestBuildSetDeviceHealthInstruction(t *testing.T) {
 	assert.Equal(t, []byte{instructionSetDeviceHealth, byte(DeviceHealthReadyForUsers)}, data)
 }
 
+func TestBuildSetUserBGPStatusInstruction(t *testing.T) {
+	t.Parallel()
+
+	rpc := &mockRPCClient{}
+	executor, signer := newTestExecutor(t, rpc)
+
+	userPubkey := solana.NewWallet().PublicKey()
+	devicePubkey := solana.NewWallet().PublicKey()
+	const rttNs uint64 = 7_500_000 // 7.5 ms
+
+	instruction := executor.buildSetUserBGPStatusInstruction(userPubkey, devicePubkey, BGPStatusUp, rttNs)
+
+	assert.Equal(t, executor.programID, instruction.ProgramID())
+
+	accounts := instruction.Accounts()
+	require.Len(t, accounts, 4)
+	assert.Equal(t, userPubkey, accounts[0].PublicKey)
+	assert.True(t, accounts[0].IsWritable)
+	assert.Equal(t, devicePubkey, accounts[1].PublicKey)
+	assert.Equal(t, signer.PublicKey(), accounts[2].PublicKey)
+	assert.True(t, accounts[2].IsSigner)
+	assert.Equal(t, solana.SystemProgramID, accounts[3].PublicKey)
+
+	data, err := instruction.Data()
+	require.NoError(t, err)
+	require.Len(t, data, 10, "opcode (1) + status (1) + bgp_rtt_ns u64 LE (8) = 10")
+	assert.Equal(t, byte(instructionSetUserBGPStatus), data[0])
+	assert.Equal(t, byte(BGPStatusUp), data[1])
+	assert.Equal(t, rttNs, binary.LittleEndian.Uint64(data[2:]))
+}
+
 func TestBuildSetLinkHealthInstruction(t *testing.T) {
 	t.Parallel()
 
@@ -375,7 +409,7 @@ func makeInstructionError(instructionIndex int) *jsonrpc.RPCError {
 		Data: map[string]any{
 			"err": map[string]any{
 				"InstructionError": []any{
-					json.Number(string(rune('0' + instructionIndex))),
+					json.Number(fmt.Sprintf("%d", instructionIndex)),
 					map[string]any{
 						"Custom": json.Number("1001"),
 					},
@@ -718,4 +752,34 @@ func TestPermissionPDAInjection(t *testing.T) {
 
 		assert.Equal(t, 1, lookupCount, "permission PDA should be resolved exactly once")
 	})
+}
+
+// TestWaitForTransactionFinalizedSurfacesProgramError reproduces the
+// silent-program-error bug: a transaction that finalizes with a non-nil
+// Err in its signature status was previously treated as success, leading
+// callers to wait for an account that the program never created and
+// time out with a misleading "not visible" error. The fix returns the
+// program error directly from waitForTransactionFinalized.
+func TestWaitForTransactionFinalizedSurfacesProgramError(t *testing.T) {
+	t.Parallel()
+	programErr := map[string]any{
+		"InstructionError": []any{0, map[string]any{"Custom": 29}},
+	}
+	rpc := &mockRPCClient{
+		getSignatureStatusesFunc: func(_ context.Context, _ bool, _ ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
+			return &solanarpc.GetSignatureStatusesResult{
+				Value: []*solanarpc.SignatureStatusesResult{
+					{ConfirmationStatus: solanarpc.ConfirmationStatusFinalized, Err: programErr},
+				},
+			}, nil
+		},
+	}
+	exec, _ := newTestExecutor(t, rpc)
+	_, err := exec.waitForTransactionFinalized(context.Background(), solana.Signature{})
+	if err == nil {
+		t.Fatal("expected program-level error to surface; got nil")
+	}
+	if !strings.Contains(err.Error(), "transaction finalized with error") {
+		t.Errorf("error %q should mention the finalized-with-error path", err.Error())
+	}
 }

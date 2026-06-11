@@ -1,5 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
+use doublezero_cli_core::{render_record, CliContext, OutputFormat};
 use doublezero_sdk::commands::contributor::get::GetContributorCommand;
 use serde::Serialize;
 use std::io::Write;
@@ -26,7 +27,12 @@ struct ContributorDisplay {
 }
 
 impl GetContributorCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (pubkey, contributor) = client.get_contributor(GetContributorCommand {
             pubkey_or_code: self.code,
         })?;
@@ -40,25 +46,14 @@ impl GetContributorCliCommand {
             ops_manager_key: contributor.ops_manager_pk.to_string(),
         };
 
-        if self.json {
-            let json = serde_json::to_string_pretty(&display)?;
-            writeln!(out, "{json}")?;
-        } else {
-            let headers = ContributorDisplay::headers();
-            let fields = display.fields();
-            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
-            for (header, value) in headers.iter().zip(fields.iter()) {
-                writeln!(out, " {header:<max_len$} | {value}")?;
-            }
-        }
-
-        Ok(())
+        render_record(out, &display, OutputFormat::from_flags(self.json, false))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{contributor::get::GetContributorCliCommand, tests::utils::create_test_client};
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
         commands::contributor::get::GetContributorCommand, AccountType, Contributor,
         ContributorStatus,
@@ -106,22 +101,28 @@ mod tests {
             .expect_list_contributor()
             .returning(move |_| Ok(HashMap::from([(contributor1_pubkey, contributor1.clone())])));
 
+        let ctx = cli_context_default_for_tests();
+
         // Expected failure
         let mut output = Vec::new();
-        let res = GetContributorCliCommand {
-            code: Pubkey::new_unique().to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetContributorCliCommand {
+                code: Pubkey::new_unique().to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err(), "I shouldn't find anything.");
 
         // Expected success by pubkey (table)
         let mut output = Vec::new();
-        let res = GetContributorCliCommand {
-            code: contributor1_pubkey.to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetContributorCliCommand {
+                code: contributor1_pubkey.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -141,11 +142,13 @@ mod tests {
 
         // Expected success by code (JSON)
         let mut output = Vec::new();
-        let res = GetContributorCliCommand {
-            code: "test".to_string(),
-            json: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetContributorCliCommand {
+                code: "test".to_string(),
+                json: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by code");
         let json: serde_json::Value =
             serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();

@@ -22,18 +22,14 @@ use doublezero_sdk::{
             update::UpdateContributorCommand,
         },
         device::{
-            activate::ActivateDeviceCommand,
-            closeaccount::CloseAccountDeviceCommand,
             create::CreateDeviceCommand,
             delete::DeleteDeviceCommand,
             get::GetDeviceCommand,
             interface::{
-                activate::ActivateDeviceInterfaceCommand, create::CreateDeviceInterfaceCommand,
-                delete::DeleteDeviceInterfaceCommand, remove::RemoveDeviceInterfaceCommand,
+                create::CreateDeviceInterfaceCommand, delete::DeleteDeviceInterfaceCommand,
                 update::UpdateDeviceInterfaceCommand,
             },
             list::ListDeviceCommand,
-            reject::RejectDeviceCommand,
             sethealth::SetDeviceHealthCommand,
             update::UpdateDeviceCommand,
         },
@@ -49,11 +45,9 @@ use doublezero_sdk::{
             setversion::SetVersionCommand,
         },
         link::{
-            accept::AcceptLinkCommand, activate::ActivateLinkCommand,
-            closeaccount::CloseAccountLinkCommand, create::CreateLinkCommand,
-            delete::DeleteLinkCommand, get::GetLinkCommand, latency::LatencyLinkCommand,
-            list::ListLinkCommand, reject::RejectLinkCommand, sethealth::SetLinkHealthCommand,
-            update::UpdateLinkCommand,
+            accept::AcceptLinkCommand, create::CreateLinkCommand, delete::DeleteLinkCommand,
+            get::GetLinkCommand, latency::LatencyLinkCommand, list::ListLinkCommand,
+            sethealth::SetLinkHealthCommand, update::UpdateLinkCommand,
         },
         location::{
             create::CreateLocationCommand, delete::DeleteLocationCommand, get::GetLocationCommand,
@@ -61,7 +55,6 @@ use doublezero_sdk::{
         },
         migrate::MigrateCommand,
         multicastgroup::{
-            activate::ActivateMulticastGroupCommand,
             allowlist::{
                 publisher::{
                     add::AddMulticastGroupPubAllowlistCommand,
@@ -73,12 +66,10 @@ use doublezero_sdk::{
                 },
             },
             create::CreateMulticastGroupCommand,
-            deactivate::DeactivateMulticastGroupCommand,
             delete::DeleteMulticastGroupCommand,
             get::GetMulticastGroupCommand,
             list::ListMulticastGroupCommand,
-            reject::RejectMulticastGroupCommand,
-            subscribe::SubscribeMulticastGroupCommand,
+            subscribe::UpdateMulticastGroupRolesCommand,
             update::UpdateMulticastGroupCommand,
         },
         permission::{
@@ -89,8 +80,10 @@ use doublezero_sdk::{
         },
         programconfig::get::GetProgramConfigCommand,
         resource::{
-            allocate::AllocateResourceCommand, closeaccount::CloseResourceCommand,
-            create::CreateResourceCommand, deallocate::DeallocateResourceCommand,
+            allocate::AllocateResourceCommand,
+            closeaccount::{CloseResourceByPubkeyCommand, CloseResourceCommand},
+            create::CreateResourceCommand,
+            deallocate::DeallocateResourceCommand,
             get::GetResourceCommand,
         },
         tenant::{
@@ -99,6 +92,13 @@ use doublezero_sdk::{
             remove_administrator::RemoveAdministratorTenantCommand, update::UpdateTenantCommand,
             update_payment_status::UpdatePaymentStatusCommand,
         },
+        topology::{
+            assign_node_segments::AssignTopologyNodeSegmentsCommand,
+            clear::ClearTopologyCommand,
+            create::{CreateTopologyCommand, CreateTopologyResult},
+            delete::DeleteTopologyCommand,
+            list::ListTopologyCommand,
+        },
         user::{
             create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
             delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand,
@@ -106,8 +106,9 @@ use doublezero_sdk::{
         },
     },
     telemetry::LinkLatencyStats,
-    DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GetGlobalStateCommand,
-    GlobalConfig, GlobalState, Link, Location, MulticastGroup, ResourceExtensionOwned, User,
+    DZClient, DZTransaction, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand,
+    GetGlobalStateCommand, GlobalConfig, GlobalState, Link, Location, MulticastGroup,
+    ResourceExtensionOwned, TopologyInfo, User,
 };
 use doublezero_serviceability::state::{
     accesspass::AccessPass, accountdata::AccountData, contributor::Contributor,
@@ -122,6 +123,15 @@ use std::collections::HashMap;
 pub trait CliCommand {
     fn check_requirements(&self, checks: u8) -> eyre::Result<()>;
 
+    /// Whether a keypair source is available (CLI flag, env var, or piped stdin).
+    ///
+    /// Used by pre-flight checks to skip the default-path keypair file check
+    /// when an alternative source is present. Default is `false`; the binary
+    /// sets it at startup based on resolved inputs.
+    fn has_keypair_source(&self) -> bool {
+        false
+    }
+
     fn get_program_config(
         &self,
         cmd: GetProgramConfigCommand,
@@ -132,12 +142,15 @@ pub trait CliCommand {
     fn get_payer(&self) -> Pubkey;
     fn get_balance(&self) -> eyre::Result<u64>;
     fn get_epoch(&self) -> eyre::Result<u64>;
+    fn get_block_time(&self, slot: u64) -> eyre::Result<Option<i64>>;
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>>;
     fn get_account(&self, pubkey: Pubkey) -> eyre::Result<Account>;
     fn get_minimum_balance_for_rent_exemption(&self, data_len: usize) -> eyre::Result<u64>;
     fn get_multiple_accounts(&self, pubkeys: Vec<Pubkey>) -> eyre::Result<Vec<Option<Account>>>;
     fn transfer_sol(&self, to: Pubkey, lamports: u64) -> eyre::Result<Signature>;
     fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>>;
+    fn get_account_data(&self, pubkey: Pubkey) -> eyre::Result<AccountData>;
+    fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>>;
     fn get_program_accounts(
         &self,
         program_id: &Pubkey,
@@ -217,21 +230,11 @@ pub trait CliCommand {
     fn delete_device(&self, cmd: DeleteDeviceCommand) -> eyre::Result<Signature>;
     fn set_device_health(&self, cmd: SetDeviceHealthCommand) -> eyre::Result<Signature>;
 
-    fn activate_device(&self, cmd: ActivateDeviceCommand) -> eyre::Result<Signature>;
-    fn reject_device(&self, cmd: RejectDeviceCommand) -> eyre::Result<Signature>;
-    fn closeaccount_device(&self, cmd: CloseAccountDeviceCommand) -> eyre::Result<Signature>;
-
-    fn activate_device_interface(
-        &self,
-        cmd: ActivateDeviceInterfaceCommand,
-    ) -> eyre::Result<Signature>;
     fn create_device_interface(
         &self,
         cmd: CreateDeviceInterfaceCommand,
     ) -> eyre::Result<(Signature, Pubkey)>;
     fn delete_device_interface(&self, cmd: DeleteDeviceInterfaceCommand)
-        -> eyre::Result<Signature>;
-    fn remove_device_interface(&self, cmd: RemoveDeviceInterfaceCommand)
         -> eyre::Result<Signature>;
     fn update_device_interface(&self, cmd: UpdateDeviceInterfaceCommand)
         -> eyre::Result<Signature>;
@@ -242,10 +245,7 @@ pub trait CliCommand {
     fn list_link(&self, cmd: ListLinkCommand) -> eyre::Result<HashMap<Pubkey, Link>>;
     fn update_link(&self, cmd: UpdateLinkCommand) -> eyre::Result<Signature>;
     fn delete_link(&self, cmd: DeleteLinkCommand) -> eyre::Result<Signature>;
-    fn activate_link(&self, cmd: ActivateLinkCommand) -> eyre::Result<Signature>;
     fn latency_link(&self, cmd: LatencyLinkCommand) -> eyre::Result<Vec<LinkLatencyStats>>;
-    fn reject_link(&self, cmd: RejectLinkCommand) -> eyre::Result<Signature>;
-    fn closeaccount_link(&self, cmd: CloseAccountLinkCommand) -> eyre::Result<Signature>;
     fn set_link_health(&self, cmd: SetLinkHealthCommand) -> eyre::Result<Signature>;
 
     fn create_user(&self, cmd: CreateUserCommand) -> eyre::Result<(Signature, Pubkey)>;
@@ -288,18 +288,9 @@ pub trait CliCommand {
     ) -> eyre::Result<HashMap<Pubkey, MulticastGroup>>;
     fn update_multicastgroup(&self, cmd: UpdateMulticastGroupCommand) -> eyre::Result<Signature>;
     fn delete_multicastgroup(&self, cmd: DeleteMulticastGroupCommand) -> eyre::Result<Signature>;
-    fn activate_multicastgroup(
+    fn update_multicastgroup_roles(
         &self,
-        cmd: ActivateMulticastGroupCommand,
-    ) -> eyre::Result<Signature>;
-    fn reject_multicastgroup(&self, cmd: RejectMulticastGroupCommand) -> eyre::Result<Signature>;
-    fn deactivate_multicastgroup(
-        &self,
-        cmd: DeactivateMulticastGroupCommand,
-    ) -> eyre::Result<Signature>;
-    fn subscribe_multicastgroup(
-        &self,
-        cmd: SubscribeMulticastGroupCommand,
+        cmd: UpdateMulticastGroupRolesCommand,
     ) -> eyre::Result<Signature>;
     fn add_multicastgroup_pub_allowlist(
         &self,
@@ -336,21 +327,50 @@ pub trait CliCommand {
         cmd: GetResourceCommand,
     ) -> eyre::Result<(Pubkey, ResourceExtensionOwned)>;
     fn close_resource(&self, cmd: CloseResourceCommand) -> eyre::Result<Signature>;
+    fn close_resource_by_pubkey(
+        &self,
+        cmd: CloseResourceByPubkeyCommand,
+    ) -> eyre::Result<Signature>;
+
+    fn create_topology(&self, cmd: CreateTopologyCommand) -> eyre::Result<CreateTopologyResult>;
+    fn delete_topology(&self, cmd: DeleteTopologyCommand) -> eyre::Result<Signature>;
+    fn clear_topology(&self, cmd: ClearTopologyCommand) -> eyre::Result<Vec<Signature>>;
+    fn assign_topology_node_segments(
+        &self,
+        cmd: AssignTopologyNodeSegmentsCommand,
+    ) -> eyre::Result<Vec<Signature>>;
+    fn list_topology(
+        &self,
+        cmd: ListTopologyCommand,
+    ) -> eyre::Result<HashMap<Pubkey, TopologyInfo>>;
 }
 
 pub struct CliCommandImpl<'a> {
     client: &'a DZClient,
+    keypair_source: bool,
 }
 
 impl CliCommandImpl<'_> {
     pub fn new(client: &DZClient) -> CliCommandImpl<'_> {
-        CliCommandImpl { client }
+        CliCommandImpl {
+            client,
+            keypair_source: false,
+        }
+    }
+
+    pub fn with_keypair_source(mut self, has: bool) -> Self {
+        self.keypair_source = has;
+        self
     }
 }
 
 impl CliCommand for CliCommandImpl<'_> {
     fn check_requirements(&self, checks: u8) -> eyre::Result<()> {
         crate::requirements::check_requirements(self, None, checks)
+    }
+
+    fn has_keypair_source(&self) -> bool {
+        self.keypair_source
     }
 
     fn get_program_config(
@@ -375,6 +395,9 @@ impl CliCommand for CliCommandImpl<'_> {
     fn get_epoch(&self) -> eyre::Result<u64> {
         self.client.get_epoch()
     }
+    fn get_block_time(&self, slot: u64) -> eyre::Result<Option<i64>> {
+        self.client.get_block_time(slot)
+    }
     fn get_logs(&self, pubkey: &Pubkey) -> eyre::Result<Vec<String>> {
         self.client.get_logs(pubkey)
     }
@@ -394,6 +417,12 @@ impl CliCommand for CliCommandImpl<'_> {
     }
     fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>> {
         self.client.get_all()
+    }
+    fn get_account_data(&self, pubkey: Pubkey) -> eyre::Result<AccountData> {
+        self.client.get(pubkey)
+    }
+    fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>> {
+        self.client.get_transactions(pubkey)
     }
     fn get_program_accounts(
         &self,
@@ -571,21 +600,6 @@ impl CliCommand for CliCommandImpl<'_> {
     fn set_device_health(&self, cmd: SetDeviceHealthCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn activate_device(&self, cmd: ActivateDeviceCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn reject_device(&self, cmd: RejectDeviceCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn closeaccount_device(&self, cmd: CloseAccountDeviceCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn activate_device_interface(
-        &self,
-        cmd: ActivateDeviceInterfaceCommand,
-    ) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
     fn create_device_interface(
         &self,
         cmd: CreateDeviceInterfaceCommand,
@@ -595,12 +609,6 @@ impl CliCommand for CliCommandImpl<'_> {
     fn delete_device_interface(
         &self,
         cmd: DeleteDeviceInterfaceCommand,
-    ) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn remove_device_interface(
-        &self,
-        cmd: RemoveDeviceInterfaceCommand,
     ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
@@ -628,19 +636,10 @@ impl CliCommand for CliCommandImpl<'_> {
     fn delete_link(&self, cmd: DeleteLinkCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn activate_link(&self, cmd: ActivateLinkCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
     fn latency_link(&self, cmd: LatencyLinkCommand) -> eyre::Result<Vec<LinkLatencyStats>> {
         cmd.execute(self.client)
     }
-    fn reject_link(&self, cmd: RejectLinkCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
     fn set_link_health(&self, cmd: SetLinkHealthCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn closeaccount_link(&self, cmd: CloseAccountLinkCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn create_user(&self, cmd: CreateUserCommand) -> eyre::Result<(Signature, Pubkey)> {
@@ -718,24 +717,9 @@ impl CliCommand for CliCommandImpl<'_> {
     fn delete_multicastgroup(&self, cmd: DeleteMulticastGroupCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn activate_multicastgroup(
+    fn update_multicastgroup_roles(
         &self,
-        cmd: ActivateMulticastGroupCommand,
-    ) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn reject_multicastgroup(&self, cmd: RejectMulticastGroupCommand) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn deactivate_multicastgroup(
-        &self,
-        cmd: DeactivateMulticastGroupCommand,
-    ) -> eyre::Result<Signature> {
-        cmd.execute(self.client)
-    }
-    fn subscribe_multicastgroup(
-        &self,
-        cmd: SubscribeMulticastGroupCommand,
+        cmd: UpdateMulticastGroupRolesCommand,
     ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
@@ -797,6 +781,33 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn close_resource(&self, cmd: CloseResourceCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn close_resource_by_pubkey(
+        &self,
+        cmd: CloseResourceByPubkeyCommand,
+    ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn create_topology(&self, cmd: CreateTopologyCommand) -> eyre::Result<CreateTopologyResult> {
+        cmd.execute(self.client)
+    }
+    fn delete_topology(&self, cmd: DeleteTopologyCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn clear_topology(&self, cmd: ClearTopologyCommand) -> eyre::Result<Vec<Signature>> {
+        cmd.execute(self.client)
+    }
+    fn assign_topology_node_segments(
+        &self,
+        cmd: AssignTopologyNodeSegmentsCommand,
+    ) -> eyre::Result<Vec<Signature>> {
+        cmd.execute(self.client)
+    }
+    fn list_topology(
+        &self,
+        cmd: ListTopologyCommand,
+    ) -> eyre::Result<HashMap<Pubkey, TopologyInfo>> {
         cmd.execute(self.client)
     }
 }

@@ -59,7 +59,7 @@ f8198607689246e25c9403fba46e89122ff5d0fcc1febb51d4b
 00007479322d647a30313a6c61322d647a30310001020304050
 60708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
 0b000000737769746368312f312f31030000006c6f30ffc99a3
-b00000000ad2570a0cf27761cab55a3f26d85fb20
+b00000000ad250000000000000000
 `
 
 var userPayload = `
@@ -68,8 +68,8 @@ f14abe7ea3118ae1f000000000000000000000000000000fc00
 000000000000000000000000000000000000000000000000000
 0000000000000d2b30c6593b3dd99bbdde9c8e29eb9291adefb
 c11544a47f17d9472cae13fdfc010a0000010a000001f401a9f
-e00001f010000000000000000fcef68d5d9eae991fd7d6284da
-d2f2d7
+e00001f010000000000000000fcef68d5000000000000000000
+000000000000000000
 `
 
 var multicastgroupPayload = `
@@ -86,7 +86,7 @@ var tenantPayload = `
 00050000000100000000000000000000000000000000000000
 0000000000000000000000000000000001aaaaaaaaaaaaaaaa
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0100
-000000000000000000000000000000000000
+000000000000000000000000000000000000000000
 `
 
 var programconfigPayload = `
@@ -175,13 +175,13 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			Description: "parse and populate a valid config struct",
 			Payload:     strings.TrimSuffix(configPayload, "\n"),
 			Want: &ProgramData{
-				Config: Config{
-					AccountType:             ConfigType,
+				GlobalConfig: &GlobalConfig{
+					AccountType:             GlobalConfigType,
 					Owner:                   getOwner(configPayload),
-					Bump_seed:               253,
-					Local_asn:               65100,
-					Remote_asn:              65001,
-					TunnelTunnelBlock:       [5]byte{172, 16, 0, 0, 16},
+					BumpSeed:                253,
+					LocalASN:                65100,
+					RemoteASN:               65001,
+					DeviceTunnelBlock:       [5]byte{172, 16, 0, 0, 16},
 					UserTunnelBlock:         [5]byte{169, 254, 0, 0, 16},
 					MulticastGroupBlock:     [5]byte{223, 0, 0, 0, 4},
 					NextBGPCommunity:        10042,
@@ -196,9 +196,10 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				Contributors:       []Contributor{},
 				Tenants:            []Tenant{},
 				MulticastGroups:    []MulticastGroup{},
-				ProgramConfig:      ProgramConfig{},
+				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -208,17 +209,26 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			Want: &ProgramData{
 				Exchanges: []Exchange{
 					{
-						AccountType:  ExchangeType,
-						Index:        Uint128{High: 12, Low: 0},
-						Bump_seed:    255,
-						Owner:        getOwner(exchangePayload),
-						Lat:          50.1215356432098,
-						Lng:          8.642047117175098,
-						BgpCommunity: 0,
-						Status:       1,
-						Code:         "xfra",
-						Name:         "Frankfurt",
-						PubKey:       pubkeys[1],
+						AccountType:    ExchangeType,
+						Index:          Uint128{High: 12, Low: 0},
+						BumpSeed:       255,
+						Owner:          getOwner(exchangePayload),
+						Lat:            50.1215356432098,
+						Lng:            8.642047117175098,
+						BgpCommunity:   0,
+						ReferenceCount: 84215045,
+						Status:         1,
+						Code:           "xfra",
+						Name:           "Frankfurt",
+						Device1PK: [32]byte{
+							0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+							0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+						},
+						Device2PK: [32]byte{
+							0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
+							0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
+						},
+						PubKey: pubkeys[1],
 					},
 				},
 				Locations:          []Location{},
@@ -228,9 +238,10 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				Contributors:       []Contributor{},
 				Tenants:            []Tenant{},
 				MulticastGroups:    []MulticastGroup{},
-				ProgramConfig:      ProgramConfig{},
+				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -242,7 +253,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 					{
 						AccountType:            DeviceType,
 						Index:                  Uint128{High: 22, Low: 0},
-						Bump_seed:              255,
+						BumpSeed:               255,
 						Owner:                  getOwner(exchangePayload),
 						LocationPubKey:         getPubKeyOffset(devicePayload, 50, 82),
 						ExchangePubKey:         getPubKeyOffset(devicePayload, 82, 114),
@@ -254,7 +265,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						MetricsPublisherPubKey: getPubKeyOffset(devicePayload, 141, 173),
 						ContributorPubKey:      getPubKeyOffset(devicePayload, 173, 205),
 						MgmtVrf:                "default",
-						Interfaces: []Interface{
+						DeprecatedInterfaces: []Interface{
 							{
 								Version:            0,
 								Status:             InterfaceStatusPending,
@@ -281,7 +292,34 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						ReferenceCount: 1234,
 						UsersCount:     110,
 						MaxUsers:       128,
-						PubKey:         pubkeys[2],
+						// Legacy fixture has no trailing interfaces vec; the rebuild
+						// path projects each legacy enum entry into an Interface stamped
+						// with the current schema version.
+						Interfaces: []Interface{
+							{
+								Version:            CurrentInterfaceVersion,
+								Status:             InterfaceStatusPending,
+								Name:               "switch1/1/1",
+								InterfaceType:      InterfaceTypePhysical,
+								LoopbackType:       LoopbackTypeNone,
+								VlanId:             42,
+								IpNet:              [5]byte{0x0a, 0x01, 0x02, 0x03, 0x1d},
+								NodeSegmentIdx:     123,
+								UserTunnelEndpoint: false,
+							},
+							{
+								Version:            CurrentInterfaceVersion,
+								Status:             InterfaceStatusPending,
+								Name:               "lo0",
+								InterfaceType:      InterfaceTypeLoopback,
+								LoopbackType:       LoopbackTypeVpnv4,
+								VlanId:             15,
+								IpNet:              [5]byte{0x0a, 0x02, 0x03, 0x04, 0x1d},
+								NodeSegmentIdx:     42,
+								UserTunnelEndpoint: true,
+							},
+						},
+						PubKey: pubkeys[2],
 					},
 				},
 				Locations:          []Location{},
@@ -291,9 +329,10 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				Contributors:       []Contributor{},
 				Tenants:            []Tenant{},
 				MulticastGroups:    []MulticastGroup{},
-				ProgramConfig:      ProgramConfig{},
+				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -303,18 +342,19 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 			Want: &ProgramData{
 				Locations: []Location{
 					{
-						AccountType: LocationType,
-						Index:       Uint128{High: 6, Low: 0},
-						Bump_seed:   254,
-						Owner:       getOwner(locationPayload),
-						Lat:         35.66875144228767,
-						Lng:         139.76565267564501,
-						LocId:       0,
-						Status:      1,
-						Code:        "tyo",
-						Name:        "Tokyo",
-						Country:     "JP",
-						PubKey:      pubkeys[3],
+						AccountType:    LocationType,
+						Index:          Uint128{High: 6, Low: 0},
+						BumpSeed:       254,
+						Owner:          getOwner(locationPayload),
+						Lat:            35.66875144228767,
+						Lng:            139.76565267564501,
+						LocId:          0,
+						Status:         1,
+						Code:           "tyo",
+						Name:           "Tokyo",
+						Country:        "JP",
+						ReferenceCount: 54282341,
+						PubKey:         pubkeys[3],
 					},
 				},
 				Exchanges:          []Exchange{},
@@ -324,9 +364,10 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				Contributors:       []Contributor{},
 				Tenants:            []Tenant{},
 				MulticastGroups:    []MulticastGroup{},
-				ProgramConfig:      ProgramConfig{},
+				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -338,7 +379,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 					{
 						AccountType:    UserType,
 						Index:          Uint128{High: 31, Low: 0},
-						Bump_seed:      252,
+						BumpSeed:       252,
 						Owner:          getOwner(userPayload),
 						UserType:       UserTypeIBRL,
 						TenantPubKey:   getPubKeyOffset(userPayload, 51, 83),
@@ -360,9 +401,10 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				Contributors:       []Contributor{},
 				Tenants:            []Tenant{},
 				MulticastGroups:    []MulticastGroup{},
-				ProgramConfig:      ProgramConfig{},
+				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -374,7 +416,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 					{
 						AccountType:       LinkType,
 						Index:             Uint128{High: 30, Low: 0},
-						Bump_seed:         251,
+						BumpSeed:          251,
 						Owner:             getOwner(tunnelPayload),
 						SideAPubKey:       getPubKeyOffset(tunnelPayload, 50, 82),
 						SideZPubKey:       getPubKeyOffset(tunnelPayload, 82, 114),
@@ -391,6 +433,8 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						ContributorPubKey: [32]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f},
 						SideAIfaceName:    "switch1/1/1",
 						SideZIfaceName:    "lo0",
+						LinkHealth:        LinkHealth(173),
+						LinkDesiredStatus: LinkDesiredStatus(37),
 						PubKey:            pubkeys[5],
 					},
 				},
@@ -401,9 +445,10 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				Contributors:       []Contributor{},
 				Tenants:            []Tenant{},
 				MulticastGroups:    []MulticastGroup{},
-				ProgramConfig:      ProgramConfig{},
+				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -422,7 +467,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 					{
 						AccountType:     MulticastGroupType,
 						Index:           Uint128{High: 35, Low: 0},
-						Bump_seed:       255,
+						BumpSeed:        255,
 						Owner:           getOwner(multicastgroupPayload),
 						TenantPubKey:    [32]byte{},
 						MulticastIp:     [4]byte{0xd0, 0x00, 0x00, 0x00},
@@ -434,9 +479,10 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						PubKey:          pubkeys[6],
 					},
 				},
-				ProgramConfig:      ProgramConfig{},
+				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -472,9 +518,10 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				Users:              []User{},
 				Contributors:       []Contributor{},
 				MulticastGroups:    []MulticastGroup{},
-				ProgramConfig:      ProgramConfig{},
+				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 		{
@@ -490,7 +537,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				Contributors:    []Contributor{},
 				Tenants:         []Tenant{},
 				MulticastGroups: []MulticastGroup{},
-				ProgramConfig: ProgramConfig{
+				ProgramConfig: &ProgramConfig{
 					AccountType: ProgramConfigType,
 					BumpSeed:    255,
 					Version: ProgramVersion{
@@ -499,8 +546,10 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						Patch: 3,
 					},
 				},
+				AccessPasses:       []AccessPass{},
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
+				Topologies:         []TopologyInfo{},
 			},
 		},
 	}

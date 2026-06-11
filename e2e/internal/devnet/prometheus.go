@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	prometheusImage        = "quay.io/prometheus/prometheus:v2.54.1"
+	prometheusImage        = "ghcr.io/malbeclabs/dz-e2e/prometheus:v2.54.1"
 	prometheusInternalPort = 9090
 )
 

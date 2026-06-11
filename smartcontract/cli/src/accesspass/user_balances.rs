@@ -1,6 +1,7 @@
 use crate::doublezerocommand::CliCommand;
 use clap::{Args, ValueEnum};
 use console::style;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::{
     commands::{accesspass::list::ListAccessPassCommand, user::list::ListUserCommand},
@@ -53,6 +54,9 @@ pub enum SortOrder {
 
 #[derive(Args, Debug, Default)]
 pub struct UserBalancesAccessPassCliCommand {
+    /// Output as JSON
+    #[arg(long)]
+    pub json: bool,
     /// Filter by user payer public key
     #[arg(long)]
     pub user_payer: Option<Pubkey>,
@@ -96,7 +100,12 @@ pub struct UserBalanceDisplay {
 }
 
 impl UserBalancesAccessPassCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let access_passes = client.list_accesspass(ListAccessPassCommand)?;
         let users = client.list_user(ListUserCommand {})?;
         let rent_per_ip = client.get_minimum_balance_for_rent_exemption(USER_RENT_BYTES)?;
@@ -248,24 +257,29 @@ impl UserBalancesAccessPassCliCommand {
                 },
             );
 
-        let table = Table::new(display_rows)
-            .with(Style::psql().remove_horizontals())
-            .with(Modify::new(Columns::new(0..=0)).with(Alignment::right()))
-            .with(Modify::new(Columns::new(2..=2)).with(Alignment::right()))
-            .with(Modify::new(Columns::new(3..=3)).with(Alignment::right()))
-            .with(Modify::new(Columns::new(4..=4)).with(Alignment::right()))
-            .with(Modify::new(Columns::new(5..=5)).with(Alignment::right()))
-            .with(Modify::new(Columns::new(6..=6)).with(Alignment::right()))
-            .with(Modify::new(Columns::new(7..=7)).with(Alignment::right()))
-            .to_string();
+        if self.json {
+            let json = serde_json::to_string_pretty(&display_rows)?;
+            writeln!(out, "{json}")?;
+        } else {
+            let table = Table::new(display_rows)
+                .with(Style::psql().remove_horizontals())
+                .with(Modify::new(Columns::new(0..=0)).with(Alignment::right()))
+                .with(Modify::new(Columns::new(2..=2)).with(Alignment::right()))
+                .with(Modify::new(Columns::new(3..=3)).with(Alignment::right()))
+                .with(Modify::new(Columns::new(4..=4)).with(Alignment::right()))
+                .with(Modify::new(Columns::new(5..=5)).with(Alignment::right()))
+                .with(Modify::new(Columns::new(6..=6)).with(Alignment::right()))
+                .with(Modify::new(Columns::new(7..=7)).with(Alignment::right()))
+                .to_string();
 
-        // Color rows after rendering to avoid ANSI codes breaking column widths.
-        // Line 0 is the header; data rows start at line 1.
-        for (i, line) in table.lines().enumerate() {
-            if i > 0 && red_indices.contains(&(i - 1)) {
-                writeln!(out, "{}", style(line).red())?;
-            } else {
-                writeln!(out, "{line}")?;
+            // Color rows after rendering to avoid ANSI codes breaking column widths.
+            // Line 0 is the header; data rows start at line 1.
+            for (i, line) in table.lines().enumerate() {
+                if i > 0 && red_indices.contains(&(i - 1)) {
+                    writeln!(out, "{}", style(line).red())?;
+                } else {
+                    writeln!(out, "{line}")?;
+                }
             }
         }
 

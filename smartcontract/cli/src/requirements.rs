@@ -1,4 +1,4 @@
-use std::{io::IsTerminal, net::Ipv4Addr};
+use std::net::Ipv4Addr;
 
 use crate::doublezerocommand::CliCommand;
 use doublezero_sdk::{
@@ -7,27 +7,8 @@ use doublezero_sdk::{
         allowlist::foundation::list::ListFoundationAllowlistCommand,
     },
     get_doublezero_pubkey,
-    keypair::ENV_KEYPAIR,
 };
 use indicatif::ProgressBar;
-
-/// Check if a keypair source is available (CLI arg, env var, or piped stdin).
-///
-/// Returns true if any of these sources are available, which means we should
-/// skip the pre-flight keypair file check and let `DZClient::new()` handle
-/// loading with proper error messages.
-fn has_keypair_source() -> bool {
-    // Check CLI argument
-    let has_cli_arg = std::env::args().any(|arg| arg == "--keypair" || arg == "-k");
-
-    // Check environment variable
-    let has_env_var = std::env::var(ENV_KEYPAIR).is_ok();
-
-    // Check if stdin is piped (not a TTY)
-    let has_stdin = !std::io::stdin().is_terminal();
-
-    has_cli_arg || has_env_var || has_stdin
-}
 
 pub const CHECK_ID_JSON: u8 = 1;
 pub const CHECK_BALANCE: u8 = 2;
@@ -39,7 +20,7 @@ pub fn check_requirements(
     checks: u8,
 ) -> eyre::Result<()> {
     // Check that have your id.json (skip if alternative keypair source is available)
-    if (checks & CHECK_ID_JSON != 0) && !has_keypair_source() {
+    if (checks & CHECK_ID_JSON != 0) && !client.has_keypair_source() {
         check_id(spinner)?;
     }
 
@@ -64,7 +45,7 @@ pub fn check_id(spinner: Option<&ProgressBar>) -> eyre::Result<()> {
             if let Some(spinner) = spinner {
                 spinner.println(format!("    Error: {error_msg}"));
             } else {
-                eprintln!("{error_msg}");
+                tracing::error!("{error_msg}");
             }
 
             Err(eyre::eyre!(
@@ -86,7 +67,7 @@ pub fn check_balance(client: &dyn CliCommand, spinner: Option<&ProgressBar>) -> 
                 if let Some(spinner) = spinner {
                     spinner.println("Insufficient balance");
                 } else {
-                    eprintln!("Insufficient balance");
+                    tracing::error!("Insufficient balance");
                 }
                 eyre::bail!(
                     "This DoubleZero account has no available credits. Please recharge your account. [{}].",
@@ -100,8 +81,11 @@ pub fn check_balance(client: &dyn CliCommand, spinner: Option<&ProgressBar>) -> 
     }
 }
 
-pub fn check_accesspass(client: &dyn CliCommand, client_ip: Ipv4Addr) -> eyre::Result<bool> {
-    let epoch = client.get_epoch()?;
+pub fn check_accesspass(
+    client: &dyn CliCommand,
+    client_ip: Ipv4Addr,
+    enforce_epoch: bool,
+) -> eyre::Result<bool> {
     let (_, accesspass) = client
         .get_accesspass(GetAccessPassCommand {
             client_ip,
@@ -109,6 +93,10 @@ pub fn check_accesspass(client: &dyn CliCommand, client_ip: Ipv4Addr) -> eyre::R
         })?
         .ok_or_else(|| eyre::eyre!("Access Pass not found"))?;
 
+    if !enforce_epoch {
+        return Ok(true);
+    }
+    let epoch = client.get_epoch()?;
     Ok(accesspass.last_access_epoch >= epoch)
 }
 
@@ -129,7 +117,7 @@ pub fn check_allowlist(
         if let Some(spinner) = spinner {
             spinner.println("You are not authorized to connect");
         } else {
-            eprintln!("Error: You are not authorized to connect");
+            tracing::error!("You are not authorized to connect");
         }
         eyre::bail!("Please contact the DoubleZero Foundation to allow you to connect.");
     }

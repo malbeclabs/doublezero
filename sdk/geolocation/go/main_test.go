@@ -52,3 +52,28 @@ func (m *mockRPCClient) GetAccountInfo(ctx context.Context, account solana.Publi
 func (m *mockRPCClient) GetProgramAccountsWithOpts(ctx context.Context, publicKey solana.PublicKey, opts *solanarpc.GetProgramAccountsOpts) (solanarpc.GetProgramAccountsResult, error) {
 	return m.GetProgramAccountsWithOptsFunc(ctx, publicKey, opts)
 }
+
+type mockExecutorRPCClient struct {
+	geolocation.ExecutorRPCClient
+
+	GetLatestBlockhashFunc      func(context.Context, solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error)
+	SendTransactionWithOptsFunc func(context.Context, *solana.Transaction, solanarpc.TransactionOpts) (solana.Signature, error)
+	GetSignatureStatusesFunc    func(context.Context, bool, ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error)
+	GetTransactionFunc          func(context.Context, solana.Signature, *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error)
+}
+
+func (m *mockExecutorRPCClient) GetLatestBlockhash(ctx context.Context, commitment solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {
+	return m.GetLatestBlockhashFunc(ctx, commitment)
+}
+
+func (m *mockExecutorRPCClient) SendTransactionWithOpts(ctx context.Context, tx *solana.Transaction, opts solanarpc.TransactionOpts) (solana.Signature, error) {
+	return m.SendTransactionWithOptsFunc(ctx, tx, opts)
+}
+
+func (m *mockExecutorRPCClient) GetSignatureStatuses(ctx context.Context, searchTransactionHistory bool, sigs ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
+	return m.GetSignatureStatusesFunc(ctx, searchTransactionHistory, sigs...)
+}
+
+func (m *mockExecutorRPCClient) GetTransaction(ctx context.Context, sig solana.Signature, opts *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
+	return m.GetTransactionFunc(ctx, sig, opts)
+}

@@ -12,6 +12,49 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
+func TestRenderGNMIManagementProvider(t *testing.T) {
+	data := templateData{
+		Strings:                  StringsHelper{},
+		MulticastGroupBlock:      "239.0.0.0/24",
+		TelemetryTWAMPListenPort: 862,
+		LocalASN:                 65342,
+		UnicastVrfs:              []uint16{1},
+		Device: &Device{
+			PublicIP:        net.IP{7, 7, 7, 7},
+			Vpn4vLoopbackIP: net.IP{14, 14, 14, 14},
+			IsisNet:         "49.0000.0e0e.0e0e.0000.00",
+			ExchangeCode:    "tst",
+			BgpCommunity:    10050,
+			Interfaces:      []Interface{},
+		},
+	}
+
+	got, err := renderConfig(data)
+	if err != nil {
+		t.Fatalf("renderConfig() error: %v", err)
+	}
+
+	want := `management api gnmi
+   provider eos-native
+!`
+	if count := strings.Count(got, "management api gnmi"); count != 1 {
+		t.Fatalf("rendered %d gNMI management blocks; want 1\nconfig:\n%s", count, got)
+	}
+	if !strings.Contains(got, want) {
+		t.Fatalf("rendered config missing gNMI provider block %q\nconfig:\n%s", want, got)
+	}
+	for _, forbidden := range []string{
+		"   85 permit tcp any any eq 57400",
+		"transport grpc",
+		"port 57400",
+		"listen-addresses",
+	} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("rendered remote gNMI server config %q; want only local eos-native provider\nconfig:\n%s", forbidden, got)
+		}
+	}
+}
+
 func TestRenderConfig(t *testing.T) {
 	tests := []struct {
 		Name        string
@@ -448,7 +491,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Switch1/1/1",
 							Ip:            netip.MustParsePrefix("172.16.0.0/31"),
-							Mtu:           2048,
+							Mtu:           9000,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        40000,
 							IsLink:        true,
@@ -456,7 +499,7 @@ func TestRenderConfig(t *testing.T) {
 						},
 						{
 							Name:                 "Switch1/1/2",
-							Mtu:                  2048,
+							Mtu:                  9000,
 							IsSubInterfaceParent: true,
 							InterfaceType:        InterfaceTypePhysical,
 						},
@@ -464,7 +507,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:           "Switch1/1/2.100",
 							Ip:             netip.MustParsePrefix("172.16.0.2/31"),
 							VlanId:         100,
-							Mtu:            2048,
+							Mtu:            9000,
 							IsSubInterface: true,
 							InterfaceType:  InterfaceTypePhysical,
 							Metric:         0,
@@ -474,7 +517,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:           "Switch1/1/2.200",
 							Ip:             netip.MustParsePrefix("172.16.0.6/31"),
 							VlanId:         200,
-							Mtu:            2048,
+							Mtu:            9000,
 							IsSubInterface: true,
 							InterfaceType:  InterfaceTypePhysical,
 							Metric:         40000, // Metric w/ IsLink false should not render isis config
@@ -484,7 +527,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:           "Switch1/1/2.300",
 							Ip:             netip.MustParsePrefix("172.16.0.8/31"),
 							VlanId:         300,
-							Mtu:            2048,
+							Mtu:            9000,
 							IsSubInterface: true,
 							InterfaceType:  InterfaceTypePhysical,
 							Metric:         40000,
@@ -494,7 +537,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Vlan4001",
 							Ip:            netip.MustParsePrefix("172.16.0.4/31"),
-							Mtu:           2048,
+							Mtu:           9000,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        10000,
 							IsLink:        true,
@@ -503,7 +546,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Switch1/1/3",
 							Ip:            netip.MustParsePrefix("172.16.0.10/31"),
-							Mtu:           2048,
+							Mtu:           9000,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        1000000,
 							IsLink:        true,
@@ -512,7 +555,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Switch1/1/4",
 							Ip:            netip.MustParsePrefix("172.16.0.12/31"),
-							Mtu:           2048,
+							Mtu:           9000,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        30000,
 							IsLink:        true,
@@ -521,7 +564,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Switch1/1/5",
 							Ip:            netip.MustParsePrefix("172.16.0.14/31"),
-							Mtu:           2048,
+							Mtu:           1500,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        20000,
 							IsLink:        true,
@@ -531,7 +574,7 @@ func TestRenderConfig(t *testing.T) {
 						{
 							Name:          "Switch1/1/6",
 							Ip:            netip.MustParsePrefix("172.16.0.16/31"),
-							Mtu:           2048,
+							Mtu:           1500,
 							InterfaceType: InterfaceTypePhysical,
 							Metric:        25000,
 							IsLink:        true,
@@ -572,7 +615,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:          "Ethernet1/1",
 							InterfaceType: InterfaceTypePhysical,
 							Ip:            netip.MustParsePrefix("172.16.0.2/31"),
-							Mtu:           2048,
+							Mtu:           9000,
 							Metric:        40000,
 							IsLink:        true,
 						},
@@ -580,7 +623,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:          "Ethernet1/2",
 							InterfaceType: InterfaceTypePhysical,
 							Ip:            netip.MustParsePrefix("172.16.0.4/31"),
-							Mtu:           2048,
+							Mtu:           9000,
 						},
 					},
 					Vpn4vLoopbackIntfName: "Loopback255",
@@ -630,7 +673,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:          "Ethernet1/1",
 							InterfaceType: InterfaceTypePhysical,
 							Ip:            netip.MustParsePrefix("172.16.0.2/31"),
-							Mtu:           2048,
+							Mtu:           9000,
 							Metric:        40000,
 							IsLink:        true,
 						},
@@ -638,7 +681,7 @@ func TestRenderConfig(t *testing.T) {
 							Name:          "Ethernet1/2",
 							InterfaceType: InterfaceTypePhysical,
 							Ip:            netip.MustParsePrefix("172.16.0.4/31"),
-							Mtu:           2048,
+							Mtu:           9000,
 						},
 					},
 					Vpn4vLoopbackIntfName: "Loopback255",
@@ -797,6 +840,146 @@ func TestRenderConfig(t *testing.T) {
 			},
 			Want: "fixtures/multi.vrf.mixed.metro.routing.tunnel.tmpl",
 		},
+		{
+			Name:        "render_flex_algo_enabled_successfully",
+			Description: "render config with flex-algo enabled: interface admin-groups, node-segments, router TE block, BGP color stamping",
+			Data: templateData{
+				Strings:                  StringsHelper{},
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
+				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1},
+				Config: func() *FeaturesConfig {
+					cfg := &FeaturesConfig{}
+					cfg.Features.FlexAlgo.Enabled = true
+					cfg.Features.FlexAlgo.CommunityStamping.All = true
+					return cfg
+				}(),
+				AllTopologies: []TopologyModel{
+					{
+						Name:           "unicast-default",
+						AdminGroupBit:  1,
+						FlexAlgoNumber: 129,
+						Color:          2,
+						ConstraintStr:  "include-any",
+					},
+				},
+				Device: &Device{
+					PubKey:                "4uQeVj5tqViQh7yWWGStvkEG1Zmhx6uasJtWCJziofM",
+					PublicIP:              net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+					ExchangeCode:          "tst",
+					BgpCommunity:          10050,
+					Interfaces: []Interface{
+						{
+							Name:           "Ethernet1/1",
+							Ip:             netip.MustParsePrefix("172.16.0.2/31"),
+							Mtu:            9000,
+							InterfaceType:  InterfaceTypePhysical,
+							Metric:         40000,
+							IsLink:         true,
+							LinkStatus:     serviceability.LinkStatusActivated,
+							LinkTopologies: []string{"unicast-default"},
+						},
+						{
+							Name:           "Loopback255",
+							Ip:             netip.MustParsePrefix("14.14.14.14/32"),
+							NodeSegmentIdx: 100,
+							InterfaceType:  InterfaceTypeLoopback,
+							LoopbackType:   LoopbackTypeVpnv4,
+							FlexAlgoNodeSegments: []FlexAlgoNodeSegmentModel{
+								{NodeSegmentIdx: 200, TopologyName: "unicast-default"},
+							},
+						},
+					},
+					Tunnels: []*Tunnel{
+						{
+							Id:                   500,
+							UnderlaySrcIP:        net.IP{1, 1, 1, 1},
+							UnderlayDstIP:        net.IP{2, 2, 2, 2},
+							OverlaySrcIP:         net.IP{169, 254, 0, 0},
+							OverlayDstIP:         net.IP{169, 254, 0, 1},
+							DzIp:                 net.IP{100, 0, 0, 0},
+							Allocated:            true,
+							VrfId:                1,
+							MetroRouting:         true,
+							TenantPubKey:         "g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT",
+							TenantTopologyColors: "color 2",
+						},
+					},
+				},
+			},
+			Want: "fixtures/base.config.flex-algo.txt",
+		},
+		{
+			Name:        "render_flex_algo_disabled_cleanup_successfully",
+			Description: "render config with flex-algo disabled but topologies present: cleanup commands emitted, no TE config",
+			Data: templateData{
+				Strings:                  StringsHelper{},
+				MulticastGroupBlock:      "239.0.0.0/24",
+				TelemetryTWAMPListenPort: 862,
+				LocalASN:                 65342,
+				UnicastVrfs:              []uint16{1},
+				Config:                   &FeaturesConfig{},
+				AllTopologies: []TopologyModel{
+					{
+						Name:           "unicast-default",
+						AdminGroupBit:  0,
+						FlexAlgoNumber: 128,
+						Color:          1,
+						ConstraintStr:  "include-any",
+					},
+				},
+				Device: &Device{
+					PublicIP:              net.IP{7, 7, 7, 7},
+					Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+					Vpn4vLoopbackIntfName: "Loopback255",
+					IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+					ExchangeCode:          "tst",
+					BgpCommunity:          10050,
+					Interfaces: []Interface{
+						{
+							Name:           "Ethernet1/1",
+							Ip:             netip.MustParsePrefix("172.16.0.2/31"),
+							Mtu:            9000,
+							InterfaceType:  InterfaceTypePhysical,
+							Metric:         40000,
+							IsLink:         true,
+							LinkStatus:     serviceability.LinkStatusActivated,
+							LinkTopologies: []string{"unicast-default"},
+						},
+						{
+							Name:           "Loopback255",
+							Ip:             netip.MustParsePrefix("14.14.14.14/32"),
+							NodeSegmentIdx: 100,
+							InterfaceType:  InterfaceTypeLoopback,
+							LoopbackType:   LoopbackTypeVpnv4,
+							FlexAlgoNodeSegments: []FlexAlgoNodeSegmentModel{
+								{NodeSegmentIdx: 200, TopologyName: "unicast-default"},
+							},
+						},
+					},
+					Tunnels: []*Tunnel{
+						{
+							Id:                   500,
+							UnderlaySrcIP:        net.IP{1, 1, 1, 1},
+							UnderlayDstIP:        net.IP{2, 2, 2, 2},
+							OverlaySrcIP:         net.IP{169, 254, 0, 0},
+							OverlayDstIP:         net.IP{169, 254, 0, 1},
+							DzIp:                 net.IP{100, 0, 0, 0},
+							Allocated:            true,
+							VrfId:                1,
+							MetroRouting:         true,
+							TenantPubKey:         "g35TxFqwMx95vCk63fTxGTHb6ei4W24qg5t2x6xD3cT",
+							TenantTopologyColors: "color 1",
+						},
+					},
+				},
+			},
+			Want: "fixtures/base.config.flex-algo-disabled.txt",
+		},
 	}
 
 	for _, test := range tests {
@@ -809,7 +992,7 @@ func TestRenderConfig(t *testing.T) {
 			if strings.HasSuffix(test.Want, ".tmpl") {
 				templateData := map[string]int{
 					"StartTunnel": config.StartUserTunnelNum,
-					"EndTunnel":   config.StartUserTunnelNum + config.MaxUserTunnelSlots - 1,
+					"EndTunnel":   config.StartUserTunnelNum + config.DefaultMaxUserTunnelSlots - 1,
 				}
 				rendered, err := renderTemplateFile(test.Want, templateData)
 				if err != nil {

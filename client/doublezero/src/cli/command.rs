@@ -1,117 +1,56 @@
-use super::multicast::MulticastCliCommand;
+use clap::{Args, Subcommand};
+use clap_complete::Shell;
+use doublezero_geolocation_cli::GeolocationArgs;
+use doublezero_serviceability_cli::cli::ServiceabilityCommand;
+
 use crate::{
-    cli::{
-        accesspass::AccessPassCliCommand, config::ConfigCliCommand,
-        contributor::ContributorCliCommand, device::DeviceCliCommand, exchange::ExchangeCliCommand,
-        globalconfig::GlobalConfigCliCommand, link::LinkCliCommand, location::LocationCliCommand,
-        permission::PermissionCliCommand, resource::ResourceCliCommand, tenant::TenantCliCommand,
-        user::UserCliCommand,
-    },
+    cli::multicast::MulticastCliCommand,
     command::{
         connect::ProvisioningCliCommand, disable::DisableCliCommand,
         disconnect::DecommissioningCliCommand, enable::EnableCliCommand,
         latency::LatencyCliCommand, routes::RoutesCliCommand, status::StatusCliCommand,
     },
 };
-use clap::{Args, Subcommand};
-use clap_complete::Shell;
-use doublezero_cli::{
-    account::GetAccountCliCommand, accounts::GetAccountsCliCommand, address::AddressCliCommand,
-    balance::BalanceCliCommand, export::ExportCliCommand, init::InitCliCommand,
-    keygen::KeyGenCliCommand, logcommand::LogCliCommand, migrate::MigrateCliCommand,
-};
 
+/// Top-level command tree for the unified `doublezero` binary.
+///
+/// Per RFC-20 §Module contract item 2, the serviceability verbs live in
+/// `doublezero_serviceability_cli::cli::ServiceabilityCommand` and are hoisted
+/// to the top level here via `#[command(flatten)]`. The binary retains the
+/// daemon-control verbs, the `doublezero-geolocation-cli` module crate's
+/// geolocation subtree (via `GeolocationArgs`), the binary-only `Completion`
+/// generator, and `Multicast` (whose `Subscribe`/`Unsubscribe`/`Publish`/
+/// `Unpublish` arms depend on binary-local daemon-control infrastructure).
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    #[command(hide = true)]
-    Init(InitCliCommand),
-    #[command(hide = true)]
-    Migrate(MigrateCliCommand),
     /// Connect your server to a doublezero device
-    #[command()]
     Connect(ProvisioningCliCommand),
     /// Enable the reconciler (start managing tunnels)
-    #[command()]
     Enable(EnableCliCommand),
     /// Disable the reconciler (tear down tunnels and stop managing them)
-    #[command()]
     Disable(DisableCliCommand),
     /// Get the status of your service
-    #[command()]
     Status(StatusCliCommand),
     /// Disconnect your server from the doublezero network
-    #[command()]
     Disconnect(DecommissioningCliCommand),
     /// Get device latencies
-    #[command()]
     Latency(LatencyCliCommand),
     /// View your installed routes
-    #[command()]
     Routes(RoutesCliCommand),
-    /// Get your public key
-    #[command()]
-    Address(AddressCliCommand),
-    /// Get your balance
-    #[command()]
-    Balance(BalanceCliCommand),
-    /// local configuration
-    #[command()]
-    Config(ConfigCliCommand),
-    /// Global network configuration
-    #[command()]
-    GlobalConfig(GlobalConfigCliCommand),
-    /// Get Account
-    #[command()]
-    Account(GetAccountCliCommand),
-    /// List Accounts
-    #[command(hide = true)]
-    Accounts(GetAccountsCliCommand),
-    /// Manage locations
-    #[command()]
-    Location(LocationCliCommand),
-    /// Manage exchanges
-    #[command()]
-    Exchange(ExchangeCliCommand),
-    /// Manage contributors
-    #[command()]
-    Contributor(ContributorCliCommand),
-    /// Manage permissions
-    #[clap()]
-    Permission(PermissionCliCommand),
-    /// Manage tenants
-    #[command()]
-    Tenant(TenantCliCommand),
-    /// Manage devices
-    #[command()]
-    Device(DeviceCliCommand),
-    /// Manage tunnels between devices
-    #[command()]
-    Link(LinkCliCommand),
 
-    #[command()]
-    AccessPass(AccessPassCliCommand),
+    /// Manage geolocation probes and users
+    Geolocation(GeolocationArgs),
 
-    /// Manage users
-    #[command()]
-    User(UserCliCommand),
     /// Manage multicast
-    #[command()]
     Multicast(MulticastCliCommand),
-    /// Export all data to files
-    #[command()]
-    Export(ExportCliCommand),
-    /// Create a new user identity
-    #[command()]
-    Keygen(KeyGenCliCommand),
-    /// Get logs
-    #[command()]
-    Log(LogCliCommand),
+
     /// Generate shell completions
-    #[command()]
     Completion(CompletionCliCommand),
-    /// IP/ID Resource Management
-    #[command()]
-    Resource(ResourceCliCommand),
+
+    /// Flattened serviceability variants (Device, Link, Location, User, ...).
+    /// Hoisted to top-level via `#[command(flatten)]`.
+    #[command(flatten)]
+    Serviceability(ServiceabilityCommand),
 }
 
 #[derive(Args, Debug, Clone)]

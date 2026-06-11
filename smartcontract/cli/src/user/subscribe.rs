@@ -1,13 +1,13 @@
 use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
-    poll_for_activation::{poll_for_multicastgroup_activated, poll_for_user_activated},
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{validate_pubkey, validate_pubkey_or_code},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::{
-    multicastgroup::{get::GetMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand},
+    multicastgroup::{get::GetMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand},
     user::get::GetUserCommand,
 };
 use std::io::Write;
@@ -32,7 +32,12 @@ pub struct SubscribeUserCliCommand {
 }
 
 impl SubscribeUserCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -59,21 +64,24 @@ impl SubscribeUserCliCommand {
 
         // Subscribe to each group
         for group_pk in &group_pks {
-            let signature = client.subscribe_multicastgroup(SubscribeMulticastGroupCommand {
-                user_pk,
-                group_pk: *group_pk,
-                client_ip: user.client_ip,
-                publisher: self.publisher,
-                subscriber: self.subscriber,
-            })?;
+            let signature =
+                client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
+                    user_pk,
+                    group_pk: *group_pk,
+                    client_ip: user.client_ip,
+                    publisher: self.publisher,
+                    subscriber: self.subscriber,
+                })?;
             writeln!(out, "Subscribed to {group_pk}: {signature}")?;
         }
 
         if self.wait {
-            let user = poll_for_user_activated(client, &user_pk)?;
+            let (_, user) = client.get_user(GetUserCommand { pubkey: user_pk })?;
             writeln!(out, "User status: {}", user.status)?;
             for group_pk in &group_pks {
-                let mgroup = poll_for_multicastgroup_activated(client, group_pk)?;
+                let (_, mgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
+                    pubkey_or_code: group_pk.to_string(),
+                })?;
                 writeln!(out, "Multicast group {group_pk} status: {}", mgroup.status)?;
             }
         }
@@ -84,6 +92,8 @@ impl SubscribeUserCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -93,7 +103,7 @@ mod tests {
     use doublezero_sdk::{
         commands::{
             multicastgroup::{
-                get::GetMulticastGroupCommand, subscribe::SubscribeMulticastGroupCommand,
+                get::GetMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
             },
             user::get::GetUserCommand,
         },
@@ -134,6 +144,11 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let mgroup_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
@@ -168,8 +183,8 @@ mod tests {
             }))
             .returning(move |_| Ok((mgroup_pubkey, mgroup.clone())));
         client
-            .expect_subscribe_multicastgroup()
-            .with(predicate::eq(SubscribeMulticastGroupCommand {
+            .expect_update_multicastgroup_roles()
+            .with(predicate::eq(UpdateMulticastGroupRolesCommand {
                 user_pk: user_pubkey,
                 group_pk: mgroup_pubkey,
                 client_ip,
@@ -181,14 +196,17 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = SubscribeUserCliCommand {
-            user: user_pubkey.to_string(),
-            groups: vec![mgroup_pubkey.to_string()],
-            publisher: false,
-            subscriber: true,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SubscribeUserCliCommand {
+                user: user_pubkey.to_string(),
+                groups: vec![mgroup_pubkey.to_string()],
+                publisher: false,
+                subscriber: true,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let sig_str = signature.to_string();
@@ -229,6 +247,11 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         };
 
         let mgroup_pubkey1 = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
@@ -284,20 +307,23 @@ mod tests {
             }))
             .returning(move |_| Ok((mgroup_pubkey2, mgroup2.clone())));
         client
-            .expect_subscribe_multicastgroup()
+            .expect_update_multicastgroup_roles()
             .times(2)
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = SubscribeUserCliCommand {
-            user: user_pubkey.to_string(),
-            groups: vec![mgroup_pubkey1.to_string(), mgroup_pubkey2.to_string()],
-            publisher: false,
-            subscriber: true,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SubscribeUserCliCommand {
+                user: user_pubkey.to_string(),
+                groups: vec![mgroup_pubkey1.to_string(), mgroup_pubkey2.to_string()],
+                publisher: false,
+                subscriber: true,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let sig_str = signature.to_string();

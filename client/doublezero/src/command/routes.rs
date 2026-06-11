@@ -1,7 +1,7 @@
 use crate::command::util;
 use clap::Args;
 
-use doublezero_cli::doublezerocommand::CliCommand;
+use doublezero_serviceability_cli::doublezerocommand::CliCommand;
 
 use crate::{
     requirements::check_doublezero, routes::retrieve_routes,

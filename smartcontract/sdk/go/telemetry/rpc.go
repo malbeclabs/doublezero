@@ -15,4 +15,5 @@ type RPCClient interface {
 	GetSignatureStatuses(ctx context.Context, searchTransactionHistory bool, transactionSignatures ...solana.Signature) (out *solanarpc.GetSignatureStatusesResult, err error)
 	GetTransaction(ctx context.Context, txSig solana.Signature, opts *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error)
 	GetAccountInfo(ctx context.Context, account solana.PublicKey) (out *solanarpc.GetAccountInfoResult, err error)
+	GetAccountInfoWithOpts(ctx context.Context, account solana.PublicKey, opts *solanarpc.GetAccountInfoOpts) (out *solanarpc.GetAccountInfoResult, err error)
 }

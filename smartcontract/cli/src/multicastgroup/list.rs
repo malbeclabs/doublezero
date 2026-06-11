@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::{
     commands::multicastgroup::list::ListMulticastGroupCommand, MulticastGroup, MulticastGroupStatus,
@@ -36,7 +37,12 @@ pub struct MulticastGroupDisplay {
 }
 
 impl ListMulticastGroupCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let multicastgroups = client.list_multicastgroup(ListMulticastGroupCommand)?;
 
         let mut multicastgroups: Vec<(Pubkey, MulticastGroup)> =
@@ -75,6 +81,8 @@ impl ListMulticastGroupCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         multicastgroup::list::ListMulticastGroupCliCommand, tests::utils::create_test_client,
     };
@@ -123,6 +131,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let device2_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9");
         let device2 = Device {
@@ -154,6 +163,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -186,22 +196,27 @@ mod tests {
         });
 
         let mut output = Vec::new();
-        let res = ListMulticastGroupCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListMulticastGroupCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, " account                                   | code                | multicast_ip | max_bandwidth | publishers | subscribers | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | multicastgroup_code | 1.2.3.4      | 1.23Kbps      | 5          | 10          | activated | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
-        let res = ListMulticastGroupCliCommand {
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListMulticastGroupCliCommand {
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();

@@ -31,6 +31,8 @@ type SubmitterConfig struct {
 	MaxAttempts        int                             // optional, defaults to 5
 	MaxConcurrency     int
 	GetCurrentEpoch    func(ctx context.Context) (uint64, error)
+	AgentVersion       string
+	AgentCommit        string
 }
 
 // Submitter periodically flushes collected telemetry samples from the sample
@@ -90,8 +92,8 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 		return nil
 	}
 
-	for i := 0; i < len(samples); i += telemetry.MaxSamplesPerBatch {
-		end := min(i+telemetry.MaxSamplesPerBatch, len(samples))
+	for i := 0; i < len(samples); i += telemetry.MaxDeviceLatencySamplesPerBatch {
+		end := min(i+telemetry.MaxDeviceLatencySamplesPerBatch, len(samples))
 		batch := samples[i:end]
 
 		rtts := make([]uint32, len(batch))
@@ -122,6 +124,8 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 			Epoch:                      &partitionKey.Epoch,
 			StartTimestampMicroseconds: uint64(minTimestamp.UnixMicro()),
 			Samples:                    rtts,
+			AgentVersion:               s.cfg.AgentVersion,
+			AgentCommit:                s.cfg.AgentCommit,
 		}
 
 		_, _, err := s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
@@ -135,6 +139,8 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 					LinkPK:                       partitionKey.LinkPK,
 					Epoch:                        &partitionKey.Epoch,
 					SamplingIntervalMicroseconds: uint64(s.cfg.ProbeInterval.Microseconds()),
+					AgentVersion:                 s.cfg.AgentVersion,
+					AgentCommit:                  s.cfg.AgentCommit,
 				})
 				if err != nil {
 					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToInitializeAccount).Inc()

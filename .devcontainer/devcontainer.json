@@ -18,6 +18,7 @@
             "version": "1.90.0"
         },
     },
+    "initializeCommand": "mkdir -p \"${DZ_WORKTREES_DIR:-/tmp/worktrees}\"",
     "postCreateCommand": "sudo chown -R vscode:vscode /workspaces/doublezero/target && rustup component add --toolchain nightly rustfmt",
     "postStartCommand": "sudo chmod 666 /var/run/docker.sock && sudo chown -R vscode:vscode /home/vscode/.docker && sudo chown -R vscode:vscode /workspaces/doublezero/target",
     "customizations": {
@@ -56,9 +57,14 @@
     },
     "remoteUser": "vscode",
     "updateRemoteUserUID": true,
+    // Optional: set DZ_WORKTREES_DIR on the host to expose a worktrees directory
+    // (e.g. export DZ_WORKTREES_DIR="$HOME/projects/worktrees") at /workspaces/worktrees
+    // inside the container. Defaults to /tmp/worktrees when unset (created by
+    // initializeCommand above); harmless no-op for devs who don't use it.
     "mounts": [
         "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind",
-        "source=devcontainer-target,target=/workspaces/doublezero/target,type=volume"
+        "source=devcontainer-target,target=/workspaces/doublezero/target,type=volume",
+        "source=${localEnv:DZ_WORKTREES_DIR:/tmp/worktrees},target=/workspaces/worktrees,type=bind"
     ],
     "capAdd": [
         "NET_ADMIN",

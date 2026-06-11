@@ -17,8 +17,8 @@ use crate::cli::{
     tenant::TenantCommands,
     user::UserCommands,
 };
-use doublezero_cli::doublezerocommand::CliCommandImpl;
 use doublezero_sdk::DZClient;
+use doublezero_serviceability_cli::doublezerocommand::CliCommandImpl;
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
@@ -47,12 +47,20 @@ struct App {
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let app = App::parse();
 
     if let Some(keypair) = &app.keypair {
         println!("using keypair: {}", keypair.display());
     }
 
+    let env_for_ctx = match app.env.as_deref() {
+        Some(s) => s.parse::<Environment>()?,
+        None => Environment::default(),
+    };
     let (url, ws, program_id) = if let Some(env) = app.env {
         let config = env.parse::<Environment>()?.config()?;
         (
@@ -66,132 +74,164 @@ async fn main() -> eyre::Result<()> {
 
     let dzclient = DZClient::new(url, ws, program_id, app.keypair)?;
     let client = CliCommandImpl::new(&dzclient);
+    let ctx = doublezero_cli_core::CliContextBuilder::new()
+        .with_env(env_for_ctx)
+        .build()?;
 
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
 
     let res = match app.command {
-        Command::Address(args) => args.execute(&client, &mut handle),
-        Command::Balance(args) => args.execute(&client, &mut handle),
+        Command::Address(args) => args.execute(&ctx, &client, &mut handle).await,
+        Command::Balance(args) => args.execute(&ctx, &client, &mut handle).await,
 
-        Command::Init(args) => args.execute(&client, &mut handle),
+        Command::Init(args) => args.execute(&ctx, &client, &mut handle).await,
         Command::Config(command) => match command.command {
-            ConfigCommands::Get(args) => args.execute(&client, &mut handle),
-            ConfigCommands::Set(args) => args.execute(&client, &mut handle),
+            ConfigCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            ConfigCommands::Set(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::GlobalConfig(command) => match command.command {
-            GlobalConfigCommands::Set(args) => args.execute(&client, &mut handle),
-            GlobalConfigCommands::Get(args) => args.execute(&client, &mut handle),
+            GlobalConfigCommands::Set(args) => args.execute(&ctx, &client, &mut handle).await,
+            GlobalConfigCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
             GlobalConfigCommands::Airdrop(command) => match command.command {
-                AirdropCommands::Set(args) => args.execute(&client, &mut handle),
-                AirdropCommands::Get(args) => args.execute(&client, &mut handle),
+                AirdropCommands::Set(args) => args.execute(&ctx, &client, &mut handle).await,
+                AirdropCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
             },
             GlobalConfigCommands::Authority(command) => match command.command {
-                AuthorityCommands::Set(args) => args.execute(&client, &mut handle),
-                AuthorityCommands::Get(args) => args.execute(&client, &mut handle),
+                AuthorityCommands::Set(args) => args.execute(&ctx, &client, &mut handle).await,
+                AuthorityCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
             },
             GlobalConfigCommands::Allowlist(command) => match command.command {
-                FoundationAllowlistCommands::List(args) => args.execute(&client, &mut handle),
-                FoundationAllowlistCommands::Add(args) => args.execute(&client, &mut handle),
-                FoundationAllowlistCommands::Remove(args) => args.execute(&client, &mut handle),
+                FoundationAllowlistCommands::List(args) => {
+                    args.execute(&ctx, &client, &mut handle).await
+                }
+                FoundationAllowlistCommands::Add(args) => {
+                    args.execute(&ctx, &client, &mut handle).await
+                }
+                FoundationAllowlistCommands::Remove(args) => {
+                    args.execute(&ctx, &client, &mut handle).await
+                }
             },
-            GlobalConfigCommands::SetVersion(args) => args.execute(&client, &mut handle),
+            GlobalConfigCommands::SetVersion(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
         },
-        Command::Account(args) => args.execute(&dzclient, &mut handle),
-        Command::Accounts(args) => args.execute(&dzclient, &mut handle),
+        Command::Account(args) => args.execute(&ctx, &client, &mut handle).await,
+        Command::Accounts(args) => args.execute(&ctx, &client, &mut handle).await,
         Command::Location(command) => match command.command {
-            LocationCommands::Create(args) => args.execute(&client, &mut handle),
-            LocationCommands::Update(args) => args.execute(&client, &mut handle),
-            LocationCommands::List(args) => args.execute(&client, &mut handle),
-            LocationCommands::Get(args) => args.execute(&client, &mut handle),
-            LocationCommands::Delete(args) => args.execute(&client, &mut handle),
+            LocationCommands::Create(args) => args.execute(&ctx, &client, &mut handle).await,
+            LocationCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+            LocationCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
+            LocationCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            LocationCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::Exchange(command) => match command.command {
-            ExchangeCommands::Create(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::SetDevice(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::Update(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::List(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::Get(args) => args.execute(&client, &mut handle),
-            ExchangeCommands::Delete(args) => args.execute(&client, &mut handle),
+            ExchangeCommands::Create(args) => args.execute(&ctx, &client, &mut handle).await,
+            ExchangeCommands::SetDevice(args) => args.execute(&ctx, &client, &mut handle).await,
+            ExchangeCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+            ExchangeCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
+            ExchangeCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            ExchangeCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::Contributor(command) => match command.command {
             cli::contributor::ContributorCommands::Create(args) => {
-                args.execute(&client, &mut handle)
+                args.execute(&ctx, &client, &mut handle).await
             }
             cli::contributor::ContributorCommands::Update(args) => {
-                args.execute(&client, &mut handle)
+                args.execute(&ctx, &client, &mut handle).await
             }
-            cli::contributor::ContributorCommands::List(args) => args.execute(&client, &mut handle),
-            cli::contributor::ContributorCommands::Get(args) => args.execute(&client, &mut handle),
+            cli::contributor::ContributorCommands::List(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
+            cli::contributor::ContributorCommands::Get(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
             cli::contributor::ContributorCommands::Delete(args) => {
-                args.execute(&client, &mut handle)
+                args.execute(&ctx, &client, &mut handle).await
             }
         },
         Command::Tenant(command) => match command.command {
-            TenantCommands::Create(args) => args.execute(&client, &mut handle),
-            TenantCommands::Update(args) => args.execute(&client, &mut handle),
-            TenantCommands::List(args) => args.execute(&client, &mut handle),
-            TenantCommands::Get(args) => args.execute(&client, &mut handle),
-            TenantCommands::Delete(args) => args.execute(&client, &mut handle),
-            TenantCommands::AddAdministrator(args) => args.execute(&client, &mut handle),
-            TenantCommands::RemoveAdministrator(args) => args.execute(&client, &mut handle),
+            TenantCommands::Create(args) => args.execute(&ctx, &client, &mut handle).await,
+            TenantCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+            TenantCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
+            TenantCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            TenantCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
+            TenantCommands::AddAdministrator(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
+            TenantCommands::RemoveAdministrator(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
         },
         Command::Device(command) => match command.command {
-            DeviceCommands::Create(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Update(args) => args.execute(&client, &mut handle),
-            DeviceCommands::List(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Get(args) => args.execute(&client, &mut handle),
-            DeviceCommands::Delete(args) => args.execute(&client, &mut handle),
+            DeviceCommands::Create(args) => args.execute(&ctx, &client, &mut handle).await,
+            DeviceCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+            DeviceCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
+            DeviceCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            DeviceCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
             DeviceCommands::MigrateMulticastCounts(args) => args.execute(&client, &mut handle),
             DeviceCommands::MigrateUnicastCounts(args) => args.execute(&client, &mut handle),
             DeviceCommands::Interface(command) => match command.command {
-                InterfaceCommands::Create(args) => args.execute(&client, &mut handle),
-                InterfaceCommands::Update(args) => args.execute(&client, &mut handle),
-                InterfaceCommands::List(args) => args.execute(&client, &mut handle),
-                InterfaceCommands::Get(args) => args.execute(&client, &mut handle),
-                InterfaceCommands::Delete(args) => args.execute(&client, &mut handle),
+                InterfaceCommands::Create(args) => args.execute(&ctx, &client, &mut handle).await,
+                InterfaceCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+                InterfaceCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
+                InterfaceCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+                InterfaceCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
             },
         },
         Command::Link(command) => match command.command {
             LinkCommands::Create(args) => match args.command {
-                cli::link::CreateLinkCommands::Wan(args) => args.execute(&client, &mut handle),
-                cli::link::CreateLinkCommands::Dzx(args) => args.execute(&client, &mut handle),
+                cli::link::CreateLinkCommands::Wan(args) => {
+                    args.execute(&ctx, &client, &mut handle).await
+                }
+                cli::link::CreateLinkCommands::Dzx(args) => {
+                    args.execute(&ctx, &client, &mut handle).await
+                }
             },
-            LinkCommands::Accept(args) => args.execute(&client, &mut handle),
-            LinkCommands::Update(args) => args.execute(&client, &mut handle),
-            LinkCommands::List(args) => args.execute(&client, &mut handle),
-            LinkCommands::Get(args) => args.execute(&client, &mut handle),
-            LinkCommands::Delete(args) => args.execute(&client, &mut handle),
+            LinkCommands::Accept(args) => args.execute(&ctx, &client, &mut handle).await,
+            LinkCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+            LinkCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
+            LinkCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            LinkCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::AccessPass(command) => match command.command {
-            cli::accesspass::AccessPassCommands::Set(args) => args.execute(&client, &mut handle),
-            cli::accesspass::AccessPassCommands::Close(args) => args.execute(&client, &mut handle),
-            cli::accesspass::AccessPassCommands::List(args) => args.execute(&client, &mut handle),
-            cli::accesspass::AccessPassCommands::Get(args) => args.execute(&client, &mut handle),
+            cli::accesspass::AccessPassCommands::Set(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
+            cli::accesspass::AccessPassCommands::Close(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
+            cli::accesspass::AccessPassCommands::List(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
+            cli::accesspass::AccessPassCommands::Get(args) => {
+                args.execute(&ctx, &client, &mut handle).await
+            }
             cli::accesspass::AccessPassCommands::UserBalances(args) => {
-                args.execute(&client, &mut handle)
+                args.execute(&ctx, &client, &mut handle).await
             }
             cli::accesspass::AccessPassCommands::Fund(args) => {
-                args.execute(&client, &mut handle, &mut std::io::stdin().lock())
+                args.execute(&ctx, &client, &mut handle, &mut std::io::stdin().lock())
+                    .await
             }
         },
         Command::Permission(command) => match command.command {
-            PermissionCommands::Set(args) => args.execute(&client, &mut handle),
-            PermissionCommands::Suspend(args) => args.execute(&client, &mut handle),
-            PermissionCommands::Resume(args) => args.execute(&client, &mut handle),
-            PermissionCommands::Delete(args) => args.execute(&client, &mut handle),
-            PermissionCommands::Get(args) => args.execute(&client, &mut handle),
-            PermissionCommands::List(args) => args.execute(&client, &mut handle),
+            PermissionCommands::Set(args) => args.execute(&ctx, &client, &mut handle).await,
+            PermissionCommands::Suspend(args) => args.execute(&ctx, &client, &mut handle).await,
+            PermissionCommands::Resume(args) => args.execute(&ctx, &client, &mut handle).await,
+            PermissionCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
+            PermissionCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            PermissionCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::User(command) => match command.command {
-            UserCommands::Create(args) => args.execute(&client, &mut handle),
-            UserCommands::CreateSubscribe(args) => args.execute(&client, &mut handle),
-            UserCommands::Subscribe(args) => args.execute(&client, &mut handle),
-            UserCommands::Update(args) => args.execute(&client, &mut handle),
-            UserCommands::List(args) => args.execute(&client, &mut handle),
-            UserCommands::Get(args) => args.execute(&client, &mut handle),
-            UserCommands::Delete(args) => args.execute(&client, &mut handle),
-            UserCommands::RequestBan(args) => args.execute(&client, &mut handle),
+            UserCommands::Create(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::CreateSubscribe(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::Subscribe(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::Update(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::List(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::Get(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::Delete(args) => args.execute(&ctx, &client, &mut handle).await,
+            UserCommands::RequestBan(args) => args.execute(&ctx, &client, &mut handle).await,
         },
         Command::Multicast(args) => match args.command {
             cli::multicast::MulticastCommands::Group(args) => match args.command {
@@ -201,51 +241,63 @@ async fn main() -> eyre::Result<()> {
                             match args.command {
                                 cli::multicastgroup::MulticastGroupPubAllowlistCommands::List(
                                     args,
-                                ) => args.execute(&client, &mut handle),
+                                ) => args.execute(&ctx, &client, &mut handle).await,
                                 cli::multicastgroup::MulticastGroupPubAllowlistCommands::Add(
                                     args,
-                                ) => args.execute(&client, &mut handle),
+                                ) => args.execute(&ctx, &client, &mut handle).await,
                                 cli::multicastgroup::MulticastGroupPubAllowlistCommands::Remove(
                                     args,
-                                ) => args.execute(&client, &mut handle),
+                                ) => args.execute(&ctx, &client, &mut handle).await,
                             }
                         }
                         cli::multicastgroup::MulticastGroupAllowlistCommands::Subscriber(args) => {
                             match args.command {
                                 cli::multicastgroup::MulticastGroupSubAllowlistCommands::List(
                                     args,
-                                ) => args.execute(&client, &mut handle),
+                                ) => args.execute(&ctx, &client, &mut handle).await,
                                 cli::multicastgroup::MulticastGroupSubAllowlistCommands::Add(
                                     args,
-                                ) => args.execute(&client, &mut handle),
+                                ) => args.execute(&ctx, &client, &mut handle).await,
                                 cli::multicastgroup::MulticastGroupSubAllowlistCommands::Remove(
                                     args,
-                                ) => args.execute(&client, &mut handle),
+                                ) => args.execute(&ctx, &client, &mut handle).await,
                             }
                         }
                     }
                 }
                 cli::multicastgroup::MulticastGroupCommands::Create(args) => {
-                    args.execute(&client, &mut handle)
+                    args.execute(&ctx, &client, &mut handle).await
                 }
                 cli::multicastgroup::MulticastGroupCommands::Update(args) => {
-                    args.execute(&client, &mut handle)
+                    args.execute(&ctx, &client, &mut handle).await
                 }
                 cli::multicastgroup::MulticastGroupCommands::List(args) => {
-                    args.execute(&client, &mut handle)
+                    args.execute(&ctx, &client, &mut handle).await
                 }
                 cli::multicastgroup::MulticastGroupCommands::Get(args) => {
-                    args.execute(&client, &mut handle)
+                    args.execute(&ctx, &client, &mut handle).await
                 }
                 cli::multicastgroup::MulticastGroupCommands::Delete(args) => {
-                    args.execute(&client, &mut handle)
+                    args.execute(&ctx, &client, &mut handle).await
                 }
             },
         },
 
-        Command::Export(args) => args.execute(&client, &mut handle),
-        Command::Keygen(args) => args.execute(&client, &mut handle),
-        Command::Log(args) => args.execute(&dzclient, &mut handle),
+        Command::Sentinel(args) => match args.command {
+            cli::sentinel::SentinelCommands::FindValidatorMulticastPublishers(cmd) => {
+                cmd.execute(&dzclient).await
+            }
+            cli::sentinel::SentinelCommands::CreateValidatorMulticastPublishers(cmd) => {
+                cmd.execute(&dzclient).await
+            }
+        },
+
+        Command::Migrate(args) => match args.command {
+            cli::migrate::MigrateCommands::FlexAlgo(cmd) => cmd.execute(&client, &mut handle),
+        },
+        Command::Export(args) => args.execute(&ctx, &client, &mut handle).await,
+        Command::Keygen(args) => args.execute(&ctx, &client, &mut handle).await,
+        Command::Log(args) => args.execute(&ctx, &client, &mut handle).await,
         Command::Completion(args) => {
             let mut cmd = App::command();
             generate(args.shell, &mut cmd, "doublezero", &mut std::io::stdout());

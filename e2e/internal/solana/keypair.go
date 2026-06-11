@@ -30,16 +30,18 @@ func GenerateKeypairJSON() ([]byte, error) {
 }
 
 func PubkeyFromKeypairJSON(keypairJSON []byte) (string, error) {
-	var keypair []byte
-	if err := json.Unmarshal(keypairJSON, &keypair); err != nil {
+	var ints []int
+	if err := json.Unmarshal(keypairJSON, &ints); err != nil {
 		return "", fmt.Errorf("failed to unmarshal keypair JSON: %w", err)
 	}
 
-	if len(keypair) != 64 {
-		return "", fmt.Errorf("invalid keypair length: expected 64, got %d", len(keypair))
+	if len(ints) != 64 {
+		return "", fmt.Errorf("invalid keypair length: expected 64, got %d", len(ints))
 	}
 
-	pubkey := keypair[32:]
-	address := base58.Encode(pubkey)
-	return address, nil
+	pubkey := make([]byte, 32)
+	for i, v := range ints[32:] {
+		pubkey[i] = byte(v)
+	}
+	return base58.Encode(pubkey), nil
 }

@@ -1,11 +1,13 @@
-use crate::doublezerocommand::CliCommand;
+use crate::{doublezerocommand::CliCommand, topology::resolve_topology_names};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::{serializer, types::NetworkV4};
 use doublezero_sdk::{
     commands::{
         contributor::{get::GetContributorCommand, list::ListContributorCommand},
         device::list::ListDeviceCommand,
         link::list::ListLinkCommand,
+        topology::list::ListTopologyCommand,
     },
     Link, LinkLinkType, LinkStatus,
 };
@@ -41,6 +43,9 @@ pub struct ListLinkCliCommand {
     /// Filter by link code (partial match)
     #[arg(long)]
     pub code: Option<String>,
+    /// Filter by topology name (use "default" for links with no topology assignment)
+    #[arg(long)]
+    pub topology: Option<String>,
     /// List only WAN links.
     #[arg(long, default_value_t = false)]
     pub wan: bool,
@@ -92,13 +97,23 @@ pub struct LinkDisplay {
     pub health: LinkHealth,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
+    pub link_topologies: String,
+    pub unicast_drained: bool,
 }
 
 impl ListLinkCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let contributors = client.list_contributor(ListContributorCommand {})?;
         let devices = client.list_device(ListDeviceCommand)?;
         let mut links = client.list_link(ListLinkCommand)?;
+        let topology_map = client
+            .list_topology(ListTopologyCommand)
+            .unwrap_or_default();
 
         // Filter by contributor if specified
         if let Some(contributor_filter) = &self.contributor {
@@ -179,6 +194,21 @@ impl ListLinkCliCommand {
             links.retain(|(_, link)| link.code.contains(code_filter));
         }
 
+        // Filter by topology if specified
+        if let Some(topology_filter) = &self.topology {
+            let topology_filter = topology_filter.to_uppercase();
+            if topology_filter == "DEFAULT" {
+                links.retain(|(_, link)| link.link_topologies.is_empty());
+            } else {
+                let topology_pk = topology_map
+                    .iter()
+                    .find(|(_, t)| t.name == topology_filter)
+                    .map(|(pk, _)| *pk)
+                    .ok_or_else(|| eyre::eyre!("Topology '{}' not found", topology_filter))?;
+                links.retain(|(_, link)| link.link_topologies.contains(&topology_pk));
+            }
+        }
+
         let mut tunnel_displays: Vec<LinkDisplay> = links
             .into_iter()
             .map(|(pubkey, link)| {
@@ -217,6 +247,10 @@ impl ListLinkCliCommand {
                     status: link.status,
                     health: link.link_health,
                     owner: link.owner,
+                    link_topologies: resolve_topology_names(&link.link_topologies, &topology_map),
+                    unicast_drained: link.link_flags
+                        & doublezero_serviceability::state::link::LINK_FLAG_UNICAST_DRAINED
+                        != 0,
                 }
             })
             .collect();
@@ -246,6 +280,8 @@ impl ListLinkCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{link::list::ListLinkCliCommand, tests::utils::create_test_client};
 
     use doublezero_sdk::{
@@ -314,6 +350,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let device2_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9");
         let device2 = Device {
@@ -345,6 +382,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -377,6 +415,9 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            link_flags: 0,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -384,48 +425,59 @@ mod tests {
             tunnels.insert(tunnel1_pubkey, tunnel1.clone());
             Ok(tunnels)
         });
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
+
+        let ctx = cli_context_default_for_tests();
 
         let mut output = Vec::new();
-        let res = ListLinkCliCommand {
-            contributor: None,
-            side_a: None,
-            side_z: None,
-            link_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            wan: false,
-            dzx: false,
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListLinkCliCommand {
+                contributor: None,
+                side_a: None,
+                side_z: None,
+                link_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                topology: None,
+                wan: false,
+                dzx: false,
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code        | contributor       | side_a_name  | side_a_iface_name | side_z_name  | side_z_iface_name | link_type | bandwidth | mtu  | delay_ms | jitter_ms | delay_override_ms | tunnel_id | tunnel_net | status    | health            | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | contributor1_code | device2_code | eth0              | device2_code | eth1              | WAN       | 10Gbps    | 4500 | 0.02ms   | 0.00ms    | 0.00ms            | 1234      | 1.2.3.4/32 | activated | ready-for-service | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | code        | contributor       | side_a_name  | side_a_iface_name | side_z_name  | side_z_iface_name | link_type | bandwidth | mtu  | delay_ms | jitter_ms | delay_override_ms | tunnel_id | tunnel_net | status    | health            | owner                                     | link_topologies | unicast_drained \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | tunnel_code | contributor1_code | device2_code | eth0              | device2_code | eth1              | WAN       | 10Gbps    | 4500 | 0.02ms   | 0.00ms    | 0.00ms            | 1234      | 1.2.3.4/32 | activated | ready-for-service | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | default         | false           \n");
 
         let mut output = Vec::new();
-        let res = ListLinkCliCommand {
-            contributor: None,
-            side_a: None,
-            side_z: None,
-            link_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            wan: false,
-            dzx: false,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListLinkCliCommand {
+                contributor: None,
+                side_a: None,
+                side_z: None,
+                link_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                topology: None,
+                wan: false,
+                dzx: false,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"WAN\",\"bandwidth\":10000000000,\"mtu\":4500,\"delay_ns\":20000,\"jitter_ns\":1121,\"delay_override_ns\":0,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"desired_status\":\"Activated\",\"status\":\"Activated\",\"health\":\"ReadyForService\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"WAN\",\"bandwidth\":10000000000,\"mtu\":4500,\"delay_ns\":20000,\"jitter_ns\":1121,\"delay_override_ns\":0,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"desired_status\":\"Activated\",\"status\":\"Activated\",\"health\":\"ReadyForService\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"link_topologies\":\"default\",\"unicast_drained\":false}]\n");
     }
 
     #[test]
@@ -508,6 +560,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let device2_pubkey = Pubkey::new_unique();
         let device2 = Device {
@@ -539,6 +592,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -571,6 +625,9 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            link_flags: 0,
         };
         let tunnel2_pubkey = Pubkey::new_unique();
         let tunnel2 = Link {
@@ -595,6 +652,9 @@ mod tests {
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            link_flags: 0,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -603,23 +663,31 @@ mod tests {
             tunnels.insert(tunnel2_pubkey, tunnel2.clone());
             Ok(tunnels)
         });
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
+
+        let ctx = cli_context_default_for_tests();
 
         let mut output = Vec::new();
-        let res = ListLinkCliCommand {
-            contributor: Some("contributor1_code".to_string()),
-            side_a: None,
-            side_z: None,
-            link_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            wan: false,
-            dzx: false,
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListLinkCliCommand {
+                contributor: Some("contributor1_code".to_string()),
+                side_a: None,
+                side_z: None,
+                link_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                topology: None,
+                wan: false,
+                dzx: false,
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
@@ -679,6 +747,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzoa");
@@ -711,6 +780,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -743,6 +813,9 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            link_flags: 0,
         };
 
         let link2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPS");
@@ -768,6 +841,9 @@ mod tests {
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            link_flags: 0,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -776,24 +852,31 @@ mod tests {
             links.insert(link2_pubkey, link2.clone());
             Ok(links)
         });
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
         // Test filter by link_type=WAN (should return only link1)
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListLinkCliCommand {
-            contributor: None,
-            side_a: None,
-            side_z: None,
-            link_type: Some("WAN".to_string()),
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            wan: false,
-            dzx: false,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListLinkCliCommand {
+                contributor: None,
+                side_a: None,
+                side_z: None,
+                link_type: Some("WAN".to_string()),
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                topology: None,
+                wan: false,
+                dzx: false,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("wan_link"));
@@ -852,6 +935,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzoa");
@@ -884,6 +968,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -916,6 +1001,9 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            link_flags: 0,
         };
 
         let link2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPS");
@@ -941,6 +1029,9 @@ mod tests {
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            link_flags: 0,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -949,24 +1040,31 @@ mod tests {
             links.insert(link2_pubkey, link2.clone());
             Ok(links)
         });
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
         // Test filter by side_a=device_ams (should return only link1)
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListLinkCliCommand {
-            contributor: None,
-            side_a: Some("device_ams".to_string()),
-            side_z: None,
-            link_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            wan: false,
-            dzx: false,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListLinkCliCommand {
+                contributor: None,
+                side_a: Some("device_ams".to_string()),
+                side_z: None,
+                link_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                topology: None,
+                wan: false,
+                dzx: false,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("link_ams_to_nyc"));
@@ -1025,6 +1123,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1056,6 +1155,9 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            link_flags: 0,
         };
 
         let link2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPS");
@@ -1081,6 +1183,9 @@ mod tests {
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+
+            link_topologies: Vec::new(),
+            link_flags: 0,
         };
 
         client.expect_list_link().returning(move |_| {
@@ -1089,24 +1194,31 @@ mod tests {
             links.insert(link2_pubkey, link2.clone());
             Ok(links)
         });
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
         // Test filter by code=production (should return only link1)
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListLinkCliCommand {
-            contributor: None,
-            side_a: None,
-            side_z: None,
-            link_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: Some("production".to_string()),
-            wan: false,
-            dzx: false,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListLinkCliCommand {
+                contributor: None,
+                side_a: None,
+                side_z: None,
+                link_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: Some("production".to_string()),
+                topology: None,
+                wan: false,
+                dzx: false,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("production-link-001"));

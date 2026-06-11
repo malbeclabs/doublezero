@@ -130,9 +130,9 @@ func (c *Client) setCommonHeaders(req *http.Request, contentType string) {
 }
 
 func (c *Client) fetchProbesWithErrorHandling(ctx context.Context, lat, lng float64, entityName string) ([]Probe, error) {
-	probes, err := c.GetProbesInRadius(ctx, lat, lng, int(collector.MaxDistanceKM))
+	probes, err := c.GetProbesInRadius(ctx, lat, lng, int(collector.MaxDistanceKM), true)
 	if err != nil {
-		c.log.Warn("Failed to get probes for location",
+		c.log.Warn("Failed to get anchor probes for location",
 			slog.String("entity_name", entityName),
 			slog.Float64("latitude", lat),
 			slog.Float64("longitude", lng),
@@ -140,7 +140,26 @@ func (c *Client) fetchProbesWithErrorHandling(ctx context.Context, lat, lng floa
 		return []Probe{}, nil
 	}
 
-	return filterValidProbes(probes), nil
+	valid := filterValidProbes(probes)
+
+	// Fall back to any Connected probe in radius when no anchors are available.
+	// A single-anchor location otherwise goes dark the moment that anchor becomes unresponsive.
+	if len(valid) == 0 {
+		c.log.Warn("No anchor probes found, falling back to non-anchor Connected probes",
+			slog.String("entity_name", entityName),
+			slog.Float64("latitude", lat),
+			slog.Float64("longitude", lng))
+		probes, err = c.GetProbesInRadius(ctx, lat, lng, int(collector.MaxDistanceKM), false)
+		if err != nil {
+			c.log.Warn("Failed to get fallback probes for location",
+				slog.String("entity_name", entityName),
+				slog.String("error", err.Error()))
+			return []Probe{}, nil
+		}
+		valid = filterValidProbes(probes)
+	}
+
+	return valid, nil
 }
 
 func (c *Client) makeRequest(ctx context.Context, endpoint string) (*http.Response, error) {
@@ -166,9 +185,12 @@ func (c *Client) makeRequest(ctx context.Context, endpoint string) (*http.Respon
 	return resp, nil
 }
 
-func (c *Client) GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int) ([]Probe, error) {
+func (c *Client) GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int, anchorsOnly bool) ([]Probe, error) {
 	radiusParam := fmt.Sprintf("%.6f,%.6f:%d", latitude, longitude, radiusKm)
-	endpoint := "/probes/?radius=" + radiusParam + "&status_name=Connected&is_anchor=true"
+	endpoint := "/probes/?radius=" + radiusParam + "&status_name=Connected"
+	if anchorsOnly {
+		endpoint += "&is_anchor=true"
+	}
 
 	allProbes := []Probe{}
 

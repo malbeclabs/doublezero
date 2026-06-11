@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::{render_collection, CliContext, OutputFormat};
 use doublezero_program_common::serializer;
 use doublezero_sdk::{
     commands::{device::list::ListDeviceCommand, exchange::list::ListExchangeCommand},
@@ -8,7 +9,7 @@ use doublezero_sdk::{
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct ListExchangeCliCommand {
@@ -37,9 +38,13 @@ pub struct ExchangeDisplay {
 }
 
 impl ListExchangeCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let exchanges = client.list_exchange(ListExchangeCommand)?;
-
         let devices = client.list_device(ListDeviceCommand)?;
 
         let mut exchange_displays: Vec<ExchangeDisplay> = exchanges
@@ -76,19 +81,11 @@ impl ListExchangeCliCommand {
 
         exchange_displays.sort_by(|a, b| a.code.cmp(&b.code));
 
-        let res = if self.json {
-            serde_json::to_string_pretty(&exchange_displays)?
-        } else if self.json_compact {
-            serde_json::to_string(&exchange_displays)?
-        } else {
-            Table::new(exchange_displays)
-                .with(Style::psql().remove_horizontals())
-                .to_string()
-        };
-
-        writeln!(out, "{res}")?;
-
-        Ok(())
+        render_collection(
+            out,
+            exchange_displays,
+            OutputFormat::from_flags(self.json, self.json_compact),
+        )
     }
 }
 
@@ -98,6 +95,7 @@ mod tests {
         exchange::list::{ExchangeStatus::Activated, ListExchangeCliCommand},
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType, Exchange};
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
@@ -142,6 +140,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let device2_pubkey = Pubkey::new_unique();
         let device2 = Device {
@@ -173,6 +172,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -206,22 +206,27 @@ mod tests {
             Ok(exchanges)
         });
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListExchangeCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListExchangeCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, " account                                   | code      | name      | device1 | device2 | lat | lng | bgp_community | status    | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | some code | some name | (none)  | (none)  | 15  | 15  | 6             | activated | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
-        let res = ListExchangeCliCommand {
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListExchangeCliCommand {
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();

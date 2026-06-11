@@ -2,12 +2,14 @@ use crate::{
     command::util,
     requirements::check_doublezero,
     servicecontroller::{
-        DoubleZeroStatus, ServiceController, ServiceControllerImpl, StatusResponse,
+        DoubleZeroStatus, MulticastGroups, ServiceController, ServiceControllerImpl, StatusResponse,
     },
 };
+use backon::{ExponentialBuilder, Retryable};
 use clap::Args;
-use doublezero_cli::{doublezerocommand::CliCommand, helpers::print_error};
+use doublezero_serviceability_cli::{doublezerocommand::CliCommand, helpers::print_error};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tabled::Tabled;
 
 #[derive(Args, Debug)]
@@ -33,6 +35,19 @@ struct AppendedStatusResponse {
     metro: String,
     #[tabled(rename = "Network")]
     network: String,
+    #[tabled(rename = "Multicast Groups")]
+    multicast_groups: String,
+}
+
+fn format_multicast_groups(groups: &MulticastGroups) -> String {
+    let mut parts = Vec::new();
+    for code in &groups.publisher {
+        parts.push(format!("P:{code}"));
+    }
+    for code in &groups.subscriber {
+        parts.push(format!("S:{code}"));
+    }
+    parts.join(",")
 }
 
 impl StatusCliCommand {
@@ -53,7 +68,11 @@ impl StatusCliCommand {
         client: &dyn CliCommand,
         controller: &T,
     ) -> eyre::Result<Vec<AppendedStatusResponse>> {
-        let v2_status = controller.v2_status().await?;
+        let backoff = ExponentialBuilder::new()
+            .with_max_times(3)
+            .with_min_delay(Duration::from_millis(500))
+            .with_max_delay(Duration::from_secs(2));
+        let v2_status = (|| controller.v2_status()).retry(backoff).await?;
 
         // When no services are running, synthesize a "disconnected" entry to match
         // the legacy /status endpoint behavior. The QA agent and other tooling
@@ -81,6 +100,7 @@ impl StatusCliCommand {
                 } else {
                     v2_status.network.clone()
                 },
+                multicast_groups: String::new(),
             }]);
         }
 
@@ -124,6 +144,7 @@ impl StatusCliCommand {
                 metro,
                 network: network.clone(),
                 tenant: svc.tenant.clone(),
+                multicast_groups: format_multicast_groups(&svc.multicast_groups),
             });
         }
 
@@ -136,9 +157,13 @@ impl StatusCliCommand {
 mod tests {
     use super::*;
     use crate::servicecontroller::{
-        DoubleZeroStatus, MockServiceController, V2ServiceStatus, V2StatusResponse,
+        DoubleZeroStatus, MockServiceController, MulticastGroups, V2ServiceStatus, V2StatusResponse,
     };
-    use doublezero_cli::doublezerocommand::MockCliCommand;
+    use doublezero_serviceability_cli::doublezerocommand::MockCliCommand;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
 
     #[allow(clippy::too_many_arguments)]
     fn make_v2_service(
@@ -157,7 +182,7 @@ mod tests {
             status: StatusResponse {
                 doublezero_status: DoubleZeroStatus {
                     session_status: session_status.to_string(),
-                    last_session_update: Some(1625247600),
+                    last_session_update: Some(1_625_247_600),
                 },
                 tunnel_name: tunnel_name.map(String::from),
                 tunnel_src: tunnel_src.map(String::from),
@@ -169,6 +194,7 @@ mod tests {
             lowest_latency_device: lowest_latency_device.to_string(),
             metro: metro.to_string(),
             tenant: tenant.to_string(),
+            multicast_groups: MulticastGroups::default(),
         }
     }
 
@@ -247,6 +273,7 @@ mod tests {
                     lowest_latency_device: "device2".to_string(),
                     metro: String::new(),
                     tenant: String::new(),
+                    multicast_groups: MulticastGroups::default(),
                 }],
             })
         });
@@ -325,7 +352,7 @@ mod tests {
                     status: StatusResponse {
                         doublezero_status: DoubleZeroStatus {
                             session_status: "BGP Session Up".to_string(),
-                            last_session_update: Some(1625247600),
+                            last_session_update: Some(1_625_247_600),
                         },
                         tunnel_name: Some("doublezero1".to_string()),
                         tunnel_src: Some("10.10.10.10".to_string()),
@@ -337,6 +364,7 @@ mod tests {
                     lowest_latency_device: "device1".to_string(),
                     metro: "metro".to_string(),
                     tenant: String::new(),
+                    multicast_groups: MulticastGroups::default(),
                 }],
             })
         });
@@ -364,7 +392,7 @@ mod tests {
         let status_response = StatusResponse {
             doublezero_status: DoubleZeroStatus {
                 session_status: "BGP Session Up".to_string(),
-                last_session_update: Some(1625247600),
+                last_session_update: Some(1_625_247_600),
             },
             tunnel_name: Some("doublezero1".to_string()),
             tunnel_src: Some("10.0.0.1".to_string()),
@@ -382,6 +410,7 @@ mod tests {
             metro: "amsterdam".to_string(),
             network: "Testnet".to_string(),
             tenant: "".to_string(),
+            multicast_groups: String::new(),
         };
 
         // JSON output is an array of status responses
@@ -412,6 +441,11 @@ mod tests {
         assert!(status.get("metro").is_some(), "Missing 'metro' field");
         assert!(status.get("network").is_some(), "Missing 'network' field");
         assert!(status.get("tenant").is_some(), "Missing 'tenant' field");
+        assert!(
+            status.get("multicast_groups").is_some(),
+            "Missing 'multicast_groups' field"
+        );
+        assert_eq!(status.get("multicast_groups").unwrap(), "");
 
         // Validate response nested fields
         let response = status.get("response").unwrap();
@@ -462,7 +496,7 @@ mod tests {
         assert_eq!(response.get("doublezero_ip").unwrap(), "10.1.2.3");
         assert_eq!(response.get("user_type").unwrap(), "IBRL");
         assert_eq!(dz_status.get("session_status").unwrap(), "BGP Session Up");
-        assert_eq!(dz_status.get("last_session_update").unwrap(), 1625247600);
+        assert_eq!(dz_status.get("last_session_update").unwrap(), 1_625_247_600);
     }
 
     /// Test JSON output format with null/missing optional fields
@@ -491,6 +525,7 @@ mod tests {
             metro: "amsterdam".to_string(),
             network: "Testnet".to_string(),
             tenant: "".to_string(),
+            multicast_groups: String::new(),
         };
 
         // JSON output is an array of status responses
@@ -521,6 +556,9 @@ mod tests {
 
         // user_type should still be present
         assert_eq!(response.get("user_type").unwrap(), "Multicast");
+
+        // multicast_groups should be present and empty
+        assert_eq!(status.get("multicast_groups").unwrap(), "");
     }
 
     #[tokio::test]
@@ -652,5 +690,164 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result[0].lowest_latency_device, "⚠️ device2");
+    }
+
+    #[tokio::test]
+    async fn test_status_command_multicast_groups_display() {
+        let mock_command = MockCliCommand::new();
+        let mut mock_controller = MockServiceController::new();
+
+        mock_controller.expect_v2_status().returning(|| {
+            Ok(V2StatusResponse {
+                reconciler_enabled: true,
+                client_ip: String::new(),
+                network: "testnet".to_string(),
+                services: vec![V2ServiceStatus {
+                    status: StatusResponse {
+                        doublezero_status: DoubleZeroStatus {
+                            session_status: "BGP Session Up".to_string(),
+                            last_session_update: Some(1_625_247_600),
+                        },
+                        tunnel_name: Some("doublezero1".to_string()),
+                        tunnel_src: Some("10.10.10.10".to_string()),
+                        tunnel_dst: Some("5.6.7.8".to_string()),
+                        doublezero_ip: None,
+                        user_type: Some("Multicast".to_string()),
+                    },
+                    current_device: "device1".to_string(),
+                    lowest_latency_device: "device1".to_string(),
+                    metro: "metro".to_string(),
+                    tenant: String::new(),
+                    multicast_groups: MulticastGroups {
+                        publisher: vec!["solana-lv".to_string()],
+                        subscriber: vec!["solana-ams".to_string()],
+                    },
+                }],
+            })
+        });
+
+        let result = StatusCliCommand { json: true }
+            .command_impl(&mock_command, &mock_controller)
+            .await;
+
+        assert!(result.is_ok());
+        let result = result.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].multicast_groups, "P:solana-lv,S:solana-ams");
+    }
+
+    #[test]
+    fn test_multicast_groups_serde_default() {
+        let json = r#"{
+            "doublezero_status": {"session_status": "BGP Session Up", "last_session_update": null},
+            "tunnel_name": null, "tunnel_src": null, "tunnel_dst": null,
+            "doublezero_ip": null, "user_type": "IBRL",
+            "current_device": "dz1", "lowest_latency_device": "dz1",
+            "metro": "ams", "tenant": ""
+        }"#;
+        let svc: V2ServiceStatus = serde_json::from_str(json).unwrap();
+        assert!(svc.multicast_groups.publisher.is_empty());
+        assert!(svc.multicast_groups.subscriber.is_empty());
+    }
+
+    #[test]
+    fn test_multicast_groups_serde_populated() {
+        let json = r#"{
+            "doublezero_status": {"session_status": "BGP Session Up", "last_session_update": null},
+            "tunnel_name": "doublezero1", "tunnel_src": "10.0.0.1", "tunnel_dst": "5.6.7.8",
+            "doublezero_ip": null, "user_type": "Multicast",
+            "current_device": "dz1", "lowest_latency_device": "dz1",
+            "metro": "ams", "tenant": "acme",
+            "multicast_groups": {
+                "publisher": ["solana-lv"],
+                "subscriber": ["solana-ams", "solana-fra"]
+            }
+        }"#;
+        let svc: V2ServiceStatus = serde_json::from_str(json).unwrap();
+        assert_eq!(svc.multicast_groups.publisher, vec!["solana-lv"]);
+        assert_eq!(
+            svc.multicast_groups.subscriber,
+            vec!["solana-ams", "solana-fra"]
+        );
+    }
+
+    #[test]
+    fn test_multicast_groups_serde_empty_arrays() {
+        let json = r#"{
+            "doublezero_status": {"session_status": "BGP Session Up", "last_session_update": null},
+            "tunnel_name": null, "tunnel_src": null, "tunnel_dst": null,
+            "doublezero_ip": "10.0.0.1", "user_type": "IBRL",
+            "current_device": "dz1", "lowest_latency_device": "dz1",
+            "metro": "ams", "tenant": "",
+            "multicast_groups": {"publisher": [], "subscriber": []}
+        }"#;
+        let svc: V2ServiceStatus = serde_json::from_str(json).unwrap();
+        assert!(svc.multicast_groups.publisher.is_empty());
+        assert!(svc.multicast_groups.subscriber.is_empty());
+    }
+
+    #[test]
+    fn test_format_multicast_groups() {
+        assert_eq!(format_multicast_groups(&MulticastGroups::default()), "");
+        assert_eq!(
+            format_multicast_groups(&MulticastGroups {
+                publisher: vec!["solana-lv".to_string()],
+                subscriber: vec![],
+            }),
+            "P:solana-lv"
+        );
+        assert_eq!(
+            format_multicast_groups(&MulticastGroups {
+                publisher: vec![],
+                subscriber: vec!["solana-ams".to_string()],
+            }),
+            "S:solana-ams"
+        );
+        assert_eq!(
+            format_multicast_groups(&MulticastGroups {
+                publisher: vec!["solana-lv".to_string()],
+                subscriber: vec!["solana-ams".to_string(), "solana-fra".to_string()],
+            }),
+            "P:solana-lv,S:solana-ams,S:solana-fra"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_status_retries_transient_error() {
+        let mock_command = MockCliCommand::new();
+        let mut mock_controller = MockServiceController::new();
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_clone = calls.clone();
+        mock_controller.expect_v2_status().returning(move || {
+            if calls_clone.fetch_add(1, Ordering::SeqCst) < 2 {
+                Err(eyre::eyre!("Unable to connect to doublezero daemon: boom"))
+            } else {
+                Ok(V2StatusResponse {
+                    reconciler_enabled: true,
+                    client_ip: String::new(),
+                    network: "testnet".to_string(),
+                    services: vec![make_v2_service(
+                        "BGP Session Up",
+                        Some("doublezero1"),
+                        Some("1.2.3.4"),
+                        Some("5.6.7.8"),
+                        Some("10.0.0.1"),
+                        Some("IBRL"),
+                        "device1",
+                        "device1",
+                        "metro",
+                        "",
+                    )],
+                })
+            }
+        });
+
+        let result = StatusCliCommand { json: true }
+            .command_impl(&mock_command, &mock_controller)
+            .await;
+
+        assert!(result.is_ok());
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
     }
 }

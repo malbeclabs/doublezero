@@ -77,11 +77,11 @@ func (dn *Devnet) InitGeolocationProgramConfigIfNotInitialized(ctx context.Conte
 	dn.log.Debug("==> Initializing geolocation program config")
 
 	output, err := dn.Manager.Exec(ctx, []string{
-		"doublezero-geolocation", "init-config", "--yes",
+		"doublezero", "geolocation", "init", "--yes",
 	}, docker.NoPrintOnError())
 	if err != nil {
 		outputStr := strings.ToLower(string(output))
-		if strings.Contains(outputStr, "already") || strings.Contains(outputStr, "already in use") {
+		if strings.Contains(outputStr, "already") || strings.Contains(outputStr, "already in use") || strings.Contains(outputStr, "uninitialized account") {
 			dn.log.Debug("--> Geolocation program config is already initialized")
 			return false, nil
 		}

@@ -2,6 +2,34 @@ package gnmi
 
 import "time"
 
+// IsisGlobalStateRecord represents ISIS global state for storage in ClickHouse.
+type IsisGlobalStateRecord struct {
+	Timestamp       time.Time `json:"timestamp" ch:"timestamp"`
+	DevicePubkey    string    `json:"device_pubkey" ch:"device_pubkey"`
+	NetworkInstance string    `json:"network_instance" ch:"network_instance"`
+	Instance        string    `json:"instance,omitempty" ch:"instance"`
+	Net             string    `json:"net,omitempty" ch:"net"`
+	LevelCapability string    `json:"level_capability,omitempty" ch:"level_capability"`
+}
+
+// TableName returns the ClickHouse table name for ISIS global state.
+func (r IsisGlobalStateRecord) TableName() string {
+	return "isis_global_state"
+}
+
+// IsisOverloadBitRecord represents the ISIS overload bit state for storage in ClickHouse.
+type IsisOverloadBitRecord struct {
+	Timestamp       time.Time `json:"timestamp" ch:"timestamp"`
+	DevicePubkey    string    `json:"device_pubkey" ch:"device_pubkey"`
+	NetworkInstance string    `json:"network_instance" ch:"network_instance"`
+	OverloadBit     bool      `json:"overload_bit" ch:"overload_bit"`
+}
+
+// TableName returns the ClickHouse table name for ISIS overload bit state.
+func (r IsisOverloadBitRecord) TableName() string {
+	return "isis_overload_bit"
+}
+
 // IsisAdjacencyRecord represents an ISIS adjacency for storage in ClickHouse.
 type IsisAdjacencyRecord struct {
 	Timestamp           time.Time `json:"timestamp" ch:"timestamp"`
@@ -171,6 +199,13 @@ type InterfaceStateRecord struct {
 	OutErrors          uint64    `json:"out_errors,omitempty" ch:"out_errors"`
 	InDiscards         uint64    `json:"in_discards,omitempty" ch:"in_discards"`
 	OutDiscards        uint64    `json:"out_discards,omitempty" ch:"out_discards"`
+	InFcsErrors        uint64    `json:"in_fcs_errors,omitempty" ch:"in_fcs_errors"`
+	InUnicastPkts      uint64    `json:"in_unicast_pkts,omitempty" ch:"in_unicast_pkts"`
+	InMulticastPkts    uint64    `json:"in_multicast_pkts,omitempty" ch:"in_multicast_pkts"`
+	InBroadcastPkts    uint64    `json:"in_broadcast_pkts,omitempty" ch:"in_broadcast_pkts"`
+	OutUnicastPkts     uint64    `json:"out_unicast_pkts,omitempty" ch:"out_unicast_pkts"`
+	OutMulticastPkts   uint64    `json:"out_multicast_pkts,omitempty" ch:"out_multicast_pkts"`
+	OutBroadcastPkts   uint64    `json:"out_broadcast_pkts,omitempty" ch:"out_broadcast_pkts"`
 }
 
 // TableName returns the ClickHouse table name for interface state records.

@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::GetGlobalStateCommand;
 use serde::Serialize;
@@ -22,16 +23,24 @@ pub struct AuthorityDisplay {
     pub access_authority: Pubkey,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub feed_authority: Pubkey,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub health_oracle: Pubkey,
 }
 
 impl GetAuthorityCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (_, gstate) = client.get_globalstate(GetGlobalStateCommand)?;
 
         let config_display = AuthorityDisplay {
             activator_authority: gstate.activator_authority_pk,
             access_authority: gstate.sentinel_authority_pk,
             feed_authority: gstate.feed_authority_pk,
+            health_oracle: gstate.health_oracle_pk,
         };
 
         if self.json {
@@ -52,6 +61,8 @@ impl GetAuthorityCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         globalconfig::authority::get::GetAuthorityCliCommand, tests::utils::create_test_client,
     };
@@ -67,6 +78,7 @@ mod tests {
         let activator_authority = Pubkey::new_unique();
         let sentinel_authority = Pubkey::new_unique();
         let feed_authority = Pubkey::new_unique();
+        let health_oracle = Pubkey::new_unique();
         let globalstate = GlobalState {
             account_type: AccountType::GlobalState,
             bump_seed: 0,
@@ -78,7 +90,7 @@ mod tests {
             sentinel_authority_pk: sentinel_authority,
             contributor_airdrop_lamports: 0,
             user_airdrop_lamports: 0,
-            health_oracle_pk: Pubkey::default(),
+            health_oracle_pk: health_oracle,
             qa_allowlist: vec![],
             feature_flags: 0,
             feed_authority_pk: feed_authority,
@@ -91,7 +103,9 @@ mod tests {
 
         // Table output
         let mut output = Vec::new();
-        let res = GetAuthorityCliCommand { json: false }.execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res =
+            block_on(GetAuthorityCliCommand { json: false }.execute(&ctx, &client, &mut output));
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -111,10 +125,15 @@ mod tests {
             has_row("feed_authority", &feed_authority.to_string()),
             "feed_authority row should contain value"
         );
+        assert!(
+            has_row("health_oracle", &health_oracle.to_string()),
+            "health_oracle row should contain value"
+        );
 
         // JSON output
         let mut output = Vec::new();
-        let res = GetAuthorityCliCommand { json: true }.execute(&client, &mut output);
+        let res =
+            block_on(GetAuthorityCliCommand { json: true }.execute(&ctx, &client, &mut output));
         assert!(res.is_ok());
         let json: serde_json::Value =
             serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();
@@ -129,6 +148,10 @@ mod tests {
         assert_eq!(
             json["feed_authority"].as_str().unwrap(),
             feed_authority.to_string()
+        );
+        assert_eq!(
+            json["health_oracle"].as_str().unwrap(),
+            health_oracle.to_string()
         );
     }
 }

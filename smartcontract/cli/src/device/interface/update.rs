@@ -6,6 +6,7 @@ use crate::{
     validators::{validate_parse_bandwidth, validate_pubkey_or_code},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::{types::network_v4::NetworkV4, validate_iface};
 use doublezero_sdk::commands::device::{
     get::GetDeviceCommand, interface::update::UpdateDeviceInterfaceCommand, list::ListDeviceCommand,
@@ -56,13 +57,26 @@ pub struct UpdateDeviceInterfaceCliCommand {
     /// Node segment index
     #[arg(long)]
     pub node_segment_idx: Option<u16>,
+    /// Reconcile flex-algo topologies on a Vpnv4 loopback. Omit to leave the
+    /// existing set untouched. Pass an empty value (`--topologies ""`) to
+    /// clear all flex-algo segments. Pass a comma-separated list of topology
+    /// names (or repeat the flag) to set the desired set; entries that aren't
+    /// in the new set have their segment routing IDs deallocated, additions
+    /// get freshly allocated IDs, and unchanged entries keep their IDs.
+    #[arg(long, value_delimiter = ',', num_args = 0..)]
+    pub topologies: Option<Vec<String>>,
     /// Wait for the device interface to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
 }
 
 impl UpdateDeviceInterfaceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -98,17 +112,46 @@ impl UpdateDeviceInterfaceCliCommand {
             .transpose()
             .map_err(|e| eyre::eyre!("Invalid IP network: {}", e))?;
 
-        if let Some(mtu) = self.mtu {
-            let is_cyoa_or_dia = interface.interface_cyoa
+        // Determine post-update CYOA/DIA state
+        let post_cyoa = if self.interface_cyoa.is_some() {
+            true // CLI types::InterfaceCYOA only has non-None variants
+        } else {
+            interface.interface_cyoa
                 != doublezero_serviceability::state::interface::InterfaceCYOA::None
-                || interface.interface_dia
-                    != doublezero_serviceability::state::interface::InterfaceDIA::None;
-            if is_cyoa_or_dia && mtu != 1500 {
-                return Err(eyre::eyre!("CYOA/DIA interfaces must have MTU of 1500"));
-            } else if !is_cyoa_or_dia && mtu != 2048 {
-                return Err(eyre::eyre!("WAN/DZX interfaces must have MTU of 2048"));
+        };
+        let post_dia = if let Some(ref d) = self.interface_dia {
+            matches!(d, types::InterfaceDIA::DIA)
+        } else {
+            interface.interface_dia
+                != doublezero_serviceability::state::interface::InterfaceDIA::None
+        };
+        let is_cyoa_or_dia = post_cyoa || post_dia;
+        let post_bandwidth = self.bandwidth.unwrap_or(interface.bandwidth);
+        if is_cyoa_or_dia && post_bandwidth == 0 {
+            return Err(eyre::eyre!(
+                "CYOA/DIA interfaces require a non-zero --bandwidth"
+            ));
+        }
+        let required_mtu: u16 = if is_cyoa_or_dia { 1500 } else { 9000 };
+
+        if let Some(mtu) = self.mtu {
+            if mtu != required_mtu {
+                if is_cyoa_or_dia {
+                    return Err(eyre::eyre!("CYOA/DIA interfaces must have MTU of 1500"));
+                } else {
+                    return Err(eyre::eyre!("WAN/DZX interfaces must have MTU of 9000"));
+                }
             }
         }
+
+        // Auto-set MTU when CYOA/DIA type changes and --mtu is not explicitly provided
+        let mtu = if self.mtu.is_some() {
+            self.mtu
+        } else if interface.mtu != required_mtu {
+            Some(required_mtu)
+        } else {
+            None
+        };
 
         if let Some(ref ip_net) = parsed_ip_net {
             let devices = client.list_device(ListDeviceCommand)?;
@@ -117,16 +160,15 @@ impl UpdateDeviceInterfaceCliCommand {
                     continue;
                 }
                 for iface in &dev.interfaces {
-                    let iface_v = iface.into_current_version();
                     // Skip the interface being updated
-                    if *pk == device_pk && iface_v.name.eq_ignore_ascii_case(&self.name) {
+                    if *pk == device_pk && iface.name.eq_ignore_ascii_case(&self.name) {
                         continue;
                     }
-                    if iface_v.ip_net == *ip_net {
+                    if iface.ip_net == *ip_net {
                         eyre::bail!(
                             "IP {} is already assigned to interface {} on device {}",
                             ip_net,
-                            iface_v.name,
+                            iface.name,
                             dev.code
                         );
                     }
@@ -141,6 +183,17 @@ impl UpdateDeviceInterfaceCliCommand {
             .transpose()
             .map_err(|e| eyre::eyre!("Invalid status: {}", e))?;
 
+        // clap's `num_args = 0..` produces Some(vec!["", ...]) for `--topologies ""`,
+        // so strip empty/whitespace-only entries. Topology PDAs are derived from
+        // the canonical uppercase name, so normalize here too.
+        let topology_names = self.topologies.as_ref().map(|names| {
+            names
+                .iter()
+                .filter(|n| !n.trim().is_empty())
+                .map(|n| n.trim().to_ascii_uppercase())
+                .collect::<Vec<_>>()
+        });
+
         let signature = client.update_device_interface(UpdateDeviceInterfaceCommand {
             pubkey: device_pk,
             name: self.name.clone(),
@@ -149,13 +202,14 @@ impl UpdateDeviceInterfaceCliCommand {
             interface_dia: self.interface_dia.map(|id| id.into()),
             bandwidth: self.bandwidth,
             cir: self.cir,
-            mtu: self.mtu,
+            mtu,
             routing_mode: self.routing_mode.map(|rm| rm.into()),
             vlan_id: self.vlan_id,
             user_tunnel_endpoint: self.user_tunnel_endpoint,
             status: parsed_status,
             ip_net: parsed_ip_net,
             node_segment_idx: self.node_segment_idx,
+            topology_names,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -170,9 +224,11 @@ impl UpdateDeviceInterfaceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use super::*;
     use crate::tests::utils::create_test_client;
-    use doublezero_sdk::{AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType};
+    use doublezero_sdk::{AccountType, Device, DeviceStatus, DeviceType, Interface};
     use doublezero_serviceability::state::interface::{
         InterfaceCYOA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
     };
@@ -204,7 +260,7 @@ mod tests {
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![
-                CurrentInterfaceVersion {
+                Interface {
                     status: InterfaceStatus::Activated,
                     name: "Ethernet0".to_string(),
                     interface_type: InterfaceType::Physical,
@@ -213,15 +269,15 @@ mod tests {
                     interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
                     bandwidth: 1000,
                     cir: 500,
-                    mtu: 1500,
+                    mtu: 9000,
                     routing_mode: RoutingMode::Static,
                     vlan_id: 0,
                     ip_net: "10.0.0.1/24".parse().unwrap(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: true,
-                }
-                .to_interface(),
-                CurrentInterfaceVersion {
+                    ..Default::default()
+                },
+                Interface {
                     status: InterfaceStatus::Activated,
                     name: "Loopback0".to_string(),
                     interface_type: InterfaceType::Loopback,
@@ -230,14 +286,14 @@ mod tests {
                     interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
                     bandwidth: 1000,
                     cir: 500,
-                    mtu: 1500,
+                    mtu: 9000,
                     routing_mode: RoutingMode::Static,
                     vlan_id: 16,
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 0,
                     user_tunnel_endpoint: false,
-                }
-                .to_interface(),
+                    ..Default::default()
+                },
             ],
             max_users: 255,
             users_count: 0,
@@ -251,6 +307,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client
@@ -287,30 +344,35 @@ mod tests {
                 status: Some(InterfaceStatus::Activated),
                 ip_net: Some("10.0.1.1/24".parse().unwrap()),
                 node_segment_idx: None,
+                topology_names: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
 
         // Expected success
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdateDeviceInterfaceCliCommand {
-            pubkey_or_code: device1_pubkey.to_string(),
-            name: "Loopback0".to_string(),
-            loopback_type: Some(types::LoopbackType::Ipv4),
-            interface_cyoa: None,
-            interface_dia: None,
-            bandwidth: None,
-            cir: None,
-            mtu: None,
-            routing_mode: None,
-            vlan_id: Some(20),
-            user_tunnel_endpoint: None,
-            status: Some(InterfaceStatus::Activated.to_string()),
-            ip_net: Some("10.0.1.1/24".to_string()),
-            node_segment_idx: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateDeviceInterfaceCliCommand {
+                pubkey_or_code: device1_pubkey.to_string(),
+                name: "Loopback0".to_string(),
+                loopback_type: Some(types::LoopbackType::Ipv4),
+                interface_cyoa: None,
+                interface_dia: None,
+                bandwidth: None,
+                cir: None,
+                mtu: None,
+                routing_mode: None,
+                vlan_id: Some(20),
+                user_tunnel_endpoint: None,
+                status: Some(InterfaceStatus::Activated.to_string()),
+                ip_net: Some("10.0.1.1/24".to_string()),
+                node_segment_idx: None,
+                topologies: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "{}", res.err().unwrap());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, format!("Signature: {signature}\n"));
@@ -338,7 +400,7 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Activated,
                 name: "Loopback0".to_string(),
                 interface_type: InterfaceType::Loopback,
@@ -347,14 +409,14 @@ mod tests {
                 interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
                 bandwidth: 0,
                 cir: 0,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 ip_net: "10.0.0.1/32".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: false,
-            }
-            .to_interface()],
+                ..Default::default()
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -367,6 +429,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::new_unique();
@@ -386,7 +449,7 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Activated,
                 name: "Loopback100".to_string(),
                 interface_type: InterfaceType::Loopback,
@@ -395,14 +458,14 @@ mod tests {
                 interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
                 bandwidth: 0,
                 cir: 0,
-                mtu: 1500,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 ip_net: "185.189.47.80/32".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: false,
-            }
-            .to_interface()],
+                ..Default::default()
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -415,6 +478,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let mut devices = HashMap::new();
@@ -429,25 +493,30 @@ mod tests {
             .expect_list_device()
             .returning(move |_| Ok(devices.clone()));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = UpdateDeviceInterfaceCliCommand {
-            pubkey_or_code: device1_pubkey.to_string(),
-            name: "Loopback0".to_string(),
-            loopback_type: None,
-            interface_cyoa: None,
-            interface_dia: None,
-            bandwidth: None,
-            cir: None,
-            mtu: None,
-            routing_mode: None,
-            vlan_id: None,
-            user_tunnel_endpoint: None,
-            status: None,
-            ip_net: Some("185.189.47.80/32".to_string()),
-            node_segment_idx: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateDeviceInterfaceCliCommand {
+                pubkey_or_code: device1_pubkey.to_string(),
+                name: "Loopback0".to_string(),
+                loopback_type: None,
+                interface_cyoa: None,
+                interface_dia: None,
+                bandwidth: None,
+                cir: None,
+                mtu: None,
+                routing_mode: None,
+                vlan_id: None,
+                user_tunnel_endpoint: None,
+                status: None,
+                ip_net: Some("185.189.47.80/32".to_string()),
+                node_segment_idx: None,
+                topologies: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         let err = res.unwrap_err().to_string();
@@ -462,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_device_interface_update_rejects_wan_non_2048_mtu() {
+    fn test_cli_device_interface_update_rejects_setting_cyoa_without_bandwidth() {
         let mut client = create_test_client();
 
         let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
@@ -482,23 +551,23 @@ mod tests {
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::default(),
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Activated,
                 name: "Ethernet0".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
                 interface_cyoa: InterfaceCYOA::None,
                 interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
-                bandwidth: 1000,
-                cir: 500,
-                mtu: 1500,
+                bandwidth: 0,
+                cir: 0,
+                mtu: 9000,
                 routing_mode: RoutingMode::Static,
                 vlan_id: 0,
                 ip_net: "10.0.0.1/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-            }
-            .to_interface()],
+                ..Default::default()
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -511,6 +580,7 @@ mod tests {
             max_multicast_subscribers: 0,
             max_multicast_publishers: 0,
             reserved_seats: 0,
+            ..Default::default()
         };
 
         client
@@ -524,29 +594,224 @@ mod tests {
             }))
             .returning(move |_| Ok((device1_pubkey, device1.clone())));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = UpdateDeviceInterfaceCliCommand {
-            pubkey_or_code: device1_pubkey.to_string(),
-            name: "Ethernet0".to_string(),
-            loopback_type: None,
-            interface_cyoa: None,
-            interface_dia: None,
-            bandwidth: None,
-            cir: None,
-            mtu: Some(9000),
-            routing_mode: None,
-            vlan_id: None,
-            user_tunnel_endpoint: None,
-            status: None,
-            ip_net: None,
-            node_segment_idx: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateDeviceInterfaceCliCommand {
+                pubkey_or_code: device1_pubkey.to_string(),
+                name: "Ethernet0".to_string(),
+                loopback_type: None,
+                interface_cyoa: Some(types::InterfaceCYOA::GREOverDIA),
+                interface_dia: None,
+                bandwidth: None,
+                cir: None,
+                mtu: None,
+                routing_mode: None,
+                vlan_id: None,
+                user_tunnel_endpoint: None,
+                status: None,
+                ip_net: None,
+                node_segment_idx: None,
+                topologies: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
-            "WAN/DZX interfaces must have MTU of 2048"
+            "CYOA/DIA interfaces require a non-zero --bandwidth"
+        );
+    }
+
+    #[test]
+    fn test_cli_device_interface_update_rejects_clearing_bandwidth_on_cyoa() {
+        let mut client = create_test_client();
+
+        let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "device1_code".to_string(),
+            contributor_pk: Pubkey::default(),
+            location_pk: Pubkey::default(),
+            exchange_pk: Pubkey::default(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::default(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![Interface {
+                status: InterfaceStatus::Activated,
+                name: "Ethernet0".to_string(),
+                interface_type: InterfaceType::Physical,
+                loopback_type: LoopbackType::None,
+                interface_cyoa: InterfaceCYOA::GREOverDIA,
+                interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
+                bandwidth: 1_000_000_000,
+                cir: 0,
+                mtu: 1500,
+                routing_mode: RoutingMode::Static,
+                vlan_id: 0,
+                ip_net: "10.0.0.1/24".parse().unwrap(),
+                node_segment_idx: 0,
+                user_tunnel_endpoint: true,
+                ..Default::default()
+            }],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_subscribers_count: 0,
+            multicast_publishers_count: 0,
+            max_unicast_users: 0,
+            max_multicast_subscribers: 0,
+            max_multicast_publishers: 0,
+            reserved_seats: 0,
+            ..Default::default()
+        };
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: device1_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((device1_pubkey, device1.clone())));
+
+        let ctx = cli_context_default_for_tests();
+
+        let mut output = Vec::new();
+        let res = block_on(
+            UpdateDeviceInterfaceCliCommand {
+                pubkey_or_code: device1_pubkey.to_string(),
+                name: "Ethernet0".to_string(),
+                loopback_type: None,
+                interface_cyoa: None,
+                interface_dia: None,
+                bandwidth: Some(0),
+                cir: None,
+                mtu: None,
+                routing_mode: None,
+                vlan_id: None,
+                user_tunnel_endpoint: None,
+                status: None,
+                ip_net: None,
+                node_segment_idx: None,
+                topologies: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_err());
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "CYOA/DIA interfaces require a non-zero --bandwidth"
+        );
+    }
+
+    #[test]
+    fn test_cli_device_interface_update_rejects_wan_non_9000_mtu() {
+        let mut client = create_test_client();
+
+        let device1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 2,
+            reference_count: 0,
+            code: "device1_code".to_string(),
+            contributor_pk: Pubkey::default(),
+            location_pk: Pubkey::default(),
+            exchange_pk: Pubkey::default(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "1.2.3.4/32".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::default(),
+            owner: Pubkey::default(),
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![Interface {
+                status: InterfaceStatus::Activated,
+                name: "Ethernet0".to_string(),
+                interface_type: InterfaceType::Physical,
+                loopback_type: LoopbackType::None,
+                interface_cyoa: InterfaceCYOA::None,
+                interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
+                bandwidth: 1000,
+                cir: 500,
+                mtu: 9000,
+                routing_mode: RoutingMode::Static,
+                vlan_id: 0,
+                ip_net: "10.0.0.1/24".parse().unwrap(),
+                node_segment_idx: 0,
+                user_tunnel_endpoint: true,
+                ..Default::default()
+            }],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_subscribers_count: 0,
+            multicast_publishers_count: 0,
+            max_unicast_users: 0,
+            max_multicast_subscribers: 0,
+            max_multicast_publishers: 0,
+            reserved_seats: 0,
+            ..Default::default()
+        };
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: device1_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((device1_pubkey, device1.clone())));
+
+        let ctx = cli_context_default_for_tests();
+
+        let mut output = Vec::new();
+        let res = block_on(
+            UpdateDeviceInterfaceCliCommand {
+                pubkey_or_code: device1_pubkey.to_string(),
+                name: "Ethernet0".to_string(),
+                loopback_type: None,
+                interface_cyoa: None,
+                interface_dia: None,
+                bandwidth: None,
+                cir: None,
+                mtu: Some(2048),
+                routing_mode: None,
+                vlan_id: None,
+                user_tunnel_endpoint: None,
+                status: None,
+                ip_net: None,
+                node_segment_idx: None,
+                topologies: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_err());
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "WAN/DZX interfaces must have MTU of 9000"
         );
     }
 }

@@ -10,11 +10,13 @@ const (
 	MainnetTwoZOracleURL                 = "https://sol-2z-oracle-api-v1.mainnet-beta.doublezero.xyz"
 	MainnetSolanaRPC                     = "https://api.mainnet-beta.solana.com"
 	MainnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.mainnet-beta.doublezero.xyz"
-	MainnetTelemetryStateIngestURL       = "http://telemetry-state-in.mainnet-beta.doublezero.xyz"
+	MainnetTelemetryStateIngestURL       = "https://telemetry-state-in-mainnet-beta.doublezero.xyz"
 	MainnetTelemetryGNMITunnelServerAddr = "gnmic-mainnet-beta.doublezero.xyz:443"
 
 	MainnetRevenueDistributionProgramID = "dzrevZC94tBLwuHw1dyynZxaXTWyp7yocsinyEVPtt4"
 	MainnetGeolocationProgramID         = "8H7nS6eZiuf7rGQtz3PPz2q9m4eJRL37PPM678KHnspG"
+	MainnetShredSubscriptionProgramID   = "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE"
+	MainnetUSDCMint                     = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 	// Testnet constants.
 	TestnetLedgerPublicRPCURL            = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
@@ -25,8 +27,10 @@ const (
 	TestnetTwoZOracleURL                 = "https://sol-2z-oracle-api-v1.testnet.doublezero.xyz"
 	TestnetSolanaRPC                     = "https://api.testnet.solana.com"
 	TestnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.testnet.doublezero.xyz"
-	TestnetTelemetryStateIngestURL       = "http://telemetry-state-in.testnet.doublezero.xyz"
+	TestnetTelemetryStateIngestURL       = "https://telemetry-state-in-testnet.doublezero.xyz"
 	TestnetGeolocationProgramID          = "3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4"
+	TestnetShredSubscriptionProgramID    = "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE"
+	TestnetUSDCMint                      = "uSDZq2RMuxrEf7gqgDjR8wJCtCyaDAQk2e5jLAaoeeM"
 	TestnetTelemetryGNMITunnelServerAddr = "gnmic-testnet.doublezero.xyz:443"
 
 	// Devnet constants.
@@ -37,8 +41,10 @@ const (
 	DevnetDeviceLocalASN                = 21682
 	DevnetTwoZOracleURL                 = ""
 	DevnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.devnet.doublezero.xyz"
-	DevnetTelemetryStateIngestURL       = "http://telemetry-state-in.devnet.doublezero.xyz"
+	DevnetTelemetryStateIngestURL       = "https://telemetry-state-in-devnet.doublezero.xyz"
 	DevnetGeolocationProgramID          = "EXUUFfAjjuXnaBtsAMLsJX18ynnNHPwtkmk33bLVVoCm"
+	DevnetShredSubscriptionProgramID    = ""
+	DevnetUSDCMint                      = ""
 	DevnetTelemetryGNMITunnelServerAddr = "gnmic-devnet.doublezero.xyz:443"
 
 	// Localnet constants.
@@ -52,5 +58,7 @@ const (
 	LocalnetTelemetryFlowIngestURL        = "http://localhost:8911"
 	LocalnetTelemetryStateIngestURL       = "http://localhost:8911"
 	LocalnetGeolocationProgramID          = "36WA9nUCsJaAQL5h44WYoLezDpocy8Q71NZbtrUN8DyC"
+	LocalnetShredSubscriptionProgramID    = ""
+	LocalnetUSDCMint                      = ""
 	LocalnetTelemetryGNMITunnelServerAddr = "localhost:50051"
 )

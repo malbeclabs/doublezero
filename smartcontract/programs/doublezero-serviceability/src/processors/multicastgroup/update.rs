@@ -7,11 +7,7 @@ use crate::{
     },
     resource::ResourceType,
     serializer::try_acc_write,
-    state::{
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        globalstate::GlobalState,
-        multicastgroup::*,
-    },
+    state::{globalstate::GlobalState, multicastgroup::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -37,14 +33,15 @@ pub struct MulticastGroupUpdateArgs {
     /// Requires ResourceExtension account (MulticastGroupBlock).
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
+    pub owner: Option<Pubkey>,
 }
 
 impl fmt::Debug for MulticastGroupUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {:?}, multicast_ip: {:?}, max_bandwidth: {:?}, publisher_count: {:?}, subscriber_count: {:?}, use_onchain_allocation: {}",
-            self.code, self.multicast_ip, self.max_bandwidth, self.publisher_count, self.subscriber_count, self.use_onchain_allocation
+            "code: {:?}, multicast_ip: {:?}, max_bandwidth: {:?}, publisher_count: {:?}, subscriber_count: {:?}, use_onchain_allocation: {}, owner: {:?}",
+            self.code, self.multicast_ip, self.max_bandwidth, self.publisher_count, self.subscriber_count, self.use_onchain_allocation, self.owner
         )
     }
 }
@@ -54,15 +51,20 @@ pub fn process_update_multicastgroup(
     accounts: &[AccountInfo],
     value: &MulticastGroupUpdateArgs,
 ) -> ProgramResult {
+    // multicast_ip changes must go through the onchain path. Other updates leave the boolean
+    // unset and skip the resource account entirely.
+    if value.multicast_ip.is_some() && !value.use_onchain_allocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let multicastgroup_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension account for onchain allocation (before payer)
-    // Account layout WITH allocation (use_onchain_allocation = true):
+    // Account layout when the boolean is true:
     //   [mgroup, globalstate, multicast_group_block, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_allocation = false):
+    // Otherwise:
     //   [mgroup, globalstate, payer, system]
     let resource_extension_account = if value.use_onchain_allocation {
         Some(next_account_info(accounts_iter)?)
@@ -113,17 +115,13 @@ pub fn process_update_multicastgroup(
     if let Some(ref multicast_ip) = value.multicast_ip {
         // Handle onchain allocation for IP changes
         if let Some(multicast_group_block_ext) = resource_extension_account.as_ref() {
-            if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-                return Err(DoubleZeroError::FeatureNotEnabled.into());
-            }
-
             let (expected_pda, _, _) =
                 get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
             validate_program_account!(
                 multicast_group_block_ext,
                 program_id,
                 writable = true,
-                pda = Some(&expected_pda),
+                pda = &expected_pda,
                 "MulticastGroupBlock"
             );
 
@@ -151,6 +149,9 @@ pub fn process_update_multicastgroup(
     }
     if let Some(ref subscriber_count) = value.subscriber_count {
         multicastgroup.subscriber_count = *subscriber_count;
+    }
+    if let Some(ref owner) = value.owner {
+        multicastgroup.owner = *owner;
     }
 
     try_acc_write(

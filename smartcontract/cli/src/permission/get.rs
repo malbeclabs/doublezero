@@ -1,5 +1,6 @@
 use crate::{doublezerocommand::CliCommand, permission::flags::bitmask_to_names};
 use clap::Args;
+use doublezero_cli_core::{render_record, CliContext, OutputFormat};
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::permission::get::GetPermissionCommand;
 use doublezero_serviceability::pda::get_permission_pda;
@@ -42,7 +43,12 @@ impl std::fmt::Display for PermissionList {
 }
 
 impl GetPermissionCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let user_payer = Pubkey::from_str(&self.user_payer)
             .map_err(|e| eyre::eyre!("invalid user_payer pubkey: {e}"))?;
 
@@ -61,24 +67,14 @@ impl GetPermissionCliCommand {
             owner: permission.owner,
         };
 
-        if self.json {
-            writeln!(out, "{}", serde_json::to_string_pretty(&display)?)?;
-        } else {
-            let headers = PermissionDisplay::headers();
-            let fields = display.fields();
-            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
-            for (header, value) in headers.iter().zip(fields.iter()) {
-                writeln!(out, " {header:<max_len$} | {value}")?;
-            }
-        }
-
-        Ok(())
+        render_record(out, &display, OutputFormat::from_flags(self.json, false))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{permission::get::GetPermissionCliCommand, tests::utils::create_test_client};
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{commands::permission::get::GetPermissionCommand, AccountType};
     use doublezero_serviceability::{
         pda::get_permission_pda,
@@ -113,12 +109,15 @@ mod tests {
             }))
             .returning(move |_| Ok((permission_pda, p2.clone())));
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = GetPermissionCliCommand {
-            user_payer: user_payer.to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetPermissionCliCommand {
+                user_payer: user_payer.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let out = String::from_utf8(output).unwrap();

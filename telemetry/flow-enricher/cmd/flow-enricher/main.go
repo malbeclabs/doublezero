@@ -15,6 +15,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	enricher "github.com/malbeclabs/doublezero/telemetry/flow-enricher/internal/flow-enricher"
+	"github.com/malbeclabs/doublezero/telemetry/migrations"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -59,6 +60,21 @@ func main() {
 	if *stdoutOutput {
 		chWriter = enricher.NewStdoutWriter()
 	} else {
+		if os.Getenv("CLICKHOUSE_RUN_MIGRATIONS") == "true" {
+			if err := migrations.RunMigrations(
+				os.Getenv("CLICKHOUSE_ADDR"),
+				getEnvOrDefault("CLICKHOUSE_DB", "default"),
+				os.Getenv("CLICKHOUSE_USER"),
+				os.Getenv("CLICKHOUSE_PASS"),
+				os.Getenv("CLICKHOUSE_TLS_DISABLED") != "true",
+				logger,
+			); err != nil {
+				logger.Error("error running clickhouse migrations", "error", err)
+				os.Exit(1)
+			}
+			logger.Info("clickhouse migrations applied")
+		}
+
 		chOpts := []enricher.ClickhouseOption{}
 		if os.Getenv("CLICKHOUSE_TLS_DISABLED") == "true" {
 			chOpts = append(chOpts, enricher.WithTLSDisabled(true))

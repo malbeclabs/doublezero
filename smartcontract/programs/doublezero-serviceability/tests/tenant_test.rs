@@ -9,8 +9,14 @@ use doublezero_serviceability::{
     resource::ResourceType,
     state::{accounttype::AccountType, tenant::*},
 };
+use solana_program::instruction::InstructionError;
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
+use solana_sdk::{
+    instruction::AccountMeta,
+    pubkey::Pubkey,
+    signature::{Keypair, Signer},
+    transaction::TransactionError,
+};
 
 mod test_helpers;
 use test_helpers::*;
@@ -84,6 +90,7 @@ async fn test_tenant() {
             metro_routing: Some(false),
             route_liveness: Some(true),
             billing: None,
+            include_topologies: None,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -125,6 +132,7 @@ async fn test_tenant() {
             metro_routing: None,
             route_liveness: None,
             billing: Some(billing_config),
+            include_topologies: None,
         }),
         vec![
             AccountMeta::new(tenant_pubkey, false),
@@ -562,4 +570,277 @@ async fn test_tenant_remove_nonexistent_administrator_fails() {
 
     println!("✅ Nonexistent administrator removal correctly rejected");
     println!("🟢🟢🟢  End test_tenant_remove_nonexistent_administrator_fails  🟢🟢🟢");
+}
+
+#[tokio::test]
+async fn test_tenant_include_topologies_defaults_to_empty() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+
+    let tenant_code = "incl-topo-default";
+    let (tenant_pubkey, _) = get_tenant_pda(&program_id, tenant_code);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: tenant_code.to_string(),
+            administrator: Pubkey::new_unique(),
+            token_account: None,
+            metro_routing: false,
+            route_liveness: false,
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tenant = get_account_data(&mut banks_client, tenant_pubkey)
+        .await
+        .expect("Unable to get Tenant")
+        .get_tenant()
+        .unwrap();
+
+    assert_eq!(tenant.include_topologies, Vec::<Pubkey>::new());
+
+    println!("✅ include_topologies defaults to empty on new Tenant");
+}
+
+#[tokio::test]
+async fn test_tenant_include_topologies_foundation_can_set() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+
+    let tenant_code = "incl-topo-foundation";
+    let (tenant_pubkey, _) = get_tenant_pda(&program_id, tenant_code);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: tenant_code.to_string(),
+            administrator: Pubkey::new_unique(),
+            token_account: None,
+            metro_routing: false,
+            route_liveness: false,
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Foundation key (payer) sets include_topologies
+    let topology_pubkey = Pubkey::new_unique();
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
+            vrf_id: None,
+            token_account: None,
+            metro_routing: None,
+            route_liveness: None,
+            billing: None,
+            include_topologies: Some(vec![topology_pubkey]),
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tenant = get_account_data(&mut banks_client, tenant_pubkey)
+        .await
+        .expect("Unable to get Tenant")
+        .get_tenant()
+        .unwrap();
+
+    assert_eq!(tenant.include_topologies, vec![topology_pubkey]);
+
+    println!("✅ Foundation key can set include_topologies");
+}
+
+#[tokio::test]
+async fn test_tenant_include_topologies_non_foundation_rejected() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+
+    let tenant_code = "incl-topo-nonfoundation";
+    let (tenant_pubkey, _) = get_tenant_pda(&program_id, tenant_code);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: tenant_code.to_string(),
+            administrator: Pubkey::new_unique(),
+            token_account: None,
+            metro_routing: false,
+            route_liveness: false,
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // A keypair not in the foundation allowlist
+    let non_foundation = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &non_foundation.pubkey(),
+        10_000_000,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
+            vrf_id: None,
+            token_account: None,
+            metro_routing: None,
+            route_liveness: None,
+            billing: None,
+            include_topologies: Some(vec![Pubkey::new_unique()]),
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &non_foundation,
+    )
+    .await;
+
+    // DoubleZeroError::NotAllowed = Custom(8)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(8),
+        ))) => {}
+        _ => panic!("Expected NotAllowed error (Custom(8)), got {:?}", result),
+    }
+
+    println!("✅ Non-foundation key correctly rejected for include_topologies");
+}
+
+#[tokio::test]
+async fn test_tenant_include_topologies_reset_to_empty() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+
+    let tenant_code = "incl-topo-reset";
+    let (tenant_pubkey, _) = get_tenant_pda(&program_id, tenant_code);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: tenant_code.to_string(),
+            administrator: Pubkey::new_unique(),
+            token_account: None,
+            metro_routing: false,
+            route_liveness: false,
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Set include_topologies to a non-empty list
+    let topology_pubkey = Pubkey::new_unique();
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
+            vrf_id: None,
+            token_account: None,
+            metro_routing: None,
+            route_liveness: None,
+            billing: None,
+            include_topologies: Some(vec![topology_pubkey]),
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tenant = get_account_data(&mut banks_client, tenant_pubkey)
+        .await
+        .expect("Unable to get Tenant")
+        .get_tenant()
+        .unwrap();
+    assert_eq!(tenant.include_topologies, vec![topology_pubkey]);
+
+    // Now reset to empty
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
+            vrf_id: None,
+            token_account: None,
+            metro_routing: None,
+            route_liveness: None,
+            billing: None,
+            include_topologies: Some(vec![]),
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let tenant = get_account_data(&mut banks_client, tenant_pubkey)
+        .await
+        .expect("Unable to get Tenant")
+        .get_tenant()
+        .unwrap();
+    assert_eq!(tenant.include_topologies, Vec::<Pubkey>::new());
+
+    println!("✅ include_topologies can be reset to empty");
 }

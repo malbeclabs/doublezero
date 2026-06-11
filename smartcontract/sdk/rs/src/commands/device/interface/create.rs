@@ -5,13 +5,10 @@ use crate::{
 use doublezero_program_common::types::network_v4::NetworkV4;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::get_resource_extension_pda,
+    pda::{get_resource_extension_pda, get_topology_pda},
     processors::device::interface::create::DeviceInterfaceCreateArgs,
     resource::ResourceType,
-    state::{
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
-    },
+    state::interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -29,39 +26,49 @@ pub struct CreateDeviceInterfaceCommand {
     pub routing_mode: RoutingMode,
     pub vlan_id: u16,
     pub user_tunnel_endpoint: bool,
+    /// Topology names to assign flex-algo node segments for (Vpnv4 loopbacks only).
+    /// Empty means no topology assignment.
+    pub topology_names: Vec<String>,
 }
 
 impl CreateDeviceInterfaceCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
+        let (globalstate_pubkey, _) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        let use_onchain_allocation =
-            is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation);
 
         let (device_pubkey, device) = GetDeviceCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
         .execute(client)?;
 
+        let (device_tunnel_block_ext, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::DeviceTunnelBlock);
+        let (segment_routing_ids_ext, _, _) =
+            get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
         let mut accounts = vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(device.contributor_pk, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_ext, false),
+            AccountMeta::new(segment_routing_ids_ext, false),
         ];
 
-        if use_onchain_allocation {
-            let (device_tunnel_block_ext, _, _) = get_resource_extension_pda(
-                &client.get_program_id(),
-                ResourceType::DeviceTunnelBlock,
-            );
-            let (segment_routing_ids_ext, _, _) = get_resource_extension_pda(
-                &client.get_program_id(),
-                ResourceType::SegmentRoutingIds,
-            );
-            accounts.push(AccountMeta::new(device_tunnel_block_ext, false));
-            accounts.push(AccountMeta::new(segment_routing_ids_ext, false));
+        // For Vpnv4 loopbacks, append topology PDAs so the onchain program
+        // can allocate FlexAlgoNodeSegment entries atomically.
+        let topology_count: u8 = if self.loopback_type == LoopbackType::Vpnv4 {
+            let n = self.topology_names.len();
+            u8::try_from(n).map_err(|_| {
+                eyre::eyre!("too many topologies for one CreateDeviceInterface call: {n} > 255")
+            })?
+        } else {
+            0
+        };
+        if self.loopback_type == LoopbackType::Vpnv4 {
+            for name in &self.topology_names {
+                let (topology_pda, _) = get_topology_pda(&client.get_program_id(), name);
+                accounts.push(AccountMeta::new_readonly(topology_pda, false));
+            }
         }
 
         client
@@ -78,7 +85,8 @@ impl CreateDeviceInterfaceCommand {
                     routing_mode: self.routing_mode,
                     vlan_id: self.vlan_id,
                     user_tunnel_endpoint: self.user_tunnel_endpoint,
-                    use_onchain_allocation,
+                    use_onchain_allocation: true,
+                    topology_count,
                 }),
                 accounts,
             )
@@ -89,15 +97,13 @@ impl CreateDeviceInterfaceCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{tests::utils::create_test_client, MockDoubleZeroClient};
+    use crate::tests::utils::create_test_client;
     use doublezero_serviceability::{
         pda::get_globalstate_pda,
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
             device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
-            feature_flags::FeatureFlag,
-            globalstate::GlobalState,
         },
     };
     use mockall::predicate;
@@ -131,114 +137,29 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         }
     }
 
     #[test]
-    fn test_commands_device_create_interface_legacy() {
+    fn test_commands_device_create_interface() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-
-        let device_pubkey = Pubkey::new_unique();
-        let device = make_test_device();
-        let contributor_pk = device.contributor_pk;
-
-        client
-            .expect_get()
-            .with(predicate::eq(device_pubkey))
-            .returning(move |_| Ok(AccountData::Device(device.clone())));
-
-        client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreateDeviceInterface(
-                    DeviceInterfaceCreateArgs {
-                        name: "Ethernet0".to_string(),
-                        loopback_type: LoopbackType::None,
-                        interface_cyoa: InterfaceCYOA::None,
-                        interface_dia: InterfaceDIA::DIA,
-                        bandwidth: 0,
-                        cir: 0,
-                        ip_net: None,
-                        mtu: 1500,
-                        routing_mode: RoutingMode::Static,
-                        vlan_id: 100,
-                        user_tunnel_endpoint: true,
-                        use_onchain_allocation: false,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(device_pubkey, false),
-                    AccountMeta::new(contributor_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
-
-        let command = CreateDeviceInterfaceCommand {
-            pubkey: device_pubkey,
-            name: "Ethernet0".to_string(),
-            interface_cyoa: InterfaceCYOA::None,
-            loopback_type: LoopbackType::None,
-            interface_dia: InterfaceDIA::DIA,
-            ip_net: None,
-            bandwidth: 0,
-            cir: 0,
-            mtu: 1500,
-            routing_mode: RoutingMode::Static,
-            vlan_id: 100,
-            user_tunnel_endpoint: true,
-        };
-
-        let res = command.execute(&client);
-        assert!(res.is_ok());
-    }
-
-    #[test]
-    fn test_commands_device_create_interface_with_onchain_allocation() {
-        let mut client = MockDoubleZeroClient::new();
-
-        let payer = Pubkey::new_unique();
-        client.expect_get_payer().returning(move || payer);
-        let program_id = Pubkey::new_unique();
-        client.expect_get_program_id().returning(move || program_id);
-
-        let (globalstate_pubkey, bump_seed) = get_globalstate_pda(&program_id);
-        let globalstate = GlobalState {
-            account_type: AccountType::GlobalState,
-            bump_seed,
-            account_index: 0,
-            foundation_allowlist: vec![],
-            _device_allowlist: vec![],
-            _user_allowlist: vec![],
-            activator_authority_pk: Pubkey::new_unique(),
-            sentinel_authority_pk: Pubkey::new_unique(),
-            contributor_airdrop_lamports: 1_000_000_000,
-            user_airdrop_lamports: 40_000,
-            health_oracle_pk: Pubkey::new_unique(),
-            qa_allowlist: vec![],
-            feature_flags: FeatureFlag::OnChainAllocation.to_mask(),
-            feed_authority_pk: Pubkey::default(),
-        };
-        client
-            .expect_get()
-            .with(predicate::eq(globalstate_pubkey))
-            .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
-
-        let device_pubkey = Pubkey::new_unique();
-        let device = make_test_device();
-        let contributor_pk = device.contributor_pk;
-
-        client
-            .expect_get()
-            .with(predicate::eq(device_pubkey))
-            .returning(move |_| Ok(AccountData::Device(device.clone())));
-
+        let program_id = client.get_program_id();
+        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
         let (device_tunnel_block_ext, _, _) =
             get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
         let (segment_routing_ids_ext, _, _) =
             get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+
+        let device_pubkey = Pubkey::new_unique();
+        let device = make_test_device();
+        let contributor_pk = device.contributor_pk;
+
+        client
+            .expect_get()
+            .with(predicate::eq(device_pubkey))
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
 
         client
             .expect_execute_transaction()
@@ -257,6 +178,7 @@ mod tests {
                         vlan_id: 0,
                         user_tunnel_endpoint: false,
                         use_onchain_allocation: true,
+                        topology_count: 0,
                     },
                 )),
                 predicate::eq(vec![
@@ -282,6 +204,7 @@ mod tests {
             routing_mode: RoutingMode::Static,
             vlan_id: 0,
             user_tunnel_endpoint: false,
+            topology_names: vec![],
         }
         .execute(&client);
 

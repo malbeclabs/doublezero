@@ -5,10 +5,11 @@ use crate::{
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::{
         validate_code, validate_parse_bandwidth, validate_parse_delay_ms, validate_parse_jitter_ms,
-        validate_parse_mtu, validate_pubkey_or_code,
+        validate_pubkey_or_code,
     },
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::validate_iface;
 use doublezero_sdk::{
     commands::{
@@ -51,8 +52,8 @@ pub struct CreateWANLinkCliCommand {
     /// Bandwidth (required). Accepts values in Kbps, Mbps, or Gbps.
     #[arg(long, value_parser = validate_parse_bandwidth)]
     pub bandwidth: u64,
-    /// MTU (Maximum Transmission Unit) in bytes.
-    #[arg(long, value_parser = validate_parse_mtu)]
+    /// MTU (Maximum Transmission Unit) in bytes. Must be 9000.
+    #[arg(long, default_value_t = 9000)]
     pub mtu: u32,
     /// RTT (Round Trip Time) delay in milliseconds.
     #[arg(long, value_parser = validate_parse_delay_ms)]
@@ -66,7 +67,12 @@ pub struct CreateWANLinkCliCommand {
 }
 
 impl CreateWANLinkCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -97,7 +103,6 @@ impl CreateWANLinkCliCommand {
         let side_a_iface = side_a_dev
             .interfaces
             .iter()
-            .map(|i| i.into_current_version())
             .find(|i| i.name.to_lowercase() == self.side_a_interface.to_lowercase())
             .ok_or_else(|| {
                 eyre!(
@@ -129,17 +134,23 @@ impl CreateWANLinkCliCommand {
             ));
         }
 
-        if side_a_iface.mtu != 2048 {
+        if side_a_iface.mtu != 9000 {
             return Err(eyre!(
-                "Interface '{}' on side A device has MTU {} but WAN link interfaces must have MTU 2048",
+                "Interface '{}' on side A device has MTU {} but WAN link interfaces must have MTU 9000",
                 self.side_a_interface, side_a_iface.mtu
+            ));
+        }
+
+        if side_a_iface.bandwidth < self.bandwidth {
+            return Err(eyre!(
+                "Interface '{}' on side A device has bandwidth {} which is less than link bandwidth {}",
+                self.side_a_interface, side_a_iface.bandwidth, self.bandwidth
             ));
         }
 
         let side_z_iface = side_z_dev
             .interfaces
             .iter()
-            .map(|i| i.into_current_version())
             .find(|i| i.name.to_lowercase() == self.side_z_interface.to_lowercase())
             .ok_or_else(|| {
                 eyre!(
@@ -171,11 +182,22 @@ impl CreateWANLinkCliCommand {
             ));
         }
 
-        if side_z_iface.mtu != 2048 {
+        if side_z_iface.mtu != 9000 {
             return Err(eyre!(
-                "Interface '{}' on side Z device has MTU {} but WAN link interfaces must have MTU 2048",
+                "Interface '{}' on side Z device has MTU {} but WAN link interfaces must have MTU 9000",
                 self.side_z_interface, side_z_iface.mtu
             ));
+        }
+
+        if side_z_iface.bandwidth < self.bandwidth {
+            return Err(eyre!(
+                "Interface '{}' on side Z device has bandwidth {} which is less than link bandwidth {}",
+                self.side_z_interface, side_z_iface.bandwidth, self.bandwidth
+            ));
+        }
+
+        if self.mtu != 9000 {
+            return Err(eyre!("Link MTU must be 9000"));
         }
 
         if client
@@ -196,8 +218,8 @@ impl CreateWANLinkCliCommand {
             link_type: LinkLinkType::WAN,
             bandwidth: self.bandwidth,
             mtu: self.mtu,
-            delay_ns: (self.delay_ms * 1000000.0) as u64,
-            jitter_ns: (self.jitter_ms * 1000000.0) as u64,
+            delay_ns: (self.delay_ms * 1_000_000.0) as u64,
+            jitter_ns: (self.jitter_ms * 1_000_000.0) as u64,
             side_a_iface_name: self.side_a_interface.clone(),
             side_z_iface_name: Some(self.side_z_interface.clone()),
         })?;
@@ -215,6 +237,8 @@ impl CreateWANLinkCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand,
         link::wan_create::CreateWANLinkCliCommand,
@@ -227,8 +251,8 @@ mod tests {
             device::get::GetDeviceCommand,
             link::{create::CreateLinkCommand, get::GetLinkCommand},
         },
-        get_device_pda, AccountType, CurrentInterfaceVersion, Device, DeviceStatus, DeviceType,
-        Link, LinkLinkType, LinkStatus,
+        get_device_pda, AccountType, Device, DeviceStatus, DeviceType, Interface, Link,
+        LinkLinkType, LinkStatus,
     };
     use doublezero_serviceability::state::interface::{
         InterfaceCYOA, InterfaceStatus, InterfaceType, LoopbackType,
@@ -268,7 +292,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/1".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -277,10 +301,10 @@ mod tests {
                 ip_net: "10.2.0.1/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-                mtu: 2048,
+                mtu: 9000,
+                bandwidth: 1_000_000_000,
                 ..Default::default()
-            }
-            .to_interface()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -293,6 +317,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let location2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkce");
@@ -313,7 +338,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -322,10 +347,10 @@ mod tests {
                 ip_net: "10.2.0.2/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-                mtu: 2048,
+                mtu: 9000,
+                bandwidth: 1_000_000_000,
                 ..Default::default()
-            }
-            .to_interface()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -338,6 +363,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let location3_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquCkcx");
         let exchange3_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquCkce");
@@ -358,7 +384,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/3".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -367,10 +393,10 @@ mod tests {
                 ip_net: "10.2.0.3/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
-                mtu: 2048,
+                mtu: 9000,
+                bandwidth: 1_000_000_000,
                 ..Default::default()
-            }
-            .to_interface()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -383,6 +409,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let link = Link {
             account_type: AccountType::Link,
@@ -392,10 +419,10 @@ mod tests {
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
-            bandwidth: 1000000000,
-            mtu: 1500,
-            delay_ns: 10000000000,
-            jitter_ns: 5000000000,
+            bandwidth: 1_000_000_000,
+            mtu: 9000,
+            delay_ns: 10_000_000_000,
+            jitter_ns: 5_000_000_000,
             delay_override_ns: 0,
             tunnel_id: 500,
             tunnel_net: NetworkV4::default(),
@@ -406,6 +433,8 @@ mod tests {
             side_z_iface_name: "Ethernet1/2".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+            link_topologies: vec![],
+            link_flags: 0,
         };
 
         client
@@ -446,10 +475,10 @@ mod tests {
                 side_a_pk: device1_pk,
                 side_z_pk: device2_pk,
                 link_type: LinkLinkType::WAN,
-                bandwidth: 1000000000,
-                mtu: 1500,
-                delay_ns: 10000000000,
-                jitter_ns: 5000000000,
+                bandwidth: 1_000_000_000,
+                mtu: 9000,
+                delay_ns: 10_000_000_000,
+                jitter_ns: 5_000_000_000,
                 side_a_iface_name: "Ethernet1/1".to_string(),
                 side_z_iface_name: Some("Ethernet1/2".to_string()),
             }))
@@ -457,22 +486,25 @@ mod tests {
             .returning(move |_| Ok((signature, pda_pubkey)));
 
         /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = CreateWANLinkCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            desired_status: None,
-            side_a: device1_pk.to_string(),
-            side_z: device2_pk.to_string(),
-            bandwidth: 1000000000,
-            mtu: 1500,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
-            side_a_interface: "Ethernet1/1".to_string(),
-            side_z_interface: "Ethernet1/2".to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateWANLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device1_pk.to_string(),
+                side_z: device2_pk.to_string(),
+                bandwidth: 1_000_000_000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/1".to_string(),
+                side_z_interface: "Ethernet1/2".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "Error: {}", res.unwrap_err());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -487,21 +519,23 @@ mod tests {
             .returning(move |_| Ok((Pubkey::default(), link.clone())));
 
         let mut output = Vec::new();
-        let res = CreateWANLinkCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            desired_status: None,
-            side_a: device2_pk.to_string(),
-            side_z: device3_pk.to_string(),
-            bandwidth: 1000000000,
-            mtu: 1500,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
-            side_a_interface: "Ethernet1/2".to_string(),
-            side_z_interface: "Ethernet1/3".to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateWANLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device2_pk.to_string(),
+                side_z: device3_pk.to_string(),
+                bandwidth: 1_000_000_000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/2".to_string(),
+                side_z_interface: "Ethernet1/3".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert_eq!(
             res.unwrap_err().to_string(),
             "Link with code 'test' already exists"
@@ -536,7 +570,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/1".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -547,8 +581,7 @@ mod tests {
                 user_tunnel_endpoint: true,
                 interface_cyoa: InterfaceCYOA::GREOverDIA,
                 ..Default::default()
-            }
-            .to_interface()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -561,6 +594,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let location2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
         let exchange2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkce");
@@ -581,7 +615,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -591,8 +625,7 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
                 ..Default::default()
-            }
-            .to_interface()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -605,6 +638,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client
@@ -624,28 +658,314 @@ mod tests {
             }))
             .returning(move |_| Ok((device2_pk, device2.clone())));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateWANLinkCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            desired_status: None,
-            side_a: device1_pk.to_string(),
-            side_z: device2_pk.to_string(),
-            bandwidth: 1000000000,
-            mtu: 1500,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
-            side_a_interface: "Ethernet1/1".to_string(),
-            side_z_interface: "Ethernet1/2".to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateWANLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device1_pk.to_string(),
+                side_z: device2_pk.to_string(),
+                bandwidth: 1_000_000_000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/1".to_string(),
+                side_z_interface: "Ethernet1/2".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         assert!(res
             .unwrap_err()
             .to_string()
             .contains("CYOA or DIA assignment"),);
+    }
+
+    #[test]
+    fn test_cli_wan_link_create_rejects_insufficient_interface_bandwidth() {
+        let mut client = create_test_client();
+
+        let (pda_pubkey, _bump_seed) = get_device_pda(&client.get_program_id(), 1);
+
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let device1_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 255,
+            reference_count: 0,
+            code: "test".to_string(),
+            contributor_pk,
+            location_pk: Pubkey::default(),
+            exchange_pk: Pubkey::default(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [10, 0, 0, 1].into(),
+            dz_prefixes: "10.1.0.0/16".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            status: DeviceStatus::Activated,
+            owner: pda_pubkey,
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![Interface {
+                status: InterfaceStatus::Unlinked,
+                name: "Ethernet1/1".to_string(),
+                interface_type: InterfaceType::Physical,
+                loopback_type: LoopbackType::None,
+                mtu: 9000,
+                bandwidth: 500_000_000,
+                vlan_id: 16,
+                ip_net: "10.2.0.1/24".parse().unwrap(),
+                node_segment_idx: 0,
+                user_tunnel_endpoint: true,
+                ..Default::default()
+            }],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_subscribers_count: 0,
+            multicast_publishers_count: 0,
+            max_unicast_users: 0,
+            max_multicast_subscribers: 0,
+            max_multicast_publishers: 0,
+            reserved_seats: 0,
+            ..Default::default()
+        };
+        let device2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf");
+        let device2 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 255,
+            reference_count: 0,
+            code: "test".to_string(),
+            contributor_pk,
+            location_pk: Pubkey::default(),
+            exchange_pk: Pubkey::default(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [10, 0, 0, 1].into(),
+            dz_prefixes: "10.1.0.0/16".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            status: DeviceStatus::Activated,
+            owner: pda_pubkey,
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![Interface {
+                status: InterfaceStatus::Unlinked,
+                name: "Ethernet1/2".to_string(),
+                interface_type: InterfaceType::Physical,
+                loopback_type: LoopbackType::None,
+                mtu: 9000,
+                bandwidth: 1_000_000_000,
+                vlan_id: 16,
+                ip_net: "10.2.0.2/24".parse().unwrap(),
+                node_segment_idx: 0,
+                user_tunnel_endpoint: true,
+                ..Default::default()
+            }],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_subscribers_count: 0,
+            multicast_publishers_count: 0,
+            max_unicast_users: 0,
+            max_multicast_subscribers: 0,
+            max_multicast_publishers: 0,
+            reserved_seats: 0,
+            ..Default::default()
+        };
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: device1_pk.to_string(),
+            }))
+            .returning(move |_| Ok((device1_pk, device1.clone())));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: device2_pk.to_string(),
+            }))
+            .returning(move |_| Ok((device2_pk, device2.clone())));
+
+        let ctx = cli_context_default_for_tests();
+
+        let mut output = Vec::new();
+        let res = block_on(
+            CreateWANLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device1_pk.to_string(),
+                side_z: device2_pk.to_string(),
+                bandwidth: 1_000_000_000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/1".to_string(),
+                side_z_interface: "Ethernet1/2".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+
+        assert!(res.is_err());
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "Interface 'Ethernet1/1' on side A device has bandwidth 500000000 which is less than link bandwidth 1000000000"
+        );
+    }
+
+    #[test]
+    fn test_cli_wan_link_create_rejects_insufficient_side_z_bandwidth() {
+        let mut client = create_test_client();
+
+        let (pda_pubkey, _bump_seed) = get_device_pda(&client.get_program_id(), 1);
+
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let device1_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 255,
+            reference_count: 0,
+            code: "test".to_string(),
+            contributor_pk,
+            location_pk: Pubkey::default(),
+            exchange_pk: Pubkey::default(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [10, 0, 0, 1].into(),
+            dz_prefixes: "10.1.0.0/16".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            status: DeviceStatus::Activated,
+            owner: pda_pubkey,
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![Interface {
+                status: InterfaceStatus::Unlinked,
+                name: "Ethernet1/1".to_string(),
+                interface_type: InterfaceType::Physical,
+                loopback_type: LoopbackType::None,
+                mtu: 9000,
+                bandwidth: 1_000_000_000,
+                vlan_id: 16,
+                ip_net: "10.2.0.1/24".parse().unwrap(),
+                node_segment_idx: 0,
+                user_tunnel_endpoint: true,
+                ..Default::default()
+            }],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_subscribers_count: 0,
+            multicast_publishers_count: 0,
+            max_unicast_users: 0,
+            max_multicast_subscribers: 0,
+            max_multicast_publishers: 0,
+            reserved_seats: 0,
+            ..Default::default()
+        };
+        let device2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf");
+        let device2 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 255,
+            reference_count: 0,
+            code: "test".to_string(),
+            contributor_pk,
+            location_pk: Pubkey::default(),
+            exchange_pk: Pubkey::default(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [10, 0, 0, 1].into(),
+            dz_prefixes: "10.1.0.0/16".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            status: DeviceStatus::Activated,
+            owner: pda_pubkey,
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![Interface {
+                status: InterfaceStatus::Unlinked,
+                name: "Ethernet1/2".to_string(),
+                interface_type: InterfaceType::Physical,
+                loopback_type: LoopbackType::None,
+                mtu: 9000,
+                bandwidth: 500_000_000,
+                vlan_id: 16,
+                ip_net: "10.2.0.2/24".parse().unwrap(),
+                node_segment_idx: 0,
+                user_tunnel_endpoint: true,
+                ..Default::default()
+            }],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_subscribers_count: 0,
+            multicast_publishers_count: 0,
+            max_unicast_users: 0,
+            max_multicast_subscribers: 0,
+            max_multicast_publishers: 0,
+            reserved_seats: 0,
+            ..Default::default()
+        };
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: device1_pk.to_string(),
+            }))
+            .returning(move |_| Ok((device1_pk, device1.clone())));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: device2_pk.to_string(),
+            }))
+            .returning(move |_| Ok((device2_pk, device2.clone())));
+
+        let ctx = cli_context_default_for_tests();
+
+        let mut output = Vec::new();
+        let res = block_on(
+            CreateWANLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device1_pk.to_string(),
+                side_z: device2_pk.to_string(),
+                bandwidth: 1_000_000_000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/1".to_string(),
+                side_z_interface: "Ethernet1/2".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+
+        assert!(res.is_err());
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "Interface 'Ethernet1/2' on side Z device has bandwidth 500000000 which is less than link bandwidth 1000000000"
+        );
     }
 
     #[test]
@@ -672,7 +992,7 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/1".to_string(),
                 interface_type: InterfaceType::Physical,
@@ -683,8 +1003,7 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
                 ..Default::default()
-            }
-            .to_interface()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -697,6 +1016,7 @@ mod tests {
             max_multicast_subscribers: 0,
             max_multicast_publishers: 0,
             reserved_seats: 0,
+            ..Default::default()
         };
         let device2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf");
         let device2 = Device {
@@ -715,19 +1035,18 @@ mod tests {
             status: DeviceStatus::Activated,
             owner: pda_pubkey,
             mgmt_vrf: "default".to_string(),
-            interfaces: vec![CurrentInterfaceVersion {
+            interfaces: vec![Interface {
                 status: InterfaceStatus::Unlinked,
                 name: "Ethernet1/2".to_string(),
                 interface_type: InterfaceType::Physical,
                 loopback_type: LoopbackType::None,
-                mtu: 2048,
+                mtu: 9000,
                 vlan_id: 16,
                 ip_net: "10.2.0.2/24".parse().unwrap(),
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
                 ..Default::default()
-            }
-            .to_interface()],
+            }],
             max_users: 255,
             users_count: 0,
             device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
@@ -740,6 +1059,7 @@ mod tests {
             max_multicast_subscribers: 0,
             max_multicast_publishers: 0,
             reserved_seats: 0,
+            ..Default::default()
         };
 
         client
@@ -759,27 +1079,31 @@ mod tests {
             }))
             .returning(move |_| Ok((device2_pk, device2.clone())));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateWANLinkCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            desired_status: None,
-            side_a: device1_pk.to_string(),
-            side_z: device2_pk.to_string(),
-            bandwidth: 1000000000,
-            mtu: 2048,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
-            side_a_interface: "Ethernet1/1".to_string(),
-            side_z_interface: "Ethernet1/2".to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateWANLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device1_pk.to_string(),
+                side_z: device2_pk.to_string(),
+                bandwidth: 1_000_000_000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/1".to_string(),
+                side_z_interface: "Ethernet1/2".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
-            "Interface 'Ethernet1/1' on side A device has MTU 1500 but WAN link interfaces must have MTU 2048"
+            "Interface 'Ethernet1/1' on side A device has MTU 1500 but WAN link interfaces must have MTU 9000"
         );
     }
 }

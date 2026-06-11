@@ -475,13 +475,13 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		// 5500 / 245 = 22 full batches + 110 remaining = 23 calls.
-		require.Equal(t, 23, calls, "expected 23 submission calls for 5500 samples")
-		for i := range 23 {
-			if i == 22 {
-				assert.Equal(t, 110, samplesPerCall[i])
+		// 5500 / 239 = 23 full batches + 3 remaining = 24 calls.
+		require.Equal(t, 24, calls, "expected 24 submission calls for 5500 samples")
+		for i := range 24 {
+			if i == 23 {
+				assert.Equal(t, 3, samplesPerCall[i])
 			} else {
-				assert.Equal(t, sdktelemetry.MaxSamplesPerBatch, samplesPerCall[i])
+				assert.Equal(t, sdktelemetry.MaxDeviceLatencySamplesPerBatch, samplesPerCall[i])
 			}
 		}
 	})
@@ -804,6 +804,44 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		case <-time.After(200 * time.Millisecond):
 			t.Fatal("producer Add should NOT block when failed batch is dropped on over-capacity")
 		}
+	})
+
+	t.Run("passes_agent_version_and_commit_to_write", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+
+		var receivedConfig sdktelemetry.WriteDeviceLatencySamplesInstructionConfig
+
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				receivedConfig = config
+				return solana.Signature{}, nil, nil
+			},
+		}
+
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buf.Add(newTestPartitionKey(), newTestSample())
+
+		submitter, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:       time.Hour,
+			Buffer:         buf,
+			ProgramClient:  telemetryProgram,
+			MaxAttempts:    1,
+			MaxConcurrency: 10,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
+			GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+				return 100, nil
+			},
+			AgentVersion: "1.2.3",
+			AgentCommit:  "aabbccdd",
+		})
+		require.NoError(t, err)
+
+		submitter.Tick(context.Background())
+
+		assert.Equal(t, "1.2.3", receivedConfig.AgentVersion)
+		assert.Equal(t, "aabbccdd", receivedConfig.AgentCommit)
 	})
 
 	t.Run("drops_failed_samples_when_requeue_would_meet_capacity", func(t *testing.T) {

@@ -31,6 +31,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/onchain"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/runtime"
 	"github.com/malbeclabs/doublezero/config"
@@ -163,7 +164,7 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 	t.Run("IBRL", func(t *testing.T) {
 		sockFile := filepath.Join(rootPath, "doublezerod.sock")
 		go func() {
-			err := runtime.Run(ctx, sockFile, "", false, false, false, newTestNetworkConfig(t), 30, 30, newTestLivenessManagerConfig(), "", 10, 60, t.TempDir())
+			err := runtime.Run(ctx, sockFile, "", false, false, false, false, newTestNetworkConfig(t), 30, 30, newTestLivenessManagerConfig(), "", 10, 60, t.TempDir(), onchain.DefaultRPCTimeout)
 			errChan <- err
 		}()
 
@@ -420,7 +421,7 @@ func TestEndToEnd_EdgeFiltering(t *testing.T) {
 
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
-		err := runtime.Run(ctx, sockFile, "", false, false, false, newTestNetworkConfig(t), 30, 30, newTestLivenessManagerConfig(), "", 10, 60, t.TempDir())
+		err := runtime.Run(ctx, sockFile, "", false, false, false, false, newTestNetworkConfig(t), 30, 30, newTestLivenessManagerConfig(), "", 10, 60, t.TempDir(), onchain.DefaultRPCTimeout)
 		errChan <- err
 	}()
 
@@ -665,7 +666,7 @@ func TestMulticastPublisher(t *testing.T) {
 
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
-		err := runtime.Run(ctx, sockFile, "", false, false, false, newTestNetworkConfig(t), 30, 30, newTestLivenessManagerConfig(), "", 10, 60, t.TempDir())
+		err := runtime.Run(ctx, sockFile, "", false, false, false, false, newTestNetworkConfig(t), 30, 30, newTestLivenessManagerConfig(), "", 10, 60, t.TempDir(), onchain.DefaultRPCTimeout)
 		errChan <- err
 	}()
 
@@ -946,7 +947,7 @@ func TestMulticastSubscriber(t *testing.T) {
 
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
-		err := runtime.Run(ctx, sockFile, "", false, false, false, newTestNetworkConfig(t), 30, 30, newTestLivenessManagerConfig(), "", 10, 60, t.TempDir())
+		err := runtime.Run(ctx, sockFile, "", false, false, false, false, newTestNetworkConfig(t), 30, 30, newTestLivenessManagerConfig(), "", 10, 60, t.TempDir(), onchain.DefaultRPCTimeout)
 		errChan <- err
 	}()
 
@@ -1310,7 +1311,7 @@ func TestServiceCoexistence(t *testing.T) {
 
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
-		err := runtime.Run(ctx, sockFile, "", false, false, false, newTestNetworkConfig(t), 30, 30, newTestLivenessManagerConfig(), "", 10, 60, t.TempDir())
+		err := runtime.Run(ctx, sockFile, "", false, false, false, false, newTestNetworkConfig(t), 30, 30, newTestLivenessManagerConfig(), "", 10, 60, t.TempDir(), onchain.DefaultRPCTimeout)
 		errChan <- err
 	}()
 
@@ -1460,7 +1461,7 @@ func TestRuntime_Run_ReturnsOnContextCancel(t *testing.T) {
 
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
-		err := runtime.Run(ctx, sockFile, "", false, false, false, newTestNetworkConfig(t), 30, 30, newTestLivenessManagerConfig(), "", 10, 60, t.TempDir())
+		err := runtime.Run(ctx, sockFile, "", false, false, false, false, newTestNetworkConfig(t), 30, 30, newTestLivenessManagerConfig(), "", 10, 60, t.TempDir(), onchain.DefaultRPCTimeout)
 		errChan <- err
 	}()
 
@@ -1496,7 +1497,7 @@ func TestRuntime_Run_PropagatesLivenessStartupError(t *testing.T) {
 
 	sockFile := filepath.Join(rootPath, "doublezerod.sock")
 	go func() {
-		err := runtime.Run(ctx, sockFile, "", false, false, false, newTestNetworkConfig(t), 30, 30, &bad, "", 10, 60, t.TempDir())
+		err := runtime.Run(ctx, sockFile, "", false, false, false, false, newTestNetworkConfig(t), 30, 30, &bad, "", 10, 60, t.TempDir(), onchain.DefaultRPCTimeout)
 		errChan <- err
 	}()
 
@@ -1536,7 +1537,7 @@ func TestRuntime_Run_PropagatesLivenessError_FromUDPClosure(t *testing.T) {
 
 	// Start the runtime.
 	go func() {
-		errCh <- runtime.Run(ctx, sockFile, "", false, false, false, newTestNetworkConfig(t), 30, 30, cfg, "", 10, 60, t.TempDir())
+		errCh <- runtime.Run(ctx, sockFile, "", false, false, false, false, newTestNetworkConfig(t), 30, 30, cfg, "", 10, 60, t.TempDir(), onchain.DefaultRPCTimeout)
 	}()
 
 	// Give the liveness receiver a moment to start, then close the UDP socket.

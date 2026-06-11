@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand};
 
-use doublezero_cli::link::{
+use doublezero_serviceability_cli::link::{
     accept::AcceptLinkCliCommand, delete::*, dzx_create::CreateDZXLinkCliCommand, get::*, list::*,
     update::*, wan_create::*,
 };

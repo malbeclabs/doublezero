@@ -1,9 +1,10 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::types::NetworkV4;
 use doublezero_sdk::{
     commands::device::{get::GetDeviceCommand, list::ListDeviceCommand},
-    CurrentInterfaceVersion, InterfaceType,
+    Interface, InterfaceType,
 };
 use doublezero_serviceability::state::interface::{
     InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode,
@@ -47,7 +48,12 @@ pub struct DeviceInterfaceDisplay {
 }
 
 impl ListDeviceInterfaceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let iface_displays: Vec<DeviceInterfaceDisplay> = if let Some(device) = self.device {
             let (_, device) = client
                 .get_device(GetDeviceCommand {
@@ -58,7 +64,7 @@ impl ListDeviceInterfaceCliCommand {
             device
                 .interfaces
                 .iter()
-                .map(|iface| build_display(&iface.into_current_version(), &device.code))
+                .map(|iface| build_display(iface, &device.code))
                 .collect()
         } else {
             let devices = client.list_device(ListDeviceCommand {})?;
@@ -69,7 +75,7 @@ impl ListDeviceInterfaceCliCommand {
                     device
                         .interfaces
                         .iter()
-                        .map(|iface| build_display(&iface.into_current_version(), &device.code))
+                        .map(|iface| build_display(iface, &device.code))
                 })
                 .collect()
         };
@@ -90,7 +96,7 @@ impl ListDeviceInterfaceCliCommand {
     }
 }
 
-fn build_display(iface: &CurrentInterfaceVersion, device_code: &str) -> DeviceInterfaceDisplay {
+fn build_display(iface: &Interface, device_code: &str) -> DeviceInterfaceDisplay {
     DeviceInterfaceDisplay {
         device: device_code.to_string(),
         name: iface.name.clone(),
@@ -112,13 +118,15 @@ fn build_display(iface: &CurrentInterfaceVersion, device_code: &str) -> DeviceIn
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         device::interface::list::ListDeviceInterfaceCliCommand, tests::utils::create_test_client,
     };
 
     use doublezero_sdk::{
-        commands::device::get::GetDeviceCommand, AccountType, CurrentInterfaceVersion, Device,
-        DeviceStatus, DeviceType,
+        commands::device::get::GetDeviceCommand, AccountType, Device, DeviceStatus, DeviceType,
+        Interface,
     };
     use doublezero_serviceability::state::interface::{
         InterfaceStatus, InterfaceType, LoopbackType,
@@ -148,7 +156,7 @@ mod tests {
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
             mgmt_vrf: "default".to_string(),
             interfaces: vec![
-                CurrentInterfaceVersion {
+                Interface {
                     status: InterfaceStatus::Activated,
                     name: "eth0".to_string(),
                     interface_type: InterfaceType::Physical,
@@ -158,15 +166,15 @@ mod tests {
                     interface_dia: doublezero_serviceability::state::interface::InterfaceDIA::None,
                     bandwidth: 1000,
                     cir: 500,
-                    mtu: 1500,
+                    mtu: 9000,
                     routing_mode: doublezero_serviceability::state::interface::RoutingMode::Static,
                     vlan_id: 0,
                     ip_net: "10.0.0.1/24".parse().unwrap(),
                     node_segment_idx: 12,
                     user_tunnel_endpoint: true,
-                }
-                .to_interface(),
-                CurrentInterfaceVersion {
+                    ..Default::default()
+                },
+                Interface {
                     status: InterfaceStatus::Activated,
                     name: "lo0".to_string(),
                     interface_type: InterfaceType::Loopback,
@@ -182,8 +190,8 @@ mod tests {
                     ip_net: "10.0.1.1/24".parse().unwrap(),
                     node_segment_idx: 13,
                     user_tunnel_endpoint: false,
-                }
-                .to_interface(),
+                    ..Default::default()
+                },
             ],
             max_users: 255,
             users_count: 0,
@@ -197,6 +205,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client
@@ -210,26 +219,32 @@ mod tests {
             .expect_get_device()
             .returning(move |_| Err(eyre::eyre!("not found")));
 
-        let mut output = Vec::new();
-        let res = ListDeviceInterfaceCliCommand {
-            device: Some(device1_pubkey.to_string()),
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
-        assert!(res.is_ok());
-        let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " device       | name | interface_type | loopback_type | interface_cyoa | interface_dia | bandwidth | cir    | mtu  | routing_mode | vlan_id | ip_net      | node_segment_idx | user_tunnel_endpoint | status    \n device1_code | eth0 | physical       | none          | none           | none          | 1Kbps     | 500bps | 1500 | static       | 0       | 10.0.0.1/24 | 12               | true                 | activated \n device1_code | lo0  | loopback       | vpnv4         | none           | none          | 100bps    | 50bps  | 1400 | static       | 16      | 10.0.1.1/24 | 13               | false                | activated \n");
+        let ctx = cli_context_default_for_tests();
 
         let mut output = Vec::new();
-        let res = ListDeviceInterfaceCliCommand {
-            device: Some(device1_pubkey.to_string()),
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceInterfaceCliCommand {
+                device: Some(device1_pubkey.to_string()),
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"device\":\"device1_code\",\"name\":\"eth0\",\"interface_type\":\"Physical\",\"loopback_type\":\"None\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":1000,\"cir\":500,\"mtu\":1500,\"routing_mode\":\"Static\",\"vlan_id\":0,\"ip_net\":\"10.0.0.1/24\",\"node_segment_idx\":12,\"user_tunnel_endpoint\":true,\"status\":\"activated\"},{\"device\":\"device1_code\",\"name\":\"lo0\",\"interface_type\":\"Loopback\",\"loopback_type\":\"Vpnv4\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":100,\"cir\":50,\"mtu\":1400,\"routing_mode\":\"Static\",\"vlan_id\":16,\"ip_net\":\"10.0.1.1/24\",\"node_segment_idx\":13,\"user_tunnel_endpoint\":false,\"status\":\"activated\"}]\n");
+        assert_eq!(output_str, " device       | name | interface_type | loopback_type | interface_cyoa | interface_dia | bandwidth | cir    | mtu  | routing_mode | vlan_id | ip_net      | node_segment_idx | user_tunnel_endpoint | status    \n device1_code | eth0 | physical       | none          | none           | none          | 1Kbps     | 500bps | 9000 | static       | 0       | 10.0.0.1/24 | 12               | true                 | activated \n device1_code | lo0  | loopback       | vpnv4         | none           | none          | 100bps    | 50bps  | 1400 | static       | 16      | 10.0.1.1/24 | 13               | false                | activated \n");
+
+        let mut output = Vec::new();
+        let res = block_on(
+            ListDeviceInterfaceCliCommand {
+                device: Some(device1_pubkey.to_string()),
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(output_str, "[{\"device\":\"device1_code\",\"name\":\"eth0\",\"interface_type\":\"Physical\",\"loopback_type\":\"None\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":1000,\"cir\":500,\"mtu\":9000,\"routing_mode\":\"Static\",\"vlan_id\":0,\"ip_net\":\"10.0.0.1/24\",\"node_segment_idx\":12,\"user_tunnel_endpoint\":true,\"status\":\"activated\"},{\"device\":\"device1_code\",\"name\":\"lo0\",\"interface_type\":\"Loopback\",\"loopback_type\":\"Vpnv4\",\"interface_cyoa\":\"None\",\"interface_dia\":\"None\",\"bandwidth\":100,\"cir\":50,\"mtu\":1400,\"routing_mode\":\"Static\",\"vlan_id\":16,\"ip_net\":\"10.0.1.1/24\",\"node_segment_idx\":13,\"user_tunnel_endpoint\":false,\"status\":\"activated\"}]\n");
     }
 }

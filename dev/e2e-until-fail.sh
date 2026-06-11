@@ -57,7 +57,7 @@ while :; do
   fi
 
   set +e
-  "${workspace_dir}/dev/e2e-test.sh" "${target_test}"
+  make -C "${workspace_dir}/e2e" test-nobuild $(if [ -n "$target_test" ]; then echo "RUN=$target_test"; fi)
   ret_val=$?
   set -e
 

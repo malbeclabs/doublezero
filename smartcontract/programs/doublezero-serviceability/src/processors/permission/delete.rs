@@ -45,14 +45,12 @@ pub fn process_delete_permission(
         globalstate_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "GlobalState"
     );
     validate_program_account!(
         permission_account,
         program_id,
         writable = true,
-        pda = None::<&Pubkey>,
         "Permission"
     );
 

@@ -1,5 +1,4 @@
 use crate::{
-    error::DoubleZeroError,
     pda::get_resource_extension_pda,
     processors::{
         resource::{
@@ -9,11 +8,7 @@ use crate::{
         validation::validate_program_account,
     },
     resource::ResourceType,
-    state::{
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        globalstate::GlobalState,
-        user::{User, UserType},
-    },
+    state::user::{User, UserType},
 };
 use doublezero_program_common::types::NetworkV4;
 use solana_program::{
@@ -69,13 +64,7 @@ pub fn validate_and_allocate_user_resources<'a>(
     multicast_publisher_block_ext: &AccountInfo<'a>,
     device_tunnel_ids_ext: &AccountInfo<'a>,
     dz_prefix_accounts: &[&AccountInfo<'a>],
-    globalstate: &GlobalState,
 ) -> ProgramResult {
-    // Check feature flag
-    if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-        return Err(DoubleZeroError::FeatureNotEnabled.into());
-    }
-
     // Validate global_resource_ext (UserTunnelBlock)
     let (expected_user_tunnel_pda, _, _) =
         get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);
@@ -83,7 +72,7 @@ pub fn validate_and_allocate_user_resources<'a>(
         global_resource_ext,
         program_id,
         writable = true,
-        pda = Some(&expected_user_tunnel_pda),
+        pda = &expected_user_tunnel_pda,
         "UserTunnelBlock"
     );
 
@@ -96,7 +85,7 @@ pub fn validate_and_allocate_user_resources<'a>(
             multicast_publisher_block_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_multicast_publisher_pda),
+            pda = &expected_multicast_publisher_pda,
             "MulticastPublisherBlock"
         );
     }
@@ -108,7 +97,7 @@ pub fn validate_and_allocate_user_resources<'a>(
         device_tunnel_ids_ext,
         program_id,
         writable = true,
-        pda = Some(&expected_tunnel_ids_pda),
+        pda = &expected_tunnel_ids_pda,
         "TunnelIds"
     );
 
@@ -122,7 +111,7 @@ pub fn validate_and_allocate_user_resources<'a>(
             dz_prefix_account,
             program_id,
             writable = true,
-            pda = Some(&expected_dz_prefix_pda),
+            pda = &expected_dz_prefix_pda,
             &format!("DzPrefixBlock[{idx}]")
         );
     }
@@ -173,13 +162,7 @@ pub fn validate_and_deallocate_user_resources<'a>(
     multicast_publisher_block_ext: Option<&AccountInfo<'a>>,
     device_tunnel_ids_ext: &AccountInfo<'a>,
     dz_prefix_accounts: &[&AccountInfo<'a>],
-    globalstate: &GlobalState,
 ) -> ProgramResult {
-    // Check feature flag
-    if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-        return Err(DoubleZeroError::FeatureNotEnabled.into());
-    }
-
     // Validate global_resource_ext (UserTunnelBlock)
     let (expected_user_tunnel_pda, _, _) =
         get_resource_extension_pda(program_id, ResourceType::UserTunnelBlock);
@@ -187,7 +170,7 @@ pub fn validate_and_deallocate_user_resources<'a>(
         global_resource_ext,
         program_id,
         writable = true,
-        pda = Some(&expected_user_tunnel_pda),
+        pda = &expected_user_tunnel_pda,
         "UserTunnelBlock"
     );
 
@@ -199,7 +182,7 @@ pub fn validate_and_deallocate_user_resources<'a>(
             multicast_publisher_ext,
             program_id,
             writable = true,
-            pda = Some(&expected_multicast_publisher_pda),
+            pda = &expected_multicast_publisher_pda,
             "MulticastPublisherBlock"
         );
     }
@@ -211,7 +194,7 @@ pub fn validate_and_deallocate_user_resources<'a>(
         device_tunnel_ids_ext,
         program_id,
         writable = true,
-        pda = Some(&expected_tunnel_ids_pda),
+        pda = &expected_tunnel_ids_pda,
         "TunnelIds"
     );
 
@@ -225,7 +208,7 @@ pub fn validate_and_deallocate_user_resources<'a>(
             dz_prefix_account,
             program_id,
             writable = true,
-            pda = Some(&expected_dz_prefix_pda),
+            pda = &expected_dz_prefix_pda,
             &format!("DzPrefixBlock[{idx}]")
         );
     }

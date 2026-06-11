@@ -78,8 +78,7 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 	if normalizeEnum(device.Health) == "ready-for-users" && normalizeEnum(device.Status) == "activated" {
 		t.Log("Device is healthy — previous provisioning verified")
 	} else {
-		t.Logf("WARNING: device is not healthy (status=%s health=%s) — previous provisioning may have failed, reprovisioning", device.Status, device.Health)
-		// TODO: fire an alert here
+		t.Errorf("device is not healthy (status=%s health=%s) — previous provisioning may have failed, reprovisioning", device.Status, device.Health)
 	}
 
 	oldPubkey := device.Pubkey
@@ -99,7 +98,7 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 		require.NoError(t, err, "failed to delete interface %s", iface.Name)
 	}
 
-	// Wait for activator to close link accounts
+	// Wait for the program to close link accounts
 	t.Log("==> Waiting for device reference count to reach zero")
 	err = prov.WaitForRefCountZero(ctx, deviceCode)
 	require.NoError(t, err, "timed out waiting for reference count to reach zero")

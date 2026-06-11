@@ -1,5 +1,6 @@
 use crate::state::accounttype::AccountType;
 use borsh::{BorshDeserialize, BorshSerialize};
+use borsh_incremental::BorshDeserializeIncremental;
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, net::Ipv4Addr};
 
@@ -74,6 +75,7 @@ impl fmt::Display for GeolocationUserStatus {
 pub enum GeoLocationTargetType {
     Outbound = 0,
     Inbound = 1,
+    OutboundIcmp = 2,
 }
 
 impl fmt::Display for GeoLocationTargetType {
@@ -81,6 +83,7 @@ impl fmt::Display for GeoLocationTargetType {
         match self {
             GeoLocationTargetType::Outbound => write!(f, "outbound"),
             GeoLocationTargetType::Inbound => write!(f, "inbound"),
+            GeoLocationTargetType::OutboundIcmp => write!(f, "outbound-icmp"),
         }
     }
 }
@@ -159,7 +162,7 @@ impl fmt::Display for GeolocationTarget {
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GeolocationUser {
     pub account_type: AccountType, // 1
@@ -184,14 +187,22 @@ pub struct GeolocationUser {
     pub billing: GeolocationBillingConfig, // 1 + 16 = 17
     pub status: GeolocationUserStatus, // 1
     pub targets: Vec<GeolocationTarget>, // 4 + 71 * len
+    #[incremental(default = String::new())]
+    pub result_destination: String, // 4 + len
 }
 
 impl fmt::Display for GeolocationUser {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let dest = if self.result_destination.is_empty() {
+            "none"
+        } else {
+            &self.result_destination
+        };
         write!(
             f,
             "account_type: {}, owner: {}, code: {}, token_account: {}, \
-            payment_status: {}, billing: {}, status: {}, targets: {:?}",
+            payment_status: {}, billing: {}, status: {}, targets: {:?}, \
+            result_destination: {}",
             self.account_type,
             self.owner,
             self.code,
@@ -200,21 +211,8 @@ impl fmt::Display for GeolocationUser {
             self.billing,
             self.status,
             self.targets,
+            dest,
         )
-    }
-}
-
-impl TryFrom<&[u8]> for GeolocationUser {
-    type Error = ProgramError;
-
-    fn try_from(mut data: &[u8]) -> Result<Self, Self::Error> {
-        let out = Self::deserialize(&mut data).map_err(|_| ProgramError::InvalidAccountData)?;
-
-        if out.account_type != AccountType::GeolocationUser {
-            return Err(ProgramError::InvalidAccountData);
-        }
-
-        Ok(out)
     }
 }
 
@@ -223,20 +221,22 @@ impl TryFrom<&AccountInfo<'_>> for GeolocationUser {
 
     fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
         let data = account.try_borrow_data()?;
-        let res = Self::try_from(&data[..]);
-        if res.is_err() {
-            msg!(
-                "Failed to deserialize GeolocationUser: {:?}",
-                res.as_ref().err()
-            );
+        let user = Self::try_from(&data[..]).map_err(|e| {
+            msg!("Failed to deserialize GeolocationUser: {}", e);
+            ProgramError::InvalidAccountData
+        })?;
+        if user.account_type != AccountType::GeolocationUser {
+            msg!("Invalid account type: {}", user.account_type);
+            return Err(ProgramError::InvalidAccountData);
         }
-        res
+        Ok(user)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::Ipv4Addr;
 
     #[test]
     fn test_state_geolocation_user_serialization() {
@@ -267,6 +267,7 @@ mod tests {
                     geoprobe_pk: Pubkey::new_unique(),
                 },
             ],
+            result_destination: "185.199.108.1:9000".to_string(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -278,13 +279,6 @@ mod tests {
             borsh::object_length(&val).unwrap(),
             "Invalid Size"
         );
-    }
-
-    #[test]
-    fn test_state_geolocation_user_try_from_invalid_account_type() {
-        let data = [AccountType::None as u8];
-        let result = GeolocationUser::try_from(&data[..]);
-        assert_eq!(result.unwrap_err(), ProgramError::InvalidAccountData);
     }
 
     #[test]
@@ -344,5 +338,39 @@ mod tests {
                 last_deduction_dz_epoch: 0,
             })
         );
+    }
+
+    #[test]
+    fn test_state_geolocation_user_backward_compat_without_result_destination() {
+        let old = GeolocationUser {
+            account_type: AccountType::GeolocationUser,
+            owner: Pubkey::new_unique(),
+            code: "geo-user-01".to_string(),
+            token_account: Pubkey::new_unique(),
+            payment_status: GeolocationPaymentStatus::Paid,
+            billing: GeolocationBillingConfig::FlatPerEpoch(FlatPerEpochConfig {
+                rate: 1000,
+                last_deduction_dz_epoch: 42,
+            }),
+            status: GeolocationUserStatus::Activated,
+            targets: vec![GeolocationTarget {
+                target_type: GeoLocationTargetType::Outbound,
+                ip_address: [8, 8, 8, 8].into(),
+                location_offset_port: 8923,
+                target_pk: Pubkey::default(),
+                geoprobe_pk: Pubkey::new_unique(),
+            }],
+            result_destination: String::new(),
+        };
+
+        // Serialize, then truncate the trailing 4 bytes (empty Borsh string = 4-byte length
+        // prefix) to simulate old data without the result_destination field.
+        let mut data = borsh::to_vec(&old).unwrap();
+        data.truncate(data.len() - 4);
+
+        let deserialized = GeolocationUser::try_from(&data[..]).unwrap();
+        assert_eq!(deserialized.result_destination, "");
+        assert_eq!(deserialized.targets.len(), 1);
+        assert_eq!(deserialized.owner, old.owner);
     }
 }

@@ -1,5 +1,5 @@
 use crate::servicecontroller::ServiceController;
-use doublezero_cli::doublezerocommand::CliCommand;
+use doublezero_serviceability_cli::doublezerocommand::CliCommand;
 use indicatif::ProgressBar;
 
 pub async fn check_doublezero<T: ServiceController>(

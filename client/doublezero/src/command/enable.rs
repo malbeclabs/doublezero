@@ -3,7 +3,7 @@ use crate::{
     servicecontroller::{ServiceController, ServiceControllerImpl},
 };
 use clap::Args;
-use doublezero_cli::doublezerocommand::CliCommand;
+use doublezero_serviceability_cli::doublezerocommand::CliCommand;
 
 #[derive(Args, Debug)]
 pub struct EnableCliCommand {}
@@ -37,8 +37,8 @@ impl EnableCliCommand {
 mod tests {
     use super::*;
     use crate::servicecontroller::{MockServiceController, V2StatusResponse};
-    use doublezero_cli::tests::utils::create_test_client;
     use doublezero_config::Environment;
+    use doublezero_serviceability_cli::tests::utils::create_test_client;
 
     fn setup_mock() -> MockServiceController {
         let mut mock = MockServiceController::new();
@@ -57,7 +57,7 @@ mod tests {
         mock
     }
 
-    fn setup_client() -> doublezero_cli::doublezerocommand::MockCliCommand {
+    fn setup_client() -> doublezero_serviceability_cli::doublezerocommand::MockCliCommand {
         let mut client = create_test_client();
         client
             .expect_get_environment()

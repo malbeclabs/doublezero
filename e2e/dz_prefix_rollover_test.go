@@ -13,7 +13,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/allocation"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/require"
 )
@@ -49,9 +49,6 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 		},
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
-		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(true),
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -367,9 +364,6 @@ func TestE2E_DzPrefix_GrowAndShrink(t *testing.T) {
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
 		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(true),
-		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
@@ -424,7 +418,7 @@ func TestE2E_DzPrefix_GrowAndShrink(t *testing.T) {
 	// =========================================================================
 	log.Debug("==> Capturing baseline resource state")
 
-	// Wait for the DzPrefixBlock to be created by the activator
+	// Wait for the DzPrefixBlock to be created by the program
 	var baselineSnapshot *allocation.ResourceSnapshot
 	require.Eventually(t, func() bool {
 		snap, err := verifier.CaptureSnapshot(ctx)

@@ -4,13 +4,14 @@ use doublezero_serviceability::{
     instructions::*,
     pda::{
         get_globalconfig_pda, get_globalstate_pda, get_program_config_pda,
-        get_resource_extension_pda,
+        get_resource_extension_pda, get_topology_pda,
     },
-    processors::globalconfig::set::SetGlobalConfigArgs,
+    processors::{globalconfig::set::SetGlobalConfigArgs, topology::create::TopologyCreateArgs},
     resource::ResourceType,
     state::{
         accountdata::AccountData, accounttype::AccountType, device::Device,
         globalstate::GlobalState, resource_extension::ResourceExtensionOwned,
+        topology::TopologyConstraint,
     },
 };
 use solana_program_test::*;
@@ -232,7 +233,7 @@ async fn execute_transaction_tester(
 #[allow(dead_code)]
 pub async fn try_execute_transaction(
     banks_client: &mut BanksClient,
-    recent_blockhash: solana_program::hash::Hash,
+    _recent_blockhash: solana_program::hash::Hash,
     program_id: Pubkey,
     instruction: DoubleZeroInstruction,
     accounts: Vec<AccountMeta>,
@@ -240,6 +241,11 @@ pub async fn try_execute_transaction(
 ) -> Result<(), BanksClientError> {
     print!("➡️  Transaction {instruction:?} ");
 
+    // Wait for a new blockhash so retries of an identical message don't hit Solana's
+    // signature status cache (same signature + same blockhash → cached Ok). This also
+    // avoids the stale-blockhash panic in banks-server when a single hash is reused
+    // across a long sequence of transactions.
+    let recent_blockhash = wait_for_new_blockhash(banks_client).await;
     let mut transaction = create_transaction(program_id, &instruction, &accounts, payer);
     transaction.try_sign(&[&payer], recent_blockhash).unwrap();
     banks_client.process_transaction(transaction).await?;
@@ -276,6 +282,100 @@ pub async fn execute_transaction_expect_failure(
     }
 
     result
+}
+
+/// Execute a transaction with extra accounts and expect it to fail. Returns the error result.
+#[allow(dead_code)]
+pub async fn execute_transaction_expect_failure_with_extra_accounts(
+    banks_client: &mut BanksClient,
+    _recent_blockhash: solana_program::hash::Hash,
+    program_id: Pubkey,
+    instruction: DoubleZeroInstruction,
+    accounts: Vec<AccountMeta>,
+    payer: &Keypair,
+    extra_accounts: &[AccountMeta],
+) -> Result<(), BanksClientError> {
+    print!("➡️  Transaction (expecting failure) {instruction:?} ");
+
+    let recent_blockhash = banks_client
+        .get_latest_blockhash()
+        .await
+        .expect("Failed to get latest blockhash");
+    let mut transaction = create_transaction_with_extra_accounts(
+        program_id,
+        &instruction,
+        &accounts,
+        payer,
+        extra_accounts,
+    );
+    transaction.try_sign(&[&payer], recent_blockhash).unwrap();
+    let result = banks_client.process_transaction(transaction).await;
+
+    if result.is_err() {
+        println!("❌ (expected)");
+    } else {
+        println!("✅ (unexpected success)");
+    }
+
+    result
+}
+
+#[allow(dead_code)]
+pub async fn execute_transaction_with_extra_accounts(
+    banks_client: &mut BanksClient,
+    _recent_blockhash: solana_program::hash::Hash,
+    program_id: Pubkey,
+    instruction: DoubleZeroInstruction,
+    accounts: Vec<AccountMeta>,
+    payer: &Keypair,
+    extra_accounts: &[AccountMeta],
+) {
+    print!("➡️  Transaction {instruction:?} ");
+
+    let recent_blockhash = banks_client
+        .get_latest_blockhash()
+        .await
+        .expect("Failed to get latest blockhash");
+    let mut transaction = create_transaction_with_extra_accounts(
+        program_id,
+        &instruction,
+        &accounts,
+        payer,
+        extra_accounts,
+    );
+    transaction.try_sign(&[&payer], recent_blockhash).unwrap();
+    banks_client.process_transaction(transaction).await.unwrap();
+
+    println!("✅")
+}
+
+#[allow(dead_code)]
+pub async fn try_execute_transaction_with_extra_accounts(
+    banks_client: &mut BanksClient,
+    _recent_blockhash: solana_program::hash::Hash,
+    program_id: Pubkey,
+    instruction: DoubleZeroInstruction,
+    accounts: Vec<AccountMeta>,
+    payer: &Keypair,
+    extra_accounts: &[AccountMeta],
+) -> Result<(), BanksClientError> {
+    print!("➡️  Transaction {instruction:?} ");
+
+    // See comment in `try_execute_transaction` for why we wait for a new blockhash.
+    let recent_blockhash = wait_for_new_blockhash(banks_client).await;
+    let mut transaction = create_transaction_with_extra_accounts(
+        program_id,
+        &instruction,
+        &accounts,
+        payer,
+        extra_accounts,
+    );
+    transaction.try_sign(&[&payer], recent_blockhash).unwrap();
+    banks_client.process_transaction(transaction).await?;
+
+    println!("✅");
+
+    Ok(())
 }
 
 pub fn create_transaction(
@@ -382,17 +482,90 @@ pub async fn wait_for_new_blockhash(banks_client: &mut BanksClient) -> solana_pr
 
 /// Setup program with global state and global config initialized.
 /// Returns (banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey)
+/// Initialize global state and set global config (creating all resource extension accounts).
+/// Idempotent helper for tests that already called `init_test()` and now need the resource
+/// extensions in place — for example, before any onchain-allocation instruction.
+#[allow(dead_code)]
+pub async fn init_globalstate_and_config(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    payer: &Keypair,
+    recent_blockhash: solana_program::hash::Hash,
+) {
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
+            local_asn: 65000,
+            remote_asn: 65001,
+            device_tunnel_block: "10.100.0.0/24".parse().unwrap(),
+            user_tunnel_block: "169.254.0.0/24".parse().unwrap(),
+            multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
+            next_bgp_community: None,
+        }),
+        vec![
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
+        ],
+        payer,
+    )
+    .await;
+}
+
 #[allow(dead_code)]
 pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey) {
     let program_id = Pubkey::new_unique();
 
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+    let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
-    )
-    .start()
-    .await;
+    );
+    // SetGlobalConfig creates multiple ResourceExtension accounts; raise the budget so this
+    // doesn't flake under load when many test processes run concurrently.
+    program_test.set_compute_max_units(1_000_000);
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
@@ -409,6 +582,8 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
     let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
     // Initialize global state
     execute_transaction(
@@ -433,7 +608,7 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
             local_asn: 65000,
             remote_asn: 65001,
             device_tunnel_block: "10.100.0.0/24".parse().unwrap(),
-            user_tunnel_block: "10.200.0.0/24".parse().unwrap(),
+            user_tunnel_block: "169.254.0.0/24".parse().unwrap(),
             multicastgroup_block: "239.0.0.0/24".parse().unwrap(),
             multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
             next_bgp_community: None,
@@ -448,6 +623,7 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
             AccountMeta::new(segment_routing_ids_pda, false),
             AccountMeta::new(multicast_publisher_block_pda, false),
             AccountMeta::new(vrf_ids_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
         ],
         &payer,
     )
@@ -460,4 +636,42 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
         globalstate_pubkey,
         globalconfig_pubkey,
     )
+}
+
+/// Create the "unicast-default" topology.
+/// Returns the PDA of the "unicast-default" topology.
+/// Requires that global state + global config are already initialized (AdminGroupBits is
+/// created by SetGlobalConfig).
+#[allow(dead_code)]
+pub async fn create_unicast_default_topology(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    _globalconfig_pubkey: Pubkey,
+    payer: &Keypair,
+) -> Pubkey {
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+            name: "unicast-default".to_string(),
+            constraint: TopologyConstraint::IncludeAny,
+        }),
+        vec![
+            AccountMeta::new(unicast_default_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    unicast_default_pda
 }

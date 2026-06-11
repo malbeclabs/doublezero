@@ -5,6 +5,7 @@ use crate::{
     validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::types::NetworkV4List;
 use doublezero_sdk::{
     commands::device::{
@@ -84,7 +85,12 @@ pub struct UpdateDeviceCliCommand {
 }
 
 impl UpdateDeviceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -186,7 +192,6 @@ impl UpdateDeviceCliCommand {
                 None => None,
             },
             mgmt_vrf: self.mgmt_vrf,
-            interfaces: None,
             max_users: self.max_users,
             users_count: self.users_count,
             status: self.status,
@@ -212,6 +217,8 @@ impl UpdateDeviceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use std::collections::HashMap;
 
     use crate::{
@@ -273,6 +280,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -303,6 +311,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let device3 = Device {
             account_type: AccountType::Device,
@@ -333,6 +342,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let device_list = HashMap::from([
             (pda_pubkey, device1.clone()),
@@ -373,7 +383,6 @@ mod tests {
                     "HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx",
                 )),
                 mgmt_vrf: Some("default".to_string()),
-                interfaces: None,
                 max_users: Some(1025),
                 users_count: Some(0),
                 status: None,
@@ -391,32 +400,35 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         // Expected success
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdateDeviceCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: Some("test".to_string()),
-            public_ip: Some([1, 2, 3, 4].into()),
-            device_type: Some(DeviceType::Hybrid),
-            dz_prefixes: Some("10.1.2.3/32".parse().unwrap()),
-            metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
-            contributor: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
-            location: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
-            mgmt_vrf: Some("default".to_string()),
-            max_users: Some(1025),
-            users_count: Some(0),
-            status: None,
-            desired_status: None,
-            reference_count: None,
-            max_unicast_users: None,
-            max_multicast_subscribers: None,
-            unicast_users_count: None,
+        let res = block_on(
+            UpdateDeviceCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: Some("test".to_string()),
+                public_ip: Some([1, 2, 3, 4].into()),
+                device_type: Some(DeviceType::Hybrid),
+                dz_prefixes: Some("10.1.2.3/32".parse().unwrap()),
+                metrics_publisher: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
+                contributor: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
+                location: Some("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx".to_string()),
+                mgmt_vrf: Some("default".to_string()),
+                max_users: Some(1025),
+                users_count: Some(0),
+                status: None,
+                desired_status: None,
+                reference_count: None,
+                max_unicast_users: None,
+                max_multicast_subscribers: None,
+                unicast_users_count: None,
 
-            max_multicast_publishers: None,
-            multicast_subscribers_count: None,
-            multicast_publishers_count: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+                max_multicast_publishers: None,
+                multicast_subscribers_count: None,
+                multicast_publishers_count: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "{}", res.err().unwrap());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -463,6 +475,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -493,6 +506,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 
@@ -513,32 +527,35 @@ mod tests {
             .returning(move |_| Ok(device_list.clone()));
 
         // Expected failure - trying to update device1 with code that exists on device2
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdateDeviceCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: Some("existing_code".to_string()),
-            device_type: None,
-            public_ip: None,
-            dz_prefixes: None,
-            metrics_publisher: None,
-            location: None,
-            contributor: None,
-            mgmt_vrf: None,
-            max_users: Some(255),
-            users_count: Some(0),
-            status: None,
-            desired_status: None,
-            reference_count: None,
-            max_unicast_users: None,
-            max_multicast_subscribers: None,
-            unicast_users_count: None,
+        let res = block_on(
+            UpdateDeviceCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: Some("existing_code".to_string()),
+                device_type: None,
+                public_ip: None,
+                dz_prefixes: None,
+                metrics_publisher: None,
+                location: None,
+                contributor: None,
+                mgmt_vrf: None,
+                max_users: Some(255),
+                users_count: Some(0),
+                status: None,
+                desired_status: None,
+                reference_count: None,
+                max_unicast_users: None,
+                max_multicast_subscribers: None,
+                unicast_users_count: None,
 
-            max_multicast_publishers: None,
-            multicast_subscribers_count: None,
-            multicast_publishers_count: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+                max_multicast_publishers: None,
+                multicast_subscribers_count: None,
+                multicast_publishers_count: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert!(res
             .unwrap_err()
@@ -585,6 +602,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let device2 = Device {
             account_type: AccountType::Device,
@@ -615,6 +633,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
         let device_list = HashMap::from([(pda_pubkey, device1.clone()), (other_pubkey, device2)]);
 
@@ -634,32 +653,35 @@ mod tests {
             .returning(move |_| Ok(device_list.clone()));
 
         // Expected failure - trying to update device1 with public IP that exists on device2
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdateDeviceCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: None,
-            public_ip: Some([10, 20, 30, 40].into()),
-            dz_prefixes: None,
-            metrics_publisher: None,
-            device_type: None,
-            location: None,
-            contributor: None,
-            mgmt_vrf: None,
-            max_users: None,
-            users_count: None,
-            status: None,
-            desired_status: None,
-            reference_count: None,
-            max_unicast_users: None,
-            max_multicast_subscribers: None,
-            unicast_users_count: None,
+        let res = block_on(
+            UpdateDeviceCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: None,
+                public_ip: Some([10, 20, 30, 40].into()),
+                dz_prefixes: None,
+                metrics_publisher: None,
+                device_type: None,
+                location: None,
+                contributor: None,
+                mgmt_vrf: None,
+                max_users: None,
+                users_count: None,
+                status: None,
+                desired_status: None,
+                reference_count: None,
+                max_unicast_users: None,
+                max_multicast_subscribers: None,
+                unicast_users_count: None,
 
-            max_multicast_publishers: None,
-            multicast_subscribers_count: None,
-            multicast_publishers_count: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+                max_multicast_publishers: None,
+                multicast_subscribers_count: None,
+                multicast_publishers_count: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert!(res
             .unwrap_err()

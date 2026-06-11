@@ -20,6 +20,7 @@ console.workspace = true
 eyre.workspace = true
 futures.workspace = true
 futures-util.workspace = true
+libc.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
@@ -39,7 +40,9 @@ tokio.workspace = true
 
 # Dependencies from this workspace
 doublezero_sdk.workspace = true
-doublezero_cli.workspace = true
+doublezero-serviceability-cli.workspace = true
+doublezero-cli-core.workspace = true
 doublezero-config.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-program-common.workspace = true
+doublezero-sentinel.workspace = true

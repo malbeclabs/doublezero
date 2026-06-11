@@ -1,10 +1,6 @@
 use doublezero_sdk::{
-    commands::{
-        device::get::GetDeviceCommand, link::get::GetLinkCommand,
-        multicastgroup::get::GetMulticastGroupCommand, user::get::GetUserCommand,
-    },
-    CurrentInterfaceVersion, Device, DeviceStatus, InterfaceStatus, Link, LinkStatus,
-    MulticastGroup, MulticastGroupStatus, User, UserStatus,
+    commands::{device::get::GetDeviceCommand, link::get::GetLinkCommand},
+    Device, DeviceStatus, Interface, Link, LinkStatus,
 };
 use solana_sdk::pubkey::Pubkey;
 
@@ -40,7 +36,6 @@ pub fn poll_for_device_activated(
             Ok((_, device)) => {
                 if device.status == DeviceStatus::DeviceProvisioning
                     || device.status == DeviceStatus::Activated
-                    || device.status == DeviceStatus::Rejected
                 {
                     return Ok(device);
                 }
@@ -61,7 +56,7 @@ pub fn poll_for_device_interface_activated(
     client: &dyn CliCommand,
     device_pubkey: &Pubkey,
     interface_name: &str,
-) -> eyre::Result<CurrentInterfaceVersion> {
+) -> eyre::Result<Interface> {
     let start_time = std::time::Instant::now();
     let timeout = std::time::Duration::from_secs(20);
     let poll_interval = std::time::Duration::from_secs(1);
@@ -82,20 +77,12 @@ pub fn poll_for_device_interface_activated(
             pubkey_or_code: device_pubkey.to_string(),
         }) {
             Ok((_, device)) => {
-                if let Some(iface) = device.interfaces.iter().find(|iface| {
-                    iface.into_current_version().name.to_lowercase()
-                        == interface_name.to_lowercase()
-                }) {
-                    let current = iface.into_current_version();
-                    if current.status != InterfaceStatus::Pending {
-                        return Ok(current);
-                    } else {
-                        last_error = Some(eyre::eyre!(
-                            "Interface '{}' found but not activated (status: {:?})",
-                            interface_name,
-                            current.status
-                        ));
-                    }
+                if let Some(iface) = device
+                    .interfaces
+                    .iter()
+                    .find(|iface| iface.name.to_lowercase() == interface_name.to_lowercase())
+                {
+                    return Ok(iface.clone());
                 } else {
                     last_error = Some(eyre::eyre!(
                         "Interface '{}' not found on device '{}'",
@@ -141,105 +128,13 @@ pub fn poll_for_link_activated(
             pubkey_or_code: link_pubkey.to_string(),
         }) {
             Ok((_, link)) => {
-                if link.status == LinkStatus::Provisioning
-                    || link.status == LinkStatus::Activated
-                    || link.status == LinkStatus::Rejected
-                {
+                if link.status == LinkStatus::Provisioning || link.status == LinkStatus::Activated {
                     return Ok(link);
                 }
             }
             Err(e) => {
                 // Link not found or some other error, continue polling
                 // It may take some time for the link to be visible onchain after the creation
-                // transaction is confirmed, so we need to poll here until is is.
-                last_error = Some(e);
-            }
-        }
-
-        std::thread::sleep(poll_interval);
-    }
-}
-
-pub fn poll_for_user_activated(
-    client: &dyn CliCommand,
-    user_pubkey: &Pubkey,
-) -> eyre::Result<User> {
-    let start_time = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(60);
-    let poll_interval = std::time::Duration::from_secs(1);
-    let mut last_error: Option<eyre::Error> = None;
-
-    loop {
-        if start_time.elapsed() >= timeout {
-            return Err(match last_error {
-                Some(e) => eyre::eyre!(
-                    "Timeout waiting for user activation after {} seconds. Last error: {}",
-                    timeout.as_secs(),
-                    e
-                ),
-                None => eyre::eyre!(
-                    "Timeout waiting for user activation after {} seconds",
-                    timeout.as_secs()
-                ),
-            });
-        }
-
-        match client.get_user(GetUserCommand {
-            pubkey: *user_pubkey,
-        }) {
-            Ok((_, user)) => {
-                if user.status == UserStatus::Activated || user.status == UserStatus::Rejected {
-                    return Ok(user);
-                }
-            }
-            Err(e) => {
-                // User not found or some other error, continue polling
-                // It may take some time for the user to be visible onchain after the creation
-                // transaction is confirmed, so we need to poll here until is is.
-                last_error = Some(e);
-            }
-        }
-
-        std::thread::sleep(poll_interval);
-    }
-}
-
-pub fn poll_for_multicastgroup_activated(
-    client: &dyn CliCommand,
-    mgroup_pubkey: &Pubkey,
-) -> eyre::Result<MulticastGroup> {
-    let start_time = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(60);
-    let poll_interval = std::time::Duration::from_secs(1);
-    let mut last_error: Option<eyre::Error> = None;
-
-    loop {
-        if start_time.elapsed() >= timeout {
-            return Err(match last_error {
-                Some(e) => eyre::eyre!(
-                    "Timeout waiting for multicast group activation after {} seconds. Last error: {}",
-                    timeout.as_secs(),
-                    e
-                ),
-                None => eyre::eyre!("Timeout waiting for multicast group activation after {} seconds", 
-                    timeout.as_secs()
-                ),
-            });
-        }
-
-        match client.get_multicastgroup(GetMulticastGroupCommand {
-            pubkey_or_code: mgroup_pubkey.to_string(),
-        }) {
-            Ok((_, mgroup)) => {
-                if mgroup.status == MulticastGroupStatus::Activated
-                    || mgroup.status == MulticastGroupStatus::Rejected
-                {
-                    return Ok(mgroup);
-                }
-            }
-            Err(e) => {
-                // Multicast group not found or some other error, continue polling
-                // It may take some time for the multicast group to be visible onchain after the creation
                 // transaction is confirmed, so we need to poll here until is is.
                 last_error = Some(e);
             }

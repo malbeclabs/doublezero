@@ -1,14 +1,14 @@
 pub use crate::config::{
-    convert_geo_program_moniker, create_new_pubkey_user, default_geolocation_program_id,
-    default_program_id, get_doublezero_pubkey, read_doublezero_config, write_doublezero_config,
-    ClientConfig,
+    convert_geo_program_moniker, create_new_pubkey_user, default_environment,
+    default_geolocation_program_id, default_program_id, get_doublezero_pubkey,
+    read_doublezero_config, write_doublezero_config, ClientConfig,
 };
 pub use doublezero_serviceability::{
     addresses::*,
     pda::{
         get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda, get_link_pda,
         get_location_pda, get_multicastgroup_pda, get_permission_pda, get_resource_extension_pda,
-        get_tenant_pda, get_user_old_pda,
+        get_tenant_pda, get_topology_pda, get_user_old_pda,
     },
     programversion::ProgramVersion,
     resource::{IdOrIp, ResourceType},
@@ -20,9 +20,7 @@ pub use doublezero_serviceability::{
         exchange::{Exchange, ExchangeStatus, BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN},
         globalconfig::GlobalConfig,
         globalstate::GlobalState,
-        interface::{
-            CurrentInterfaceVersion, Interface, InterfaceStatus, InterfaceType, LoopbackType,
-        },
+        interface::{Interface, InterfaceDeprecated, InterfaceStatus, InterfaceType, LoopbackType},
         link::{Link, LinkLinkType, LinkStatus},
         location::{Location, LocationStatus},
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
@@ -30,7 +28,8 @@ pub use doublezero_serviceability::{
         programconfig::ProgramConfig,
         resource_extension::ResourceExtensionOwned,
         tenant::Tenant,
-        user::{User, UserCYOA, UserStatus, UserType},
+        topology::{TopologyConstraint, TopologyInfo},
+        user::{BGPStatus, User, UserCYOA, UserStatus, UserType},
     },
 };
 
@@ -51,7 +50,10 @@ pub mod telemetry;
 pub mod tests;
 pub mod utils;
 
-pub use crate::{asyncclient::AsyncDZClient, client::DZClient, geolocation::client::GeoClient};
+pub use crate::{
+    asyncclient::AsyncDZClient, client::DZClient, dztransaction::DZTransaction,
+    geolocation::client::GeoClient,
+};
 
 pub use crate::{
     config::{convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker},

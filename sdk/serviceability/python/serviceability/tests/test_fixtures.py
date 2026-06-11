@@ -6,7 +6,9 @@ from pathlib import Path
 from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 
 from serviceability.state import (
+    CURRENT_INTERFACE_VERSION,
     AccessPass,
+    BGPStatus,
     Contributor,
     Device,
     Exchange,
@@ -166,10 +168,29 @@ class TestFixtureDevice:
                 "ContributorPk": dev.contributor_pub_key,
             },
         )
-        # Verify interfaces
+        # Legacy slot is the V2 projection of new_interfaces (always V2 per #3653);
+        # both entries carry version 1 and no FlexAlgoNodeSegments.
+        assert len(dev.deprecated_interfaces) == 2
+        assert dev.deprecated_interfaces[0].version == 1
+        assert dev.deprecated_interfaces[0].name == "Loopback0"
+        assert dev.deprecated_interfaces[0].flex_algo_node_segments == []
+        assert dev.deprecated_interfaces[1].version == 1
+        assert dev.deprecated_interfaces[1].name == "Ethernet1"
+        # Trailing new_interfaces vec carries the full V4 Interface bodies.
         assert len(dev.interfaces) == 2
-        assert dev.interfaces[0].name == "Loopback0"
-        assert dev.interfaces[1].name == "Ethernet1"
+        ni0 = dev.interfaces[0]
+        assert ni0.version == CURRENT_INTERFACE_VERSION
+        assert ni0.name == "Loopback0"
+        assert ni0.loopback_type.value == 1  # Vpnv4
+        assert len(ni0.flex_algo_node_segments) == 1
+        assert ni0.flex_algo_node_segments[0].node_segment_idx == 300
+        assert ni0.size == _expected_new_interface_size(ni0)
+        ni1 = dev.interfaces[1]
+        assert ni1.version == CURRENT_INTERFACE_VERSION
+        assert ni1.name == "Ethernet1"
+        assert ni1.user_tunnel_endpoint is True
+        assert ni1.flex_algo_node_segments == []
+        assert ni1.size == _expected_new_interface_size(ni1)
         # Verify dz_prefixes
         import ipaddress
 
@@ -182,6 +203,80 @@ class TestFixtureDevice:
         assert dev.mgmt_vrf == "mgmt"
         assert dev.public_ip == ipaddress.IPv4Address("203.0.113.1").packed
         assert dev.index == 7
+
+
+def _expected_new_interface_size(ni) -> int:
+    """Recompute the on-disk size for a Interface element so tests don't bake
+    body byte counts as magic numbers.
+
+    Layout (matches Rust Interface::serialize_body, interface.rs:641-658):
+        u16 size + u8 version (3 bytes prefix) +
+        u8 status + (u32+len) name + u8 interface_type + u8 cyoa + u8 dia +
+        u8 loopback_type + u64 bandwidth + u64 cir + u16 mtu + u8 routing_mode +
+        u16 vlan_id + 5-byte ip_net + u16 node_segment_idx + u8 user_tunnel_endpoint +
+        (u32+34*N) flex_algo_node_segments
+    """
+    body_len = (
+        1 + (4 + len(ni.name)) + 1 + 1 + 1 + 1 + 8 + 8 + 2 + 1 + 2 + 5 + 2 + 1
+        + (4 + 34 * len(ni.flex_algo_node_segments))
+    )
+    return 3 + body_len
+
+
+class TestFixtureDeviceLegacy:
+    """Pre-#3667 on-disk format: legacy `interfaces` vec only, no trailing
+    `new_interfaces`. The SDK rebuilds new_interfaces from the legacy vec,
+    stamping each entry with version=CURRENT_INTERFACE_VERSION and size=0.
+    """
+
+    def test_deserialize(self):
+        data, meta = _load_fixture("device_legacy")
+        dev = Device.from_bytes(data)
+        assert meta["name"] == "DeviceLegacy"
+        # Legacy slot mirrors the original V1+V2 hand-serialized shape.
+        assert len(dev.deprecated_interfaces) == 2
+        assert dev.deprecated_interfaces[0].version == 0  # V1
+        assert dev.deprecated_interfaces[0].name == "Loopback0"
+        assert dev.deprecated_interfaces[1].version == 1  # V2
+        assert dev.deprecated_interfaces[1].name == "Ethernet1"
+        # Rebuilt new_interfaces: same field values as the legacy entries, but
+        # stamped with the current schema version and zero on-disk size.
+        assert len(dev.interfaces) == 2
+        for ni in dev.interfaces:
+            assert ni.version == CURRENT_INTERFACE_VERSION
+            assert ni.size == 0
+            assert ni.flex_algo_node_segments == []
+        assert dev.interfaces[0].name == "Loopback0"
+        assert dev.interfaces[0].loopback_type.value == 1  # Vpnv4
+        assert dev.interfaces[1].name == "Ethernet1"
+        assert dev.interfaces[1].user_tunnel_endpoint is True
+
+
+class TestFixtureDeviceFutureVersion:
+    """Same on-disk shape as device.bin, but the last trailing-vec element is
+    doctored with version=5 (a hypothetical future schema) and 8 trailing junk
+    bytes after the known body. The SDK reads the known fields then advances
+    to start+size, skipping the junk.
+    """
+
+    def test_deserialize(self):
+        data, meta = _load_fixture("device_future_version")
+        dev = Device.from_bytes(data)
+        assert meta["name"] == "DeviceFutureVersion"
+        assert len(dev.interfaces) == 2
+        # First element parses normally at the current schema version.
+        ni0 = dev.interfaces[0]
+        assert ni0.version == CURRENT_INTERFACE_VERSION
+        assert ni0.name == "Loopback0"
+        assert len(ni0.flex_algo_node_segments) == 1
+        # Second element has the future-version stamp + extra trailing bytes;
+        # known body fields still parse correctly because the reader advances
+        # to start+size.
+        ni1 = dev.interfaces[1]
+        assert ni1.version == 5
+        assert ni1.size == _expected_new_interface_size(ni1) + 8
+        assert ni1.name == "Ethernet1"
+        assert ni1.user_tunnel_endpoint is True
 
 
 class TestFixtureLink:
@@ -226,8 +321,26 @@ class TestFixtureUser:
                 "TunnelId": u.tunnel_id,
                 "Status": u.status,
                 "ValidatorPubkey": u.validator_pub_key,
+                "TunnelFlags": u.tunnel_flags,
+                "BgpStatus": u.bgp_status,
+                "LastBgpUpAt": u.last_bgp_up_at,
+                "LastBgpReportedAt": u.last_bgp_reported_at,
+                "BgpRttNs": u.bgp_rtt_ns,
             },
         )
+
+    def test_backward_compat_old_layout(self):
+        # Deserializing an account binary that predates the BGP fields must
+        # return zero values for those fields rather than failing.
+        data, _ = _load_fixture("user")
+        # Remove bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
+        # + bgp_rtt_ns (8) = 25 bytes.
+        truncated = data[:-25]
+        u = User.from_bytes(truncated)
+        assert u.bgp_status == BGPStatus.UNKNOWN
+        assert u.last_bgp_up_at == 0
+        assert u.last_bgp_reported_at == 0
+        assert u.bgp_rtt_ns == 0
 
 
 class TestFixtureMulticastGroup:
@@ -322,8 +435,16 @@ class TestFixtureAccessPass:
                 "ConnectionCount": ap.connection_count,
                 "Status": ap.status,
                 "Flags": ap.flags,
+                "UnicastUserCount": ap.unicast_user_count,
+                "MaxUnicastUsers": ap.max_unicast_users,
+                "MulticastUserCount": ap.multicast_user_count,
+                "MaxMulticastUsers": ap.max_multicast_users,
             },
         )
+        assert ap.unicast_user_count == 2
+        assert ap.max_unicast_users == 4
+        assert ap.multicast_user_count == 1
+        assert ap.max_multicast_users == 3
 
 
 class TestFixtureAccessPassValidator:
@@ -344,6 +465,10 @@ class TestFixtureAccessPassValidator:
                 "ConnectionCount": ap.connection_count,
                 "Status": ap.status,
                 "Flags": ap.flags,
+                "UnicastUserCount": ap.unicast_user_count,
+                "MaxUnicastUsers": ap.max_unicast_users,
+                "MulticastUserCount": ap.multicast_user_count,
+                "MaxMulticastUsers": ap.max_multicast_users,
             },
         )
         assert ap.account_type == 11
@@ -361,3 +486,47 @@ class TestFixtureAccessPassValidator:
         assert len(ap.mgroup_pub_allowlist) == 1
         assert len(ap.mgroup_sub_allowlist) == 1
         assert ap.flags == 3
+        assert ap.max_unicast_users == 5
+        assert ap.max_multicast_users == 2
+
+
+class TestFixtureAccessPassEdgeSeat:
+    def test_deserialize(self):
+        data, meta = _load_fixture("access_pass_edge_seat")
+        ap = AccessPass.from_bytes(data)
+        _assert_fields(
+            meta["fields"],
+            {
+                "AccountType": ap.account_type,
+                "Owner": ap.owner,
+                "BumpSeed": ap.bump_seed,
+                "AccessPassType": ap.access_pass_type_tag,
+                "UserPayer": ap.user_payer,
+                "ConnectionCount": ap.connection_count,
+                "Status": ap.status,
+                "Flags": ap.flags,
+                "UnicastUserCount": ap.unicast_user_count,
+                "MaxUnicastUsers": ap.max_unicast_users,
+                "MulticastUserCount": ap.multicast_user_count,
+                "MaxMulticastUsers": ap.max_multicast_users,
+            },
+        )
+        # EdgeSeat is tag 4 and carries no payload; the seat is the user_payer.
+        assert ap.access_pass_type_tag == 4
+        assert ap.associated_pubkey is None
+        assert ap.unicast_user_count == 2
+        assert ap.max_unicast_users == 4
+        assert ap.multicast_user_count == 1
+        assert ap.max_multicast_users == 3
+
+
+class TestFixtureAccessPassLegacyCapDefaults:
+    def test_deserialize(self):
+        # A pre-migration account lacks the 8 trailing cap bytes; counts default to 0 and caps to 1,
+        # matching the Rust program's TryFrom unwrap_or defaults.
+        data, _ = _load_fixture("access_pass")
+        ap = AccessPass.from_bytes(data[:-8])
+        assert ap.unicast_user_count == 0
+        assert ap.max_unicast_users == 1
+        assert ap.multicast_user_count == 0
+        assert ap.max_multicast_users == 1

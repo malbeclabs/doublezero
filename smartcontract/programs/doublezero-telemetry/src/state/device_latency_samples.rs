@@ -37,7 +37,9 @@ pub const DEVICE_LATENCY_SAMPLES_HEADER_SIZE: usize = {
     + 8 // sampling_interval_microseconds
     + 8 // start_timestamp_microseconds
     + 4 // next_sample_index
-    + 128 // _unused
+    + 16 // agent_version
+    + 8 // agent_commit
+    + 104 // _unused
 };
 
 /// Onchain data structure representing a latency samples account header between two devices
@@ -121,9 +123,17 @@ pub struct DeviceLatencySamplesHeader {
     // Tracks how many samples have been appended.
     pub next_sample_index: u32, // 4
 
+    // Version string of the telemetry agent that created this account (e.g. "0.16.1").
+    // Truncated to 16 bytes if longer. Zero-filled means unknown (pre-feature accounts).
+    pub agent_version: [u8; 16], // 16
+
+    // Short git commit hash of the telemetry agent binary (e.g. "8ab7b505").
+    // Truncated to 8 bytes if longer. Zero-filled means unknown.
+    pub agent_commit: [u8; 8], // 8
+
     // Reserved for future use.
     #[cfg_attr(feature = "serde", serde(with = "serde_bytes"))]
-    pub _unused: [u8; 128], // 128
+    pub _unused: [u8; 104], // 104
 }
 
 impl TryFrom<&[u8]> for DeviceLatencySamplesHeader {
@@ -234,7 +244,9 @@ mod tests {
                 sampling_interval_microseconds: 5_000_000,
                 start_timestamp_microseconds: 1_700_000_000_000_000,
                 next_sample_index: samples.len() as u32,
-                _unused: [0; 128],
+                agent_version: *b"0.16.1\0\0\0\0\0\0\0\0\0\0",
+                agent_commit: *b"8ab7b505",
+                _unused: [0; 104],
             },
             samples: samples.clone(),
         };
@@ -270,6 +282,8 @@ mod tests {
             header2.start_timestamp_microseconds
         );
         assert_eq!(header.next_sample_index, header2.next_sample_index);
+        assert_eq!(header.agent_version, header2.agent_version);
+        assert_eq!(header.agent_commit, header2.agent_commit);
         assert_eq!(val.samples, val2.samples);
         assert_eq!(
             data.len(),

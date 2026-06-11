@@ -1,11 +1,14 @@
-use crate::doublezerocommand::CliCommand;
+use crate::{doublezerocommand::CliCommand, topology::resolve_topology_names};
 use clap::Args;
+use doublezero_cli_core::{render_collection, CliContext, OutputFormat};
 use doublezero_program_common::serializer;
-use doublezero_sdk::commands::tenant::list::ListTenantCommand;
+use doublezero_sdk::commands::{
+    tenant::list::ListTenantCommand, topology::list::ListTopologyCommand,
+};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct ListTenantCliCommand {
@@ -25,13 +28,22 @@ pub struct TenantDisplay {
     pub vrf_id: u16,
     pub metro_routing: bool,
     pub route_liveness: bool,
+    pub include_topologies: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
 
 impl ListTenantCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let tenants = client.list_tenant(ListTenantCommand {})?;
+        let topology_map = client
+            .list_topology(ListTopologyCommand)
+            .unwrap_or_default();
 
         let mut tenant_displays: Vec<TenantDisplay> = tenants
             .into_iter()
@@ -41,31 +53,28 @@ impl ListTenantCliCommand {
                 vrf_id: tenant.vrf_id,
                 metro_routing: tenant.metro_routing,
                 route_liveness: tenant.route_liveness,
+                include_topologies: resolve_topology_names(
+                    &tenant.include_topologies,
+                    &topology_map,
+                ),
                 owner: tenant.owner,
             })
             .collect();
 
         tenant_displays.sort_by(|a, b| a.code.cmp(&b.code));
 
-        let res = if self.json {
-            serde_json::to_string_pretty(&tenant_displays)?
-        } else if self.json_compact {
-            serde_json::to_string(&tenant_displays)?
-        } else {
-            Table::new(tenant_displays)
-                .with(Style::psql().remove_horizontals())
-                .to_string()
-        };
-
-        writeln!(out, "{res}")?;
-
-        Ok(())
+        render_collection(
+            out,
+            tenant_displays,
+            OutputFormat::from_flags(self.json, self.json_compact),
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{tenant::list::ListTenantCliCommand, tests::utils::create_test_client};
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::AccountType;
     use doublezero_serviceability::state::tenant::{
         Tenant, TenantBillingConfig, TenantPaymentStatus,
@@ -91,37 +100,46 @@ mod tests {
             metro_routing: true,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
 
         client
             .expect_list_tenant()
             .returning(move |_| Ok(HashMap::from([(tenant1_pubkey, tenant1.clone())])));
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = ListTenantCliCommand {
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListTenantCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            " account                                   | code     | vrf_id | metro_routing | route_liveness | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n"
+            " account                                   | code     | vrf_id | metro_routing | route_liveness | include_topologies | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | default            | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n"
         );
 
         let mut output = Vec::new();
-        let res = ListTenantCliCommand {
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListTenantCliCommand {
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"tenant-a\",\"vrf_id\":100,\"metro_routing\":true,\"route_liveness\":false,\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n"
+            "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"tenant-a\",\"vrf_id\":100,\"metro_routing\":true,\"route_liveness\":false,\"include_topologies\":\"default\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n"
         );
     }
 }

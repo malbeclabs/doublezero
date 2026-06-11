@@ -13,6 +13,9 @@ import (
 // namespace. This allows thread-local operations like dialing sockets to be scoped
 // to a namespace without affecting the rest of the program.
 //
+// nsName must name an entry under /var/run/netns/; pass "default" for the
+// Arista default VRF.
+//
 // This is safe for use in single-threaded, short-lived operations; not safe for
 // concurrent use.
 func RunInNamespace[T any](nsName string, fn func() (T, error)) (T, error) {

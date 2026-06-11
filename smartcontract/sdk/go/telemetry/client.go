@@ -17,7 +17,7 @@ import (
 
 var (
 	ErrAccountNotFound      = errors.New("account not found")
-	ErrSamplesBatchTooLarge = fmt.Errorf("samples batch too large, must not exceed %d samples", MaxSamplesPerBatch)
+	ErrSamplesBatchTooLarge = errors.New("samples batch too large")
 	ErrSamplesAccountFull   = errors.New("samples account is full")
 )
 
@@ -100,6 +100,67 @@ func (c *Client) GetDeviceLatencySamples(
 		return &instance, nil
 	default:
 		return nil, fmt.Errorf("unknown account type: %d", headerOnlyAccountType.AccountType)
+	}
+}
+
+func (c *Client) GetDeviceLatencySamplesHeader(
+	ctx context.Context,
+	originDevicePK solana.PublicKey,
+	targetDevicePK solana.PublicKey,
+	linkPK solana.PublicKey,
+	epoch uint64,
+) (*DeviceLatencySamplesHeader, error) {
+	pda, _, err := DeriveDeviceLatencySamplesPDA(
+		c.executor.programID,
+		originDevicePK,
+		targetDevicePK,
+		linkPK,
+		epoch,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive PDA: %w", err)
+	}
+
+	headerSize := uint64(DeviceLatencySamplesHeaderSize)
+	account, err := c.rpc.GetAccountInfoWithOpts(ctx, pda, &solanarpc.GetAccountInfoOpts{
+		DataSlice: &solanarpc.DataSlice{
+			Offset: new(uint64),
+			Length: &headerSize,
+		},
+	})
+	if err != nil {
+		if errors.Is(err, solanarpc.ErrNotFound) {
+			return nil, ErrAccountNotFound
+		}
+		return nil, fmt.Errorf("failed to get account data: %w", err)
+	}
+	if account.Value == nil {
+		return nil, ErrAccountNotFound
+	}
+
+	data := account.Value.Data.GetBinary()
+	if len(data) < 1 {
+		return nil, fmt.Errorf("empty account data")
+	}
+
+	switch AccountType(data[0]) {
+	case AccountTypeDeviceLatencySamples:
+		dec := bin.NewBorshDecoder(data)
+		var hdr DeviceLatencySamplesHeader
+		if err := dec.Decode(&hdr); err != nil {
+			return nil, fmt.Errorf("failed to decode header: %w", err)
+		}
+		return &hdr, nil
+	case AccountTypeDeviceLatencySamplesV0:
+		dec := bin.NewBorshDecoder(data)
+		var v0hdr DeviceLatencySamplesHeaderV0
+		if err := dec.Decode(&v0hdr); err != nil {
+			return nil, fmt.Errorf("failed to decode v0 header: %w", err)
+		}
+		hdr := v0hdr.ToV1Header()
+		return &hdr, nil
+	default:
+		return nil, fmt.Errorf("unknown account type: %d", data[0])
 	}
 }
 
@@ -230,7 +291,7 @@ func (c *Client) WriteDeviceLatencySamples(
 	config WriteDeviceLatencySamplesInstructionConfig,
 ) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 
-	if len(config.Samples) > MaxSamplesPerBatch {
+	if len(config.Samples) > MaxDeviceLatencySamplesPerBatch {
 		return solana.Signature{}, nil, ErrSamplesBatchTooLarge
 	}
 
@@ -336,7 +397,7 @@ func (c *Client) WriteInternetLatencySamples(
 	config WriteInternetLatencySamplesInstructionConfig,
 ) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 
-	if len(config.Samples) > MaxSamplesPerBatch {
+	if len(config.Samples) > MaxInternetLatencySamplesPerBatch {
 		return solana.Signature{}, nil, ErrSamplesBatchTooLarge
 	}
 

@@ -1,5 +1,12 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::{
+use doublezero_sdk::{
+    commands::{
+        device::{list::ListDeviceCommand, update::UpdateDeviceCommand},
+        user::list::ListUserCommand,
+    },
+    UserStatus, UserType,
+};
+use doublezero_serviceability_cli::{
     device::{
         create::CreateDeviceCliCommand,
         delete::DeleteDeviceCliCommand,
@@ -13,13 +20,6 @@ use doublezero_cli::{
         update::UpdateDeviceCliCommand,
     },
     doublezerocommand::CliCommand,
-};
-use doublezero_sdk::{
-    commands::{
-        device::{list::ListDeviceCommand, update::UpdateDeviceCommand},
-        user::list::ListUserCommand,
-    },
-    UserStatus, UserType,
 };
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, io::Write};
@@ -96,10 +96,7 @@ impl MigrateMulticastCountsCommand {
         let users = client.list_user(ListUserCommand)?;
         let mut per_device: HashMap<Pubkey, (u16, u16)> = HashMap::new(); // (publishers, subscribers)
         for user in users.values() {
-            let is_live = !matches!(
-                user.status,
-                UserStatus::Rejected | UserStatus::Banned | UserStatus::PendingBan
-            );
+            let is_live = user.status != UserStatus::Banned;
             if user.user_type == UserType::Multicast && is_live {
                 let (pub_count, sub_count) = per_device.entry(user.device_pk).or_default();
                 if user.is_publisher() {
@@ -160,7 +157,6 @@ impl MigrateMulticastCountsCommand {
                 contributor_pk: None,
                 location_pk: None,
                 mgmt_vrf: None,
-                interfaces: None,
                 max_users: None,
                 users_count: None,
                 status: None,
@@ -201,10 +197,7 @@ impl MigrateUnicastCountsCommand {
         let users = client.list_user(ListUserCommand)?;
         let mut per_device: HashMap<Pubkey, u16> = HashMap::new();
         for user in users.values() {
-            let is_live = !matches!(
-                user.status,
-                UserStatus::Rejected | UserStatus::Banned | UserStatus::PendingBan
-            );
+            let is_live = user.status != UserStatus::Banned;
             if user.user_type != UserType::Multicast && is_live {
                 let count = per_device.entry(user.device_pk).or_default();
                 *count = count.saturating_add(1);
@@ -257,7 +250,6 @@ impl MigrateUnicastCountsCommand {
                 contributor_pk: None,
                 location_pk: None,
                 mgmt_vrf: None,
-                interfaces: None,
                 max_users: None,
                 users_count: None,
                 status: None,
@@ -288,9 +280,9 @@ impl MigrateUnicastCountsCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use doublezero_cli::tests::utils::create_test_client;
     use doublezero_sdk::{Device, DeviceStatus, DeviceType, User, UserCYOA, UserStatus, UserType};
     use doublezero_serviceability::state::device::{DeviceDesiredStatus, DeviceHealth};
+    use doublezero_serviceability_cli::tests::utils::create_test_client;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::collections::HashMap;
 
@@ -323,6 +315,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: pub_count,
             max_multicast_publishers: 0,
+            ..Default::default()
         }
     }
 
@@ -367,6 +360,11 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
         }
     }
 

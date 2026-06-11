@@ -22,17 +22,12 @@ use crate::{
             update::process_update_contributor,
         },
         device::{
-            activate::process_activate_device,
-            closeaccount::process_closeaccount_device,
             create::process_create_device,
             delete::process_delete_device,
             interface::{
-                activate::process_activate_device_interface,
                 create::process_create_device_interface, delete::process_delete_device_interface,
-                reject::process_reject_device_interface, remove::process_remove_device_interface,
-                unlink::process_unlink_device_interface, update::process_update_device_interface,
+                update::process_update_device_interface,
             },
-            reject::process_reject_device,
             sethealth::process_set_health_device,
             update::process_update_device,
         },
@@ -47,10 +42,9 @@ use crate::{
             setauthority::process_set_authority, setfeatureflags::process_set_feature_flags,
             setversion::process_set_version,
         },
+        index::{create::process_create_index, delete::process_delete_index},
         link::{
-            accept::process_accept_link, activate::process_activate_link,
-            closeaccount::process_closeaccount_link, create::process_create_link,
-            delete::process_delete_link, reject::process_reject_link,
+            accept::process_accept_link, create::process_create_link, delete::process_delete_link,
             sethealth::process_set_health_link, update::process_update_link,
         },
         location::{
@@ -60,7 +54,6 @@ use crate::{
         },
         migrate::process_migrate,
         multicastgroup::{
-            activate::process_activate_multicastgroup,
             allowlist::{
                 publisher::{
                     add::process_add_multicastgroup_pub_allowlist,
@@ -71,12 +64,10 @@ use crate::{
                     remove::process_remove_multicast_sub_allowlist,
                 },
             },
-            closeaccount::process_closeaccount_multicastgroup,
             create::process_create_multicastgroup,
             delete::process_delete_multicastgroup,
             reactivate::process_reactivate_multicastgroup,
-            reject::process_reject_multicastgroup,
-            subscribe::process_subscribe_multicastgroup,
+            subscribe::process_update_multicastgroup_roles,
             suspend::process_suspend_multicastgroup,
             update::process_update_multicastgroup,
         },
@@ -96,12 +87,15 @@ use crate::{
             remove_administrator::process_remove_administrator_tenant,
             update::process_update_tenant, update_payment_status::process_update_payment_status,
         },
+        topology::{
+            assign_node_segments::process_assign_topology_node_segments,
+            clear::process_topology_clear, create::process_topology_create,
+            delete::process_topology_delete,
+        },
         user::{
-            activate::process_activate_user, ban::process_ban_user,
-            check_access_pass::process_check_access_pass_user,
-            closeaccount::process_closeaccount_user, create::process_create_user,
+            check_access_pass::process_check_access_pass_user, create::process_create_user,
             create_subscribe::process_create_subscribe_user, delete::process_delete_user,
-            reject::process_reject_user, requestban::process_request_ban_user,
+            requestban::process_request_ban_user, set_bgp_status::process_set_bgp_status_user,
             update::process_update_user,
         },
     },
@@ -156,14 +150,26 @@ pub fn process_instruction(
         DoubleZeroInstruction::CreateUser(value) => {
             process_create_user(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ActivateLink(value) => {
-            process_activate_link(program_id, accounts, &value)?
+        DoubleZeroInstruction::ActivateLink()
+        | DoubleZeroInstruction::ActivateDevice()
+        | DoubleZeroInstruction::ActivateMulticastGroup()
+        | DoubleZeroInstruction::ActivateDeviceInterface()
+        | DoubleZeroInstruction::RejectLink()
+        | DoubleZeroInstruction::RejectDevice()
+        | DoubleZeroInstruction::RejectMulticastGroup()
+        | DoubleZeroInstruction::RejectDeviceInterface()
+        | DoubleZeroInstruction::CloseAccountLink()
+        | DoubleZeroInstruction::CloseAccountDevice()
+        | DoubleZeroInstruction::DeactivateMulticastGroup()
+        | DoubleZeroInstruction::RemoveDeviceInterface()
+        | DoubleZeroInstruction::UnlinkDeviceInterface() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
-        DoubleZeroInstruction::ActivateDevice(value) => {
-            process_activate_device(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::ActivateUser(value) => {
-            process_activate_user(program_id, accounts, &value)?
+        DoubleZeroInstruction::ActivateUser()
+        | DoubleZeroInstruction::RejectUser()
+        | DoubleZeroInstruction::CloseAccountUser()
+        | DoubleZeroInstruction::BanUser() => {
+            return Err(DoubleZeroError::Deprecated.into());
         }
         DoubleZeroInstruction::DeleteUser(value) => {
             process_delete_user(program_id, accounts, &value)?
@@ -214,25 +220,6 @@ pub fn process_instruction(
         DoubleZeroInstruction::ResumeUser() => {
             return Err(DoubleZeroError::Deprecated.into());
         }
-        DoubleZeroInstruction::CloseAccountDevice(value) => {
-            process_closeaccount_device(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::CloseAccountLink(value) => {
-            process_closeaccount_link(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::CloseAccountUser(value) => {
-            process_closeaccount_user(program_id, accounts, &value)?
-        }
-
-        DoubleZeroInstruction::RejectDevice(value) => {
-            process_reject_device(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::RejectLink(value) => {
-            process_reject_link(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::RejectUser(value) => {
-            process_reject_user(program_id, accounts, &value)?
-        }
         DoubleZeroInstruction::AddFoundationAllowlist(value) => {
             process_add_foundation_allowlist_globalconfig(program_id, accounts, &value)?
         }
@@ -254,7 +241,6 @@ pub fn process_instruction(
         DoubleZeroInstruction::RequestBanUser(value) => {
             process_request_ban_user(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::BanUser(value) => process_ban_user(program_id, accounts, &value)?,
 
         DoubleZeroInstruction::CreateMulticastGroup(value) => {
             process_create_multicastgroup(program_id, accounts, &value)?
@@ -268,17 +254,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::ReactivateMulticastGroup(value) => {
             process_reactivate_multicastgroup(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ActivateMulticastGroup(value) => {
-            process_activate_multicastgroup(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::RejectMulticastGroup(value) => {
-            process_reject_multicastgroup(program_id, accounts, &value)?
-        }
         DoubleZeroInstruction::UpdateMulticastGroup(value) => {
             process_update_multicastgroup(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::DeactivateMulticastGroup(value) => {
-            process_closeaccount_multicastgroup(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::AddMulticastGroupPubAllowlist(value) => {
             process_add_multicastgroup_pub_allowlist(program_id, accounts, &value)?
@@ -292,8 +269,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(value) => {
             process_remove_multicast_sub_allowlist(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::SubscribeMulticastGroup(value) => {
-            process_subscribe_multicastgroup(program_id, accounts, &value)?
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(value) => {
+            process_update_multicastgroup_roles(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CreateSubscribeUser(value) => {
             process_create_subscribe_user(program_id, accounts, &value)?
@@ -331,26 +308,14 @@ pub fn process_instruction(
         DoubleZeroInstruction::CheckUserAccessPass(value) => {
             process_check_access_pass_user(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::ActivateDeviceInterface(value) => {
-            process_activate_device_interface(program_id, accounts, &value)?
-        }
         DoubleZeroInstruction::CreateDeviceInterface(value) => {
             process_create_device_interface(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::DeleteDeviceInterface(value) => {
             process_delete_device_interface(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::RemoveDeviceInterface(value) => {
-            process_remove_device_interface(program_id, accounts, &value)?
-        }
         DoubleZeroInstruction::UpdateDeviceInterface(value) => {
             process_update_device_interface(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::UnlinkDeviceInterface(value) => {
-            process_unlink_device_interface(program_id, accounts, &value)?
-        }
-        DoubleZeroInstruction::RejectDeviceInterface(value) => {
-            process_reject_device_interface(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::SetMinVersion(value) => {
             process_set_version(program_id, accounts, &value)?
@@ -421,6 +386,28 @@ pub fn process_instruction(
         DoubleZeroInstruction::DeletePermission(value) => {
             process_delete_permission(program_id, accounts, &value)?
         }
+        DoubleZeroInstruction::CreateIndex(value) => {
+            process_create_index(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeleteIndex(value) => {
+            process_delete_index(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetUserBGPStatus(value) => {
+            process_set_bgp_status_user(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::CreateTopology(value) => {
+            process_topology_create(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeleteTopology(value) => {
+            process_topology_delete(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::ClearTopology(value) => {
+            process_topology_clear(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::AssignTopologyNodeSegments(value) => {
+            process_assign_topology_node_segments(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::Deprecated111() => (),
     };
     Ok(())
 }

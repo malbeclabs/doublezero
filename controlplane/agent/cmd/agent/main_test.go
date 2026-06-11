@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-// Mock types for testing
 type mockControllerClient struct {
 	getConfigFunc func(ctx context.Context, req *pb.ConfigRequest) (*pb.ConfigResponse, error)
 }
@@ -36,7 +35,7 @@ func TestComputeChecksum(t *testing.T) {
 		{
 			name:     "simple config",
 			input:    "interface Tunnel500\n  description test",
-			expected: "0e5c3a6f84d0c3bc1b8f0b26e4c8c2c5f37cfbaed6697c6e4a7f7e87c9bf60ce",
+			expected: "a418fb48875fda25486c99b94b15adcb2128c7d1f7175008697a0b1dce3b2743",
 		},
 		{
 			name:     "consistent hash for same input",
@@ -47,7 +46,6 @@ func TestComputeChecksum(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Compute hash twice to ensure consistency
 			hash1 := computeChecksum(tt.input)
 			hash2 := computeChecksum(tt.input)
 
@@ -57,12 +55,8 @@ func TestComputeChecksum(t *testing.T) {
 			if len(hash1) != 64 {
 				t.Errorf("SHA256 hash should be 64 hex characters, got %d", len(hash1))
 			}
-
-			if tt.name != "simple config" {
-				// Verify specific known hashes
-				if hash1 != tt.expected {
-					t.Errorf("expected %s, got %s", tt.expected, hash1)
-				}
+			if hash1 != tt.expected {
+				t.Errorf("expected %s, got %s", tt.expected, hash1)
 			}
 		})
 	}
@@ -114,7 +108,6 @@ func TestFetchConfigFromController(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create mock client
 			mockClient := &mockControllerClient{
 				getConfigFunc: func(ctx context.Context, req *pb.ConfigRequest) (*pb.ConfigResponse, error) {
 					if tt.mockError != nil {
@@ -124,7 +117,6 @@ func TestFetchConfigFromController(t *testing.T) {
 				},
 			}
 
-			// Set global timeout for testing
 			timeout := float64(1)
 			originalTimeout := controllerTimeoutInSeconds
 			controllerTimeoutInSeconds = &timeout
@@ -170,112 +162,72 @@ func TestFetchConfigFromController(t *testing.T) {
 }
 
 func TestApplyConfig(t *testing.T) {
-	tests := []struct {
-		name        string
-		configText  string
-		maxLockAge  int
-		expectError bool
-	}{
-		{
-			name:        "successful config application",
-			configText:  "interface Tunnel500\n  description test",
-			maxLockAge:  3600,
-			expectError: false,
-		},
-		{
-			name:        "empty config - no call",
-			configText:  "",
-			maxLockAge:  3600,
-			expectError: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			// We can't easily test the actual EAPIClient without a real connection,
-			// so we just test the empty config case
-			if tt.configText == "" {
-				err := applyConfig(ctx, nil, tt.configText, tt.maxLockAge)
-				if err != nil {
-					t.Errorf("expected no error for empty config, got %v", err)
-				}
-			}
-		})
+	ctx := context.Background()
+	err := applyConfig(ctx, nil, "", 3600)
+	if err != nil {
+		t.Errorf("expected no error for empty config, got %v", err)
 	}
 }
 
-func TestCachingLogic(t *testing.T) {
+func TestShouldApplyConfig(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	timeout := 60 * time.Second
+
 	tests := []struct {
-		name         string
-		cachedHash   string
-		newHash      string
-		cacheTime    time.Time
-		currentTime  time.Time
-		cacheTimeout time.Duration
-		shouldApply  bool
-		description  string
+		name        string
+		cachedHash  string
+		newHash     string
+		lastApplied time.Time
+		now         time.Time
+		want        bool
 	}{
 		{
-			name:         "first run - no cached hash",
-			cachedHash:   "",
-			newHash:      "abc123",
-			cacheTime:    time.Time{},
-			currentTime:  time.Now(),
-			cacheTimeout: 60 * time.Second,
-			shouldApply:  true,
-			description:  "Should apply on first run when no cached hash exists",
+			name:        "first run - no cached hash",
+			cachedHash:  "",
+			newHash:     "abc123",
+			lastApplied: time.Time{},
+			now:         now,
+			want:        true,
 		},
 		{
-			name:         "config changed",
-			cachedHash:   "abc123",
-			newHash:      "def456",
-			cacheTime:    time.Now(),
-			currentTime:  time.Now(),
-			cacheTimeout: 60 * time.Second,
-			shouldApply:  true,
-			description:  "Should apply when config hash changes",
+			name:        "config changed",
+			cachedHash:  "abc123",
+			newHash:     "def456",
+			lastApplied: now,
+			now:         now,
+			want:        true,
 		},
 		{
-			name:         "config unchanged within timeout",
-			cachedHash:   "abc123",
-			newHash:      "abc123",
-			cacheTime:    time.Now(),
-			currentTime:  time.Now().Add(30 * time.Second),
-			cacheTimeout: 60 * time.Second,
-			shouldApply:  false,
-			description:  "Should not apply when config unchanged and within timeout",
+			name:        "config unchanged within timeout",
+			cachedHash:  "abc123",
+			newHash:     "abc123",
+			lastApplied: now,
+			now:         now.Add(30 * time.Second),
+			want:        false,
 		},
 		{
-			name:         "config unchanged but timeout exceeded",
-			cachedHash:   "abc123",
-			newHash:      "abc123",
-			cacheTime:    time.Now(),
-			currentTime:  time.Now().Add(61 * time.Second),
-			cacheTimeout: 60 * time.Second,
-			shouldApply:  true,
-			description:  "Should apply when timeout exceeded even if config unchanged",
+			name:        "config unchanged but timeout exceeded",
+			cachedHash:  "abc123",
+			newHash:     "abc123",
+			lastApplied: now,
+			now:         now.Add(61 * time.Second),
+			want:        true,
+		},
+		{
+			name:        "config unchanged at exact timeout boundary",
+			cachedHash:  "abc123",
+			newHash:     "abc123",
+			lastApplied: now,
+			now:         now.Add(60 * time.Second),
+			want:        true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Simulate the caching logic from main()
-			shouldApply := false
-
-			if tt.cachedHash == "" {
-				// First run
-				shouldApply = true
-			} else if tt.newHash != tt.cachedHash {
-				// Config changed
-				shouldApply = true
-			} else if tt.currentTime.Sub(tt.cacheTime) >= tt.cacheTimeout {
-				// Timeout exceeded
-				shouldApply = true
-			}
-
-			if shouldApply != tt.shouldApply {
-				t.Errorf("%s: expected shouldApply=%v, got %v", tt.description, tt.shouldApply, shouldApply)
+			got := shouldApplyConfig(tt.cachedHash, tt.newHash, tt.lastApplied, timeout, tt.now)
+			if got != tt.want {
+				t.Errorf("shouldApplyConfig() = %v, want %v", got, tt.want)
 			}
 		})
 	}

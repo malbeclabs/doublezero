@@ -53,7 +53,7 @@ pub struct CreateUserCoreResult {
 /// initial User struct with Pending status.
 ///
 /// Callers are responsible for:
-/// - Parsing resource extension accounts (if dz_prefix_count > 0)
+/// - Parsing the required resource extension accounts
 /// - Onchain allocation + try_activate
 /// - Account creation (try_acc_create) and write-back
 /// - Multicast subscription logic (CreateSubscribeUser only)
@@ -67,6 +67,7 @@ pub fn create_user_core(
     client_ip: Ipv4Addr,
     tunnel_endpoint: Ipv4Addr,
     is_publisher: bool,
+    owner_override: Option<Pubkey>,
 ) -> Result<CreateUserCoreResult, ProgramError> {
     // Check if the payer is a signer
     assert!(core.payer_account.is_signer, "Payer must be a signer");
@@ -81,7 +82,6 @@ pub fn create_user_core(
         core.accesspass_account,
         program_id,
         writable = false,
-        pda = None::<&Pubkey>,
         "AccessPass"
     );
 
@@ -91,13 +91,7 @@ pub fn create_user_core(
             return Err(DoubleZeroError::InvalidTenantPubkey.into());
         }
 
-        validate_program_account!(
-            tenant_account,
-            program_id,
-            writable = true,
-            pda = None::<&Pubkey>,
-            "Tenant"
-        );
+        validate_program_account!(tenant_account, program_id, writable = true, "Tenant");
 
         if tenant_account.data.borrow()[0] != AccountType::Tenant as u8 {
             return Err(DoubleZeroError::InvalidAccountType.into());
@@ -105,6 +99,25 @@ pub fn create_user_core(
     }
 
     let mut globalstate = GlobalState::try_from(core.globalstate_account)?;
+
+    // Determine effective owner: foundation allowlist members or sentinel can set a custom owner
+    let effective_owner = match owner_override {
+        Some(pk) if pk != Pubkey::default() => {
+            let is_foundation = globalstate
+                .foundation_allowlist
+                .contains(core.payer_account.key);
+            let is_sentinel = globalstate.sentinel_authority_pk == *core.payer_account.key;
+            if !is_foundation && !is_sentinel {
+                msg!(
+                    "Only foundation allowlist members or sentinel can set a custom owner, payer: {}",
+                    core.payer_account.key
+                );
+                return Err(DoubleZeroError::NotAllowed.into());
+            }
+            pk
+        }
+        _ => *core.payer_account.key,
+    };
     globalstate.account_index += 1;
 
     let (expected_old_pda_account, bump_old_seed) =
@@ -135,9 +148,9 @@ pub fn create_user_core(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let (accesspass_pda, _) = get_accesspass_pda(program_id, &client_ip, core.payer_account.key);
+    let (accesspass_pda, _) = get_accesspass_pda(program_id, &client_ip, &effective_owner);
     let (accesspass_dynamic_pda, _) =
-        get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, core.payer_account.key);
+        get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &effective_owner);
     assert!(
         core.accesspass_account.key == &accesspass_pda
             || core.accesspass_account.key == &accesspass_dynamic_pda,
@@ -146,7 +159,7 @@ pub fn create_user_core(
 
     // Read Access Pass
     let mut accesspass = AccessPass::try_from(core.accesspass_account)?;
-    if accesspass.user_payer != *core.payer_account.key {
+    if accesspass.user_payer != effective_owner {
         msg!(
             "Invalid user_payer accesspass.{{user_payer: {}}} = {{ user_payer: {} }}",
             accesspass.user_payer,
@@ -154,10 +167,13 @@ pub fn create_user_core(
         );
         return Err(DoubleZeroError::Unauthorized.into());
     }
-    if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
-        accesspass.client_ip = client_ip; // lock to the first used IP
-    }
-    if !accesspass.allow_multiple_ip() && accesspass.client_ip != client_ip {
+    // A pass stored at the UNSPECIFIED PDA (0.0.0.0) is valid for any client IP by construction;
+    // it is no longer locked to the first connecting IP. Specific-IP passes must match unless the
+    // pass allows multiple IPs. Mirrors the validation in delete.rs.
+    if accesspass.client_ip != Ipv4Addr::UNSPECIFIED
+        && accesspass.client_ip != client_ip
+        && !accesspass.allow_multiple_ip()
+    {
         msg!(
             "Invalid client_ip accesspass.{{client_ip: {}}} = {{ client_ip: {} }}",
             accesspass.client_ip,
@@ -193,16 +209,18 @@ pub fn create_user_core(
         }
     }
 
-    // Check Initial epoch
-    let clock = Clock::get()?;
-    let current_epoch = clock.epoch;
-    if accesspass.last_access_epoch < current_epoch {
-        msg!(
-            "Invalid epoch last_access_epoch: {} < current_epoch: {}",
-            accesspass.last_access_epoch,
-            current_epoch
-        );
-        return Err(DoubleZeroError::AccessPassUnauthorized.into());
+    // Enforce epoch validity for unicast users only. Multicast access (publisher or
+    // subscriber) is governed by mgroup_*_allowlist on the access pass, not by epoch.
+    if user_type.is_epoch_gated() {
+        let clock = Clock::get()?;
+        if !epoch_allows_connection(user_type, accesspass.last_access_epoch, clock.epoch) {
+            msg!(
+                "Invalid epoch last_access_epoch: {} < current_epoch: {}",
+                accesspass.last_access_epoch,
+                clock.epoch
+            );
+            return Err(DoubleZeroError::AccessPassUnauthorized.into());
+        }
     }
 
     // Read validator_pubkey from AccessPass
@@ -273,6 +291,10 @@ pub fn create_user_core(
         }
     }
 
+    // Enforce per-category seat caps (EdgeSeat only; no-op otherwise). On error the processor
+    // returns before any account is written, so no state is persisted.
+    accesspass.try_add_user(user_type)?;
+
     // All validations passed - now update counters
     accesspass.connection_count += 1;
     accesspass.status = AccessPassStatus::Connected;
@@ -310,7 +332,7 @@ pub fn create_user_core(
 
     let user = User {
         account_type: AccountType::User,
-        owner: *core.payer_account.key,
+        owner: effective_owner,
         bump_seed: if pda_ver == PDAVersion::V1 {
             bump_old_seed
         } else {
@@ -329,11 +351,20 @@ pub fn create_user_core(
         dz_ip: Ipv4Addr::UNSPECIFIED,
         tunnel_id: 0,
         tunnel_net: NetworkV4::default(),
-        status: UserStatus::Pending,
+        status: UserStatus::Activated,
         publishers: vec![],
         subscribers: vec![],
         validator_pubkey,
         tunnel_endpoint,
+        tunnel_flags: if is_publisher {
+            TunnelFlags::CreatedAsPublisher as u8
+        } else {
+            0
+        },
+        bgp_status: BGPStatus::Unknown,
+        last_bgp_up_at: 0,
+        last_bgp_reported_at: 0,
+        bgp_rtt_ns: 0,
     };
 
     Ok(CreateUserCoreResult {

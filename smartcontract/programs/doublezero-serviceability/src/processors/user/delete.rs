@@ -1,6 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_accesspass_pda,
+    processors::validation::validate_program_account,
     serializer::{try_acc_close, try_acc_write},
     state::{
         accesspass::{AccessPass, AccessPassStatus},
@@ -26,8 +27,8 @@ use super::resource_onchain_helpers;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct UserDeleteArgs {
-    /// Number of DzPrefixBlock accounts passed for on-chain deallocation.
-    /// When 0, legacy behavior (Deleting status). When > 0, atomic delete+deallocate+close.
+    /// Number of DzPrefixBlock accounts passed for on-chain deallocation. Must be > 0:
+    /// DeleteUser always deallocates resources and closes the user account atomically.
     #[incremental(default = 0)]
     pub dz_prefix_count: u8,
     /// Whether MulticastPublisherBlock account is passed (1 = yes, 0 = no).
@@ -50,66 +51,48 @@ pub fn process_delete_user(
     accounts: &[AccountInfo],
     value: &UserDeleteArgs,
 ) -> ProgramResult {
+    if value.dz_prefix_count == 0 {
+        msg!("dz_prefix_count must be > 0; DeleteUser requires on-chain deallocation");
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let user_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: additional accounts for atomic deallocation (between globalstate and payer)
-    // Account layout WITH deallocation (dz_prefix_count > 0):
-    //   [user, accesspass, globalstate, device, user_tunnel_block, multicast_publisher_block?, device_tunnel_ids, dz_prefix_0..N, optional_tenant, owner, payer, system]
-    // Account layout WITHOUT (legacy, dz_prefix_count == 0):
-    //   [user, accesspass, globalstate, payer, system]
-    let deallocation_accounts = if value.dz_prefix_count > 0 {
-        let device_account = next_account_info(accounts_iter)?;
-        let user_tunnel_block_ext = next_account_info(accounts_iter)?;
+    // Account layout:
+    //   [user, accesspass, globalstate, device,
+    //    user_tunnel_block, multicast_publisher_block?, device_tunnel_ids, dz_prefix_0..N,
+    //    optional_tenant, owner, payer, system]
+    let device_account = next_account_info(accounts_iter)?;
+    let user_tunnel_block_ext = next_account_info(accounts_iter)?;
 
-        let multicast_publisher_block_ext = if value.multicast_publisher_count > 0 {
-            Some(next_account_info(accounts_iter)?)
-        } else {
-            None
-        };
-
-        let device_tunnel_ids_ext = next_account_info(accounts_iter)?;
-
-        let mut dz_prefix_accounts = Vec::with_capacity(value.dz_prefix_count as usize);
-        for _ in 0..value.dz_prefix_count {
-            dz_prefix_accounts.push(next_account_info(accounts_iter)?);
-        }
-
-        Some((
-            device_account,
-            user_tunnel_block_ext,
-            multicast_publisher_block_ext,
-            device_tunnel_ids_ext,
-            dz_prefix_accounts,
-        ))
+    let multicast_publisher_block_ext = if value.multicast_publisher_count > 0 {
+        Some(next_account_info(accounts_iter)?)
     } else {
         None
     };
 
-    // For atomic path: check if user has a tenant (we'll peek at user data)
-    // For legacy path: no tenant handling needed
-    let tenant_account = if value.dz_prefix_count > 0 {
-        // Peek at user to check tenant
+    let device_tunnel_ids_ext = next_account_info(accounts_iter)?;
+
+    let mut dz_prefix_accounts = Vec::with_capacity(value.dz_prefix_count as usize);
+    for _ in 0..value.dz_prefix_count {
+        dz_prefix_accounts.push(next_account_info(accounts_iter)?);
+    }
+
+    // Optional tenant account: present iff the user has a tenant assigned.
+    let tenant_account = {
         let user_peek = User::try_from(user_account)?;
         if user_peek.tenant_pk != Pubkey::default() {
             Some(next_account_info(accounts_iter)?)
         } else {
             None
         }
-    } else {
-        None
     };
 
-    // For atomic path, owner account is needed for close
-    let owner_account = if value.dz_prefix_count > 0 {
-        Some(next_account_info(accounts_iter)?)
-    } else {
-        None
-    };
-
+    let owner_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -119,26 +102,28 @@ pub fn process_delete_user(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
+    // Validate accounts
+    validate_program_account!(user_account, program_id, writable = true, "User");
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        accesspass_account,
+        program_id,
+        writable = true,
+        "AccessPass"
     );
-    assert_eq!(
-        accesspass_account.owner, program_id,
-        "Invalid AccessPass Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
-    assert!(user_account.is_writable, "PDA Account is not writable");
 
     let user: User = User::try_from(user_account)?;
 
@@ -170,10 +155,13 @@ pub fn process_delete_user(
             );
             return Err(DoubleZeroError::Unauthorized.into());
         }
-        if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
-            accesspass.client_ip = user.client_ip; // lock to the first used IP
-        }
-        if accesspass.client_ip != user.client_ip && !accesspass.allow_multiple_ip() {
+        // Skip IP validation when the pass is stored at the UNSPECIFIED PDA (0.0.0.0): it is
+        // a dynamic pass valid for any IP by construction. This includes legacy passes which
+        // have client_ip=0.0.0.0.
+        if accesspass.client_ip != Ipv4Addr::UNSPECIFIED
+            && accesspass.client_ip != user.client_ip
+            && !accesspass.allow_multiple_ip()
+        {
             msg!(
                 "Invalid client_ip accesspass.{{client_ip: {}}} = {{ client_ip: {} }}",
                 accesspass.client_ip,
@@ -183,6 +171,8 @@ pub fn process_delete_user(
         }
 
         accesspass.connection_count = accesspass.connection_count.saturating_sub(1);
+        // Release the per-category seat (EdgeSeat only; no-op otherwise).
+        accesspass.remove_user(user.user_type);
         accesspass.status = if accesspass.connection_count > 0 {
             AccessPassStatus::Connected
         } else {
@@ -195,101 +185,69 @@ pub fn process_delete_user(
         try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
     }
 
-    if value.dz_prefix_count == 0 {
-        // legacy activator path: no behavior change
-        if matches!(user.status, UserStatus::Deleting | UserStatus::Updating) {
-            return Err(DoubleZeroError::InvalidStatus.into());
-        }
-    }
-
     if !user.publishers.is_empty() || !user.subscribers.is_empty() {
         msg!("{:?}", user);
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }
 
-    if let Some((
-        device_account,
-        user_tunnel_block_ext,
-        multicast_publisher_block_ext,
-        device_tunnel_ids_ext,
-        dz_prefix_accounts,
-    )) = deallocation_accounts
-    {
-        let owner_account = owner_account.unwrap();
+    // Validate device account against the user
+    validate_program_account!(device_account, program_id, writable = false, "Device");
 
-        // Validate additional accounts
-        assert_eq!(
-            device_account.owner, program_id,
-            "Invalid Device Account Owner"
-        );
-
-        if user.device_pk != *device_account.key {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        if user.owner != *owner_account.key {
-            return Err(ProgramError::InvalidAccountData);
-        }
-
-        // Deallocate resources via helper (checks feature flag, validates PDAs)
-        resource_onchain_helpers::validate_and_deallocate_user_resources(
-            program_id,
-            &user,
-            user_tunnel_block_ext,
-            multicast_publisher_block_ext.as_ref().map(|a| *a),
-            device_tunnel_ids_ext,
-            &dz_prefix_accounts,
-            &globalstate,
-        )?;
-
-        // Decrement tenant reference count if user has tenant assigned
-        if let Some(tenant_acc) = tenant_account {
-            assert_eq!(
-                tenant_acc.key, &user.tenant_pk,
-                "Tenant account doesn't match user's tenant"
-            );
-            assert_eq!(tenant_acc.owner, program_id, "Invalid Tenant Account Owner");
-            assert!(tenant_acc.is_writable, "Tenant Account is not writable");
-
-            let mut tenant = Tenant::try_from(tenant_acc)?;
-            tenant.reference_count = tenant.reference_count.saturating_sub(1);
-
-            try_acc_write(&tenant, tenant_acc, payer_account, accounts)?;
-        }
-
-        // Decrement device counters
-        let mut device = Device::try_from(device_account)?;
-        device.reference_count = device.reference_count.saturating_sub(1);
-        device.users_count = device.users_count.saturating_sub(1);
-        match user.user_type {
-            UserType::Multicast => {
-                if !user.publishers.is_empty() {
-                    device.multicast_publishers_count =
-                        device.multicast_publishers_count.saturating_sub(1);
-                } else {
-                    device.multicast_subscribers_count =
-                        device.multicast_subscribers_count.saturating_sub(1);
-                }
-            }
-            _ => {
-                device.unicast_users_count = device.unicast_users_count.saturating_sub(1);
-            }
-        }
-
-        try_acc_write(&device, device_account, payer_account, accounts)?;
-        try_acc_close(user_account, owner_account)?;
-
-        #[cfg(test)]
-        msg!("DeleteUser (atomic): User deallocated and closed");
-    } else {
-        // Legacy path: just mark as Deleting
-        let mut user: User = User::try_from(user_account)?;
-        user.status = UserStatus::Deleting;
-
-        try_acc_write(&user, user_account, payer_account, accounts)?;
-
-        #[cfg(test)]
-        msg!("Deleting: {:?}", user);
+    if user.device_pk != *device_account.key {
+        return Err(ProgramError::InvalidAccountData);
     }
+    if user.owner != *owner_account.key {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Deallocate resources via helper (validates PDAs)
+    resource_onchain_helpers::validate_and_deallocate_user_resources(
+        program_id,
+        &user,
+        user_tunnel_block_ext,
+        multicast_publisher_block_ext.as_ref().map(|a| *a),
+        device_tunnel_ids_ext,
+        &dz_prefix_accounts,
+    )?;
+
+    // Decrement tenant reference count if user has tenant assigned
+    if let Some(tenant_acc) = tenant_account {
+        assert_eq!(
+            tenant_acc.key, &user.tenant_pk,
+            "Tenant account doesn't match user's tenant"
+        );
+        validate_program_account!(tenant_acc, program_id, writable = true, "Tenant");
+
+        let mut tenant = Tenant::try_from(tenant_acc)?;
+        tenant.reference_count = tenant.reference_count.saturating_sub(1);
+
+        try_acc_write(&tenant, tenant_acc, payer_account, accounts)?;
+    }
+
+    // Decrement device counters
+    let mut device = Device::try_from(device_account)?;
+    device.reference_count = device.reference_count.saturating_sub(1);
+    device.users_count = device.users_count.saturating_sub(1);
+    match user.user_type {
+        UserType::Multicast => {
+            if TunnelFlags::is_set(user.tunnel_flags, TunnelFlags::CreatedAsPublisher) {
+                device.multicast_publishers_count =
+                    device.multicast_publishers_count.saturating_sub(1);
+            } else {
+                device.multicast_subscribers_count =
+                    device.multicast_subscribers_count.saturating_sub(1);
+            }
+        }
+        _ => {
+            device.unicast_users_count = device.unicast_users_count.saturating_sub(1);
+        }
+    }
+
+    try_acc_write(&device, device_account, payer_account, accounts)?;
+    try_acc_close(user_account, owner_account)?;
+
+    #[cfg(test)]
+    msg!("DeleteUser: User deallocated and closed");
 
     Ok(())
 }

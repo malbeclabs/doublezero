@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Status: `Draft`**
+**Status: `Implemented`**
 
 This RFC introduces a geo-location verification system that validates the physical location of target devices using latency-based measurements through intermediate Probe servers. The system builds on DoubleZero's existing TWAMP telemetry infrastructure (RFC4) to provide cryptographically signed, onchain proof of approximate device location.
 
@@ -13,7 +13,7 @@ The system uses a three-tier measurement chain: DoubleZero Devices (DZDs) with p
 Users are interested in using DZDs as reference points to determine approximate location for targets for things such as ensuring GDPR compliance. This leverages the verifiable network of DZDs and contributors and is a reasonable way to monetize the network.
 
 Problems with current IP location services:
-- IP geolocation databases are unreliable (30-50% accuracy for city-level)
+- IP geolocation databases are unreliable
 - No audit trail exists 
 - Data and methodology is controlled by centralized organizations without transparency
 - A GPS based system requires servers to have access to datacenter roofs
@@ -149,7 +149,7 @@ _Outbound Measurement Flow_
 2. **Offset Generation:** DZD creates Offset with lat/lng, latency, timestamp, signs with Ed25519
 3. **Dual Posting:** DZD submits samples to `ProbeLatencySamples` PDA onchain AND sends Offset to Probe via UDP
 4. **Probe Caching:** Probe verifies DZD signature, caches Offset
-5. **Probe→Target Measurement:** Probe measures RTT to target using TWAMP
+5. **Probe→Target Measurement:** Probe measures RTT to target using TWAMP (Outbound) or ICMP echo (OutboundIcmp)
 6. **Composite Offset:** Probe creates new Offset with DZD Offset as reference, signs it
 7. **Target Verification:** Target verifies signature chain, uses `lat/lng` + `rtt_ns` to determine location
 
@@ -159,8 +159,8 @@ _Inbound Measurement Flow_
 3. **Dual Posting:** DZD submits samples to `ProbeLatencySamples` PDA onchain AND sends Offset to Probe via UDP
 4. **Probe Caches Offset:** Probe verifies DZD signature, caches Offset, and updates the signed TWAMP reflector's embedded offsets with the best cached offset
 5. **Target Sends Probe 0:** Target sends a signed probe packet (containing its Pubkey and Ed25519 signature). Paired probing is needed because TEEs cannot perform time measurements; the probe-side inter-arrival time serves as a proxy RTT.
-6. **Probe Sends Reply 0:** Reflector checks that the sender's Pubkey is registered (it does not verify the probe's Ed25519 signature — the pubkey allowlist is sufficient). Reply 0 embeds the original probe, the reflector's signing key, geoprobe identity, location data derived from its best cached DZD offset (`Lat`, `Lng`, `MeasurementSlot`, `RttNs`), the opaque DZD offset blobs, and an Ed25519 signature over the whole packet. Reply 0's `SinceLastRxNs` is 0 (no previous arrival from this sender).
-7. **Target Sends Probe 1:** Both probe packets are pre-signed before any network I/O. After receiving reply 0, target immediately sends the pre-signed probe 1 with no signing delay.
+6. **Probe Sends Reply 0:** Reflector checks that the sender's Pubkey is registered (it does not verify the probe's Ed25519 signature — the pubkey allowlist is sufficient). Reply 0 embeds the original probe, the reflector's signing key, geoprobe identity, location data derived from its best cached DZD offset (`Lat`, `Lng`, `MeasurementSlot`, `RttNs`), the opaque DZD offset blobs, and an Ed25519 signature over the whole packet. Reply 0's `SinceLastRxNs` carries an 8-byte challenge nonce (see "Challenge-Response Inbound Probing" below); legacy senders that ignore the field see no behavior change.
+7. **Target Sends Probe 1:** Senders not using challenged inbound probing (see "Challenge-Response Inbound Probing" below) pre-sign both probes before any network I/O and fire Probe 1 the moment Reply 0 arrives, with no signing delay. Challenged senders defer signing Probe 1 until they have parsed the Reply 0 nonce; see that section for the trade-off.
 8. **Probe Sends Reply 1:** Same structure as reply 0, but `SinceLastRxNs` now contains the time between the reflector's reply 0 Tx and probe 1 Rx — this approximates the network RTT by excluding processing overhead on both sides. `RttNs` = DZD offset's `RttNs` + `SinceLastRxNs`. The reflector allows 2 probes per rate-limit window per sender, then drops until the window resets.
 9. **Target Verifies Replies:** Target verifies both replies, then derives two RTT measurements: "Probe-Measured RTT" = `reply1.SinceLastRxNs` (Tx-to-Rx interval at the reflector), and "Target-Measured RTT" = `min(rtt0, rtt1)` (lower of the two sender-side RTTs). Forwards to Client Oracle.
 10. **Client Oracle Computes Location:** Client Oracle uses the reply's location fields (`Lat`/`Lng` + `RttNs`) along with the Target's reported probe RTT to compute location. The embedded offset blobs can be cross-checked against the DZ ledger for additional assurance.
@@ -200,6 +200,7 @@ pub struct GeoProbe {
     pub location_offset_port: u16,             // UDP listen port (default 8923)
     pub metrics_publisher_pk: Pubkey,          // Signing key for telemetry
     pub reference_count: u32,                  // GeolocationTargets referencing this probe
+    pub target_update_count: u32,              // Bumped when target config changes (e.g., SetResultDestination)
     // Variable-length fields must be at the end for Borsh deserialization
     pub code: String,                          // e.g., "ams-probe-01" (max 32 bytes)
     pub parent_devices: Vec<Pubkey>,           // DZDs that measure this probe
@@ -215,8 +216,9 @@ pub enum GeolocationUserStatus {
     Suspended = 1,  // Lack of Payment
 }
 pub enum GeoLocationTargetType {
-    Outbound = 0,   // GeoProbe sends TWAMP
-    Inbound = 1,    // Target Sends SignedTWAMP
+    Outbound = 0,      // GeoProbe sends TWAMP
+    Inbound = 1,       // Target sends SignedTWAMP
+    OutboundIcmp = 2,  // GeoProbe sends ICMP echo
 }
 
 pub struct GeolocationTarget {
@@ -246,6 +248,7 @@ pub struct GeolocationUser {
     pub billing: GeolocationBillingConfig,
     pub status: GeolocationUserStatus,
     pub targets: Vec<GeolocationTarget>,
+    pub result_destination: String,            // Optional alternate host:port for offset delivery (empty = disabled)
 }
 ```
 **PDA Seeds:** `["doublezero", "geouser", code.as_bytes()]`
@@ -295,14 +298,18 @@ pub enum GeolocationInstruction {
         exchange_pk: Pubkey,
     },
 
+    SetResultDestination {                          // variant 11
+        result_destination: String,                     // "host:port" or "" to clear; bumps target_update_count on referenced probes
+    },
+
     // --- Billing (foundation-gated via Serviceability CPI) ---
-    UpdatePaymentStatus {                           // variant 11
+    UpdatePaymentStatus {                           // variant 12
         payment_status: u8,                         // GeolocationPaymentStatus as u8 for wire format consistency
         last_deduction_dz_epoch: Option<u64>,
     },
 
     // --- Program Config Update ---
-    UpdateProgramConfig {                           // variant 12
+    UpdateProgramConfig {                           // variant 13
         serviceability_program_id: Option<Pubkey>,
     },
 }
@@ -317,7 +324,7 @@ pub enum GeolocationInstruction {
 | AddParentDevice, RemoveParentDevice             | Foundation allowlist (via Serviceability CPI)   |
 | CreateGeolocationUser, UpdateGeolocationUser,   | Any signer (self-service, signer becomes owner) |
 | DeleteGeolocationUser                                                                            
-| AddTarget, RemoveTarget                         | GeolocationUser owner                           |
+| AddTarget, RemoveTarget, SetResultDestination   | GeolocationUser owner                           |
 | UpdatePaymentStatus                             | Foundation allowlist (via Serviceability CPI)   |
 
 #### GeoProbe Onboarding
@@ -330,8 +337,9 @@ pub enum GeolocationInstruction {
 
 1. User calls `CreateGeolocationUser` with a unique code and their 2Z token account. Status is set to `Activated` (no approval step). Payment status starts as `Delinquent` until the foundation or a sentinel confirms funding via `UpdatePaymentStatus`.
 2. User calls `AddTarget` for each target to be measured, specifying the target's IP address, location offset port, and which exchange should perform the measurement. The cli will figure out the probe_pk associated with that exchange. The target's `probe_pk` must reference an activated GeoProbe, which increments that probe's `reference_count`.
-3. Probes poll onchain GeolocationUser accounts to discover targets assigned to them. Only targets from users with `payment_status: Paid` are measured.
-4. To stop measurement, user calls `RemoveTarget` (decrements probe `reference_count`) or `DeleteGeolocationUser` (requires all targets removed first).
+3. Optionally, user calls `SetResultDestination` to configure an alternate `host:port` where composite offsets are delivered in addition to the target's location offset port. The destination must be a publicly routable IPv4 address or valid domain name. Setting the destination bumps `target_update_count` on each referenced probe so probes pick up the change. Pass an empty string to clear.
+4. Probes poll onchain GeolocationUser accounts to discover targets assigned to them. Only targets from users with `payment_status: Paid` are measured.
+5. To stop measurement, user calls `RemoveTarget` (decrements probe `reference_count`) or `DeleteGeolocationUser` (requires all targets removed first).
 
 ### Signed Probes
 
@@ -346,8 +354,8 @@ The mechanism extends DoubleZero's existing TWAMP-light implementation (`tools/t
 ```go
 type SignedProbePacket struct {
     Seq          uint32    // Bytes 0-3: Sequence number (big-endian)
-    Sec          uint32    // Bytes 4-7: NTP timestamp seconds
-    Frac         uint32    // Bytes 8-11: NTP timestamp fractional
+    Sec          uint32    // Bytes 4-7: NTP timestamp seconds; on challenged Probe 1, upper 4 bytes of echoed nonce
+    Frac         uint32    // Bytes 8-11: NTP timestamp fractional; on challenged Probe 1, lower 4 bytes of echoed nonce
     SenderPubkey [32]byte  // Bytes 12-43: Target's Ed25519 public key
     Signature    [64]byte  // Bytes 44-107: Ed25519 signature over bytes 0-43
 }
@@ -367,15 +375,15 @@ type SignedReplyPacket struct {
     MeasurementSlot uint64            // Bytes 172-179: DoubleZero slot from reference offset
     Lat             float64           // Bytes 180-187: Reference point latitude (WGS84)
     Lng             float64           // Bytes 188-195: Reference point longitude (WGS84)
-    SinceLastRxNs   uint64            // Bytes 196-203: Nanoseconds between reflector Tx (reply N-1) and Rx (probe N)
+    SinceLastRxNs   uint64            // Bytes 196-203: On Reply 0, the geoprobe-issued challenge nonce; on Reply 1, nanoseconds between reflector Tx of Reply 0 and Rx of Probe 1
     RttNs           uint64            // Bytes 204-211: Accumulated RTT from Lat/Lng in nanoseconds
-    NumOffsets      uint8             // Byte 212: Number of LocationOffset blobs (0-5)
+    NumOffsets      uint8             // Byte 212: Bit 7 = Challenged flag; bits 0-6 = number of LocationOffset blobs (0-5)
     Offsets         [][]byte          // Bytes 213-...: N × LocationOffset blobs (each 169 bytes)
     Signature       [64]byte          // Last 64 bytes: Ed25519 signature over all preceding bytes
 }
 ```
 
-`AuthorityPubkey` is the key used to sign and verify the reply. `GeoprobePubkey` identifies the specific geoprobe. `MeasurementSlot`, `Lat`, `Lng`, and `RttNs` are derived from the probe's best cached DZD offset. `SinceLastRxNs` measures from the reflector's reply Tx to the next probe's Rx, approximating the network RTT by excluding processing overhead. The target pre-signs both probes before any I/O and uses `SinceLastRxNs` from the second reply as the probe-measured RTT (analogous to `MeasuredRttNs` in a LocationOffset). `RttNs` = DZD offset's `RttNs` + `SinceLastRxNs`. `Offsets` carries 0–5 Borsh-encoded `LocationOffset` structs from the probe's parent DZDs (each with no references).
+`AuthorityPubkey` is the key used to sign and verify the reply. `GeoprobePubkey` identifies the specific geoprobe. `MeasurementSlot`, `Lat`, `Lng`, and `RttNs` are derived from the probe's best cached DZD offset. `SinceLastRxNs` measures from the reflector's reply Tx to the next probe's Rx, approximating the network RTT by excluding processing overhead. Unchallenged targets pre-sign both probes before any I/O; challenged targets defer Probe 1 signing until they have extracted the nonce from Reply 0. Either way, the target uses `SinceLastRxNs` from the second reply as the probe-measured RTT (analogous to `MeasuredRttNs` in a LocationOffset). `RttNs` = DZD offset's `RttNs` + `SinceLastRxNs`. `Offsets` carries 0–5 Borsh-encoded `LocationOffset` structs from the probe's parent DZDs (each with no references).
 The probe's signature covers all preceding bytes.
 
 #### Interfaces
@@ -400,6 +408,23 @@ type SignedReflector interface {
 `SignedSender.Probe()` returns both the measured RTT and the `SignedReplyPacket`.
 
 `SignedReflector.SetOffsets()` allows the geoprobe agent to inject its current best `LocationOffset` blobs into every reply. The reflector deep-copies the provided slices and updates them under a write lock, so offset updates from the offset listener are thread-safe with concurrent probe handling.
+
+### Challenge-Response Inbound Probing
+
+To prove a target sender actually received Reply 0 before sending Probe 1 — and was not pre-emitting Probe 1 to manufacture a falsely-small SinceLastRxNs — the geoprobe and sender perform an optional nonce handshake.
+
+**Flow:**
+
+1. On receipt of Probe 0, the geoprobe generates a fresh 8-byte cryptographically-random nonce, stores it in per-sender state keyed by `SenderPubkey`, and places it in the `SinceLastRxNs` field of Reply 0 (which was previously always 0).
+2. On receipt of Reply 0, a challenge-aware sender extracts the nonce from `SinceLastRxNs` and writes those 8 bytes into the `Sec` (upper 4) and `Frac` (lower 4) fields of Probe 1 before signing.
+3. On receipt of Probe 1, the geoprobe reads `Sec || Frac` and compares with the stored nonce. If equal, the geoprobe sets the most-significant bit (bit 7) of `NumOffsets` in Reply 1 to 1 — flagging the measurement as a "challenged inbound". If unequal (legacy sender), bit 7 stays 0 and the measurement is reported as "unchallenged inbound".
+4. The reported `SinceLastRxNs` in Reply 1 is the actual reflector Tx-to-Rx interval as before.
+
+**Why unchallenged inbound is still permitted:** Adding the nonce echo forces the sender to wait for Reply 0, parse it, rewrite Probe 1, and re-sign before transmission. That added delay inflates `SinceLastRxNs` by the sender's compute time, polluting the wire-time estimate. Senders running inside a Trusted Execution Environment do not need the challenge to be trustworthy, so they can skip it and preserve the unbiased timing measurement. Non-TEE senders accept the timing penalty in exchange for the security guarantee.
+
+**Backwards compatibility:** Bit 7 of `NumOffsets` is only set when the geoprobe observed a matching nonce echo. Legacy senders that do not echo the nonce will never trigger the flag bit, so the existing `NumOffsets ≤ 5` decoder check at the sender still holds. Likewise, legacy senders ignore `Reply0.SinceLastRxNs` (it was always 0 before), so populating it with a nonce is invisible to them.
+
+**Beyond TEE — wallet-bound inbound probing:** The mechanism above replaces the TEE gating model with a key-proximity model: whoever signs Probe 1 must hold the private key and be in the timing loop. When the target's signing key is a high-value onchain identity — for example, the target's Solana wallet — copying it to a proxy machine isn't "spoofing", it *is* the wallet. This enables compliance use cases such as proving a registered wallet's private key was present in a particular jurisdiction at probe time, without requiring a TEE.
 
 ### Component Implementation
 
@@ -437,8 +462,9 @@ Reuses the new modules for the telemetry agent in `controlplane/telemetry/intern
 
 **Components:**
 - **UDP Listener:** Accepts DZD Offsets
-- **Offset Cache:** Stores recent DZD Offsets (keyed by DZD pubkey)
-- **Target Handler:** Measures RTT to targets, generates composite Offsets
+- **Offset Cache:** Stores recent DZD Offsets (keyed by DZD pubkey), maintaining best and backup offsets per sender with automatic promotion on expiry
+- **Target Handler:** Measures RTT to targets via TWAMP (Outbound) or ICMP echo (OutboundIcmp), generates composite Offsets
+- **ICMP Pinger:** Raw ICMP echo request/reply using `AF_INET`/`SOCK_RAW` sockets with epoll-based I/O and kernel timestamps. Processes targets in batches (512 per batch, 200µs stagger between sends, 1s probe timeout).
 - **Signature Verifier:** Validates Ed25519 signatures
 - **Signed TWAMP Reflector:** Responds to Probes from allowed Targets, embedding the probe's best cached LocationOffset into each reply
 
@@ -545,90 +571,24 @@ max_offset_age_seconds: 300
 ```
 
 #### CLI For DZ Ledger Management
-PoC CLI will be a separate `doublezero-geolocation` CLI, future work will integrate it into `doublezero` CLI as `doublezero geolocation`
-
 - New CLI module `smartcontract/cli/src/geolocation/probe/`
 - Commands for probe management:
-    - `doublezero-geolocation probe create` — creates a GeoProbe account (args: code, exchange, public-ip, port, metrics-publisher-pk)
-    - `doublezero-geolocation probe update` — updates GeoProbe fields (public-ip, port, metrics-publisher-pk)
-    - `doublezero-geolocation probe delete` — deletes a GeoProbe account
-    - `doublezero-geolocation probe list` — lists all GeoProbe accounts
-    - `doublezero-geolocation probe get` — gets a specific GeoProbe by code
-    - `doublezero-geolocation probe add-parent` — adds a parent DZD to a GeoProbe
-    - `doublezero-geolocation probe remove-parent` — removes a parent DZD from a GeoProbe
-    - `doublezero-geolocation init-config` — initializes the GeolocationProgramConfig (one-time)
+    - `doublezero geolocation probe create` — creates a GeoProbe account (args: code, exchange, public-ip, port, metrics-publisher-pk)
+    - `doublezero geolocation probe update` — updates GeoProbe fields (public-ip, port, metrics-publisher-pk)
+    - `doublezero geolocation probe delete` — deletes a GeoProbe account
+    - `doublezero geolocation probe list` — lists all GeoProbe accounts
+    - `doublezero geolocation probe get` — gets a specific GeoProbe by code
+    - `doublezero geolocation probe add-parent` — adds a parent DZD to a GeoProbe
+    - `doublezero geolocation probe remove-parent` — removes a parent DZD from a GeoProbe
+    - `doublezero geolocation init-config` — initializes the GeolocationProgramConfig (one-time)
 - Commands for user management: 
-    - `doublezero-geolocation user create` - Creates a GeoLocation User (args: Code, token_account)
-    - `doublezero-geolocation user list` - lists all GeoLocation users
-    - `doublezero-geolocation user delete` - Deletes a GeoLocation User (must be that user or foundation)
-    - `doublezero-geolocation add-target` - Adds targets to be covered by a user (Args: code, ip or pubkey)
-    - `doublezero-geolocation remove-target` - removes a target from a user  (Args: code, ip or pubkey)
-    - `doublezero-geolocation probe get` - Gets offset from a probe (args: Probe Code(s), optional: epoch)
+    - `doublezero geolocation user create` - Creates a GeoLocation User (args: Code, token_account)
+    - `doublezero geolocation user list` - lists all GeoLocation users
+    - `doublezero geolocation user delete` - Deletes a GeoLocation User (must be that user or foundation)
+    - `doublezero geolocation add-target` - Adds targets to be covered by a user (Args: code, ip or pubkey)
+    - `doublezero geolocation remove-target` - removes a target from a user  (Args: code, ip or pubkey)
+    - `doublezero geolocation probe get` - Gets offset from a probe (args: Probe Code(s), optional: epoch)
 
-
-### POC Requirements
-
-#### Phase 1:
-**Goal:** Single geoProbe deployment for testing
-1. Telemetry agent extensions:
-   - Command Line Argument for "Additional Child Probes"
-        - Allows testing without onchain work
-   - Extend TWAMP measurement to geoProbes
-   - Generate Offset structure and sign
-   - Post Offset Structure via UDP to Probe
-2. geoProbe server (`doublezero-probe-agent`):
-    - TWAMP Reflector
-    - UDP listener for DZD Offsets
-    - Command Line Argument for "Additional Parents" and "Additional Targets"
-        - Allows testing without onchain work
-    - Offset caching and verification
-    - Measure IP RTT to targets Via TWAMP
-    - Composite Offset generation
-    - Post Composite offset via UDP to Target
-    - Includes local logging with `-verbose` flag.
-3. Example Target Software TWAMP Reflector + UDP Listener:
-    - TWAMP Reflector
-    - Receives Signed UDP Datagrams
-    - Logs data
-4. Deployment:
-    - E2E test in Dockernet using command line flags
-    - Manual Deployment of Snapshot Telemetry Agent `fra-dz001` in Testnet
-    - Manual Deployment of Snapshot geoProbe Agent to `fra-tn-bm1` in Testnet
-    - Target Deployment of Snapshot Example Target to `fra-tn-qa01` in Testnet
-
-#### Phase 1.5:
-**Goal:** Add "inbound mode" where geoprobes respond to SignedTWAMP probes
-
-1. Implement Signed TWAMP
-    - Create new TWAMP Sender
-    - Create new TWAMP Reflector
-2. Add Signed TWAMP reflector to `doublezero-geoprobe-agent`
-    - Separate from standard TWAMP reflector for DZDs
-    - Add commandline to allowlist additional pubkeys for SignedTWAMP
-3. Create Example Target Software (Signed TWAMP Sender)
-    - Uses CLI to specify probe to ping
-
-#### Phase 2:
-**Goal:** Pull configuration from onchain data.
-1. Serviceability program changes:
-    - GeolocationUser account
-    - 4 new instructions (InitializeGeolocationUser/AddTargetIp/RemoveTargetIp/DeleteGeolocationUser)
-    - geoProbe account
-    - 4 new instructions (InitializeProbe/UpdateProbe/AddParent/RemoveParent)
-2. Telemetry agent extensions:
-    - Child geoProbe discovery from onchain
-3. geoProbe server (`doublezero-probe-agent`):
-    - Parent DZD Discovery from onchain
-    - GeolocationUser and GeolocationTarget discovery from onchain
-4. CLI tool (doublezero-geolocation):
-   - User management commands
-   - Target management commands
-   - Only needs to see exchanges, locations, devices, and probes
-   - Set up payer account
-   - Probe Management Commands `doublezero probe list/create/update`
-6. Deployment:
-   - Updated E2E tests to use onchain configuration data.
-   - Test in DockerNet and DevNet
 
 ### MVP Requirements
 
@@ -701,25 +661,44 @@ Discuss effects on:
 
 ## Security Considerations
 
-|       Threat            |             Mitigation                                            |
-|-------------------------|-------------------------------------------------------------------|
-| **Target IP Spoofing**  | Not addressed in POC/MVP; discussed in future work                |
-| **Replay Attacks**      | Ongoing Probes are added to the ledger.                           |
-| **Signature Forgery**   | Ed25519 signatures; DZD keys secured in telemetry agent           |
-| **Probe Compromise**    | Target can use multiple probes; onchain audit trail               |
-| **DDoS by Probes**      | Rate limiting (10-60s probes)                                     |
-| **DDoS on Probes**      | Rate limiting, firewall rules                                     |
-| **Target False Claims** | Targets cannot forge Offsets; signature verification required     |
+### Fundamental Constraints
 
+The system proves **network proximity of an IP endpoint**, not where computation happens. Any separation between "what answers probes" and "what does work" is an attack surface. Latency can only establish **upper bounds on distance** — an attacker can add artificial delay to appear farther away, but cannot appear closer than physics allows.
+
+### Threat Model
+
+| Threat | Description | Mitigation |
+|--------|-------------|------------|
+| **Proxy/Relay** | Place a TWAMP/ICMP reflector in the target geography, run real workload elsewhere. Probe measures low RTT to the proxy. | Network-identity binding (see below). Tunneling all traffic through a proxy adds RTT that degrades latency-sensitive workloads, making the attack economically self-defeating. |
+| **BGP Anycast** | Announce the target IP from two locations — a small presence near the probe and the real machine elsewhere. Probe routes locally; most peers route to the real location. | Network-identity binding forces the same IP for probes and peer traffic. BGP routes prefixes, not ports, so the attacker can't selectively route only probe traffic. The BGP cutover boundary is topological (AS path length), not geographic, so the attacker risks losing peer connectivity at the wrong announcement. |
+| **Artificial Delay** | Add delay to probe responses to appear farther than physically true. | **Not defensible** by a latency-based system. Upper bounds only — can prove max distance, not minimum. This requires users understanding that the system can only prove closeness, not farness. |
+| **Replay Attacks** | Replay old signed offsets. | Offsets include `MeasurementSlot` timestamps; ongoing probes recorded onchain. |
+| **Signature Forgery** | Forge DZD or probe signatures. | Ed25519 signatures; DZD keys secured in telemetry agent on the device. |
+| **Probe Compromise** | Compromised operator generates favorable offsets. | Same trust model as DZD operators. Multiple probes from different operators; onchain audit trail. |
+| **DDoS on Probes** | Flood probe to disrupt measurements. | Rate limiting, firewall rules. |
+| **DDoS by Probes** | Probe overwhelms targets. | Rate limiting (10–60s probe intervals). |
+
+### Outbound: Network-Identity Binding
+
+The strongest defense for outbound probing is ensuring the submitted target IP is the node's **network-advertised IP** — the same IP used for consensus, block propagation, and peer communication. This binds geolocation to the node's real network identity:
+
+- **Traffic splitting fails:** Routing only probe traffic to a local proxy requires tunneling all peer traffic through it too, adding RTT that degrades consensus performance.
+- **BGP can't distinguish ports:** All traffic for a prefix follows the same path from any given AS — the attacker can't route TWAMP to one location and peer traffic to another.
+- **Economics don't work for latency-sensitive nodes:** A blockchain validator adding a large RTT via a distant tunnel falls behind on block production and attestations. Two locations with worse performance defeats the purpose.
+
+> **Example:** For a blockchain validator, the customer pulls the node's IP from the network's peer discovery protocol (e.g., gossip) and submits it as the geolocation target. The validator can't advertise one IP to peers and a different one for geolocation — the probe measures the same endpoint that participates in consensus.
+
+> **Limitation:** This defense is strongest when the target workload is latency-sensitive. For latency-tolerant workloads, the proxy/relay attack remains viable regardless of IP binding.
+
+### Inbound: TEE Gating Behavior
+
+Inbound probing is designed for customers who distribute TEE modules to partners and need to verify the TEE is where the partner claims.
+
+Trusted code inside the TEE **gates probe 1 on receiving a valid reply 0**. Even if the host redirects traffic through a proxy near the probe, the TEE stays in the timing loop — `SinceLastRxNs` includes two traversals of the real TEE-to-proxy distance. Redirecting makes the measurement worse, not better. The host can't forge reply 0 because the TEE validates the probe's signature and echoed content.
+
+> **Requires TEE trust.** The TEE ensures the key cannot be extracted and that probe 1 is only sent after a valid reply 0. Without a TEE, the operator can send both pre-signed probes from a proxy without waiting — defeating the gating mechanism entirely.
 
 ## Future Work
-
-### IP Spoofing Mitigation
-**Problem:** Malicious probe could be close to DZD but forward requests to distant actual probe
-
-### Geographic Multi-Probe Triangulation
-**Problem:** Single probe gives distance, not precise location
-- User sets up 3 probe targets with the same IP but different source geoProbes. DZ could provide an SDK performs trilateration from multiple distance measurements
 
 ### Store Measurements to DZ Ledger
 
@@ -837,6 +816,5 @@ pub fn process_add_parent_device(...) -> ProgramResult {
 2. What's the optimal cache size for Offset storage? (Testing will determine, starting with 10k entries)
 3. Should probe metrics be posted onchain? (Yes for auditability; separate from target verification path)
 4. How to handle probe key rotation? (Manual for POC, automated in MVP)
-5. In the architecture diagram, the Probe has a line to the Target that says "Probe". Should this be TWAMP (requires configuration on the target), or ICMP, or a TCP syn/syn-ack on a port known to listen publicly? Or support all three options? For POC we can start with TWAMP.
-6. How should we handle the latency between the probe and device changing over time? Should we always use the most recent measurement? (use minimum of last n received)
+
 

@@ -1,15 +1,17 @@
 use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
-    poll_for_activation::poll_for_user_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
     commands::{
-        accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
-        tenant::get::GetTenantCommand, user::create::CreateUserCommand,
+        accesspass::get::GetAccessPassCommand,
+        device::get::GetDeviceCommand,
+        tenant::get::GetTenantCommand,
+        user::{create::CreateUserCommand, get::GetUserCommand},
     },
     UserCYOA, UserType,
 };
@@ -36,7 +38,12 @@ pub struct CreateUserCliCommand {
 }
 
 impl CreateUserCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -105,7 +112,7 @@ impl CreateUserCliCommand {
         writeln!(out, "Signature: {signature}",)?;
 
         if self.wait {
-            let user = poll_for_user_activated(client, &pubkey)?;
+            let (_, user) = client.get_user(GetUserCommand { pubkey })?;
             writeln!(out, "Status: {0}", user.status)?;
         }
 
@@ -115,6 +122,8 @@ impl CreateUserCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -179,6 +188,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client
@@ -210,6 +220,10 @@ mod tests {
             tenant_allowlist: vec![],
             owner: client.get_payer(),
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
         client
             .expect_get_accesspass()
@@ -234,14 +248,17 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = CreateUserCliCommand {
-            device: "device1".to_string(),
-            client_ip: [100, 0, 0, 1].into(),
-            allocate_addr: false,
-            tenant: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            CreateUserCliCommand {
+                device: "device1".to_string(),
+                client_ip: [100, 0, 0, 1].into(),
+                allocate_addr: false,
+                tenant: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

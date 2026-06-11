@@ -11,12 +11,12 @@ use crate::{
         accounttype::AccountType,
         contributor::Contributor,
         device::*,
-        feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         interface::{
-            CurrentInterfaceVersion, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType,
-            LoopbackType, RoutingMode,
+            Interface, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType,
+            RoutingMode, CURRENT_INTERFACE_SCHEMA_VERSION, CYOA_DIA_INTERFACE_MTU, INTERFACE_MTU,
         },
+        topology::FlexAlgoNodeSegment,
     },
 };
 use borsh::BorshSerialize;
@@ -30,6 +30,7 @@ use solana_program::{
     entrypoint::ProgramResult,
     pubkey::Pubkey,
 };
+use std::collections::HashSet;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct DeviceInterfaceCreateArgs {
@@ -48,6 +49,11 @@ pub struct DeviceInterfaceCreateArgs {
     /// Performs atomic create+allocate+activate in a single transaction.
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
+    /// Number of topology PDA accounts appended after segment_routing_ids.
+    /// For each topology, the processor allocates a FlexAlgoNodeSegment on
+    /// Vpnv4 loopbacks. Zero means no topologies (backward compatible).
+    #[incremental(default = 0)]
+    pub topology_count: u8,
 }
 
 impl fmt::Debug for DeviceInterfaceCreateArgs {
@@ -56,7 +62,7 @@ impl fmt::Debug for DeviceInterfaceCreateArgs {
             f,
             "name: {}, loopback_type: {}, vlan_id: {}, ip_net: {:?}, user_tunnel_endpoint: {}, \
 interface_cyoa: {:?}, interface_dia: {:?}, bandwidth: {}, cir: {}, mtu: {}, routing_mode: {:?}, \
-use_onchain_allocation: {}",
+use_onchain_allocation: {}, topology_count: {}",
             self.name,
             self.loopback_type,
             self.vlan_id,
@@ -69,6 +75,7 @@ use_onchain_allocation: {}",
             self.mtu,
             self.routing_mode,
             self.use_onchain_allocation,
+            self.topology_count,
         )
     }
 }
@@ -78,24 +85,26 @@ pub fn process_create_device_interface(
     accounts: &[AccountInfo],
     value: &DeviceInterfaceCreateArgs,
 ) -> ProgramResult {
+    if !value.use_onchain_allocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let device_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for onchain allocation (before payer)
-    // Account layout WITH ResourceExtension (use_onchain_allocation = true):
-    //   [device, contributor, globalstate, device_tunnel_block, segment_routing_ids, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_allocation = false):
-    //   [device, contributor, globalstate, payer, system]
-    let resource_accounts = if value.use_onchain_allocation {
-        let device_tunnel_block_ext = next_account_info(accounts_iter)?;
-        let segment_routing_ids_ext = next_account_info(accounts_iter)?;
-        Some((device_tunnel_block_ext, segment_routing_ids_ext))
-    } else {
-        None
-    };
+    // Account layout: [device, contributor, globalstate, device_tunnel_block,
+    //                  segment_routing_ids, topology_0..N, payer, system]
+    let device_tunnel_block_ext = next_account_info(accounts_iter)?;
+    let segment_routing_ids_ext = next_account_info(accounts_iter)?;
+
+    // Read topology PDA accounts (optional, for Vpnv4 loopback flex-algo assignment)
+    let mut topology_accounts = Vec::new();
+    for _ in 0..value.topology_count {
+        topology_accounts.push(next_account_info(accounts_iter)?);
+    }
 
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
@@ -108,16 +117,19 @@ pub fn process_create_device_interface(
 
     let name = validate_iface(&value.name).map_err(|_| DoubleZeroError::InvalidInterfaceName)?;
 
-    assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
+    validate_program_account!(device_account, program_id, writable = true, "Device");
+    validate_program_account!(
+        contributor_account,
+        program_id,
+        writable = false,
+        "Contributor"
     );
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
-
-    assert!(device_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
@@ -154,77 +166,123 @@ pub fn process_create_device_interface(
         return Err(DoubleZeroError::InvalidInterfaceIp.into());
     }
 
+    // Validate MTU: CYOA/DIA interfaces must be 1500, all others must be 9000
+    let is_cyoa_or_dia =
+        value.interface_cyoa != InterfaceCYOA::None || value.interface_dia != InterfaceDIA::None;
+    if is_cyoa_or_dia {
+        if value.mtu != CYOA_DIA_INTERFACE_MTU {
+            return Err(DoubleZeroError::InvalidMtu.into());
+        }
+        if value.bandwidth == 0 {
+            return Err(DoubleZeroError::InvalidBandwidth.into());
+        }
+    } else if value.mtu != INTERFACE_MTU {
+        return Err(DoubleZeroError::InvalidMtu.into());
+    }
+
     let mut device: Device = Device::try_from(device_account)?;
+
+    // The supplied contributor must be the one the device belongs to,
+    // unless the payer is on the foundation allowlist.
+    if !globalstate.foundation_allowlist.contains(payer_account.key)
+        && device.contributor_pk != *contributor_account.key
+    {
+        return Err(DoubleZeroError::InvalidContributorPubkey.into());
+    }
 
     if device.find_interface(&name).is_ok() {
         return Err(DoubleZeroError::InterfaceAlreadyExists.into());
     }
 
-    let mut status = InterfaceStatus::Pending;
     let mut ip_net = value.ip_net.unwrap_or_default();
     let mut node_segment_idx: u16 = 0;
+    let mut flex_algo_node_segments = Vec::new();
 
-    // Atomic create+allocate+activate if onchain allocation is enabled
-    if let Some((device_tunnel_block_ext, segment_routing_ids_ext)) = resource_accounts {
-        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            return Err(DoubleZeroError::FeatureNotEnabled.into());
-        }
-
-        let (expected_dtb_pda, _, _) =
-            get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
-        validate_program_account!(
-            device_tunnel_block_ext,
-            program_id,
-            writable = true,
-            pda = Some(&expected_dtb_pda),
-            "DeviceTunnelBlock"
-        );
-
-        let (expected_sr_pda, _, _) =
-            get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
-        validate_program_account!(
-            segment_routing_ids_ext,
-            program_id,
-            writable = true,
-            pda = Some(&expected_sr_pda),
-            "SegmentRoutingIds"
-        );
-
-        if interface_type == InterfaceType::Loopback {
-            // Allocate IP from DeviceTunnelBlock
-            ip_net = allocate_ip(device_tunnel_block_ext, 1)?;
-
-            // Allocate segment routing ID for Vpnv4 loopbacks
-            if value.loopback_type == LoopbackType::Vpnv4 {
-                node_segment_idx = allocate_id(segment_routing_ids_ext)?;
-            }
-
-            status = InterfaceStatus::Activated;
-        } else {
-            // Physical interfaces go directly to Unlinked
-            status = InterfaceStatus::Unlinked;
-        }
-    }
-
-    device.interfaces.push(
-        CurrentInterfaceVersion {
-            status,
-            name,
-            interface_type,
-            loopback_type: value.loopback_type,
-            interface_cyoa: value.interface_cyoa,
-            interface_dia: value.interface_dia,
-            bandwidth: value.bandwidth,
-            cir: value.cir,
-            mtu: value.mtu,
-            routing_mode: value.routing_mode,
-            vlan_id: value.vlan_id,
-            ip_net,
-            node_segment_idx,
-            user_tunnel_endpoint: value.user_tunnel_endpoint,
-        }
-        .to_interface(),
+    let (expected_dtb_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
+    validate_program_account!(
+        device_tunnel_block_ext,
+        program_id,
+        writable = true,
+        pda = &expected_dtb_pda,
+        "DeviceTunnelBlock"
     );
+
+    let (expected_sr_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
+    validate_program_account!(
+        segment_routing_ids_ext,
+        program_id,
+        writable = true,
+        pda = &expected_sr_pda,
+        "SegmentRoutingIds"
+    );
+
+    let status = if interface_type == InterfaceType::Loopback {
+        // Allocate IP from DeviceTunnelBlock only if the caller did not supply one.
+        // Honoring a caller-supplied ip_net lets user-tunnel-endpoint loopbacks land
+        // on a globally routable IP rather than a private device-tunnel-block IP.
+        if ip_net == NetworkV4::default() {
+            ip_net = allocate_ip(device_tunnel_block_ext, 1)?;
+        }
+
+        // Allocate segment routing ID for Vpnv4 loopbacks
+        if value.loopback_type == LoopbackType::Vpnv4 {
+            node_segment_idx = allocate_id(segment_routing_ids_ext)?;
+
+            // Allocate a flex-algo node segment for each topology
+            let mut seen: HashSet<Pubkey> = HashSet::with_capacity(topology_accounts.len());
+            for topo_account in &topology_accounts {
+                assert_eq!(
+                    topo_account.owner, program_id,
+                    "Invalid Topology Account Owner"
+                );
+                assert!(!topo_account.data_is_empty(), "Topology account is empty");
+                let topo_type = AccountType::from(topo_account.try_borrow_data()?[0]);
+                assert_eq!(
+                    topo_type,
+                    AccountType::Topology,
+                    "Invalid Topology Account Type"
+                );
+                if !seen.insert(*topo_account.key) {
+                    return Err(DoubleZeroError::InvalidArgument.into());
+                }
+                let topo_segment_idx = allocate_id(segment_routing_ids_ext)?;
+                flex_algo_node_segments.push(FlexAlgoNodeSegment {
+                    topology: *topo_account.key,
+                    node_segment_idx: topo_segment_idx,
+                });
+            }
+        }
+
+        InterfaceStatus::Activated
+    } else {
+        // Physical interfaces go directly to Unlinked
+        InterfaceStatus::Unlinked
+    };
+
+    // size is intentionally left at 0 — the Interface serializer derives the
+    // on-disk size fresh from the body bytes and ignores this field. It only
+    // gets populated on deserialize, from the wire prefix.
+    device.push_interface(Interface {
+        size: 0,
+        version: CURRENT_INTERFACE_SCHEMA_VERSION,
+        status,
+        name,
+        interface_type,
+        loopback_type: value.loopback_type,
+        interface_cyoa: value.interface_cyoa,
+        interface_dia: value.interface_dia,
+        bandwidth: value.bandwidth,
+        cir: value.cir,
+        mtu: value.mtu,
+        routing_mode: value.routing_mode,
+        vlan_id: value.vlan_id,
+        ip_net,
+        node_segment_idx,
+        user_tunnel_endpoint: value.user_tunnel_endpoint,
+        flex_algo_node_segments,
+    });
 
     try_acc_write(&device, device_account, payer_account, accounts)?;
 

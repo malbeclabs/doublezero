@@ -1,0 +1,32 @@
+[package]
+name = "doublezero-geolocation-cli"
+
+# Workspace inherited keys
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "doublezero_geolocation_cli"
+
+[dependencies]
+clap.workspace = true
+eyre.workspace = true
+mockall.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+solana-sdk.workspace = true
+tabled.workspace = true
+tracing.workspace = true
+
+# Dependencies from this workspace
+doublezero-cli-core.workspace = true
+doublezero-geolocation = { workspace = true, features = ["no-entrypoint"] }
+doublezero-program-common.workspace = true
+doublezero_sdk.workspace = true
+
+[dev-dependencies]
+doublezero-cli-core = { workspace = true, features = ["testing"] }

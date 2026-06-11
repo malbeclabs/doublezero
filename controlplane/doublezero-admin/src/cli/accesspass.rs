@@ -1,5 +1,5 @@
 use clap::{Args, Subcommand};
-use doublezero_cli::accesspass::{
+use doublezero_serviceability_cli::accesspass::{
     close::CloseAccessPassCliCommand, fund::FundAccessPassCliCommand, get::GetAccessPassCliCommand,
     list::ListAccessPassCliCommand, set::SetAccessPassCliCommand,
     user_balances::UserBalancesAccessPassCliCommand,

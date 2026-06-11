@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -73,50 +74,58 @@ func (f *Funder) Run(ctx context.Context) error {
 				continue
 			}
 
-			// Check balance of recipients.
+			// Check balance of recipients concurrently.
 			f.log.Debug("Checking recipients", "count", len(recipients))
+			var wg sync.WaitGroup
 			for _, recipient := range recipients {
 				if recipient.PubKey.IsZero() {
 					f.log.Debug("Recipient pubkey is zero, ignoring recipient", "name", recipient.Name, "pubkey", recipient.PubKey)
 					continue
 				}
 
-				// Get recipient balance.
-				balance, err := f.cfg.Solana.GetBalance(ctx, recipient.PubKey, solanarpc.CommitmentFinalized)
-				if err != nil {
-					f.log.Error("Failed to get balance", "error", err)
-					metrics.Errors.WithLabelValues(metrics.ErrorTypeGetRecipientAccountBalance).Inc()
-					continue
-				}
-				balanceLamports := balance.Value
-				balanceSOL := float64(balanceLamports) / float64(solana.LAMPORTS_PER_SOL)
-				metrics.RecipientAccountBalanceSOL.WithLabelValues(recipient.Name).Set(balanceSOL)
-				f.log.Debug("Recipient balance", "name", recipient.Name, "pubkey", recipient.PubKey, "balanceLamports", balanceLamports, "minBalanceLamports", minBalanceLamports)
-
-				// If balance is below minimum, top it up.
-				if balanceLamports < minBalanceLamports {
-					f.log.Info("Topping up recipient", "name", recipient.Name, "pubkey", recipient.PubKey, "balanceLamports", balanceLamports, "topUpLamports", topUpLamports)
-
-					_, err := transferFunds(ctx, f.cfg.Solana, f.cfg.Signer, recipient.PubKey, topUpLamports, nil)
-					if err != nil {
-						f.log.Error("Failed to transfer SOL", "error", err)
-						metrics.Errors.WithLabelValues(metrics.ErrorTypeTransferFundsToRecipient).Inc()
-						continue
-					}
-
-					// Wait for the transfer to complete.
-					f.log.Debug("Waiting for balance", "account", recipient.PubKey, "expected", minBalanceLamports, "current", balanceLamports)
-					err = waitForBalance(ctx, f.cfg.Solana, recipient.PubKey, minBalanceLamports, f.cfg.WaitForBalanceTimeout, f.cfg.WaitForBalancePollInterval)
-					if err != nil {
-						f.log.Error("Failed to wait for balance", "error", err)
-						metrics.Errors.WithLabelValues(metrics.ErrorTypeWaitForRecipientAccountBalance).Inc()
-						continue
-					}
-
-					f.log.Info("Transferred SOL to recipient", "name", recipient.Name, "pubkey", recipient.PubKey, "topUpLamports", topUpLamports)
-				}
+				wg.Go(func() {
+					f.processRecipient(ctx, recipient, minBalanceLamports, topUpLamports)
+				})
 			}
+			wg.Wait()
 		}
+	}
+}
+
+func (f *Funder) processRecipient(ctx context.Context, recipient Recipient, minBalanceLamports, topUpLamports uint64) {
+	// Get recipient balance.
+	balance, err := f.cfg.Solana.GetBalance(ctx, recipient.PubKey, solanarpc.CommitmentFinalized)
+	if err != nil {
+		f.log.Error("Failed to get balance", "error", err)
+		metrics.Errors.WithLabelValues(metrics.ErrorTypeGetRecipientAccountBalance).Inc()
+		return
+	}
+	balanceLamports := balance.Value
+	balanceSOL := float64(balanceLamports) / float64(solana.LAMPORTS_PER_SOL)
+	metrics.RecipientAccountBalanceSOL.WithLabelValues(recipient.Name).Set(balanceSOL)
+	f.log.Debug("Recipient balance", "name", recipient.Name, "pubkey", recipient.PubKey, "balanceLamports", balanceLamports, "minBalanceLamports", minBalanceLamports)
+
+	// If balance is below minimum, top it up.
+	if balanceLamports < minBalanceLamports {
+		f.log.Info("Topping up recipient", "name", recipient.Name, "pubkey", recipient.PubKey, "balanceLamports", balanceLamports, "topUpLamports", topUpLamports)
+
+		_, err := transferFunds(ctx, f.cfg.Solana, f.cfg.Signer, recipient.PubKey, topUpLamports, nil)
+		if err != nil {
+			f.log.Error("Failed to transfer SOL", "error", err)
+			metrics.Errors.WithLabelValues(metrics.ErrorTypeTransferFundsToRecipient).Inc()
+			return
+		}
+
+		// Wait for the transfer to complete.
+		f.log.Debug("Waiting for balance", "account", recipient.PubKey, "expected", minBalanceLamports, "current", balanceLamports)
+		err = waitForBalance(ctx, f.cfg.Solana, recipient.PubKey, minBalanceLamports, f.cfg.WaitForBalanceTimeout, f.cfg.WaitForBalancePollInterval)
+		if err != nil {
+			f.log.Error("Failed to wait for balance", "error", err)
+			metrics.Errors.WithLabelValues(metrics.ErrorTypeWaitForRecipientAccountBalance).Inc()
+			return
+		}
+
+		f.log.Info("Transferred SOL to recipient", "name", recipient.Name, "pubkey", recipient.PubKey, "topUpLamports", topUpLamports)
 	}
 }
 

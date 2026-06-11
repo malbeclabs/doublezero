@@ -1,5 +1,7 @@
 use crate::{
     error::DoubleZeroError,
+    pda::get_accesspass_pda,
+    processors::validation::validate_program_account,
     serializer::try_acc_write,
     state::{accesspass::AccessPass, globalstate::GlobalState, multicastgroup::MulticastGroup},
 };
@@ -53,24 +55,26 @@ pub fn process_remove_multicast_pub_allowlist(
     assert!(payer_account.is_signer, "Payer must be a signer");
 
     // Check the owner of the accounts
-    assert_eq!(
-        mgroup_account.owner, program_id,
-        "Invalid PDA Account Owner"
+    validate_program_account!(
+        mgroup_account,
+        program_id,
+        writable = true,
+        "MulticastGroup"
     );
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
-    assert_eq!(
-        accesspass_account.owner, program_id,
-        "Invalid Accesspass Account Owner"
+    validate_program_account!(
+        accesspass_account,
+        program_id,
+        writable = false,
+        "AccessPass"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
-    assert!(mgroup_account.is_writable, "PDA Account is not writable");
 
     // Parse the global state account
     let mgroup = MulticastGroup::try_from(mgroup_account)?;
@@ -85,10 +89,25 @@ pub fn process_remove_multicast_pub_allowlist(
     }
 
     let mut accesspass = AccessPass::try_from(accesspass_account)?;
+
+    // Validate PDA using the stored user_payer. For allow_multiple_ip passes, also accept the dynamic (0.0.0.0) PDA.
+    let (expected_pda, _) =
+        get_accesspass_pda(program_id, &value.client_ip, &accesspass.user_payer);
+    let (dynamic_pda, _) =
+        get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &accesspass.user_payer);
     assert!(
-        accesspass.client_ip == value.client_ip,
-        "AccessPass client_ip does not match"
+        accesspass_account.key == &expected_pda
+            || (accesspass.allow_multiple_ip() && accesspass_account.key == &dynamic_pda),
+        "Invalid AccessPass PDA"
     );
+
+    // For allow_multiple_ip passes, the stored client_ip is 0.0.0.0 regardless of the connecting IP
+    if !accesspass.allow_multiple_ip() {
+        assert!(
+            accesspass.client_ip == value.client_ip,
+            "AccessPass client_ip does not match"
+        );
+    }
     assert!(
         accesspass.user_payer == value.user_payer,
         "AccessPass user_payer does not match"

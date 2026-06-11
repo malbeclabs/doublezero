@@ -461,6 +461,9 @@ func (n *NetlinkManager) reconcilerTeardown() {
 	}
 	// Clear cached tunnel src so a fresh lookup is done on next enable.
 	n.tunnelSrcCache = make(map[string]net.IP)
+	metricConnectionInfo.Reset()
+	metricConnectionRttNanoseconds.Reset()
+	metricConnectionLossPercentage.Reset()
 }
 
 func (n *NetlinkManager) reconcile(ctx context.Context) {
@@ -533,8 +536,10 @@ func (n *NetlinkManager) reconcile(ctx context.Context) {
 	metricMatchedUsers.WithLabelValues(serviceMulticast).Set(float64(len(wantMulticast)))
 
 	// Reconcile unicast and multicast services
-	n.reconcileService(wantUnicast, n.HasUnicastService(), serviceUnicast, api.UserTypeIBRL, devicesByPK, mcastGroupsByPK, allPrefixes, data.Config)
-	n.reconcileService(wantMulticast, n.HasMulticastService(), serviceMulticast, api.UserTypeMulticast, devicesByPK, mcastGroupsByPK, allPrefixes, data.Config)
+	n.reconcileService(wantUnicast, n.HasUnicastService(), serviceUnicast, api.UserTypeIBRL, devicesByPK, mcastGroupsByPK, allPrefixes, *data.GlobalConfig)
+	n.reconcileService(wantMulticast, n.HasMulticastService(), serviceMulticast, api.UserTypeMulticast, devicesByPK, mcastGroupsByPK, allPrefixes, *data.GlobalConfig)
+
+	n.updateConnectionInfoMetric()
 }
 
 func (n *NetlinkManager) reconcileService(
@@ -545,7 +550,7 @@ func (n *NetlinkManager) reconcileService(
 	devicesByPK map[[32]byte]serviceability.Device,
 	mcastGroupsByPK map[[32]byte]serviceability.MulticastGroup,
 	allPrefixes []*net.IPNet,
-	cfg serviceability.Config,
+	cfg serviceability.GlobalConfig,
 ) {
 	if len(wantUsers) > 0 {
 		u := wantUsers[0]
@@ -639,7 +644,7 @@ func (n *NetlinkManager) buildProvisionRequest(
 	devicesByPK map[[32]byte]serviceability.Device,
 	mcastGroupsByPK map[[32]byte]serviceability.MulticastGroup,
 	allPrefixes []*net.IPNet,
-	cfg serviceability.Config,
+	cfg serviceability.GlobalConfig,
 ) (api.ProvisionRequest, error) {
 	// Resolve device
 	devPK := [32]byte(u.DevicePubKey)
@@ -705,8 +710,8 @@ func (n *NetlinkManager) buildProvisionRequest(
 		TunnelNet:          tunnelNet,
 		DoubleZeroIP:       net.IP(u.DzIp[:]),
 		DoubleZeroPrefixes: allPrefixes,
-		BgpLocalAsn:        cfg.Local_asn,
-		BgpRemoteAsn:       cfg.Remote_asn,
+		BgpLocalAsn:        cfg.LocalASN,
+		BgpRemoteAsn:       cfg.RemoteASN,
 		MulticastPubGroups: pubGroups,
 		MulticastSubGroups: subGroups,
 	}, nil

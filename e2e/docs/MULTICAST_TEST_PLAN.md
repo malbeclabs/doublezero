@@ -61,7 +61,7 @@ dev/dzctl start -v
 **Verify:** Core containers running
 ```bash
 docker ps --format "table {{.Names}}\t{{.Status}}" | grep dz-local
-# Should show: ledger, manager, funder, controller, activator, influxdb, prometheus, device-health-oracle
+# Should show: ledger, manager, funder, controller, influxdb, prometheus, device-health-oracle
 ```
 
 ### 1.4 Add Devices and Clients
@@ -103,7 +103,7 @@ docker exec dz-local-manager doublezero access-pass set --accesspass-type prepai
 
 ### 2.2 Create WAN Link
 ```bash
-docker exec dz-local-manager doublezero link create wan --code dz1:dz2 --contributor co01 --side-a dz1 --side-a-interface Ethernet2 --side-z dz2 --side-z-interface Ethernet2 --bandwidth 10Gbps --mtu 2048 --delay-ms 40 --jitter-ms 3
+docker exec dz-local-manager doublezero link create wan --code dz1:dz2 --contributor co01 --side-a dz1 --side-a-interface Ethernet2 --side-z dz2 --side-z-interface Ethernet2 --bandwidth 10Gbps --delay-ms 40 --jitter-ms 3
 ```
 
 **Verify:** Returns signature
@@ -486,7 +486,7 @@ echo "=== Phase 2: Onchain Setup ==="
 docker exec dz-local-manager doublezero access-pass set --accesspass-type prepaid --client-ip 9.169.90.100 --user-payer $CLIENT1
 docker exec dz-local-manager doublezero access-pass set --accesspass-type prepaid --client-ip 9.169.90.110 --user-payer $CLIENT2
 
-docker exec dz-local-manager doublezero link create wan --code dz1:dz2 --contributor co01 --side-a dz1 --side-a-interface Ethernet2 --side-z dz2 --side-z-interface Ethernet2 --bandwidth 10Gbps --mtu 2048 --delay-ms 40 --jitter-ms 3
+docker exec dz-local-manager doublezero link create wan --code dz1:dz2 --contributor co01 --side-a dz1 --side-a-interface Ethernet2 --side-z dz2 --side-z-interface Ethernet2 --bandwidth 10Gbps --delay-ms 40 --jitter-ms 3
 
 docker exec dz-local-manager doublezero multicast group create --code mcast-a --max-bandwidth 1Gbps --owner me
 docker exec dz-local-manager doublezero multicast group create --code mcast-b --max-bandwidth 1Gbps --owner me

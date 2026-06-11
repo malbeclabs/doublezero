@@ -18,14 +18,9 @@ use doublezero_serviceability::{
     processors::{
         contributor::create::ContributorCreateArgs,
         device::{
-            activate::DeviceActivateArgs,
-            closeaccount::DeviceCloseAccountArgs,
             create::DeviceCreateArgs,
             delete::DeviceDeleteArgs,
-            interface::{
-                activate::DeviceInterfaceActivateArgs, create::DeviceInterfaceCreateArgs,
-                delete::DeviceInterfaceDeleteArgs, remove::DeviceInterfaceRemoveArgs,
-            },
+            interface::{create::DeviceInterfaceCreateArgs, delete::DeviceInterfaceDeleteArgs},
             update::DeviceUpdateArgs,
         },
         exchange::create::ExchangeCreateArgs,
@@ -39,7 +34,7 @@ use doublezero_serviceability::{
     state::{
         accounttype::AccountType,
         device::{DeviceDesiredStatus, DeviceStatus, DeviceType},
-        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
+        interface::{InterfaceCYOA, InterfaceDIA, RoutingMode},
     },
 };
 use solana_program_test::*;
@@ -918,9 +913,13 @@ async fn setup_device_for_dz_prefix_tests(
     )
     .await;
 
-    // Create device with dz_prefixes
+    // Create device with dz_prefixes (atomic create+activate; allocates TunnelIds + DzPrefixBlock)
     let globalstate = get_globalstate(banks_client, globalstate_pubkey).await;
     let (device_pubkey, _) = get_device_pda(&program_id, globalstate.account_index + 1);
+    let (tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
 
     execute_transaction(
         banks_client,
@@ -934,7 +933,7 @@ async fn setup_device_for_dz_prefix_tests(
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
-            resource_count: 0,
+            resource_count: 2,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -942,6 +941,9 @@ async fn setup_device_for_dz_prefix_tests(
             AccountMeta::new(location_pubkey, false),
             AccountMeta::new(exchange_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
         ],
         payer,
     )
@@ -962,6 +964,7 @@ async fn test_create_dz_prefix_block_resource() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
+    // The DzPrefixBlock resource is created atomically by CreateDevice (onchain allocation).
     let (device_pubkey, _, _, _) = setup_device_for_dz_prefix_tests(
         &mut banks_client,
         &payer,
@@ -971,29 +974,9 @@ async fn test_create_dz_prefix_block_resource() {
     )
     .await;
 
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
     // Get PDA for DzPrefixBlock with device pubkey and index 0
     let (resource_pubkey, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
-
-    // Create DzPrefixBlock resource
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_type: ResourceType::DzPrefixBlock(device_pubkey, 0),
-        }),
-        vec![
-            AccountMeta::new(resource_pubkey, false),
-            AccountMeta::new(device_pubkey, false), // associated_account IS the device for DzPrefixBlock
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
 
     let resource = get_resource_extension_data(&mut banks_client, resource_pubkey)
         .await
@@ -1011,46 +994,6 @@ async fn test_create_dz_prefix_block_resource() {
     );
 
     println!("[PASS] test_create_dz_prefix_block_resource");
-}
-
-async fn activate_device(
-    banks_client: &mut BanksClient,
-    payer: &solana_sdk::signature::Keypair,
-    program_id: Pubkey,
-    globalstate_pubkey: Pubkey,
-    globalconfig_pubkey: Pubkey,
-    device_pubkey: Pubkey,
-    resource_count: usize,
-) {
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let mut resource_accounts = vec![];
-    for idx in 0..resource_count {
-        let resource_type = match idx {
-            0 => ResourceType::TunnelIds(device_pubkey, 0),
-            _ => ResourceType::DzPrefixBlock(device_pubkey, idx - 1),
-        };
-        let (pda, _, _) = get_resource_extension_pda(&program_id, resource_type);
-        resource_accounts.push(AccountMeta::new(pda, false));
-    }
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDevice(DeviceActivateArgs { resource_count }),
-        [
-            vec![
-                AccountMeta::new(device_pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-                AccountMeta::new(globalconfig_pubkey, false),
-            ],
-            resource_accounts,
-        ]
-        .concat(),
-        payer,
-    )
-    .await;
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1118,7 +1061,7 @@ async fn close_device(
     payer: &solana_sdk::signature::Keypair,
     program_id: Pubkey,
     globalstate_pubkey: Pubkey,
-    globalconfig_pubkey: Pubkey,
+    _globalconfig_pubkey: Pubkey,
     device_pubkey: Pubkey,
     owner_pubkey: Pubkey,
     location_pubkey: Pubkey,
@@ -1146,41 +1089,26 @@ async fn close_device(
     )
     .await;
 
+    // Atomic DeleteDevice: closes device + resource accounts in one call.
+    let resource_count = (resource_pdas.len() / 2) as u8;
     execute_transaction(
         banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs::default()),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CloseAccountDevice(DeviceCloseAccountArgs {
-            resource_count: resource_pdas.len() / 2,
-        }),
+        DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs { resource_count }),
         [
             vec![
                 AccountMeta::new(device_pubkey, false),
-                AccountMeta::new(owner_pubkey, false),
                 AccountMeta::new(contributor_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
                 AccountMeta::new(location_pubkey, false),
                 AccountMeta::new(exchange_pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-                AccountMeta::new(globalconfig_pubkey, false),
             ],
             resource_pdas
                 .iter()
                 .map(|pk| AccountMeta::new(*pk, false))
                 .collect::<Vec<_>>(),
+            vec![AccountMeta::new(owner_pubkey, false)],
         ]
         .concat(),
         payer,
@@ -1209,24 +1137,7 @@ async fn test_allocate_dz_prefix_block_with_device_pubkey() {
     let (resource_pubkey, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
 
-    // Create resource
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateResource(ResourceCreateArgs {
-            resource_type: ResourceType::DzPrefixBlock(device_pubkey, 0),
-        }),
-        vec![
-            AccountMeta::new(resource_pubkey, false),
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
+    // The DzPrefixBlock resource is already created by CreateDevice (onchain allocation).
     // Allocate from DzPrefixBlock
     execute_transaction(
         &mut banks_client,
@@ -1323,30 +1234,9 @@ async fn test_device_create_update_close_manages_resources() {
     let (pda_2, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 1));
 
-    assert!(
-        get_resource_extension_data(&mut banks_client, pda_0)
-            .await
-            .is_none(),
-        "Resource extension (TunnelIds) should not exist before activation"
-    );
-    assert!(
-        get_resource_extension_data(&mut banks_client, pda_1)
-            .await
-            .is_none(),
-        "Resource extension (DzPrefixBlock) should not exist before activation"
-    );
-
-    activate_device(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        device_pubkey,
-        2, // resource_count
-    )
-    .await;
-
+    // After CreateDevice with onchain allocation, the TunnelIds + DzPrefixBlock 0 resources
+    // already exist (allocated atomically). DzPrefixBlock 1 doesn't exist yet because the
+    // device was created with a single /24 dz_prefix.
     let _ = get_resource_extension_data(&mut banks_client, pda_0)
         .await
         .expect("Resource extension (TunnelIds) should exist");
@@ -1443,6 +1333,7 @@ async fn test_device_create_update_close_manages_resources() {
 
 /// Helper to create a loopback interface on a device
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 async fn create_loopback_interface(
     banks_client: &mut BanksClient,
     payer: &solana_sdk::signature::Keypair,
@@ -1465,56 +1356,28 @@ async fn create_loopback_interface(
             vlan_id: 0,
             ip_net: None,
             user_tunnel_endpoint: false,
-            use_onchain_allocation: false,
+            use_onchain_allocation: true,
+
+            topology_count: 0,
             interface_cyoa: InterfaceCYOA::None,
             interface_dia: InterfaceDIA::None,
             bandwidth: 0,
             cir: 0,
-            mtu: 1500,
+            mtu: 9000,
             routing_mode: RoutingMode::Static,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-}
-
-/// Helper to activate a loopback interface with on-chain allocation
-#[allow(clippy::too_many_arguments)]
-async fn activate_loopback_interface_onchain(
-    banks_client: &mut BanksClient,
-    payer: &solana_sdk::signature::Keypair,
-    program_id: Pubkey,
-    globalstate_pubkey: Pubkey,
-    device_pubkey: Pubkey,
-    name: &str,
-) {
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (segment_routing_ids_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateDeviceInterface(DeviceInterfaceActivateArgs {
-            name: name.to_string(),
-            ip_net: Default::default(), // Ignored for on-chain allocation
-            node_segment_idx: 0,        // Ignored for on-chain allocation
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-            // Providing these two accounts enables on-chain allocation
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds).0,
+                false,
+            ),
         ],
         payer,
     )
@@ -1523,6 +1386,7 @@ async fn activate_loopback_interface_onchain(
 
 /// Helper to delete (mark for deletion) a device interface
 #[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
 async fn delete_device_interface(
     banks_client: &mut BanksClient,
     payer: &solana_sdk::signature::Keypair,
@@ -1540,421 +1404,24 @@ async fn delete_device_interface(
         program_id,
         DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
             name: name.to_string(),
-            use_onchain_deallocation: false,
+            use_onchain_deallocation: true,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(contributor_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds).0,
+                false,
+            ),
         ],
         payer,
     )
     .await;
-}
-
-/// Helper to remove a device interface with on-chain deallocation
-#[allow(clippy::too_many_arguments)]
-async fn remove_loopback_interface_onchain(
-    banks_client: &mut BanksClient,
-    payer: &solana_sdk::signature::Keypair,
-    program_id: Pubkey,
-    globalstate_pubkey: Pubkey,
-    device_pubkey: Pubkey,
-    name: &str,
-) {
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (segment_routing_ids_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::RemoveDeviceInterface(DeviceInterfaceRemoveArgs {
-            name: name.to_string(),
-        }),
-        vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-            // Providing these two accounts enables on-chain deallocation
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
-        ],
-        payer,
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn test_loopback_interface_onchain_allocation_vpnv4() {
-    println!("[TEST] test_loopback_interface_onchain_allocation_vpnv4");
-
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-
-    // Setup device
-    let (device_pubkey, _, _, contributor_pubkey) = setup_device_for_dz_prefix_tests(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-    )
-    .await;
-
-    // Activate device first (required before activating interfaces)
-    activate_device(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        device_pubkey,
-        2, // resource_count
-    )
-    .await;
-
-    // Create a Vpnv4 loopback interface
-    create_loopback_interface(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        contributor_pubkey,
-        "Loopback0",
-        LoopbackType::Vpnv4,
-    )
-    .await;
-
-    // Verify interface was created with Pending status
-    let device = get_device(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device should exist");
-    let (_, iface) = device
-        .find_interface("Loopback0")
-        .expect("Interface should exist");
-    assert_eq!(iface.status, InterfaceStatus::Pending);
-    assert_eq!(
-        iface.ip_net,
-        doublezero_program_common::types::NetworkV4::default()
-    );
-    assert_eq!(iface.node_segment_idx, 0);
-
-    // Get resource state before activation
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (segment_routing_ids_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
-
-    let resource_before = get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
-        .await
-        .expect("DeviceTunnelBlock resource should exist");
-    let allocated_ips_before = resource_before.iter_allocated().len();
-
-    let sr_resource_before =
-        get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
-            .await
-            .expect("SegmentRoutingIds resource should exist");
-    let allocated_sids_before = sr_resource_before.iter_allocated().len();
-
-    // Activate interface with on-chain allocation
-    activate_loopback_interface_onchain(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        "Loopback0",
-    )
-    .await;
-
-    // Verify interface has allocated IP and segment ID
-    let device = get_device(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device should exist");
-    let (_, iface) = device
-        .find_interface("Loopback0")
-        .expect("Interface should exist");
-    assert_eq!(iface.status, InterfaceStatus::Activated);
-    assert_ne!(
-        iface.ip_net,
-        doublezero_program_common::types::NetworkV4::default(),
-        "ip_net should be allocated"
-    );
-    assert_ne!(
-        iface.node_segment_idx, 0,
-        "node_segment_idx should be allocated for Vpnv4"
-    );
-
-    // Verify resources were allocated
-    let resource_after = get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
-        .await
-        .expect("DeviceTunnelBlock resource should exist");
-    assert_eq!(
-        resource_after.iter_allocated().len(),
-        allocated_ips_before + 1,
-        "One IP should be allocated"
-    );
-
-    let sr_resource_after = get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
-        .await
-        .expect("SegmentRoutingIds resource should exist");
-    assert_eq!(
-        sr_resource_after.iter_allocated().len(),
-        allocated_sids_before + 1,
-        "One segment ID should be allocated"
-    );
-
-    println!("[PASS] test_loopback_interface_onchain_allocation_vpnv4");
-}
-
-#[tokio::test]
-async fn test_loopback_interface_onchain_allocation_ipv4() {
-    println!("[TEST] test_loopback_interface_onchain_allocation_ipv4");
-
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-
-    // Setup device
-    let (device_pubkey, _, _, contributor_pubkey) = setup_device_for_dz_prefix_tests(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-    )
-    .await;
-
-    // Activate device first
-    activate_device(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        device_pubkey,
-        2,
-    )
-    .await;
-
-    // Create an Ipv4 loopback interface (should only allocate IP, not segment ID)
-    create_loopback_interface(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        contributor_pubkey,
-        "Loopback1",
-        LoopbackType::Ipv4,
-    )
-    .await;
-
-    // Get resource state before activation
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (segment_routing_ids_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
-
-    let resource_before = get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
-        .await
-        .expect("DeviceTunnelBlock resource should exist");
-    let allocated_ips_before = resource_before.iter_allocated().len();
-
-    let sr_resource_before =
-        get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
-            .await
-            .expect("SegmentRoutingIds resource should exist");
-    let allocated_sids_before = sr_resource_before.iter_allocated().len();
-
-    // Activate interface with on-chain allocation
-    activate_loopback_interface_onchain(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        "Loopback1",
-    )
-    .await;
-
-    // Verify interface has allocated IP but NOT segment ID (Ipv4 type doesn't need it)
-    let device = get_device(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device should exist");
-    let (_, iface) = device
-        .find_interface("Loopback1")
-        .expect("Interface should exist");
-    assert_eq!(iface.status, InterfaceStatus::Activated);
-    assert_ne!(
-        iface.ip_net,
-        doublezero_program_common::types::NetworkV4::default(),
-        "ip_net should be allocated"
-    );
-    assert_eq!(
-        iface.node_segment_idx, 0,
-        "node_segment_idx should NOT be allocated for Ipv4 type"
-    );
-
-    // Verify only IP was allocated, not segment ID
-    let resource_after = get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
-        .await
-        .expect("DeviceTunnelBlock resource should exist");
-    assert_eq!(
-        resource_after.iter_allocated().len(),
-        allocated_ips_before + 1,
-        "One IP should be allocated"
-    );
-
-    let sr_resource_after = get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
-        .await
-        .expect("SegmentRoutingIds resource should exist");
-    assert_eq!(
-        sr_resource_after.iter_allocated().len(),
-        allocated_sids_before,
-        "No segment ID should be allocated for Ipv4 type"
-    );
-
-    println!("[PASS] test_loopback_interface_onchain_allocation_ipv4");
-}
-
-#[tokio::test]
-async fn test_loopback_interface_onchain_deallocation() {
-    println!("[TEST] test_loopback_interface_onchain_deallocation");
-
-    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
-        setup_program_with_globalconfig().await;
-
-    // Setup device
-    let (device_pubkey, _, _, contributor_pubkey) = setup_device_for_dz_prefix_tests(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-    )
-    .await;
-
-    // Activate device first
-    activate_device(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        device_pubkey,
-        2,
-    )
-    .await;
-
-    // Create and activate a Vpnv4 loopback interface
-    create_loopback_interface(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        contributor_pubkey,
-        "Loopback0",
-        LoopbackType::Vpnv4,
-    )
-    .await;
-
-    activate_loopback_interface_onchain(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        "Loopback0",
-    )
-    .await;
-
-    // Get resource state after activation
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (segment_routing_ids_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
-
-    let resource_after_activate =
-        get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
-            .await
-            .expect("DeviceTunnelBlock resource should exist");
-    let allocated_ips_after_activate = resource_after_activate.iter_allocated().len();
-
-    let sr_resource_after_activate =
-        get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
-            .await
-            .expect("SegmentRoutingIds resource should exist");
-    let allocated_sids_after_activate = sr_resource_after_activate.iter_allocated().len();
-
-    // Mark interface for deletion
-    delete_device_interface(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        contributor_pubkey,
-        "Loopback0",
-    )
-    .await;
-
-    // Verify interface is in Deleting status
-    let device = get_device(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device should exist");
-    let (_, iface) = device
-        .find_interface("Loopback0")
-        .expect("Interface should exist");
-    assert_eq!(iface.status, InterfaceStatus::Deleting);
-
-    // Remove interface with on-chain deallocation
-    remove_loopback_interface_onchain(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        device_pubkey,
-        "Loopback0",
-    )
-    .await;
-
-    // Verify interface was removed
-    let device = get_device(&mut banks_client, device_pubkey)
-        .await
-        .expect("Device should exist");
-    assert!(
-        device.find_interface("Loopback0").is_err(),
-        "Interface should be removed"
-    );
-
-    // Verify resources were deallocated
-    let resource_after_remove =
-        get_resource_extension_data(&mut banks_client, device_tunnel_block_pda)
-            .await
-            .expect("DeviceTunnelBlock resource should exist");
-    assert_eq!(
-        resource_after_remove.iter_allocated().len(),
-        allocated_ips_after_activate - 1,
-        "IP should be deallocated"
-    );
-
-    let sr_resource_after_remove =
-        get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
-            .await
-            .expect("SegmentRoutingIds resource should exist");
-    assert_eq!(
-        sr_resource_after_remove.iter_allocated().len(),
-        allocated_sids_after_activate - 1,
-        "Segment ID should be deallocated"
-    );
-
-    println!("[PASS] test_loopback_interface_onchain_deallocation");
 }
 
 // ============================================================================
@@ -1968,25 +1435,14 @@ async fn test_dz_prefix_block_reserves_first_ip_on_creation() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    // Setup device
+    // Setup device — onchain allocation in CreateDevice atomically creates the DzPrefixBlock
+    // resource and reserves the first IP for the device tunnel endpoint.
     let (device_pubkey, _, _, _) = setup_device_for_dz_prefix_tests(
         &mut banks_client,
         &payer,
         program_id,
         globalstate_pubkey,
         globalconfig_pubkey,
-    )
-    .await;
-
-    // Activate device - this creates the DzPrefixBlock resource
-    activate_device(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        device_pubkey,
-        2, // resource_count: TunnelIds + 1 DzPrefixBlock
     )
     .await;
 
@@ -2022,25 +1478,14 @@ async fn test_user_allocation_from_dz_prefix_block_skips_first_ip() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    // Setup device
+    // Setup device — onchain allocation in CreateDevice atomically creates the DzPrefixBlock
+    // resource and reserves the first IP for the device tunnel endpoint.
     let (device_pubkey, _, _, _) = setup_device_for_dz_prefix_tests(
         &mut banks_client,
         &payer,
         program_id,
         globalstate_pubkey,
         globalconfig_pubkey,
-    )
-    .await;
-
-    // Activate device - this creates DzPrefixBlock with first IP reserved
-    activate_device(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        device_pubkey,
-        2,
     )
     .await;
 
@@ -2097,24 +1542,13 @@ async fn test_device_update_dz_prefixes_shrink_closes_orphaned_blocks() {
     let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
         setup_program_with_globalconfig().await;
 
-    // Step 1: Create a device with 1 prefix and activate it.
+    // Step 1: Create a device with 1 prefix (atomic create+activate via onchain allocation).
     let (device_pubkey, location_pubkey, _, contributor_pubkey) = setup_device_for_dz_prefix_tests(
         &mut banks_client,
         &payer,
         program_id,
         globalstate_pubkey,
         globalconfig_pubkey,
-    )
-    .await;
-
-    activate_device(
-        &mut banks_client,
-        &payer,
-        program_id,
-        globalstate_pubkey,
-        globalconfig_pubkey,
-        device_pubkey,
-        2, // TunnelIds + 1 DzPrefixBlock
     )
     .await;
 
@@ -2129,7 +1563,7 @@ async fn test_device_update_dz_prefixes_shrink_closes_orphaned_blocks() {
         get_resource_extension_data(&mut banks_client, pda_block0)
             .await
             .is_some(),
-        "DzPrefixBlock[0] should exist after activation"
+        "DzPrefixBlock[0] should exist after CreateDevice"
     );
     assert!(
         get_resource_extension_data(&mut banks_client, pda_block1)

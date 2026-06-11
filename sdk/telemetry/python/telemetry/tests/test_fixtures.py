@@ -51,6 +51,8 @@ class TestFixtureDeviceLatencySamples:
                 "SamplingIntervalMicroseconds": d.sampling_interval_microseconds,
                 "StartTimestampMicroseconds": d.start_timestamp_microseconds,
                 "NextSampleIndex": d.next_sample_index,
+                "AgentVersion": d.agent_version,
+                "AgentCommit": d.agent_commit,
                 "SamplesCount": len(d.samples),
             },
         )

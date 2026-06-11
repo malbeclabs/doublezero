@@ -1,9 +1,10 @@
 Generate a PR description for the current branch.
 
 Analyze the **net changes** between the current branch and origin/main by examining:
-1. First, run `git fetch origin` to ensure remote tracking is up to date
-2. The diff summary: `git diff origin/main...HEAD --stat`
-3. The actual changes: `git diff origin/main...HEAD` (focus on key changes, not every line)
+1. Run `scripts/diff-breakdown.sh` to get the automated categorization (see its JSON output for category tallies, unclassified files, and a pre-formatted table)
+2. The actual changes: `git diff origin/main...HEAD` (focus on key changes, not every line)
+
+For each file in the script's `unclassified_files`, read the diff and classify as Scaffolding (wiring, metrics, thin CLI wrappers, registrations, interface-only) or Core logic (business logic, algorithms, state management).
 
 IMPORTANT: Focus on what the branch adds/changes compared to origin/main as a whole. Do NOT describe individual commits or intermediate work. The reviewer only sees the final diff - they don't care about bugs introduced and fixed within the same branch.
 
@@ -50,9 +51,9 @@ PR Title guidelines:
 Guidelines:
 - Summary should describe the net result: what does this branch add or change compared to origin/main?
 - Ignore commit history - only describe what the final diff shows
-- Include a Diff Breakdown table categorizing changes using `git diff origin/main...HEAD --numstat`. Categorize files as: Core logic, Scaffolding (metrics, thin CLI wrappers, subcommand registration, interface-only files), Tests, Fixtures, Config/build, Docs, Generated. Omit categories with zero changes. Add a one-line summary below the table characterizing the balance of changes.
+- Include a Diff Breakdown table categorizing changes (use the script output as a base, replacing Unclassified with Scaffolding and Core logic rows). Omit categories with zero changes. Add a one-line summary below the table characterizing the balance of changes.
 - Include a "Key files" list after the diff breakdown showing the most important core logic files (up to 8), sorted by lines changed descending. Each entry should have a brief description of what changed. This helps reviewers know where to focus.
-- Link each key file to its diff in the PR. Use `gh pr view --json number,url` to get the PR URL, then link to `<PR_URL>/files#diff-<SHA256_OF_FILE_PATH>` where the hash is `echo -n "path/to/file" | shasum -a 256`. If no PR exists yet, use plain backtick paths instead.
+- Link each key file to its diff in the PR using the `pr_url` and `diff_hash` fields from the script output: `<pr_url>/files#diff-<diff_hash>`. If no PR exists yet (`pr_url` is empty), use plain backtick paths instead.
 - Testing Verification should describe how the changes were tested (e.g., unit tests added/passing, manual testing performed, build verified)
 - Focus on the "what" and "why", not the "how"
 - Group related changes together

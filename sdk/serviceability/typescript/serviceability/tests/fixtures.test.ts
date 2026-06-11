@@ -145,6 +145,23 @@ describe("Exchange fixture", () => {
   });
 });
 
+// Matches Rust CURRENT_INTERFACE_SCHEMA_VERSION; private in state.ts so re-stated here.
+const CURRENT_INTERFACE_VERSION = 4;
+
+// Recompute on-disk byte size for a Interface element so tests don't bake
+// magic body byte counts. Layout matches Rust Interface::serialize_body
+// (interface.rs:641-658): u16 size + u8 version (3-byte prefix) +
+// u8 status + (u32+len) name + 4*u8 + u64*2 + u16 + u8 + u16 + 5-byte ip_net +
+// u16 + u8 + (u32+34*N) flex_algo_node_segments.
+function expectedInterfaceSize(ni: {
+  name: string;
+  flexAlgoNodeSegments?: Array<unknown>;
+}): number {
+  const flexLen = ni.flexAlgoNodeSegments?.length ?? 0;
+  const body = 1 + (4 + ni.name.length) + 1 + 1 + 1 + 1 + 8 + 8 + 2 + 1 + 2 + 5 + 2 + 1 + (4 + 34 * flexLen);
+  return 3 + body;
+}
+
 describe("Device fixture", () => {
   test("deserialize", () => {
     const [data, meta] = loadFixture("device");
@@ -190,23 +207,24 @@ describe("Device fixture", () => {
     expect(dev.dzPrefixes).toHaveLength(1);
     expect(formatNetworkV4(dev.dzPrefixes[0])).toBe("10.10.0.0/24");
 
-    // interfaces
-    expect(dev.interfaces).toHaveLength(2);
-
-    // Interface 0 (V1 format, version byte 0)
-    const iface0 = dev.interfaces[0];
-    expect(iface0.version).toBe(0);
+    // Legacy slot is the V2 projection of interfaces (always V2 per #3653);
+    // both entries carry version 1 and no FlexAlgoNodeSegments.
+    expect(dev.deprecatedInterfaces).toHaveLength(2);
+    const iface0 = dev.deprecatedInterfaces[0];
+    expect(iface0.version).toBe(1);
     expect(iface0.status).toBe(3);
     expect(iface0.name).toBe("Loopback0");
     expect(iface0.interfaceType).toBe(1);
+    expect(iface0.interfaceCyoa).toBe(0);
+    expect(iface0.interfaceDia).toBe(0);
     expect(iface0.loopbackType).toBe(1);
-    expect(iface0.vlanId).toBe(0);
+    expect(iface0.mtu).toBe(9000);
+    expect(iface0.flexAlgoNodeSegments).toEqual([]);
     expect(formatNetworkV4(iface0.ipNet)).toBe("10.0.0.1/32");
     expect(iface0.nodeSegmentIdx).toBe(100);
     expect(iface0.userTunnelEndpoint).toBe(false);
 
-    // Interface 1 (V2 format, version byte 1)
-    const iface1 = dev.interfaces[1];
+    const iface1 = dev.deprecatedInterfaces[1];
     expect(iface1.version).toBe(1);
     expect(iface1.status).toBe(3);
     expect(iface1.name).toBe("Ethernet1");
@@ -222,6 +240,79 @@ describe("Device fixture", () => {
     expect(formatNetworkV4(iface1.ipNet)).toBe("172.16.0.1/30");
     expect(iface1.nodeSegmentIdx).toBe(200);
     expect(iface1.userTunnelEndpoint).toBe(true);
+
+    // Trailing interfaces vec carries the full V4 Interface bodies.
+    expect(dev.interfaces).toHaveLength(2);
+    const ni0 = dev.interfaces[0];
+    expect(ni0.version).toBe(CURRENT_INTERFACE_VERSION);
+    expect(ni0.name).toBe("Loopback0");
+    expect(ni0.loopbackType).toBe(1); // Vpnv4
+    expect(ni0.flexAlgoNodeSegments).toHaveLength(1);
+    expect(ni0.flexAlgoNodeSegments![0].nodeSegmentIdx).toBe(300);
+    expect(ni0.size).toBe(expectedInterfaceSize(ni0));
+
+    const ni1 = dev.interfaces[1];
+    expect(ni1.version).toBe(CURRENT_INTERFACE_VERSION);
+    expect(ni1.name).toBe("Ethernet1");
+    expect(ni1.userTunnelEndpoint).toBe(true);
+    expect(ni1.flexAlgoNodeSegments).toEqual([]);
+    expect(ni1.size).toBe(expectedInterfaceSize(ni1));
+  });
+});
+
+// Pre-#3667 on-disk format: legacy `interfaces` vec only, no trailing
+// `interfaces`. SDK rebuilds interfaces from the legacy vec, stamping
+// each entry with version=CURRENT_INTERFACE_VERSION and size=0.
+describe("Device legacy fixture", () => {
+  test("deserialize", () => {
+    const [data, meta] = loadFixture("device_legacy");
+    const dev = deserializeDevice(data);
+    expect(meta.name).toBe("DeviceLegacy");
+
+    // Legacy slot mirrors the original V1+V2 hand-serialized shape.
+    expect(dev.deprecatedInterfaces).toHaveLength(2);
+    expect(dev.deprecatedInterfaces[0].version).toBe(0); // V1
+    expect(dev.deprecatedInterfaces[0].name).toBe("Loopback0");
+    expect(dev.deprecatedInterfaces[1].version).toBe(1); // V2
+    expect(dev.deprecatedInterfaces[1].name).toBe("Ethernet1");
+
+    // Rebuilt interfaces: same field values as the legacy entries, but
+    // stamped with the current schema version and zero on-disk size.
+    expect(dev.interfaces).toHaveLength(2);
+    for (const ni of dev.interfaces) {
+      expect(ni.version).toBe(CURRENT_INTERFACE_VERSION);
+      expect(ni.size).toBe(0);
+      expect(ni.flexAlgoNodeSegments).toEqual([]);
+    }
+    expect(dev.interfaces[0].name).toBe("Loopback0");
+    expect(dev.interfaces[0].loopbackType).toBe(1); // Vpnv4
+    expect(dev.interfaces[1].name).toBe("Ethernet1");
+    expect(dev.interfaces[1].userTunnelEndpoint).toBe(true);
+  });
+});
+
+// Same on-disk shape as device.bin, but the last trailing-vec element is
+// doctored with version=5 and 8 trailing junk bytes. SDK reads the known body
+// fields then advances to start+size, skipping the junk.
+describe("Device future-version fixture", () => {
+  test("deserialize", () => {
+    const [data, meta] = loadFixture("device_future_version");
+    const dev = deserializeDevice(data);
+    expect(meta.name).toBe("DeviceFutureVersion");
+
+    expect(dev.interfaces).toHaveLength(2);
+    const ni0 = dev.interfaces[0];
+    expect(ni0.version).toBe(CURRENT_INTERFACE_VERSION);
+    expect(ni0.name).toBe("Loopback0");
+    expect(ni0.flexAlgoNodeSegments).toHaveLength(1);
+
+    // Doctored element: future version stamp + 8 trailing junk bytes the reader
+    // skips via seek(start+size).
+    const ni1 = dev.interfaces[1];
+    expect(ni1.version).toBe(5);
+    expect(ni1.size).toBe(expectedInterfaceSize(ni1) + 8);
+    expect(ni1.name).toBe("Ethernet1");
+    expect(ni1.userTunnelEndpoint).toBe(true);
   });
 });
 
@@ -263,7 +354,24 @@ describe("User fixture", () => {
       TunnelId: u.tunnelId,
       Status: u.status,
       ValidatorPubkey: u.validatorPubKey,
+      TunnelFlags: u.tunnelFlags,
+      BgpStatus: u.bgpStatus,
+      LastBgpUpAt: u.lastBgpUpAt,
+      LastBgpReportedAt: u.lastBgpReportedAt,
+      BgpRttNs: u.bgpRttNs,
     });
+  });
+
+  test("backward compat: old layout yields zero for new fields", () => {
+    const [data] = loadFixture("user");
+    // Remove bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
+    // + bgp_rtt_ns (8) = 25 bytes
+    const truncated = data.slice(0, data.length - 25);
+    const u = deserializeUser(truncated);
+    expect(u.bgpStatus).toBe(0);
+    expect(u.lastBgpUpAt).toBe(0n);
+    expect(u.lastBgpReportedAt).toBe(0n);
+    expect(u.bgpRttNs).toBe(0n);
   });
 });
 
@@ -349,7 +457,15 @@ describe("AccessPass fixture", () => {
       ConnectionCount: ap.connectionCount,
       Status: ap.status,
       Flags: ap.flags,
+      UnicastUserCount: ap.unicastUserCount,
+      MaxUnicastUsers: ap.maxUnicastUsers,
+      MulticastUserCount: ap.multicastUserCount,
+      MaxMulticastUsers: ap.maxMulticastUsers,
     });
+    expect(ap.unicastUserCount).toBe(2);
+    expect(ap.maxUnicastUsers).toBe(4);
+    expect(ap.multicastUserCount).toBe(1);
+    expect(ap.maxMulticastUsers).toBe(3);
   });
 });
 
@@ -368,6 +484,10 @@ describe("AccessPassValidator fixture", () => {
       ConnectionCount: ap.connectionCount,
       Status: ap.status,
       Flags: ap.flags,
+      UnicastUserCount: ap.unicastUserCount,
+      MaxUnicastUsers: ap.maxUnicastUsers,
+      MulticastUserCount: ap.multicastUserCount,
+      MaxMulticastUsers: ap.maxMulticastUsers,
     });
 
     // Verify specific values
@@ -393,5 +513,50 @@ describe("AccessPassValidator fixture", () => {
     expect(ap.mGroupSubAllowlist[0].toBase58()).toBe(
       "C3Bs2Dzqa8C5zSinRkgDpyEVSbfQnohgmFadYytDCwRZ",
     );
+    expect(ap.maxUnicastUsers).toBe(5);
+    expect(ap.maxMulticastUsers).toBe(2);
+  });
+});
+
+describe("AccessPassEdgeSeat fixture", () => {
+  test("deserialize", () => {
+    const [data, meta] = loadFixture("access_pass_edge_seat");
+    const ap = deserializeAccessPass(data);
+    assertFields(meta.fields, {
+      AccountType: ap.accountType,
+      Owner: ap.owner,
+      BumpSeed: ap.bumpSeed,
+      AccessPassType: ap.accessPassType,
+      UserPayer: ap.userPayer,
+      ConnectionCount: ap.connectionCount,
+      Status: ap.status,
+      Flags: ap.flags,
+      UnicastUserCount: ap.unicastUserCount,
+      MaxUnicastUsers: ap.maxUnicastUsers,
+      MulticastUserCount: ap.multicastUserCount,
+      MaxMulticastUsers: ap.maxMulticastUsers,
+    });
+
+    // EdgeSeat is tag 4 and carries no payload; the seat is the user_payer.
+    expect(ap.accessPassType).toBe(4);
+    expect(ap.associatedPubkey).toBeNull();
+    expect(ap.unicastUserCount).toBe(2);
+    expect(ap.maxUnicastUsers).toBe(4);
+    expect(ap.multicastUserCount).toBe(1);
+    expect(ap.maxMulticastUsers).toBe(3);
+  });
+});
+
+describe("AccessPass legacy cap defaults", () => {
+  test("pre-migration account decodes caps to 1", () => {
+    // A pre-migration account lacks the 8 trailing cap bytes; counts default to 0 and caps to 1,
+    // matching the Rust program's TryFrom unwrap_or defaults.
+    const [data] = loadFixture("access_pass");
+    const legacy = data.slice(0, data.length - 8);
+    const ap = deserializeAccessPass(legacy);
+    expect(ap.unicastUserCount).toBe(0);
+    expect(ap.maxUnicastUsers).toBe(1);
+    expect(ap.multicastUserCount).toBe(0);
+    expect(ap.maxMulticastUsers).toBe(1);
   });
 });

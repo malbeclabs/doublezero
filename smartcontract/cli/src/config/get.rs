@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::{convert_url_to_ws, read_doublezero_config};
 use std::io::Write;
 
@@ -7,12 +8,17 @@ use std::io::Write;
 pub struct GetConfigCliCommand;
 
 impl GetConfigCliCommand {
-    pub fn execute<W: Write>(self, _client: &dyn CliCommand, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<W: Write>(
+        self,
+        _ctx: &CliContext,
+        _client: &dyn CliCommand,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (filename, config) = read_doublezero_config()?;
 
         writeln!(
             out,
-            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\nTenant: {}\n",
+            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\nGeolocation Program ID: {}\nTenant: {}\n",
             filename.display(),
             config.json_rpc_url,
             config.websocket_url.unwrap_or(format!(
@@ -23,6 +29,10 @@ impl GetConfigCliCommand {
             config.program_id.unwrap_or(format!(
                 "{} (computed)",
                 doublezero_sdk::default_program_id()
+            )),
+            config.geo_program_id.unwrap_or(format!(
+                "{} (computed)",
+                doublezero_sdk::default_geolocation_program_id()
             )),
             config.tenant.unwrap_or("(not set)".to_string())
         )?;
@@ -36,6 +46,7 @@ mod tests {
     use serial_test::serial;
     use tempfile::TempDir;
 
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{create_new_pubkey_user, write_doublezero_config, ClientConfig};
 
     use crate::tests::utils::create_test_client;
@@ -55,9 +66,10 @@ mod tests {
             create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
 
             let client = create_test_client();
+            let ctx = cli_context_default_for_tests();
 
             let mut output = Vec::new();
-            GetConfigCliCommand.execute(&client, &mut output).unwrap();
+            block_on(GetConfigCliCommand.execute(&ctx, &client, &mut output)).unwrap();
             let output_str = String::from_utf8(output).unwrap();
 
             assert!(output_str.contains("Config File:"));
@@ -65,6 +77,7 @@ mod tests {
             assert!(output_str.contains("WebSocket URL:"));
             assert!(output_str.contains("Keypair Path:"));
             assert!(output_str.contains("Program ID:"));
+            assert!(output_str.contains("Geolocation Program ID:"));
             assert!(output_str.contains("Tenant: (not set)"));
 
             let devnet_config = Environment::Devnet.config().unwrap();
@@ -86,9 +99,10 @@ mod tests {
             create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
 
             let client = create_test_client();
+            let ctx = cli_context_default_for_tests();
 
             let mut output = Vec::new();
-            GetConfigCliCommand.execute(&client, &mut output).unwrap();
+            block_on(GetConfigCliCommand.execute(&ctx, &client, &mut output)).unwrap();
             let output_str = String::from_utf8(output).unwrap();
             assert!(output_str.contains("Tenant: my-tenant"));
         });

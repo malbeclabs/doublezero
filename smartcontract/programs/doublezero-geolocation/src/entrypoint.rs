@@ -9,6 +9,7 @@ use crate::{
         geolocation_user::{
             add_target::process_add_target, create::process_create_geolocation_user,
             delete::process_delete_geolocation_user, remove_target::process_remove_target,
+            set_result_destination::process_set_result_destination,
             update::process_update_geolocation_user,
             update_payment_status::process_update_payment_status,
         },
@@ -69,6 +70,9 @@ pub fn process_instruction(
         }
         GeolocationInstruction::UpdatePaymentStatus(args) => {
             process_update_payment_status(program_id, accounts, &args)?
+        }
+        GeolocationInstruction::SetResultDestination(args) => {
+            process_set_result_destination(program_id, accounts, &args)?
         }
     };
 

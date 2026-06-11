@@ -21,7 +21,7 @@ import (
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/testcontainers/testcontainers-go"
 	tcwait "github.com/testcontainers/testcontainers-go/wait"
@@ -92,7 +92,12 @@ type Ledger struct {
 	InternalIPRPCURL string
 }
 
-// dockerContainerName returns the name of the deterministic activator container based on the
+// ExternalRPCURL returns the RPC URL accessible from the host.
+func (l *Ledger) ExternalRPCURL() string {
+	return fmt.Sprintf("http://%s:%d", l.dn.ExternalHost, l.ExternalRPCPort)
+}
+
+// dockerContainerName returns the name of the deterministic ledger container based on the
 // deployID and component name.
 func (l *Ledger) dockerContainerName() string {
 	return l.dn.Spec.DeployID + "-" + l.dockerContainerHostname()

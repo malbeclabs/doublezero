@@ -20,7 +20,6 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct CreateGeolocationUserArgs {
     pub code: String,
@@ -66,6 +65,7 @@ pub fn process_create_geolocation_user(
         billing: GeolocationBillingConfig::default(),
         status: GeolocationUserStatus::Activated,
         targets: vec![],
+        result_destination: String::new(),
     };
 
     try_acc_create(

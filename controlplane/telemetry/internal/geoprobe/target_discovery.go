@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"sort"
 	"sync/atomic"
 
@@ -19,12 +20,19 @@ type GeolocationUserClient interface {
 
 // TargetUpdate contains outbound probe targets discovered from onchain data.
 type TargetUpdate struct {
-	Targets []ProbeAddress
+	Targets       []ProbeAddress
+	DeliveryAddrs map[ProbeAddress]string // measurement target → "host:port" override (empty map = all send to target)
 }
 
 // InboundKeyUpdate contains inbound allowed pubkeys discovered from onchain data.
 type InboundKeyUpdate struct {
 	Keys [][32]byte
+}
+
+// ICMPTargetUpdate contains outbound ICMP probe targets discovered from onchain data.
+type ICMPTargetUpdate struct {
+	Targets       []ProbeAddress
+	DeliveryAddrs map[ProbeAddress]string // measurement target → "host:port" override (empty map = no listener)
 }
 
 // targetDiscoveryFullRefreshEvery controls how often a full GeolocationUser scan
@@ -36,8 +44,6 @@ const targetDiscoveryFullRefreshEvery = 5
 type TargetDiscoveryConfig struct {
 	GeoProbePubkey         solana.PublicKey
 	Client                 GeolocationUserClient
-	CLITargets             []ProbeAddress
-	CLIAllowedKeys         [][32]byte
 	Logger                 *slog.Logger
 	ProbeTargetUpdateCount *atomic.Uint32 // shared counter from parent discovery
 }
@@ -49,12 +55,13 @@ type TargetDiscovery struct {
 	log                    *slog.Logger
 	geoProbePubkey         solana.PublicKey
 	client                 GeolocationUserClient
-	cliTargets             []ProbeAddress
-	cliAllowedKeys         [][32]byte
 	probeTargetUpdateCount *atomic.Uint32
 
 	cachedTargets             []ProbeAddress
+	cachedIcmpTargets         []ProbeAddress
 	cachedInboundKeys         [][32]byte
+	cachedOutboundDelivery    map[ProbeAddress]string
+	cachedIcmpDelivery        map[ProbeAddress]string
 	tickCount                 uint64
 	lastSeenTargetUpdateCount uint32
 }
@@ -74,33 +81,32 @@ func NewTargetDiscovery(cfg *TargetDiscoveryConfig) (*TargetDiscovery, error) {
 		log:                    cfg.Logger,
 		geoProbePubkey:         cfg.GeoProbePubkey,
 		client:                 cfg.Client,
-		cliTargets:             cfg.CLITargets,
-		cliAllowedKeys:         cfg.CLIAllowedKeys,
 		probeTargetUpdateCount: cfg.ProbeTargetUpdateCount,
 	}, nil
 }
 
 // Tick performs a single target discovery cycle and sends updates to the channels.
-func (d *TargetDiscovery) Tick(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate) {
-	d.discoverAndSend(ctx, targetCh, keyCh)
+func (d *TargetDiscovery) Tick(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate, icmpTargetCh chan<- ICMPTargetUpdate) {
+	d.discoverAndSend(ctx, targetCh, keyCh, icmpTargetCh)
 }
 
-func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate) {
-	targets, inboundKeys, err := d.discover(ctx)
+func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate, icmpTargetCh chan<- ICMPTargetUpdate) {
+	targets, icmpTargets, inboundKeys, outboundDelivery, icmpDelivery, err := d.discover(ctx)
 	if err != nil {
 		d.log.Warn("Target discovery tick failed", "error", err)
 		return
 	}
 
 	// nil targets means the scan was skipped (target_update_count unchanged).
-	if targets == nil && inboundKeys == nil {
+	if targets == nil && inboundKeys == nil && icmpTargets == nil {
 		return
 	}
 
-	if !probeAddressSlicesEqual(targets, d.cachedTargets) {
+	if !probeAddressSlicesEqual(targets, d.cachedTargets) || !deliveryAddrsEqual(outboundDelivery, d.cachedOutboundDelivery) {
 		d.cachedTargets = targets
+		d.cachedOutboundDelivery = outboundDelivery
 		select {
-		case targetCh <- TargetUpdate{Targets: targets}:
+		case targetCh <- TargetUpdate{Targets: targets, DeliveryAddrs: outboundDelivery}:
 		default:
 			d.log.Warn("Target update channel full, skipping update")
 		}
@@ -114,11 +120,23 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 			d.log.Warn("Inbound key update channel full, skipping update")
 		}
 	}
+
+	if !probeAddressSlicesEqual(icmpTargets, d.cachedIcmpTargets) || !deliveryAddrsEqual(icmpDelivery, d.cachedIcmpDelivery) {
+		d.cachedIcmpTargets = icmpTargets
+		d.cachedIcmpDelivery = icmpDelivery
+		select {
+		case icmpTargetCh <- ICMPTargetUpdate{Targets: icmpTargets, DeliveryAddrs: icmpDelivery}:
+		default:
+			d.log.Warn("ICMP target update channel full, skipping update")
+		}
+	}
 }
 
 // discover performs a single discovery cycle: fetch users, filter, extract targets/keys,
-// merge with CLI values. Returns nil, nil, nil when the scan is skipped.
-func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]byte, error) {
+// merge with CLI values. Returns nil, nil, nil, nil, nil, nil when the scan is skipped.
+// The returned delivery maps map measurement target → result destination for targets
+// whose user has a non-empty ResultDestination, split by target type.
+func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []ProbeAddress, [][32]byte, map[ProbeAddress]string, map[ProbeAddress]string, error) {
 	forceFullRefresh := d.tickCount%targetDiscoveryFullRefreshEvery == 0
 	d.tickCount++
 
@@ -127,21 +145,24 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]b
 		if current == d.lastSeenTargetUpdateCount && d.tickCount > 1 {
 			d.log.Debug("GeoProbe target_update_count unchanged, skipping target scan",
 				"targetUpdateCount", current)
-			return nil, nil, nil
+			return nil, nil, nil, nil, nil, nil
 		}
 		d.lastSeenTargetUpdateCount = current
 	}
 
 	users, err := d.client.GetGeolocationUsers(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to fetch GeolocationUser accounts: %w", err)
+		return nil, nil, nil, nil, nil, fmt.Errorf("failed to fetch GeolocationUser accounts: %w", err)
 	}
 
 	var probePKBytes [32]byte
 	copy(probePKBytes[:], d.geoProbePubkey[:])
 
 	var onchainTargets []ProbeAddress
+	var onchainIcmpTargets []ProbeAddress
 	var onchainKeys [][32]byte
+	outboundDelivery := make(map[ProbeAddress]string)
+	icmpDelivery := make(map[ProbeAddress]string)
 	seenKeys := make(map[[32]byte]struct{})
 
 	for i := range users {
@@ -153,6 +174,15 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]b
 		}
 		if user.PaymentStatus != geolocation.GeolocationPaymentStatusPaid {
 			continue
+		}
+
+		resultDest := user.ResultDestination
+		if resultDest != "" {
+			if _, _, err := net.SplitHostPort(resultDest); err != nil {
+				d.log.Warn("Skipping invalid result destination",
+					"user", users[i].Code, "resultDestination", resultDest, "error", err)
+				resultDest = ""
+			}
 		}
 
 		for j := range user.Targets {
@@ -177,6 +207,9 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]b
 					continue
 				}
 				onchainTargets = append(onchainTargets, addr)
+				if resultDest != "" {
+					outboundDelivery[addr] = resultDest
+				}
 
 			case geolocation.GeoLocationTargetTypeInbound:
 				var key [32]byte
@@ -185,12 +218,26 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]b
 					seenKeys[key] = struct{}{}
 					onchainKeys = append(onchainKeys, key)
 				}
+
+			case geolocation.GeoLocationTargetTypeOutboundIcmp:
+				addr := icmpTargetToProbeAddress(target)
+				if err := addr.ValidateICMP(); err != nil {
+					d.log.Warn("Skipping invalid outbound ICMP target",
+						"user", users[i].Code, "addr", addr, "error", err)
+					continue
+				}
+				if err := addr.ValidateScope(); err != nil {
+					d.log.Warn("Rejecting non-public outbound ICMP target",
+						"user", users[i].Code, "addr", addr, "error", err)
+					continue
+				}
+				onchainIcmpTargets = append(onchainIcmpTargets, addr)
+				if resultDest != "" {
+					icmpDelivery[addr] = resultDest
+				}
 			}
 		}
 	}
-
-	mergedTargets := mergeProbes(d.cliTargets, onchainTargets)
-	mergedKeys := mergeKeys(d.cliAllowedKeys, onchainKeys)
 
 	// Sync lastSeenTargetUpdateCount after a full scan (covers forced refresh path).
 	if d.probeTargetUpdateCount != nil {
@@ -200,14 +247,13 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, [][32]b
 	d.log.Debug("Target discovery tick",
 		"users", len(users),
 		"onchainOutbound", len(onchainTargets),
+		"onchainOutboundIcmp", len(onchainIcmpTargets),
 		"onchainInbound", len(onchainKeys),
-		"cliTargets", len(d.cliTargets),
-		"cliKeys", len(d.cliAllowedKeys),
-		"mergedTargets", len(mergedTargets),
-		"mergedKeys", len(mergedKeys),
+		"outboundDeliveryOverrides", len(outboundDelivery),
+		"icmpDeliveryOverrides", len(icmpDelivery),
 	)
 
-	return mergedTargets, mergedKeys, nil
+	return onchainTargets, onchainIcmpTargets, onchainKeys, outboundDelivery, icmpDelivery, nil
 }
 
 // targetToProbeAddress converts a GeolocationTarget to a ProbeAddress.
@@ -221,23 +267,22 @@ func targetToProbeAddress(t *geolocation.GeolocationTarget) ProbeAddress {
 	}
 }
 
-// mergeKeys combines two key slices, deduplicating by value.
-func mergeKeys(a, b [][32]byte) [][32]byte {
-	seen := make(map[[32]byte]struct{}, len(a)+len(b))
-	merged := make([][32]byte, 0, len(a)+len(b))
-	for _, k := range a {
-		if _, ok := seen[k]; !ok {
-			seen[k] = struct{}{}
-			merged = append(merged, k)
-		}
+// icmpTargetToProbeAddress converts an OutboundIcmp GeolocationTarget to a ProbeAddress.
+// ICMP itself uses no port; LocationOffsetPort only matters if offsets are delivered back
+// to the target. Treat 0 as "use the default geoprobe UDP port" so 0:0 targets — common
+// when paired with a ResultDestination override — pass validation.
+func icmpTargetToProbeAddress(t *geolocation.GeolocationTarget) ProbeAddress {
+	host := fmt.Sprintf("%d.%d.%d.%d",
+		t.IPAddress[0], t.IPAddress[1], t.IPAddress[2], t.IPAddress[3])
+	port := t.LocationOffsetPort
+	if port == 0 {
+		port = telemetryconfig.DefaultGeoprobeUDPPort
 	}
-	for _, k := range b {
-		if _, ok := seen[k]; !ok {
-			seen[k] = struct{}{}
-			merged = append(merged, k)
-		}
+	return ProbeAddress{
+		Host:      host,
+		Port:      port,
+		TWAMPPort: 0,
 	}
-	return merged
 }
 
 // probeAddressSlicesEqual checks if two ProbeAddress slices are equal by content.
@@ -258,6 +303,19 @@ func probeAddressSlicesEqual(a, b []ProbeAddress) bool {
 	sort.Strings(bSorted)
 	for i := range aSorted {
 		if aSorted[i] != bSorted[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// deliveryAddrsEqual checks if two delivery address maps are equal.
+func deliveryAddrsEqual(a, b map[ProbeAddress]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
 			return false
 		}
 	}

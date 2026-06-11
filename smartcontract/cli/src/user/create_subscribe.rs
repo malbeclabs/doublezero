@@ -1,15 +1,16 @@
 use crate::{
     doublezerocommand::CliCommand,
     helpers::parse_pubkey,
-    poll_for_activation::poll_for_user_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
     commands::{
-        device::get::GetDeviceCommand, multicastgroup::get::GetMulticastGroupCommand,
-        user::create_subscribe::CreateSubscribeUserCommand,
+        device::get::GetDeviceCommand,
+        multicastgroup::get::GetMulticastGroupCommand,
+        user::{create_subscribe::CreateSubscribeUserCommand, get::GetUserCommand},
     },
     *,
 };
@@ -35,10 +36,18 @@ pub struct CreateSubscribeUserCliCommand {
     /// Wait for the user to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
+    /// Custom owner pubkey (foundation allowlist only)
+    #[arg(long)]
+    pub owner: Option<String>,
 }
 
 impl CreateSubscribeUserCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -84,6 +93,12 @@ impl CreateSubscribeUserCliCommand {
             },
         };
 
+        let owner_pk = self
+            .owner
+            .as_deref()
+            .map(|s| parse_pubkey(s).ok_or_else(|| eyre::eyre!("Invalid owner pubkey: {}", s)))
+            .transpose()?;
+
         let (signature, pubkey) = client.create_subscribe_user(CreateSubscribeUserCommand {
             user_type: UserType::Multicast,
             device_pk,
@@ -95,11 +110,12 @@ impl CreateSubscribeUserCliCommand {
                 .or(subscriber_pk)
                 .ok_or(eyre::eyre!("Subscriber is required if publisher is not"))?,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            owner: owner_pk,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
         if self.wait {
-            let user = poll_for_user_activated(client, &pubkey)?;
+            let (_, user) = client.get_user(GetUserCommand { pubkey })?;
             writeln!(out, "Status: {0}", user.status)?;
         }
 
@@ -109,6 +125,8 @@ impl CreateSubscribeUserCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -185,6 +203,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client
@@ -214,21 +233,26 @@ mod tests {
                 subscriber: true,
                 mgroup_pk: mgroup_pubkey,
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                owner: None,
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = CreateSubscribeUserCliCommand {
-            device: "device1".to_string(),
-            client_ip: [100, 0, 0, 1].into(),
-            allocate_addr: false,
-            publisher: None,
-            subscriber: Some(mgroup_pubkey.to_string()),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            CreateSubscribeUserCliCommand {
+                device: "device1".to_string(),
+                client_ip: [100, 0, 0, 1].into(),
+                allocate_addr: false,
+                publisher: None,
+                subscriber: Some(mgroup_pubkey.to_string()),
+                wait: false,
+                owner: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

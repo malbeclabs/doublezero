@@ -9,7 +9,6 @@ use crate::{
     serializer::try_acc_write,
     state::{
         accesspass::AccessPass,
-        feature_flags::{is_feature_enabled, FeatureFlag},
         globalstate::GlobalState,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         user::{User, UserStatus},
@@ -27,7 +26,7 @@ use solana_program::{
 };
 use std::{fmt, net::Ipv4Addr};
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
-pub struct MulticastGroupSubscribeArgs {
+pub struct UpdateMulticastGroupRolesArgs {
     #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub client_ip: Ipv4Addr,
     pub publisher: bool,
@@ -36,7 +35,7 @@ pub struct MulticastGroupSubscribeArgs {
     pub use_onchain_allocation: bool,
 }
 
-impl fmt::Debug for MulticastGroupSubscribeArgs {
+impl fmt::Debug for UpdateMulticastGroupRolesArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -50,17 +49,17 @@ pub struct SubscribeUserResult {
     pub mgroup: MulticastGroup,
     /// True if the publisher list transitioned between empty and non-empty
     /// (gained first publisher or lost last publisher). Callers that need to
-    /// trigger activator reprocessing should check this flag.
+    /// trigger downstream reprocessing should check this flag.
     pub publisher_list_transitioned: bool,
 }
 
-/// Toggle a user's multicast group subscription.
+/// Toggle a user's multicast group roles.
 ///
 /// Handles both create-time subscription (user lists start empty, only adds)
 /// and post-activation subscription changes (add/remove toggle). The caller is
 /// responsible for setting `user.status = Updating` when
 /// `publisher_list_transitioned` is true and the user is already activated.
-pub fn subscribe_user_to_multicastgroup(
+pub fn update_user_multicastgroup_roles(
     mgroup_account: &AccountInfo,
     accesspass: &AccessPass,
     user: &mut User,
@@ -130,66 +129,69 @@ pub fn subscribe_user_to_multicastgroup(
     })
 }
 
-pub fn process_subscribe_multicastgroup(
+pub fn process_update_multicastgroup_roles(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &MulticastGroupSubscribeArgs,
+    value: &UpdateMulticastGroupRolesArgs,
 ) -> ProgramResult {
+    if !value.use_onchain_allocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let mgroup_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let user_account = next_account_info(accounts_iter)?;
 
-    // Optional: ResourceExtension accounts for onchain allocation
-    // Account layout WITH onchain allocation (use_onchain_allocation=true):
-    //   [mgroup, accesspass, user, globalstate, multicast_publisher_block, payer, system]
-    // Account layout WITHOUT (legacy, use_onchain_allocation=false):
-    //   [mgroup, accesspass, user, payer, system]
-    let onchain_accounts = if value.use_onchain_allocation {
-        let globalstate_account = next_account_info(accounts_iter)?;
-        let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
-        Some((globalstate_account, multicast_publisher_block_ext))
-    } else {
-        None
-    };
+    // Account layout: [mgroup, accesspass, user, globalstate, multicast_publisher_block, payer, system]
+    let gs_account = next_account_info(accounts_iter)?;
+    let (expected_globalstate_pda, _) = get_globalstate_pda(program_id);
+    assert_eq!(
+        gs_account.key, &expected_globalstate_pda,
+        "Invalid GlobalState PDA"
+    );
+    let globalstate = GlobalState::try_from(gs_account)?;
+    let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
 
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
-    msg!("process_subscribe_multicastgroup({:?})", value);
+    msg!("process_update_multicastgroup_roles({:?})", value);
 
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(
-        mgroup_account.owner, program_id,
-        "Invalid PDA Account Owner"
+    // Validate accounts
+    validate_program_account!(
+        mgroup_account,
+        program_id,
+        writable = true,
+        "MulticastGroup"
     );
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
-    assert_eq!(
-        accesspass_account.owner, program_id,
-        "Invalid Accesspass Account Owner"
+    validate_program_account!(
+        accesspass_account,
+        program_id,
+        writable = false,
+        "AccessPass"
     );
-    assert_eq!(user_account.owner, program_id, "Invalid PDA Account Owner");
+    validate_program_account!(user_account, program_id, writable = true, "User");
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    assert!(
-        mgroup_account.is_writable,
-        "multicastgroup account is not writable"
-    );
-    assert!(user_account.is_writable, "user account is not writable");
 
     // Parse and validate user
     let mut user: User = User::try_from(user_account)?;
-    if user.status != UserStatus::Activated && user.status != UserStatus::Updating {
+    // Removing all roles is allowed for any status so that users
+    // created via CreateSubscribeUser can be cleaned up before activation.
+    let has_role = value.publisher || value.subscriber;
+    if has_role && user.status != UserStatus::Activated {
         msg!("UserStatus: {:?}", user.status);
         return Err(DoubleZeroError::InvalidStatus.into());
     }
@@ -205,16 +207,20 @@ pub fn process_subscribe_multicastgroup(
         "Invalid AccessPass PDA",
     );
 
-    if !accesspass.allow_multiple_ip() && accesspass.client_ip != user.client_ip {
+    // The access pass must belong to the payer. If the payer differs, the payer
+    // must be in the foundation allowlist.
+    if accesspass.user_payer != *payer_account.key
+        && !globalstate.foundation_allowlist.contains(payer_account.key)
+    {
         msg!(
-            "AccessPass client_ip does not match. accesspass.client_ip: {} user.client_ip: {}",
-            accesspass.client_ip,
-            user.client_ip
+            "AccessPass user_payer {:?} does not match payer {:?}",
+            accesspass.user_payer,
+            payer_account.key
         );
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
-    let result = subscribe_user_to_multicastgroup(
+    let result = update_user_multicastgroup_roles(
         mgroup_account,
         &accesspass,
         &mut user,
@@ -222,62 +228,42 @@ pub fn process_subscribe_multicastgroup(
         value.subscriber,
     )?;
 
-    if let Some((globalstate_account, multicast_publisher_block_ext)) = onchain_accounts {
-        // Onchain allocation path: allocate dz_ip directly, skip Updating status
-        let globalstate = GlobalState::try_from(globalstate_account)?;
-        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-            return Err(DoubleZeroError::FeatureNotEnabled.into());
-        }
-
-        let (expected_globalstate_pda, _) = get_globalstate_pda(program_id);
-        assert_eq!(
-            globalstate_account.key, &expected_globalstate_pda,
-            "Invalid GlobalState PDA",
+    // Allocate dz_ip when gaining first publisher
+    if result.publisher_list_transitioned
+        && value.publisher
+        && (user.dz_ip == Ipv4Addr::UNSPECIFIED || user.dz_ip == user.client_ip)
+    {
+        let (expected_multicast_publisher_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+        validate_program_account!(
+            multicast_publisher_block_ext,
+            program_id,
+            writable = true,
+            pda = &expected_multicast_publisher_pda,
+            "MulticastPublisherBlock"
         );
 
-        // Allocate dz_ip when gaining first publisher
-        if result.publisher_list_transitioned
-            && value.publisher
-            && (user.dz_ip == Ipv4Addr::UNSPECIFIED || user.dz_ip == user.client_ip)
-        {
-            let (expected_multicast_publisher_pda, _, _) =
-                get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
-            validate_program_account!(
-                multicast_publisher_block_ext,
-                program_id,
-                writable = true,
-                pda = Some(&expected_multicast_publisher_pda),
-                "MulticastPublisherBlock"
-            );
+        user.dz_ip = allocate_ip(multicast_publisher_block_ext, 1)?.ip();
+    } else if result.publisher_list_transitioned
+        && !value.publisher
+        && user.dz_ip != Ipv4Addr::UNSPECIFIED
+        && user.dz_ip != user.client_ip
+    {
+        // Deallocate dz_ip back to MulticastPublisherBlock
+        let (expected_multicast_publisher_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+        validate_program_account!(
+            multicast_publisher_block_ext,
+            program_id,
+            writable = true,
+            pda = &expected_multicast_publisher_pda,
+            "MulticastPublisherBlock"
+        );
 
-            user.dz_ip = allocate_ip(multicast_publisher_block_ext, 1)?.ip();
-        } else if result.publisher_list_transitioned
-            && !value.publisher
-            && user.dz_ip != Ipv4Addr::UNSPECIFIED
-            && user.dz_ip != user.client_ip
-        {
-            // Deallocate dz_ip back to MulticastPublisherBlock
-            let (expected_multicast_publisher_pda, _, _) =
-                get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
-            validate_program_account!(
-                multicast_publisher_block_ext,
-                program_id,
-                writable = true,
-                pda = Some(&expected_multicast_publisher_pda),
-                "MulticastPublisherBlock"
-            );
-
-            if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
-                deallocate_ip(multicast_publisher_block_ext, dz_ip_net);
-            }
-            user.dz_ip = user.client_ip;
+        if let Ok(dz_ip_net) = NetworkV4::new(user.dz_ip, 32) {
+            deallocate_ip(multicast_publisher_block_ext, dz_ip_net);
         }
-    } else {
-        // Legacy path: trigger activator reprocessing when publisher list transitions
-        // (gaining first publisher requires dz_ip allocation, losing last means it's no longer needed)
-        if result.publisher_list_transitioned {
-            user.status = UserStatus::Updating;
-        }
+        user.dz_ip = user.client_ip;
     }
 
     try_acc_write(&result.mgroup, mgroup_account, payer_account, accounts)?;

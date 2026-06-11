@@ -11,6 +11,440 @@ All notable changes to this project will be documented in this file.
 - Device agents
   - Reduce agent CPU usage by continuing to fetch the full config every 5 seconds but only applying when it has changed or after 60s timeout
 
+## [v0.27.1](https://github.com/malbeclabs/doublezero/compare/client/v0.27.0...client/v0.27.1) - 2026-06-10
+
+### Breaking
+
+### Changes
+
+- Client
+  - Revert auto-enabling allocated-IP mode on `doublezero connect ibrl` behind NAT (#3861): the RFC1918 heuristic misfires on 1:1 NAT hosts where plain IBRL works, silently changing the user type.
+
+## [v0.27.0](https://github.com/malbeclabs/doublezero/compare/client/v0.26.0...client/v0.27.0) - 2026-06-10
+
+### Breaking
+
+### Changes
+
+- Client
+  - Auto-enable allocated-IP mode for `doublezero connect ibrl` when the daemon detects a private RFC1918 default-route source (behind NAT), unless `-a` or `--client-ip` is set.
+  - `doublezero connect multicast` with no groups now auto-joins every group authorized in the caller's AccessPass — publishing to `mgroup_pub_allowlist` and subscribing to `mgroup_sub_allowlist`. An AccessPass with no authorized groups is a no-op.
+- Onchain programs
+  - Add per-category seat caps to `EdgeSeat` access passes (errors 89/90 on overflow), scale the `SetAccessPass` airdrop by the cap sum when `allow_multiple_ip` is set, and drop the dynamic-pass IP-lock and `IS_DYNAMIC` flag. (#3859)
+- CLI
+  - `access-pass set` gains `--max-unicast-users` / `--max-multicast-users`; `get`/`list` show the per-category counts and caps.
+- SDK
+  - Decode the four new `AccessPass` cap fields (and the previously-missing `tenant_allowlist`) in the Go, Python, and TypeScript layouts.
+  - `GetAccessPassCommand` and the multicast allowlist resolver both resolve a shared dynamic-seat AccessPass (the `UNSPECIFIED` PDA) before the exact-IP pass, matching the onchain `create_user` lookup. (#3853)
+
+## [v0.26.0](https://github.com/malbeclabs/doublezero/compare/client/v0.25.1...client/v0.26.0) - 2026-06-05
+
+### Breaking
+
+### Changes
+
+- Onchain programs
+  - Deprecate the `AccessPassStatus::Expired` access-pass status (renamed `ExpiredDeprecated`; discriminant `3` retained for wire compatibility). Access-pass epoch expiry no longer demotes users to `OutOfCredits`: `update_status` stops producing the status, and both `try_activate` (user creation) and `CheckUserAccessPass` (periodic re-check) keep users `Activated`. Epoch validity is still enforced at user creation for unicast users only; multicast publishers and subscribers are governed by `mgroup_*_allowlist`, not by epoch.
+- SDK
+  - Mirror the access-pass status rename in the Go, Python, and TypeScript deserializers: `AccessPassStatusExpiredDeprecated` (Go), `EXPIRED_DEPRECATED` (Python), and the `"expired (deprecated)"` string across all three.
+- SDK (Rust)
+  - Remove the client-side `User not active` precheck from the multicast subscribe/publish command (`UpdateMulticastGroupRoles`) so non-`Activated` users are no longer blocked before submission; authorization is enforced onchain.
+- CLI
+  - Fold `version`, `account`, `accounts`, `log`, and `subscribe` diagnostic verbs from the binary's top-level `Command` enum into `ServiceabilityCommand` per RFC-20. Each verb now takes `&CliContext` + generic `&C: CliCommand` + `&mut W` writer and is async. Add `--json` to `account`, `accounts`, and `log` (RFC-20 §Output). The binary-level `subscribe` override uses the real blocking `DZClient::subscribe` for live event streaming; the module crate's implementation falls back to a `get_all()` snapshot for testability.
+  - Change `geolocation user update-payment` to `update-payment-status` for clarity. 
+  - geolocation `user get`: Show probe code, rather than probe pubkey in target list. 
+  - geolocation `probe get`: Show exchange code, rather than exchange pubkeys.
+  - Remove `env`/`argv` reads and `eprintln!` from the serviceability CLI module per RFC-20 §67. The keypair-source pre-flight check moves from a standalone `has_keypair_source()` (which read `std::env::args` and `stdin`) to a `CliCommand::has_keypair_source` method computed once by the binary at startup; diagnostic output in `check_id`, `check_balance`, `check_allowlist`, and `print_error` now routes through `tracing::error!` instead of writing to stderr directly.
+  - Add `--json` output to `globalconfig feature-flags get` and `accesspass user-balances` per RFC-20 §Output. `feature-flags get` now renders a two-column (`flags`, `raw`) table by default instead of the prior `Enabled feature flags: <names> (raw: <N>)` / `No feature flags enabled (raw: <N>)` sentence.
+- CI
+  - e2e: report trusted fork e2e/shreds shard results onto the PR head SHA so branch protection's required `e2e (shard N)` / `shard-e2e (shard N)` checks are satisfied by a `/run-e2e` dispatch, removing the need for a maintainer to bypass the ruleset to merge fork PRs; also make the dispatcher's confirmation comment non-fatal so a capped `GITHUB_TOKEN` no longer fails the job after the runs have already launched (follow-up to [#3777](https://github.com/malbeclabs/doublezero/pull/3777))
+- Tools
+  - `tools/stress/device-reporter`: surface device CPU + memory + agent RSS in the post-run summary. The `summary` subcommand now reads the observer's per-tick `show processes top once` JSON captures and `observer.agent_metrics.json` to render a `## Resource usage` section: device CPU peak / p95 / sustained ≥ 80 % windows (matching the observer's `cpu_sustained` abort threshold), memory peak free / used / floor-violation count, and doublezero-agent resident-memory peak / end / per-minute slope. New `-free-mem-floor-mb` flag (default `1024`, set `0` to disable) ([#3845](https://github.com/malbeclabs/doublezero/issues/3845))
+  - Complete the device-stress orchestrator (part 3): replace the stubbed agent runner with an SSH-backed runner that execs `doublezero-agent -verbose` on the DUT and tees its output to `orchestrator.agent.log`, and a log parser that turns the agent's commit-diff lines into `pre_commit_log` / `applied` runlog events. Adds `--dut-ssh-user` and `--no-agent` flags.
+  - Add `tools/stress/device-observer/`, a per-device sampling tool that analyzes the output of the device-stress orchestrator and observer
+- Telemetry
+  - Drop the redundant `ip-msdp-sa-cache` kind from the state-ingest server's default state-collect command list. `show ip msdp sa-cache rejected` already returns the full SA cache (accepted SAs in the `acceptedSaMsg` array plus any rejected SAs in `rejectedSaMsg`), so the bare `show ip msdp sa-cache` collection is redundant — devices were running both commands per tick and uploading the same accepted-SA data twice. The `ip-msdp-sa-cache-rejected` kind is retained.
+- Telemetry (geoprobe)
+  - Retry transient `bind: invalid argument` failures when allocating per-probe UDP sockets in `Publisher.AddProbe`, matching the existing retry-on-bind pattern in `Pinger`. The shared retry helper is lifted into `retry.go` so the publisher and pinger paths use the same exponential-backoff logic. Fixes intermittent `TestPublisher_RemoveProbe`/`TestPublisher_AddProbe` CI flakes caused by concurrent ephemeral-port allocation ([#3765](https://github.com/malbeclabs/doublezero/issues/3765))
+- Makefile
+  - Add `unreadable_literal` to make cargo clippy alert on large numbers written without `_`.
+
+## [v0.25.1](https://github.com/malbeclabs/doublezero/compare/client/v0.24.0...client/v0.25.1) - 2026-06-01
+
+### Breaking
+
+### Changes
+
+- SDK (Go)
+  - Add CreateUser / DeleteUser to the serviceability executor with cross-language wire-format fixtures and four new PDA helpers (GetUserPDA, GetAccessPassPDA, GetTunnelIdsPDA, GetDzPrefixBlockPDA)
+- SDK (Rust)
+  - Add `DZClient::from_context` and `GeoClient::from_context`, which build clients directly from a resolved RFC-20 `CliContext` instead of re-reading `~/.config/doublezero/cli/config.yml` and re-applying moniker conversion. The context already carries the fully resolved ledger RPC/WS URLs and program IDs, so these constructors consume them verbatim, making the context the single source of truth and removing the double-resolution the binary previously incurred. Keypair precedence is preserved exactly (CLI flag > `DOUBLEZERO_KEYPAIR` > stdin > context keypair path > default): the raw `--keypair` flag is passed as the highest-precedence source and the context keypair path is used only as the low-precedence fallback, so the env var still wins. The new constructors and their `doublezero-cli-core` dependency are gated behind a `cli-context` cargo feature so non-CLI SDK consumers (controlplane, telemetry, e2e) keep a dependency-light default build. `DZClient::new` / `GeoClient::new` are unchanged for callers that do not build a `CliContext` (e.g. `controlplane/doublezero-admin`).
+  - Drop the pre-submit `simulate_transaction` call in `DZClient::execute_transaction_inner` and submit with `skip_preflight: true`, eliminating the redundant double-simulation (the explicit simulate plus `send_and_confirm_transaction`'s default preflight) on the happy path. Program logs are now recovered from `get_transaction` on the failure path so `SimulationError` / `SimulationTransactionError` and `DoubleZeroError` mapping in CLI output are unchanged. Trade-off: failing transactions now land onchain and burn fees instead of failing for free at simulation ([#3750](https://github.com/malbeclabs/doublezero/pull/3750))
+- CLI
+  - Honor the build-configured default environment (`Testnet` by default, `MainnetBeta` under the `default-mainnet-beta` feature) when neither `--env` nor a persisted `config.yml` selects one. The RFC-20 context-build previously fell back to `Environment::default()`, which is always `Devnet` regardless of the build, so a testnet build with no config silently targeted Devnet's ledger URLs and program IDs. The binary now resolves the fallback through the new `doublezero_sdk::default_environment()`, matching the legacy `DZClient::new` defaults (`default_program_id`, `ClientConfig::default`) which already key off the compiled-in environment ([#3810](https://github.com/malbeclabs/doublezero/pull/3810))
+  - Construct the serviceability and geolocation SDK clients in the `doublezero` binary via `DZClient::from_context` / `GeoClient::from_context`, replacing the legacy `DZClient::new(Option<String>, ...)` bridge. The binary no longer round-trips the already-resolved `CliContext` values back through the SDK's config-file re-resolution. No user-facing command, flag, or output change.
+  - Restore environment-moniker support for the `--program-id` and `--geo-program-id` global flags. The context-build resolved both flags with a raw `parse::<Pubkey>()`, so a moniker (e.g. `--geo-program-id testnet`) failed to parse, was silently dropped, and the binary fell back to the environment default. Both flags now accept monikers in their full (`mainnet-beta`, `testnet`, `devnet`, `local`) and short (`m`, `t`, `d`, `l`) forms, resolving to the matching program ID; a literal pubkey still passes through. A value that is neither a known moniker nor a valid pubkey is now a hard error instead of being silently ignored. `convert_program_moniker` is broadened to cover all four environments (previously only `devnet`/`testnet`), matching `convert_geo_program_moniker`.
+  - Treat `--env` as a base that the per-field flags override, rather than being mutually exclusive with them. `--env <name>` resolves the whole network (ledger URL, WS URL, Solana L1 URL, serviceability and geolocation program IDs); `--url`, `--ws`, `--solana-url`, `--program-id`, and `--geo-program-id` each override only their own value on top (precedence: explicit flag > `--env`, per RFC-20 §override hierarchy). Applies to both the global `doublezero` flags and `doublezero config set`. Previously the global flag rejected the combination at the clap layer (`ArgumentConflict`) and `config set` printed `Invalid flag combination` and exited without writing, so `--env local --program-id <X>` was not possible.
+  - Add `--solana-url <SOLANA_RPC_URL>` global flag to `doublezero` per RFC-20 §Global flags. Distinct from `--url`, which continues to override the DZ ledger transport; `--solana-url` targets the Solana L1 transport. The flag is parsed and exposed on the binary's `App` struct; per-verb consumption lands when verbs migrate to construct typed Solana L1 clients from `CliContext`.
+  - Add `--log-level <LEVEL>` global flag and initialize the `tracing` subscriber at startup. `LEVEL` is one of `off`, `error`, `warn` (default), `info`, `debug`, `trace`. Diagnostic logs go to stderr so `--json` output on stdout remains parseable. Honors the `RUST_LOG` environment variable when set, overriding the CLI-flag level for per-module filtering. Replaces the previous `println!("using keypair: ...")` stdout line with a `tracing::info!` event; the keypair confirmation now appears only at `--log-level info` or higher and no longer pollutes parseable stdout. (Named `--log-level` rather than the RFC-20 §Global-flags suggested `--verbose` / `-v` because the existing `doublezero connect` / `disconnect` subcommands already own a `--verbose` flag with `bool` type; the global flag deviation will be revisited when the daemon-control module crate is carved out.)
+  - Build a `CliContext` once at binary startup from `--env`, the per-field global overrides (`--url`, `--ws`, `--solana-url`, `--program-id`, `--geo-program-id`, `--keypair`, `--sock-file`), and the persisted `~/.config/doublezero/cli/config.yml` (overridable via `DOUBLEZERO_CONFIG_FILE`), per RFC-20 (§CliContext). Precedence (highest wins): CLI flag > persisted config > env-derived default. When `--env` is not set and the persisted config has a serviceability program ID, the environment is derived from that program ID via `Environment::from_program_id`; otherwise the binary falls back to `Environment::default()`. The legacy `DZClient` is now constructed from the fully resolved `CliContext` URL, WebSocket, and program-ID values directly, so verbs that migrate to read `CliContext` see the same backend as the legacy bridge. Keypair resolution is intentionally left to `DZClient::new`'s internal `load_keypair` precedence (CLI `--keypair` flag > `DOUBLEZERO_KEYPAIR` env var > stdin > persisted config) so the `DOUBLEZERO_KEYPAIR` env var continues to override the persisted keypair path, as relied on by the e2e contributor-auth negative-authz suite. File reads happen only in the binary; module crates remain forbidden from touching the filesystem (RFC-20 §67).
+  - Centralize top-level error rendering through `doublezero_cli_core::error::render_eyre`. Replaces three ad-hoc `eprintln!("Error: {e}")` sites in `client/doublezero/src/main.rs` (env-parse failure, env-config resolution failure, top-level command failure) with a single helper that prints `Error: <head>` followed by the full chain of causes on stderr.
+  - Rename the `smartcontract/cli/` crate from `doublezero_cli` to `doublezero-serviceability-cli` to satisfy RFC-20's module-crate naming contract (`doublezero-<module>-cli` in kebab-case). The crate stays at `smartcontract/cli/`; only the `[package].name` and `[lib].name` change (lib name is `doublezero_serviceability_cli` because Rust requires underscores in import paths). All in-tree consumers are updated: `client/doublezero`, `client/doublezero-geolocation-cli`, `controlplane/doublezero-admin`, and the workspace `Cargo.toml`. External operators who depend on the workspace crate by its old name (`doublezero_cli`) must update their `Cargo.toml` and `use` statements. No user-facing command, flag, or output change.
+  - Migrate `location get` to the RFC-20 conforming verb pattern as the project's reference. `GetLocationCliCommand::execute` is now `async fn`, takes `&CliContext` as its first non-self argument, and emits a `tracing::debug!` event so `-v` surfaces what the verb is doing. The verb's user-facing args, flags, table layout, and JSON schema are unchanged. The unit test consumes the shared `doublezero_cli_core::testing::cli_context_default_for_tests()` helper and continues to use the existing `MockCliCommand` (auto-generated by `#[automock]`) as the backend. Binary dispatch arms in `client/doublezero` and `controlplane/doublezero-admin` are updated to `.await` the new method; other location verbs (Create, Update, List, Delete) keep their current sync signatures and migrate opportunistically.
+  - Add `docs/cli-standard.md`, the contributor-facing summary of RFC-20 with the `location get` worked example and pointers to the shared validators, formatters, logging facade, and test helpers in `doublezero-cli-core`.
+  - Update `CLAUDE.md` with a CLI-standard section pointing at RFC-20, the contributor doc, and the reference verb so future contributors land on the standard quickly.
+  - Move the per-resource serviceability subcommand wrapper files (`accesspass`, `config`, `contributor`, `device`, `exchange`, `globalconfig`, `link`, `location`, `multicastgroup`, `permission`, `resource`, `tenant`, `user`) from `client/doublezero/src/cli/` into the module crate at `smartcontract/cli/src/cli/` per RFC-20 §Module contract item 2. Internal imports in the moved files switch from `doublezero_serviceability_cli::<resource>::*` to `crate::<resource>::*`. Binary import paths in `client/doublezero/src/{cli/command.rs,main.rs}` switch to `doublezero_serviceability_cli::cli::<resource>::*`. `cli/multicast.rs` stays in the binary because its `Subscribe`/`Unsubscribe`/`Publish`/`Unpublish` variants are async and depend on binary-local daemon-control infrastructure (`ServiceControllerImpl`, `crate::command::helpers::resolve_client_ip`); the binary now imports `MulticastGroupCliCommand` from the library.
+  - Introduce `doublezero_serviceability_cli::cli::ServiceabilityCommand`, the module crate's top-level subcommand enum + `async fn execute(ctx, client, out)` dispatcher per RFC-20 §Module contract item 2. Aggregates 17 serviceability variants (`Init`, `Migrate`, `Address`, `Balance`, `Config`, `GlobalConfig`, `Location`, `Exchange`, `Contributor`, `Permission`, `Tenant`, `Device`, `Link`, `AccessPass`, `User`, `Export`, `Keygen`, `Resource`) and owns the full dispatch tree currently inlined in `client/doublezero/src/main.rs`. Defined but not yet wired into the unified binary; the next PR adds `#[command(flatten)] Serviceability(ServiceabilityCommand)` to the binary's `Command` enum and collapses `main.rs` to a single dispatch arm.
+  - Hoist `ServiceabilityCommand` into the unified `doublezero` binary via `#[command(flatten)]` on the binary's `Command` enum. Drops 17 explicit variants and collapses the `main.rs` dispatch match block from roughly 270 lines to one arm (`Command::Serviceability(cmd) => cmd.execute(&ctx, &client, &mut handle).await`). The binary retains daemon-control verbs (`Connect`, `Enable`, `Disable`, `Status`, `Disconnect`, `Latency`, `Routes`), raw-`DZClient` diagnostics (`Account`, `Accounts`, `Log`), the binary-local geolocation tree, `InitGeolocationConfig`, the multicast dispatch (whose `Subscribe`/`Unsubscribe`/`Publish`/`Unpublish` async arms depend on daemon-control infrastructure), and the `Completion` generator. User-facing `doublezero --help` is byte-identical to the pre-refactor output (29 visible top-level commands); no flag, name, or output change. Binary `Command` enum and `main.rs` dispatch are unchanged; this is pure file relocation.
+  - Move `MulticastGroupCommands` dispatch out of `client/doublezero/src/main.rs` and into a `pub fn execute(&client, &mut out)` method on the enum itself, defined next to the enum in `smartcontract/cli/src/cli/multicastgroup.rs`. Mirrors the per-resource dispatch pattern in `ServiceabilityCommand::execute` and finishes the flatten/collapse work for the one module-crate subtree reached through the binary's `MulticastCliCommand` wrapper (which has to stay binary-local because its `Subscribe`/`Unsubscribe`/`Publish`/`Unpublish` arms depend on `ServiceControllerImpl`). The binary's `Multicast` arm shrinks from a 5-level nested match (Allowlist → Publisher/Subscriber → Add/Remove/List, plus Create/Update/List/Get/Delete at the Group level) to `MulticastCommands::Group(args) => args.command.execute(&client, &mut handle)`. No flag, name, or user-facing output change.
+  - Add cross-verb helpers in `doublezero-cli-core` to drop the per-verb boilerplate that every list/get/create/update/delete verb repeats today: the `require!` macro (one-line readiness check that expands to `client.check_requirements(flags.bits())?` so the legacy `u8` trait signature stays unchanged and `MockCliCommand` keeps working), `render_collection<T: Tabled + Serialize>` and `render_record<T: Tabled + Serialize>` (the `--json` / `--json-compact` / table three-branch switch), `print_signature` and `print_signature_and_then` (the `Signature: <sig>` write-verb tail and its `--wait` companion), and `OutputFormat::from_flags(json, json_compact)` (resolves the per-verb boolean flags to the enum). `tabled` becomes a `doublezero-cli-core` dependency so the rendering helpers can construct tables; module-crate verbs continue to import `tabled::Tabled` directly for their per-verb display types. Helpers ship with unit-tested byte-identical output to the pre-refactor code paths.
+  - Add `resolve_location_pk(client, pubkey_or_code)` to `smartcontract/cli/src/helpers.rs`, the per-resource pubkey-or-code resolver used by `location update` and `location delete`. Centralizes the existing `client.get_location(GetLocationCommand { pubkey_or_code: ... })?` pattern so the verb body no longer carries the lookup boilerplate; additional resolvers (`resolve_device_pk`, `resolve_link_pk`, ...) land per-resource as their sweep PRs migrate the other verbs.
+  - Migrate all five `location` verbs (`create`, `update`, `list`, `get`, `delete`) to the RFC-20 conforming shape ahead of the per-resource sweeps. Every verb is now `pub async fn execute(self, ctx: &CliContext, client: &C, out: &mut W) -> eyre::Result<()>`, consumes the new helpers (`require!`, `render_collection`, `render_record`, `print_signature`, `resolve_location_pk`), and forwards through the dispatcher with `.await`. Behavior is byte-identical: table layout, JSON schema, `Signature: <sig>` line, and the `--json` / `--json-compact` semantics all match the pre-refactor output exactly (existing tests pass without assertion changes). `controlplane/doublezero-admin`'s `LocationCommands` arm is updated to forward `&ctx` and await every verb. Other resources (`exchange`, `contributor`, `tenant`, `device`, `link`, `user`, `multicastgroup`, `accesspass`, `globalconfig`, `permission`, `resource`) continue to compile against their existing sync `pub fn execute(self, client, out)` signatures and migrate opportunistically in subsequent PRs.
+  - Lift the `block_on` async-test helper into `doublezero_cli_core::testing` instead of redeclaring it verbatim in every async verb's test module (it was already copied five times across the `location` verbs). The helper is gated behind a new `testing` cargo feature so `tokio` stays an optional dependency and the default `doublezero-cli-core` build remains dependency-light; module crates enable `doublezero-cli-core = { workspace = true, features = ["testing"] }` in their dev-dependencies. The five `location` verb tests now import `block_on` from the shared module.
+  - Ship shell-completion scripts in the client installer and recommend `bash-completion` so apt/dnf pull it in when available. `build/` is added to `.gitignore`.
+  - Migrate all six `exchange` verbs (`create`, `update`, `list`, `get`, `delete`, `set-device`) to the RFC-20 conforming shape on top of the shared CLI helpers. Every verb is now `pub async fn execute(self, ctx: &CliContext, client: &C, out: &mut W) -> eyre::Result<()>`, consumes the helpers (`require!`, `render_collection`, `render_record`, `print_signature`), and the update/delete/set-device paths route their pubkey-or-code argument through a new `resolve_exchange_pk` helper in `smartcontract/cli/src/helpers.rs`. The pre-existing BGP community range check in `exchange update` is preserved. `exchange set-device` retains its legacy `Option<String>::and_then` semantics for `--device1` / `--device2` (an unknown device silently resolves to `None`, which clears the slot) under an explanatory comment. `controlplane/doublezero-admin`, the unified `doublezero` binary, and the serviceability dispatcher all forward `&ctx` and await every exchange arm. Behavior is byte-identical: table layout, JSON schema, `Signature: <sig>` line, and `--json` / `--json-compact` semantics match pre-refactor output exactly; all 7 exchange unit tests pass without assertion changes.
+  - Migrate all five `contributor` verbs (`create`, `update`, `list`, `get`, `delete`) to the RFC-20 conforming shape on top of the shared CLI helpers. Every verb is now `pub async fn execute(self, ctx: &CliContext, client: &C, out: &mut W) -> eyre::Result<()>`, consumes the helpers (`require!`, `render_collection`, `render_record`, `print_signature`), and `update` / `delete` route their pubkey-or-code argument through a new `resolve_contributor_pk` helper in `smartcontract/cli/src/helpers.rs`. The duplicate-code precondition in `create` and `update` is preserved, as is the `owner = "me"` short-circuit in `create` that resolves to the payer. `update`'s pubkey resolution now goes through the shared helper rather than an in-line `Pubkey::from_str` (the old code-by-pubkey path was a code-or-pubkey path despite the variable name; the resolver accepts both). `controlplane/doublezero-admin`, the unified `doublezero` binary, and the serviceability dispatcher all forward `&ctx` and await every contributor arm. Behavior is byte-identical: table layout, JSON schema, `Signature: <sig>` line, and `--json` / `--json-compact` semantics match pre-refactor output exactly; all 5 contributor unit tests pass without assertion changes.
+  - Migrate the 5 `multicastgroup` CRUD verbs (`create`, `update`, `list`, `get`, `delete`), the 6 `multicastgroup allowlist` verbs (publisher + subscriber `add`/`list`/`remove`), the 6 standalone foundation/QA `allowlist` verbs (`foundation add`/`list`/`remove`, `qa add`/`list`/`remove`), the 8 `user` verbs (`create`, `create-subscribe`, `subscribe`, `request-ban`, `update`, `list`, `get`, `delete`), and the 9 `globalconfig` verbs and sub-tree verbs (`get`, `set`, `set-version`, `airdrop get`/`set`, `authority get`/`set`, `feature-flags get`/`set`) to the RFC-20 `pub async fn execute(self, ctx: &CliContext, client, out)` signature. Signature-only sweep: verb bodies (including the post-write `--wait` polling in `user create-subscribe`/`subscribe` and the bespoke `multicastgroup update` re-fetch flow) are unchanged. `MulticastGroupCommands::execute` itself flips from sync to async and propagates `ctx` through its nested allowlist arms; the binary's `Multicast` arm becomes `args.command.execute(&ctx, &client, &mut handle).await` (single line). Test files gain the per-file `block_on` shim and `cli_context_default_for_tests()` import. `controlplane/doublezero-admin`, the unified `doublezero` binary, and the serviceability dispatcher all forward `&ctx` and await every multicastgroup, allowlist, user, and globalconfig arm. All 345 unit tests pass byte-identically. Helper adoption (`require!`, `print_signature`, `render_collection`, `render_record`) lands opportunistically in follow-up PRs.
+  - Migrate the 11 `device` and `device interface` verbs (device `create`, `update`, `list`, `get`, `delete`, `set-health` plus interface `create`, `update`, `list`, `get`, `delete`) and the 14 `link` and `topology` verbs (link `accept`, `delete`, `wan create`, `dzx create`, `get`, `latency`, `list`, `set-health`, `update` plus topology `assign-node-segments`, `clear`, `create`, `delete`, `list`) to the RFC-20 `pub async fn execute(self, ctx: &CliContext, client, out)` signature. Signature-only sweep: verb bodies (including `--wait` polling via `poll_for_*_activated`, the per-verb requirement checks, and the `Signature:` writes) are unchanged. Test files gain a per-file `block_on` shim and `cli_context_default_for_tests()` import so the existing sync `#[test]` bodies can drive the now-async `execute`. `controlplane/doublezero-admin`, the unified `doublezero` binary, and the serviceability dispatcher all forward `&ctx` and await every device, interface, link, and topology arm. All 345 unit tests pass byte-identically (92 in the migrated modules: device 46, link 29, topology 17). Helper adoption (`require!`, `print_signature`, `render_collection`, `render_record`) lands opportunistically in follow-up PRs; the `--wait` polling flow on `device create/update`, `device interface create/update`, `link wan-create`/`dzx-create`/`accept`/`update` needs special handling there since the post-signature poll has to be preserved.
+  - Migrate all six `accesspass` verbs (`set`, `close`, `list`, `get`, `user-balances`, `fund`) and all six `resource` verbs (`allocate`, `create`, `deallocate`, `get`, `close`, `verify`), plus the eight leaf single-file verbs (`address`, `balance`, `init`, `migrate`, `keygen`, `export`, `config get`, `config set`), to the RFC-20 `pub async fn execute(self, ctx: &CliContext, client, out) -> eyre::Result<()>` signature. The five small leaf verbs (`address`, `balance`, `init`, `migrate`, `keygen`) also adopt the `require!` macro and (where applicable) the `print_signature` helper since their bodies were one-line readiness checks paired with a single `Signature:` write. The larger and more idiosyncratic verbs (`config get`/`set` which manipulate the persisted YAML, `export` which serializes the whole graph, the accesspass and resource verbs which contain bespoke output and progress-spinner logic) keep their existing bodies for now and only get the signature flip; helper adoption for those lands opportunistically in follow-up PRs. `controlplane/doublezero-admin`, the unified `doublezero` binary, and the serviceability dispatcher all forward `&ctx` and await every accesspass, resource, and leaf-verb arm. `config get`/`set` tests gain a per-file `block_on` shim and a `cli_context_default_for_tests()` import so the existing sync `#[test]` bodies can still drive the now-async `execute`. The bespoke `accesspass fund` signature (`R: BufRead` for stdin) is preserved — only the `_ctx` parameter is inserted after `self`. Behavior is byte-identical: table layouts, JSON schemas, `Signature:` lines, the `fund` interactive flow, and the `config` text output all match the pre-refactor strings exactly; all 345 unit tests pass without assertion changes.
+  - Migrate all eight `tenant` verbs (`create`, `update`, `list`, `get`, `delete`, `administrator add`, `administrator remove`, `update-payment-status`) and all six `permission` verbs (`set`, `suspend`, `resume`, `delete`, `get`, `list`) to the RFC-20 conforming shape on top of the shared CLI helpers. Every verb is now `pub async fn execute(self, ctx: &CliContext, client: &C, out: &mut W) -> eyre::Result<()>`, consumes the helpers (`require!`, `render_collection`, `render_record`, `print_signature`), and tenant verbs that accept a pubkey-or-code identifier (`update`, `delete`, `add-administrator`, `remove-administrator`, `update-payment-status`) route through a new `resolve_tenant_pk` helper in `smartcontract/cli/src/helpers.rs`. The duplicate-code precondition in `tenant create` is preserved, as is the `administrator = "me"` short-circuit. `tenant delete`'s bespoke two-line output ("✓ Tenant 'X' deleted successfully\n  Signature: ..."), its cascade-delete progress spinners, and its reference-count polling loop are preserved with manual `writeln!` calls and an explanatory comment. `permission set`'s bespoke two-line aligned output ("Signature:   ..." + "Permissions: ...") is preserved the same way. Permission verbs derive the on-chain PDA from `user_payer` rather than going through a pubkey-or-code resolver. `controlplane/doublezero-admin`, the unified `doublezero` binary, and the serviceability dispatcher all forward `&ctx` and await every tenant and permission arm. Behavior is byte-identical: table layout, JSON schema, `Signature:` line shape, and `--json` / `--json-compact` semantics match pre-refactor output exactly; all 18 tenant and 18 permission unit tests pass without assertion changes.
+  - Migrate `doublezero geolocation` subcommands into the new `doublezero-geolocation-cli` module crate per RFC-20. The `probe` and `user` subtrees and the hidden `init` verb are now owned by the crate; the binary mounts them via `GeolocationArgs` from `doublezero-geolocation-cli`. The hidden top-level `doublezero init-geolocation-config` alias is removed; use `doublezero geolocation init` instead.
+  - Validate CYOA/DIA interfaces have non-zero `--bandwidth` in `doublezero device interface create` and `doublezero device interface update`, and validate `interface[a|z].bandwidth >= link.bandwidth` in `doublezero link wan-create` and `doublezero link dzx-create` (DZX checks side A only). Mirrors the new onchain enforcement so misconfigured commands fail before submitting a transaction.
+  - Validate `interface[a|z].bandwidth >= link.bandwidth` in `doublezero link accept` (DZX accept path) before submitting the transaction, with the same human-readable message style as `link wan-create` / `link dzx-create`. Mirrors the new onchain check.
+  - Restore the default value for `doublezero device interface create --bandwidth` so it is optional again. [#3077](https://github.com/malbeclabs/doublezero/pull/3077) dropped `default_value` from the clap attribute on `bandwidth`; because the field is `u64` (not `Option<u64>`), clap then treated omission as a missing required argument, even though the PR description stated `--bandwidth` was now optional ([#3775](https://github.com/malbeclabs/doublezero/pull/3775))
+  - Route the `doublezero user get` "no Access Pass found" warning through `tracing::warn!` instead of `eprintln!`, so diagnostics go to the logging facade per RFC-20 §Diagnostic logging and no longer write directly to stderr. No user-facing output, flag, or schema change.
+  - Reconcile the RFC-20 docs with the implemented global logging flag: `rfcs/rfc20-cli-standardization.md` and `docs/cli-standard.md` now describe `--log-level <off|error|warn|info|debug|trace>` (default `warn`) instead of the never-implemented repeatable `--log-verbose`. Documentation only; the binary is unchanged.
+- Tools
+  - Add `tools/stress/device-orchestrator/`, the device-stress orchestrator skeleton for the GRE Tunnel Capacity Study (part 2 of #3746). Runs a batched provision-then-reverse-deprovision sweep against a live serviceability program, dumping `orchestrator-config.json` and emitting a JSONL runlog of `submit | confirm | activate | deprovision_*` events. Cooperates with an abort sentinel file: finish the in-flight user, tear down everything created, exit non-zero. The SSH-backed agent runner (`pre_commit_log` / `applied` events) is stubbed behind `pkg/agent.Runner` and lands in part 3 ([#3771](https://github.com/malbeclabs/doublezero/issues/3771)).
+  - Add `tools/stress/device-observer/` initial scaffolding plus eAPI device sampler that writes per-tick snapshots of five `show` commands and an `observer-config.json` with the observer PID; collectors for Prometheus scrape, log tailers, and abort decider are stubbed and will be replaced in follow-up PRs.
+  - Implement the `tools/stress/device-observer/` Prometheus scraper for the doublezero-agent metrics endpoint. Each tick fetches `--agent-metrics-url`, parses the exposition response, and appends one NDJSON row per metric sample to `observer.agent_metrics.json`. Counter family totals are also exposed via a thread-safe `Scraper.Snapshot()` for downstream consumers. Per-tick HTTP, parse, or write failures log at WARN and the loop continues.
+- E2E/QA
+  - Configure the manager and client CLI with `doublezero config set --env local`, keeping per-field overrides for the container-specific ledger URLs and the deployed serviceability program ID (and geolocation program ID on the manager). The override is required because the sentinel multicast-publisher test deploys serviceability at a generated keypair and the compatibility tests clone testnet/mainnet program IDs; for standard stacks the env defaults already match the fixed localnet pubkeys. Exercises the new `--env`-as-base behavior end-to-end.
+  - add trusted fork PR e2e dispatch ([#3777](https://github.com/malbeclabs/doublezero/pull/3777))
+  - e2e/qa: remove client-side capacity pre-filtering from `ValidDevices`, because the QA user pubkey bypasses capacity limits using the serviceability global-config qa-allowlist. Individual device failures no longer fail the test; instead, overall and per-host failure rates are evaluated after all batches and the test only fails if either exceeds `--failure-threshold` (default 10%) or `--per-host-failure-threshold` (default 20%).
+- Controller
+  - Enable eos-native gnmi provider ([#3781](https://github.com/malbeclabs/doublezero/pull/3781))
+- Smartcontract (Serviceability)
+  - Enforce non-zero bandwidth on CYOA/DIA interfaces in `process_create_device_interface` and `process_update_device_interface`. On update the rule fires only when the transaction is changing CYOA, DIA, or bandwidth, so legacy zero-bandwidth CYOA/DIA interfaces already onchain can still be updated for unrelated fields without first being repaired. Enforce `side_a_iface.bandwidth >= link.bandwidth` (and `side_z_iface.bandwidth >= link.bandwidth` for WAN; DZX side Z is external) in `process_create_link`. Enforce the same rule for both side A and side Z in `process_accept_link` (the DZX accept path), so DZX side Z's bandwidth is validated when it is first bound and side A is re-validated in case it was lowered via `process_update_device_interface` between create and accept. All rejections surface as `DoubleZeroError::InvalidBandwidth` (`Custom(31)`).
+- Telemetry
+  - Replace the geoprobe `MinCache` best/backup eviction with a guarded-backup pattern: a backup is only collected while `best` is within its final `maxAge/2` ("guard") window, so on `best`'s expiry the promoted value is always a recent-window minimum rather than a stale fallback. A new record low resets `best` and clears `backup`, and expiry now promotes in a loop so a backup that is itself already expired cannot be promoted. `Best` / `BestRttNs` become pure read-through accessors returning the lower of the two non-expired slots without mutating or promoting.
+  - Add `ip-mroute`, `ip-mroute-count`, and the four MSDP show-commands (`ip-msdp-summary`, `ip-msdp-pim-sa-cache`, `ip-msdp-sa-cache`, `ip-msdp-sa-cache-rejected`) to the state-ingest server's default state-collect command list. Devices with `--state-collect-enable` will run each command via Arista eAPI and upload signed JSON snapshots to S3; downstream parsing into ClickHouse lands in separate `lake/indexer/pkg/dzingest` PRs (one per kind family).
+
+## [v0.24.0](https://github.com/malbeclabs/doublezero/compare/client/v0.23.0...client/v0.24.0) - 2026-05-22
+
+### Breaking
+
+### Changes
+
+- Smartcontract
+  - Deprecate the 13 contributor-side program instructions whose only client was the now-deleted activator: `ActivateDevice` (21), `RejectDevice` (22), `CloseAccountDevice` (27), `ActivateLink` (29), `RejectLink` (30), `CloseAccountLink` (35), `ActivateMulticastGroup` (47), `RejectMulticastGroup` (48), `DeactivateMulticastGroup` (53), `ActivateDeviceInterface` (72), `RemoveDeviceInterface` (75), `UnlinkDeviceInterface` (77), and `RejectDeviceInterface` (78). Dispatch arms now short-circuit to `DoubleZeroError::Deprecated` (custom code 67); processor files and argument structs are removed. Borsh variant tags are preserved (unit variants) so the wire format is unchanged — old clients receive a deterministic deprecation error rather than an unknown-instruction decode failure. Bumps `MIN_COMPATIBLE_VERSION` to `0.15.0` (the `client/v0.14.1` git tag was a patch release built from a commit whose workspace Cargo version was still `0.14.0`, so the v0.14.1 binary self-reports as 0.14.0 in its startup version check; v0.15.0 is the first release whose embedded version actually satisfies the intended ≥ 0.14.1 gate). Gated on onchain `ProgramConfig.min_compatible_version ≥ 0.15.0` ([#3623](https://github.com/malbeclabs/doublezero/issues/3623))
+  - Deprecate the `ActivateUser`, `RejectUser`, `CloseAccountUser`, and `BanUser` user-lifecycle program instructions: dispatch arms now return `DoubleZeroError::Deprecated` (custom code 67), and the processor files / argument structs are removed. Borsh variant tags 37/38/43/45 are preserved so the wire format is unchanged. The activator was the only client of all four — `CreateUser` has been atomic-to-`Activated` since RFC-11, `closeaccount` was activator-driven only, and `RequestBanUser` is now atomic. Gated on onchain `min_compatible_version ≥ 0.12.0` ([#3622](https://github.com/malbeclabs/doublezero/issues/3622))
+  - Extend `SetUserBGPStatus` with `bgp_rtt_ns: u64` (smoothed BGP TCP RTT in nanoseconds, same unit as `Link.delay_ns` / `Link.jitter_ns`); append `bgp_rtt_ns` to the `User` account. Old payloads (status-only) decode with `bgp_rtt_ns = 0` via `BorshDeserializeIncremental`; old serialized accounts decode with `bgp_rtt_ns = 0` via the existing append-only field pattern. Deploy order is unconstrained.
+- SDK (Rust)
+  - Delete the now-dead `{Activate,Reject,CloseAccount}DeviceCommand`, `{Activate,Reject,CloseAccount}LinkCommand`, `{Activate,Reject,Deactivate}MulticastGroupCommand`, and `{Activate,Reject,Remove,Unlink}DeviceInterfaceCommand` wrappers and the corresponding orphaned trait methods on `DoubleZeroProgram` — none are reachable from any live caller ([#3623](https://github.com/malbeclabs/doublezero/issues/3623))
+  - Delete the now-dead `ActivateUserCommand`, `RejectUserCommand`, `CloseAccountUserCommand`, and `BanUserCommand` wrappers — none are reachable from any live caller. `RequestBanUserCommand` (operator-driven, atomic) is unaffected ([#3622](https://github.com/malbeclabs/doublezero/issues/3622))
+  - Unconditionally request the protocol maximum compute (1,400,000 CU) and heap frame (256 KiB) on every serviceability transaction sent through `DZClient`. Removes `DoubleZeroClient::execute_transaction_with_compute_unit_limit` and the per-instruction `SET_GLOBAL_CONFIG_COMPUTE_UNIT_LIMIT` / `ASSIGN_TOPOLOGY_NODE_SEGMENTS_COMPUTE_UNIT_LIMIT` constants — serviceability runs on a dedicated private Solana cluster, so raising every transaction to the protocol max is free ([#3742](https://github.com/malbeclabs/doublezero/pull/3742))
+- SDK (Go/TS/Python)
+  - Add the `bgp_rtt_ns` field to the `User` deserializer in all three SDKs; the Go executor builder accepts and serializes the new field via a 10-byte instruction payload.
+- Telemetry
+  - `bgpstatus` now discovers VRFs by enumerating `/var/run/netns/` instead of deriving namespace names from onchain tenant data and a hardcoded base prefix. Fixes multicast user BGP status never being collected on Arista EOS: the previous code assumed the default VRF was the agent's current Linux namespace, but on the device the default VRF is exposed as `/var/run/netns/default` while the agent runs in `ns-management`. Drops the `--bgp-namespace` flag wiring from the BGP status submitter (the flag is still used by the state collector); adds `NetnsDir` config (default `/var/run/netns`); removes the empty-string short-circuit in `netns.RunInNamespace`.
+  - `bgpstatus` reports per-user BGP RTT onchain on every status-change or periodic-refresh write. RTT comes from the same INET_DIAG snapshot already used to detect ESTABLISHED sessions (`state.BGPSocketState.RTTms × 1_000_000` to ns), so no new collection cost. RTT does not by itself trigger a submission; it piggybacks on writes that would already happen, capped by `PeriodicRefreshInterval` staleness. A Down submission always carries `bgp_rtt_ns = 0` to avoid stale RTT outliving a missing session.
+  - gnmi-writer now collects ISIS global state (`isis_global_state`: instance, NET, level capability per network instance) and the ISIS LSP overload bit (`isis_overload_bit`) into ClickHouse, with companion `*_latest` views; moves another slice of ISIS telemetry off the S3 pipeline and onto gnmi-writer so we can eventually retire the S3 ISIS path
+  - gnmi-writer now stores per-interface unicast/multicast/broadcast packet counters (in/out) and FCS errors in the `interface_state` table, bringing it closer to parity with the interface counters already collected in InfluxDB. These already stream in the gNMI interface-state subtree, so there is no added collection cost; existing `interface_state` rows read back `0` for the new columns
+  - Remove the InfluxDB writer from global-monitor; ClickHouse is now the sole telemetry backend, dropping the `INFLUX_*` env var configuration
+  - Signed-TWAMP reflector in `geoprobe-agent` issues a per-pair 8-byte challenge nonce in `Reply0.SinceLastRxNs` and flags `Reply1.NumOffsets` bit 7 (new `Challenged` field on `ReplyPacket`) when `Probe1.Sec || Frac` echoes the nonce — proves the sender received Reply 0 before sending Probe 1, closing the pre-emit-Probe-1 attack on `SinceLastRxNs`. Backwards-compatible: legacy senders never echo the nonce so the flag bit stays 0, and they always ignored Reply 0's previously-zero `SinceLastRxNs`. Documented in RFC16's new "Challenge-Response Inbound Probing" subsection ([#3737](https://github.com/malbeclabs/doublezero/pull/3737))
+  - `geoprobe-target-sender` gains opt-in `--challenged` flag (default off). When set, the sender extracts the nonce from `Reply0.SinceLastRxNs`, writes it into `Probe1.Sec || Frac`, signs Probe 1 only after Reply 0 is parsed, and surfaces `Reply1.Challenged` on every per-pair log line (JSON `"challenged"`, text `Challenged Inbound:`). Default off preserves the existing pre-sign-both / fire-Probe-1-immediately fast path byte-for-byte. Trade-off: challenged mode inflates `Reply1.SinceLastRxNs` by the sender's Probe 1 signing latency ([#3738](https://github.com/malbeclabs/doublezero/pull/3738))
+  - state-ingest no longer logs a spurious `server exited with error: use of closed network connection` at shutdown; the listener-closed race during graceful shutdown (`net.ErrClosed`) is now treated as a clean stop alongside `http.ErrServerClosed`
+- CLI
+  - Introduce `doublezero-cli-core` (`crates/doublezero-cli-core/`), the shared library crate that every `doublezero-<module>-cli` will reuse per RFC-20. Ships `CliContext` + `CliContextBuilder` (resolved configuration value carried into every verb), `RequirementCheck` bitflags aligned with the legacy `CHECK_ID_JSON | CHECK_BALANCE | CHECK_FOUNDATION_ALLOWLIST` bit values, the shared validator set (`validate_pubkey`, `validate_pubkey_or_code`, `validate_code`, `validate_parse_bandwidth`, `validate_parse_delay_ms`, `validate_parse_jitter_ms`, `validate_parse_delay_override_ms`), display formatters (`DisplayVec`, `stringify_vec`), a `tracing` + `tracing-subscriber` `init_logging(verbosity)` helper that writes to stderr, and a `testing` module with a `CliContext` builder for verb unit tests. Existing call sites in `smartcontract/cli` continue to compile unchanged: `smartcontract/cli/src/validators.rs` and `formatters.rs` are now thin `pub use` shims over the core crate.
+  - Add `solana_l1_rpc_url` to `doublezero-config::NetworkConfig`. Per RFC-20 §Environments: `mainnet-beta` resolves to `https://api.mainnet-beta.solana.com`, `testnet` to `https://api.testnet.solana.com`, `devnet` to `https://api.testnet.solana.com` (intentional asymmetry, see RFC), and `local` to `http://localhost:8899`. A new `DZ_SOLANA_RPC_URL` environment variable overrides the resolved value, mirroring the existing `DZ_LEDGER_RPC_URL` / `DZ_LEDGER_WS_RPC_URL` overrides.
+  - Drop the activator-only pollers from `doublezero` (user and multicastgroup activation waits). The `--wait` flag on `user create`, `user create-subscribe`, `user subscribe`, `multicastgroup create`, and `multicastgroup update` now fetches the post-create state once instead of polling; creates are atomic to `Activated` post-RFC-11, so the wait loop was watching a transition that no longer happens ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
+  - `doublezero geolocation` `probe ...` and `user ...` mirrors `doublezero-geolocation` versions; new `--geo-program-id` global flag, `config get/set` include Geolocation Program ID; new `-init-geolocation-config` for init of geolocation program
+  - cli: `doublezero geolocation` `probe ...` and `user ...` mirrors `doublezero-geolocation` versions; new `--geo-program-id` global flag, `config get/set` include Geolocation Program ID.
+  - `geolocation probe list` now includes signing pubkeys
+  - Drop the activator-only pollers from `doublezero` (user and multicastgroup activation waits). The `--wait` flag on `user create`, `user create-subscribe`, `user subscribe`, `multicastgroup create`, and `multicastgroup update` now fetches the post-create state once instead of polling — creates are atomic to `Activated` post-RFC-11, so the wait loop was watching a transition that no longer happens ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
+  - Trim the `Rejected` status arm from the device and link activation pollers; `Rejected` was itself an activator-driven transition ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
+  - `doublezero user get` and `doublezero user list` surface BGP RTT as an `rtt` column (e.g. `5.50 ms`, or `-` when no sample has been observed). JSON output includes raw `bgp_rtt_ns` alongside the pretty `bgp_rtt` string.
+  - Remove standalone `doublezero-geolocation` binary; use `doublezero geolocation ...` instead.
+- Client
+  - Simplify `doublezero connect`'s post-create user fetch to a fixed retry-on-RPC-lag get instead of waiting for `UserStatus::Activated`; the activator-driven transition is gone, so the fetch only needs to ride out replica lag ([#3614](https://github.com/malbeclabs/doublezero/issues/3614))
+- E2E
+  - Switch geolocation invocations to `doublezero geolocation ...` and `doublezero init-geolocation-config`
+- Agent: log after Arista eapi commit
+- Agent: log received config size in bytes and expose `doublezero_agent_config_size_in_lines` and `doublezero_agent_config_size_in_bytes` Prometheus gauges ([#3741](https://github.com/malbeclabs/doublezero/issues/3741))
+- Controller
+  - Add `--max-user-tunnel-slots` flag to override the per-device user-tunnel slot count of 128 at runtime.
+
+## [v0.23.0](https://github.com/malbeclabs/doublezero/compare/client/v0.22.0...client/v0.23.0) - 2026-05-15
+
+### Breaking
+
+### Changes
+
+- Smartcontract
+  - Tenant administrators can now create or update access passes scoped to their tenant without being added to the foundation allowlist; non-privileged callers cannot remove a tenant they do not administer from an existing access pass.
+  - Skip `last_access_epoch` enforcement for `UserType::Multicast` in `CreateSubscribeUser` and `CheckUserAccessPass`. Multicast access is gated by `mgroup_pub_allowlist` / `mgroup_sub_allowlist` on the access pass, not by epoch, so multicast users can be created and remain `Activated` regardless of the access-pass expiry. IBRL/unicast epoch enforcement is unchanged.
+- Client
+  - add `--tenant` flag to `doublezero user update` for foundation-driven tenant reassignment
+  - break latency ties with avg latency ([#362](https://github.com/malbeclabs/doublezero/pull/3692))
+  - `doublezero connect multicast` no longer fails the client-side `check_accesspass` epoch check; only the AccessPass existence is verified for multicast. IBRL paths still enforce `last_access_epoch >= current_epoch`.
+  - Break latency ties using average latency when ranking candidate devices ([#3692](https://github.com/malbeclabs/doublezero/pull/3692))
+  - Delete `InterfaceV3` and the `InterfaceDeprecated::V3` variant from the serviceability program. V3 was added by an earlier change, never written to production accounts, and reverted in #3653 / no longer produced after #3667; this removes the dead type. Discriminant 3 is now an unused reserved slot in `InterfaceDeprecated`'s encoding space — unknown discriminants fall through to `InterfaceV2::default()`. Removes the V3 struct, its helper impls (`From<InterfaceV2>`, `TryFrom<&InterfaceV1>`, `Default`, `TryFrom<&InterfaceV3> for InterfaceV2`), V3 match arms in `InterfaceDeprecated::to_v2`/`size`/`Device::TryFrom`, and the V3 cross-language byte-layout debug test. On-disk write format is unchanged ([#3664](https://github.com/malbeclabs/doublezero/issues/3664))
+  - break latency ties with avg latency ([#362](https://github.com/malbeclabs/doublezero/pull/3692))
+- SDK
+  - Drop V3 handling from the Go, Python, and TypeScript serviceability readers: remove `DeserializeInterfaceV3` (Go) and the `version === 3` / `version == 3` legacy-slot branches (Python/TS); remove the `TestDeserializeInterfaceV3CrossLanguage` Go test. The forward-compat trailing `interfaces` vec continues to carry `flex_algo_node_segments` via the size-prefixed body — that path is unchanged ([#3664](https://github.com/malbeclabs/doublezero/issues/3664))
+  - Let side-Z contributors update a link's `status` / `desired_status` / `delay_override_ns` via `UpdateLinkCommand`; the Rust SDK now auto-detects the signer's side and builds the 4-account side-Z preamble the on-chain processor expects, instead of always sending the side-A layout ([#3702](https://github.com/malbeclabs/doublezero/issues/3702))
+- Controller:
+  - Enforce interface MTU during config render from interface role (CYOA/DIA → 1500, fabric → 9000) instead of trusting onchain `Interface.Mtu` / `Link.Mtu`; render each parent interface exactly once with `max` of its subinterface MTUs; change the `tunnel.tmpl` fallback from `2048` to `9000`. Guards against stale V1 onchain interfaces (`Mtu = 0`) and duplicate parent blocks that previously caused silent IS-IS adjacency failures ([#3696](https://github.com/malbeclabs/doublezero/pull/3696))
+- E2E tests
+  - Make multicast QA failures self-explanatory: require a `Multicast`-typed status entry after multicast connect (instead of accepting a stale IBRL one), retry `MulticastJoin` briefly on "interface not found" to absorb the daemon/kernel race, snapshot host state once after 30s of zero packets, and heartbeat the publisher's tunnel status during send windows to catch silent regressions
+
+## [v0.22.0](https://github.com/malbeclabs/doublezero/compare/client/v0.21.0...client/v0.22.0) - 2026-05-08
+
+### Breaking
+
+### Changes
+
+- Smartcontract
+  - Rename the `BackfillTopology` instruction to `AssignTopologyNodeSegments` across the program, CLI, and Rust SDK; the instruction discriminant (110) and on-disk semantics are unchanged ([#3648](https://github.com/malbeclabs/doublezero/pull/3648))
+  - Extend `CreateDeviceInterface` with optional trailing topology PDA accounts (`topology_count: u8`); for Vpnv4 loopbacks under onchain allocation the processor allocates a `FlexAlgoNodeSegment` per topology atomically with interface creation, so newly-provisioned devices no longer need a separate `AssignTopologyNodeSegments` step. The CLI/SDK auto-discover existing topologies and pass them. Topology accounts are validated by program-owner and by first-byte `AccountType::Topology` ([#3648](https://github.com/malbeclabs/doublezero/pull/3648))
+  - Extend `UpdateDeviceInterface` with `update_topologies: bool` + `topology_count: u8` to reconcile flex-algo node segments against a desired topology set on a Vpnv4 loopback (deallocate removed, allocate added, preserve unchanged); contributor owner or foundation allowlist can call it ([#3648](https://github.com/malbeclabs/doublezero/pull/3648))
+  - `DeleteDeviceInterface` now deallocates flex-algo node segments alongside the loopback's base SR ID under onchain deallocation ([#3648](https://github.com/malbeclabs/doublezero/pull/3648))
+  - Canonicalize the forward-compatible Device interface names: rename the new struct from `NewInterface` to `Interface`, the legacy enum from `Interface` to `InterfaceDeprecated`, the `Device::new_interfaces` field to `Device::interfaces`, and the legacy `Device::interfaces` field to `Device::deprecated_interfaces`. On-disk format and behavior are unchanged — Borsh is positional, so the regenerated device fixture is byte-identical. Mechanical rename across the serviceability program, processors, CLI, sentinel, client, controlplane admin, and the Rust SDK. The activator/ crate was already deleted in an earlier change so the rename does not touch it ([#3663](https://github.com/malbeclabs/doublezero/issues/3663))
+  - Stop reading `Device::deprecated_interfaces` outside of backward-compat tests. The `delete_device` processor and `Device::validate` now check the canonical `Device::interfaces` vec; the legacy slot is treated as wire-format-only state populated by the deserializer and projected by the serializer. CLI, processor, and Rust SDK construction sites use `..Default::default()` to avoid initializing the legacy field. The unused `UpdateDeviceCommand::deprecated_interfaces` SDK command field is removed. `Device::deprecated_interfaces` itself is retained for backward-compat fixture tests that verify legacy-slot decoding ([#3663](https://github.com/malbeclabs/doublezero/issues/3663))
+  - Remove the `CurrentInterfaceVersion` type alias and the unused `Device::find_interface_legacy` helper. Tests that used to construct `CurrentInterfaceVersion {...}` (an `InterfaceV2` literal) and convert into either the canonical `Interface` or the legacy `InterfaceDeprecated` enum now build `Interface {...}` directly. The legacy enum's `into_current_version()` method is replaced by `to_v2()` for the few backward-compat sites that still need an `InterfaceV2` projection ([#3663](https://github.com/malbeclabs/doublezero/issues/3663))
+  - Stop writing `InterfaceV3` from `CreateDeviceInterface` and `UpdateDeviceInterface`; `CurrentInterfaceVersion` is now `InterfaceV2`. `MigrateDeviceInterfaces` and `BackfillTopology` continue to write `InterfaceV3` since they are admin-controlled and need the `flex_algo_node_segments` field
+  - Add forward-compatible `NewInterface` struct in `state/interface.rs` with a `size: u16` + `version: u8` on-disk prefix, V3-shaped body, and `flex_algo_node_segments`. Older readers can use the size prefix to skip past unknown future versions in constant time. Additive only — no callers, processors, or SDKs change in this PR ([#3666](https://github.com/malbeclabs/doublezero/pull/3666))
+  - Append `new_interfaces: Vec<NewInterface>` to `Device` after `max_multicast_publishers`, behind a custom `BorshSerialize` that projects the on-disk legacy `interfaces` slot from `new_interfaces` (always `Interface::V2` per #3653) and writes `new_interfaces` at the end of the layout. Legacy accounts with no trailing bytes deserialize cleanly: `Device::try_from` rebuilds `new_interfaces` from the legacy enum vec via per-variant `TryFrom`. Older readers continue to parse the legacy slot at its existing offset; newer readers gain forward-compat via the trailing vec. Mutations now go through `Device::replace_interface` / `push_interface` / `remove_interface` so both vecs stay in sync; `find_interface` returns `&NewInterface` and `find_interface_legacy` is a temporary helper for unrelated callers ([#3665](https://github.com/malbeclabs/doublezero/pull/3665))
+  - Migrate serviceability processors (`device/interface/{create,update,activate,delete,reject,remove,unlink}`, `link/{accept,activate,closeaccount,create,delete,update}`, `topology/backfill`) to read and mutate `Device::new_interfaces` directly. `device.interfaces` is no longer touched in `processors/`, and `Device::push_interface` now takes a `NewInterface`. `BackfillTopology` no longer mirrors `flex_algo_node_segments` into the legacy in-memory `interfaces` vec — segments live only in `new_interfaces` and are intentionally dropped on the V2-projected on-disk legacy slot ([#3658](https://github.com/malbeclabs/doublezero/issues/3658))
+  - Delete the `MigrateDeviceInterfaces` processor and integration tests from the serviceability program. `Device::TryFrom<&[u8]>` (#3665) now auto-promotes legacy `interfaces` into `new_interfaces` when the trailing vec is missing, and the next account write persists the promoted vec — no standalone migration step is needed. Variant 111 is retained as a `Deprecated111()` tombstone (no-op dispatch, slot reserved so it isn't reused) for compatibility with older clients still emitting the old discriminator ([#3662](https://github.com/malbeclabs/doublezero/issues/3662))
+- SDK
+  - Go, Python, and TypeScript serviceability readers parse the trailing `new_interfaces` vec on `Device` with size-prefixed (u16 size + u8 version + body) forward-compat framing. Empty trailing falls back to rebuilding `new_interfaces` from the legacy enum vec, matching the Rust device reader. Length mismatch between the legacy and trailing vecs is surfaced as an error (Python/TS raise; Go sets `Device.DeserializeError`). Bumps `CURRENT_INTERFACE_VERSION` / `CurrentInterfaceVersion` to `4` across SDKs to match Rust's `CURRENT_INTERFACE_SCHEMA_VERSION` ([#3660](https://github.com/malbeclabs/doublezero/issues/3660))
+  - Regenerate `device.{bin,json}` through Device's custom serializer with a populated `new_interfaces` vec (one Vpnv4 loopback carrying a `FlexAlgoNodeSegment`, one physical user-tunnel-endpoint), and add `device_legacy.{bin,json}` (legacy `interfaces` vec only, no trailing bytes — exercises the SDK legacy-fallback path) and `device_future_version.{bin,json}` (last trailing-vec element doctored to `version=5` with 8 trailing junk bytes — exercises the SDK skip-to-end path). Adds fixture-driven Go SDK tests; extends the existing Python/TS fixture tests to cover all three Device fixtures ([#3661](https://github.com/malbeclabs/doublezero/issues/3661))
+  - Expose `SubscriptionStartSlot` and `LastUSDCPriceDollars` on the shreds Go SDK `ClientSeat` struct, mapped to the existing prorated-billing fields in the onchain layout ([#3684](https://github.com/malbeclabs/doublezero/pull/3684))
+- SDK
+  - Apply the same rename in the Go, Python, and TypeScript serviceability readers: Go gets `Device.DeprecatedInterfaces` ↔ `Device.Interfaces` (with the new `Interfaces` taking the trailing-vec slot previously held by `NewInterfaces`); Python gets `Device.deprecated_interfaces` ↔ `Device.interfaces`; TypeScript gets `Device.deprecatedInterfaces` ↔ `Device.interfaces`. The `Interface` / `DeviceInterface` element type in each SDK already represents the canonical (new) format and needs no rename. Length-mismatch error messages now reference the canonical field names ([#3663](https://github.com/malbeclabs/doublezero/issues/3663))
+  - Migrate read callers in the CLI, sentinel, client, controlplane admin, and Rust SDK topology helper to read interfaces from `Device::new_interfaces` instead of the legacy `interfaces` enum vec, and adopt the `Device::find_interface` signature that returns `&NewInterface`. The legacy `interfaces` slot is still written on-disk via the per-write V2 projection from #3667; this PR only migrates reads. The temporary `Device::find_interface_legacy` helper is retained for the smartcontract program processors, which migrate in a later issue. Activator is intentionally excluded — it is deprecated ([#3659](https://github.com/malbeclabs/doublezero/issues/3659))
+- Controller
+  - Stamp the default `UNICAST-DEFAULT` topology color on tunnels for users whose access pass has no tenant; previously the color was only resolved inside the tenant lookup branch, leaving tenantless users (the majority on mainnet/testnet) with no color community ([#3648](https://github.com/malbeclabs/doublezero/pull/3648))
+- CLI
+  - `doublezero device interface get` displays `flex_algo_node_segments` as `topology_name:sr_id` rows, falling back to a truncated pubkey when the topology cannot be looked up ([#3648](https://github.com/malbeclabs/doublezero/pull/3648))
+- Activator
+  - Delete the `activator/` crate from the workspace; onchain allocation (RFC-11) supersedes it. The deployed activator was frozen in Phase 1 ([#3608](https://github.com/malbeclabs/doublezero/pull/3608), [#3628](https://github.com/malbeclabs/doublezero/pull/3628)) and removed from e2e in Phase 2 ([#3609](https://github.com/malbeclabs/doublezero/pull/3609), [#3610](https://github.com/malbeclabs/doublezero/pull/3610), [#3611](https://github.com/malbeclabs/doublezero/pull/3611), [#3629](https://github.com/malbeclabs/doublezero/pull/3629)). The `*/activate`, `*/reject`, and `*/closeaccount` onchain instructions and their SDK command modules remain in place for older CLIs until the min-version gate ([#3612](https://github.com/malbeclabs/doublezero/issues/3612))
+
+## [v0.21.0](https://github.com/malbeclabs/doublezero/compare/client/v0.20.0...client/v0.21.0) - 2026-05-01
+
+### Breaking
+
+### Changes
+
+- Smartcontract
+  - Add `AccessPassType::EdgeSeat(Pubkey)` variant to associate an access pass with a specific onchain Seat pubkey
+  - Add `--accesspass-type edge-seat --seat <PUBKEY>` to `access-pass set`
+  - Add `--edge-seat` and `--seat-pubkey` filters to `access-pass list`
+- Client
+  - Add `--sock-file` global flag (aliases: `--socket`, `--socket-path`) to the `doublezero` CLI to override the default Unix socket path used to communicate with `doublezerod` (`/var/run/doublezerod/doublezerod.sock`)
+- Controller
+  - Fix unknown BGP peer cleanup in the Arista EOS template: hoist per-peer `no neighbor X` removal into its own `router bgp 65342` block so EOS's silent context-exit on `no neighbor` for a non-existent peer can't misroute subsequent peers' removal commands ([#3627](https://github.com/malbeclabs/doublezero/pull/3627))
+- Sentinel
+  - Pass dz_prefix resource accounts when creating the multicast user to force onchain allocation
+- Smartcontract
+  - Allow ip_net to be passed when creating a device interface if the interface is CYOA/DIA/user_tunnel_endpoint
+- Telemetry
+  - Add `agent_version` and `agent_commit` to `WriteDeviceLatencySamples` so the onchain header is refreshed on every write (~60s) instead of only at initialization; fixes stale version reporting after mid-epoch agent upgrades ([#3598](https://github.com/malbeclabs/doublezero/issues/3598))
+- CLI
+  - `doublezero -V` now shows client version, program version, and minimum required version fetched from the serviceability program
+
+## [v0.20.0](https://github.com/malbeclabs/doublezero/compare/client/v0.19.0...client/v0.20.0) - 2026-04-29
+
+### Breaking
+
+### Changes
+
+- Telemetry
+  - Fix BGP status submitter to collect socket stats and tunnel interfaces from all tenant VRF namespaces (`ns-vrf<N>`), not only `ns-vrf1`; users whose tenant has a non-default `VrfId` were previously always reporting "tunnel not found" and had their onchain BGP status left stale
+  - Fix BGP status submitter to collect from the root Linux network namespace when multicast users are present on a device; multicast GRE tunnels live in the global VRF (root namespace) rather than a per-tenant namespace, so their BGP sessions were never detected and onchain status remained permanently stale
+- CLI
+  - Add `--narrow` flag to `doublezero user list` that hides `location`, `cyoa_type`, `accesspass`, and `tunnel_net`, abbreviates `user_type`, and summarizes `groups` as one publisher entry plus one subscriber entry with independent `+N` overflow counts; default output is unchanged
+  - Add `doublezero-geolocation user update --user <code-or-pubkey> --token-account <pubkey>` to update a geolocation user's payment token account; the underlying `UpdateGeolocationUser` instruction was already onchain but had no CLI entrypoint
+- Smartcontract
+  - Allow `count > max` in `Device::validate` for all four per-device caps (`max_users`, `max_unicast_users`, `max_multicast_subscribers`, `max_multicast_publishers`) so operators can lower a cap below the live count; admission-time gates in user create still reject new connections when at capacity, letting the live count drain through natural churn
+
+## [v0.19.0](https://github.com/malbeclabs/doublezero/compare/client/v0.18.0...client/v0.19.0) - 2026-04-24
+
+### Breaking
+
+### Changes
+
+- Controller
+  - Auto-loads `/etc/doublezero-controller/features.yaml` at startup if present (silently skips if absent); when `flex_algo.enabled: true`, populates topology data into the state cache, resolves tenant color communities from `Tenant.include_topologies`, and emits IS-IS flex-algo node segment and BGP color community stamping blocks into the Arista EOS template (disabled by default)
+- SDK
+  - Go serviceability SDK adds `TopologyInfo` account type with `TopologyConstraint`, `IndexType` / `TopologyType` account-type constants, and `GetProgramData` dispatch case; extends `Link` with `LinkTopologies` and `LinkFlags`; extends `Tenant` with `IncludeTopologies`
+- CLI
+  - Add `cyoa_ips` field to `doublezero device get` and `doublezero device list` output, showing the IP networks of interfaces with `user_tunnel_endpoint` enabled
+  - Add `--tunnel_endpoint` flag to `user update` command so operators can set the tunnel endpoint IP of an existing user
+  - Extend `doublezero resource verify` to check `MulticastPublisherBlock` against multicast publisher users' `dz_ip` allocations; legacy `dz_ip`s that fall outside the block's range are ignored so pre-existing users allocated before this extension existed do not produce false discrepancies
+  - Fix `doublezero resource verify` to report missing `TunnelIds` resource extensions for all devices, including those without any users; previously the discrepancy was suppressed when a device had no users, hiding unallocated extensions
+  - Extend `doublezero resource verify` to detect orphaned `ResourceExtension` accounts whose PDA does not correspond to any currently-expected resource type (global singleton or per-device extension for a live device/prefix); `--fix` closes them via the existing y/N confirmation flow
+  - Add `multicast subscribe`, `multicast unsubscribe`, `multicast publish`, and `multicast unpublish` CLI commands so users can modify their multicast role set on a connected session without running `disconnect`. `unpublish` warns when the removal would drop the user's last publisher role (legacy-allocation environments may briefly reprovision in that case).
+- Client
+  - Filter devices by type-specific capacity during auto-selection so clients are not provisioned onto devices that have reached their unicast, multicast publisher, or multicast subscriber limits
+- Collector
+  - fallback to any probe if anchor probes aren't available
+- Smartcontract
+  - Fix `BackfillTopology` account ordering: payer and system_program are now correctly placed after the variable-length device list, not before it
+  - Fix `BackfillTopology` SID collision: flex-algo node segment indices are now guaranteed not to duplicate any existing base `node_segment_idx` value on the device
+  - Fix multicast group allowlist add/remove for AccessPasses created with `allow_multiple_ip=true`; the processors were rejecting requests with a real client IP because the stored IP is always `0.0.0.0` for these passes ([#3551](https://github.com/malbeclabs/doublezero/issues/3551))
+  - SDK now auto-detects the correct AccessPass PDA (static or dynamic) for allowlist operations based on whether an `allow_multiple_ip` pass exists
+  - Add `doublezero link topology {create,delete,clear,backfill,list}` subcommands for managing flex-algo topologies; `topology clear` auto-discovers tagged links when `--links` is omitted
+  - Add `TopologyInfo` onchain account for IS-IS flex-algo link classification: auto-assigned TE admin-group bit (1–62), derived flex-algo number (128 + bit), and constraint type (`include-any`/`include-all`); capped at 62 topologies via `AdminGroupBits` resource extension
+  - Add `link_topologies: Vec<Pubkey>` (capped at 8) and `link_flags: u32` (bit 0 = unicast-drained) to the `Link` account
+  - Add `include_topologies` to the `Tenant` account for topology-filtered routing opt-in
+  - Enforce UNICAST-DEFAULT topology existence as a precondition for link activation
+  - Extend `link get` and `link list` to display topology assignments and drain status; add `--link-topology <name>` filter to `link list` and `--link-topology` (comma-separated topology names) / `--unicast-drained` flags to `link update`; use `default` as the value to clear all topology assignments
+  - Extend `tenant get` and `tenant list` to display included topologies; add `--include-topologies` (comma-separated topology names) flag to `tenant update`; use `default` to clear
+- Sentinel
+  - Set a concrete `tunnel_endpoint` on multicast publisher create, preferring a `user_tunnel_endpoint` interface IP and falling back to the device's `public_ip`, excluding IPs already in use by another user at the same `client_ip`
+  - Make the multicast publisher worker's `--client-filter` flag repeatable so multiple validator client names can be matched in one run (OR semantics), matching the admin CLI behavior
+- Tools
+  - Add `doublezero-admin migrate flex-algo [--dry-run]` command to backfill link topology assignments and VPNv4 loopback flex-algo node segments across all existing devices and links
+
+## [v0.18.0](https://github.com/malbeclabs/doublezero/compare/client/v0.17.0...client/v0.18.0) - 2026-04-17
+
+### Breaking
+
+### Changes
+
+- Device Health Oracle
+  - Add `interface_counters` activation criterion to device-health-oracle to verify devices have recent interface counter data in ClickHouse before activation
+  - Add `controller_success` activation criterion to device-health-oracle to verify devices have consistent controller call coverage over a configurable burn-in period by querying ClickHouse
+- Telemetry
+  - Add `GET /device-link/agent-versions` endpoint to data-api and `agent-versions` subcommand to data-cli, exposing per-device telemetry agent version and commit from onchain `DeviceLatencySamplesHeader`
+- Smartcontract
+  - Allow `SubscribeMulticastGroup` for users in `Pending` status so that `CreateSubscribeUser` can be followed by additional subscribe calls before the activator runs ([#3521](https://github.com/malbeclabs/doublezero/pull/3521))
+  - Add optional `owner` field to `UpdateMulticastGroup` instruction, allowing foundation members to reassign ownership of a multicast group ([#3527](https://github.com/malbeclabs/doublezero/pull/3527))
+  - Rename `SubscribeMulticastGroup` instruction variant to `UpdateMulticastGroupRoles` and rename associated processor functions, args struct, and SDK command to use "roles" terminology, clarifying they manage publisher/subscriber roles rather than just subscriptions
+- Geolocation
+  - Add optional result destination to `GeolocationUser` so LocationOffsets can be sent to an alternate endpoint instead of the target IP; supports both IP and domain destinations (e.g., `185.199.108.1:9000` or `results.example.com:9000`); includes `SetResultDestination` onchain instruction, CLI `user set-result-destination` command, and Go SDK deserialization (backwards-compatible with existing accounts)
+- CLI
+  - Add `--owner` flag to `multicast group update`, accepting a pubkey or `me` ([#3527](https://github.com/malbeclabs/doublezero/pull/3527))
+  - Polish terminal output of `connect` and `disconnect`: fix emoji semantics, normalize message phrasing across IBRL and multicast code paths, resolve tenant to human-readable code on connect (errors if tenant not found), and fix progress bar not clearing before output in `disconnect` ([#3529](https://github.com/malbeclabs/doublezero/pull/3529))
+- Client
+  - Reduce default probing interval to 5m from 30s since DZDs don't generally move.
+- Dependencies
+  - Bump vulnerable packages across Rust, Go, and Python to address Dependabot security alerts (14 packages fixed)
+- DevContainer
+  - Add optional `DZ_WORKTREES_DIR` mount exposing a host worktrees directory at `/workspaces/worktrees` inside the container; useful when `docker exec`-ing into the persistent dev container to work on git worktrees outside the repo. Defaults to `/tmp/worktrees` (empty, harmless) when unset
+
+## [v0.17.0](https://github.com/malbeclabs/doublezero/compare/client/v0.16.0...client/v0.17.0) - 2026-04-10
+
+### Breaking
+
+### Changes
+
+- Activator
+  - Fix duplicate tunnel underlay pairs after restart by registering `device.public_ip` as in-use for legacy users with unset `tunnel_endpoint` during allocation reload
+- Client
+  - Rank devices and tunnel endpoints by minimum observed latency (`min_latency_ns`) instead of average when selecting a connection target, preferring paths with the best achievable round-trip time
+- Tools
+  - Add `IsRetryableFunc` field to `RetryOptions` for configurable retry criteria in the Solana JSON-RPC client; add `"rate limited"` string match and RPC code `-32429` to the default implementation
+- Telemetry
+  - Add shared `telemetry/migrations` package with goose-based ClickHouse schema migrations for all telemetry services; add `CLICKHOUSE_RUN_MIGRATIONS` env var to flow-enricher and gnmi-writer for on-startup schema migration ([#3460](https://github.com/malbeclabs/doublezero/pull/3460))
+  - Add optional TLS support to state-ingest server via `--tls-cert-file` and `--tls-key-file` flags; when set, the server listens on both HTTP (`:8080`) and HTTPS (`:8443`) simultaneously
+  - Remove `--additional-child-probes` CLI flag from telemetry-agent; child geoprobe discovery now relies entirely on the onchain Geolocation program
+  - Add BGP status submitter: on each tick, reads BGP socket state from the device namespace, maps each activated user to their tunnel peer IP, and submits `SetUserBGPStatus` onchain; supports a configurable down grace period and periodic keepalive refresh; enabled via `--bgp-status-enable` with `--bgp-status-interval`, `--bgp-status-refresh-interval`, and `--bgp-status-down-grace-period` flags
+  - Bound `CachingFetcher` RPC calls with an explicit 30s timeout; `context.WithoutCancel` drops the parent deadline as well as cancellation, so without this a hung Solana RPC would block all singleflight waiters indefinitely
+- Monitor
+  - Add ClickHouse as a telemetry backend for the global monitor alongside existing InfluxDB
+- E2E tests
+  - Add `TestE2E_GeoprobeIcmpTargets` verifying end-to-end ICMP outbound offset delivery via onchain `outbound-icmp` targets
+  - Refactor geoprobe E2E tests to use testcontainers entrypoints and onchain target discovery
+  - Add `TestE2E_UserBGPStatus` verifying that the telemetry BGP status submitter correctly reports onchain status transitions as clients connect and establish BGP sessions
+- Monitor
+  - Add ClickHouse as a telemetry backend for the global monitor alongside existing InfluxDB
+- SDK
+  - Deserialize `agent_version` and `agent_commit` from device latency samples in Go, TypeScript, and Python SDKs
+  - Add `BGPStatus` type (Unknown/Up/Down) and `SetUserBGPStatus` executor instruction to the Go serviceability SDK
+- Sentinel
+  - Improve `find-validator-multicast-publishers` and `create-validator-multicast-publishers` with multi-value `--client` filter, `--ip` filter, nearest-device selection, dynamic capacity re-evaluation, and a fix for multicast publisher owner being set to the sentinel payer instead of the validator's owner
+- Smartcontract
+  - Add `agent_version` (`[u8; 16]`) and `agent_commit` (`[u8; 8]`) fields to `DeviceLatencySamplesHeader`, carved from the existing reserved region; accept both fields in the `InitializeDeviceLatencySamples` instruction via incremental deserialization (fully backward compatible)
+  - Implement `SetUserBGPStatus` processor: validates metrics publisher authorization, updates `bgp_status`, `last_bgp_reported_at`, and `last_bgp_up_at` fields on the user account
+  - Add human-readable error messages for serviceability program errors in the Go SDK, including program log extraction for enhanced debugging
+  - `user get` no longer fails when no Access Pass exists; it prints a warning to stderr and continues, showing an empty access pass field
+  - Replace manual account validation assertions with `validate_program_account!` macro across serviceability processor files, adding consistent `data_is_empty` checks and fixing a missing `is_writable` validation in `ResumeLink` ([#3436](https://github.com/malbeclabs/doublezero/pull/3436))
+  - Extend `validate_program_account!` migration to remaining user and multicastgroup allowlist processors (`set_bgp_status`, `delete`, `closeaccount`, publisher/subscriber `add`/`remove`)
+  - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
+  - Allow pending users with subs to be deleted
+- Onchain programs
+  - Add `tunnel_endpoint` field to the `UpdateUser` instruction (`UserUpdateArgs`), allowing the activator to overwrite a user's tunnel endpoint onchain; field is optional and backward compatible via incremental deserialization
+- Telemetry
+  - Device telemetry agent now posts `agent_version` and `agent_commit` in the `DeviceLatencySamplesHeader` when initializing new sample accounts, enabling version attribution of onchain telemetry data
+  - Add optional TLS support to state-ingest server via `--tls-cert-file` and `--tls-key-file` flags; when set, the server listens on both HTTP (`:8080`) and HTTPS (`:8443`) simultaneously
+  - Remove `--additional-child-probes` CLI flag from telemetry-agent; child geoprobe discovery now relies entirely on the onchain Geolocation program
+  - Add BGP status submitter: on each tick, reads BGP socket state from the device namespace, maps each activated user to their tunnel peer IP, and submits `SetUserBGPStatus` onchain; supports a configurable down grace period and periodic keepalive refresh; enabled via `--bgp-status-enable` with `--bgp-status-interval`, `--bgp-status-refresh-interval`, and `--bgp-status-down-grace-period` flags
+- Tools
+  - Add `IsRetryableFunc` field to `RetryOptions` for configurable retry criteria in the Solana JSON-RPC client; add `"rate limited"` string match and RPC code `-32429` to the default implementation
+- Geolocation
+  - Standardize CLI flag naming: probe mutation commands use `--probe` (was `--code`) accepting pubkey or code; rename `--signing-keypair` → `--signing-pubkey` and `--target-pk` → `--target-signing-pubkey`; add `--json-compact` to `get` commands
+  - geoprobe-target can now store LocationOffset messages in ClickHouse
+  - Add ICMP pinger to geoprobe-agent for measuring outbound ICMP targets with interleaved batch send/receive, integrated into the existing measurement cycle alongside TWAMP
+  - Remove `--additional-parent`, `--additional-targets`, `--additional-icmp-targets`, and `--allowed-pubkeys` CLI flags from geoprobe-agent; all configuration now comes from onchain state via parent and target discovery
+  - Add `MinCache` for tracking minimum-RTT measurements with best/backup promotion over a rolling TTL window, used by both geoprobe-target and geoprobe-target-sender to suppress redundant output and surface only new-best events
+
+## [v0.16.0](https://github.com/malbeclabs/doublezero/compare/client/v0.15.0...client/v0.16.0) - 2026-04-03
+
+### Breaking
+
+### Changes
+
+- Smartcontract
+  - Require that the access pass provided to `SubscribeMulticastGroup` belongs to the payer; foundation allowlist members may use any access pass.
+  - Add Index account for onchain key uniqueness enforcement and O(1) key-to-pubkey lookup, with standalone CreateIndex/DeleteIndex instructions for migration backfill
+  - Set minimum client version to 0.10.0
+  - Enforce 9000-byte MTU on links and non-CYOA/non-DIA device interfaces; CYOA/DIA interfaces must be 1500. Onchain validation now returns `InvalidMtu` (error 46) for non-conforming values.
+  - Add `OutboundIcmp` target type (`= 2`) to the geolocation onchain program, enabling ICMP-based probing as an alternative to TWAMP for outbound geolocation targets
+- CLI
+  - Allow incremental multicast group addition without disconnecting
+  - Reset SIGPIPE to SIG_DFL at the start of main() in all 3 CLI binaries (doublezero, doublezero-geolocation, doublezero-admin) so the process exits silently like standard CLI tools
+  - Support `--type outbound-icmp` in geolocation `user add-target`, `remove-target`, and `get` commands
+  - Add sentinel admin commands to find and create multicast publishers for IBRL validators
+  - handle non-user owned disconnects gracefully
+  - Add user's multicast pub/sub groups if applicable to `status`
+- Sentinel
+  - Add multicast publisher worker with Solana RPC-based validator discovery
+  - Add e2e tests for multicast publisher worker with validator-metadata-service mock
+- SDK
+  - Add Go SDK for shred subscription program with read-only account deserialization (epoch state, seat assignments, pricing, settlement, validator client rewards), PDA derivation helpers, RPC fetchers, compatibility tests, and a fetch example CLI
+  - Add `GeoLocationTargetTypeOutboundIcmp` to Go geolocation SDK with deserialization and round-trip test support
+- Device Health Oracle
+  - Update link.health and device.health to `ready-for-service` and `ready-for-users` when they are not already in that state
+- Tools
+  - Add `twamp-debug` diagnostic tool for testing kernel timestamping support on switches; sends real TWAMP probes to verify which SO_TIMESTAMPING modes (RX/TX software/hardware/sched) actually deliver timestamps, and reports RTT statistics comparing userspace vs kernel timestamp sources
+- E2E Tests
+  - Switch backward compatibility test to install versioned CLI binaries from GitHub releases instead of Cloudsmith apt repos; version enumeration now uses the GitHub API directly from Go rather than querying apt-cache inside the container
+- Client
+  - Add `doublezero_connection_info` Prometheus metric exposing connection metadata (user_type, network, current_device, metro, tunnel_name, tunnel_src, tunnel_dst) ([#3201](https://github.com/malbeclabs/doublezero/pull/3201))
+  - Add `doublezero_connection_rtt_nanoseconds` and `doublezero_connection_loss_percentage` Prometheus metrics reporting RTT and packet loss to the current connected device
+
+## [v0.15.0](https://github.com/malbeclabs/doublezero/compare/client/v0.14.0...client/v0.15.0) - 2026-03-27
+
+- Client
+  - fix(client): fix latency field overflow by changing i32 to i64 ([#3382](https://github.com/malbeclabs/doublezero/pull/3382))
+  - fix(client): add user feedback to latency, add flag to limit icmp probe concurrency ([#3385](https://github.com/malbeclabs/doublezero/pull/3385))
+
+### Breaking
+
+### Changes
+
+- Funder
+  - Top up contributor owner keys alongside device metrics publishers, multicast group owners, and the internet latency collector
+- Smartcontract
+  - Fix multicast publisher/subscriber device counter divergence: `multicast_publishers_count` never decremented and `multicast_subscribers_count` over-decremented on user disconnect because the decrement logic checked `!publishers.is_empty()`, which is always false at delete time. Add a durable `tunnel_flags` field to the `User` struct with a `CreatedAsPublisher` bit, set at activation, and use it in the delete and closeaccount instructions.
+  - Allow foundation allowlist members and the sentinel to create multicast users with a custom `owner` via a new `owner` field on `CreateSubscribeUser`, enabling user creation on behalf of another identity's access pass
+- CLI
+  - Add `--owner` flag to `doublezero user create-subscribe` for specifying a custom user owner (foundation/sentinel only)
+
 ## [v0.14.0](https://github.com/malbeclabs/doublezero/compare/client/v0.13.0...client/v0.14.0) - 2026-03-24
 
 ### Breaking
@@ -21,6 +455,7 @@ All notable changes to this project will be documented in this file.
   - Log an error when duplicate tunnel-id assignments are detected on the same device during state cache update, instead of silently overwriting
 - Onchain Programs
   - Serviceability: update device interface IPs when `tunnel_net` is changed via `UpdateLink`, matching the existing `ActivateLink` behavior ([#3365](https://github.com/malbeclabs/doublezero/pull/3365))
+  - Serviceability: `AcceptLink` supports combined accept+activate via `use_onchain_allocation` flag, gated on `OnChainAllocation` feature flag ([#3369](https://github.com/malbeclabs/doublezero/pull/3369))
   - Serviceability: add `feed_authority` to `RemoveMulticastGroupSubAllowlist` auth check, matching `AddMulticastGroupSubAllowlist`
 - Client
   - Get client IP from the daemon in the disconnect command, matching the connect command's behavior, to avoid IP mismatches behind NAT
@@ -30,6 +465,7 @@ All notable changes to this project will be documented in this file.
   - Add `TargetUpdateCount` field to Go GeoProbe struct with backward-compatible deserialization
 - Telemetry
   - Skip expensive `GetGeolocationUsers` RPC scan in geoprobe-agent when the probe's `target_update_count` is unchanged, with a forced full refresh every ~5 minutes as safety net
+  - Add Prometheus metrics to geoprobe-agent: build info, error counters by type, discovery/measurement cycle durations, offset send/receive/reject counters, and discovered target/parent gauges; exposed via optional `--metrics-enable` flag
 
 ## [v0.13.0](https://github.com/malbeclabs/doublezero/compare/client/v0.12.0...client/v0.13.0) - 2026-03-20
 
@@ -52,7 +488,7 @@ All notable changes to this project will be documented in this file.
   - Include feed authority in `global-config authority get` output
   - Add `geolocation user` subcommands to manage GeolocationUser accounts and targets: `create`, `delete`, `get`, `list`, `add-target`, `remove-target`, and `update-payment-status`
 - Monitor
-  - Fix slack user reporting 
+  - Fix slack user reporting
 - SDK
   - Add GeolocationUser types, Borsh deserialization, PDA derivation, and read-only client methods (`GetGeolocationUserByCode`, `GetGeolocationUsers`) to the Go geolocation SDK
 - Telemetry

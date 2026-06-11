@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/gagliardetto/solana-go"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 )
 

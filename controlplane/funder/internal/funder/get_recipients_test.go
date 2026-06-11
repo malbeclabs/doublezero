@@ -31,6 +31,12 @@ func TestGetRecipients_Success(t *testing.T) {
 				MetricsPublisherPubKey: [32]byte{2},
 			},
 		},
+		Contributors: []serviceability.Contributor{
+			{
+				PubKey: [32]byte{6},
+				Owner:  [32]byte{7},
+			},
+		},
 		MulticastGroups: []serviceability.MulticastGroup{
 			{
 				PubKey: [32]byte{3},
@@ -49,13 +55,77 @@ func TestGetRecipients_Success(t *testing.T) {
 
 	result, err := GetRecipients(context.Background(), client, recipients, internetLatencyCollectorPK)
 	assert.NoError(t, err)
-	assert.Len(t, result, 3)
+	assert.Len(t, result, 4)
 	assert.Equal(t, "device-"+solana.PublicKeyFromBytes(mockData.Devices[0].PubKey[:]).String(), result[0].Name)
 	assert.Equal(t, solana.PublicKeyFromBytes(mockData.Devices[0].MetricsPublisherPubKey[:]), result[0].PubKey)
-	assert.Equal(t, "mcastgroup-"+solana.PublicKeyFromBytes(mockData.MulticastGroups[0].PubKey[:]).String(), result[1].Name)
-	assert.Equal(t, solana.PublicKeyFromBytes(mockData.MulticastGroups[0].Owner[:]), result[1].PubKey)
-	assert.Equal(t, "internet-latency-collector", result[2].Name)
-	assert.Equal(t, internetLatencyCollectorPK, result[2].PubKey)
+	assert.Equal(t, "contributor-"+solana.PublicKeyFromBytes(mockData.Contributors[0].PubKey[:]).String(), result[1].Name)
+	assert.Equal(t, solana.PublicKeyFromBytes(mockData.Contributors[0].Owner[:]), result[1].PubKey)
+	assert.Equal(t, "mcastgroup-"+solana.PublicKeyFromBytes(mockData.MulticastGroups[0].PubKey[:]).String(), result[2].Name)
+	assert.Equal(t, solana.PublicKeyFromBytes(mockData.MulticastGroups[0].Owner[:]), result[2].PubKey)
+	assert.Equal(t, "internet-latency-collector", result[3].Name)
+	assert.Equal(t, internetLatencyCollectorPK, result[3].PubKey)
+}
+
+func TestGetRecipients_Dedup(t *testing.T) {
+	sharedOwner := [32]byte{7}
+	mockData := &serviceability.ProgramData{
+		Contributors: []serviceability.Contributor{
+			{
+				PubKey: [32]byte{6},
+				Owner:  sharedOwner,
+			},
+		},
+		MulticastGroups: []serviceability.MulticastGroup{
+			{
+				PubKey: [32]byte{3},
+				Owner:  sharedOwner, // same key as contributor owner
+			},
+		},
+	}
+	client := &MockServiceabilityClient{
+		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return mockData, nil
+		},
+	}
+	pk := [32]byte{5}
+	internetLatencyCollectorPK := solana.PublicKeyFromBytes(pk[:])
+
+	result, err := GetRecipients(context.Background(), client, nil, internetLatencyCollectorPK)
+	assert.NoError(t, err)
+	assert.Len(t, result, 2) // contributor + internet-latency-collector, mcastgroup deduped
+	assert.Equal(t, "contributor-"+solana.PublicKeyFromBytes(mockData.Contributors[0].PubKey[:]).String(), result[0].Name)
+	assert.Equal(t, solana.PublicKeyFromBytes(sharedOwner[:]), result[0].PubKey)
+	assert.Equal(t, "internet-latency-collector", result[1].Name)
+}
+
+func TestGetRecipients_DedupWithPreloaded(t *testing.T) {
+	sharedOwner := [32]byte{7}
+	mockData := &serviceability.ProgramData{
+		Contributors: []serviceability.Contributor{
+			{
+				PubKey: [32]byte{6},
+				Owner:  sharedOwner,
+			},
+		},
+	}
+	client := &MockServiceabilityClient{
+		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return mockData, nil
+		},
+	}
+	pk := [32]byte{5}
+	internetLatencyCollectorPK := solana.PublicKeyFromBytes(pk[:])
+
+	// Pre-load a recipient with the same pubkey as the contributor owner.
+	preloaded := []Recipient{
+		NewRecipient("preloaded", solana.PublicKeyFromBytes(sharedOwner[:])),
+	}
+
+	result, err := GetRecipients(context.Background(), client, preloaded, internetLatencyCollectorPK)
+	assert.NoError(t, err)
+	assert.Len(t, result, 2) // preloaded + internet-latency-collector, contributor deduped
+	assert.Equal(t, "preloaded", result[0].Name)
+	assert.Equal(t, "internet-latency-collector", result[1].Name)
 }
 
 func TestGetRecipients_Error(t *testing.T) {

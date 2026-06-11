@@ -23,7 +23,6 @@ type RPCClientInterface interface {
 
 type CoordinatorConfig struct {
 	Logger               *slog.Logger
-	InitialProbes        []ProbeAddress
 	ProbeUpdateCh        chan []ProbeAddress
 	Interval             time.Duration
 	ProbeTimeout         time.Duration
@@ -97,20 +96,8 @@ func NewCoordinator(cfg *CoordinatorConfig) (*Coordinator, error) {
 		return nil, fmt.Errorf("failed to create publisher: %w", err)
 	}
 
-	ctx := context.Background()
-	for _, addr := range cfg.InitialProbes {
-		c.probes[addr.String()] = addr
-		if err := c.pinger.AddProbe(ctx, addr); err != nil {
-			delete(c.probes, addr.String())
-			c.log.Warn("Failed to add initial probe to pinger", "addr", addr, "error", err)
-			continue
-		}
-		if err := c.publisher.AddProbe(ctx, addr); err != nil {
-			c.log.Warn("Failed to add initial probe to publisher", "addr", addr, "error", err)
-			continue
-		}
-		c.log.Info("Added initial geoprobe", "addr", addr)
-	}
+	// Probes start empty; they are populated at runtime via ProbeUpdateCh
+	// from the onchain discovery loop.
 
 	return c, nil
 }

@@ -4,6 +4,7 @@ use crate::{
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::{
     accesspass::list::ListAccessPassCommand,
     multicastgroup::{
@@ -32,7 +33,12 @@ struct RemovalFailure {
 }
 
 impl DeleteMulticastGroupCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -188,6 +194,8 @@ impl DeleteMulticastGroupCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand,
         multicastgroup::delete::DeleteMulticastGroupCliCommand,
@@ -231,7 +239,7 @@ mod tests {
             code: "testgroup".to_string(),
             tenant_pk: Pubkey::new_unique(),
             multicast_ip: [239, 0, 0, 1].into(),
-            max_bandwidth: 1000000000,
+            max_bandwidth: 1_000_000_000,
             status: MulticastGroupStatus::Activated,
             owner: mgroup_pubkey,
             publisher_count: 1,
@@ -255,6 +263,10 @@ mod tests {
             connection_count: 0,
             status: AccessPassStatus::Requested,
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         // AccessPass with group in subscriber allowlist
@@ -274,6 +286,10 @@ mod tests {
             connection_count: 0,
             status: AccessPassStatus::Requested,
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         // AccessPass with no reference to the group (should not trigger remove)
@@ -291,6 +307,10 @@ mod tests {
             connection_count: 0,
             status: AccessPassStatus::Requested,
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         client
@@ -346,10 +366,13 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = DeleteMulticastGroupCliCommand {
-            pubkey: mgroup_pubkey.to_string(),
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            DeleteMulticastGroupCliCommand {
+                pubkey: mgroup_pubkey.to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "Expected delete to succeed: {:?}", res);
 
         // Verify output contains the expected messages

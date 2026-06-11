@@ -10,7 +10,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -20,6 +20,8 @@ const (
 	leaveMulticastGroupTimeout          = 90 * time.Second
 	waitForMulticastGroupCreatedTimeout = 90 * time.Second
 	waitForMulticastReportTimeout       = 90 * time.Second
+	multicastJoinRetryTimeout           = 15 * time.Second
+	multicastReportStallThreshold       = 30 * time.Second
 
 	multicastInterfaceName = "doublezero1"
 
@@ -219,6 +221,35 @@ func (c *Client) MulticastSend(ctx context.Context, group *MulticastGroup, durat
 	return nil
 }
 
+// MonitorStatusUntilDone polls tunnel status and info-logs any transition until
+// ctx is cancelled. Run as a goroutine alongside long-running multicast operations.
+func (c *Client) MonitorStatusUntilDone(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = 10 * time.Second
+	}
+	prev := c.summarizeStatusesForLog(ctx)
+	c.log.Debug("Status monitor baseline", "host", c.Host, "statuses", prev)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			cur := c.summarizeStatusesForLog(ctx)
+			if cur != prev {
+				c.log.Info("Status transition detected",
+					"host", c.Host,
+					"prev", prev,
+					"curr", cur,
+				)
+				prev = cur
+			}
+		}
+	}
+}
+
 func (c *Client) MulticastJoin(ctx context.Context, groups ...*MulticastGroup) error {
 	codes := make([]string, len(groups))
 	pbGroups := make([]*pb.MulticastGroup, len(groups))
@@ -231,14 +262,46 @@ func (c *Client) MulticastJoin(ctx context.Context, groups ...*MulticastGroup) e
 		}
 	}
 	c.log.Debug("Joining multicast groups", "host", c.Host, "codes", codes)
-	_, err := c.grpcClient.MulticastJoin(ctx, &pb.MulticastJoinRequest{
-		Groups: pbGroups,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to join multicast groups on host %s: %w", c.Host, err)
+
+	// The kernel interface can briefly lag the daemon's "status up" report.
+	deadline := time.Now().Add(multicastJoinRetryTimeout)
+	var lastErr error
+	for {
+		_, err := c.grpcClient.MulticastJoin(ctx, &pb.MulticastJoinRequest{
+			Groups: pbGroups,
+		})
+		if err == nil {
+			c.log.Debug("Joined multicast groups", "host", c.Host, "codes", codes)
+			return nil
+		}
+		lastErr = err
+		if !strings.Contains(err.Error(), "not found") || time.Now().After(deadline) {
+			break
+		}
+		c.log.Debug("Multicast interface not yet ready, retrying", "host", c.Host, "iface", multicastInterfaceName, "err", err)
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("join cancelled on host %s while waiting for %s: %w", c.Host, multicastInterfaceName, ctx.Err())
+		case <-time.After(waitInterval):
+		}
 	}
-	c.log.Debug("Joined multicast groups", "host", c.Host, "codes", codes)
-	return nil
+
+	statusSummary := c.summarizeStatusesForLog(ctx)
+	return fmt.Errorf("failed to join multicast groups on host %s after %s: %w (host status: %s)",
+		c.Host, multicastJoinRetryTimeout, lastErr, statusSummary)
+}
+
+func (c *Client) summarizeStatusesForLog(ctx context.Context) string {
+	statuses, err := c.GetUserStatuses(ctx)
+	if err != nil {
+		return "<unavailable: " + err.Error() + ">"
+	}
+	parts := make([]string, 0, len(statuses))
+	for _, s := range statuses {
+		parts = append(parts, fmt.Sprintf("{type=%s tunnel=%s session=%q dzIP=%s}",
+			s.UserType, s.TunnelName, s.SessionStatus, s.DoubleZeroIp))
+	}
+	return strings.Join(parts, " ")
 }
 
 func (c *Client) WaitForMulticastReport(ctx context.Context, group *MulticastGroup) (*pb.MulticastReport, error) {
@@ -263,6 +326,8 @@ func (c *Client) WaitForMulticastReports(ctx context.Context, groups []*Multicas
 	c.log.Debug("Waiting for multicast reports", "host", c.Host, "codes", codes)
 
 	var reports map[string]*pb.MulticastReport
+	start := time.Now()
+	stallDiagnosticsDumped := false
 	err := poll.Until(ctx, func() (bool, error) {
 		resp, err := c.grpcClient.MulticastReport(ctx, &pb.MulticastReportRequest{
 			Groups: pbGroups,
@@ -287,6 +352,10 @@ func (c *Client) WaitForMulticastReports(ctx context.Context, groups []*Multicas
 		if allReceived {
 			reports = resp.Reports
 		}
+		if !allReceived && !stallDiagnosticsDumped && time.Since(start) > multicastReportStallThreshold {
+			c.dumpMulticastStallDiagnostics(ctx, groups, resp.Reports)
+			stallDiagnosticsDumped = true
+		}
 		return allReceived, nil
 	}, waitForMulticastReportTimeout, waitInterval)
 	if err != nil {
@@ -294,6 +363,50 @@ func (c *Client) WaitForMulticastReports(ctx context.Context, groups []*Multicas
 	}
 	c.log.Debug("Confirmed multicast reports", "host", c.Host, "codes", codes)
 	return reports, nil
+}
+
+func (c *Client) dumpMulticastStallDiagnostics(ctx context.Context, groups []*MulticastGroup, partial map[string]*pb.MulticastReport) {
+	statuses, statusErr := c.GetUserStatuses(ctx)
+	var mcStatus *pb.Status
+	if statusErr == nil {
+		mcStatus = FindMulticastStatus(statuses)
+	}
+	var ifacePresent string
+	switch {
+	case statusErr != nil:
+		ifacePresent = "unknown (status RPC failed)"
+	case mcStatus == nil:
+		ifacePresent = "no Multicast status entry — daemon does not have a multicast tunnel"
+	case mcStatus.TunnelName != multicastInterfaceName:
+		ifacePresent = fmt.Sprintf("unexpected tunnel name: daemon=%s want=%s", mcStatus.TunnelName, multicastInterfaceName)
+	case !IsStatusUp(mcStatus.SessionStatus):
+		ifacePresent = fmt.Sprintf("multicast status not up: %s", mcStatus.SessionStatus)
+	default:
+		ifacePresent = "ok"
+	}
+
+	routeCount := -1
+	if routes, err := c.GetInstalledRoutes(ctx); err == nil {
+		routeCount = len(routes)
+	}
+
+	perGroup := make([]string, 0, len(groups))
+	for _, g := range groups {
+		var pc uint64
+		if r := partial[g.IP.String()]; r != nil {
+			pc = r.PacketCount
+		}
+		perGroup = append(perGroup, fmt.Sprintf("%s(%s)=%d", g.Code, g.IP, pc))
+	}
+
+	c.log.Info("Multicast traffic stalled — diagnostic snapshot",
+		"host", c.Host,
+		"elapsed", multicastReportStallThreshold.String(),
+		"multicast_iface_check", ifacePresent,
+		"statuses", c.summarizeStatusesForLog(ctx),
+		"installed_route_count", routeCount,
+		"per_group_packets", strings.Join(perGroup, ", "),
+	)
 }
 
 func (c *Client) AddPublisherToMulticastGroupAllowlist(ctx context.Context, code string, pubkey solana.PublicKey, clientIP string) error {

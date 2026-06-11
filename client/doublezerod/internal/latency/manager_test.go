@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -217,6 +218,114 @@ func TestLatencyManager(t *testing.T) {
 			t.Errorf("LatencyResults mismatch (-want +got): %s\n", diff)
 		}
 	})
+}
+
+func TestServeV2Latency_ResponseFormat(t *testing.T) {
+	manager := latency.NewLatencyManager(
+		latency.WithSmartContractFunc(func(context.Context) (*latency.ContractData, error) {
+			return &latency.ContractData{
+				Devices: []serviceability.Device{
+					{
+						AccountType: serviceability.DeviceType,
+						PublicIp:    [4]uint8{127, 0, 0, 1},
+						PubKey:      [32]byte{1},
+						Code:        "dev01",
+					},
+				},
+			}, nil
+		}),
+		latency.WithProberFunc(func(ctx context.Context, target latency.ProbeTarget) latency.LatencyResult {
+			return latency.LatencyResult{
+				Min: 1, Max: 10, Avg: 5, Loss: 0,
+				Device: target.Device, IP: target.IP, Reachable: true,
+			}
+		}),
+		latency.WithProbeInterval(30*time.Second),
+		latency.WithCacheUpdateInterval(30*time.Second),
+	)
+
+	f, err := os.CreateTemp("/tmp", "doublezero-test.sock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	_ = unix.Unlink(f.Name())
+
+	lis, err := net.Listen("unix", f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v2/latency", manager.ServeV2Latency)
+	server := http.Server{Handler: mux}
+	defer server.Close()
+	go func() { _ = server.Serve(lis) }()
+
+	client := http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", f.Name())
+			},
+		},
+	}
+
+	// Test: before probing, ready should be false
+	resp, err := client.Get("http://localhost/v2/latency")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	buf, _ := io.ReadAll(resp.Body)
+
+	var parsed struct {
+		Ready   bool              `json:"ready"`
+		Results []json.RawMessage `json:"results"`
+	}
+	if err := json.Unmarshal(buf, &parsed); err != nil {
+		t.Fatalf("failed to parse response as {ready, results}: %v\nbody: %s", err, buf)
+	}
+	if parsed.Ready {
+		t.Error("expected ready=false before probe has run")
+	}
+
+	// Start the manager and wait for probe to complete
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	go func() { _ = manager.Start(ctx) }()
+
+	// Poll until ready
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if manager.IsProbeReady() {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !manager.IsProbeReady() {
+		t.Fatal("manager never became ready")
+	}
+
+	// Test: after probing, ready should be true with results
+	resp2, err := client.Get("http://localhost/v2/latency")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp2.Body.Close()
+	buf2, _ := io.ReadAll(resp2.Body)
+
+	var parsed2 struct {
+		Ready   bool              `json:"ready"`
+		Results []json.RawMessage `json:"results"`
+	}
+	if err := json.Unmarshal(buf2, &parsed2); err != nil {
+		t.Fatalf("failed to parse response: %v\nbody: %s", err, buf2)
+	}
+	if !parsed2.Ready {
+		t.Error("expected ready=true after probe completed")
+	}
+	if len(parsed2.Results) == 0 {
+		t.Error("expected non-empty results after probe completed")
+	}
 }
 
 func TestLatencyUdpPing(t *testing.T) {
@@ -1408,6 +1517,139 @@ func TestLatencyManagerWithMetrics(t *testing.T) {
 	}
 	if !foundInterface {
 		t.Error("missing interface probe result")
+	}
+}
+
+func TestLatencyManager_ProbeWaitsForDeviceFetch(t *testing.T) {
+	probeTargets := make(chan []latency.ProbeTarget, 1)
+
+	slowSmartContractFunc := func(ctx context.Context) (*latency.ContractData, error) {
+		time.Sleep(500 * time.Millisecond)
+		return &latency.ContractData{
+			Devices: []serviceability.Device{
+				{
+					AccountType: serviceability.DeviceType,
+					PublicIp:    [4]uint8{127, 0, 0, 1},
+					PubKey:      [32]byte{1},
+					Code:        "dev01",
+				},
+			},
+		}, nil
+	}
+
+	mockProber := func(ctx context.Context, target latency.ProbeTarget) latency.LatencyResult {
+		probeTargets <- []latency.ProbeTarget{target}
+		return latency.LatencyResult{
+			Min:       1,
+			Max:       10,
+			Avg:       5,
+			Loss:      0,
+			Device:    target.Device,
+			IP:        target.IP,
+			Reachable: true,
+		}
+	}
+
+	manager := latency.NewLatencyManager(
+		latency.WithSmartContractFunc(slowSmartContractFunc),
+		latency.WithProberFunc(mockProber),
+		latency.WithProbeInterval(30*time.Second),
+		latency.WithCacheUpdateInterval(30*time.Second),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	go func() {
+		_ = manager.Start(ctx)
+	}()
+
+	// The probe should have received actual targets (not empty), meaning it waited for fetch
+	select {
+	case targets := <-probeTargets:
+		if len(targets) == 0 {
+			t.Fatal("probe ran with empty targets — did not wait for device fetch")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for probe to run")
+	}
+}
+
+// TestLatencyManager_FastRetryWhenUnreachable verifies that when the first probe
+// finds no reachable devices, the manager retries at a fast interval (<=30s)
+// rather than the configured steady-state interval. probeReady is set after the
+// first probe regardless, so the CLI can proceed with unreachable results.
+func TestLatencyManager_FastRetryWhenUnreachable(t *testing.T) {
+	var probeCount atomic.Int32
+
+	mockSmartContractFunc := func(ctx context.Context) (*latency.ContractData, error) {
+		return &latency.ContractData{
+			Devices: []serviceability.Device{
+				{
+					AccountType: serviceability.DeviceType,
+					PublicIp:    [4]uint8{192, 0, 2, 1},
+					PubKey:      [32]byte{1},
+					Code:        "dev01",
+				},
+			},
+		}, nil
+	}
+
+	mockProber := func(ctx context.Context, target latency.ProbeTarget) latency.LatencyResult {
+		n := probeCount.Add(1)
+		// First probe: unreachable. Second probe onwards: reachable.
+		return latency.LatencyResult{
+			Device:    target.Device,
+			IP:        target.IP,
+			Reachable: n >= 2,
+		}
+	}
+
+	manager := latency.NewLatencyManager(
+		latency.WithSmartContractFunc(mockSmartContractFunc),
+		latency.WithProberFunc(mockProber),
+		latency.WithProbeInterval(time.Hour),       // large so only the fast retry fires
+		latency.WithCacheUpdateInterval(time.Hour), // don't refetch devices
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	go func() {
+		_ = manager.Start(ctx)
+	}()
+
+	// Wait for the first probe to complete.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if probeCount.Load() >= 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if probeCount.Load() < 1 {
+		t.Fatal("timed out waiting for first probe")
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	// probeReady should be true even though nothing was reachable — the daemon
+	// has completed a probe pass and the CLI needs to know it can read results.
+	if !manager.IsProbeReady() {
+		t.Fatal("expected probeReady=true after first probe")
+	}
+
+	// The manager should retry quickly (<=30s) rather than waiting the full
+	// probe interval (1h). Wait for the second probe with a generous timeout
+	// that is still well below the steady-state interval.
+	deadline = time.Now().Add(90 * time.Second)
+	for time.Now().Before(deadline) {
+		if probeCount.Load() >= 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if probeCount.Load() < 2 {
+		t.Fatal("timed out waiting for second probe — fast retry interval may not be working")
 	}
 }
 

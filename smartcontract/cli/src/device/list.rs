@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::{serializer, types::NetworkV4List};
 use doublezero_sdk::{
     commands::{
@@ -78,6 +79,8 @@ pub struct DeviceDisplay {
     #[tabled(display = "doublezero_program_common::types::NetworkV4List::to_string")]
     #[serde(serialize_with = "serializer::serialize_networkv4list_as_string")]
     pub dz_prefixes: NetworkV4List,
+    #[tabled(display = "crate::util::display_string_vec")]
+    pub cyoa_ips: Vec<String>,
     pub users: u16,
     pub max_users: u16,
     #[tabled(skip)]
@@ -107,7 +110,12 @@ pub struct DeviceDisplay {
 }
 
 impl ListDeviceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let contributors = client.list_contributor(ListContributorCommand {})?;
         let locations = client.list_location(ListLocationCommand {})?;
         let exchanges = client.list_exchange(ListExchangeCommand {})?;
@@ -223,6 +231,12 @@ impl ListDeviceCliCommand {
                     public_ip: device.public_ip,
                     status: device.status,
                     dz_prefixes: device.dz_prefixes.clone(),
+                    cyoa_ips: device
+                        .interfaces
+                        .iter()
+                        .filter(|iface| iface.user_tunnel_endpoint)
+                        .map(|iface| iface.ip_net.to_string())
+                        .collect(),
                     mgmt_vrf: device.mgmt_vrf.clone(),
                     users: device.users_count,
                     max_users: device.max_users,
@@ -265,6 +279,8 @@ impl ListDeviceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use std::collections::HashMap;
 
     use crate::{device::list::ListDeviceCliCommand, tests::utils::create_test_client};
@@ -372,6 +388,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -380,41 +397,47 @@ mod tests {
             Ok(devices)
         });
 
-        let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
-        assert!(res.is_ok());
-        let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | code         | contributor       | location       | exchange       | device_type | public_ip | dz_prefixes | users | max_users | status    | health          | mgmt_vrf | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | contributor1_code | location1_code | exchange1_code | hybrid      | 1.2.3.4   | 1.2.3.4/32  | 0     | 255       | activated | ready-for-users | default  | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        let ctx = cli_context_default_for_tests();
 
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Hybrid\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"users\":0,\"max_users\":255,\"unicast_users_count\":0,\"max_unicast_users\":0,\"multicast_subscribers_count\":0,\"max_multicast_subscribers\":0,\"multicast_publishers_count\":0,\"max_multicast_publishers\":0,\"status\":\"Activated\",\"health\":\"ReadyForUsers\",\"desired_status\":\"Activated\",\"mgmt_vrf\":\"default\",\"metrics_publisher_pk\":\"11111111111111111111111111111111\",\"reference_count\":0,\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, " account                                   | code         | contributor       | location       | exchange       | device_type | public_ip | dz_prefixes | cyoa_ips | users | max_users | status    | health          | mgmt_vrf | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | device1_code | contributor1_code | location1_code | exchange1_code | hybrid      | 1.2.3.4   | 1.2.3.4/32  |          | 0     | 255       | activated | ready-for-users | default  | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+
+        let mut output = Vec::new();
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Hybrid\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"cyoa_ips\":[],\"users\":0,\"max_users\":255,\"unicast_users_count\":0,\"max_unicast_users\":0,\"multicast_subscribers_count\":0,\"max_multicast_subscribers\":0,\"multicast_publishers_count\":0,\"max_multicast_publishers\":0,\"status\":\"Activated\",\"health\":\"ReadyForUsers\",\"desired_status\":\"Activated\",\"mgmt_vrf\":\"default\",\"metrics_publisher_pk\":\"11111111111111111111111111111111\",\"reference_count\":0,\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
     }
 
     #[test]
@@ -515,6 +538,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -547,6 +571,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -557,20 +582,23 @@ mod tests {
         });
 
         // Test filter by device_type=hybrid (should return only device1)
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: Some("hybrid".to_string()),
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: Some("hybrid".to_string()),
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("device1_hybrid"));
@@ -675,6 +703,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -707,6 +736,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -717,20 +747,23 @@ mod tests {
         });
 
         // Test filter by code=ams (should return only device1)
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: Some("ams".to_string()),
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: Some("ams".to_string()),
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("ams-device-001"));
@@ -835,6 +868,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -843,14 +877,14 @@ mod tests {
             index: 2,
             bump_seed: 3,
             reference_count: 0,
-            code: "device2_pending".to_string(),
+            code: "device2_drained".to_string(),
             contributor_pk,
             location_pk: location1_pubkey,
             exchange_pk: exchange1_pubkey,
             device_type: DeviceType::Hybrid,
             public_ip: [5, 6, 7, 8].into(),
             dz_prefixes: "5.6.7.8/32".parse().unwrap(),
-            status: DeviceStatus::Pending,
+            status: DeviceStatus::Drained,
             metrics_publisher_pk: Pubkey::default(),
             owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD"),
             mgmt_vrf: "default".to_string(),
@@ -866,6 +900,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -876,24 +911,27 @@ mod tests {
         });
 
         // Test filter by status=activated (should return only device1)
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: Some("activated".to_string()),
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: Some("activated".to_string()),
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("device1_activated"));
-        assert!(!output_str.contains("device2_pending"));
+        assert!(!output_str.contains("device2_drained"));
     }
 
     #[test]
@@ -1011,6 +1049,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1043,6 +1082,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1053,20 +1093,23 @@ mod tests {
         });
 
         // Test combined filters: location=ams AND device_type=hybrid AND status=activated
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: Some("ams".to_string()),
-            device_type: Some("hybrid".to_string()),
-            status: Some("activated".to_string()),
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: Some("ams".to_string()),
+                device_type: Some("hybrid".to_string()),
+                status: Some("activated".to_string()),
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("ams-device-001"));
@@ -1194,6 +1237,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1226,6 +1270,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1236,20 +1281,23 @@ mod tests {
         });
 
         // Test filter by contributor=acme (should return only device1)
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: Some("acme".to_string()),
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: Some("acme".to_string()),
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("device1"));
@@ -1373,6 +1421,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1405,6 +1454,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1415,20 +1465,23 @@ mod tests {
         });
 
         // Test filter by exchange=xams (should return only device1)
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: Some("xams".to_string()),
-            location: None,
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: Some("xams".to_string()),
+                location: None,
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("device1"));
@@ -1550,6 +1603,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1582,6 +1636,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1592,20 +1647,23 @@ mod tests {
         });
 
         // Test filter by location=ams (should return only device1)
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: Some("ams".to_string()),
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: Some("ams".to_string()),
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("device1"));
@@ -1710,6 +1768,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1742,6 +1801,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1752,20 +1812,23 @@ mod tests {
         });
 
         // Test filter by health=ready-for-users (should return only device1)
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: None,
-            health: Some("ready-for-users".to_string()),
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: None,
+                health: Some("ready-for-users".to_string()),
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("device1"));
@@ -1870,6 +1933,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -1901,6 +1965,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -1911,20 +1976,23 @@ mod tests {
         });
 
         // Test filter by desired_status=activated (should return only device1)
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: Some("activated".to_string()),
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: Some("activated".to_string()),
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("device1"));
@@ -2029,6 +2097,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -2038,20 +2107,23 @@ mod tests {
         });
 
         // Test JSON pretty output
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            json: true,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: true,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         // Pretty JSON should have indentation (newlines and spaces)
@@ -2077,20 +2149,23 @@ mod tests {
             .returning(|_| Ok(HashMap::new()));
 
         // Test with empty device list
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "[]\n");
@@ -2117,20 +2192,23 @@ mod tests {
             .returning(|_| Err(eyre::eyre!("Not found")));
 
         // Test with non-existent contributor
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: Some("nonexistent".to_string()),
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: Some("nonexistent".to_string()),
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
@@ -2156,20 +2234,23 @@ mod tests {
             .returning(|_| Ok(HashMap::new()));
 
         // Test with non-existent exchange
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: Some("nonexistent".to_string()),
-            location: None,
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: Some("nonexistent".to_string()),
+                location: None,
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
@@ -2195,20 +2276,23 @@ mod tests {
             .returning(|_| Ok(HashMap::new()));
 
         // Test with non-existent location
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: Some("nonexistent".to_string()),
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: Some("nonexistent".to_string()),
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert_eq!(
             res.unwrap_err().to_string(),
@@ -2234,20 +2318,23 @@ mod tests {
             .returning(|_| Ok(HashMap::new()));
 
         // Test with invalid device type
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: Some("invalid".to_string()),
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: Some("invalid".to_string()),
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("Invalid device type"));
     }
@@ -2270,20 +2357,23 @@ mod tests {
             .returning(|_| Ok(HashMap::new()));
 
         // Test with invalid status
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: Some("invalid".to_string()),
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: Some("invalid".to_string()),
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("Invalid status"));
     }
@@ -2306,20 +2396,23 @@ mod tests {
             .returning(|_| Ok(HashMap::new()));
 
         // Test with invalid health
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: None,
-            health: Some("invalid".to_string()),
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: None,
+                health: Some("invalid".to_string()),
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("Invalid health"));
     }
@@ -2342,20 +2435,23 @@ mod tests {
             .returning(|_| Ok(HashMap::new()));
 
         // Test with invalid desired status
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: Some("invalid".to_string()),
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: Some("invalid".to_string()),
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert!(res
             .unwrap_err()
@@ -2480,6 +2576,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device2_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPD");
@@ -2512,6 +2609,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let device3_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPF");
@@ -2544,6 +2642,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         client.expect_list_device().returning(move |_| {
@@ -2555,20 +2654,23 @@ mod tests {
         });
 
         // Test that devices are sorted by exchange_name, then by code
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = ListDeviceCliCommand {
-            contributor: None,
-            exchange: None,
-            location: None,
-            device_type: None,
-            status: None,
-            health: None,
-            desired_status: None,
-            code: None,
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         // Check that AMS-IX devices come before NYIIX devices

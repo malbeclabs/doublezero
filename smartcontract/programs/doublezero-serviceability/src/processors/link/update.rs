@@ -1,6 +1,6 @@
 use crate::{
-    error::DoubleZeroError,
-    pda::get_resource_extension_pda,
+    error::{DoubleZeroError, Validate},
+    pda::{get_globalstate_pda, get_resource_extension_pda},
     processors::{
         resource::{allocate_specific_id, allocate_specific_ip, deallocate_id, deallocate_ip},
         validation::validate_program_account,
@@ -8,17 +8,15 @@ use crate::{
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
-        contributor::Contributor,
-        device::Device,
-        feature_flags::{is_feature_enabled, FeatureFlag},
-        globalstate::GlobalState,
-        link::*,
+        contributor::Contributor, device::Device, globalstate::GlobalState, link::*,
+        topology::TopologyInfo,
     },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::{types::NetworkV4, validate_account_code};
+use std::collections::BTreeMap;
 
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -43,6 +41,9 @@ pub struct LinkUpdateArgs {
     pub tunnel_net: Option<NetworkV4>,
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
+    pub link_topologies: Option<Vec<Pubkey>>,
+    #[incremental(default = None)]
+    pub unicast_drained: Option<bool>,
 }
 
 impl fmt::Debug for LinkUpdateArgs {
@@ -87,6 +88,12 @@ impl fmt::Debug for LinkUpdateArgs {
         if self.use_onchain_allocation {
             parts.push("use_onchain_allocation: true".to_string());
         }
+        if let Some(ref link_topologies) = self.link_topologies {
+            parts.push(format!("link_topologies: {:?}", link_topologies));
+        }
+        if let Some(unicast_drained) = self.unicast_drained {
+            parts.push(format!("unicast_drained: {:?}", unicast_drained));
+        }
         write!(f, "{}", parts.join(", "))
     }
 }
@@ -102,22 +109,24 @@ pub fn process_update_link(
     let contributor_account = next_account_info(accounts_iter)?;
 
     // Account layout (all optional accounts included):
-    //   [link, contributor, side_z?, globalstate, device_a?, device_z?, device_tunnel_block?, link_ids?, payer, system]
+    //   [link, contributor, side_z?, globalstate, device_a?, device_z?, device_tunnel_block?, link_ids?, topology*, payer, system]
     // device_a/device_z: present when tunnel_net is being updated (needed for interface IP update)
     // device_tunnel_block/link_ids: present when use_onchain_allocation is true
-    let mut expected_without_side_z: usize = 5; // link, contributor, globalstate, payer, system
-    if value.tunnel_net.is_some() {
-        expected_without_side_z += 2; // device_a, device_z
-    }
-    if value.use_onchain_allocation {
-        expected_without_side_z += 2; // device_tunnel_block, link_ids
-    }
-    let side_z_account: Option<&AccountInfo> = if accounts.len() > expected_without_side_z {
-        Some(next_account_info(accounts_iter)?)
+    // topology*: N writable topology PDAs (union of old ∪ new link_topologies) when
+    // link_topologies is being updated; the processor diffs old vs new on-chain and
+    // adjusts each topology's reference_count.
+    //
+    // side_z presence cannot be derived by counting because the topology union size
+    // is unknown ahead of time, so distinguish by peeking the next account against
+    // the globalstate singleton PDA.
+    let globalstate_pda = get_globalstate_pda(program_id).0;
+    let maybe_side_z_or_gs = next_account_info(accounts_iter)?;
+    let (side_z_account, globalstate_account) = if maybe_side_z_or_gs.key == &globalstate_pda {
+        (None, maybe_side_z_or_gs)
     } else {
-        None
+        let gs = next_account_info(accounts_iter)?;
+        (Some(maybe_side_z_or_gs), gs)
     };
-    let globalstate_account = next_account_info(accounts_iter)?;
 
     let device_accounts = if value.tunnel_net.is_some() {
         let device_a_account = next_account_info(accounts_iter)?;
@@ -127,7 +136,13 @@ pub fn process_update_link(
         None
     };
 
-    let resource_accounts = if value.use_onchain_allocation {
+    // Tunnel reallocation must go through the onchain path. Other updates skip the resource
+    // accounts entirely; the boolean is only meaningful when tunnel fields are being changed.
+    let needs_resource_accounts = value.tunnel_id.is_some() || value.tunnel_net.is_some();
+    if needs_resource_accounts && !value.use_onchain_allocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+    let resource_accounts = if needs_resource_accounts {
         let device_tunnel_block_ext = next_account_info(accounts_iter)?;
         let link_ids_ext = next_account_info(accounts_iter)?;
         Some((device_tunnel_block_ext, link_ids_ext))
@@ -135,8 +150,22 @@ pub fn process_update_link(
         None
     };
 
-    let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    // Validate cap on the caller-supplied new vector before walking accounts.
+    if let Some(ref link_topologies) = value.link_topologies {
+        if link_topologies.len() > 8 {
+            msg!("link_topologies exceeds maximum of 8 entries");
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+    }
+
+    // Remaining accounts are the topology union followed by payer and system_program.
+    let rest: Vec<&AccountInfo> = accounts_iter.collect();
+    if rest.len() < 2 {
+        return Err(solana_program::program_error::ProgramError::NotEnoughAccountKeys);
+    }
+    let (topology_accounts, tail) = rest.split_at(rest.len() - 2);
+    let payer_account = tail[0];
+    let system_program = tail[1];
 
     #[cfg(test)]
     msg!("process_update_link({:?})", value);
@@ -148,19 +177,19 @@ pub fn process_update_link(
         payer_account
     );
 
-    // Check the owner of the accounts
-    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(
-        globalstate_account.owner, program_id,
-        "Invalid GlobalState Account Owner"
+    // Validate accounts
+    validate_program_account!(link_account, program_id, writable = true, "Link");
+    validate_program_account!(
+        globalstate_account,
+        program_id,
+        writable = false,
+        "GlobalState"
     );
     assert_eq!(
         *system_program.unsigned_key(),
         solana_system_interface::program::ID,
         "Invalid System Program Account Owner"
     );
-    // Check if the account is writable
-    assert!(link_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
     let contributor = Contributor::try_from(contributor_account)?;
@@ -219,6 +248,9 @@ pub fn process_update_link(
             link.bandwidth = bandwidth;
         }
         if let Some(mtu) = value.mtu {
+            if mtu != crate::state::interface::LINK_MTU {
+                return Err(DoubleZeroError::InvalidMtu.into());
+            }
             link.mtu = mtu;
         }
         if let Some(delay_ns) = value.delay_ns {
@@ -240,99 +272,73 @@ pub fn process_update_link(
         link.status = status;
     }
 
-    // Handle tunnel_id/tunnel_net reallocation (foundation-only)
+    // Handle tunnel_id/tunnel_net reallocation (foundation-only).
+    // The earlier check guarantees `resource_accounts` is `Some` when either field is set.
     if value.tunnel_id.is_some() || value.tunnel_net.is_some() {
         if !globalstate.foundation_allowlist.contains(payer_account.key) {
             msg!("tunnel field updates require foundation allowlist");
             return Err(DoubleZeroError::NotAllowed.into());
         }
 
-        if let Some((device_tunnel_block_ext, link_ids_ext)) = resource_accounts {
-            // Resource accounts provided — require feature flag
-            if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::OnChainAllocation) {
-                return Err(DoubleZeroError::FeatureNotEnabled.into());
-            }
+        let (device_tunnel_block_ext, link_ids_ext) = resource_accounts.unwrap();
 
-            // Validate DeviceTunnelBlock PDA
-            let (expected_device_tunnel_pda, _, _) =
-                get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
-            validate_program_account!(
-                device_tunnel_block_ext,
-                program_id,
-                writable = true,
-                pda = Some(&expected_device_tunnel_pda),
-                "DeviceTunnelBlock"
-            );
+        // Validate DeviceTunnelBlock PDA
+        let (expected_device_tunnel_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
+        validate_program_account!(
+            device_tunnel_block_ext,
+            program_id,
+            writable = true,
+            pda = &expected_device_tunnel_pda,
+            "DeviceTunnelBlock"
+        );
 
-            // Validate LinkIds PDA
-            let (expected_link_ids_pda, _, _) =
-                get_resource_extension_pda(program_id, ResourceType::LinkIds);
-            validate_program_account!(
-                link_ids_ext,
-                program_id,
-                writable = true,
-                pda = Some(&expected_link_ids_pda),
-                "LinkIds"
-            );
+        // Validate LinkIds PDA
+        let (expected_link_ids_pda, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::LinkIds);
+        validate_program_account!(
+            link_ids_ext,
+            program_id,
+            writable = true,
+            pda = &expected_link_ids_pda,
+            "LinkIds"
+        );
 
-            // Deallocate/allocate tunnel_id
-            if let Some(new_tunnel_id) = value.tunnel_id {
-                if link.tunnel_id != 0 {
-                    deallocate_id(link_ids_ext, link.tunnel_id);
-                    #[cfg(test)]
-                    msg!("Deallocated old tunnel_id {}", link.tunnel_id);
-                }
-                if new_tunnel_id != 0 {
-                    allocate_specific_id(link_ids_ext, new_tunnel_id)?;
-                    #[cfg(test)]
-                    msg!("Allocated new tunnel_id {}", new_tunnel_id);
-                }
-                link.tunnel_id = new_tunnel_id;
+        // Deallocate/allocate tunnel_id
+        if let Some(new_tunnel_id) = value.tunnel_id {
+            if link.tunnel_id != 0 {
+                deallocate_id(link_ids_ext, link.tunnel_id);
+                #[cfg(test)]
+                msg!("Deallocated old tunnel_id {}", link.tunnel_id);
             }
+            if new_tunnel_id != 0 {
+                allocate_specific_id(link_ids_ext, new_tunnel_id)?;
+                #[cfg(test)]
+                msg!("Allocated new tunnel_id {}", new_tunnel_id);
+            }
+            link.tunnel_id = new_tunnel_id;
+        }
 
-            // Deallocate/allocate tunnel_net
-            if let Some(new_tunnel_net) = value.tunnel_net {
-                if link.tunnel_net != NetworkV4::default() {
-                    deallocate_ip(device_tunnel_block_ext, link.tunnel_net);
-                    #[cfg(test)]
-                    msg!("Deallocated old tunnel_net {}", link.tunnel_net);
-                }
-                if new_tunnel_net != NetworkV4::default() {
-                    allocate_specific_ip(device_tunnel_block_ext, new_tunnel_net)?;
-                    #[cfg(test)]
-                    msg!("Allocated new tunnel_net {}", new_tunnel_net);
-                }
-                link.tunnel_net = new_tunnel_net;
+        // Deallocate/allocate tunnel_net
+        if let Some(new_tunnel_net) = value.tunnel_net {
+            if link.tunnel_net != NetworkV4::default() {
+                deallocate_ip(device_tunnel_block_ext, link.tunnel_net);
+                #[cfg(test)]
+                msg!("Deallocated old tunnel_net {}", link.tunnel_net);
             }
-        } else {
-            // Legacy path: no resource accounts, just overwrite fields
-            if let Some(tunnel_id) = value.tunnel_id {
-                link.tunnel_id = tunnel_id;
+            if new_tunnel_net != NetworkV4::default() {
+                allocate_specific_ip(device_tunnel_block_ext, new_tunnel_net)?;
+                #[cfg(test)]
+                msg!("Allocated new tunnel_net {}", new_tunnel_net);
             }
-            if let Some(tunnel_net) = value.tunnel_net {
-                link.tunnel_net = tunnel_net;
-            }
+            link.tunnel_net = new_tunnel_net;
         }
     }
 
     // Update device interface IPs when tunnel_net was changed
     if let Some((device_a_account, device_z_account)) = device_accounts {
-        assert_eq!(
-            device_a_account.owner, program_id,
-            "Invalid Device A Account Owner"
-        );
-        assert_eq!(
-            device_z_account.owner, program_id,
-            "Invalid Device Z Account Owner"
-        );
-        assert!(
-            device_a_account.is_writable,
-            "Device A Account is not writable"
-        );
-        assert!(
-            device_z_account.is_writable,
-            "Device Z Account is not writable"
-        );
+        validate_program_account!(device_a_account, program_id, writable = true, "DeviceA");
+        validate_program_account!(device_z_account, program_id, writable = true, "DeviceZ");
 
         if link.side_a_pk != *device_a_account.key || link.side_z_pk != *device_z_account.key {
             return Err(ProgramError::InvalidAccountData);
@@ -347,7 +353,7 @@ pub fn process_update_link(
         let mut updated_iface_a = side_a_iface.clone();
         updated_iface_a.ip_net =
             NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix()).unwrap();
-        side_a_dev.interfaces[idx_a] = updated_iface_a.to_interface();
+        side_a_dev.replace_interface(idx_a, updated_iface_a);
 
         let (idx_z, side_z_iface) = side_z_dev
             .find_interface(&link.side_z_iface_name)
@@ -355,13 +361,86 @@ pub fn process_update_link(
         let mut updated_iface_z = side_z_iface.clone();
         updated_iface_z.ip_net =
             NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix()).unwrap();
-        side_z_dev.interfaces[idx_z] = updated_iface_z.to_interface();
+        side_z_dev.replace_interface(idx_z, updated_iface_z);
 
         try_acc_write(&side_a_dev, device_a_account, payer_account, accounts)?;
         try_acc_write(&side_z_dev, device_z_account, payer_account, accounts)?;
     }
 
+    // link_topologies is foundation-only. Caller passes the union of old and new
+    // link_topologies as writable accounts; the processor diffs on-chain and
+    // increments/decrements each topology's reference_count accordingly.
+    if let Some(new_topologies) = &value.link_topologies {
+        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+            msg!("link_topologies update requires foundation allowlist");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+
+        let old_topologies = link.link_topologies.clone();
+        let added: Vec<Pubkey> = new_topologies
+            .iter()
+            .filter(|pk| !old_topologies.contains(pk))
+            .copied()
+            .collect();
+        let removed: Vec<Pubkey> = old_topologies
+            .iter()
+            .filter(|pk| !new_topologies.contains(pk))
+            .copied()
+            .collect();
+
+        let mut acc_map: BTreeMap<Pubkey, &AccountInfo> = BTreeMap::new();
+        for acc in topology_accounts.iter() {
+            validate_program_account!(*acc, program_id, writable = true, "Topology");
+            TopologyInfo::try_from(*acc)
+                .map_err(|_| DoubleZeroError::InvalidAccountType)?
+                .validate()
+                .map_err(ProgramError::from)?;
+            acc_map.insert(*acc.key, *acc);
+        }
+
+        for pk in added.iter().chain(removed.iter()) {
+            if !acc_map.contains_key(pk) {
+                msg!("Missing topology account for pubkey {}", pk);
+                return Err(DoubleZeroError::InvalidArgument.into());
+            }
+        }
+
+        for pk in &removed {
+            let acc = acc_map[pk];
+            let mut topo = TopologyInfo::try_from(acc)?;
+            topo.reference_count = topo.reference_count.saturating_sub(1);
+            try_acc_write(&topo, acc, payer_account, accounts)?;
+        }
+        for pk in &added {
+            let acc = acc_map[pk];
+            let mut topo = TopologyInfo::try_from(acc)?;
+            topo.reference_count = topo
+                .reference_count
+                .checked_add(1)
+                .ok_or(DoubleZeroError::ArithmeticOverflow)?;
+            try_acc_write(&topo, acc, payer_account, accounts)?;
+        }
+
+        link.link_topologies = new_topologies.clone();
+    }
+
+    // unicast_drained (LINK_FLAG_UNICAST_DRAINED bit 0): contributor A or foundation
+    if let Some(unicast_drained) = value.unicast_drained {
+        if link.contributor_pk != *contributor_account.key
+            && !globalstate.foundation_allowlist.contains(payer_account.key)
+        {
+            msg!("unicast_drained update requires contributor A or foundation allowlist");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+        if unicast_drained {
+            link.link_flags |= crate::state::link::LINK_FLAG_UNICAST_DRAINED;
+        } else {
+            link.link_flags &= !crate::state::link::LINK_FLAG_UNICAST_DRAINED;
+        }
+    }
+
     link.check_status_transition();
+    link.validate()?;
 
     try_acc_write(&link, link_account, payer_account, accounts)?;
 
@@ -416,6 +495,8 @@ mod tests {
             tunnel_id: None,
             tunnel_net: None,
             use_onchain_allocation: false,
+            link_topologies: None,
+            unicast_drained: None,
         };
 
         let serialized = borsh::to_vec(&args_before).unwrap();
@@ -469,6 +550,8 @@ mod tests {
             tunnel_id: None,
             tunnel_net: None,
             use_onchain_allocation: false,
+            link_topologies: None,
+            unicast_drained: None,
         };
 
         let serialized = borsh::to_vec(&args_before).unwrap();

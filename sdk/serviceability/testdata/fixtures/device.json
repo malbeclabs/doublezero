@@ -84,7 +84,7 @@
     },
     {
       "name": "Interface0Version",
-      "value": "0",
+      "value": "1",
       "typ": "u8"
     },
     {
@@ -103,8 +103,38 @@
       "typ": "u8"
     },
     {
+      "name": "Interface0InterfaceCYOA",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "Interface0InterfaceDIA",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
       "name": "Interface0LoopbackType",
       "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Interface0Bandwidth",
+      "value": "0",
+      "typ": "u64"
+    },
+    {
+      "name": "Interface0Cir",
+      "value": "0",
+      "typ": "u64"
+    },
+    {
+      "name": "Interface0Mtu",
+      "value": "9000",
+      "typ": "u16"
+    },
+    {
+      "name": "Interface0RoutingMode",
+      "value": "0",
       "typ": "u8"
     },
     {
@@ -261,6 +291,191 @@
       "name": "MaxMulticastPublishers",
       "value": "10",
       "typ": "u16"
+    },
+    {
+      "name": "NewInterfacesLen",
+      "value": "2",
+      "typ": "u32"
+    },
+    {
+      "name": "NewInterface0Size",
+      "value": "88",
+      "typ": "u16"
+    },
+    {
+      "name": "NewInterface0Version",
+      "value": "4",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface0Status",
+      "value": "3",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface0Name",
+      "value": "Loopback0",
+      "typ": "string"
+    },
+    {
+      "name": "NewInterface0InterfaceType",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface0InterfaceCYOA",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface0InterfaceDIA",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface0LoopbackType",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface0Bandwidth",
+      "value": "0",
+      "typ": "u64"
+    },
+    {
+      "name": "NewInterface0Cir",
+      "value": "0",
+      "typ": "u64"
+    },
+    {
+      "name": "NewInterface0Mtu",
+      "value": "9000",
+      "typ": "u16"
+    },
+    {
+      "name": "NewInterface0RoutingMode",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface0VlanId",
+      "value": "0",
+      "typ": "u16"
+    },
+    {
+      "name": "NewInterface0IpNet",
+      "value": "10.0.0.1/32",
+      "typ": "networkv4"
+    },
+    {
+      "name": "NewInterface0NodeSegmentIdx",
+      "value": "100",
+      "typ": "u16"
+    },
+    {
+      "name": "NewInterface0UserTunnelEndpoint",
+      "value": "false",
+      "typ": "bool"
+    },
+    {
+      "name": "NewInterface0FlexAlgoNodeSegmentsLen",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "NewInterface0FlexAlgoNodeSegments0Topology",
+      "value": "5eM8cB4pfhAGBjJE6pNomwRmrfzBiZ2ZHrHGjTQfjWco",
+      "typ": "pubkey"
+    },
+    {
+      "name": "NewInterface0FlexAlgoNodeSegments0NodeSegmentIdx",
+      "value": "300",
+      "typ": "u16"
+    },
+    {
+      "name": "NewInterface1Size",
+      "value": "54",
+      "typ": "u16"
+    },
+    {
+      "name": "NewInterface1Version",
+      "value": "4",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface1Status",
+      "value": "3",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface1Name",
+      "value": "Ethernet1",
+      "typ": "string"
+    },
+    {
+      "name": "NewInterface1InterfaceType",
+      "value": "2",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface1InterfaceCYOA",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface1InterfaceDIA",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface1LoopbackType",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface1Bandwidth",
+      "value": "10000000000",
+      "typ": "u64"
+    },
+    {
+      "name": "NewInterface1Cir",
+      "value": "5000000000",
+      "typ": "u64"
+    },
+    {
+      "name": "NewInterface1Mtu",
+      "value": "9000",
+      "typ": "u16"
+    },
+    {
+      "name": "NewInterface1RoutingMode",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "NewInterface1VlanId",
+      "value": "100",
+      "typ": "u16"
+    },
+    {
+      "name": "NewInterface1IpNet",
+      "value": "172.16.0.1/30",
+      "typ": "networkv4"
+    },
+    {
+      "name": "NewInterface1NodeSegmentIdx",
+      "value": "200",
+      "typ": "u16"
+    },
+    {
+      "name": "NewInterface1UserTunnelEndpoint",
+      "value": "true",
+      "typ": "bool"
+    },
+    {
+      "name": "NewInterface1FlexAlgoNodeSegmentsLen",
+      "value": "0",
+      "typ": "u32"
     }
   ]
 }

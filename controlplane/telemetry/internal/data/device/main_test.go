@@ -49,17 +49,26 @@ func (m *mockServiceabilityClient) GetProgramData(ctx context.Context) (*service
 }
 
 type mockTelemetryClient struct {
-	GetDeviceLatencySamplesFunc func(ctx context.Context, originDevicePubKey, targetDevicePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error)
+	GetDeviceLatencySamplesFunc       func(ctx context.Context, originDevicePubKey, targetDevicePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error)
+	GetDeviceLatencySamplesHeaderFunc func(ctx context.Context, originDevicePubKey, targetDevicePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamplesHeader, error)
 }
 
 func (m *mockTelemetryClient) GetDeviceLatencySamples(ctx context.Context, originDevicePubKey, targetDevicePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamples, error) {
 	return m.GetDeviceLatencySamplesFunc(ctx, originDevicePubKey, targetDevicePubKey, linkPubKey, epoch)
 }
 
+func (m *mockTelemetryClient) GetDeviceLatencySamplesHeader(ctx context.Context, originDevicePubKey, targetDevicePubKey, linkPubKey solana.PublicKey, epoch uint64) (*telemetry.DeviceLatencySamplesHeader, error) {
+	if m.GetDeviceLatencySamplesHeaderFunc != nil {
+		return m.GetDeviceLatencySamplesHeaderFunc(ctx, originDevicePubKey, targetDevicePubKey, linkPubKey, epoch)
+	}
+	return nil, telemetry.ErrAccountNotFound
+}
+
 type mockProvider struct {
 	GetCircuitsFunc           func(context.Context) ([]data.Circuit, error)
 	GetCircuitLatenciesFunc   func(context.Context, data.GetCircuitLatenciesConfig) ([]stats.CircuitLatencyStat, error)
 	GetSummaryForCircuitsFunc func(context.Context, data.GetSummaryForCircuitsConfig) ([]data.CircuitSummary, error)
+	GetAgentVersionsFunc      func(context.Context) ([]data.DeviceAgentVersion, error)
 }
 
 func (m *mockProvider) GetCircuits(ctx context.Context) ([]data.Circuit, error) {
@@ -72,6 +81,13 @@ func (m *mockProvider) GetCircuitLatencies(ctx context.Context, cfg data.GetCirc
 
 func (m *mockProvider) GetSummaryForCircuits(ctx context.Context, cfg data.GetSummaryForCircuitsConfig) ([]data.CircuitSummary, error) {
 	return m.GetSummaryForCircuitsFunc(ctx, cfg)
+}
+
+func (m *mockProvider) GetAgentVersions(ctx context.Context) ([]data.DeviceAgentVersion, error) {
+	if m.GetAgentVersionsFunc != nil {
+		return m.GetAgentVersionsFunc(ctx)
+	}
+	return nil, nil
 }
 
 type mockEpochFinder struct {

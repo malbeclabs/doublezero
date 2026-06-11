@@ -73,8 +73,11 @@ where
     // Validate before serializing
     value.validate()?;
 
+    // Compute target size
+    let target_len = borsh::object_length(value)?;
+
     // Resize account if needed
-    resize_account_if_needed(account, payer, accounts, borsh::object_length(value)?)?;
+    resize_account_if_needed(account, payer, accounts, target_len)?;
 
     // Serialize
     let mut data = &mut account.data.borrow_mut()[..];

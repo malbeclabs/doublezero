@@ -15,6 +15,7 @@ import (
 
 	"github.com/lmittmann/tint"
 	"github.com/malbeclabs/doublezero/telemetry/gnmi-writer/internal/gnmi"
+	"github.com/malbeclabs/doublezero/telemetry/migrations"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	flag "github.com/spf13/pflag"
@@ -102,6 +103,12 @@ func run() error {
 	case "stdout":
 		writer = gnmi.NewStdoutRecordWriter()
 	case "clickhouse":
+		if cfg.ClickhouseRunMigrations {
+			if err = migrations.RunMigrations(cfg.ClickhouseAddr, cfg.ClickhouseDB, cfg.ClickhouseUser, cfg.ClickhousePassword, !cfg.ClickhouseTLSDisabled, log); err != nil {
+				return fmt.Errorf("clickhouse migrations: %w", err)
+			}
+			log.Info("clickhouse migrations applied")
+		}
 		chMetrics := gnmi.NewClickhouseMetrics(prometheus.DefaultRegisterer)
 		writer, err = gnmi.NewClickhouseRecordWriter(
 			gnmi.WithClickhouseAddr(cfg.ClickhouseAddr),
@@ -246,11 +253,12 @@ type Config struct {
 	KafkaTLSDisabled bool
 
 	// ClickHouse configuration
-	ClickhouseAddr        string
-	ClickhouseDB          string
-	ClickhouseUser        string
-	ClickhousePassword    string
-	ClickhouseTLSDisabled bool
+	ClickhouseAddr          string
+	ClickhouseDB            string
+	ClickhouseUser          string
+	ClickhousePassword      string
+	ClickhouseTLSDisabled   bool
+	ClickhouseRunMigrations bool
 }
 
 func getenv(key, def string) string {
@@ -282,12 +290,12 @@ func loadConfig() (Config, error) {
 	flag.BoolVar(&cfg.KafkaTLSDisabled, "kafka-tls-disabled", getenv("KAFKA_TLS_DISABLED", "") == "true", "disable TLS for kafka (env: KAFKA_TLS_DISABLED)")
 
 	// ClickHouse configuration (tables are determined by record types)
-	// DZ_ENV sets the database name (devnet, testnet, mainnet-beta), defaults to "default"
 	flag.StringVar(&cfg.ClickhouseAddr, "clickhouse-addr", getenv("CLICKHOUSE_ADDR", "localhost:9440"), "clickhouse address (env: CLICKHOUSE_ADDR)")
-	flag.StringVar(&cfg.ClickhouseDB, "clickhouse-db", getenv("DZ_ENV", "default"), "clickhouse database (env: DZ_ENV)")
+	flag.StringVar(&cfg.ClickhouseDB, "clickhouse-db", getenv("CLICKHOUSE_DB", "default"), "clickhouse database (env: CLICKHOUSE_DB)")
 	flag.StringVar(&cfg.ClickhouseUser, "clickhouse-user", getenv("CLICKHOUSE_USER", "default"), "clickhouse username (env: CLICKHOUSE_USER)")
 	flag.StringVar(&cfg.ClickhousePassword, "clickhouse-password", getenv("CLICKHOUSE_PASS", ""), "clickhouse password (env: CLICKHOUSE_PASS)")
 	flag.BoolVar(&cfg.ClickhouseTLSDisabled, "clickhouse-tls-disabled", getenv("CLICKHOUSE_TLS_DISABLED", "") == "true", "disable TLS for clickhouse (env: CLICKHOUSE_TLS_DISABLED)")
+	flag.BoolVar(&cfg.ClickhouseRunMigrations, "clickhouse-run-migrations", getenv("CLICKHOUSE_RUN_MIGRATIONS", "") == "true", "run clickhouse migrations on startup (env: CLICKHOUSE_RUN_MIGRATIONS)")
 
 	flag.Parse()
 

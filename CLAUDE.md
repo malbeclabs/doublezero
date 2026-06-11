@@ -11,7 +11,6 @@ DoubleZero is a decentralized high-performance network built on Solana. Contribu
 | Component        | Language                                            | Purpose                                                                                      |
 | ---------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `smartcontract/` | Rust                                                | Solana programs (serviceability, telemetry, revenue distribution) + CLI                      |
-| `activator/`     | Rust                                                | Offchain validator — approves/rejects entities, allocates resources (IPs, tunnel IDs)        |
 | `client/`        | Rust (`doublezero` CLI) + Go (`doublezerod` daemon) | End-user connectivity — GRE tunnels, BGP sessions                                            |
 | `controlplane/`  | Go                                                  | Controller pushes configs to devices; agent runs on Arista EOS; funder, monitor, admin tools |
 | `telemetry/`     | Go                                                  | Flow ingestion (NetFlow/IPFIX), gNMI writer, global monitor → ClickHouse/InfluxDB            |
@@ -19,7 +18,7 @@ DoubleZero is a decentralized high-performance network built on Solana. Contribu
 | `sdk/`           | Go, Python, TypeScript                              | Read-only account deserialization for serviceability, telemetry, revenue distribution        |
 | `e2e/`           | Go                                                  | End-to-end tests using testcontainers-go with Arista cEOS devices                            |
 
-**Onchain state lifecycle:** Pending → Activated/Rejected → Suspended/Deleting. The activator drives all transitions.
+**Onchain state lifecycle:** Created in `Activated`; admin/operator instructions drive subsequent transitions.
 
 **Serialization:** Borsh for onchain accounts, Protobuf for gRPC (controller↔agent), JSON for APIs.
 
@@ -100,6 +99,13 @@ make generate-fixtures   # Regenerate .bin/.json fixtures from Rust
 ## RFCs and Documentation
 
 - When asked if a doc is up to date, evaluate it against its intended purpose and scope — not against whatever was most recently worked on. Implementation bug fixes and edge-case handling are not design decisions. Don't inflate docs with implementation details just because they're fresh in context.
+
+## CLI Standard (RFC-20)
+
+- New CLI verbs and module crates follow RFC-20 (`rfcs/rfc20-cli-standardization.md`). A contributor-facing summary lives at `docs/cli-standard.md`, with `smartcontract/cli/src/location/get.rs` as the reference verb.
+- Shared CLI utilities (`CliContext`, validators, formatters, `RequirementCheck`, `init_logging`) live in `crates/doublezero-cli-core/`. Verbs MUST consume the shared validators and route diagnostic output through `tracing`. The `doublezero` binary owns global flags (`--env`, `--url`, `--ws`, `--solana-url`, `--keypair`, `--program-id`, `--geo-program-id`, `--sock-file`, `--log-verbose`, `--version`); modules MUST NOT redeclare them.
+- The serviceability module crate is named `doublezero-serviceability-cli` (crate path `smartcontract/cli/`, import path `doublezero_serviceability_cli`).
+- Migration is opportunistic. Existing verbs are grandfathered; new verbs conform from day one.
 
 ## Style & Terminology
 
@@ -257,11 +263,20 @@ Only use `dev/dzctl destroy -y` when you need a completely clean slate (e.g., le
 
 ```bash
 # Run a specific test (preferred)
-go test -tags e2e -run TestE2E_Multicast_Publisher -v -count=1 ./e2e/...
+make e2e-test RUN=TestE2E_Multicast_Publisher
 
-# Run all tests (requires high-memory machine)
-dev/e2e-test.sh
+# Run with debug logging
+make e2e-test-debug RUN=TestE2E_Multicast_Publisher
+
+# Skip docker image rebuild
+make e2e-test-nobuild RUN=TestE2E_Multicast_Publisher
 
 # Keep containers after test completion/failure for debugging
-TESTCONTAINERS_RYUK_DISABLED=true go test -tags e2e -run TestE2E_Multicast_Publisher -v -count=1 ./e2e/...
+make e2e-test-keep RUN=TestE2E_Multicast_Publisher
+
+# Run all tests (requires high-memory machine)
+make e2e-test
+
+# Clean up leftover containers
+make e2e-test-cleanup
 ```

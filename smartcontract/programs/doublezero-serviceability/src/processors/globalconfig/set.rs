@@ -1,5 +1,6 @@
 use crate::{
     error::DoubleZeroError,
+    helper::is_private_or_link_local,
     pda::*,
     processors::resource::create_resource,
     resource::ResourceType,
@@ -13,11 +14,10 @@ use crate::{
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::types::NetworkV4;
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 use std::fmt;
@@ -65,6 +65,7 @@ pub fn process_set_globalconfig(
     let segment_routing_ids_account = next_account_info(accounts_iter)?;
     let multicast_publisher_block_account = next_account_info(accounts_iter)?;
     let vrf_ids_account = next_account_info(accounts_iter)?;
+    let admin_group_bits_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -104,6 +105,8 @@ pub fn process_set_globalconfig(
         get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::AdminGroupBits);
 
     assert_eq!(
         device_tunnel_block_account.key, &device_tunnel_block_pda,
@@ -124,6 +127,18 @@ pub fn process_set_globalconfig(
         multicast_publisher_block_account.key, &multicast_publisher_block_pda,
         "Invalid Multicast Publisher Block PubKey"
     );
+
+    assert_eq!(
+        admin_group_bits_account.key, &admin_group_bits_pda,
+        "Invalid AdminGroupBits PubKey"
+    );
+
+    // The device tunnel block must be private or link-local, matching the
+    // restriction enforced on device interface IPs (see Interface::validate).
+    if !is_private_or_link_local(value.device_tunnel_block.ip()) {
+        msg!("Invalid device_tunnel_block: {}", value.device_tunnel_block);
+        return Err(DoubleZeroError::InvalidDeviceTunnelBlock.into());
+    }
 
     let next_bgp_community = if let Some(val) = value.next_bgp_community {
         val
@@ -230,6 +245,16 @@ pub fn process_set_globalconfig(
             accounts,
             ResourceType::VrfIds,
         )?;
+
+        create_resource(
+            program_id,
+            admin_group_bits_account,
+            None,
+            pda_account,
+            payer_account,
+            accounts,
+            ResourceType::AdminGroupBits,
+        )?;
     } else {
         let old_data = GlobalConfig::try_from(pda_account)?;
         if old_data.device_tunnel_block != data.device_tunnel_block {
@@ -264,6 +289,20 @@ pub fn process_set_globalconfig(
                 payer_account,
                 accounts,
                 ResourceType::MulticastPublisherBlock,
+            )?;
+        }
+
+        // Create AdminGroupBits PDA if it doesn't exist yet (migration support for
+        // deployments that predate RFC-18).
+        if admin_group_bits_account.data_is_empty() {
+            create_resource(
+                program_id,
+                admin_group_bits_account,
+                None,
+                pda_account,
+                payer_account,
+                accounts,
+                ResourceType::AdminGroupBits,
             )?;
         }
     }

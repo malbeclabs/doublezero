@@ -14,13 +14,22 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
+// MulticastGroups contains the group codes a user publishes to and subscribes to.
+type MulticastGroups struct {
+	Publisher  []string `json:"publisher"`
+	Subscriber []string `json:"subscriber"`
+}
+
 // V2ServiceStatus wraps a StatusResponse with enriched fields.
 type V2ServiceStatus struct {
 	*api.StatusResponse
-	CurrentDevice       string `json:"current_device"`
-	LowestLatencyDevice string `json:"lowest_latency_device"`
-	Metro               string `json:"metro"`
-	Tenant              string `json:"tenant"`
+	CurrentDevice               string          `json:"current_device"`
+	CurrentDeviceRttNanoseconds int64           `json:"current_device_rtt_nanoseconds,omitempty"`
+	CurrentDeviceLossPercentage float64         `json:"current_device_loss_percentage,omitempty"`
+	LowestLatencyDevice         string          `json:"lowest_latency_device"`
+	Metro                       string          `json:"metro"`
+	Tenant                      string          `json:"tenant"`
+	MulticastGroups             MulticastGroups `json:"multicast_groups"`
 }
 
 // V2StatusResponse is the response for the /v2/status endpoint.
@@ -68,6 +77,7 @@ func (n *NetlinkManager) ServeProvision(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	n.updateConnectionInfoMetric()
 	_, _ = w.Write([]byte(`{"status": "ok"}`))
 }
 
@@ -97,6 +107,7 @@ func (n *NetlinkManager) ServeRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	n.updateConnectionInfoMetric()
 	_, _ = w.Write([]byte(`{"status": "ok"}`))
 }
 
@@ -167,6 +178,55 @@ func (n *NetlinkManager) ServeV2Status(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+// updateConnectionInfoMetric resets and repopulates the doublezero_connection_info,
+// doublezero_connection_rtt_nanoseconds, and doublezero_connection_loss_percentage
+// gauges with current service metadata.
+func (n *NetlinkManager) updateConnectionInfoMetric() {
+	metricConnectionInfo.Reset()
+	metricConnectionRttNanoseconds.Reset()
+	metricConnectionLossPercentage.Reset()
+
+	statuses, err := n.Status()
+	if err != nil || len(statuses) == 0 {
+		return
+	}
+
+	enriched := n.enrichStatuses(statuses)
+	for _, svc := range enriched {
+		metricConnectionInfo.WithLabelValues(
+			svc.UserType.String(),
+			n.network,
+			svc.CurrentDevice,
+			svc.Metro,
+			svc.TunnelName,
+			ipString(svc.TunnelSrc),
+			ipString(svc.TunnelDst),
+		).Set(1)
+		if svc.CurrentDeviceRttNanoseconds > 0 {
+			metricConnectionRttNanoseconds.WithLabelValues(
+				svc.UserType.String(),
+				n.network,
+				svc.CurrentDevice,
+				svc.Metro,
+			).Set(float64(svc.CurrentDeviceRttNanoseconds))
+			metricConnectionLossPercentage.WithLabelValues(
+				svc.UserType.String(),
+				n.network,
+				svc.CurrentDevice,
+				svc.Metro,
+			).Set(svc.CurrentDeviceLossPercentage)
+		}
+	}
+}
+
+// ipString returns the string representation of an IP, or empty string if nil.
+func ipString(ip net.IP) string {
+	if ip == nil {
+		return ""
+	}
+	return ip.String()
+}
+
 // latencyToleranceNS matches the CLI's LATENCY_TOLERANCE_NS (5ms).
 const latencyToleranceNS int64 = 5_000_000
 
@@ -192,10 +252,11 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 
 	// Build lookup maps from program data.
 	var (
-		devicesByPK   map[[32]byte]serviceability.Device
-		exchangesByPK map[[32]byte]serviceability.Exchange
-		tenantsByPK   map[[32]byte]serviceability.Tenant
-		users         []serviceability.User
+		devicesByPK     map[[32]byte]serviceability.Device
+		exchangesByPK   map[[32]byte]serviceability.Exchange
+		tenantsByPK     map[[32]byte]serviceability.Tenant
+		mcastGroupsByPK map[[32]byte]serviceability.MulticastGroup
+		users           []serviceability.User
 	)
 	if data != nil {
 		devicesByPK = make(map[[32]byte]serviceability.Device, len(data.Devices))
@@ -209,6 +270,10 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 		tenantsByPK = make(map[[32]byte]serviceability.Tenant, len(data.Tenants))
 		for _, t := range data.Tenants {
 			tenantsByPK[t.PubKey] = t
+		}
+		mcastGroupsByPK = make(map[[32]byte]serviceability.MulticastGroup, len(data.MulticastGroups))
+		for _, mg := range data.MulticastGroups {
+			mcastGroupsByPK[mg.PubKey] = mg
 		}
 		users = data.Users
 	}
@@ -224,7 +289,13 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 
 	enriched := make([]V2ServiceStatus, 0, len(statuses))
 	for _, svc := range statuses {
-		es := V2ServiceStatus{StatusResponse: svc}
+		es := V2ServiceStatus{
+			StatusResponse: svc,
+			MulticastGroups: MulticastGroups{
+				Publisher:  []string{},
+				Subscriber: []string{},
+			},
+		}
 
 		if data == nil {
 			enriched = append(enriched, es)
@@ -263,7 +334,7 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 
 		// Fallback: match by client_ip + user_type (e.g. multicast subscribers
 		// whose tunnel endpoint differs from the device public IP).
-		if matchedDevice == nil {
+		if matchedUser == nil {
 			clientIP4 := n.clientIP.To4()
 			for i := range users {
 				u := &users[i]
@@ -284,6 +355,13 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 			if exch, ok := exchangesByPK[exchPK]; ok {
 				es.Metro = exch.Name
 			}
+			for _, r := range latencyResults {
+				if r.Device.PubKey == matchedDevice.PubKey && r.Reachable {
+					es.CurrentDeviceRttNanoseconds = r.Avg
+					es.CurrentDeviceLossPercentage = r.Loss
+					break
+				}
+			}
 		}
 
 		if matchedUser != nil {
@@ -291,6 +369,16 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 			if tenantPK != [32]byte{} {
 				if t, ok := tenantsByPK[tenantPK]; ok {
 					es.Tenant = t.Code
+				}
+			}
+			for _, pk := range matchedUser.Publishers {
+				if mg, ok := mcastGroupsByPK[pk]; ok {
+					es.MulticastGroups.Publisher = append(es.MulticastGroups.Publisher, mg.Code)
+				}
+			}
+			for _, pk := range matchedUser.Subscribers {
+				if mg, ok := mcastGroupsByPK[pk]; ok {
+					es.MulticastGroups.Subscriber = append(es.MulticastGroups.Subscriber, mg.Code)
 				}
 			}
 		}

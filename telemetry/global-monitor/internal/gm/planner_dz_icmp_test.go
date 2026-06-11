@@ -17,10 +17,9 @@ import (
 
 func TestGlobalMonitor_DoubleZeroUserICMPPlanner_getTargets_PublicOnly_WhenNoDZIface(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
-	influx := newFakeWriteAPI()
 	geo := &fakeGeoIP{rec: nil}
 
-	p := NewDoubleZeroUserICMPPlanner(log, influx, geo)
+	p := NewDoubleZeroUserICMPPlanner(log, nil, geo)
 
 	u1 := mkUser(pk(1), "203.0.113.10", "10.0.0.10", "nyc", dz.UserTypeIBRL, solana.PublicKey{})
 	u2 := mkUser(pk(2), "203.0.113.11", "10.0.0.11", "sfo", dz.UserTypeIBRL, solana.PublicKey{})
@@ -50,9 +49,8 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_getTargets_PublicOnly_WhenNoDZI
 
 func TestGlobalMonitor_DoubleZeroUserICMPPlanner_getTargets_DZFilters_AndPreflightNoRoute(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
-	influx := newFakeWriteAPI()
 	geo := &fakeGeoIP{rec: nil}
-	p := NewDoubleZeroUserICMPPlanner(log, influx, geo)
+	p := NewDoubleZeroUserICMPPlanner(log, nil, geo)
 
 	sourceUser := mkUser(pk(99), "198.51.100.2", "10.255.0.1", "yyz", dz.UserTypeIBRL, solana.PublicKey{})
 	src := mkSource("eth0", "198.51.100.2", "dz0", &sourceUser)
@@ -118,9 +116,8 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_getTargets_DZFilters_AndPreflig
 
 func TestGlobalMonitor_DoubleZeroUserICMPPlanner_BuildPlans_DedupAndPaths(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
-	influx := newFakeWriteAPI()
 	geo := &fakeGeoIP{rec: nil}
-	p := NewDoubleZeroUserICMPPlanner(log, influx, geo)
+	p := NewDoubleZeroUserICMPPlanner(log, nil, geo)
 
 	sourceUser := mkUser(pk(99), "198.51.100.2", "10.255.0.1", "yyz", dz.UserTypeIBRL, solana.PublicKey{})
 	src := mkSource("eth0", "198.51.100.2", "dz0", &sourceUser)
@@ -160,9 +157,9 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_BuildPlans_DedupAndPaths(t *tes
 	}
 }
 
-func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedInfluxPoints(t *testing.T) {
+func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedClickHouseRows(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(&strings.Builder{}, nil))
-	influx := newFakeWriteAPI()
+	ch := newFakeProbeWriter()
 	geo := &fakeGeoIP{
 		rec: &geoip.Record{
 			Country:     "Canada",
@@ -177,7 +174,7 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedInfluxPoin
 			Longitude:   -79.4,
 		},
 	}
-	p := NewDoubleZeroUserICMPPlanner(log, influx, geo)
+	p := NewDoubleZeroUserICMPPlanner(log, ch, geo)
 
 	sourceUser := mkUser(pk(99), "198.51.100.2", "10.255.0.1", "yyz", dz.UserTypeIBRL, solana.PublicKey{})
 	src := mkSource("eth0", "198.51.100.2", "dz0", &sourceUser)
@@ -202,9 +199,9 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedInfluxPoin
 
 	ts := time.Unix(1700000000, 0)
 
-	t.Run("success writes probe_ok=true + stats fields", func(t *testing.T) {
-		influx = newFakeWriteAPI()
-		p.influxAPI = influx
+	t.Run("success writes row with stats and solana cross-refs", func(t *testing.T) {
+		ch := newFakeProbeWriter()
+		p.chWriter = ch
 
 		res := &ProbeResult{
 			Timestamp: ts,
@@ -216,69 +213,72 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedInfluxPoin
 		}
 		p.recordResult(src, &u, dzT, res, gossip, validators)
 
-		pts := influx.Points()
-		require.Len(t, pts, 1)
-		tags := pointTags(pts[0])
-		fields := pointFields(pts[0])
-		require.Equal(t, string(InfluxTableDoubleZeroUserICMPProbe), pts[0].Name())
-		require.Equal(t, ts, pts[0].Time())
+		rows := ch.DZUserICMPRows()
+		require.Len(t, rows, 1)
+		row := rows[0]
 
-		requireTag(t, tags, "probe_type", string(ProbeTypeICMP))
-		requireTag(t, tags, "user_pubkey", u.PubKey.String())
-		requireTag(t, tags, "probe_path", string(ProbePathDoubleZero))
-		requireTag(t, tags, "source_iface", "dz0")
-		requireTag(t, tags, "source_ip", src.User.DZIP.String())
-		requireTag(t, tags, "target_ip", u.DZIP.String())
+		require.Equal(t, ts, row.Timestamp)
+		require.Equal(t, string(ProbeTypeICMP), row.ProbeType)
+		require.Equal(t, string(ProbePathDoubleZero), row.ProbePath)
+		require.Equal(t, u.PubKey.String(), row.UserPubkey)
+		require.Equal(t, u.ValidatorPK.String(), row.UserValidatorPubkey)
+		require.Equal(t, votePK.String(), row.ValidatorVotePubkey)
+		require.Equal(t, u.DZIP.String(), row.TargetIP)
+		require.Equal(t, "dz0", row.SourceIface)
+		require.Equal(t, src.User.DZIP.String(), row.SourceIP)
+		require.Equal(t, u.Device.Code, row.TargetDZDCode)
 
-		require.Equal(t, true, requireField[bool](t, fields, "probe_ok"))
-		require.Contains(t, fields, "probe_rtt_avg_ms")
-		require.Contains(t, fields, "probe_packets_sent")
-		require.Contains(t, fields, "probe_loss_ratio")
+		require.True(t, row.ProbeOK)
+		require.Empty(t, row.ProbeFailReason)
+		require.InDelta(t, 15.0, row.ProbeRTTAvgMs, 1)
+		require.Equal(t, int64(10), row.ProbePacketsSent)
+		require.InDelta(t, 0.1, row.ProbeLossRatio, 0.01)
 
-		require.Contains(t, tags, "user_validator_pubkey")
-		requireTag(t, tags, "validator_vote_pubkey", votePK.String())
-		require.Contains(t, fields, "user_validator_pubkey_in_solana_vote_accounts")
-		require.Contains(t, fields, "user_validator_pubkey_in_solana_gossip")
+		require.Equal(t, "CA", row.TargetGeoIPCountryCode)
+		require.InDelta(t, 43.7, row.TargetGeoIPLatitude, 0.01)
 
-		requireTag(t, tags, "target_geoip_country_code", "CA")
-		require.Contains(t, fields, "target_geoip_latitude")
+		// Solana cross-reference fields.
+		require.True(t, row.UserValidatorPubkeyInSolanaVoteAccounts)
+		require.True(t, row.UserValidatorPubkeyInSolanaGossip)
+		// Target IP on DZ path is u.DZIP (10.0.0.10), which is not in gossip GossipIP (203.0.113.10).
+		require.False(t, row.TargetIPInSolanaGossip)
+		// But it IS in gossip as TPUQUICIP (u.DZIP = 10.0.0.10).
+		require.True(t, row.TargetIPInSolanaGossipAsTPUQUIC)
 	})
 
 	t.Run("not-ready does not write", func(t *testing.T) {
-		influx = newFakeWriteAPI()
-		p.influxAPI = influx
+		ch := newFakeProbeWriter()
+		p.chWriter = ch
 
 		res := &ProbeResult{Timestamp: ts, OK: false, FailReason: ProbeFailReasonNotReady}
 		p.recordResult(src, &u, dzT, res, gossip, validators)
 
-		require.Len(t, influx.Points(), 0)
+		require.Len(t, ch.DZUserICMPRows(), 0)
 	})
 
-	t.Run("failure writes probe_ok=false + fail_reason", func(t *testing.T) {
-		influx = newFakeWriteAPI()
-		p.influxAPI = influx
+	t.Run("failure writes row with probe_ok=false", func(t *testing.T) {
+		ch := newFakeProbeWriter()
+		p.chWriter = ch
 
 		res := &ProbeResult{Timestamp: ts, OK: false, FailReason: ProbeFailReasonTimeout}
 		p.recordResult(src, &u, pubT, res, gossip, validators)
 
-		pts := influx.Points()
-		require.Len(t, pts, 1)
+		rows := ch.DZUserICMPRows()
+		require.Len(t, rows, 1)
+		row := rows[0]
 
-		tags := pointTags(pts[0])
-		fields := pointFields(pts[0])
-
-		requireTag(t, tags, "probe_path", string(ProbePathPublicInternet))
-		requireTag(t, tags, "source_iface", "eth0")
-		requireTag(t, tags, "source_ip", src.PublicIP.String())
-		requireTag(t, tags, "target_ip", u.ClientIP.String())
-
-		require.Equal(t, false, requireField[bool](t, fields, "probe_ok"))
-		require.Contains(t, requireField[string](t, fields, "probe_fail_reason"), string(ProbeFailReasonTimeout))
+		require.False(t, row.ProbeOK)
+		require.Equal(t, string(ProbeFailReasonTimeout), row.ProbeFailReason)
+		require.Equal(t, string(ProbePathPublicInternet), row.ProbePath)
+		require.Equal(t, "eth0", row.SourceIface)
+		require.Equal(t, src.PublicIP.String(), row.SourceIP)
+		require.Equal(t, u.ClientIP.String(), row.TargetIP)
+		require.Zero(t, row.ProbeRTTAvgMs)
 	})
 
 	t.Run("unknown iface does not write", func(t *testing.T) {
-		influx = newFakeWriteAPI()
-		p.influxAPI = influx
+		ch := newFakeProbeWriter()
+		p.chWriter = ch
 
 		weirdT, err := NewICMPProbeTarget(log, "weird0", u.ClientIP, &ICMPProbeTargetConfig{})
 		require.NoError(t, err)
@@ -286,18 +286,12 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedInfluxPoin
 		res := &ProbeResult{Timestamp: ts, OK: false, FailReason: ProbeFailReasonTimeout}
 		p.recordResult(src, &u, weirdT, res, gossip, validators)
 
-		require.Len(t, influx.Points(), 0)
+		require.Len(t, ch.DZUserICMPRows(), 0)
 	})
 
-	t.Run("nil influx api makes Record a no-op", func(t *testing.T) {
-		p.influxAPI = nil
-		res := &ProbeResult{Timestamp: ts, OK: false, FailReason: ProbeFailReasonTimeout}
-		p.recordResult(src, &u, pubT, res, gossip, validators)
-	})
-
-	t.Run("validator without vote pubkey does not include validator_vote_pubkey tag", func(t *testing.T) {
-		influx = newFakeWriteAPI()
-		p.influxAPI = influx
+	t.Run("validator without vote pubkey writes empty validator_vote_pubkey", func(t *testing.T) {
+		ch := newFakeProbeWriter()
+		p.chWriter = ch
 
 		uNoVote := mkUser(pk(2), "203.0.113.11", "10.0.0.11", "nyc", dz.UserTypeIBRL, pk(43))
 		validatorsNoVote := map[solana.PublicKey]*sol.Validator{
@@ -324,10 +318,15 @@ func TestGlobalMonitor_DoubleZeroUserICMPPlanner_Record_WritesExpectedInfluxPoin
 		}
 		p.recordResult(src, &uNoVote, pubTNoVote, res, gossipNoVote, validatorsNoVote)
 
-		pts := influx.Points()
-		require.Len(t, pts, 1)
-		tags := pointTags(pts[0])
-		require.Contains(t, tags, "user_validator_pubkey")
-		require.NotContains(t, tags, "validator_vote_pubkey")
+		rows := ch.DZUserICMPRows()
+		require.Len(t, rows, 1)
+		require.Equal(t, uNoVote.ValidatorPK.String(), rows[0].UserValidatorPubkey)
+		require.Empty(t, rows[0].ValidatorVotePubkey)
+	})
+
+	t.Run("nil chWriter does not panic", func(t *testing.T) {
+		p.chWriter = nil
+		res := &ProbeResult{Timestamp: ts, OK: false, FailReason: ProbeFailReasonTimeout}
+		p.recordResult(src, &u, pubT, res, gossip, validators)
 	})
 }

@@ -1,27 +1,45 @@
 use crate::{
     error::DoubleZeroError,
+    processors::{
+        link::resource_onchain_helpers::validate_and_allocate_link_resources,
+        validation::validate_program_account,
+    },
     serializer::try_acc_write,
-    state::{contributor::Contributor, device::Device, link::*},
+    state::{
+        contributor::Contributor,
+        device::Device,
+        interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus},
+        link::*,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
+use doublezero_program_common::types::NetworkV4;
 #[cfg(test)]
 use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct LinkAcceptArgs {
     pub side_z_iface_name: String,
+    /// Onchain allocation is mandatory; the field must be `true`. Retained for ABI stability.
+    #[incremental(default = false)]
+    pub use_onchain_allocation: bool,
 }
 
 impl fmt::Debug for LinkAcceptArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "side_z_iface_name: {}", self.side_z_iface_name,)
+        write!(
+            f,
+            "side_z_iface_name: {}, use_onchain_allocation: {}",
+            self.side_z_iface_name, self.use_onchain_allocation,
+        )
     }
 }
 
@@ -30,15 +48,23 @@ pub fn process_accept_link(
     accounts: &[AccountInfo],
     value: &LinkAcceptArgs,
 ) -> ProgramResult {
+    if !value.use_onchain_allocation {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
-    /*  Accounts prefixed with an underscore are not currently used.
-        They are kept for backward compatibility and may be removed in future releases.
-    */
+    // Account layout: [link, contributor, side_z_dev, globalstate, side_a_dev,
+    //                  device_tunnel_block, link_ids, payer, system]
     let link_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let side_z_account = next_account_info(accounts_iter)?;
     let _globalstate_account = next_account_info(accounts_iter)?;
+
+    let side_a_device_account = next_account_info(accounts_iter)?;
+    let device_tunnel_block_ext = next_account_info(accounts_iter)?;
+    let link_ids_ext = next_account_info(accounts_iter)?;
+
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
 
@@ -48,18 +74,15 @@ pub fn process_accept_link(
     // Check if the payer is a signer
     assert!(payer_account.is_signer, "Payer must be a signer");
 
-    // Check the owner of the accounts
-    assert_eq!(link_account.owner, program_id, "Invalid PDA Account Owner");
-    assert_eq!(
-        contributor_account.owner, program_id,
-        "Invalid Contributor Account Owner"
+    // Validate accounts
+    validate_program_account!(link_account, program_id, writable = true, "Link");
+    validate_program_account!(
+        contributor_account,
+        program_id,
+        writable = false,
+        "Contributor"
     );
-    assert_eq!(
-        side_z_account.owner, program_id,
-        "Invalid Side Z Account Owner"
-    );
-    // Check if the account is writable
-    assert!(link_account.is_writable, "PDA Account is not writable");
+    validate_program_account!(side_z_account, program_id, writable = true, "SideZ");
 
     // Validate Contributor Owner
     let contributor = Contributor::try_from(contributor_account)?;
@@ -86,7 +109,7 @@ pub fn process_accept_link(
     if !side_z_dev
         .interfaces
         .iter()
-        .any(|iface| iface.into_current_version().name == value.side_z_iface_name)
+        .any(|iface| iface.name == value.side_z_iface_name)
     {
         #[cfg(test)]
         msg!("{:?}", side_z_dev);
@@ -94,12 +117,90 @@ pub fn process_accept_link(
         return Err(DoubleZeroError::InvalidInterfaceName.into());
     }
     link.side_z_iface_name = value.side_z_iface_name.clone();
-    link.status = LinkStatus::Pending;
 
+    // Combined accept + activate path with onchain allocation.
+    validate_program_account!(
+        side_a_device_account,
+        program_id,
+        writable = true,
+        "SideADevice"
+    );
+    assert!(
+        side_z_account.is_writable,
+        "Side Z PDA Account is not writable"
+    );
+
+    let mut side_a_dev = Device::try_from(side_a_device_account)?;
+    let mut side_z_dev = Device::try_from(side_z_account)?;
+
+    if link.side_a_pk != *side_a_device_account.key || link.side_z_pk != *side_z_account.key {
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    let (idx_a, side_a_iface) = side_a_dev
+        .find_interface(&link.side_a_iface_name)
+        .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
+
+    let (idx_z, side_z_iface) = side_z_dev
+        .find_interface(&link.side_z_iface_name)
+        .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
+
+    if side_a_iface.status != InterfaceStatus::Unlinked
+        || side_z_iface.status != InterfaceStatus::Unlinked
+    {
+        return Err(DoubleZeroError::InvalidStatus.into());
+    }
+
+    if side_a_iface.interface_cyoa != InterfaceCYOA::None
+        || side_a_iface.interface_dia != InterfaceDIA::None
+        || side_z_iface.interface_cyoa != InterfaceCYOA::None
+        || side_z_iface.interface_dia != InterfaceDIA::None
+    {
+        return Err(DoubleZeroError::InterfaceHasEdgeAssignment.into());
+    }
+
+    // Mirror the create-time invariant: each bound interface must have at least
+    // the link's bandwidth. Side A was validated at create, but a contributor can
+    // lower an interface's bandwidth via UpdateDeviceInterface between create and
+    // accept, so re-check at the activation boundary. Side Z is checked here for
+    // the first time (DZX side Z is unknown at create).
+    if side_a_iface.bandwidth < link.bandwidth || side_z_iface.bandwidth < link.bandwidth {
+        return Err(DoubleZeroError::InvalidBandwidth.into());
+    }
+
+    // Allocate resources (validates ResourceExtension PDAs internally)
+    validate_and_allocate_link_resources(
+        program_id,
+        &mut link,
+        device_tunnel_block_ext,
+        link_ids_ext,
+    )?;
+
+    let mut updated_iface_a = side_a_iface.clone();
+    updated_iface_a.status = InterfaceStatus::Activated;
+    if updated_iface_a.ip_net == NetworkV4::default() {
+        updated_iface_a.ip_net =
+            NetworkV4::new(link.tunnel_net.nth(0).unwrap(), link.tunnel_net.prefix()).unwrap();
+    }
+    side_a_dev.interfaces[idx_a] = updated_iface_a;
+
+    let mut updated_iface_z = side_z_iface.clone();
+    updated_iface_z.status = InterfaceStatus::Activated;
+    if updated_iface_z.ip_net == NetworkV4::default() {
+        updated_iface_z.ip_net =
+            NetworkV4::new(link.tunnel_net.nth(1).unwrap(), link.tunnel_net.prefix()).unwrap();
+    }
+    side_z_dev.interfaces[idx_z] = updated_iface_z;
+
+    link.status = LinkStatus::Activated;
+    link.check_status_transition();
+
+    try_acc_write(&side_a_dev, side_a_device_account, payer_account, accounts)?;
+    try_acc_write(&side_z_dev, side_z_account, payer_account, accounts)?;
     try_acc_write(&link, link_account, payer_account, accounts)?;
 
     #[cfg(test)]
-    msg!("Accepted: {:?}", link);
+    msg!("Accepted and Activated: {:?}", link);
 
     Ok(())
 }

@@ -11,23 +11,23 @@ use std::{fmt, net::Ipv4Addr};
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MulticastGroupStatus {
+    PendingDeprecated = 0, // deprecated; unreachable for new accounts
     #[default]
-    Pending = 0,
     Activated = 1,
     Suspended = 2,
     Deleting = 3,
-    Rejected = 4,
+    RejectedDeprecated = 4, // deprecated; unreachable for new accounts
 }
 
 impl From<u8> for MulticastGroupStatus {
     fn from(value: u8) -> Self {
         match value {
-            0 => MulticastGroupStatus::Pending,
+            0 => MulticastGroupStatus::PendingDeprecated,
             1 => MulticastGroupStatus::Activated,
             2 => MulticastGroupStatus::Suspended,
             3 => MulticastGroupStatus::Deleting,
-            4 => MulticastGroupStatus::Rejected,
-            _ => MulticastGroupStatus::Pending,
+            4 => MulticastGroupStatus::RejectedDeprecated,
+            _ => MulticastGroupStatus::PendingDeprecated,
         }
     }
 }
@@ -35,11 +35,11 @@ impl From<u8> for MulticastGroupStatus {
 impl fmt::Display for MulticastGroupStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MulticastGroupStatus::Pending => write!(f, "pending"),
+            MulticastGroupStatus::PendingDeprecated => write!(f, "pending (deprecated)"),
             MulticastGroupStatus::Activated => write!(f, "activated"),
             MulticastGroupStatus::Suspended => write!(f, "suspended"),
             MulticastGroupStatus::Deleting => write!(f, "deleting"),
-            MulticastGroupStatus::Rejected => write!(f, "rejected"),
+            MulticastGroupStatus::RejectedDeprecated => write!(f, "rejected (deprecated)"),
         }
     }
 }
@@ -116,7 +116,7 @@ impl Default for MulticastGroup {
             tenant_pk: Pubkey::default(),
             multicast_ip: Ipv4Addr::new(0, 0, 0, 0),
             max_bandwidth: 0,
-            status: MulticastGroupStatus::Pending,
+            status: MulticastGroupStatus::Activated,
             code: String::new(),
             publisher_count: 0,
             subscriber_count: 0,
@@ -174,10 +174,7 @@ impl Validate for MulticastGroup {
             return Err(DoubleZeroError::InvalidAccountType);
         }
         // Multicast IP must be in the range
-        if self.status != MulticastGroupStatus::Pending
-            && self.status != MulticastGroupStatus::Rejected
-            && !self.multicast_ip.is_multicast()
-        {
+        if !self.multicast_ip.is_multicast() {
             msg!("Invalid multicast IP: {}", self.multicast_ip);
             return Err(DoubleZeroError::InvalidMulticastIp);
         }
@@ -222,7 +219,7 @@ mod tests {
         assert_eq!(val.tenant_pk, Pubkey::default());
         assert_eq!(val.multicast_ip, Ipv4Addr::new(0, 0, 0, 0));
         assert_eq!(val.max_bandwidth, 0);
-        assert_eq!(val.status, MulticastGroupStatus::Pending);
+        assert_eq!(val.status, MulticastGroupStatus::Activated);
         assert_eq!(val.code, String::new());
         assert_eq!(val.publisher_count, 0);
         assert_eq!(val.subscriber_count, 0);
@@ -247,26 +244,6 @@ mod tests {
         let err = val.validate();
         assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
-    }
-
-    #[test]
-    fn test_state_multicastgroup_validate_ok_rejected_ignores_multicast_ip() {
-        let val = MulticastGroup {
-            account_type: AccountType::MulticastGroup,
-            owner: Pubkey::new_unique(),
-            index: 123,
-            bump_seed: 1,
-            tenant_pk: Pubkey::new_unique(),
-            multicast_ip: Ipv4Addr::new(1, 1, 1, 1),
-            max_bandwidth: 1000,
-            status: MulticastGroupStatus::Rejected,
-            code: "test".to_string(),
-            publisher_count: 0,
-            subscriber_count: 0,
-        };
-
-        // For Rejected status, multicast_ip is not validated and should succeed
-        val.validate().unwrap();
     }
 
     #[test]

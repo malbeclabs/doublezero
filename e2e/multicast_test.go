@@ -83,29 +83,29 @@ func TestE2E_Multicast(t *testing.T) {
 		doublezero device create --code pit-dzd01 --contributor co01 --location pit --exchange xpit --public-ip "204.16.241.243" --dz-prefixes "204.16.243.243/32" --mgmt-vrf mgmt --desired-status activated
 		doublezero device create --code ams-dz001 --contributor co01 --location ams --exchange xams --public-ip "195.219.138.50" --dz-prefixes "195.219.138.56/29" --mgmt-vrf mgmt --desired-status activated
 
-		doublezero device interface create ny5-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ny5-dz01 "Vlan4001" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ny5-dz01 "Ethernet4" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ny5-dz01 "Ethernet5" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ny5-dz01 "Ethernet6" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create la2-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create la2-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create la2-dz01 "Ethernet4" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create la2-dz01 "Ethernet5" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create la2-dz01 "Ethernet6" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ld4-dz01 "Vlan4001" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ld4-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ld4-dz01 "Ethernet4" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create frk-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create frk-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create sg1-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create sg1-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ty2-dz01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ty2-dz01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create pit-dzd01 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create pit-dzd01 "Ethernet3" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ams-dz001 "Ethernet2" --bandwidth 10G --mtu 2048 -w
-		doublezero device interface create ams-dz001 "Ethernet3" --bandwidth 10G --mtu 2048 -w
+		doublezero device interface create ny5-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Vlan4001" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Ethernet4" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Ethernet5" --bandwidth 10G -w
+		doublezero device interface create ny5-dz01 "Ethernet6" --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Ethernet4" --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Ethernet5" --bandwidth 10G -w
+		doublezero device interface create la2-dz01 "Ethernet6" --bandwidth 10G -w
+		doublezero device interface create ld4-dz01 "Vlan4001" --bandwidth 10G -w
+		doublezero device interface create ld4-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create ld4-dz01 "Ethernet4" --bandwidth 10G -w
+		doublezero device interface create frk-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create frk-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create sg1-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create sg1-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create ty2-dz01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ty2-dz01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create pit-dzd01 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create pit-dzd01 "Ethernet3" --bandwidth 10G -w
+		doublezero device interface create ams-dz001 "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ams-dz001 "Ethernet3" --bandwidth 10G -w
 
 		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
 		doublezero device interface create la2-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
@@ -132,16 +132,16 @@ func TestE2E_Multicast(t *testing.T) {
 		doublezero device update --pubkey pit-dzd01 --max-users 128
 		doublezero device update --pubkey ams-dz001 --max-users 128
 
-		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 40 --jitter-ms 3 --desired-status activated -w
-		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
-		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 25 --jitter-ms 10 --desired-status activated -w
-		doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 120 --jitter-ms 9 --desired-status activated -w
-		doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 40 --jitter-ms 7 --desired-status activated -w
-		doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Ethernet3 --side-z la2-dz01 --side-z-interface Ethernet3 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 10 --desired-status activated -w
+		doublezero link create wan --code "la2-dz01:ny5-dz01" --contributor co01 --side-a la2-dz01 --side-a-interface Ethernet2 --side-z ny5-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 40 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ny5-dz01:ld4-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Vlan4001 --side-z ld4-dz01 --side-z-interface Vlan4001 --bandwidth "10 Gbps" --delay-ms 30 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ld4-dz01:frk-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet3 --side-z frk-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 25 --jitter-ms 10 --desired-status activated -w
+		doublezero link create wan --code "ld4-dz01:sg1-dz01" --contributor co01 --side-a ld4-dz01 --side-a-interface Ethernet4 --side-z sg1-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 120 --jitter-ms 9 --desired-status activated -w
+		doublezero link create wan --code "sg1-dz01:ty2-dz01" --contributor co01 --side-a sg1-dz01 --side-a-interface Ethernet3 --side-z ty2-dz01 --side-z-interface Ethernet2 --bandwidth "10 Gbps" --delay-ms 40 --jitter-ms 7 --desired-status activated -w
+		doublezero link create wan --code "ty2-dz01:la2-dz01" --contributor co01 --side-a ty2-dz01 --side-a-interface Ethernet3 --side-z la2-dz01 --side-z-interface Ethernet3 --bandwidth "10 Gbps" --delay-ms 30 --jitter-ms 10 --desired-status activated -w
 
-		doublezero link create wan --code "ny5-dz01:la2-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet4 --side-z la2-dz01 --side-z-interface Ethernet4 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
-		doublezero link create wan --code "ny5-dz01_e5:la2-dz01_e5" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet5 --side-z la2-dz01 --side-z-interface Ethernet5 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 30 --jitter-ms 3 --desired-status activated -w
-		doublezero link create wan --code "ny5-dz01_e6:la2-dz01_e6" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet6 --side-z la2-dz01 --side-z-interface Ethernet6 --bandwidth "10 Gbps" --mtu 2048 --delay-ms 8 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ny5-dz01:la2-dz01" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet4 --side-z la2-dz01 --side-z-interface Ethernet4 --bandwidth "10 Gbps" --delay-ms 30 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ny5-dz01_e5:la2-dz01_e5" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet5 --side-z la2-dz01 --side-z-interface Ethernet5 --bandwidth "10 Gbps" --delay-ms 30 --jitter-ms 3 --desired-status activated -w
+		doublezero link create wan --code "ny5-dz01_e6:la2-dz01_e6" --contributor co01 --side-a ny5-dz01 --side-a-interface Ethernet6 --side-z la2-dz01 --side-z-interface Ethernet6 --bandwidth "10 Gbps" --delay-ms 8 --jitter-ms 3 --desired-status activated -w
 
 		doublezero link update --pubkey "ny5-dz01:la2-dz01" --delay-override-ms 500
 		doublezero link update --pubkey "ny5-dz01_e5:la2-dz01_e5" --status=soft-drained
@@ -192,13 +192,23 @@ func TestE2E_Multicast(t *testing.T) {
 	createMulticastGroupForBothClients(t, tdn, publisherClient, subscriberClient, "mg02")
 
 	if !t.Run("connect", func(t *testing.T) {
-		// Connect publisher.
-		tdn.ConnectMulticastPublisherSkipAccessPass(t, publisherClient, "mg01", "mg02")
+		// Connect publisher to first group only.
+		tdn.ConnectMulticastPublisherSkipAccessPass(t, publisherClient, "mg01")
 		err = publisherClient.WaitForTunnelUp(t.Context(), 90*time.Second)
 		require.NoError(t, err)
 
-		// Connect subscriber.
-		tdn.ConnectMulticastSubscriberSkipAccessPass(t, subscriberClient, "mg01", "mg02")
+		// Incrementally add second publish group without disconnecting.
+		tdn.AddMulticastPublisherGroupSkipAccessPass(t, publisherClient, "mg02")
+		err = publisherClient.WaitForTunnelUp(t.Context(), 90*time.Second)
+		require.NoError(t, err)
+
+		// Connect subscriber to first group only.
+		tdn.ConnectMulticastSubscriberSkipAccessPass(t, subscriberClient, "mg01")
+		err = subscriberClient.WaitForTunnelUp(t.Context(), 90*time.Second)
+		require.NoError(t, err)
+
+		// Incrementally add second subscribe group without disconnecting.
+		tdn.AddMulticastSubscriberGroupSkipAccessPass(t, subscriberClient, "mg02")
 		err = subscriberClient.WaitForTunnelUp(t.Context(), 90*time.Second)
 		require.NoError(t, err)
 
@@ -210,6 +220,87 @@ func TestE2E_Multicast(t *testing.T) {
 
 		// Check subscriber post-connect.
 		checkMulticastPostConnect(t, log, "subscriber", tdn, device, subscriberClient)
+	}) {
+		t.Fail()
+		return
+	}
+
+	if !t.Run("modify_roles", func(t *testing.T) {
+		// doublezero user list renders multicast memberships in a column named `groups`
+		// with each entry prefixed "P:<code>" (publisher) or "S:<code>" (subscriber).
+		// See smartcontract/cli/src/user/list.rs::format_multicast_group_names.
+
+		subscriberRow := func() map[string]string {
+			out, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "list"})
+			if err != nil {
+				return nil
+			}
+			for _, row := range fixtures.ParseCLITable(out) {
+				if row["user_type"] == "Multicast" && row["client_ip"] == subscriberClient.CYOANetworkIP {
+					return row
+				}
+			}
+			return nil
+		}
+		publisherRow := func() map[string]string {
+			out, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "list"})
+			if err != nil {
+				return nil
+			}
+			for _, row := range fixtures.ParseCLITable(out) {
+				if row["user_type"] == "Multicast" && row["client_ip"] == publisherClient.CYOANetworkIP {
+					return row
+				}
+			}
+			return nil
+		}
+
+		// Unsubscribe the subscriber from mg01 (keeps it subscribed to mg02).
+		tdn.UnsubscribeMulticastGroup(t, subscriberClient, "mg01")
+
+		require.Eventually(t, func() bool {
+			row := subscriberRow()
+			if row == nil {
+				return false
+			}
+			groups := row["groups"]
+			return !strings.Contains(groups, "S:mg01") && strings.Contains(groups, "S:mg02")
+		}, 60*time.Second, 2*time.Second, "subscriber should be unsubscribed from mg01 but still subscribed to mg02")
+
+		// Unpublish the publisher from mg01 (keeps it publishing to mg02).
+		tdn.UnpublishMulticastGroup(t, publisherClient, "mg01")
+
+		require.Eventually(t, func() bool {
+			row := publisherRow()
+			if row == nil {
+				return false
+			}
+			groups := row["groups"]
+			return !strings.Contains(groups, "P:mg01") && strings.Contains(groups, "P:mg02")
+		}, 60*time.Second, 2*time.Second, "publisher should be unpublished from mg01 but still publishing to mg02")
+
+		// Tunnels should still be up — key assertion: no disconnect required.
+		err := publisherClient.WaitForTunnelUp(t.Context(), 30*time.Second)
+		require.NoError(t, err, "publisher tunnel should remain up after unpublish")
+		err = subscriberClient.WaitForTunnelUp(t.Context(), 30*time.Second)
+		require.NoError(t, err, "subscriber tunnel should remain up after unsubscribe")
+
+		// Restore pre-test state so the disconnect sub-test exercises the same two-group
+		// teardown it did before.
+		tdn.SubscribeMulticastGroup(t, subscriberClient, "mg01")
+		tdn.PublishMulticastGroup(t, publisherClient, "mg01")
+
+		require.Eventually(t, func() bool {
+			pub := publisherRow()
+			sub := subscriberRow()
+			if pub == nil || sub == nil {
+				return false
+			}
+			return strings.Contains(pub["groups"], "P:mg01") &&
+				strings.Contains(pub["groups"], "P:mg02") &&
+				strings.Contains(sub["groups"], "S:mg01") &&
+				strings.Contains(sub["groups"], "S:mg02")
+		}, 60*time.Second, 2*time.Second, "roles should be restored for both clients")
 	}) {
 		t.Fail()
 		return
@@ -288,7 +379,7 @@ func checkMulticastBothUsersAgentConfig(t *testing.T, dn *TestDevnet, device *de
 				"PublisherTunnelBGPNeighbor":   pubTunnelBGPNeighbor,
 				"SubscriberTunnelBGPNeighbor":  subTunnelBGPNeighbor,
 				"StartTunnel":                  controllerconfig.StartUserTunnelNum,
-				"EndTunnel":                    controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+				"EndTunnel":                    controllerconfig.StartUserTunnelNum + controllerconfig.DefaultMaxUserTunnelSlots - 1,
 			}))
 		require.NoError(t, err, "error reading agent configuration fixture")
 		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -304,7 +395,7 @@ func checkMulticastBothUsersRemovedAgentConfig(t *testing.T, dn *TestDevnet, dev
 			dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
 				"DeviceIP":    device.CYOANetworkIP,
 				"StartTunnel": controllerconfig.StartUserTunnelNum,
-				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+				"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.DefaultMaxUserTunnelSlots - 1,
 			}))
 		require.NoError(t, err, "error reading agent configuration fixture")
 		err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -317,6 +408,13 @@ func checkMulticastBothUsersRemovedAgentConfig(t *testing.T, dn *TestDevnet, dev
 func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
 	t.Run("check_post_connect_"+mode, func(t *testing.T) {
 		log.Debug("==> Checking multicast post-connect requirements", "mode", mode)
+
+		var expectedMulticastGroups string
+		if mode == "publisher" {
+			expectedMulticastGroups = "P:mg01,P:mg02"
+		} else {
+			expectedMulticastGroups = "S:mg01,S:mg02"
+		}
 
 		var expectedAllocatedClientIP string
 		if mode == "publisher" {
@@ -356,6 +454,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 					"ClientIP":                  client.CYOANetworkIP,
 					"DeviceIP":                  device.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
+					"MulticastGroups":           expectedMulticastGroups,
 				},
 				cmd: []string{"doublezero", "status"},
 			},

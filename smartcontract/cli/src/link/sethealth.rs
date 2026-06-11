@@ -4,6 +4,7 @@ use crate::{
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::link::{get::GetLinkCommand, sethealth::SetLinkHealthCommand};
 use doublezero_serviceability::state::link::LinkHealth;
 use std::io::Write;
@@ -19,7 +20,12 @@ pub struct SetLinkHealthCliCommand {
 }
 
 impl SetLinkHealthCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -39,6 +45,8 @@ impl SetLinkHealthCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand,
         link::sethealth::SetLinkHealthCliCommand,
@@ -92,10 +100,10 @@ mod tests {
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
-            bandwidth: 1000000000,
-            mtu: 1500,
-            delay_ns: 10000000000,
-            jitter_ns: 5000000000,
+            bandwidth: 1_000_000_000,
+            mtu: 9000,
+            delay_ns: 10_000_000_000,
+            jitter_ns: 5_000_000_000,
             delay_override_ns: 0,
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
@@ -105,6 +113,8 @@ mod tests {
             side_z_iface_name: "eth1".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+            link_topologies: vec![],
+            link_flags: 0,
         };
 
         let link2 = Link {
@@ -116,10 +126,10 @@ mod tests {
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
-            bandwidth: 1000000000,
-            mtu: 1500,
-            delay_ns: 10000000000,
-            jitter_ns: 5000000000,
+            bandwidth: 1_000_000_000,
+            mtu: 9000,
+            delay_ns: 10_000_000_000,
+            jitter_ns: 5_000_000_000,
             delay_override_ns: 0,
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
@@ -129,6 +139,8 @@ mod tests {
             side_z_iface_name: "eth3".to_string(),
             link_health: doublezero_serviceability::state::link::LinkHealth::ReadyForService,
             desired_status: doublezero_serviceability::state::link::LinkDesiredStatus::Activated,
+            link_topologies: vec![],
+            link_flags: 0,
         };
 
         client
@@ -168,12 +180,15 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetLinkHealthCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            health: LinkHealth::ReadyForService,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetLinkHealthCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                health: LinkHealth::ReadyForService,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

@@ -1,10 +1,21 @@
-use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
+use doublezero_cli_core::{render_record, CliContext, OutputFormat};
 use doublezero_sdk::commands::location::get::GetLocationCommand;
 use serde::Serialize;
 use std::io::Write;
 use tabled::Tabled;
 
+use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
+
+/// Reference RFC-20 conforming verb. See `docs/cli-standard.md` and RFC-20
+/// (`rfcs/rfc20-cli-standardization.md`) for the contract:
+///
+/// - args type colocated with the verb
+/// - `async fn execute(self, ctx, client, out) -> Result<()>`
+/// - shared `validate_pubkey_or_code` validator on the identifier flag
+/// - all output flows through the writer
+/// - typed structured output (`LocationDisplay`) so JSON output is a stable
+///   schema
 #[derive(Args, Debug)]
 pub struct GetLocationCliCommand {
     /// Location Pubkey or code to get details for
@@ -30,7 +41,18 @@ struct LocationDisplay {
 }
 
 impl GetLocationCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    /// RFC-20 §Module contract item 3: `async fn` taking `&CliContext` and a
+    /// reference to the module's typed backend client (`CliCommand` here, the
+    /// existing serviceability-module trait). Returns a fallible result; the
+    /// binary catches the top-level error and renders the chain of causes.
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        tracing::debug!(env = %ctx.env, code = %self.code, "location get");
+
         let (pubkey, location) = client.get_location(GetLocationCommand {
             pubkey_or_code: self.code,
         })?;
@@ -48,25 +70,14 @@ impl GetLocationCliCommand {
             owner: location.owner.to_string(),
         };
 
-        if self.json {
-            let json = serde_json::to_string_pretty(&display)?;
-            writeln!(out, "{json}")?;
-        } else {
-            let headers = LocationDisplay::headers();
-            let fields = display.fields();
-            let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
-            for (header, value) in headers.iter().zip(fields.iter()) {
-                writeln!(out, " {header:<max_len$} | {value}")?;
-            }
-        }
-
-        Ok(())
+        render_record(out, &display, OutputFormat::from_flags(self.json, false))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{location::get::GetLocationCliCommand, tests::utils::create_test_client};
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{AccountType, GetLocationCommand, Location, LocationStatus};
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
@@ -117,22 +128,28 @@ mod tests {
             Ok(list)
         });
 
+        let ctx = cli_context_default_for_tests();
+
         // Expected failure
         let mut output = Vec::new();
-        let res = GetLocationCliCommand {
-            code: Pubkey::new_unique().to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetLocationCliCommand {
+                code: Pubkey::new_unique().to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err(), "I shouldn't find anything.");
 
         // Expected success by pubkey (table)
         let mut output = Vec::new();
-        let res = GetLocationCliCommand {
-            code: location1_pubkey.to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetLocationCliCommand {
+                code: location1_pubkey.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -152,11 +169,13 @@ mod tests {
 
         // Expected success by code (JSON)
         let mut output = Vec::new();
-        let res = GetLocationCliCommand {
-            code: "test".to_string(),
-            json: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetLocationCliCommand {
+                code: "test".to_string(),
+                json: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by code");
         let json: serde_json::Value =
             serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();

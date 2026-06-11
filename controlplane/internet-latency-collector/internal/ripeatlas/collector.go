@@ -23,7 +23,7 @@ const (
 // CallDelay is defined in client.go to avoid duplication
 
 type clientInterface interface {
-	GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int) ([]Probe, error)
+	GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int, anchorsOnly bool) ([]Probe, error)
 	GetProbesForLocations(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error)
 	CreateMeasurement(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error)
 	GetAllMeasurements(ctx context.Context, env string) ([]Measurement, error)
@@ -713,10 +713,22 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		}
 	}
 
-	// Step 2: Generate the list of measurements we want, skipping unresponsive probes
+	// Step 2: Augment locations where all known probes are unresponsive with non-anchor
+	// fallback probes, then generate the list of measurements we want.
+	//
+	// fetchProbesWithErrorHandling already falls back to non-anchor probes when the
+	// RIPE Atlas API returns no anchors at all. But that covers only the "no anchors in
+	// area" case. Here we handle a different failure mode: RIPE Atlas still reports the
+	// anchor as "Connected" (so fetchProbesWithErrorHandling sees it and returns it), but
+	// the probe has stopped responding to our measurements and was marked unresponsive in
+	// the local measurement state. Without this pass, generateWantedMeasurements would log
+	// "No responsive probes found for location" and skip the location entirely.
+	locationMatches = c.fetchFallbackProbesForUnresponsiveLocations(ctx, locationMatches, measurementState)
+
+	// Step 3: Generate the list of measurements we want, skipping unresponsive probes
 	wantedMeasurements := c.generateWantedMeasurements(locationMatches, probesPerLocation, measurementState)
 
-	// Step 2: Get all existing measurements
+	// Step 4: Get all existing measurements
 	existingMeasurements, err := c.client.GetAllMeasurements(ctx, c.env)
 	if err != nil {
 		c.log.Warn("Failed to get existing measurements", slog.String("error", err.Error()))
@@ -1211,6 +1223,56 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		slog.String("source", "api_estimates_with_fallback"))
 
 	return nil
+}
+
+// fetchFallbackProbesForUnresponsiveLocations returns a copy of locationMatches where
+// locations that have probes but all are marked unresponsive in measurementState are
+// augmented with non-anchor Connected probes fetched from the RIPE Atlas API.
+//
+// This prevents a location from going dark when its anchor probe stops responding while
+// RIPE Atlas still reports it as "Connected" — a lag that means fetchProbesWithErrorHandling
+// always sees the anchor and never triggers its own fallback.
+func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Context, locationMatches []LocationProbeMatch, measurementState *MeasurementState) []LocationProbeMatch {
+	result := make([]LocationProbeMatch, len(locationMatches))
+	copy(result, locationMatches)
+
+	for i, match := range result {
+		if len(match.NearbyProbes) == 0 {
+			continue
+		}
+		if len(filterResponsiveProbes(match.NearbyProbes, measurementState)) > 0 {
+			continue // at least one probe is still responsive — no fallback needed
+		}
+
+		// All known probes for this location are unresponsive. Fetch non-anchor
+		// Connected probes as a fallback.
+		c.log.Info("All known probes unresponsive for location, fetching non-anchor fallback probes",
+			slog.String("location", match.LocationCode))
+
+		probes, err := c.client.GetProbesInRadius(ctx, match.Latitude, match.Longitude, int(collector.MaxDistanceKM), false)
+		if err != nil {
+			c.log.Warn("Failed to fetch non-anchor fallback probes for location",
+				slog.String("location", match.LocationCode),
+				slog.String("error", err.Error()))
+			continue
+		}
+
+		fallbackProbes := filterValidProbes(probes)
+		if len(fallbackProbes) > 0 {
+			c.log.Info("Using non-anchor fallback probes for location",
+				slog.String("location", match.LocationCode),
+				slog.Int("count", len(fallbackProbes)))
+			result[i].NearbyProbes = fallbackProbes
+			result[i].ProbeCount = len(fallbackProbes)
+		} else {
+			c.log.Warn("No non-anchor fallback probes found for location",
+				slog.String("location", match.LocationCode))
+		}
+
+		time.Sleep(CallDelay)
+	}
+
+	return result
 }
 
 func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMatch, probesPerLocation int, measurementState *MeasurementState) []MeasurementSpec {

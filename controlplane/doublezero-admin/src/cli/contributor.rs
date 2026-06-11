@@ -1,6 +1,8 @@
 use clap::{Args, Subcommand};
 
-use doublezero_cli::contributor::{create::*, delete::*, get::*, list::*, update::*};
+use doublezero_serviceability_cli::contributor::{
+    create::*, delete::*, get::*, list::*, update::*,
+};
 
 #[derive(Args, Debug)]
 pub struct ContributorCliCommand {

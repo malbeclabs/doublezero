@@ -1,10 +1,10 @@
-use crate::{
-    doublezerocommand::CliCommand,
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::validate_pubkey_or_code,
-};
+use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
-use doublezero_sdk::commands::tenant::{get::GetTenantCommand, update::UpdateTenantCommand};
+use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
+use doublezero_sdk::{
+    commands::tenant::{get::GetTenantCommand, update::UpdateTenantCommand},
+    get_topology_pda,
+};
 use doublezero_serviceability::state::tenant::{FlatPerEpochConfig, TenantBillingConfig};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
@@ -29,15 +29,28 @@ pub struct UpdateTenantCliCommand {
     /// Flat billing rate per epoch (in lamports)
     #[arg(long)]
     pub billing_rate: Option<u64>,
+    /// Comma-separated topology names to assign to this tenant (foundation-only). Use "default" to clear.
+    #[arg(long)]
+    pub include_topologies: Option<String>,
 }
 
 impl UpdateTenantCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
+        // Fetch the tenant once; get_tenant accepts a pubkey or code and
+        // returns the canonical pubkey plus the full tenant so the
+        // billing_rate path can reuse the existing dz_epoch.
         let (tenant_pubkey, tenant) = client.get_tenant(GetTenantCommand {
-            pubkey_or_code: self.pubkey,
+            pubkey_or_code: self.pubkey.clone(),
         })?;
 
         let token_account = self
@@ -54,6 +67,28 @@ impl UpdateTenantCliCommand {
             })
         });
 
+        let include_topologies = if let Some(ref topo_arg) = self.include_topologies {
+            if topo_arg.eq_ignore_ascii_case("default") {
+                Some(vec![])
+            } else {
+                let program_id = client.get_program_id();
+                let pubkeys: eyre::Result<Vec<_>> = topo_arg
+                    .split(',')
+                    .map(|name| {
+                        let name = name.trim().to_uppercase();
+                        let pda = get_topology_pda(&program_id, &name).0;
+                        client
+                            .get_account(pda)
+                            .map_err(|_| eyre::eyre!("Topology '{}' not found", name))?;
+                        Ok(pda)
+                    })
+                    .collect();
+                Some(pubkeys?)
+            }
+        } else {
+            None
+        };
+
         let signature = client.update_tenant(UpdateTenantCommand {
             tenant_pubkey,
             vrf_id: self.vrf_id,
@@ -61,11 +96,10 @@ impl UpdateTenantCliCommand {
             metro_routing: self.metro_routing,
             route_liveness: self.route_liveness,
             billing,
+            include_topologies,
         })?;
 
-        writeln!(out, "Signature: {signature}")?;
-
-        Ok(())
+        print_signature(out, &signature)
     }
 }
 
@@ -76,6 +110,7 @@ mod tests {
         tenant::update::UpdateTenantCliCommand,
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
         commands::tenant::{get::GetTenantCommand, update::UpdateTenantCommand},
         AccountType,
@@ -111,18 +146,20 @@ mod tests {
             metro_routing: false,
             route_liveness: false,
             billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
         };
 
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
+        let tenant_cloned = tenant.clone();
         client
             .expect_get_tenant()
             .with(predicate::eq(GetTenantCommand {
                 pubkey_or_code: tenant_pubkey.to_string(),
             }))
-            .returning(move |_| Ok((tenant_pubkey, tenant.clone())));
+            .returning(move |_| Ok((tenant_pubkey, tenant_cloned.clone())));
         client
             .expect_update_tenant()
             .with(predicate::eq(UpdateTenantCommand {
@@ -132,20 +169,24 @@ mod tests {
                 metro_routing: Some(true),
                 route_liveness: None,
                 billing: None,
+                include_topologies: None,
             }))
             .returning(move |_| Ok(signature));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdateTenantCliCommand {
-            pubkey: tenant_pubkey.to_string(),
-            vrf_id: Some(200),
-            token_account: None,
-            metro_routing: Some(true),
-            route_liveness: None,
-            billing_rate: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateTenantCliCommand {
+                pubkey: tenant_pubkey.to_string(),
+                vrf_id: Some(200),
+                token_account: None,
+                metro_routing: Some(true),
+                route_liveness: None,
+                billing_rate: None,
+                include_topologies: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

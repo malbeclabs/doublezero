@@ -1,8 +1,6 @@
 [workspace]
 members = [
     "client/doublezero",
-    "client/doublezero-geolocation-cli",
-    "activator",
     "config",
     "controlplane/doublezero-admin",
     "smartcontract/cli",
@@ -13,6 +11,9 @@ members = [
     "smartcontract/programs/doublezero-geolocation",
     "smartcontract/programs/common",
     "e2e/docker/ledger/fork-accounts",
+    "crates/doublezero-cli-core",
+    "crates/doublezero-geolocation-cli",
+    "crates/sentinel",
 ]
 default-members = []
 exclude = [
@@ -23,7 +24,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.14.0"
+version = "0.27.1"
 authors = ["Malbec Labs <dev@malbeclabs.com>"]
 readme = "README.md"
 edition = "2021"
@@ -67,8 +68,10 @@ ipnetwork = "0"
 libc = "0"
 log = "0"
 metrics = "0"
+metrics-exporter-prometheus = "0"
 metrics-util = "0"
 mockall = "0"
+reqwest = "0"
 regex = "1"
 serde = "1"
 serde_bytes = "0"
@@ -91,14 +94,21 @@ tabled = "0"
 temp-env = "0"
 tempfile = "3"
 thiserror = "2"
+tokio-util = "0"
+tracing = "0"
+tracing-subscriber = { version = "0", default-features = true, features = ["env-filter", "fmt", "registry"] }
+url = "2"
 strum = "0.26"
 strum_macros = "0.26"
 tokio = { version = "1", default-features = false, features = [
     "rt-multi-thread",
     "signal",
 ] }
+doublezero-cli-core = { path = "crates/doublezero-cli-core" }
 doublezero-config = { path = "config" }
-doublezero_cli = { path = "smartcontract/cli" }
+doublezero-geolocation-cli = { path = "crates/doublezero-geolocation-cli" }
+doublezero-sentinel = { path = "crates/sentinel" }
+doublezero-serviceability-cli = { path = "smartcontract/cli" }
 doublezero-program-common = { path = "smartcontract/programs/common" }
 doublezero_sdk = { path = "smartcontract/sdk/rs" }
 

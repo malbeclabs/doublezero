@@ -21,8 +21,8 @@ pub fn bandwidth_parse(str: &str) -> Result<u64, String> {
     match unit {
         'b' => Ok(val as u64),
         'k' => Ok((val * 1000.0) as u64),
-        'm' => Ok((val * 1000000.0) as u64),
-        'g' => Ok((val * 1000000000.0) as u64),
+        'm' => Ok((val * 1_000_000.0) as u64),
+        'g' => Ok((val * 1_000_000_000.0) as u64),
         _ => Ok((val * 1000.0) as u64),
     }
 }
@@ -40,14 +40,14 @@ pub fn bandwidth_to_string(bandwidth: &u64) -> String {
             }
         }
         1_000_000..=999_999_999 => {
-            if bandwidth % 1000000 == 0 {
-                format!("{}Mbps", bandwidth / 1000000)
+            if bandwidth % 1_000_000 == 0 {
+                format!("{}Mbps", bandwidth / 1_000_000)
             } else {
-                format!("{:.2}Mbps", *bandwidth as f64 / 1000000.0)
+                format!("{:.2}Mbps", *bandwidth as f64 / 1_000_000.0)
             }
         }
         1_000_000_000.. => {
-            format!("{}Gbps", bandwidth / 1000000000)
+            format!("{}Gbps", bandwidth / 1_000_000_000)
         }
     }
 }

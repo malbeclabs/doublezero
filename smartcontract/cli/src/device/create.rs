@@ -6,6 +6,7 @@ use crate::{
     validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::types::NetworkV4List;
 use doublezero_sdk::{
     commands::{
@@ -58,7 +59,12 @@ pub struct CreateDeviceCliCommand {
 }
 
 impl CreateDeviceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -172,6 +178,8 @@ impl CreateDeviceCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use std::collections::HashMap;
 
     use crate::{
@@ -292,21 +300,25 @@ mod tests {
             }))
             .returning(move |_| Ok((signature, pda_pubkey)));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateDeviceCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            location: location_pk.to_string(),
-            exchange: exchange_pk.to_string(),
-            device_type: "hybrid".to_string(),
-            public_ip: [100, 0, 0, 1].into(),
-            dz_prefixes: "10.1.0.0/16".parse().unwrap(),
-            metrics_publisher: Some(Pubkey::default().to_string()),
-            mgmt_vrf: "default".to_string(),
-            desired_status: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDeviceCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                location: location_pk.to_string(),
+                exchange: exchange_pk.to_string(),
+                device_type: "hybrid".to_string(),
+                public_ip: [100, 0, 0, 1].into(),
+                dz_prefixes: "10.1.0.0/16".parse().unwrap(),
+                metrics_publisher: Some(Pubkey::default().to_string()),
+                mgmt_vrf: "default".to_string(),
+                desired_status: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -357,6 +369,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            ..Default::default()
         };
 
         let mut devices = HashMap::new();
@@ -371,22 +384,26 @@ mod tests {
             .with(predicate::eq(ListDeviceCommand))
             .returning(move |_| Ok(devices.clone()));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
         // Create a device with public_ip 10.1.5.10, which is within existing device's dz_prefix
-        let res = CreateDeviceCliCommand {
-            code: "new-device".to_string(),
-            contributor: contributor_pk.to_string(),
-            location: location_pk.to_string(),
-            exchange: exchange_pk.to_string(),
-            device_type: "hybrid".to_string(),
-            public_ip: [10, 1, 5, 10].into(), // This is within 10.1.0.0/16
-            dz_prefixes: "192.168.0.0/16".parse().unwrap(),
-            metrics_publisher: Some(Pubkey::default().to_string()),
-            mgmt_vrf: String::default(),
-            desired_status: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDeviceCliCommand {
+                code: "new-device".to_string(),
+                contributor: contributor_pk.to_string(),
+                location: location_pk.to_string(),
+                exchange: exchange_pk.to_string(),
+                device_type: "hybrid".to_string(),
+                public_ip: [10, 1, 5, 10].into(), // This is within 10.1.0.0/16
+                dz_prefixes: "192.168.0.0/16".parse().unwrap(),
+                metrics_publisher: Some(Pubkey::default().to_string()),
+                mgmt_vrf: String::default(),
+                desired_status: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         let err = res.unwrap_err();
@@ -410,22 +427,26 @@ mod tests {
             .with(predicate::eq(ListDeviceCommand))
             .returning(move |_| Ok(HashMap::new()));
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
         // Create a device where public_ip is within its own dz_prefix
-        let res = CreateDeviceCliCommand {
-            code: "test-device".to_string(),
-            contributor: contributor_pk.to_string(),
-            location: location_pk.to_string(),
-            exchange: exchange_pk.to_string(),
-            device_type: "hybrid".to_string(),
-            public_ip: [10, 1, 5, 10].into(), // This is within 10.1.0.0/16
-            dz_prefixes: "10.1.0.0/16".parse().unwrap(), // Own prefix contains public_ip
-            metrics_publisher: Some(Pubkey::default().to_string()),
-            mgmt_vrf: String::default(),
-            desired_status: None,
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDeviceCliCommand {
+                code: "test-device".to_string(),
+                contributor: contributor_pk.to_string(),
+                location: location_pk.to_string(),
+                exchange: exchange_pk.to_string(),
+                device_type: "hybrid".to_string(),
+                public_ip: [10, 1, 5, 10].into(), // This is within 10.1.0.0/16
+                dz_prefixes: "10.1.0.0/16".parse().unwrap(), // Own prefix contains public_ip
+                metrics_publisher: Some(Pubkey::default().to_string()),
+                mgmt_vrf: String::default(),
+                desired_status: None,
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         let err = res.unwrap_err();

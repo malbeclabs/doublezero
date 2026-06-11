@@ -13,7 +13,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
-	serviceability "github.com/malbeclabs/doublezero/sdk/serviceability/go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/require"
 )
 
@@ -45,9 +45,6 @@ func TestE2E_ContributorAuth(t *testing.T) {
 		},
 		Manager: devnet.ManagerSpec{
 			ServiceabilityProgramKeypairPath: serviceabilityProgramKeypairPath,
-		},
-		Activator: devnet.ActivatorSpec{
-			OnchainAllocation: devnet.BoolPtr(true),
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
@@ -245,8 +242,8 @@ func TestE2E_ContributorAuth(t *testing.T) {
 		})
 		require.NoError(t, err, "failed to create interface on test-dev-co04")
 
-		// Step 7: Wait for interface to exist and be unlinked by activator
-		log.Debug("==> Waiting for interface to be unlinked by activator")
+		// Step 7: Wait for interface to exist and be unlinked by program
+		log.Debug("==> Waiting for interface to be unlinked by program")
 		require.Eventually(t, func() bool {
 			client, err := dn.Ledger.GetServiceabilityClient()
 			if err != nil {
@@ -319,7 +316,7 @@ func TestE2E_ContributorAuth(t *testing.T) {
 
 		_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", `
 			set -euo pipefail
-			DOUBLEZERO_KEYPAIR=/tmp/random-signer.json doublezero device interface update test-dev-co04 Ethernet1 --mtu 9001 2>&1
+			DOUBLEZERO_KEYPAIR=/tmp/random-signer.json doublezero device interface update test-dev-co04 Ethernet1 --bandwidth 10G 2>&1
 		`})
 		require.Error(t, err, "random keypair should not be able to update interface on another contributor's device")
 

@@ -95,6 +95,12 @@ pub fn is_global(ip: Ipv4Addr) -> bool {
     true
 }
 
+/// Returns true if the address is private (RFC1918) or link-local (RFC3927).
+/// Matches the restriction enforced on device interface IPs.
+pub fn is_private_or_link_local(ip: Ipv4Addr) -> bool {
+    ip.is_private() || ip.is_link_local()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -145,6 +151,21 @@ mod tests {
         assert!(!is_global(Ipv4Addr::new(239, 255, 255, 255)));
         assert!(!is_global(Ipv4Addr::new(240, 0, 0, 1))); // reserved
         assert!(!is_global(Ipv4Addr::new(255, 255, 255, 255))); // broadcast
+    }
+
+    #[test]
+    fn test_is_private_or_link_local() {
+        // Private (RFC1918) and link-local (RFC3927) — allowed
+        assert!(is_private_or_link_local(Ipv4Addr::new(10, 0, 0, 0)));
+        assert!(is_private_or_link_local(Ipv4Addr::new(172, 16, 0, 0)));
+        assert!(is_private_or_link_local(Ipv4Addr::new(192, 168, 0, 0)));
+        assert!(is_private_or_link_local(Ipv4Addr::new(169, 254, 0, 0)));
+
+        // Everything else — rejected
+        assert!(!is_private_or_link_local(Ipv4Addr::new(8, 8, 8, 0))); // public
+        assert!(!is_private_or_link_local(Ipv4Addr::new(100, 64, 0, 0))); // CGNAT
+        assert!(!is_private_or_link_local(Ipv4Addr::new(224, 0, 0, 0))); // multicast
+        assert!(!is_private_or_link_local(Ipv4Addr::new(0, 0, 0, 0))); // unspecified
     }
 }
 

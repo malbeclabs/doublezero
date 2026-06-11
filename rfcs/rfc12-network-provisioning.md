@@ -190,8 +190,8 @@ Link onboarding has two stages:
             ▼                          │
 ┌───────────────────────-┐   ┌─────────│────────────────────────────┐
 │ Link health info from  │   │         │                            │
-│ DZ_Ledger, Influx,     │   │         ▼                            │
-│ Prometheus             │   │  ┌──────────────┐                    │
+│ DZ_Ledger, ClickHouse  │   │         ▼                            │
+│                        │   │  ┌──────────────┐                    │
 └──────────────────────-─┘   │  │ link.health  │                    │
                              │  └──────┬───────┘                    │
                              │         │                            │
@@ -277,8 +277,8 @@ Device activation has three stages:
             ▼                          │ are met, update device.health to ReadyForUsers
 ┌───────────────────────-┐          ┌─────────│────────────────────────────────────────────────────────────────────┐
 │ Device health info from│          │         ▼                                                                    │
-│ (DZ_Ledger / Influx /  │          │  ┌──────────────┐                                                            │
-│ Prometheus)            │          │  │ device.health│                                                            │
+│ (DZ_Ledger /           │          │  ┌──────────────┐                                                            │
+│ ClickHouse)            │          │  │ device.health│                                                            │
 └──────────────────────-─┘          │  └──────┬───────┘                                                            │
                                     │         │ if desired_status is Activated and status is DeviceProvisioning    │
                                     │         │ and health is ReadForLinks, set device.status to LinkProvisioning  │
@@ -323,8 +323,8 @@ These criteria must be met before links connected to the device can be activated
 1. DIA
     1. At least 1 DIA interface defined on chain with status = activated
     1. At least 1 DIA interface up for `<burn-in slots>` with zero errors and non-zero utilization
-1. Device is reporting to InfluxDB for `<burn-in slots>` (already established by link RFS criteria)
-1. Config agent installed and running for `<burn-in slots>`
+1. Device is reporting interface counter data to ClickHouse for `<burn-in slots>`. Verified by querying the ClickHouse `fact_dz_device_interface_counters` table and checking that the device has at least one record per minute over the burn-in window.
+1. Config agent installed and calling the controller consistently for `<burn-in slots>`. Verified by querying the ClickHouse `controller_grpc_getconfig_success` table (database per environment: `devnet`, `testnet`, `mainnet-beta`) and checking that the device has at least one record per minute over the burn-in window. The burn-in window start time is determined by calling `GetBlockTime` on the boundary slot (`current_slot - burn_in_slots`).
 1. Telemetry agent installed and running for `<burn-in slots>` (already established by link RFS criteria)
 
 #### Device onboarding - RFS (users) criteria
@@ -445,10 +445,9 @@ pub enum DeviceHealth {
 #### - serviceability: add device.desired_status
 ```
 pub enum DeviceDesiredStatus {
-    Unknown = 0,
+    Pending = 0,
     Activated = 1,
-    Drained = 2,
-    Deleted = 3,
+    Drained = 6,
 }
 ```
 
@@ -484,7 +483,7 @@ Changes are needed to the following components:
 
 This RFC should improve the operational controls to manage DZDs and links in the network.  It introduces an intent based methodology that uses explict fields to achieve the desired state.
 
-This RFC adds a new device-health-oracle component that collects data from Solana and the DZ ledger (serviceability and telemetry), reads data from Grafana and InfluxDB, and writes data to serviceability.
+This RFC adds a new device-health-oracle component that collects data from Solana and the DZ ledger (serviceability and telemetry), reads data from ClickHouse, and writes data to serviceability.
 
 Contributors should not be rewarded for devices and links that are not in activated status. This check is already present in contributor-rewards (doublezero-offchain/crates/contributor-rewards/src/calculator/shapley_handler.rs).
 
@@ -492,7 +491,7 @@ This RFC improves network operations, but it also works against DoubleZero's lon
 
 ## Security Considerations
 
-- The device-health-oracle component will API keys for reading from Grafana and InfluxDB, as well as a key with write access to link.health and device.health. If this key is leaked, an attacker could move a device into activated status even though it's not healthy.
+- The device-health-oracle component will need credentials for reading from ClickHouse, as well as a key with write access to link.health and device.health. If this key is leaked, an attacker could move a device into activated status even though it's not healthy.
 - An attacker could shut down user BGP sessions on DZDs if they gains the ability to update device.status or device.desired_status to Drained.
 
 ## Backward Compatibility

@@ -46,5 +46,9 @@
 
 1. **Use standard interfaces**: Use `solana-loader-v3-interface` to parse `UpgradeableLoaderState` rather than implementing your own parser. The interface crate provides well-tested, maintained implementations.
 
+### Resource Allocation
+
+1. **Keep `doublezero resource verify` in sync**: Anytime a processor allocates from or deallocates against a `ResourceExtension` (any field that pulls from `SegmentRoutingIds`, `TunnelIds`, `LinkIds`, `UserTunnelBlock`, `DeviceTunnelBlock`, `DzPrefixBlock`, `MulticastGroupBlock`, `MulticastPublisherBlock`, etc.), update the corresponding `verify_*` function in `smartcontract/cli/src/resource/verify.rs` so that field is counted as "in use." Otherwise the verifier will report the allocation as `AllocatedButNotUsed` (or miss a leak when a deallocation is dropped). Add coverage in the verify test module for the new field.
+
 ### Pull Requests
 - Make sure `make rust-lint` and `make rust-test` both pass before posting pull requests

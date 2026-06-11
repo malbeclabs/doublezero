@@ -1,0 +1,38 @@
+name: release.docker.client.cleanup
+
+# Weekly retention for the client images. Deletes orphaned untagged versions and
+# keeps the last 10 pinned versions per env family, never touching moving tags.
+on:
+  schedule:
+    - cron: "17 4 * * 1" # Mondays 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup-public:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune ghcr.io/${{ github.repository_owner }}/doublezero
+        uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          package: doublezero
+          owner: ${{ github.repository_owner }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          delete-untagged: true
+          keep-n-tagged: 10
+          exclude-tags: latest,testnet,mainnet-beta
+
+  cleanup-devnet:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune ghcr.io/${{ github.repository_owner }}/doublezero-devnet
+        uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          package: doublezero-devnet
+          owner: ${{ github.repository_owner }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          delete-untagged: true
+          keep-n-tagged: 10
+          exclude-tags: latest

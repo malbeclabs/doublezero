@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# DoubleZero Edge installer
-# -------------------------
-# Served from https://get.doublezero.xyz/install and run as:
+# DoubleZero Edge installer (devnet)
+# ------------------------------------
+# Served from https://get.doublezero.xyz/install-devnet and run as:
 #
-#     curl -fsSL https://get.doublezero.xyz/install | bash
+#     curl -fsSL https://get.doublezero.xyz/install-devnet | bash
 #
 # It checks for Docker (offering to install it), preps the host for GRE, loads the
 # access secret, runs the thin doublezero client container
-# (ghcr.io/malbeclabs/doublezero:mainnet-beta), and runs `doublezero connect multicast`.
+# (ghcr.io/malbeclabs/doublezero-devnet:latest), and runs `doublezero connect multicast`.
 #
 # Attendantless: the only input is the access secret. Provide it via DZ_SECRET to
 # run with no prompts at all; otherwise you're prompted once. Everything else has
@@ -17,10 +17,13 @@
 # Env vars:
 #   DZ_SECRET=<DZ_token|path> base64 keypair token (always prefixed with 'DZ_')
 #                             OR a path to a keypair file. If set, runs non-interactively.
-#   DZ_ENV=testnet|devnet|mainnet-beta   default: mainnet-beta
-#   DZ_IMAGE=ghcr.io/malbeclabs/doublezero:mainnet-beta
+#   DZ_ENV=testnet|devnet|mainnet-beta   default: devnet
+#   DZ_IMAGE=ghcr.io/malbeclabs/doublezero-devnet:latest
 #   DZ_NAME=doublezero                   container name
 #   DZ_ASSUME_YES=1                      skip confirmation prompts (e.g. Docker install)
+#   DZ_GHCR_TOKEN=<token>   ghcr token with read:packages (required: the devnet
+#                           image is private). DZ_GHCR_USER defaults to the token owner.
+#   DZ_GHCR_USER=<user>     optional; ghcr username for the login (default: malbeclabs)
 #
 # A DZ_-token-derived keypair is injected straight into the container and is never
 # written to the host disk; a keypair supplied as a file path is bind-mounted
@@ -35,11 +38,13 @@ set -euo pipefail
 # ----------------------------------------------------------------------------
 # config / defaults
 # ----------------------------------------------------------------------------
-DZ_IMAGE="${DZ_IMAGE:-ghcr.io/malbeclabs/doublezero:mainnet-beta}"
+DZ_IMAGE="${DZ_IMAGE:-ghcr.io/malbeclabs/doublezero-devnet:latest}"
 DZ_NAME="${DZ_NAME:-doublezero}"
-DZ_ENV="${DZ_ENV:-mainnet-beta}"
+DZ_ENV="${DZ_ENV:-devnet}"
 DZ_SECRET="${DZ_SECRET:-}"
 DZ_ASSUME_YES="${DZ_ASSUME_YES:-0}"
+DZ_GHCR_TOKEN="${DZ_GHCR_TOKEN:-}"
+DZ_GHCR_USER="${DZ_GHCR_USER:-malbeclabs}"
 KEYPAIR_DEST="/root/.config/doublezero/id.json"   # client's default keypair path (container runs as root)
 LIVENESS_UDP_PORT=44880
 
@@ -156,7 +161,7 @@ esac
 # ----------------------------------------------------------------------------
 # 5. input: the access secret (the only thing we ask for)
 # ----------------------------------------------------------------------------
-# Environment: default mainnet-beta, override via DZ_ENV; never prompted.
+# Environment: default devnet, override via DZ_ENV; never prompted.
 case "$DZ_ENV" in testnet|devnet|mainnet-beta) : ;; *) die "Invalid DZ_ENV '$DZ_ENV' (testnet|devnet|mainnet-beta)";; esac
 
 # The secret is either a base64 keypair token (always prefixed with 'DZ_') or a
@@ -204,6 +209,14 @@ if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce 2>/dev/null)" = Enfo
 # ----------------------------------------------------------------------------
 # 6. run the container (detached, long-lived daemon)
 # ----------------------------------------------------------------------------
+# The devnet image is private; authenticate to ghcr before pulling.
+if [ -z "$DZ_GHCR_TOKEN" ]; then
+  die "The devnet image is private. Set DZ_GHCR_TOKEN (a ghcr token with read:packages) and re-run."
+fi
+info "Logging in to ghcr.io as $DZ_GHCR_USER ..."
+printf '%s' "$DZ_GHCR_TOKEN" | $SUDO docker login ghcr.io -u "$DZ_GHCR_USER" --password-stdin >/dev/null \
+  || die "ghcr login failed. Check DZ_GHCR_TOKEN/DZ_GHCR_USER."
+
 info "Pulling $DZ_IMAGE ..."
 $SUDO docker pull -q "$DZ_IMAGE" >/dev/null
 

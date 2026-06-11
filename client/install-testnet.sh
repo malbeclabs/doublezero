@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# DoubleZero Edge installer
-# -------------------------
-# Served from https://get.doublezero.xyz/install and run as:
+# DoubleZero Edge installer (testnet)
+# ------------------------------------
+# Served from https://get.doublezero.xyz/install-testnet and run as:
 #
-#     curl -fsSL https://get.doublezero.xyz/install | bash
+#     curl -fsSL https://get.doublezero.xyz/install-testnet | bash
 #
 # It checks for Docker (offering to install it), preps the host for GRE, loads the
 # access secret, runs the thin doublezero client container
-# (ghcr.io/malbeclabs/doublezero:mainnet-beta), and runs `doublezero connect multicast`.
+# (ghcr.io/malbeclabs/doublezero:testnet), and runs `doublezero connect multicast`.
 #
 # Attendantless: the only input is the access secret. Provide it via DZ_SECRET to
 # run with no prompts at all; otherwise you're prompted once. Everything else has
@@ -17,8 +17,8 @@
 # Env vars:
 #   DZ_SECRET=<DZ_token|path> base64 keypair token (always prefixed with 'DZ_')
 #                             OR a path to a keypair file. If set, runs non-interactively.
-#   DZ_ENV=testnet|devnet|mainnet-beta   default: mainnet-beta
-#   DZ_IMAGE=ghcr.io/malbeclabs/doublezero:mainnet-beta
+#   DZ_ENV=testnet|devnet|mainnet-beta   default: testnet
+#   DZ_IMAGE=ghcr.io/malbeclabs/doublezero:testnet
 #   DZ_NAME=doublezero                   container name
 #   DZ_ASSUME_YES=1                      skip confirmation prompts (e.g. Docker install)
 #
@@ -35,9 +35,9 @@ set -euo pipefail
 # ----------------------------------------------------------------------------
 # config / defaults
 # ----------------------------------------------------------------------------
-DZ_IMAGE="${DZ_IMAGE:-ghcr.io/malbeclabs/doublezero:mainnet-beta}"
+DZ_IMAGE="${DZ_IMAGE:-ghcr.io/malbeclabs/doublezero:testnet}"
 DZ_NAME="${DZ_NAME:-doublezero}"
-DZ_ENV="${DZ_ENV:-mainnet-beta}"
+DZ_ENV="${DZ_ENV:-testnet}"
 DZ_SECRET="${DZ_SECRET:-}"
 DZ_ASSUME_YES="${DZ_ASSUME_YES:-0}"
 KEYPAIR_DEST="/root/.config/doublezero/id.json"   # client's default keypair path (container runs as root)
@@ -156,7 +156,7 @@ esac
 # ----------------------------------------------------------------------------
 # 5. input: the access secret (the only thing we ask for)
 # ----------------------------------------------------------------------------
-# Environment: default mainnet-beta, override via DZ_ENV; never prompted.
+# Environment: default testnet, override via DZ_ENV; never prompted.
 case "$DZ_ENV" in testnet|devnet|mainnet-beta) : ;; *) die "Invalid DZ_ENV '$DZ_ENV' (testnet|devnet|mainnet-beta)";; esac
 
 # The secret is either a base64 keypair token (always prefixed with 'DZ_') or a

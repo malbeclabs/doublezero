@@ -156,7 +156,7 @@ esac
 # ----------------------------------------------------------------------------
 # 5. input: the access secret (the only thing we ask for)
 # ----------------------------------------------------------------------------
-# Environment: default testnet, override via DZ_ENV; never prompted.
+# Environment: default mainnet-beta, override via DZ_ENV; never prompted.
 case "$DZ_ENV" in testnet|devnet|mainnet-beta) : ;; *) die "Invalid DZ_ENV '$DZ_ENV' (testnet|devnet|mainnet-beta)";; esac
 
 # The secret is either a base64 keypair token (always prefixed with 'DZ_') or a

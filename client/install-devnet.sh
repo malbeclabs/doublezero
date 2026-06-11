@@ -43,6 +43,8 @@ DZ_NAME="${DZ_NAME:-doublezero}"
 DZ_ENV="${DZ_ENV:-devnet}"
 DZ_SECRET="${DZ_SECRET:-}"
 DZ_ASSUME_YES="${DZ_ASSUME_YES:-0}"
+DZ_GHCR_TOKEN="${DZ_GHCR_TOKEN:-}"
+DZ_GHCR_USER="${DZ_GHCR_USER:-doublezero}"
 KEYPAIR_DEST="/root/.config/doublezero/id.json"   # client's default keypair path (container runs as root)
 LIVENESS_UDP_PORT=44880
 
@@ -159,7 +161,7 @@ esac
 # ----------------------------------------------------------------------------
 # 5. input: the access secret (the only thing we ask for)
 # ----------------------------------------------------------------------------
-# Environment: default testnet, override via DZ_ENV; never prompted.
+# Environment: default devnet, override via DZ_ENV; never prompted.
 case "$DZ_ENV" in testnet|devnet|mainnet-beta) : ;; *) die "Invalid DZ_ENV '$DZ_ENV' (testnet|devnet|mainnet-beta)";; esac
 
 # The secret is either a base64 keypair token (always prefixed with 'DZ_') or a
@@ -208,8 +210,6 @@ if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce 2>/dev/null)" = Enfo
 # 6. run the container (detached, long-lived daemon)
 # ----------------------------------------------------------------------------
 # The devnet image is private; authenticate to ghcr before pulling.
-DZ_GHCR_TOKEN="${DZ_GHCR_TOKEN:-}"
-DZ_GHCR_USER="${DZ_GHCR_USER:-doublezero}"
 if [ -z "$DZ_GHCR_TOKEN" ]; then
   die "The devnet image is private. Set DZ_GHCR_TOKEN (a ghcr token with read:packages) and re-run."
 fi

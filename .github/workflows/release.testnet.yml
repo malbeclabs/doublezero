@@ -1,0 +1,432 @@
+name: release.testnet
+run-name: "testnet release v${{ inputs.version }}${{ inputs.dry_run && ' (dry run)' || '' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (format: X.Y.Z, no leading v)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Validate plumbing: draft PRs, no tags, check-mode deploys'
+        required: false
+        type: boolean
+        default: false
+      skip_devnet_check:
+        description: 'Skip the "latest devnet daily succeeded" preflight check'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      prev_version: ${{ steps.prev.outputs.prev_version }}
+    steps:
+      - name: Validate version format
+        run: |
+          [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::version must be X.Y.Z (got '${{ inputs.version }}')"; exit 1; }
+      - uses: actions/checkout@v4
+      - name: Read current workspace version
+        id: prev
+        run: |
+          PREV=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "prev_version=$PREV" >> "$GITHUB_OUTPUT"
+          if [ "$PREV" = "${{ inputs.version }}" ] && [ "${{ inputs.dry_run }}" != "true" ]; then
+            echo "::error::main is already at ${{ inputs.version }}"; exit 1
+          fi
+      - name: Check latest devnet daily release succeeded
+        if: ${{ !inputs.skip_devnet_check }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CONCLUSION=$(gh run list -R malbeclabs/doublezero \
+            --workflow release.devnet.all.daily.yml --limit 1 \
+            --json conclusion --jq '.[0].conclusion')
+          echo "latest devnet daily run: $CONCLUSION"
+          [ "$CONCLUSION" = "success" ] || {
+            echo "::error::latest devnet daily was '$CONCLUSION'; fix devnet or re-run with skip_devnet_check"; exit 1; }
+
+  open-prs:
+    runs-on: ubuntu-latest
+    needs: preflight
+    outputs:
+      dz_pr: ${{ steps.dzpr.outputs.pr }}
+      infra_pr: ${{ steps.infrapr.outputs.pr }}
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: malbeclabs
+          repositories: doublezero,infra
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app.outputs.token }}
+      - uses: dtolnay/rust-toolchain@1.90.0
+      - name: Open doublezero version-bump PR
+        id: dzpr
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          git config user.name "dz-release-bot"
+          git config user.email "dz-release-bot@malbeclabs.com"
+          BRANCH="release/v${VERSION}"
+          ./scripts/release/bump-version.sh "$VERSION"
+          git checkout -b "$BRANCH"
+          git add Cargo.toml Cargo.lock CHANGELOG.md
+          git commit -m "release: bump version to ${VERSION}"
+          git push -f origin "$BRANCH"
+          PR=$(gh pr list -R malbeclabs/doublezero --head "$BRANCH" --state open \
+            --json number --jq '.[0].number // empty')
+          if [ -z "$PR" ]; then
+            TITLE="release: bump version to ${VERSION}"
+            DRAFT=""
+            if [ "$DRY_RUN" = "true" ]; then TITLE="[DRY RUN] $TITLE"; DRAFT="--draft"; fi
+            URL=$(gh pr create -R malbeclabs/doublezero --head "$BRANCH" $DRAFT \
+              --title "$TITLE" \
+              --body "Automated version bump for the v${VERSION} testnet release. Review the promoted CHANGELOG section before merging.")
+            PR=$(gh pr view "$URL" --json number --jq .number)
+          fi
+          echo "pr=$PR" >> "$GITHUB_OUTPUT"
+          echo "doublezero version PR: https://github.com/malbeclabs/doublezero/pull/$PR" >> "$GITHUB_STEP_SUMMARY"
+      - name: Checkout infra
+        uses: actions/checkout@v4
+        with:
+          repository: malbeclabs/infra
+          token: ${{ steps.app.outputs.token }}
+          path: infra
+      - name: Open infra pinned-versions PR
+        id: infrapr
+        working-directory: infra
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          git config user.name "dz-release-bot"
+          git config user.email "dz-release-bot@malbeclabs.com"
+          BRANCH="release/testnet-v${VERSION}"
+          ./scripts/bump-testnet-versions.sh "$VERSION"
+          git checkout -b "$BRANCH"
+          git add ansible/inventory/testnet/group_vars/all.yml
+          git commit -m "release: tn ${VERSION}"
+          git push -f origin "$BRANCH"
+          PR=$(gh pr list -R malbeclabs/infra --head "$BRANCH" --state open \
+            --json number --jq '.[0].number // empty')
+          if [ -z "$PR" ]; then
+            TITLE="release: tn ${VERSION}"
+            DRAFT=""
+            if [ "$DRY_RUN" = "true" ]; then TITLE="[DRY RUN] $TITLE"; DRAFT="--draft"; fi
+            URL=$(gh pr create -R malbeclabs/infra --head "$BRANCH" $DRAFT \
+              --title "$TITLE" \
+              --body "Automated testnet version pin bump to ${VERSION}-1.")
+            PR=$(gh pr view "$URL" --json number --jq .number)
+          fi
+          echo "pr=$PR" >> "$GITHUB_OUTPUT"
+          echo "infra version PR: https://github.com/malbeclabs/infra/pull/$PR" >> "$GITHUB_STEP_SUMMARY"
+
+  # Gate 1: approve only after BOTH version PRs are merged.
+  gate-tags:
+    runs-on: ubuntu-latest
+    needs: open-prs
+    environment: testnet-release-gate
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: malbeclabs
+          repositories: doublezero,infra
+      - name: Verify version PRs are merged
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -euo pipefail
+          DZ=$(gh pr view ${{ needs.open-prs.outputs.dz_pr }} -R malbeclabs/doublezero --json state --jq .state)
+          INFRA=$(gh pr view ${{ needs.open-prs.outputs.infra_pr }} -R malbeclabs/infra --json state --jq .state)
+          echo "doublezero PR: $DZ, infra PR: $INFRA"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            { [ "$DZ" != "CLOSED" ] && [ "$INFRA" != "CLOSED" ]; } || {
+              echo "::error::dry-run PRs were closed"; exit 1; }
+          else
+            { [ "$DZ" = "MERGED" ] && [ "$INFRA" = "MERGED" ]; } || {
+              echo "::error::approve this gate only after BOTH version PRs are merged"; exit 1; }
+          fi
+
+  push-tags:
+    if: ${{ !inputs.dry_run }}
+    needs: gate-tags
+    uses: ./.github/workflows/release.testnet.push.tags.yml
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        component:
+          - controller
+          - internet-latency-collector
+          - agent
+          - device-telemetry-agent
+          - geoprobe-agent
+          - geoprobe-target
+          - funder
+          - monitor
+          - client
+    with:
+      version: v${{ inputs.version }}
+      component: ${{ matrix.component }}
+      skip_existing: true
+    secrets:
+      DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}
+
+  verify-cloudsmith:
+    runs-on: ubuntu-latest
+    needs: [preflight, gate-tags, push-tags]
+    # In dry-run, push-tags is skipped; still verify (against the current version) to exercise the query logic.
+    if: ${{ !cancelled() && needs.gate-tags.result == 'success' && (needs.push-tags.result == 'success' || (inputs.dry_run && needs.push-tags.result == 'skipped')) }}
+    timeout-minutes: 75
+    steps:
+      - name: Install Cloudsmith CLI
+        run: pip install cloudsmith-cli==1.13.0
+      - name: Wait for all packages to publish
+        env:
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_TOKEN }}
+          VERSION: ${{ inputs.dry_run && needs.preflight.outputs.prev_version || inputs.version }}
+        run: |
+          set -euo pipefail
+          REPO="malbeclabs/doublezero-testnet"
+          PACKAGES="doublezero-agent doublezero-controller doublezero-device-telemetry-agent doublezero-funder doublezero-internet-latency-collector doublezero-monitor doublezero-geoprobe-agent doublezero-geoprobe-target doublezero"
+          MISSING=""
+          for i in $(seq 1 60); do
+            MISSING=""
+            for pkg in $PACKAGES; do
+              RPM=$(cloudsmith ls pkg "$REPO" -q "name:^${pkg}$ AND version:^${VERSION}$" -F json | jq '.data | length')
+              DEB=$(cloudsmith ls pkg "$REPO" -q "name:^${pkg}$ AND version:^${VERSION}-1$" -F json | jq '.data | length')
+              [ "$((RPM + DEB))" -gt 0 ] || MISSING="$MISSING $pkg"
+            done
+            if [ -z "$MISSING" ]; then echo "All packages present at $VERSION"; exit 0; fi
+            echo "attempt $i/60: still waiting for:$MISSING"
+            sleep 60
+          done
+          echo "::error::timed out waiting for packages:$MISSING"
+          exit 1
+
+  build-programs:
+    runs-on: ubuntu-24.04-16c-64gb
+    needs: gate-tags
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main   # the merged version-bump commit
+      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install agave solana tools
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.13/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - name: Build programs for testnet
+        run: |
+          set -euo pipefail
+          (cd smartcontract/programs/doublezero-serviceability && cargo build-sbf)
+          (cd smartcontract/programs/doublezero-telemetry && cargo build-sbf --features testnet)
+          (cd smartcontract/programs/doublezero-geolocation && cargo build-sbf --features testnet)
+      - name: Assemble artifact with deploy manifest
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p staged
+          cp target/deploy/doublezero_serviceability.so staged/
+          cp target/deploy/doublezero_telemetry.so staged/
+          cp target/deploy/doublezero_geolocation.so staged/
+          {
+            echo "# Testnet program deploy v${VERSION}"
+            echo
+            echo "Built from commit $(git rev-parse HEAD)"
+            echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "Features: serviceability (default), telemetry (testnet), geolocation (testnet)"
+            echo
+            echo "## Checksums"
+            echo '```'
+            (cd staged && sha256sum ./*.so)
+            echo '```'
+            echo
+            echo "## Deploy"
+            echo "Follow the Notion runbook 'Build and deploy DoubleZero solana programs - testnet',"
+            echo "using these prebuilt artifacts instead of building locally."
+            echo "After deploying, set the onchain version (doublezero --env testnet global-config set-version ...)"
+            echo "and verify with: doublezero --env testnet version"
+            echo
+            echo "Then approve the 'testnet-program-deploy' gate on the orchestrator run above."
+          } > staged/DEPLOY.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solana-programs-v${{ inputs.version }}
+          path: staged/
+
+  stage-programs:
+    runs-on: ubuntu-latest
+    needs: build-programs
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: malbeclabs
+          repositories: infra
+      - uses: ./.github/actions/dispatch-and-wait
+        with:
+          repo: malbeclabs/infra
+          workflow: stage-programs.testnet.yml
+          token: ${{ steps.app.outputs.token }}
+          fields: |
+            version=${{ inputs.version }}
+            source_run_id=${{ github.run_id }}
+      - name: Post deploy instructions
+        run: |
+          {
+            echo "## Program deploy required"
+            echo "Artifacts staged on nyc-tn-bm2 at /opt/doublezero/program-releases/v${{ inputs.version }}/ (see DEPLOY.md there)."
+            echo "Deploy the three programs with the local keypair, set the onchain version, then approve the testnet-program-deploy gate."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Ping dev team
+        uses: malbeclabs/action-slack-notify@v2
+        env:
+          SLACK_COLOR: warning
+          SLACK_USERNAME: Doublezero Releaser
+          SLACK_TITLE: "Testnet release v${{ inputs.version }}: program deploy needed"
+          SLACK_MESSAGE: "Artifacts staged on nyc-tn-bm2:/opt/doublezero/program-releases/v${{ inputs.version }}/. Deploy programs, then approve the testnet-program-deploy gate."
+          MSG_MINIMAL: actions url
+          SLACK_WEBHOOK: ${{ secrets.SLACK_TESTNET_ALERTS_WEBHOOK }}
+
+  # Gate 2: approve only after the programs are deployed on testnet.
+  gate-programs:
+    runs-on: ubuntu-latest
+    needs: [stage-programs, verify-cloudsmith]
+    environment: testnet-program-deploy
+    steps:
+      - name: Gate passed
+        run: echo "Program deploy confirmed by approver; verifying onchain next."
+
+  verify-onchain:
+    runs-on: ubuntu-latest
+    needs: gate-programs
+    steps:
+      - name: Short-circuit on dry run
+        if: ${{ inputs.dry_run }}
+        run: echo "dry run — skipping onchain version check"
+      - name: Install doublezero client from Cloudsmith
+        if: ${{ !inputs.dry_run }}
+        run: |
+          curl -1sLf 'https://dl.cloudsmith.io/public/malbeclabs/doublezero-testnet/setup.deb.sh' | sudo -E bash
+          sudo apt-get install -y doublezero
+      - name: Verify onchain program version
+        if: ${{ !inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          OUT=$(doublezero --env testnet version)
+          echo "$OUT"
+          echo "$OUT" | grep -qi "program version.*${{ inputs.version }}" || {
+            echo "::error::onchain program version is not ${{ inputs.version }} — was the deploy completed?"; exit 1; }
+
+  deploy-core:
+    runs-on: ubuntu-latest
+    needs: verify-onchain
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: malbeclabs
+          repositories: infra
+      - uses: ./.github/actions/dispatch-and-wait
+        with:
+          repo: malbeclabs/infra
+          workflow: deploy-core.testnet.yml
+          token: ${{ steps.app.outputs.token }}
+          fields: |
+            mode=${{ inputs.dry_run && 'dry-run' || 'send-it' }}
+
+  deploy-clients:
+    runs-on: ubuntu-latest
+    needs: deploy-core
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: malbeclabs
+          repositories: infra
+      - uses: ./.github/actions/dispatch-and-wait
+        with:
+          repo: malbeclabs/infra
+          workflow: deploy-clients.testnet.yml
+          token: ${{ steps.app.outputs.token }}
+          fields: |
+            mode=${{ inputs.dry_run && 'dry-run' || 'send-it' }}
+
+  qa:
+    runs-on: ubuntu-latest
+    needs: deploy-clients
+    timeout-minutes: 90   # qa.testnet has an hourly cron + concurrency group; we may queue behind one run
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: malbeclabs
+          repositories: infra
+      - uses: ./.github/actions/dispatch-and-wait
+        with:
+          repo: malbeclabs/infra
+          workflow: qa.testnet.yml
+          token: ${{ steps.app.outputs.token }}
+
+  announce:
+    runs-on: ubuntu-latest
+    needs: qa
+    steps:
+      - uses: malbeclabs/action-slack-notify@v2
+        env:
+          SLACK_COLOR: good
+          SLACK_USERNAME: Doublezero Releaser
+          SLACK_TITLE: "Testnet release v${{ inputs.version }} deployed${{ inputs.dry_run && ' (dry run)' || '' }}"
+          SLACK_MESSAGE: "QA passed. Watch the system dashboard for ~30 min: https://doublezero.grafana.net/d/bf3dece9-51ac-4087-b6b1-579b3859ce14/ — and remember the community announcement (foundation)."
+          MSG_MINIMAL: actions url
+          SLACK_WEBHOOK: ${{ secrets.SLACK_TESTNET_ALERTS_WEBHOOK }}
+
+  notify-failure:
+    runs-on: ubuntu-latest
+    needs: [preflight, open-prs, gate-tags, push-tags, verify-cloudsmith, build-programs, stage-programs, gate-programs, verify-onchain, deploy-core, deploy-clients, qa]
+    if: failure()
+    steps:
+      - uses: malbeclabs/action-slack-notify@v2
+        env:
+          SLACK_COLOR: failure
+          SLACK_USERNAME: Doublezero Releaser
+          SLACK_TITLE: "Testnet release v${{ inputs.version }} failed"
+          MSG_MINIMAL: actions url
+          SLACK_WEBHOOK: ${{ secrets.SLACK_TESTNET_ALERTS_WEBHOOK }}

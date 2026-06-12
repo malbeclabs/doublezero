@@ -3,10 +3,14 @@ use doublezero_serviceability::{
     entrypoint::process_instruction,
     instructions::*,
     pda::{
-        get_globalconfig_pda, get_globalstate_pda, get_program_config_pda,
-        get_resource_extension_pda, get_topology_pda,
+        get_contributor_pda, get_exchange_pda, get_globalconfig_pda, get_globalstate_pda,
+        get_location_pda, get_program_config_pda, get_resource_extension_pda, get_topology_pda,
     },
-    processors::{globalconfig::set::SetGlobalConfigArgs, topology::create::TopologyCreateArgs},
+    processors::{
+        contributor::create::ContributorCreateArgs, exchange::create::ExchangeCreateArgs,
+        globalconfig::set::SetGlobalConfigArgs, location::create::LocationCreateArgs,
+        topology::create::TopologyCreateArgs,
+    },
     resource::ResourceType,
     state::{
         accountdata::AccountData, accounttype::AccountType, device::Device,
@@ -636,6 +640,89 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
         globalstate_pubkey,
         globalconfig_pubkey,
     )
+}
+
+/// Create location, exchange, and contributor prerequisites for device tests.
+/// Returns (location_pubkey, exchange_pubkey, contributor_pubkey).
+#[allow(dead_code)]
+pub async fn setup_device_prerequisites(
+    banks_client: &mut BanksClient,
+    recent_blockhash: solana_program::hash::Hash,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    globalconfig_pubkey: Pubkey,
+    payer: &Keypair,
+) -> (Pubkey, Pubkey, Pubkey) {
+    // Create Location
+    let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
+    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            country: "us".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            loc_id: 0,
+        }),
+        vec![
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    // Create Exchange
+    let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+            code: "la".to_string(),
+            name: "Los Angeles".to_string(),
+            lat: 1.234,
+            lng: 4.567,
+            reserved: 0,
+        }),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    // Create Contributor
+    let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) =
+        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "cont".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+
+    (location_pubkey, exchange_pubkey, contributor_pubkey)
 }
 
 /// Create the "unicast-default" topology.

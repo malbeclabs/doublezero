@@ -55,6 +55,128 @@ func TestRenderGNMIManagementProvider(t *testing.T) {
 	}
 }
 
+func TestRenderConfigRejectsControlCharsInDeviceFields(t *testing.T) {
+	newData := func(mutate func(*templateData)) templateData {
+		data := templateData{
+			Strings:                  StringsHelper{},
+			MulticastGroupBlock:      "239.0.0.0/24",
+			TelemetryTWAMPListenPort: 862,
+			LocalASN:                 65342,
+			UnicastVrfs:              []uint16{1},
+			Device: &Device{
+				PublicIP:              net.IP{7, 7, 7, 7},
+				Vpn4vLoopbackIP:       net.IP{14, 14, 14, 14},
+				Vpn4vLoopbackIntfName: "Loopback255",
+				Ipv4LoopbackIntfName:  "Loopback256",
+				IsisNet:               "49.0000.0e0e.0e0e.0000.00",
+				ExchangeCode:          "tst",
+				BgpCommunity:          10050,
+				Interfaces:            []Interface{},
+				MgmtVrf:               "mgmt",
+			},
+		}
+		mutate(&data)
+		return data
+	}
+
+	if _, err := renderConfig(newData(func(*templateData) {})); err != nil {
+		t.Fatalf("renderConfig() with valid device fields: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		wantField string // substring the error must name
+		mutate    func(*templateData)
+	}{
+		{
+			name:      "newline in mgmt_vrf",
+			wantField: "mgmt_vrf",
+			mutate:    func(d *templateData) { d.Device.MgmtVrf = "mgmt\nbad" },
+		},
+		{
+			name:      "carriage return in mgmt_vrf",
+			wantField: "mgmt_vrf",
+			mutate:    func(d *templateData) { d.Device.MgmtVrf = "mgmt\rbad" },
+		},
+		{
+			name:      "space in mgmt_vrf",
+			wantField: "mgmt_vrf",
+			mutate:    func(d *templateData) { d.Device.MgmtVrf = "default bad" },
+		},
+		{
+			name:      "newline in exchange code",
+			wantField: "exchange code",
+			mutate:    func(d *templateData) { d.Device.ExchangeCode = "tst\nbad" },
+		},
+		{
+			name:      "space in isis net",
+			wantField: "isis net",
+			mutate:    func(d *templateData) { d.Device.IsisNet = "49.0000 bad" },
+		},
+		{
+			name:      "newline in vpnv4 loopback interface name",
+			wantField: "vpnv4 loopback interface name",
+			mutate:    func(d *templateData) { d.Device.Vpn4vLoopbackIntfName = "Loopback255\nbad" },
+		},
+		{
+			name:      "newline in ipv4 loopback interface name",
+			wantField: "ipv4 loopback interface name",
+			mutate:    func(d *templateData) { d.Device.Ipv4LoopbackIntfName = "Loopback256\nbad" },
+		},
+		{
+			name:      "newline in interface name",
+			wantField: "interface name",
+			mutate:    func(d *templateData) { d.Device.Interfaces = []Interface{{Name: "Ethernet1\nbad"}} },
+		},
+		{
+			name:      "newline in interface link topology",
+			wantField: "interface link topology",
+			mutate: func(d *templateData) {
+				d.Device.Interfaces = []Interface{{Name: "Ethernet1", LinkTopologies: []string{"topo\nbad"}}}
+			},
+		},
+		{
+			name:      "newline in flex-algo topology name",
+			wantField: "flex-algo topology name",
+			mutate: func(d *templateData) {
+				d.Device.Interfaces = []Interface{{Name: "Ethernet1", FlexAlgoNodeSegments: []FlexAlgoNodeSegmentModel{{TopologyName: "topo\nbad"}}}}
+			},
+		},
+		{
+			name:      "newline in ipv4 bgp peer name",
+			wantField: "ipv4 bgp peer name",
+			mutate: func(d *templateData) {
+				d.Ipv4BgpPeers = []BgpPeer{{PeerIP: net.IP{1, 2, 3, 4}, PeerName: "peer\nbad"}}
+			},
+		},
+		{
+			name:      "newline in vpnv4 bgp peer name",
+			wantField: "vpnv4 bgp peer name",
+			mutate: func(d *templateData) {
+				d.Vpnv4BgpPeers = []BgpPeer{{PeerIP: net.IP{1, 2, 3, 4}, PeerName: "peer\nbad"}}
+			},
+		},
+		{
+			name:      "newline in topology name",
+			wantField: "topology name",
+			mutate: func(d *templateData) {
+				d.AllTopologies = []TopologyModel{{Name: "topo\nbad"}}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := renderConfig(newData(tt.mutate))
+			if err == nil {
+				t.Fatalf("renderConfig() accepted field with control characters\nconfig:\n%s", got)
+			}
+			if !strings.Contains(err.Error(), tt.wantField) {
+				t.Fatalf("error %q does not name field %q", err, tt.wantField)
+			}
+		})
+	}
+}
+
 func TestRenderConfig(t *testing.T) {
 	tests := []struct {
 		Name        string

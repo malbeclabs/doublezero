@@ -7,9 +7,14 @@ use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 use doublezero_program_common::serializer;
 use doublezero_serviceability::state::{
-    accesspass::AccessPass as DZAccessPass, contributor::Contributor as DZContributor,
-    device::Device as DZDevice, exchange::Exchange as DZExchange, link::Link as DZLink,
-    location::Location as DZLocation, multicastgroup::MulticastGroup as DZMulticastGroup,
+    accesspass::AccessPass as DZAccessPass,
+    contributor::Contributor as DZContributor,
+    device::Device as DZDevice,
+    exchange::Exchange as DZExchange,
+    interface::{CURRENT_INTERFACE_SCHEMA_VERSION, INTERFACE_MTU},
+    link::Link as DZLink,
+    location::Location as DZLocation,
+    multicastgroup::MulticastGroup as DZMulticastGroup,
     user::User as DZUser,
 };
 use doublezero_telemetry::state::{
@@ -123,7 +128,9 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
         }
     }
 
-    // doublezero-serviceability v0.20 added durable tunnel/BGP state to User.
+    // doublezero-serviceability v0.20 added durable tunnel/BGP state to User;
+    // client/v0.25.0 then appended `bgp_rtt_ns`. Both default to the same values
+    // onchain/Borsh deserialization uses for absent tails.
     if let Some(users) = serviceability
         .get_mut("users")
         .and_then(|users| users.as_object_mut())
@@ -139,8 +146,104 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
                 .or_insert_with(|| Value::Number(0.into()));
             user.entry("last_bgp_reported_at")
                 .or_insert_with(|| Value::Number(0.into()));
+            user.entry("bgp_rtt_ns")
+                .or_insert_with(|| Value::Number(0.into()));
         }
     }
+
+    // doublezero-serviceability client/v0.25.0 split a Device's single
+    // `interfaces` vec into two: a flat `interfaces: Vec<Interface>` written at
+    // the end of the on-disk layout, plus a legacy
+    // `deprecated_interfaces: Vec<InterfaceDeprecated>` (the `{"V1": {...}}` /
+    // `{"V2": {...}}` enum) kept at the original offset for byte-compatible
+    // readers. Snapshots captured under <=v0.20 carry only the legacy enum vec
+    // under `interfaces`, so seed `deprecated_interfaces` from it verbatim and
+    // then project `interfaces` onto the flat form. The SDK keeps both vecs the
+    // same length, so seeding from the same source preserves that invariant.
+    if let Some(devices) = serviceability
+        .get_mut("devices")
+        .and_then(|devices| devices.as_object_mut())
+    {
+        for device in devices
+            .values_mut()
+            .filter_map(|device| device.as_object_mut())
+        {
+            if !device.contains_key("deprecated_interfaces") {
+                let legacy = device
+                    .get("interfaces")
+                    .cloned()
+                    .unwrap_or_else(|| Value::Array(Vec::new()));
+                device.insert("deprecated_interfaces".to_string(), legacy);
+            }
+
+            if let Some(interfaces) = device
+                .get_mut("interfaces")
+                .and_then(|interfaces| interfaces.as_array_mut())
+            {
+                for interface in interfaces.iter_mut() {
+                    migrate_interface_to_flat(interface);
+                }
+            }
+        }
+    }
+}
+
+/// Project a legacy versioned `Interface` enum element (`{"V1": {...}}` /
+/// `{"V2": {...}}`) onto the flat `Interface` struct introduced in
+/// doublezero-serviceability client/v0.25.0. Mirrors the defaults stamped by the
+/// SDK's `TryFrom<&InterfaceV1>` / `TryFrom<&InterfaceV2> for Interface` impls:
+/// a V1 body fans in through V2, gaining `interface_cyoa`/`interface_dia` =
+/// `None`, `bandwidth`/`cir` = 0, `mtu` = `INTERFACE_MTU`, `routing_mode` =
+/// `Static`; both versions gain `version` = `CURRENT_INTERFACE_SCHEMA_VERSION`
+/// and an empty `flex_algo_node_segments`. `size` is the on-disk byte length,
+/// which offchain consumers never read (only `interface_type`/`bandwidth` are
+/// used), so it is defaulted to 0 rather than recomputed.
+fn migrate_interface_to_flat(interface: &mut Value) {
+    let Some(obj) = interface.as_object() else {
+        return;
+    };
+    // Already in the flat v0.25 form; nothing to do.
+    if obj.contains_key("size") {
+        return;
+    }
+
+    // Pull out the versioned body and note whether it's V1, which predates the
+    // CYOA/DIA/bandwidth/routing fields and so needs them backfilled.
+    let (is_v1, body) = if let Some(body) = obj.get("V1").and_then(Value::as_object) {
+        (true, body)
+    } else if let Some(body) = obj.get("V2").and_then(Value::as_object) {
+        (false, body)
+    } else {
+        return;
+    };
+
+    let mut flat = body.clone();
+
+    // V1 predates the CYOA/DIA/bandwidth/routing fields; backfill them with the
+    // same values the V1 -> V2 conversion uses.
+    if is_v1 {
+        flat.entry("interface_cyoa")
+            .or_insert_with(|| Value::String("None".to_string()));
+        flat.entry("interface_dia")
+            .or_insert_with(|| Value::String("None".to_string()));
+        flat.entry("bandwidth")
+            .or_insert_with(|| Value::Number(0.into()));
+        flat.entry("cir").or_insert_with(|| Value::Number(0.into()));
+        flat.entry("mtu")
+            .or_insert_with(|| Value::Number(INTERFACE_MTU.into()));
+        flat.entry("routing_mode")
+            .or_insert_with(|| Value::String("Static".to_string()));
+    }
+
+    flat.entry("flex_algo_node_segments")
+        .or_insert_with(|| Value::Array(Vec::new()));
+    flat.insert(
+        "version".to_string(),
+        Value::Number(CURRENT_INTERFACE_SCHEMA_VERSION.into()),
+    );
+    flat.insert("size".to_string(), Value::Number(0.into()));
+
+    *interface = Value::Object(flat);
 }
 
 /// Struct for all network data

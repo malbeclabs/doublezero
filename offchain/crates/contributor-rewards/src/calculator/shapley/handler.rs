@@ -140,7 +140,6 @@ pub fn build_devices(fetch_data: &FetchData, network: &Network) -> Result<(Devic
         let interface_bandwidth_bps: u64 = device
             .interfaces
             .iter()
-            .map(|iface| iface.into_current_version())
             .filter(|iface| {
                 iface.interface_type
                     == doublezero_serviceability::state::interface::InterfaceType::Physical

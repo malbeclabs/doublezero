@@ -113,41 +113,42 @@ tag = "revenue-distribution/v0.3.7"
 ### Dependencies found in github.com/malbeclabs/doublezero
 
 # RFC-20 CLI core: provides CliContext, OutputFormat, RequirementCheck, the
-# render_* output helpers, and the eyre-based error type. Pinned to the tag
-# that introduced doublezero-cli-core (client/v0.25.0 == geolocation-cli/v0.24.0).
+# render_* output helpers, and the eyre-based error type. doublezero-cli-core
+# was introduced at client/v0.25.0; the whole SDK family is pinned to a single
+# monorepo revision (client/v0.25.1) so shared types unify across the boundary.
 [workspace.dependencies.doublezero-cli-core]
 git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.25.0"
+tag = "client/v0.25.1"
 
 # Source of the RFC-20 `Environment` enum consumed by `CliContext`. MUST be
 # pinned to the same tag as doublezero-cli-core so the `Environment` type
 # unifies across the boundary.
 [workspace.dependencies.doublezero-config]
 git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.25.0"
+tag = "client/v0.25.1"
 
 [workspace.dependencies.doublezero-program-common]
 git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.20.0"
+tag = "client/v0.25.1"
 
 [workspace.dependencies.doublezero-record]
 features = ["no-entrypoint"]
 git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.20.0"
+tag = "client/v0.25.1"
 
 [workspace.dependencies.doublezero_sdk]
 git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.20.0"
+tag = "client/v0.25.1"
 
 [workspace.dependencies.doublezero-serviceability]
 features = ["no-entrypoint", "serde"]
 git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.20.0"
+tag = "client/v0.25.1"
 
 [workspace.dependencies.doublezero-telemetry]
 features = ["no-entrypoint", "serde"]
 git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.20.0"
+tag = "client/v0.25.1"
 
 ### Other git dependencies
 

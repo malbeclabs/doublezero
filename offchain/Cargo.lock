@@ -2350,13 +2350,13 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "doublezero-cli-core"
-version = "0.25.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.0#c53e54a2306dd9f05421a927bd97d2add9f32ea7"
+version = "0.25.1"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.1#b0b686e22d0ecf08e45c6404e96b86fe6286dfe4"
 dependencies = [
  "bitflags",
  "clap",
- "doublezero-config 0.25.0",
- "doublezero-program-common 0.25.0",
+ "doublezero-config",
+ "doublezero-program-common",
  "eyre",
  "serde",
  "serde_json",
@@ -2369,18 +2369,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-config"
-version = "0.20.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
-dependencies = [
- "eyre",
- "serde",
- "solana-sdk",
-]
-
-[[package]]
-name = "doublezero-config"
-version = "0.25.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.0#c53e54a2306dd9f05421a927bd97d2add9f32ea7"
+version = "0.25.1"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.1#b0b686e22d0ecf08e45c6404e96b86fe6286dfe4"
 dependencies = [
  "eyre",
  "serde",
@@ -2405,7 +2395,7 @@ dependencies = [
  "config",
  "csv",
  "dotenvy",
- "doublezero-program-common 0.20.0",
+ "doublezero-program-common",
  "doublezero-program-tools",
  "doublezero-record",
  "doublezero-revenue-distribution",
@@ -2443,13 +2433,13 @@ dependencies = [
 
 [[package]]
 name = "doublezero-geolocation"
-version = "0.20.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
+version = "0.25.1"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.1#b0b686e22d0ecf08e45c6404e96b86fe6286dfe4"
 dependencies = [
  "borsh 1.5.7",
  "borsh-incremental",
- "doublezero-config 0.20.0",
- "doublezero-program-common 0.20.0",
+ "doublezero-config",
+ "doublezero-program-common",
  "doublezero-serviceability",
  "solana-bincode",
  "solana-loader-v3-interface 3.0.0",
@@ -2470,7 +2460,7 @@ dependencies = [
  "clap",
  "config",
  "doublezero-passport",
- "doublezero-program-common 0.20.0",
+ "doublezero-program-common",
  "doublezero-program-tools",
  "doublezero-record",
  "doublezero-revenue-distribution",
@@ -2554,21 +2544,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.20.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
-dependencies = [
- "borsh 1.5.7",
- "byteorder",
- "ipnetwork",
- "serde",
- "solana-program",
- "solana-system-interface",
-]
-
-[[package]]
-name = "doublezero-program-common"
-version = "0.25.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.0#c53e54a2306dd9f05421a927bd97d2add9f32ea7"
+version = "0.25.1"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.1#b0b686e22d0ecf08e45c6404e96b86fe6286dfe4"
 dependencies = [
  "borsh 1.5.7",
  "byteorder",
@@ -2603,8 +2580,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-record"
-version = "0.20.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
+version = "0.25.1"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.1#b0b686e22d0ecf08e45c6404e96b86fe6286dfe4"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -2663,14 +2640,14 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.20.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
+version = "0.25.1"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.1#b0b686e22d0ecf08e45c6404e96b86fe6286dfe4"
 dependencies = [
  "bitflags",
  "borsh 1.5.7",
  "borsh-incremental",
  "bytemuck",
- "doublezero-program-common 0.20.0",
+ "doublezero-program-common",
  "ipnetwork",
  "serde",
  "serde_bytes",
@@ -2722,7 +2699,7 @@ dependencies = [
  "clap",
  "csv",
  "doublezero-cli-core",
- "doublezero-config 0.25.0",
+ "doublezero-config",
  "doublezero-contributor-rewards",
  "doublezero-ledger-sentinel",
  "doublezero-passport-cli",
@@ -2881,13 +2858,13 @@ dependencies = [
 
 [[package]]
 name = "doublezero-telemetry"
-version = "0.20.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
+version = "0.25.1"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.1#b0b686e22d0ecf08e45c6404e96b86fe6286dfe4"
 dependencies = [
  "borsh 1.5.7",
  "borsh-incremental",
- "doublezero-config 0.20.0",
- "doublezero-program-common 0.20.0",
+ "doublezero-config",
+ "doublezero-program-common",
  "doublezero-serviceability",
  "serde",
  "serde_bytes",
@@ -2896,8 +2873,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero_sdk"
-version = "0.20.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.20.0#5a37494c8fb32a15f1ee60a431696b2c7d3b16d0"
+version = "0.25.1"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.25.1#b0b686e22d0ecf08e45c6404e96b86fe6286dfe4"
 dependencies = [
  "async-trait",
  "backon",
@@ -2908,9 +2885,9 @@ dependencies = [
  "chrono",
  "directories-next",
  "dirs-next",
- "doublezero-config 0.20.0",
+ "doublezero-config",
  "doublezero-geolocation",
- "doublezero-program-common 0.20.0",
+ "doublezero-program-common",
  "doublezero-record",
  "doublezero-serviceability",
  "doublezero-telemetry",

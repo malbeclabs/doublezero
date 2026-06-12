@@ -172,7 +172,9 @@ mod tests {
         for user in fetch_data.dz_serviceability.users.values() {
             let is_live = !matches!(
                 user.status,
-                UserStatus::Rejected | UserStatus::Banned | UserStatus::PendingBan
+                UserStatus::RejectedDeprecated
+                    | UserStatus::Banned
+                    | UserStatus::PendingBanDeprecated
             );
             if user.user_type != UserType::Multicast || !is_live || user.is_publisher() {
                 continue;

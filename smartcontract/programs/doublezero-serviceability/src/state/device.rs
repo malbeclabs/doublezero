@@ -8,7 +8,7 @@ use crate::{
     },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use doublezero_program_common::types::NetworkV4List;
+use doublezero_program_common::{types::NetworkV4List, validate_account_code};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, net::Ipv4Addr, str::FromStr};
 
@@ -687,6 +687,16 @@ impl Validate for Device {
             msg!("Code too long: {} bytes", self.code.len());
             return Err(DoubleZeroError::CodeTooLong);
         }
+        // mgmt_vrf must use the account-code charset and length bound.
+        // Empty selects the default VRF.
+        if validate_account_code(&self.mgmt_vrf).is_err() {
+            msg!("Invalid mgmt_vrf: {}", self.mgmt_vrf);
+            return Err(DoubleZeroError::InvalidAccountCode);
+        }
+        if self.mgmt_vrf.len() > 32 {
+            msg!("MgmtVrf too long: {} bytes", self.mgmt_vrf.len());
+            return Err(DoubleZeroError::CodeTooLong);
+        }
         // Location ID must be valid
         if self.location_pk == Pubkey::default() {
             msg!("Invalid location ID: {}", self.location_pk);
@@ -878,6 +888,69 @@ mod tests {
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
+    }
+
+    #[test]
+    fn test_state_device_validate_mgmt_vrf() {
+        let valid = Device {
+            account_type: AccountType::Device,
+            owner: Pubkey::new_unique(),
+            index: 123,
+            bump_seed: 1,
+            reference_count: 0,
+            contributor_pk: Pubkey::new_unique(),
+            code: "test-321".to_string(),
+            device_type: DeviceType::Hybrid,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            dz_prefixes: "110.1.0.0/23".parse().unwrap(),
+            public_ip: [1, 2, 3, 4].into(),
+            status: DeviceStatus::Activated,
+            metrics_publisher_pk: Pubkey::new_unique(),
+            mgmt_vrf: "default".to_string(),
+            deprecated_interfaces: vec![],
+            interfaces: vec![],
+            users_count: 1,
+            max_users: 2,
+            device_health: DeviceHealth::ReadyForUsers,
+            desired_status: DeviceDesiredStatus::Pending,
+            unicast_users_count: 0,
+            multicast_subscribers_count: 0,
+            max_unicast_users: 0,
+            max_multicast_subscribers: 0,
+            reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
+        };
+        assert!(valid.validate().is_ok());
+
+        // Empty means the default VRF.
+        let empty = Device {
+            mgmt_vrf: String::new(),
+            ..valid.clone()
+        };
+        assert!(empty.validate().is_ok());
+
+        for mgmt_vrf in ["mgmt\nbad", "mgmt vrf"] {
+            let val = Device {
+                mgmt_vrf: mgmt_vrf.to_string(),
+                ..valid.clone()
+            };
+            assert_eq!(
+                val.validate().unwrap_err(),
+                DoubleZeroError::InvalidAccountCode,
+                "mgmt_vrf {mgmt_vrf:?}"
+            );
+        }
+
+        let too_long = Device {
+            mgmt_vrf: "a".repeat(33),
+            ..valid
+        };
+        assert_eq!(
+            too_long.validate().unwrap_err(),
+            DoubleZeroError::CodeTooLong
+        );
     }
 
     #[test]

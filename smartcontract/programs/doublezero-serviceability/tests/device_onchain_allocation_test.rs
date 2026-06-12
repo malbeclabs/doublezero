@@ -4,102 +4,14 @@
 //! ResourceExtension accounts (TunnelIds + DzPrefixBlocks) in a single instruction.
 
 use doublezero_serviceability::{
-    instructions::*,
-    pda::*,
-    processors::{
-        contributor::create::ContributorCreateArgs, device::create::DeviceCreateArgs,
-        exchange::create::ExchangeCreateArgs, location::create::LocationCreateArgs,
-    },
-    resource::ResourceType,
+    instructions::*, pda::*, processors::device::create::DeviceCreateArgs, resource::ResourceType,
     state::device::*,
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey};
 
 mod test_helpers;
 use test_helpers::*;
-
-/// Helper: create location, exchange, and contributor prerequisites.
-/// Returns (location_pubkey, exchange_pubkey, contributor_pubkey).
-async fn setup_device_prerequisites(
-    banks_client: &mut BanksClient,
-    recent_blockhash: solana_program::hash::Hash,
-    program_id: Pubkey,
-    globalstate_pubkey: Pubkey,
-    globalconfig_pubkey: Pubkey,
-    payer: &solana_sdk::signature::Keypair,
-) -> (Pubkey, Pubkey, Pubkey) {
-    // Create Location
-    let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
-            code: "la".to_string(),
-            name: "Los Angeles".to_string(),
-            country: "us".to_string(),
-            lat: 1.234,
-            lng: 4.567,
-            loc_id: 0,
-        }),
-        vec![
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-
-    // Create Exchange
-    let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-            code: "la".to_string(),
-            name: "Los Angeles".to_string(),
-            lat: 1.234,
-            lng: 4.567,
-            reserved: 0,
-        }),
-        vec![
-            AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-
-    // Create Contributor
-    let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
-    let (contributor_pubkey, _) =
-        get_contributor_pda(&program_id, globalstate_account.account_index + 1);
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-            code: "cont".to_string(),
-        }),
-        vec![
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(payer.pubkey(), false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-
-    (location_pubkey, exchange_pubkey, contributor_pubkey)
-}
 
 /// Test atomic create+activate with onchain allocation (1 TunnelIds + 1 DzPrefixBlock)
 #[tokio::test]

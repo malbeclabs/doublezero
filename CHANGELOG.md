@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain programs
+  - Validate the device `mgmt_vrf` field against the account-code charset (`[A-Za-z0-9:_-]`) and a 32-byte length cap, matching the device `code` field. Empty (the default VRF) is still accepted.
+- Controller
+  - Skip rendering device config when a string field would not survive as a single config token (contains control or whitespace characters).
 - Device agents
   - Reduce agent CPU usage by continuing to fetch the full config every 5 seconds but only applying when it has changed or after 60s timeout
 

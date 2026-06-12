@@ -151,6 +151,33 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
         }
     }
 
+    // doublezero-serviceability client/v0.27.1 appended per-pass EdgeSeat
+    // user counters/limits to AccessPass. Historical snapshots serialized
+    // before that bump do not contain them; default them to the same values used
+    // by onchain/Borsh deserialization for absent tails.
+    if let Some(access_passes) = serviceability
+        .get_mut("access_passes")
+        .and_then(|access_passes| access_passes.as_object_mut())
+    {
+        for access_pass in access_passes
+            .values_mut()
+            .filter_map(|access_pass| access_pass.as_object_mut())
+        {
+            access_pass
+                .entry("unicast_user_count")
+                .or_insert_with(|| Value::Number(0.into()));
+            access_pass
+                .entry("max_unicast_users")
+                .or_insert_with(|| Value::Number(1.into()));
+            access_pass
+                .entry("multicast_user_count")
+                .or_insert_with(|| Value::Number(0.into()));
+            access_pass
+                .entry("max_multicast_users")
+                .or_insert_with(|| Value::Number(1.into()));
+        }
+    }
+
     // doublezero-serviceability client/v0.25.0 split a Device's single
     // `interfaces` vec into two: a flat `interfaces: Vec<Interface>` written at
     // the end of the on-disk layout, plus a legacy

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- chore(contributor-rewards): bump doublezero client to `v0.27.1` ([#388](https://github.com/doublezerofoundation/doublezero-offchain/pull/388))
 - fix(sentinel): adapt to SetAccessPassArgs API change after doublezero dep bump
 - refactor(sentinel): replace `multicast_group_codes` setting with `multicast_group_pubkeys` ([#315](https://github.com/doublezerofoundation/doublezero-offchain/pull/315))
 - fix(sentinel): associate access passes with solana tenant PDA ([#283](https://github.com/doublezerofoundation/doublezero-offchain/pull/283))

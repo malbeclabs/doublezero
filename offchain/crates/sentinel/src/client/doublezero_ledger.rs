@@ -177,6 +177,9 @@ impl DzRpcClient {
             last_access_epoch: u64::MAX,
             // NOTE: Setting this to false by default
             allow_multiple_ip: false,
+            // NOTE: Setting both to max allowed values
+            max_unicast_users: u16::MAX,
+            max_multicast_users: u16::MAX,
         });
         let accounts = vec![
             AccountMeta::new(pass_pk, false),

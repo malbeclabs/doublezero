@@ -38,6 +38,7 @@ impl AddMulticastGroupPubAllowlistCommand {
                 AccountMeta::new(mgroup_pubkey, false),
                 AccountMeta::new(accesspass_pk, false),
                 AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(self.user_payer, false),
             ],
         )
     }

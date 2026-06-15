@@ -1362,6 +1362,7 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )
@@ -1579,6 +1580,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )
@@ -1758,6 +1760,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass2_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )
@@ -1878,6 +1881,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )

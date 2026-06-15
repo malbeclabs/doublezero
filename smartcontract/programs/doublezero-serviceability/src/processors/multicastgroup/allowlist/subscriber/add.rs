@@ -1,7 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     pda::get_accesspass_pda,
-    processors::validation::validate_program_account,
+    processors::{accesspass::airdrop_user_credits, validation::validate_program_account},
     seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -51,6 +51,16 @@ pub fn process_add_multicastgroup_sub_allowlist(
     let mgroup_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
+
+    // Optional user_payer account for transferring connect credits (backwards compatible). Clients
+    // that fund the user pass it before payer/system_program; older clients omit it and skip the
+    // airdrop, preserving the previous behavior.
+    let user_payer_account = if accounts.len() >= 6 {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -85,6 +95,12 @@ pub fn process_add_multicastgroup_sub_allowlist(
     if !is_authorized {
         return Err(DoubleZeroError::NotAllowed.into());
     }
+
+    // Identify the access pass funding account and how many user seats it admits, so we can top up
+    // its credits below. Both must be resolved regardless of whether the pass is created here or
+    // already exists.
+    let funded_user_payer;
+    let multiplier;
 
     if accesspass_account.data_is_empty() {
         let (expected_pda_account, bump_seed) =
@@ -127,6 +143,10 @@ pub fn process_add_multicastgroup_sub_allowlist(
                 &[bump_seed],
             ],
         )?;
+
+        // Freshly created passes admit a single user.
+        funded_user_payer = value.user_payer;
+        multiplier = 1;
     } else {
         assert_eq!(
             accesspass_account.owner, program_id,
@@ -173,7 +193,34 @@ pub fn process_add_multicastgroup_sub_allowlist(
             accesspass.mgroup_sub_allowlist.push(*mgroup_account.key);
         }
 
+        // Mirror set_access_pass: scale the airdrop for passes that admit multiple users.
+        funded_user_payer = accesspass.user_payer;
+        multiplier = if accesspass.allow_multiple_ip() {
+            (accesspass.max_unicast_users as u64)
+                .saturating_add(accesspass.max_multicast_users as u64)
+        } else {
+            1
+        };
+
         try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
+    }
+
+    // Transfer credits so the user can connect immediately after being allowlisted. Performed in
+    // the same instruction as the allowlist update, so a failed transfer reverts the whole change.
+    if let Some(user_payer_account) = user_payer_account {
+        // The supplied user_payer account must be the access pass's funding account.
+        assert_eq!(
+            user_payer_account.key, &funded_user_payer,
+            "Invalid user_payer account"
+        );
+
+        airdrop_user_credits(
+            payer_account,
+            user_payer_account,
+            system_program,
+            globalstate.user_airdrop_lamports,
+            multiplier,
+        )?;
     }
 
     #[cfg(test)]

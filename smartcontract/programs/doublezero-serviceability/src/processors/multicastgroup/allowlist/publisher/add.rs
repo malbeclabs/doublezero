@@ -50,7 +50,16 @@ pub fn process_add_multicastgroup_pub_allowlist(
     let mgroup_account = next_account_info(accounts_iter)?;
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
-    let user_payer_account = next_account_info(accounts_iter)?;
+
+    // Optional user_payer account for transferring connect credits (backwards compatible). Clients
+    // that fund the user pass it before payer/system_program; older clients omit it and skip the
+    // airdrop, preserving the previous behavior.
+    let user_payer_account = if accounts.len() >= 6 {
+        Some(next_account_info(accounts_iter)?)
+    } else {
+        None
+    };
+
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
@@ -184,21 +193,23 @@ pub fn process_add_multicastgroup_pub_allowlist(
         try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
     }
 
-    // The supplied user_payer account must be the access pass's funding account.
-    assert_eq!(
-        user_payer_account.key, &funded_user_payer,
-        "Invalid user_payer account"
-    );
-
     // Transfer credits so the user can connect immediately after being allowlisted. Performed in
     // the same instruction as the allowlist update, so a failed transfer reverts the whole change.
-    airdrop_user_credits(
-        payer_account,
-        user_payer_account,
-        system_program,
-        globalstate.user_airdrop_lamports,
-        multiplier,
-    )?;
+    if let Some(user_payer_account) = user_payer_account {
+        // The supplied user_payer account must be the access pass's funding account.
+        assert_eq!(
+            user_payer_account.key, &funded_user_payer,
+            "Invalid user_payer account"
+        );
+
+        airdrop_user_credits(
+            payer_account,
+            user_payer_account,
+            system_program,
+            globalstate.user_airdrop_lamports,
+            multiplier,
+        )?;
+    }
 
     #[cfg(test)]
     msg!("Updated: {:?}", mgroup);

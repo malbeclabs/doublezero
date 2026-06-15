@@ -1,6 +1,7 @@
 use crate::{
     error::DoubleZeroError,
     pda::*,
+    processors::accesspass::airdrop_user_credits,
     seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -18,17 +19,11 @@ use solana_program::{
     clock::Clock,
     entrypoint::ProgramResult,
     msg,
-    program::invoke_signed_unchecked,
     pubkey::Pubkey,
-    rent::Rent,
     sysvar::Sysvar,
 };
 
 use std::net::Ipv4Addr;
-
-// Value to rent exempt two `User` accounts + configurable amount for connect/disconnect txns
-// `User` account size assumes a single publisher and subscriber pubkey registered
-const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 266 * 3; // 266 bytes per User account x 3 accounts = 798 bytes
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct SetAccessPassArgs {
@@ -349,28 +344,17 @@ pub fn process_set_access_pass(
     // multiple IPs (e.g. seat keypairs that provision many nodes), scale the target by the sum of
     // the per-category caps so the keypair holds enough SOL to pay for every create_user it admits.
     // Passes without the flag keep today's fixed (1x) airdrop.
-    let base_target = Rent::get()
-        .unwrap()
-        .minimum_balance(AIRDROP_USER_RENT_LAMPORTS_BYTES)
-        .saturating_add(globalstate.user_airdrop_lamports);
     let multiplier = if value.allow_multiple_ip {
         (value.max_unicast_users as u64).saturating_add(value.max_multicast_users as u64)
     } else {
         1
     };
-    let deposit = base_target
-        .saturating_mul(multiplier)
-        .saturating_sub(user_payer.lamports());
-
-    msg!("Airdropping {} lamports to user account", deposit);
-    invoke_signed_unchecked(
-        &solana_system_interface::instruction::transfer(payer_account.key, user_payer.key, deposit),
-        &[
-            payer_account.clone(),
-            user_payer.clone(),
-            system_program.clone(),
-        ],
-        &[],
+    airdrop_user_credits(
+        payer_account,
+        user_payer,
+        system_program,
+        globalstate.user_airdrop_lamports,
+        multiplier,
     )?;
 
     Ok(())
@@ -378,8 +362,10 @@ pub fn process_set_access_pass(
 
 #[cfg(test)]
 mod tests {
-    use super::AIRDROP_USER_RENT_LAMPORTS_BYTES;
-    use crate::state::{accounttype::AccountType, user::User};
+    use crate::{
+        processors::accesspass::AIRDROP_USER_RENT_LAMPORTS_BYTES,
+        state::{accounttype::AccountType, user::User},
+    };
     use doublezero_program_common::types::NetworkV4;
     use solana_program::pubkey::Pubkey;
     use std::net::Ipv4Addr;

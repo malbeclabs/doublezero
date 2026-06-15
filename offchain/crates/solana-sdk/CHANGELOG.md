@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- remove `build_memo_instruction` (moved to `Wallet::build_memo_instruction` in `solana-client-tools`, alongside the memo compute-unit helpers)
 - add `find_claim_holding_address` PDA helper and `CLAIM_HOLDING_SEED_PREFIX` constant for `ValidatorClientRewards` claim holding accounts
 - add `ValidatorClientRewards` discriminator + offset constants and `parse_validator_client_rewards` parser
 - add `parse_program_config_shred_oracle_key` helper for reading `ProgramConfig.shred_oracle_key`

@@ -11,7 +11,6 @@ pub use doublezero_program_tools::{
 pub use doublezero_revenue_distribution::DOUBLEZERO_MINT_DECIMALS;
 pub use doublezero_sol_conversion_interface as sol_conversion;
 pub use doublezero_solana_client_tools::rpc::NetworkEnvironment;
-use solana_sdk::instruction::Instruction;
 pub use solana_sdk::pubkey::Pubkey;
 pub use svm_hash::{merkle, sha2};
 
@@ -35,12 +34,4 @@ pub fn environment_usdc_token_mint_key(network_env: NetworkEnvironment) -> Pubke
         NetworkEnvironment::Devnet => shred_subscription::env::solana_devnet::USDC_MINT_KEY,
         _ => shred_subscription::env::mainnet::USDC_MINT_KEY,
     }
-}
-
-pub fn build_memo_instruction(memo: &[u8]) -> Instruction {
-    spl_memo_interface::instruction::build_memo(
-        &spl_memo_interface::v3::ID,
-        memo,
-        Default::default(),
-    )
 }

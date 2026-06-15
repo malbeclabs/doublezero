@@ -7,7 +7,7 @@ use doublezero_solana_client_tools::{
     rpc::DoubleZeroLedgerConnection,
 };
 use doublezero_solana_sdk::{
-    DOUBLEZERO_MINT_DECIMALS, build_memo_instruction, environment_2z_token_mint_key,
+    DOUBLEZERO_MINT_DECIMALS, environment_2z_token_mint_key,
     revenue_distribution::{
         ID,
         fetch::try_fetch_distribution,
@@ -23,8 +23,6 @@ use spl_associated_token_account_interface::instruction::create_associated_token
 use tracing::{debug, info, warn};
 
 use crate::calculator::{ledger_operations::try_fetch_shapley_output, proof::ShapleyOutputStorage};
-
-const RELAY_MEMO_CU: u32 = 5_000;
 
 /// Outcome of a distribution attempt.
 #[derive(Debug)]
@@ -360,12 +358,13 @@ async fn try_distribute_contributor_rewards(
     instructions.push(distribute_rewards_ix);
 
     // Add simple memo to indicate that distributing rewards was relayed.
-    instructions.push(build_memo_instruction(b"Relay"));
+    let (memo_ix, memo_compute_units) = Wallet::build_memo_instruction_with_compute_units(b"Relay");
+    instructions.push(memo_ix);
 
     let compute_unit_limit = DISTRIBUTE_REWARDS_CU_BASE
         + recipient_keys.len() as u32 * PER_RECIPIENT_CU
         + create_ata_compute_units.iter().sum::<u32>()
-        + RELAY_MEMO_CU;
+        + memo_compute_units;
 
     instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
         compute_unit_limit,

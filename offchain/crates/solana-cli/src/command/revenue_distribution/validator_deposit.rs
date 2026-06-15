@@ -6,7 +6,7 @@ use doublezero_solana_client_tools::{
     rpc::{DoubleZeroLedgerEnvironmentOverride, SolanaConnection},
 };
 use doublezero_solana_sdk::{
-    NetworkEnvironment, build_memo_instruction,
+    NetworkEnvironment,
     revenue_distribution::{
         ID,
         fetch::SolConversionState,
@@ -150,20 +150,21 @@ impl ValidatorDepositCommand {
                 return Ok(());
             }
 
-            let memo_ix = build_memo_instruction(
-                format!("Funded through Solana epoch {last_solana_epoch}").as_bytes(),
-            );
+            let memo = format!("Funded through Solana epoch {last_solana_epoch}");
+            let (memo_ix, memo_compute_units) =
+                Wallet::build_memo_instruction_with_compute_units(memo.as_bytes());
 
-            (outstanding_debt_amount, Some((memo_ix, 15_000)))
+            (outstanding_debt_amount, Some((memo_ix, memo_compute_units)))
         }
         // Parse fund amount from SOL string (representing 9 decimal places at
         // most) to lamports.
         else if let Some(fund_str) = fund_amount_str {
             let fund_lamports = crate::utils::parse_sol_amount_to_lamports(fund_str)?;
 
-            let memo_ix = build_memo_instruction(b"Funded");
+            let (memo_ix, memo_compute_units) =
+                Wallet::build_memo_instruction_with_compute_units(b"Funded");
 
-            (fund_lamports, Some((memo_ix, 5_000)))
+            (fund_lamports, Some((memo_ix, memo_compute_units)))
         } else {
             Default::default()
         };
@@ -389,7 +390,7 @@ async fn try_withdraw_excess_balance(
             WithdrawSolanaValidatorDepositAccounts::new(node_id, excess_balance_beneficiary_key),
             &RevenueDistributionInstructionData::WithdrawSolanaValidatorDeposit,
         )?,
-        build_memo_instruction(b"Withdrawn excess balance"),
+        Wallet::build_memo_instruction(b"Withdrawn excess balance"),
         ComputeBudgetInstruction::set_compute_unit_limit(20_000),
     ];
 

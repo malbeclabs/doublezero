@@ -345,6 +345,31 @@ impl Wallet {
         (address, Self::create_ata_compute_units(bump))
     }
 
+    // Compute-unit cost of an spl-memo instruction with zero signer accounts. The
+    // v3 program logs the memo with debug formatting, so the cost is a fixed base
+    // plus a per-byte term. Calibrated against the program in solana-program-test
+    // (see tests/memo_compute_units.rs): plain-text consumption tracks 1_382 + 352
+    // per byte, and these rounded values keep a small margin above that line. Memos
+    // with bytes that debug-escape to several characters cost more per byte, so this
+    // fits the printable text memos callers pass, not arbitrary binary input.
+    const MEMO_CU_BASE: u32 = 2_000;
+    const MEMO_CU_PER_BYTE: u32 = 400;
+
+    pub fn memo_compute_units(memo_len: usize) -> u32 {
+        Self::MEMO_CU_BASE + Self::MEMO_CU_PER_BYTE * memo_len as u32
+    }
+
+    pub fn build_memo_instruction(memo: &[u8]) -> Instruction {
+        spl_memo_interface::instruction::build_memo(&spl_memo_interface::v3::ID, memo, &[])
+    }
+
+    pub fn build_memo_instruction_with_compute_units(memo: &[u8]) -> (Instruction, u32) {
+        (
+            Self::build_memo_instruction(memo),
+            Self::memo_compute_units(memo.len()),
+        )
+    }
+
     pub fn default_send_transaction_config(&self) -> RpcSendTransactionConfig {
         RpcSendTransactionConfig {
             preflight_commitment: Some(self.connection.commitment().commitment),

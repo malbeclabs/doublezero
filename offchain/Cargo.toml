@@ -88,7 +88,7 @@ svm-hash = { version = "0.1", features = ["bytemuck", "borsh"] }
 tabled = { version = "0.20", features = ["std", "derive"] }
 tempfile = "3"
 thiserror = "2"
-tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "signal"] }
+tokio = { version = "1", default-features = false, features = ["macros", "rt-multi-thread", "signal"] }
 tokio-cron-scheduler = "0.14"
 tokio-util = "0.7"
 tracing = "0.1"

@@ -8,7 +8,7 @@ use doublezero_solana_client_tools::{
     rpc::{DoubleZeroLedgerConnection, DoubleZeroLedgerEnvironmentOverride},
 };
 use doublezero_solana_sdk::{
-    build_memo_instruction, environment_2z_token_mint_key,
+    environment_2z_token_mint_key,
     revenue_distribution::{
         ID,
         fetch::{try_fetch_config, try_fetch_distribution},
@@ -28,8 +28,6 @@ use crate::command::revenue_distribution::{
     },
     try_distribution_rewards_iter, try_fetch_shapley_record,
 };
-
-const RELAY_MEMO_CU: u32 = 5_000;
 
 #[derive(Debug, Args, Clone)]
 pub struct DistributeRewards {
@@ -176,8 +174,9 @@ async fn try_prepare_distribution_rewards(
     }
 
     // Add simple memo to indicate that distributing rewards was relayed.
-    instructions.push(build_memo_instruction(b"Relay"));
-    compute_unit_limit += RELAY_MEMO_CU;
+    let (memo_ix, memo_compute_units) = Wallet::build_memo_instruction_with_compute_units(b"Relay");
+    instructions.push(memo_ix);
+    compute_unit_limit += memo_compute_units;
 
     instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
         compute_unit_limit,
@@ -320,12 +319,13 @@ async fn try_distribute_contributor_rewards(
     instructions.push(distribute_rewards_ix);
 
     // Add simple memo to indicate that distributing rewards was relayed.
-    instructions.push(build_memo_instruction(b"Relay"));
+    let (memo_ix, memo_compute_units) = Wallet::build_memo_instruction_with_compute_units(b"Relay");
+    instructions.push(memo_ix);
 
     let compute_unit_limit = DISTRIBUTE_REWARDS_CU_BASE
         + recipient_keys.len() as u32 * PER_RECIPIENT_CU
         + create_ata_compute_units.iter().sum::<u32>()
-        + RELAY_MEMO_CU;
+        + memo_compute_units;
 
     instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
         compute_unit_limit,

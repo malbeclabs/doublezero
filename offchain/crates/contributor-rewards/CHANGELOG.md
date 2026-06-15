@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- refactor(contributor-rewards): use the shared `Wallet` memo helpers from `solana-client-tools` in place of the local `RELAY_MEMO_CU` constant
+
 ## [0.6.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.6.1) - 2026-06-13
 
 - chore(contributor-rewards): bump doublezero client to `v0.27.1` ([#388](https://github.com/doublezerofoundation/doublezero-offchain/pull/388))

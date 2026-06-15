@@ -233,6 +233,85 @@ async fn test_multicast_subscriber_allowlist_transfers_credits() {
     );
 }
 
+/// Backwards compatibility: older clients call the instruction without the optional user_payer
+/// account (the legacy 3-account layout). The allowlist entry is still added, but no credits are
+/// transferred, preserving the pre-#3851 behavior.
+#[tokio::test]
+async fn test_multicast_subscriber_allowlist_without_user_payer_account_skips_airdrop() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let client_ip = [100, 0, 0, 9].into();
+    let user_payer = Pubkey::new_unique(); // fresh, unfunded account
+
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let gs = get_account_data(&mut banks_client, globalstate_pubkey)
+        .await
+        .unwrap()
+        .get_global_state()
+        .unwrap();
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "sub-noairdrop".to_string(),
+            max_bandwidth: 1_000_000_000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+    // Legacy layout: no user_payer account between globalstate and payer/system_program.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
+            client_ip,
+            user_payer,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // The allowlist entry is added even on the legacy path.
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert!(accesspass
+        .mgroup_sub_allowlist
+        .contains(&multicastgroup_pubkey));
+
+    // ...but no credits were transferred: the user_payer account was never funded.
+    assert!(banks_client
+        .get_account(user_payer)
+        .await
+        .unwrap()
+        .is_none());
+}
+
 #[tokio::test]
 async fn test_multicast_subscriber_allowlist_sentinel_authority() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;

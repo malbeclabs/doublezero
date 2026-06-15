@@ -284,6 +284,7 @@ async fn setup_fixture() -> TestFixture {
                 AccountMeta::new(mgroup_pk, false),
                 AccountMeta::new(accesspass_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(payer.pubkey(), false),
             ],
             &payer,
         )
@@ -306,6 +307,7 @@ async fn setup_fixture() -> TestFixture {
                 AccountMeta::new(mgroup_pk, false),
                 AccountMeta::new(accesspass_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(payer.pubkey(), false),
             ],
             &payer,
         )

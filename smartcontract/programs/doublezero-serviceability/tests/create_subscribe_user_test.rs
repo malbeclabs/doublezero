@@ -293,6 +293,7 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )
@@ -310,6 +311,7 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )
@@ -595,6 +597,7 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )
@@ -612,6 +615,7 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )
@@ -1092,6 +1096,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(custom_owner, false),
         ],
         &payer,
     )
@@ -1395,6 +1400,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(custom_owner, false),
         ],
         &payer,
     )
@@ -1680,6 +1686,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(non_foundation_payer.pubkey(), false),
         ],
         &payer,
     )

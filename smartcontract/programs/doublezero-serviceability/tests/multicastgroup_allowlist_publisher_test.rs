@@ -98,6 +98,7 @@ async fn test_multicast_publisher_allowlist() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
         ],
         &payer,
     )
@@ -138,6 +139,100 @@ async fn test_multicast_publisher_allowlist() {
         .get_accesspass()
         .unwrap();
     assert_eq!(accesspass.mgroup_pub_allowlist.len(), 0);
+}
+
+/// Issue #3851: adding a user to a publisher allowlist must transfer the credits the user needs to
+/// connect, as part of the same instruction. A brand-new (unfunded) user_payer is funded with the
+/// connect/disconnect rent-exempt credits when the access pass is created here.
+#[tokio::test]
+async fn test_multicast_publisher_allowlist_transfers_credits() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let client_ip = [100, 0, 0, 9].into();
+    let user_payer = solana_sdk::pubkey::Pubkey::new_unique(); // fresh, unfunded account
+
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let gs = get_account_data(&mut banks_client, globalstate_pubkey)
+        .await
+        .unwrap()
+        .get_global_state()
+        .unwrap();
+    let (multicastgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "pub-credits".to_string(),
+            max_bandwidth: 1_000_000_000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicastgroup_block_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // The user_payer account does not exist yet (zero balance).
+    assert!(banks_client
+        .get_account(user_payer)
+        .await
+        .unwrap()
+        .is_none());
+
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupPubAllowlist(AddMulticastGroupPubAllowlistArgs {
+            client_ip,
+            user_payer,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert!(accesspass
+        .mgroup_pub_allowlist
+        .contains(&multicastgroup_pubkey));
+
+    // The user_payer was funded with the connect/disconnect credits (multiplier is 1 for a
+    // freshly created single-user pass), matching set_access_pass behavior.
+    let balance = banks_client
+        .get_account(user_payer)
+        .await
+        .unwrap()
+        .expect("user_payer should be funded after allowlist add")
+        .lamports;
+    let expected = solana_sdk::rent::Rent::default().minimum_balance(
+        doublezero_serviceability::processors::accesspass::AIRDROP_USER_RENT_LAMPORTS_BYTES,
+    ) + gs.user_airdrop_lamports;
+    assert_eq!(
+        balance, expected,
+        "publisher allowlist add should transfer connect credits to the user_payer"
+    );
 }
 
 #[tokio::test]
@@ -246,6 +341,7 @@ async fn test_multicast_publisher_allowlist_sentinel_authority() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
         ],
         &sentinel,
     )
@@ -319,6 +415,7 @@ async fn test_multicast_publisher_allowlist_sentinel_authority() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
         ],
         &unauthorized,
     )
@@ -411,6 +508,7 @@ async fn test_multicast_publisher_allowlist_allow_multiple_ip() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
         ],
         &payer,
     )
@@ -546,6 +644,7 @@ async fn test_multicast_publisher_allowlist_allow_multiple_ip_real_ip_in_args() 
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
         ],
         &payer,
     )
@@ -702,6 +801,7 @@ async fn test_multicast_publisher_allowlist_wrong_pda_rejected() {
             AccountMeta::new(multicastgroup_pubkey, false),
             AccountMeta::new(accesspass_b, false), // wrong PDA
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
         ],
         &payer,
     )

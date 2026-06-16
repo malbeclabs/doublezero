@@ -1484,6 +1484,7 @@ dependencies = [
  "doublezero-config",
  "doublezero-geolocation-cli",
  "doublezero-program-common",
+ "doublezero-sentinel",
  "doublezero-serviceability",
  "doublezero-serviceability-cli",
  "doublezero_sdk",

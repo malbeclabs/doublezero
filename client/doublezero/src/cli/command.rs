@@ -4,7 +4,7 @@ use doublezero_geolocation_cli::GeolocationArgs;
 use doublezero_serviceability_cli::cli::ServiceabilityCommand;
 
 use crate::{
-    cli::multicast::MulticastCliCommand,
+    cli::{multicast::MulticastCliCommand, sentinel::SentinelCliCommand},
     command::{
         connect::ProvisioningCliCommand, disable::DisableCliCommand,
         disconnect::DecommissioningCliCommand, enable::EnableCliCommand,
@@ -37,6 +37,10 @@ pub enum Command {
     Latency(LatencyCliCommand),
     /// View your installed routes
     Routes(RoutesCliCommand),
+
+    /// Sentinel admin commands
+    #[command(hide = true)]
+    Sentinel(SentinelCliCommand),
 
     /// Manage geolocation probes and users
     Geolocation(GeolocationArgs),

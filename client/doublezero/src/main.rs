@@ -8,7 +8,7 @@ mod routes;
 use doublezero_config::Environment;
 mod requirements;
 mod servicecontroller;
-use crate::cli::{command::Command, multicast::MulticastCommands};
+use crate::cli::{command::Command, multicast::MulticastCommands, sentinel::SentinelCommands};
 use doublezero_cli_core::LogLevel;
 use doublezero_geolocation_cli::GeoCliCommandImpl;
 use doublezero_sdk::{
@@ -290,6 +290,17 @@ async fn main() -> eyre::Result<()> {
         Command::Latency(args) => args.execute(&client).await,
         Command::Routes(args) => args.execute(&client).await,
 
+        // Sentinel admin commands (binary-local): they take `DZClient` directly
+        // and write their own output, so no `ctx`/writer threading is needed.
+        Command::Sentinel(cmd) => match cmd.command {
+            SentinelCommands::FindValidatorMulticastPublishers(args) => {
+                args.execute(&dzclient).await
+            }
+            SentinelCommands::CreateValidatorMulticastPublishers(args) => {
+                args.execute(&dzclient).await
+            }
+        },
+
         // Geolocation module crate (doublezero-geolocation-cli per RFC-20)
         Command::Geolocation(args) => {
             let geo_client = GeoClient::from_context(&ctx, app.keypair.clone())?;
@@ -442,6 +453,24 @@ mod tests {
     fn url_alone_parses() {
         App::try_parse_from(["doublezero", "--url", "https://x.invalid/"])
             .expect("--url alone should parse");
+    }
+
+    #[test]
+    fn sentinel_subcommands_parse() {
+        App::try_parse_from([
+            "doublezero",
+            "sentinel",
+            "find-validator-multicast-publishers",
+        ])
+        .expect("find parses");
+        App::try_parse_from([
+            "doublezero",
+            "sentinel",
+            "create-validator-multicast-publishers",
+            "--multicast-group",
+            "mg-test",
+        ])
+        .expect("create parses");
     }
 
     use super::resolve_environment;

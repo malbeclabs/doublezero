@@ -20,6 +20,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/fixtures"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -477,23 +478,38 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 				require.NoError(t, err, "error reading fixture")
 
 				if test.eventually {
-					require.Eventually(t, func() bool {
+					// Capture the last observation so a genuine timeout still
+					// surfaces the table/diff (or exec error) rather than failing
+					// opaquely.
+					var lastGot []byte
+					var lastErr error
+					var lastDiff string
+					ok := assert.Eventually(t, func() bool {
 						got, err := client.Exec(t.Context(), test.cmd)
 						if err != nil {
+							lastErr = err
 							return false
 						}
-						return fixtures.DiffCLITable(got, []byte(want)) == ""
-					}, 60*time.Second, 1*time.Second, "%v output did not converge to expected", test.cmd)
-					return
-				}
+						lastGot, lastErr = got, nil
+						lastDiff = fixtures.DiffCLITable(got, []byte(want))
+						return lastDiff == ""
+					}, 60*time.Second, 1*time.Second)
+					if !ok {
+						if lastErr != nil {
+							t.Fatalf("error executing command on client: %v", lastErr)
+						}
+						fmt.Println(string(lastGot))
+						t.Fatalf("output did not converge: -(want), +(got):%s", lastDiff)
+					}
+				} else {
+					got, err := client.Exec(t.Context(), test.cmd)
+					require.NoError(t, err, "error executing command on client")
 
-				got, err := client.Exec(t.Context(), test.cmd)
-				require.NoError(t, err, "error executing command on client")
-
-				diff := fixtures.DiffCLITable(got, []byte(want))
-				if diff != "" {
-					fmt.Println(string(got))
-					t.Fatalf("output mismatch: -(want), +(got):%s", diff)
+					diff := fixtures.DiffCLITable(got, []byte(want))
+					if diff != "" {
+						fmt.Println(string(got))
+						t.Fatalf("output mismatch: -(want), +(got):%s", diff)
+					}
 				}
 			}) {
 				t.Fail()

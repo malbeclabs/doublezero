@@ -11,6 +11,10 @@ use solana_program::{
 // `User` account size assumes a single publisher and subscriber pubkey registered (266 bytes each).
 pub const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 266 * 3; // 266 bytes per User account x 3 accounts = 798 bytes
 
+/// Default per-user airdrop seeded into `GlobalState.user_airdrop_lamports` at initialization.
+/// Admins can override it via the `SetAirdrop` instruction.
+pub const DEFAULT_USER_AIRDROP_LAMPORTS: u64 = 40_000;
+
 /// Computes the target lamport balance a `user_payer` must hold to cover rent for its `User`
 /// accounts plus the configured per-user airdrop. `multiplier` scales the target for passes that
 /// admit several users (e.g. `allow_multiple_ip` seat keypairs); pass `1` for single-user passes.

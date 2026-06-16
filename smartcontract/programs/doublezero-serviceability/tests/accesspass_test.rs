@@ -4,7 +4,7 @@ use doublezero_serviceability::{
     processors::{
         accesspass::{
             check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs,
-            set::SetAccessPassArgs,
+            set::SetAccessPassArgs, AIRDROP_USER_RENT_LAMPORTS_BYTES,
         },
         contributor::create::ContributorCreateArgs,
         device::update::DeviceUpdateArgs,
@@ -1927,5 +1927,121 @@ async fn test_set_accesspass_airdrop_scales_with_allow_multiple_ip() {
         scaled_balance,
         base_balance * 5,
         "allow_multiple_ip pass should airdrop (max_unicast + max_multicast)x the base"
+    );
+}
+
+/// SetAccessPass tops off the pass's `user_payer` so it holds enough SOL to pay rent and
+/// connect. The FeedOracle relies on this to refill accounts that already have an AccessPass.
+/// This exercises that refill cycle: set an EdgeSeat pass and confirm the funding transfer,
+/// drain the `user_payer`, then re-run SetAccessPass with identical params and confirm the
+/// balance is restored to the rent + airdrop target.
+#[tokio::test]
+async fn test_set_accesspass_refills_depleted_user_payer() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // The top-off target for a single-user (multiplier 1) pass: rent for the User accounts the
+    // payer must fund plus the configured per-user airdrop set by InitGlobalState.
+    let user_airdrop_lamports = get_globalstate(&mut banks_client, globalstate_pubkey)
+        .await
+        .user_airdrop_lamports;
+    let target = banks_client
+        .get_rent()
+        .await
+        .unwrap()
+        .minimum_balance(AIRDROP_USER_RENT_LAMPORTS_BYTES)
+        + user_airdrop_lamports;
+
+    // A real keypair (not Pubkey::new_unique) so the test can sign a transfer to drain it.
+    let user_payer = Keypair::new();
+    let (accesspass_pubkey, _) =
+        get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &user_payer.pubkey());
+
+    let set_access_pass_args = SetAccessPassArgs {
+        accesspass_type: AccessPassType::EdgeSeat,
+        client_ip: Ipv4Addr::UNSPECIFIED,
+        last_access_epoch: u64::MAX,
+        allow_multiple_ip: false,
+        max_unicast_users: 1,
+        max_multicast_users: 1,
+    };
+    let set_access_pass_accounts = vec![
+        AccountMeta::new(accesspass_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+        AccountMeta::new(user_payer.pubkey(), false),
+    ];
+
+    // First SetAccessPass: user_payer starts at zero, so the full target is transferred in.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(set_access_pass_args.clone()),
+        set_access_pass_accounts.clone(),
+        &payer,
+    )
+    .await;
+
+    let funded_balance = banks_client
+        .get_account(user_payer.pubkey())
+        .await
+        .unwrap()
+        .expect("user_payer should be funded by the first SetAccessPass")
+        .lamports;
+    assert_eq!(
+        funded_balance, target,
+        "first SetAccessPass should top user_payer up to the rent + airdrop target"
+    );
+
+    // Drain most of the balance so it falls below the target, simulating a spent account. We
+    // leave a little behind because the `transfer` helper makes user_payer the fee payer, so it
+    // can't move its entire balance (the fee would push it negative).
+    transfer(&mut banks_client, &user_payer, &payer.pubkey(), target / 2).await;
+    let drained_balance = banks_client
+        .get_account(user_payer.pubkey())
+        .await
+        .unwrap()
+        .expect("user_payer should still exist after a partial drain")
+        .lamports;
+    assert!(
+        drained_balance < target,
+        "user_payer balance ({drained_balance}) should be below the target ({target}) before the refill"
+    );
+
+    // Second SetAccessPass with identical params: the refill restores the target balance.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(set_access_pass_args),
+        set_access_pass_accounts,
+        &payer,
+    )
+    .await;
+
+    let refilled_balance = banks_client
+        .get_account(user_payer.pubkey())
+        .await
+        .unwrap()
+        .expect("user_payer should be re-funded by the second SetAccessPass")
+        .lamports;
+    assert_eq!(
+        refilled_balance, target,
+        "second SetAccessPass should refill the depleted user_payer back to the target"
     );
 }

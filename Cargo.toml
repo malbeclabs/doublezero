@@ -2,7 +2,6 @@
 members = [
     "client/doublezero",
     "config",
-    "controlplane/doublezero-admin",
     "smartcontract/cli",
     "smartcontract/sdk/rs",
     "smartcontract/programs/doublezero-record",

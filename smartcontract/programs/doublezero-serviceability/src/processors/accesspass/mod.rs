@@ -11,6 +11,23 @@ use solana_program::{
 // `User` account size assumes a single publisher and subscriber pubkey registered (266 bytes each).
 pub const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 266 * 3; // 266 bytes per User account x 3 accounts = 798 bytes
 
+/// Computes the target lamport balance a `user_payer` must hold to cover rent for its `User`
+/// accounts plus the configured per-user airdrop. `multiplier` scales the target for passes that
+/// admit several users (e.g. `allow_multiple_ip` seat keypairs); pass `1` for single-user passes.
+///
+/// Off-chain callers (e.g. the feed oracle) can obtain `Rent` over RPC — by fetching the rent
+/// sysvar account, or via `getMinimumBalanceForRentExemption` — since `Rent::get()` is a syscall
+/// only available inside a running program.
+pub fn airdrop_user_target_lamports(
+    rent: &Rent,
+    user_airdrop_lamports: u64,
+    multiplier: u64,
+) -> u64 {
+    rent.minimum_balance(AIRDROP_USER_RENT_LAMPORTS_BYTES)
+        .saturating_add(user_airdrop_lamports)
+        .saturating_mul(multiplier)
+}
+
 /// Tops up `user_payer` so it holds enough SOL to cover rent for its `User` accounts plus the
 /// configured per-user airdrop, allowing the user to connect immediately. `multiplier` scales the
 /// target for passes that admit several users (e.g. `allow_multiple_ip` seat keypairs); pass `1`
@@ -24,12 +41,8 @@ pub fn airdrop_user_credits<'a>(
     user_airdrop_lamports: u64,
     multiplier: u64,
 ) -> ProgramResult {
-    let base_target = Rent::get()?
-        .minimum_balance(AIRDROP_USER_RENT_LAMPORTS_BYTES)
-        .saturating_add(user_airdrop_lamports);
-    let deposit = base_target
-        .saturating_mul(multiplier)
-        .saturating_sub(user_payer.lamports());
+    let target = airdrop_user_target_lamports(&Rent::get()?, user_airdrop_lamports, multiplier);
+    let deposit = target.saturating_sub(user_payer.lamports());
 
     if deposit == 0 {
         return Ok(());
@@ -45,4 +58,25 @@ pub fn airdrop_user_credits<'a>(
         ],
         &[],
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_airdrop_user_target_lamports() {
+        let rent = Rent::default();
+        let base = rent.minimum_balance(AIRDROP_USER_RENT_LAMPORTS_BYTES);
+        let airdrop = 40_000;
+
+        assert_eq!(
+            airdrop_user_target_lamports(&rent, airdrop, 1),
+            base + airdrop
+        );
+        assert_eq!(
+            airdrop_user_target_lamports(&rent, airdrop, 5),
+            (base + airdrop) * 5
+        );
+    }
 }

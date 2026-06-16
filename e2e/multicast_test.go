@@ -20,6 +20,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/fixtures"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -438,6 +439,10 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 			fixturePath string
 			data        map[string]any
 			cmd         []string
+			// eventually polls until the output converges to the fixture instead of
+			// taking a single snapshot. Used for checks whose value is populated
+			// asynchronously by the client daemon.
+			eventually bool
 		}{
 			{
 				name:        "doublezero_multicast_group_list",
@@ -457,6 +462,11 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 					"MulticastGroups":           expectedMulticastGroups,
 				},
 				cmd: []string{"doublezero", "status"},
+				// doublezero status reflects multicast-group membership
+				// asynchronously: the second group subscription propagates into the
+				// client daemon's status view a short time after connect. Poll until
+				// the table converges rather than racing a single snapshot.
+				eventually: true,
 			},
 		}
 
@@ -464,16 +474,42 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 			if !t.Run(test.name, func(t *testing.T) {
 				t.Parallel()
 
-				got, err := client.Exec(t.Context(), test.cmd)
-				require.NoError(t, err, "error executing command on client")
-
 				want, err := fixtures.Render(test.fixturePath, test.data)
 				require.NoError(t, err, "error reading fixture")
 
-				diff := fixtures.DiffCLITable(got, []byte(want))
-				if diff != "" {
-					fmt.Println(string(got))
-					t.Fatalf("output mismatch: -(want), +(got):%s", diff)
+				if test.eventually {
+					// Capture the last observation so a genuine timeout still
+					// surfaces the table/diff (or exec error) rather than failing
+					// opaquely.
+					var lastGot []byte
+					var lastErr error
+					var lastDiff string
+					ok := assert.Eventually(t, func() bool {
+						got, err := client.Exec(t.Context(), test.cmd)
+						if err != nil {
+							lastErr = err
+							return false
+						}
+						lastGot, lastErr = got, nil
+						lastDiff = fixtures.DiffCLITable(got, []byte(want))
+						return lastDiff == ""
+					}, 60*time.Second, 1*time.Second)
+					if !ok {
+						if lastErr != nil {
+							t.Fatalf("error executing command on client: %v", lastErr)
+						}
+						fmt.Println(string(lastGot))
+						t.Fatalf("output did not converge: -(want), +(got):%s", lastDiff)
+					}
+				} else {
+					got, err := client.Exec(t.Context(), test.cmd)
+					require.NoError(t, err, "error executing command on client")
+
+					diff := fixtures.DiffCLITable(got, []byte(want))
+					if diff != "" {
+						fmt.Println(string(got))
+						t.Fatalf("output mismatch: -(want), +(got):%s", diff)
+					}
 				}
 			}) {
 				t.Fail()

@@ -6,9 +6,9 @@ use serde_json::to_writer_pretty;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-pub struct MigrateCliCommand {}
+pub struct MigrateUserPdaCliCommand {}
 
-impl MigrateCliCommand {
+impl MigrateUserPdaCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
         _ctx: &CliContext,

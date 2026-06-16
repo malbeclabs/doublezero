@@ -1,7 +1,18 @@
 pub mod utils {
+    use doublezero_cli_core::{CliContext, CliContextBuilder};
+    use doublezero_config::Environment;
     use solana_sdk::pubkey::Pubkey;
 
     use crate::doublezerocommand::MockCliCommand;
+
+    /// Minimal context for verb tests. Commands that ignore `ctx` only need a
+    /// well-formed value; `Local` sources all URLs/program-IDs from config.
+    pub fn create_test_context() -> CliContext {
+        CliContextBuilder::new()
+            .with_env(Environment::Local)
+            .build()
+            .expect("test context")
+    }
 
     pub fn create_test_client() -> MockCliCommand {
         let mut client = MockCliCommand::new();

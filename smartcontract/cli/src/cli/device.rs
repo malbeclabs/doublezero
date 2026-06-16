@@ -8,6 +8,8 @@ use crate::device::{
         update::UpdateDeviceInterfaceCliCommand,
     },
     list::ListDeviceCliCommand,
+    migrate_multicast_counts::MigrateMulticastCountsCliCommand,
+    migrate_unicast_counts::MigrateUnicastCountsCliCommand,
     sethealth::SetDeviceHealthCliCommand,
     update::UpdateDeviceCliCommand,
 };
@@ -68,4 +70,10 @@ pub enum DeviceCommands {
     // Hidden because this is an internal/testing command and not part of the public CLI surface.
     #[clap(hide = true)]
     SetHealth(SetDeviceHealthCliCommand),
+    /// Correct stale multicast subscriber/publisher counts on all devices
+    #[clap(hide = true)]
+    MigrateMulticastCounts(MigrateMulticastCountsCliCommand),
+    /// Correct stale unicast user counts on all devices
+    #[clap(hide = true)]
+    MigrateUnicastCounts(MigrateUnicastCountsCliCommand),
 }

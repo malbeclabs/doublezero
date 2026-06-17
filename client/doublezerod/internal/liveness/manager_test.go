@@ -68,6 +68,12 @@ func TestClient_Liveness_Manager_ConfigValidate(t *testing.T) {
 	require.NotZero(t, cfg.BackoffMax)
 	require.GreaterOrEqual(t, int64(cfg.MaxTxCeil), int64(cfg.MinTxFloor))
 	require.GreaterOrEqual(t, int64(cfg.BackoffMax), int64(cfg.MinTxFloor))
+
+	// RouteReconcileInterval == 0 must survive Validate() unchanged so that 0
+	// disables reconciliation (the kill switch). A negative value is rejected.
+	require.Zero(t, cfg.RouteReconcileInterval, "Validate must not rewrite a zero RouteReconcileInterval")
+	cfg.RouteReconcileInterval = -1
+	require.Error(t, cfg.Validate())
 }
 
 func TestClient_Liveness_Manager_NewManager_BindsAndLocalAddr(t *testing.T) {
@@ -1604,6 +1610,10 @@ func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*manager, error)
 }
 
 func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*manager, *prometheus.Registry, error) {
+	return newTestManagerWithRoutesAndMetrics(t, nil, mutate)
+}
+
+func newTestManagerWithRoutesAndMetrics(t *testing.T, cr *routing.ConfiguredRoutes, mutate func(*ManagerConfig)) (*manager, *prometheus.Registry, error) {
 	reg := prometheus.NewRegistry()
 	cfg := &ManagerConfig{
 		Logger:          newTestLogger(t),
@@ -1622,7 +1632,7 @@ func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*mana
 	if mutate != nil {
 		mutate(cfg)
 	}
-	m, err := NewManager(t.Context(), cfg, nil)
+	m, err := NewManager(t.Context(), cfg, cr)
 	return m, reg, err
 }
 
@@ -1812,6 +1822,106 @@ func TestClient_Liveness_Manager_ReconcileRoutes_SkipsUninstalled(t *testing.T) 
 	mock.mu.Lock()
 	require.Equal(t, 0, addCalls, "should not reinstall a route that was never installed")
 	mock.mu.Unlock()
+}
+
+func TestClient_Liveness_Manager_ReconcileRoutes_SkipsExcluded(t *testing.T) {
+	t.Parallel()
+
+	r := newTestRoute(nil)
+
+	// Configured routes that exclude this route's destination. In production the
+	// manager's Netlinker is a ConfiguredRouteReaderWriter whose RouteAdd is a
+	// silent no-op for excluded destinations, so they are never present in the
+	// kernel even though installed[rk] is marked true. Reconciliation must not
+	// treat them as missing.
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "routes.json")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`{"exclude":["`+r.Dst.IP.String()+`"]}`), 0o600))
+	cfg, err := routing.NewConfiguredRoutes(cfgPath)
+	require.NoError(t, err)
+
+	addCalls := 0
+	mock := &MockRouteReaderWriter{
+		RouteAddFunc: func(rr *routing.Route) error {
+			addCalls++
+			return nil
+		},
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) {
+			// Empty — no routes in kernel (the excluded route was never added).
+			return nil, nil
+		},
+	}
+
+	m, reg, err := newTestManagerWithRoutesAndMetrics(t, cfg, func(cfg *ManagerConfig) {
+		cfg.Netlinker = mock
+		cfg.PassiveMode = true
+		cfg.RouteReconcileInterval = time.Hour
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	err = m.RegisterRoute(r, "lo", m.LocalAddr().Port)
+	require.NoError(t, err)
+
+	// Reset after RegisterRoute's install.
+	mock.mu.Lock()
+	addCalls = 0
+	mock.mu.Unlock()
+
+	m.reconcileRoutes()
+
+	mock.mu.Lock()
+	require.Equal(t, 0, addCalls, "should not reinstall an excluded route")
+	mock.mu.Unlock()
+
+	reinstalls := getCounterValue(t, reg, "doublezero_liveness_route_reinstalls_total",
+		prometheus.Labels{LabelIface: "lo", LabelLocalIP: r.Src.To4().String()})
+	require.Equal(t, float64(0), reinstalls, "excluded route must not increment the reinstall counter")
+}
+
+func TestClient_Liveness_Manager_ReconcileRoutes_IncrementsInstallFailureMetric(t *testing.T) {
+	t.Parallel()
+
+	addShouldFail := false
+	mock := &MockRouteReaderWriter{
+		RouteAddFunc: func(r *routing.Route) error {
+			if addShouldFail {
+				return errors.New("boom")
+			}
+			return nil
+		},
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) {
+			// Empty — route is missing from the kernel.
+			return nil, nil
+		},
+	}
+
+	m, reg, err := newTestManagerWithMetrics(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = mock
+		cfg.PassiveMode = true
+		cfg.RouteReconcileInterval = time.Hour
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(nil)
+	err = m.RegisterRoute(r, "lo", m.LocalAddr().Port)
+	require.NoError(t, err)
+
+	// Make the reconcile-time RouteAdd fail.
+	mock.mu.Lock()
+	addShouldFail = true
+	mock.mu.Unlock()
+
+	m.reconcileRoutes()
+
+	failures := getCounterValue(t, reg, "doublezero_liveness_route_install_failures_total",
+		prometheus.Labels{LabelIface: "lo", LabelLocalIP: r.Src.To4().String()})
+	require.Equal(t, float64(1), failures, "a failed reinstall must increment the install failure metric")
+
+	reinstalls := getCounterValue(t, reg, "doublezero_liveness_route_reinstalls_total",
+		prometheus.Labels{LabelIface: "lo", LabelLocalIP: r.Src.To4().String()})
+	require.Equal(t, float64(0), reinstalls, "a failed reinstall must not increment the reinstall counter")
 }
 
 func getHistogramCount(t *testing.T, reg *prometheus.Registry, name string, labels prometheus.Labels) float64 {

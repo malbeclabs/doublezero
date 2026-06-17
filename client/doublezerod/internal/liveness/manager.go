@@ -26,9 +26,6 @@ const (
 	defaultBackoffMax = 1 * time.Minute
 
 	defaultMaxEvents = 10240
-
-	// Default interval for periodic kernel route reconciliation.
-	defaultRouteReconcileInterval = 30 * time.Second
 )
 
 // Peer identifies a remote endpoint and the local interface context used to reach it.
@@ -162,9 +159,9 @@ func (c *ManagerConfig) Validate() error {
 	if c.RouteReconcileInterval < 0 {
 		return errors.New("routeReconcileInterval must be non-negative")
 	}
-	if c.RouteReconcileInterval == 0 {
-		c.RouteReconcileInterval = defaultRouteReconcileInterval
-	}
+	// Note: RouteReconcileInterval == 0 is left as-is to disable reconciliation
+	// (see the `> 0` guard in NewManager). The operational default comes from
+	// the flag default in main.go, not from here.
 	return nil
 }
 
@@ -924,9 +921,20 @@ func (m *manager) reconcileRoutes() {
 		if !ok {
 			continue
 		}
-		if r, exists := m.desired[rk]; exists {
-			toCheck = append(toCheck, installedRoute{rk: rk, route: r})
+		r, exists := m.desired[rk]
+		if !exists {
+			continue
 		}
+		// Skip excluded destinations: the manager's Netlinker is a
+		// ConfiguredRouteReaderWriter whose RouteAdd is a silent no-op for
+		// these, so they are never actually present in the kernel. Without
+		// this guard every excluded route would be flagged "missing" and
+		// "reinstalled" (a no-op) on every tick, inflating the reinstall
+		// counter and spamming logs forever.
+		if m.cr != nil && r.Dst != nil && r.Dst.IP != nil && m.cr.IsExcluded(r.Dst.IP.String()) {
+			continue
+		}
+		toCheck = append(toCheck, installedRoute{rk: rk, route: r})
 	}
 	m.mu.Unlock()
 
@@ -941,51 +949,64 @@ func (m *manager) reconcileRoutes() {
 	}
 
 	// Build a lookup set keyed by (table, dst, nexthop, src) for fast matching.
+	// Dst uses the full prefix (IP + mask) via *net.IPNet.String() so a kernel
+	// route with a different mask does not satisfy a desired route at the same
+	// IP (e.g. 10.0.0.0/16 must not match a desired 10.0.0.0/24).
 	type kernelKey struct {
 		Table   int
-		DstIP   string
+		Dst     string
 		NextHop string
 		SrcIP   string
 	}
+	dstString := func(ipnet *net.IPNet) string {
+		if ipnet == nil || ipnet.IP == nil {
+			return ""
+		}
+		return ipnet.String()
+	}
 	kernelSet := make(map[kernelKey]struct{}, len(kernelRoutes))
 	for _, kr := range kernelRoutes {
-		var dstIP, nhIP, srcIP string
-		if kr.Dst != nil && kr.Dst.IP != nil && kr.Dst.IP.To4() != nil {
-			dstIP = kr.Dst.IP.To4().String()
-		}
+		var nhIP, srcIP string
 		if kr.NextHop != nil && kr.NextHop.To4() != nil {
 			nhIP = kr.NextHop.To4().String()
 		}
 		if kr.Src != nil && kr.Src.To4() != nil {
 			srcIP = kr.Src.To4().String()
 		}
-		kernelSet[kernelKey{Table: kr.Table, DstIP: dstIP, NextHop: nhIP, SrcIP: srcIP}] = struct{}{}
+		kernelSet[kernelKey{Table: kr.Table, Dst: dstString(kr.Dst), NextHop: nhIP, SrcIP: srcIP}] = struct{}{}
 	}
 
 	for _, ir := range toCheck {
-		kk := kernelKey{Table: ir.route.Table, DstIP: ir.rk.DstPrefix, NextHop: ir.rk.NextHop, SrcIP: ir.rk.SrcIP}
+		kk := kernelKey{Table: ir.route.Table, Dst: dstString(ir.route.Dst), NextHop: ir.rk.NextHop, SrcIP: ir.rk.SrcIP}
 		if _, present := kernelSet[kk]; present {
 			continue
 		}
-		// Re-check under lock: the route may have been intentionally withdrawn
-		// between our snapshot and now (e.g. by onSessionDown).
+		// Re-check and reinstall under the lock. onSessionDown flips
+		// installed[rk] to false under m.mu *before* issuing RouteDelete, so
+		// holding the lock across the re-check and RouteAdd closes the race:
+		// either we observe the withdrawal and skip, or our add completes
+		// before the delete lands and the end state stays consistent. The
+		// netlink call under the lock only happens for genuinely-missing
+		// routes, which are rare by definition.
 		m.mu.Lock()
-		stillInstalled := m.installed[ir.rk]
-		m.mu.Unlock()
-		if !stillInstalled {
+		if !m.installed[ir.rk] {
+			m.mu.Unlock()
 			continue
 		}
-		m.log.Warn("liveness: reinstalling missing route",
-			"route", ir.route.String(),
-			"iface", ir.rk.Interface,
-		)
-		if err := m.cfg.Netlinker.RouteAdd(&ir.route.Route); err != nil {
+		err := m.cfg.Netlinker.RouteAdd(&ir.route.Route)
+		m.mu.Unlock()
+
+		if err != nil {
 			m.log.Error("liveness: error reinstalling route",
 				"error", err, "route", ir.route.String())
 			m.metrics.RouteInstallFailures.WithLabelValues(ir.rk.Interface, ir.rk.SrcIP).Inc()
-		} else {
-			m.metrics.routeReinstall(ir.rk.Interface, ir.rk.SrcIP)
+			continue
 		}
+		m.log.Warn("liveness: reinstalled missing route",
+			"route", ir.route.String(),
+			"iface", ir.rk.Interface,
+		)
+		m.metrics.routeReinstall(ir.rk.Interface, ir.rk.SrcIP)
 	}
 }
 

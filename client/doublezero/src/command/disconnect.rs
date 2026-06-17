@@ -38,6 +38,10 @@ pub struct DecommissioningCliCommand {
     /// Allocate a new address for the user
     #[arg(short, long, default_value_t = false)]
     pub verbose: bool,
+    /// Skip waiting for the daemon to tear down the tunnel(s); exit once the
+    /// onchain user deletion is confirmed.
+    #[arg(long, default_value_t = false)]
+    pub no_wait: bool,
     #[arg(value_enum)]
     pub dz_mode: Option<DzMode>,
 }
@@ -60,23 +64,27 @@ impl DecommissioningCliCommand {
         let (_, gstate) = client.get_globalstate(GetGlobalStateCommand)?;
         self.delete_users(client, client_ip, gstate.feed_authority_pk, &spinner)?;
 
-        // Wait for daemon to deprovision the tunnel(s)
-        let user_type_filter: Option<&str> = match self.dz_mode {
-            Some(DzMode::IBRL) => Some("IBRL"),
-            Some(DzMode::Multicast) => Some("Multicast"),
-            None => None,
-        };
-        match self
-            .poll_for_daemon_deprovisioned(&controller, user_type_filter, &spinner)
-            .await
-        {
-            Ok(()) => {
-                spinner.println("    Tunnel confirmed removed");
-            }
-            Err(e) => {
-                spinner.println(format!(
-                    "    Daemon deprovisioning in progress (will complete automatically): {e}"
-                ));
+        if self.no_wait {
+            spinner.println("    Skipping tunnel teardown wait (--no-wait)");
+        } else {
+            // Wait for daemon to deprovision the tunnel(s)
+            let user_type_filter: Option<&str> = match self.dz_mode {
+                Some(DzMode::IBRL) => Some("IBRL"),
+                Some(DzMode::Multicast) => Some("Multicast"),
+                None => None,
+            };
+            match self
+                .poll_for_daemon_deprovisioned(&controller, user_type_filter, &spinner)
+                .await
+            {
+                Ok(()) => {
+                    spinner.println("    Tunnel confirmed removed");
+                }
+                Err(e) => {
+                    spinner.println(format!(
+                        "    Daemon deprovisioning in progress (will complete automatically): {e}"
+                    ));
+                }
             }
         }
 
@@ -260,6 +268,7 @@ mod tests {
             device: None,
             client_ip: None,
             verbose: false,
+            no_wait: false,
             dz_mode: None,
         }
     }

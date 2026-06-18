@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
@@ -31,21 +32,22 @@ type ProvisioningTest struct {
 }
 
 type DeviceInfo struct {
-	Pubkey          string
-	Code            string
-	ContributorCode string
-	LocationCode    string
-	ExchangeCode    string
-	PublicIP        string
-	DzPrefixes      []string
-	MgmtVrf         string
-	MaxUsers        int
-	UsersCount      int
-	Status          string
-	Health          string
-	DeviceType      string
-	DesiredStatus   string
-	Interfaces      []InterfaceInfo
+	Pubkey           string
+	Code             string
+	ContributorCode  string
+	LocationCode     string
+	ExchangeCode     string
+	PublicIP         string
+	DzPrefixes       []string
+	MgmtVrf          string
+	MaxUsers         int
+	UsersCount       int
+	Status           string
+	Health           string
+	DeviceType       string
+	DesiredStatus    string
+	MetricsPublisher string
+	Interfaces       []InterfaceInfo
 }
 
 type InterfaceInfo struct {
@@ -54,16 +56,17 @@ type InterfaceInfo struct {
 }
 
 type DeviceSpec struct {
-	Code            string
-	ContributorCode string
-	LocationCode    string
-	ExchangeCode    string
-	PublicIP        string
-	DzPrefixes      []string
-	MgmtVrf         string
-	MaxUsers        int
-	DeviceType      string
-	Interfaces      []InterfaceInfo
+	Code             string
+	ContributorCode  string
+	LocationCode     string
+	ExchangeCode     string
+	PublicIP         string
+	DzPrefixes       []string
+	MgmtVrf          string
+	MaxUsers         int
+	DeviceType       string
+	MetricsPublisher string
+	Interfaces       []InterfaceInfo
 }
 
 type LinkInfo struct {
@@ -153,21 +156,22 @@ func (p *ProvisioningTest) GetDeviceByCode(ctx context.Context, code string) (*D
 			}
 
 			return &DeviceInfo{
-				Pubkey:          base58.Encode(device.PubKey[:]),
-				Code:            device.Code,
-				ContributorCode: contributors[device.ContributorPubKey],
-				LocationCode:    locations[device.LocationPubKey],
-				ExchangeCode:    exchanges[device.ExchangePubKey],
-				PublicIP:        net.IP(device.PublicIp[:]).String(),
-				DzPrefixes:      prefixes,
-				MgmtVrf:         device.MgmtVrf,
-				MaxUsers:        int(device.MaxUsers),
-				UsersCount:      int(device.UsersCount),
-				Status:          device.Status.String(),
-				Health:          device.DeviceHealth.String(),
-				DeviceType:      device.DeviceType.String(),
-				DesiredStatus:   device.DeviceDesiredStatus.String(),
-				Interfaces:      ifaces,
+				Pubkey:           base58.Encode(device.PubKey[:]),
+				Code:             device.Code,
+				ContributorCode:  contributors[device.ContributorPubKey],
+				LocationCode:     locations[device.LocationPubKey],
+				ExchangeCode:     exchanges[device.ExchangePubKey],
+				PublicIP:         net.IP(device.PublicIp[:]).String(),
+				DzPrefixes:       prefixes,
+				MgmtVrf:          device.MgmtVrf,
+				MaxUsers:         int(device.MaxUsers),
+				UsersCount:       int(device.UsersCount),
+				Status:           device.Status.String(),
+				Health:           device.DeviceHealth.String(),
+				DeviceType:       device.DeviceType.String(),
+				DesiredStatus:    device.DeviceDesiredStatus.String(),
+				MetricsPublisher: base58.Encode(device.MetricsPublisherPubKey[:]),
+				Interfaces:       ifaces,
 			}, nil
 		}
 	}
@@ -177,17 +181,70 @@ func (p *ProvisioningTest) GetDeviceByCode(ctx context.Context, code string) (*D
 
 func (p *ProvisioningTest) GetDeviceSpec(ctx context.Context, device *DeviceInfo) (*DeviceSpec, error) {
 	return &DeviceSpec{
-		Code:            device.Code,
-		ContributorCode: device.ContributorCode,
-		LocationCode:    device.LocationCode,
-		ExchangeCode:    device.ExchangeCode,
-		PublicIP:        device.PublicIP,
-		DzPrefixes:      device.DzPrefixes,
-		MgmtVrf:         device.MgmtVrf,
-		MaxUsers:        device.MaxUsers,
-		DeviceType:      device.DeviceType,
-		Interfaces:      device.Interfaces,
+		Code:             device.Code,
+		ContributorCode:  device.ContributorCode,
+		LocationCode:     device.LocationCode,
+		ExchangeCode:     device.ExchangeCode,
+		PublicIP:         device.PublicIP,
+		DzPrefixes:       device.DzPrefixes,
+		MgmtVrf:          device.MgmtVrf,
+		MaxUsers:         device.MaxUsers,
+		DeviceType:       device.DeviceType,
+		MetricsPublisher: device.MetricsPublisher,
+		Interfaces:       device.Interfaces,
 	}, nil
+}
+
+// ResolveMetricsPublisherPubkey derives the device's metrics-publisher public key
+// from the ansible-vault-encrypted keypair shipped to the device by the infra repo
+// (the same key the telemetry agent signs samples with). This is the authoritative
+// source of truth for the publisher: the on-chain record can drift (it had been set
+// to the transaction payer), but the keypair the agent actually uses cannot.
+func (p *ProvisioningTest) ResolveMetricsPublisherPubkey(ctx context.Context, deviceCode string) (string, error) {
+	keypairPath := filepath.Join(p.infraPath, "ansible/inventory", p.env, "host_files", deviceCode, "metrics-publisher-keypair.json")
+
+	vaultPass := os.Getenv("ANSIBLE_VAULT_PASSWORD")
+	if vaultPass == "" {
+		return "", fmt.Errorf("ANSIBLE_VAULT_PASSWORD is not set; cannot decrypt %s", keypairPath)
+	}
+
+	vaultFile, err := os.CreateTemp("", "vault-pass")
+	if err != nil {
+		return "", fmt.Errorf("failed to create vault pass file: %w", err)
+	}
+	defer os.Remove(vaultFile.Name())
+	if _, err := vaultFile.WriteString(vaultPass); err != nil {
+		vaultFile.Close()
+		return "", fmt.Errorf("failed to write vault pass: %w", err)
+	}
+	vaultFile.Close()
+
+	cmd := exec.CommandContext(ctx, "ansible-vault", "view",
+		"--vault-password-file", vaultFile.Name(), keypairPath)
+	decrypted, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("ansible-vault view failed for %s: %w", keypairPath, err)
+	}
+
+	// Stage the decrypted keypair in a temp file (os.CreateTemp creates it 0600) for
+	// solana-go to read, then remove it. The secret never leaves the runner — only the
+	// derived public key is sent on-chain.
+	keypairFile, err := os.CreateTemp("", "metrics-publisher-keypair-*.json")
+	if err != nil {
+		return "", fmt.Errorf("failed to create keypair temp file: %w", err)
+	}
+	defer os.Remove(keypairFile.Name())
+	if _, err := keypairFile.Write(decrypted); err != nil {
+		keypairFile.Close()
+		return "", fmt.Errorf("failed to write decrypted keypair: %w", err)
+	}
+	keypairFile.Close()
+
+	privKey, err := solana.PrivateKeyFromSolanaKeygenFile(keypairFile.Name())
+	if err != nil {
+		return "", fmt.Errorf("failed to parse metrics-publisher keypair: %w", err)
+	}
+	return privKey.PublicKey().String(), nil
 }
 
 func (p *ProvisioningTest) GetLinksForDevice(ctx context.Context, deviceCode string) ([]*LinkInfo, error) {
@@ -324,6 +381,13 @@ func (p *ProvisioningTest) CreateDevice(ctx context.Context, cfg *DeviceSpec) (s
 
 	if cfg.DeviceType != "" {
 		args = append(args, "--device-type", strings.ToLower(cfg.DeviceType))
+	}
+
+	// Pin the metrics publisher to the device's telemetry-agent keypair. Without
+	// this flag the CLI defaults the publisher to the transaction payer, which
+	// leaves the telemetry agent unable to write samples to the ledger.
+	if cfg.MetricsPublisher != "" {
+		args = append(args, "--metrics-publisher", cfg.MetricsPublisher)
 	}
 
 	output, err := p.runCLI(ctx, args...)

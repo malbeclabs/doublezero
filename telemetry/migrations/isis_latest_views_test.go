@@ -61,7 +61,7 @@ func TestIsisLatestViews_LastSeenPerNetworkInstance(t *testing.T) {
 			Timestamp       time.Time
 			NetworkInstance string
 		}
-		rows := selectAll(t, db, 2, `
+		rows := selectAll(t, db, `
 			SELECT timestamp, network_instance
 			FROM isis_global_state_latest
 			WHERE device_pubkey = ?
@@ -85,7 +85,7 @@ func TestIsisLatestViews_LastSeenPerNetworkInstance(t *testing.T) {
 			NetworkInstance string
 			OverloadBit     bool
 		}
-		rows := selectAll(t, db, 2, `
+		rows := selectAll(t, db, `
 			SELECT timestamp, network_instance, overload_bit
 			FROM isis_overload_bit_latest
 			WHERE device_pubkey = ?
@@ -138,41 +138,18 @@ func mustExec(t *testing.T, db *sql.DB, query string, args ...any) {
 	require.NoError(t, err, "exec failed: %s", query)
 }
 
-// selectAll runs query and returns the scanned rows, retrying until at least
-// wantLen rows are visible (or a timeout elapses). ClickHouse inserts are not
-// always immediately visible to a subsequent read on a different pooled
-// connection, so a freshly-inserted row can be momentarily absent under load;
-// polling makes the read deterministic without changing what is asserted.
-func selectAll[T any](t *testing.T, db *sql.DB, wantLen int, query string, scan func(*sql.Rows) (T, error), args ...any) []T {
+func selectAll[T any](t *testing.T, db *sql.DB, query string, scan func(*sql.Rows) (T, error), args ...any) []T {
 	t.Helper()
-
-	query1 := func() ([]T, error) {
-		rows, err := db.QueryContext(context.Background(), query, args...)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-
-		var out []T
-		for rows.Next() {
-			v, err := scan(rows)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, v)
-		}
-		return out, rows.Err()
-	}
+	rows, err := db.QueryContext(context.Background(), query, args...)
+	require.NoError(t, err, "query failed: %s", query)
+	defer rows.Close()
 
 	var out []T
-	require.Eventually(t, func() bool {
-		res, err := query1()
-		if err != nil {
-			return false
-		}
-		out = res
-		return len(out) >= wantLen
-	}, 10*time.Second, 100*time.Millisecond, "query did not return %d row(s): %s", wantLen, query)
-
+	for rows.Next() {
+		v, err := scan(rows)
+		require.NoError(t, err)
+		out = append(out, v)
+	}
+	require.NoError(t, rows.Err())
 	return out
 }

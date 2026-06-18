@@ -38,8 +38,10 @@ pub struct DecommissioningCliCommand {
     /// Allocate a new address for the user
     #[arg(short, long, default_value_t = false)]
     pub verbose: bool,
-    /// Skip waiting for the daemon to tear down the tunnel(s); exit once the
-    /// onchain user deletion is confirmed.
+    /// Skip waiting for the daemon to tear down the tunnel(s). The onchain user
+    /// deletion is still awaited (and can block up to ~127s per user when the RPC
+    /// is slow to reflect it); only the local tunnel-teardown wait is skipped, so
+    /// traffic may still route over DoubleZero briefly after this returns.
     #[arg(long, default_value_t = false)]
     pub no_wait: bool,
     #[arg(value_enum)]
@@ -65,7 +67,11 @@ impl DecommissioningCliCommand {
         self.delete_users(client, client_ip, gstate.feed_authority_pk, &spinner)?;
 
         if self.no_wait {
-            spinner.println("    Skipping tunnel teardown wait (--no-wait)");
+            spinner.println(
+                "    Onchain user deletion confirmed. The daemon will tear down the \
+                 tunnel(s) shortly; traffic may still route over DoubleZero until then.",
+            );
+            spinner.println("✅  Onchain deletion complete (tunnel teardown pending)");
         } else {
             // Wait for daemon to deprovision the tunnel(s)
             let user_type_filter: Option<&str> = match self.dz_mode {
@@ -86,9 +92,9 @@ impl DecommissioningCliCommand {
                     ));
                 }
             }
+            spinner.println("✅  Deprovisioning Complete");
         }
 
-        spinner.println("✅  Deprovisioning Complete");
         spinner.finish_and_clear();
 
         Ok(())

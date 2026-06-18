@@ -44,7 +44,7 @@ pub struct CreateDeviceCliCommand {
     /// List of DZ prefixes in comma-separated CIDR format (e.g. 10.1.0.0/16,10.2.0.0/16)
     #[arg(long)]
     pub dz_prefixes: NetworkV4List,
-    /// Metrics publisher public key (optional, defaults to zeroed pubkey)
+    /// Metrics publisher public key (optional, defaults to the transaction payer)
     #[arg(long, value_parser = validate_pubkey)]
     pub metrics_publisher: Option<String>,
     /// Management VRF name (optional)

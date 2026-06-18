@@ -2,6 +2,7 @@ package services_test
 
 import (
 	"net"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -17,6 +18,8 @@ import (
 )
 
 type MockBgpServer struct {
+	mu          sync.Mutex
+	status      bgp.Session
 	deletedPeer net.IP
 	addPeer     *bgp.PeerConfig
 }
@@ -31,9 +34,19 @@ func (m *MockBgpServer) DeletePeer(ip net.IP) error {
 	m.deletedPeer = ip
 	return nil
 }
-func (m *MockBgpServer) GetPeerStatus(net.IP) bgp.Session { return bgp.Session{} }
-func (m *MockBgpServer) Close()                           {}
-func (m *MockBgpServer) GetPeers() []corebgp.PeerConfig   { return []corebgp.PeerConfig{} }
+func (m *MockBgpServer) GetPeerStatus(net.IP) bgp.Session {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.status
+}
+
+func (m *MockBgpServer) SetStatus(s bgp.Session) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.status = s
+}
+func (m *MockBgpServer) Close()                         {}
+func (m *MockBgpServer) GetPeers() []corebgp.PeerConfig { return []corebgp.PeerConfig{} }
 
 type MockNetlink struct {
 	routes        []*routing.Route
@@ -124,15 +137,19 @@ func (m *MockPIMServer) Close() error {
 }
 
 type MockHeartbeatSender struct {
-	started bool
-	closed  bool
-	iface   string
-	srcIP   net.IP
-	groups  []net.IP
-	ttl     int
+	mu                sync.Mutex
+	started           bool
+	closed            bool
+	updateGroupsCalls int
+	iface             string
+	srcIP             net.IP
+	groups            []net.IP
+	ttl               int
 }
 
 func (m *MockHeartbeatSender) Start(iface string, srcIP net.IP, groups []net.IP, ttl int, interval time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.started = true
 	m.iface = iface
 	m.srcIP = srcIP
@@ -142,15 +159,48 @@ func (m *MockHeartbeatSender) Start(iface string, srcIP net.IP, groups []net.IP,
 }
 
 func (m *MockHeartbeatSender) UpdateGroups(groups []net.IP) error {
-	m.closed = true
-	m.started = true
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.updateGroupsCalls++
 	m.groups = groups
 	return nil
 }
 
 func (m *MockHeartbeatSender) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.closed = true
 	return nil
+}
+
+func (m *MockHeartbeatSender) wasStarted() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.started
+}
+
+func (m *MockHeartbeatSender) updateCalls() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.updateGroupsCalls
+}
+
+func (m *MockHeartbeatSender) getGroups() []net.IP {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.groups
+}
+
+func waitForHeartbeatStarted(t *testing.T, m *MockHeartbeatSender) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if m.wasStarted() {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for heartbeat to start")
 }
 
 func TestServices(t *testing.T) {
@@ -721,11 +771,16 @@ func TestMulticastService_UpdateGroups_AddPubGroup(t *testing.T) {
 	if err := svc.Setup(pr); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	t.Cleanup(func() { _ = svc.Teardown() })
+
+	// Bring BGP up and wait for the heartbeat to start so we exercise the
+	// running-heartbeat group-update path.
+	mockBgp.SetStatus(bgp.Session{SessionStatus: bgp.SessionStatusUp})
+	waitForHeartbeatStarted(t, mockHeartbeat)
+
 	// Reset mock state after setup
 	mockNetlink.routesAdded = nil
 	mockNetlink.routesRemoved = nil
-	mockHeartbeat.started = false
-	mockHeartbeat.closed = false
 
 	// Add a second pub group
 	newPR := &api.ProvisionRequest{
@@ -765,15 +820,12 @@ func TestMulticastService_UpdateGroups_AddPubGroup(t *testing.T) {
 		t.Fatalf("expected route src 7.7.7.7, got %v", addedRoute.Src)
 	}
 
-	// Heartbeat should have been restarted
-	if !mockHeartbeat.closed {
-		t.Fatal("expected heartbeat to be closed during restart")
+	// Heartbeat groups should be updated in place (no teardown/restart).
+	if mockHeartbeat.updateCalls() != 1 {
+		t.Fatalf("expected heartbeat.UpdateGroups called once, got %d", mockHeartbeat.updateCalls())
 	}
-	if !mockHeartbeat.started {
-		t.Fatal("expected heartbeat to be restarted")
-	}
-	if len(mockHeartbeat.groups) != 2 {
-		t.Fatalf("expected heartbeat restarted with 2 groups, got %d", len(mockHeartbeat.groups))
+	if len(mockHeartbeat.getGroups()) != 2 {
+		t.Fatalf("expected heartbeat updated with 2 groups, got %d", len(mockHeartbeat.getGroups()))
 	}
 
 	// ProvisionRequest should be updated
@@ -811,6 +863,7 @@ func TestMulticastService_UpdateGroups_RemovePubGroup(t *testing.T) {
 	if err := svc.Setup(pr); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	t.Cleanup(func() { _ = svc.Teardown() })
 	mockNetlink.routesAdded = nil
 	mockNetlink.routesRemoved = nil
 
@@ -946,5 +999,132 @@ func TestMulticastService_DoubleTeardown(t *testing.T) {
 	// Second teardown must not panic (e.g. double close of heartbeat channel).
 	if err := svc.Teardown(); err != nil {
 		t.Fatalf("second Teardown() returned error: %v", err)
+	}
+}
+
+// TestMulticastService_HeartbeatGatedOnBGPUp encodes the fix for the recurring
+// wedged-(S,G) bug: the publisher source register (the heartbeat) must not start
+// until the BGP session is Up, so the DZD never sees a source register before its
+// plumbing is ready. On current main the heartbeat starts inline in Setup before
+// the session is established, so this test fails.
+func TestMulticastService_HeartbeatGatedOnBGPUp(t *testing.T) {
+	mockBgp := &MockBgpServer{}
+	mockNetlink := &MockNetlink{}
+	mockPim := &MockPIMServer{}
+	mockHeartbeat := &MockHeartbeatSender{}
+
+	// Session starts Pending — the source must stay silent.
+	mockBgp.SetStatus(bgp.Session{SessionStatus: bgp.SessionStatusPending})
+
+	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	pr := &api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		MulticastPubGroups: []net.IP{{239, 0, 0, 1}},
+		TunnelNet:          &net.IPNet{IP: net.IPv4(169, 254, 0, 0), Mask: net.IPMask{255, 255, 255, 254}},
+		DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+	if err := svc.Setup(pr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	t.Cleanup(func() { _ = svc.Teardown() })
+
+	// While BGP is not Up, the heartbeat must stay silent even after the readiness
+	// watcher has had time to poll.
+	time.Sleep(300 * time.Millisecond)
+	if mockHeartbeat.wasStarted() {
+		t.Fatal("heartbeat started before BGP session reached Up")
+	}
+
+	// Once BGP reaches Up, the heartbeat should start.
+	mockBgp.SetStatus(bgp.Session{SessionStatus: bgp.SessionStatusUp})
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if mockHeartbeat.wasStarted() {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !mockHeartbeat.wasStarted() {
+		t.Fatal("heartbeat did not start after BGP session reached Up")
+	}
+}
+
+// TestMulticastService_HeartbeatGroupChangeBeforeBGPUp guards the incremental
+// group-update path (add/remove groups without a disconnect/reconnect) against
+// the readiness gate: if pub groups change before BGP is Up, UpdateGroups must
+// not touch the not-yet-started heartbeat (the real sender would panic on a nil
+// conn), and the eventual start must use the updated group set.
+func TestMulticastService_HeartbeatGroupChangeBeforeBGPUp(t *testing.T) {
+	mockBgp := &MockBgpServer{}
+	mockNetlink := &MockNetlink{}
+	mockPim := &MockPIMServer{}
+	mockHeartbeat := &MockHeartbeatSender{}
+	mockBgp.SetStatus(bgp.Session{SessionStatus: bgp.SessionStatusPending})
+
+	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
+	if err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+	pr := &api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		MulticastPubGroups: []net.IP{{239, 0, 0, 1}},
+		TunnelNet:          &net.IPNet{IP: net.IPv4(169, 254, 0, 0), Mask: net.IPMask{255, 255, 255, 254}},
+		DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+	if err := svc.Setup(pr); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	t.Cleanup(func() { _ = svc.Teardown() })
+
+	gu, ok := svc.(interface {
+		UpdateGroups(*api.ProvisionRequest) error
+	})
+	if !ok {
+		t.Fatal("service does not implement UpdateGroups")
+	}
+
+	// Groups change while BGP is still down.
+	newPR := &api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		MulticastPubGroups: []net.IP{{239, 0, 0, 1}, {239, 0, 0, 3}},
+		TunnelNet:          &net.IPNet{IP: net.IPv4(169, 254, 0, 0), Mask: net.IPMask{255, 255, 255, 254}},
+		DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+	if err := gu.UpdateGroups(newPR); err != nil {
+		t.Fatalf("UpdateGroups failed: %v", err)
+	}
+
+	if mockHeartbeat.wasStarted() {
+		t.Fatal("heartbeat started before BGP reached Up")
+	}
+	if mockHeartbeat.updateCalls() != 0 {
+		t.Fatalf("heartbeat.UpdateGroups called %d times before the heartbeat started; must be 0", mockHeartbeat.updateCalls())
+	}
+
+	// When BGP comes up, the heartbeat starts with the updated group set.
+	mockBgp.SetStatus(bgp.Session{SessionStatus: bgp.SessionStatusUp})
+	waitForHeartbeatStarted(t, mockHeartbeat)
+	if got := mockHeartbeat.getGroups(); len(got) != 2 {
+		t.Fatalf("expected heartbeat to start with the updated 2 groups, got %d", len(got))
 	}
 }

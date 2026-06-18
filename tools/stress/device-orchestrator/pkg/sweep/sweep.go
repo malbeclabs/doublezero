@@ -329,7 +329,23 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("start agent runner: %w", err)
 	}
 
-	var agentErr error
+	// agentErr is written by the consumer goroutine but read by Run before
+	// consumerWG.Wait() (the quiescence-wait decision below), so guard it.
+	var (
+		agentErrMu sync.Mutex
+		agentErr   error
+	)
+	setAgentErr := func(e error) {
+		agentErrMu.Lock()
+		defer agentErrMu.Unlock()
+		agentErr = e
+	}
+	getAgentErr := func() error {
+		agentErrMu.Lock()
+		defer agentErrMu.Unlock()
+		return agentErr
+	}
+
 	var consumerWG sync.WaitGroup
 	consumerWG.Add(1)
 	go func() {
@@ -339,8 +355,9 @@ func Run(ctx context.Context, cfg Config) error {
 		// than our own agentCancel during teardown), abort the run so the
 		// provisioning loop stops and Run reports the failure.
 		if e := cfg.Agent.Err(); e != nil {
-			agentErr = fmt.Errorf("agent stream: %w", e)
-			runCancel(agentErr)
+			streamErr := fmt.Errorf("agent stream: %w", e)
+			setAgentErr(streamErr)
+			runCancel(streamErr)
 		}
 	}()
 
@@ -380,7 +397,7 @@ func Run(ctx context.Context, cfg Config) error {
 	// ignores cancellation. The hard `AgentQuiescenceTimeout` (default
 	// 300s) caps the wait either way, and a user who really wants out
 	// can re-Ctrl-C to kill the orchestrator process.
-	if depErr == nil && agentErr == nil {
+	if depErr == nil && getAgentErr() == nil {
 		waitCtx := ctx
 		if ctx.Err() != nil {
 			waitCtx = context.WithoutCancel(ctx)
@@ -395,7 +412,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	// An agent stream failure takes precedence: it aborted the run, so report
 	// it even though provision likely returned context.Canceled as a result.
-	if agentErr != nil {
+	if agentErr := getAgentErr(); agentErr != nil {
 		return agentErr
 	}
 	if err != nil {

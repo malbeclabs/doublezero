@@ -126,6 +126,17 @@ jobs:
             echo "::notice::Skipping e2e: docs/version-bump-only PR."
             exit 0
           fi
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.user.login }}" = "dependabot[bot]" ]; then
+            echo "run-e2e=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping privileged e2e on a Dependabot PR (read-only token, no secrets). A maintainer can comment /run-e2e to start a trusted run."
+            {
+              echo "### Privileged e2e skipped"
+              echo
+              echo "Dependabot PRs run with a read-only token and no secrets, so privileged e2e cannot run on the \`pull_request\` event."
+              echo "A maintainer can comment \`/run-e2e\` to dispatch trusted e2e for this PR head SHA."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
             echo "run-e2e=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Skipping privileged e2e on an external fork PR. A maintainer can comment /run-e2e to start a trusted run."

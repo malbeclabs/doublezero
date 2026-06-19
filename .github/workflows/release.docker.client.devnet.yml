@@ -1,11 +1,14 @@
 name: release.docker.client.devnet
 
 # Builds and publishes the PRIVATE devnet client image
-# (ghcr.io/<owner>/doublezero-devnet) after the nightly devnet client deb is
-# published. Triggered manually or chained off the nightly devnet client release.
+# (ghcr.io/<owner>/doublezero-devnet) after the nightly devnet release. Chained
+# off release.devnet.all.daily, the scheduled umbrella that publishes the devnet
+# client deb (via the reusable release.daily.yml). It must watch that top-level
+# workflow, not release.devnet.client.daily: workflow_run never fires for
+# reusable/called workflows, and release.devnet.client.daily is manual-only.
 on:
   workflow_run:
-    workflows: ["release.devnet.client.daily"]
+    workflows: ["release.devnet.all.daily"]
     types: [completed]
   workflow_dispatch:
 
@@ -19,7 +22,12 @@ env:
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Build on the nightly's completion regardless of its overall conclusion: the
+    # client deb is published by an early matrix leg, so an unrelated later
+    # failure (e.g. qa) must not skip the image. The version is resolved from the
+    # devnet Cloudsmith repo, so a no-op/early run just rebuilds the latest. Skip
+    # only cancelled runs.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

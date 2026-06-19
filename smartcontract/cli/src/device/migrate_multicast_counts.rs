@@ -8,6 +8,7 @@ use doublezero_sdk::{
     },
     UserStatus, UserType,
 };
+use doublezero_serviceability::state::user::TunnelFlags;
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, io::Write};
 
@@ -32,7 +33,12 @@ impl MigrateMulticastCountsCliCommand {
             let is_live = user.status != UserStatus::Banned;
             if user.user_type == UserType::Multicast && is_live {
                 let (pub_count, sub_count) = per_device.entry(user.device_pk).or_default();
-                if user.is_publisher() {
+                // Device publisher/subscriber counters track the durable
+                // CreatedAsPublisher flag, not the (mutable) publishers list:
+                // the onchain counters are incremented at creation and
+                // decremented at delete on this flag, and a user's publishers
+                // list can empty out (or fill) without moving the counter.
+                if TunnelFlags::is_set(user.tunnel_flags, TunnelFlags::CreatedAsPublisher) {
                     *pub_count = pub_count.saturating_add(1);
                 } else {
                     *sub_count = sub_count.saturating_add(1);
@@ -182,7 +188,11 @@ mod tests {
             subscribers: vec![],
             validator_pubkey: Pubkey::default(),
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            tunnel_flags: 0,
+            tunnel_flags: if is_publisher {
+                TunnelFlags::CreatedAsPublisher as u8
+            } else {
+                0
+            },
             bgp_status: Default::default(),
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
@@ -354,5 +364,56 @@ mod tests {
         assert!(output.contains("publishers"));
         // Should NOT submit
         assert!(output.contains("[dry-run]"));
+    }
+
+    // Regression: the tally must classify multicast users by the durable
+    // `CreatedAsPublisher` flag (the axis the device counters are maintained
+    // on), not the live `publishers` list. Using `publishers.is_empty()`
+    // mis-counts two reachable states:
+    //   - created as publisher, later dropped all groups: empty list, flag set
+    //   - created as subscriber, later published: non-empty list, no flag
+    // Each user sits on its own device so a swap can't coincidentally net out.
+    #[tokio::test]
+    async fn test_migrate_counts_multicast_publishers_by_created_flag() {
+        let mut client = create_test_client();
+
+        // device1 stored pub=1, sub=0: one user created as publisher whose
+        // publishers list is now empty (disconnected its groups).
+        let device1_pk = Pubkey::new_unique();
+        let mut disconnected_pub = make_multicast_user(device1_pk, false);
+        disconnected_pub.tunnel_flags = TunnelFlags::CreatedAsPublisher as u8;
+
+        // device2 stored pub=0, sub=1: one user created as subscriber that is
+        // now publishing (non-empty publishers list, flag unset).
+        let device2_pk = Pubkey::new_unique();
+        let mut publishing_sub = make_multicast_user(device2_pk, true);
+        publishing_sub.tunnel_flags = 0;
+
+        let users: HashMap<Pubkey, User> = HashMap::from([
+            (Pubkey::new_unique(), disconnected_pub),
+            (Pubkey::new_unique(), publishing_sub),
+        ]);
+        let devices: HashMap<Pubkey, Device> = HashMap::from([
+            (device1_pk, make_device(0, 1)),
+            (device2_pk, make_device(1, 0)),
+        ]);
+
+        client
+            .expect_list_user()
+            .returning(move |_| Ok(users.clone()));
+        client
+            .expect_list_device()
+            .returning(move |_| Ok(devices.clone()));
+        // Counts already match under the flag-based tally; the buggy
+        // publishers-list tally would flip both devices and call update twice.
+        client.expect_update_device().times(0);
+
+        let mut out = Vec::new();
+        let res = MigrateMulticastCountsCliCommand { dry_run: false }
+            .execute(&create_test_context(), &client, &mut out)
+            .await;
+        assert!(res.is_ok());
+        let output = String::from_utf8(out).unwrap();
+        assert!(output.contains("0 device(s)"));
     }
 }

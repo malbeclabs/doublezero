@@ -1667,11 +1667,11 @@ dependencies = [
  "solana-client",
  "solana-sdk",
  "strum 0.26.3",
- "strum_macros 0.26.4",
+ "strum_macros 0.28.0",
  "tabled",
  "thiserror 2.0.17",
  "tokio",
- "tokio-util 0.6.10",
+ "tokio-util 0.7.15",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -1698,7 +1698,7 @@ dependencies = [
  "solana-sdk",
  "solana-system-interface",
  "strum 0.26.3",
- "strum_macros 0.26.4",
+ "strum_macros 0.28.0",
  "thiserror 2.0.17",
 ]
 
@@ -8380,14 +8380,13 @@ dependencies = [
 
 [[package]]
 name = "strum_macros"
-version = "0.26.4"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
+checksum = "ab85eea0270ee17587ed4156089e10b9e6880ee688791d45a905f5b1ca36f664"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "rustversion",
  "syn 2.0.102",
 ]
 

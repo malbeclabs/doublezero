@@ -19,6 +19,8 @@ All notable changes to this project will be documented in this file.
   - Skip rendering device config when a string field would not survive as a single config token (contains control or whitespace characters).
 - Device agents
   - Reduce agent CPU usage by continuing to fetch the full config every 5 seconds but only applying when it has changed or after 60s timeout
+- E2E tests
+  - Route all devnet networks (CYOA, default, and miscellaneous) through a shared collision-safe subnet allocator to prevent overlapping subnet assignments across concurrent test runs. (#3919)
 
 ## [v0.27.1](https://github.com/malbeclabs/doublezero/compare/client/v0.27.0...client/v0.27.1) - 2026-06-10
 

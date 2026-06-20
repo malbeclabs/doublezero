@@ -50,13 +50,22 @@ const (
 	defaultNetworkSubnetMask = 24
 
 	// linkNetworkBaseCIDR is the address range the devnet's inter-device link (misc) networks are
-	// allocated from. It is deliberately disjoint from the CYOA range (9.128.0.0/9) — and the
-	// onchain dz_prefixes derived from it, which are not visible to the docker-network scan — as
-	// well as from the default network (10.0.0.0/8) and the device tunnel net (172.16.0.0/16), so a
-	// link subnet can never silently overlap a routed prefix.
+	// allocated from. It must stay disjoint from every other range in play so a link subnet can
+	// never silently overlap a routed prefix:
+	//   - the CYOA range (9.128.0.0/9), including the onchain dz_prefixes, which are derived from
+	//     CYOA public IPs in 9.x and so fall inside it; these prefixes are invisible to the
+	//     docker-network scan, so only range separation keeps a link subnet off them;
+	//   - the default network range (10.0.0.0/8);
+	//   - the device tunnel net (defaultDeviceTunnelNet, 172.16.0.0/16).
+	// TestNetworkRangesAreDisjoint enforces this invariant against the constants below.
 	linkNetworkBaseCIDR = "11.0.0.0/8"
 	// linkNetworkSubnetMask is the prefix length for each link network subnet (a /24).
 	linkNetworkSubnetMask = 24
+
+	// defaultDeviceTunnelNet is the onchain device-tunnel block used when DevnetSpec.DeviceTunnelNet
+	// is left unset. It is one of the ranges the CYOA/default/link allocators must avoid; see
+	// TestNetworkRangesAreDisjoint.
+	defaultDeviceTunnelNet = "172.16.0.0/16"
 )
 
 var (
@@ -190,7 +199,7 @@ func (s *DevnetSpec) Validate() error {
 	}
 
 	if s.DeviceTunnelNet == "" {
-		s.DeviceTunnelNet = "172.16.0.0/16"
+		s.DeviceTunnelNet = defaultDeviceTunnelNet
 	}
 	return nil
 }

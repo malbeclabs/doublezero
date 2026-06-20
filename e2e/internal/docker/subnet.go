@@ -113,7 +113,7 @@ func (a *SubnetAllocator) isSubnetInUseLocked(ctx context.Context, subnet string
 			if err != nil {
 				continue
 			}
-			if cidrOverlap(existingCIDR, desiredCIDR) {
+			if CIDROverlap(existingCIDR, desiredCIDR) {
 				return true, nil
 			}
 		}
@@ -121,6 +121,8 @@ func (a *SubnetAllocator) isSubnetInUseLocked(ctx context.Context, subnet string
 	return false, nil
 }
 
-func cidrOverlap(a, b *net.IPNet) bool {
+// CIDROverlap reports whether two CIDR ranges intersect. Two prefixes overlap iff one contains the
+// other's network address, so a single containment check in each direction is sufficient.
+func CIDROverlap(a, b *net.IPNet) bool {
 	return a.Contains(b.IP) || b.Contains(a.IP)
 }

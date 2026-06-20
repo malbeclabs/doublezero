@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"testing"
+
+	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 )
 
 // fakeSubnetFinder returns a sequence of subnets, one per call, so we can assert that
@@ -140,6 +143,52 @@ func TestCreateNetworkWithSubnet_NonOverlapErrorNotRetried(t *testing.T) {
 	}
 	if finder.calls != 1 {
 		t.Fatalf("expected no retry on non-overlap error, got %d calls", finder.calls)
+	}
+}
+
+// TestNetworkRangesAreDisjoint locks in the load-bearing invariant that the four base address
+// ranges the devnet allocates from never overlap. Correctness of the collision-safe allocation
+// rests on it: the link/default allocators carve subnets out of their own /8s, but nothing at
+// runtime detects an overlap with the CYOA range or the onchain device-tunnel block (the
+// dz_prefixes derived from CYOA 9.x are invisible to the docker-network scan), so range separation
+// is the only guard. A future edit to any base CIDR that reintroduced overlap would fail here
+// rather than flaking an e2e run.
+//
+// This covers the compile-time base ranges and the *default* device-tunnel net. A caller that
+// overrides DevnetSpec.DeviceTunnelNet to an overlapping block is not guarded here (or at runtime);
+// keeping the override disjoint from the three allocator ranges is the caller's responsibility.
+func TestNetworkRangesAreDisjoint(t *testing.T) {
+	// Derive the CYOA range from the canonical allocator so this test tracks the real value rather
+	// than a hardcoded copy. The nil docker client is unused by the constructor.
+	cyoa := docker.NewDefaultSubnetAllocator(nil)
+	cyoaCIDR := fmt.Sprintf("%s/%d", cyoa.Base, cyoa.BaseMask)
+
+	ranges := []struct {
+		name string
+		cidr string
+	}{
+		{"cyoa", cyoaCIDR},
+		{"default", defaultNetworkBaseCIDR},
+		{"link", linkNetworkBaseCIDR},
+		{"deviceTunnel", defaultDeviceTunnelNet},
+	}
+
+	nets := make([]*net.IPNet, len(ranges))
+	for i, r := range ranges {
+		_, n, err := net.ParseCIDR(r.cidr)
+		if err != nil {
+			t.Fatalf("range %s has invalid CIDR %q: %v", r.name, r.cidr, err)
+		}
+		nets[i] = n
+	}
+
+	for i := 0; i < len(ranges); i++ {
+		for j := i + 1; j < len(ranges); j++ {
+			if docker.CIDROverlap(nets[i], nets[j]) {
+				t.Errorf("ranges %s (%s) and %s (%s) overlap; they must be pairwise disjoint",
+					ranges[i].name, ranges[i].cidr, ranges[j].name, ranges[j].cidr)
+			}
+		}
 	}
 }
 

@@ -41,6 +41,22 @@ const (
 
 	containerDoublezeroKeypairPath = "/root/.config/doublezero/id.json"
 	containerSolanaKeypairPath     = "/root/.config/solana/id.json"
+
+	// defaultNetworkBaseCIDR is the address range the devnet's default network is allocated from.
+	// It is kept separate from the CYOA network range (9.128.0.0/9) so tests that detect interfaces
+	// by IP range do not confuse the two.
+	defaultNetworkBaseCIDR = "10.0.0.0/8"
+	// defaultNetworkSubnetMask is the prefix length for each default network subnet (a /24).
+	defaultNetworkSubnetMask = 24
+
+	// linkNetworkBaseCIDR is the address range the devnet's inter-device link (misc) networks are
+	// allocated from. It is deliberately disjoint from the CYOA range (9.128.0.0/9) — and the
+	// onchain dz_prefixes derived from it, which are not visible to the docker-network scan — as
+	// well as from the default network (10.0.0.0/8) and the device tunnel net (172.16.0.0/16), so a
+	// link subnet can never silently overlap a routed prefix.
+	linkNetworkBaseCIDR = "11.0.0.0/8"
+	// linkNetworkSubnetMask is the prefix length for each link network subnet (a /24).
+	linkNetworkSubnetMask = 24
 )
 
 var (
@@ -81,13 +97,15 @@ type DevnetSpec struct {
 type Devnet struct {
 	Spec DevnetSpec
 
-	log               *slog.Logger
-	workspaceDir      string
-	subnetAllocator   *docker.SubnetAllocator
-	dockerClient      *client.Client
-	labels            map[string]string
-	mu                sync.RWMutex
-	onchainWriteMutex sync.Mutex
+	log                     *slog.Logger
+	workspaceDir            string
+	subnetAllocator         *docker.SubnetAllocator
+	defaultNetworkAllocator *docker.SubnetAllocator
+	linkNetworkAllocator    *docker.SubnetAllocator
+	dockerClient            *client.Client
+	labels                  map[string]string
+	mu                      sync.RWMutex
+	onchainWriteMutex       sync.Mutex
 
 	ExternalHost string
 
@@ -290,7 +308,13 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		workspaceDir:    workspaceDir,
 		dockerClient:    dockerClient,
 		subnetAllocator: subnetAllocator,
-		labels:          labels,
+		// The default and link networks use dedicated allocators over ranges disjoint from the CYOA
+		// network (9.128.0.0/9) and each other, so collision-safe allocation (which skips subnets
+		// already in use by docker networks) never hands out a CIDR that overlaps another network's
+		// range or an onchain prefix.
+		defaultNetworkAllocator: docker.NewSubnetAllocator(defaultNetworkBaseCIDR, defaultNetworkSubnetMask, dockerClient),
+		linkNetworkAllocator:    docker.NewSubnetAllocator(linkNetworkBaseCIDR, linkNetworkSubnetMask, dockerClient),
+		labels:                  labels,
 
 		Spec: spec,
 	}

@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 
 - Client
   - Add a `--no-wait` flag to `doublezero disconnect` that skips waiting for the daemon to tear down the tunnel(s), exiting once the onchain user deletion is confirmed. (#3911)
+- CLI
+  - Add hidden `migrate flex-algo` (RFC-18 link-topology and Vpnv4 loopback FlexAlgoNodeSegment backfill); the prior `migrate` command is now `migrate user-pda`. Moved from `doublezero-admin`.
+  - Add hidden `device migrate-multicast-counts` and `device migrate-unicast-counts` to reconcile stale per-device subscriber, publisher, and unicast-user counts. Moved from `doublezero-admin`.
 - Onchain programs
   - Validate the device `mgmt_vrf` field against the account-code charset (`[A-Za-z0-9:_-]`) and a 32-byte length cap, matching the device `code` field. Empty (the default VRF) is still accepted.
   - Transfer connect/disconnect credits to the user's account when adding a user to a multicast group's publisher or subscriber allowlist, so the user can connect immediately. The airdrop is atomic with the allowlist update and mirrors `set_access_pass` (scaled for `allow_multiple_ip` passes). (#3851)

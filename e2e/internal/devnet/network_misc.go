@@ -15,7 +15,8 @@ type MiscNetwork struct {
 	dn  *Devnet
 	log *slog.Logger
 
-	Name string
+	Name       string
+	SubnetCIDR string
 }
 
 func NewMiscNetwork(dn *Devnet, log *slog.Logger, suffix string) *MiscNetwork {
@@ -74,18 +75,32 @@ func (n *MiscNetwork) Create(ctx context.Context) error {
 
 	n.log.Debug("==> Creating misc network", "labels", labels)
 
-	// Create a docker network using Docker API directly to set MTU.
-	_, err := n.dn.dockerClient.NetworkCreate(ctx, n.Name, dockernetwork.CreateOptions{
-		Driver:     "bridge",
-		Attachable: false,
-		Labels:     labels,
-		Options: map[string]string{
-			"com.docker.network.driver.mtu": "9000",
-		},
+	// Allocate a collision-safe subnet via the dedicated link-network allocator (which skips subnets
+	// already in use by existing docker networks) instead of relying on Docker's auto-assignment,
+	// which is prone to "Pool overlaps" failures under concurrent shard load. Seed it with the
+	// unique network name so distinct link networks do not resolve to the same subnet. Create the
+	// docker network using the Docker API directly so we can set the MTU.
+	subnetCIDR, err := createNetworkWithSubnet(ctx, n.dn.linkNetworkAllocator, n.Name, func(subnetCIDR string) error {
+		_, err := n.dn.dockerClient.NetworkCreate(ctx, n.Name, dockernetwork.CreateOptions{
+			Driver:     "bridge",
+			Attachable: false,
+			Labels:     labels,
+			Options: map[string]string{
+				"com.docker.network.driver.mtu": "9000",
+			},
+			IPAM: &dockernetwork.IPAM{
+				Config: []dockernetwork.IPAMConfig{
+					{Subnet: subnetCIDR},
+				},
+			},
+		})
+		return err
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create network: %w", err)
 	}
-	n.log.Debug("--> Network created", "network", n.Name)
+
+	n.SubnetCIDR = subnetCIDR
+	n.log.Debug("--> Network created", "network", n.Name, "subnet", n.SubnetCIDR)
 	return nil
 }

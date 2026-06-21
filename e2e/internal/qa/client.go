@@ -206,6 +206,9 @@ func (c *Client) DoublezeroOrPublicIP() net.IP {
 }
 
 func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitForDeletion bool) error {
+	ctx, cancel := context.WithTimeout(ctx, disconnectTimeout)
+	defer cancel()
+
 	resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
 	if err != nil {
 		return fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
@@ -222,8 +225,6 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	// We do this to handle the case where the client thinks it's disconnected but the user exists
 	// onchain, which can happen if the previous connect attempt timed out in the CLI but eventually
 	// succeeded onchain.
-	ctx, cancel := context.WithTimeout(ctx, disconnectTimeout)
-	defer cancel()
 	_, err = c.grpcClient.Disconnect(ctx, &emptypb.Empty{})
 	if err != nil {
 		return fmt.Errorf("failed to disconnect on host %s: %w", c.Host, err)

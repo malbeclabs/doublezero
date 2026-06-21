@@ -80,6 +80,37 @@ func (c *Client) FeedSeatPrice(ctx context.Context) ([]*pb.DevicePrice, error) {
 	return resp.GetPrices(), nil
 }
 
+// WaitForOpenForRequests polls the on-chain execution controller until the
+// shred-subscription program enters OpenForRequests phase, which is the only
+// phase that accepts FundPaymentEscrowUsdc transactions. The UpdatingPrices
+// window is short but can collide with a scheduled CI run; callers should
+// invoke this before FeedSeatPay to avoid a spurious failure.
+func (c *Client) WaitForOpenForRequests(ctx context.Context) error {
+	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
+	if err != nil {
+		return fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
+	}
+	shredsClient := shreds.New(shreds.NewRPCClient(c.SolanaRPCURL), programID)
+
+	exp := backoff.NewExponentialBackOff()
+	exp.InitialInterval = 2 * time.Second
+	exp.MaxInterval = 10 * time.Second
+	exp.MaxElapsedTime = 2 * time.Minute
+
+	return backoff.Retry(func() error {
+		ec, err := shredsClient.FetchExecutionController(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to fetch execution controller: %w", err)
+		}
+		phase := ec.GetPhase()
+		if phase != shreds.ExecutionPhaseOpenForRequests {
+			c.log.Info("Waiting for OpenForRequests phase", "host", c.Host, "phase", phase.String())
+			return fmt.Errorf("program in %q phase, not yet open for requests", phase)
+		}
+		return nil
+	}, backoff.WithContext(exp, ctx))
+}
+
 // FeedSeatPay calls the FeedSeatPay RPC to pay for a seat on a device.
 // The client's public IP is auto-filled. Instant allocation is the default.
 func (c *Client) FeedSeatPay(ctx context.Context, devicePubkey string, amount string) error {

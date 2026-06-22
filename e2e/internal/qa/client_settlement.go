@@ -3,6 +3,7 @@ package qa
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -11,10 +12,38 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	shreds "github.com/malbeclabs/doublezero/sdk/shreds/go"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
+
+// seatReadTimeout/seatReadInterval bound the poll-until-visible window for
+// reading post-write seat state from a possibly-lagging RPC node.
+const (
+	seatReadTimeout  = 30 * time.Second
+	seatReadInterval = 2 * time.Second
+)
+
+// currentSolanaRPCURL returns the pool's current endpoint URL, falling back to
+// the static SolanaRPCURL field for callers constructed without a pool (e.g.
+// hand-built test clients).
+func (c *Client) currentSolanaRPCURL() string {
+	if c.solanaRPC != nil {
+		return c.solanaRPC.CurrentURL()
+	}
+	return c.SolanaRPCURL
+}
+
+// shredsClient builds a shred-subscription client backed by the failover RPC
+// pool when present, so reads transparently fail over a dead or lagging
+// endpoint. Falls back to a single-endpoint client for hand-built test clients.
+func (c *Client) shredsClient(programID solana.PublicKey) *shreds.Client {
+	if c.solanaRPC != nil {
+		return shreds.New(c.solanaRPC.RPC(), programID)
+	}
+	return shreds.New(shreds.NewRPCClient(c.SolanaRPCURL), programID)
+}
 
 // FeedEnable calls the FeedEnable RPC to start the doublezerod reconciler.
 func (c *Client) FeedEnable(ctx context.Context) error {
@@ -64,20 +93,56 @@ func (c *Client) ClosestDevice(ctx context.Context) (*Device, error) {
 }
 
 // FeedSeatPrice calls the FeedSeatPrice RPC to query device seat prices.
+// This is an idempotent read, so on RPC failure it fails over to the next
+// endpoint and retries.
 func (c *Client) FeedSeatPrice(ctx context.Context) ([]*pb.DevicePrice, error) {
 	c.log.Debug("Querying seat prices", "host", c.Host)
-	resp, err := c.grpcClient.FeedSeatPrice(ctx, &pb.FeedSeatPriceRequest{
-		SolanaRpcUrl:               c.SolanaRPCURL,
-		DzLedgerUrl:                c.DZLedgerURL,
-		UsdcMint:                   c.USDCMint,
-		Keypair:                    c.Keypair,
-		ShredSubscriptionProgramId: c.ShredSubscriptionProgramID,
+	var prices []*pb.DevicePrice
+	err := c.withWriteFailover(func(rpcURL string) error {
+		resp, err := c.grpcClient.FeedSeatPrice(ctx, &pb.FeedSeatPriceRequest{
+			SolanaRpcUrl:               rpcURL,
+			DzLedgerUrl:                c.DZLedgerURL,
+			UsdcMint:                   c.USDCMint,
+			Keypair:                    c.Keypair,
+			ShredSubscriptionProgramId: c.ShredSubscriptionProgramID,
+		})
+		if err != nil {
+			return err
+		}
+		prices = resp.GetPrices()
+		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get seat prices on host %s: %w", c.Host, err)
 	}
-	c.log.Debug("Seat prices retrieved", "host", c.Host, "count", len(resp.GetPrices()))
-	return resp.GetPrices(), nil
+	c.log.Debug("Seat prices retrieved", "host", c.Host, "count", len(prices))
+	return prices, nil
+}
+
+// withWriteFailover runs an agent-driven settlement command against the pool's
+// current Solana RPC endpoint, failing over to the next endpoint and retrying
+// on error. It is only safe for idempotent operations (reads/queries) — see
+// the note on FeedSeatPay/FeedSeatWithdraw, which deliberately do not retry to
+// avoid double-submitting a settlement transaction. With a single endpoint (or
+// no pool) it runs fn exactly once.
+func (c *Client) withWriteFailover(fn func(rpcURL string) error) error {
+	attempts := 1
+	if c.solanaRPC != nil {
+		attempts = c.solanaRPC.EndpointCount()
+	}
+	var lastErr error
+	for i := 0; i < attempts; i++ {
+		lastErr = fn(c.currentSolanaRPCURL())
+		if lastErr == nil {
+			return nil
+		}
+		if c.solanaRPC != nil {
+			c.log.Warn("Settlement query failed, failing over to next endpoint",
+				"host", c.Host, "endpoint", c.currentSolanaRPCURL(), "error", lastErr)
+			c.solanaRPC.Failover()
+		}
+	}
+	return lastErr
 }
 
 // WaitForOpenForRequests polls the on-chain execution controller until the
@@ -90,7 +155,7 @@ func (c *Client) WaitForOpenForRequests(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
 	}
-	shredsClient := shreds.New(shreds.NewRPCClient(c.SolanaRPCURL), programID)
+	shredsClient := c.shredsClient(programID)
 
 	exp := backoff.NewExponentialBackOff()
 	exp.InitialInterval = 2 * time.Second
@@ -113,13 +178,21 @@ func (c *Client) WaitForOpenForRequests(ctx context.Context) error {
 
 // FeedSeatPay calls the FeedSeatPay RPC to pay for a seat on a device.
 // The client's public IP is auto-filled. Instant allocation is the default.
+//
+// The settlement transaction is submitted against the pool's current (already
+// health-selected) Solana RPC endpoint. It deliberately does NOT auto-retry
+// across endpoints on failure: a payment that timed out on submission may have
+// landed onchain, so a blind retry against another endpoint risks
+// double-submission. The construction-time slot-lag selection plus read-path
+// failover keep CurrentURL() pointed at a healthy endpoint by the time this is
+// called.
 func (c *Client) FeedSeatPay(ctx context.Context, devicePubkey string, amount string) error {
 	c.log.Debug("Paying for seat", "host", c.Host, "device", devicePubkey, "amount", amount)
 	resp, err := c.grpcClient.FeedSeatPay(ctx, &pb.FeedSeatPayRequest{
 		DevicePubkey:               devicePubkey,
 		ClientIp:                   c.publicIP.To4().String(),
 		Amount:                     amount,
-		SolanaRpcUrl:               c.SolanaRPCURL,
+		SolanaRpcUrl:               c.currentSolanaRPCURL(),
 		ShredSubscriptionProgramId: c.ShredSubscriptionProgramID,
 		DzLedgerUrl:                c.DZLedgerURL,
 		UsdcMint:                   c.USDCMint,
@@ -137,13 +210,15 @@ func (c *Client) FeedSeatPay(ctx context.Context, devicePubkey string, amount st
 }
 
 // FeedSeatWithdraw calls the FeedSeatWithdraw RPC to withdraw a seat from a device.
-// Instant withdrawal is the default.
+// Instant withdrawal is the default. Like FeedSeatPay, this targets the pool's
+// current endpoint and does not auto-retry across endpoints to avoid
+// double-submitting a settlement transaction.
 func (c *Client) FeedSeatWithdraw(ctx context.Context, devicePubkey string) error {
 	c.log.Debug("Withdrawing seat", "host", c.Host, "device", devicePubkey)
 	resp, err := c.grpcClient.FeedSeatWithdraw(ctx, &pb.FeedSeatWithdrawRequest{
 		DevicePubkey:               devicePubkey,
 		ClientIp:                   c.publicIP.To4().String(),
-		SolanaRpcUrl:               c.SolanaRPCURL,
+		SolanaRpcUrl:               c.currentSolanaRPCURL(),
 		ShredSubscriptionProgramId: c.ShredSubscriptionProgramID,
 		DzLedgerUrl:                c.DZLedgerURL,
 		UsdcMint:                   c.USDCMint,
@@ -175,9 +250,26 @@ func (c *Client) GetEffectiveSeatPrice(ctx context.Context, devicePubkey string,
 	}
 
 	clientIPBits := binary.BigEndian.Uint32(c.publicIP.To4())
-	shredsClient := shreds.New(shreds.NewRPCClient(c.SolanaRPCURL), programID)
-	seat, err := shredsClient.FetchClientSeat(ctx, deviceKey, clientIPBits)
-	if err != nil {
+	shredsClient := c.shredsClient(programID)
+
+	// This reads state written by the preceding FeedSeatPay. A lagging RPC node
+	// can briefly serve a view in which the seat account does not yet exist, so
+	// poll until it is visible rather than failing on a single stale read.
+	// (The failover pool fails over on RPC errors, but an account-not-found is a
+	// valid empty read, not an error, so it needs poll-until.)
+	var seat *shreds.ClientSeat
+	if err := poll.Until(ctx, func() (bool, error) {
+		s, fetchErr := shredsClient.FetchClientSeat(ctx, deviceKey, clientIPBits)
+		if errors.Is(fetchErr, shreds.ErrAccountNotFound) {
+			c.log.Debug("Client seat not yet visible, polling", "host", c.Host)
+			return false, nil
+		}
+		if fetchErr != nil {
+			return false, fetchErr
+		}
+		seat = s
+		return true, nil
+	}, seatReadTimeout, seatReadInterval); err != nil {
 		return 0, fmt.Errorf("failed to fetch client seat on host %s: %w", c.Host, err)
 	}
 
@@ -202,7 +294,7 @@ func (c *Client) IsSeatProratingEnabled(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
 	}
 
-	shredsClient := shreds.New(shreds.NewRPCClient(c.SolanaRPCURL), programID)
+	shredsClient := c.shredsClient(programID)
 	cfg, err := shredsClient.FetchProgramConfig(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to fetch program config on host %s: %w", c.Host, err)
@@ -247,13 +339,25 @@ func (c *Client) GetUSDCBalance(ctx context.Context) (uint64, error) {
 		return 0, fmt.Errorf("failed to derive ATA for owner %s and mint %s: %w", ownerPubkey, usdcMint, err)
 	}
 
-	solanaClient := rpc.New(c.SolanaRPCURL)
+	// Use the failover pool when present so a dead/lagging endpoint is replaced
+	// transparently; fall back to a single-endpoint client for hand-built test
+	// clients. Before reading, actively fail over off a lagging node so a
+	// stale-but-valid read can't produce a spurious assertion failure.
+	var solanaClient *rpc.Client
+	budget := rpcBudgetFromEnv()
+	if c.solanaRPC != nil {
+		c.solanaRPC.SelectHealthiestEndpoint(ctx)
+		solanaClient = c.solanaRPC.RPC()
+		budget = c.solanaRPC.budget
+	} else {
+		solanaClient = rpc.New(c.SolanaRPCURL)
+	}
 
 	var result *rpc.GetTokenAccountBalanceResult
 	exp := backoff.NewExponentialBackOff()
-	exp.InitialInterval = 1 * time.Second
-	exp.MaxElapsedTime = 30 * time.Second
-	retryPolicy := backoff.WithMaxRetries(exp, 5)
+	exp.InitialInterval = budget.initialBackoff
+	exp.MaxElapsedTime = budget.maxElapsed
+	retryPolicy := backoff.WithMaxRetries(exp, budget.maxRetries)
 	retryPolicy = backoff.WithContext(retryPolicy, ctx)
 
 	if err := backoff.Retry(func() error {

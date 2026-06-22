@@ -51,6 +51,32 @@ Here's how the agent uses the endpoint:
 - **Simplicity**: Single endpoint, agent handles caching logic
 - **Safety**: Full config application every 60s ensures eventual consistency
 
+## Metrics
+
+The controller exposes Prometheus metrics on `127.0.0.1:2112/metrics`, including
+per-device series labeled by `pubkey` (e.g. `controller_grpc_getconfig_requests_total`).
+
+### Pruning on ledger removal
+
+The controller rebuilds its state cache from on-chain data every 10 seconds. When
+a device that was present in the previous cache is gone from the new one (removed
+from the ledger), the controller drops that pubkey's series from the per-device
+metric vectors. Prometheus can then no longer scrape them, and after a scrape
+interval plus the staleness window (~5 minutes) the series go stale and queries
+return empty. This prevents a removed device's frozen counter from looking
+perpetually "fresh" and keeping the `Network: Device Stopped Calling Controller`
+alert firing indefinitely.
+
+### Check-ins from ledger-absent pubkeys
+
+A device removed from the ledger may keep calling `GetConfig` with its old pubkey.
+Such requests are rejected with `NotFound`, logged at `WARN`
+(`device not found in ledger cache; refusing config ...`), and counted on the
+low-cardinality aggregate `controller_grpc_getconfig_unknown_pubkey_total` (which
+carries no per-pubkey label). The controller does not re-register the per-pubkey
+`controller_grpc_getconfig_requests_total` series for these requests, so a pruned
+pubkey is not resurrected by a decommissioned box that is still calling in.
+
 ## Configuration
 
 ### ClickHouse Integration

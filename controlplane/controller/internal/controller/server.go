@@ -676,6 +676,17 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 func (c *Controller) swapCache(cache stateCache) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	// Prune per-device metric series for devices that were present in the
+	// previous cache but are gone from the new one (removed from the ledger).
+	// Otherwise their counters stay registered with a frozen value and keep
+	// being scraped, making the series look perpetually fresh and tripping the
+	// "Device Stopped Calling Controller" alert forever.
+	for pubkey := range c.cache.Devices {
+		if _, ok := cache.Devices[pubkey]; !ok {
+			deleteDeviceMetrics(pubkey)
+			c.log.Info("pruned metrics for device removed from ledger", "device_pubkey", pubkey)
+		}
+	}
 	c.cache = cache
 	if c.updateDone != nil {
 		c.updateDone <- struct{}{}
@@ -843,6 +854,11 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	device, ok := c.cache.Devices[req.GetPubkey()]
 	if !ok {
 		getConfigPubkeyErrors.WithLabelValues(req.GetPubkey()).Inc()
+		getConfigUnknownPubkey.Inc()
+		// A device removed from the ledger may keep calling in with its old
+		// pubkey. Surface it (otherwise silent today) and return without touching
+		// the per-pubkey getConfigOps series, so a pruned pubkey is not resurrected.
+		c.log.Warn("device not found in ledger cache; refusing config (device may have been removed from the ledger but is still calling in)", "device_pubkey", req.GetPubkey())
 		err := status.Errorf(codes.NotFound, "pubkey %s not found", req.Pubkey)
 		return nil, err
 	}

@@ -43,6 +43,15 @@ var (
 		[]string{"pubkey", "device_code", "contributor_code", "exchange_code", "location_code", "device_status", "agent_version", "agent_commit", "agent_date"},
 	)
 
+	// getConfigUnknownPubkey counts GetConfig requests from pubkeys that are not
+	// present in the ledger cache (e.g. a device removed from the on-chain ledger
+	// that is still calling in). It deliberately carries no per-pubkey label so a
+	// flood of distinct removed pubkeys cannot reintroduce unbounded cardinality.
+	getConfigUnknownPubkey = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "controller_grpc_getconfig_unknown_pubkey_total",
+		Help: "The total number of GetConfig requests from pubkeys not present in the ledger cache",
+	})
+
 	getConfigMsgSize = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "controller_grpc_getconfig_msg_size_bytes",
 		Help:    "The size of GetConfig response messages in bytes",
@@ -101,6 +110,7 @@ func init() {
 	prometheus.MustRegister(getConfigRenderErrors)
 	prometheus.MustRegister(duplicateTunnelPairs)
 	prometheus.MustRegister(getConfigOps)
+	prometheus.MustRegister(getConfigUnknownPubkey)
 	prometheus.MustRegister(getConfigMsgSize)
 	prometheus.MustRegister(getConfigDuration)
 
@@ -111,4 +121,19 @@ func init() {
 
 	// gRPC middleware metrics
 	prometheus.MustRegister(srvMetrics)
+}
+
+// deleteDeviceMetrics drops every per-device series carrying the given device
+// pubkey from the metric vectors. It is called when a device is removed from the
+// on-chain ledger so Prometheus can no longer scrape its now-frozen counters;
+// after a scrape interval plus the staleness window the series go stale and
+// queries return empty. DeletePartialMatch removes all series matching just the
+// pubkey label, regardless of the other (agent_version, etc.) label values.
+func deleteDeviceMetrics(pubkey string) {
+	byPubkey := prometheus.Labels{"pubkey": pubkey}
+	getConfigOps.DeletePartialMatch(byPubkey)
+	getConfigPubkeyErrors.DeletePartialMatch(byPubkey)
+	getConfigRenderErrors.DeletePartialMatch(byPubkey)
+	duplicateTunnelPairs.DeletePartialMatch(byPubkey)
+	linkMetrics.DeletePartialMatch(prometheus.Labels{"device_pubkey": pubkey})
 }

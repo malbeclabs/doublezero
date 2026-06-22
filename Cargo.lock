@@ -1513,45 +1513,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "doublezero-admin"
-version = "0.27.1"
-dependencies = [
- "anyhow",
- "backon",
- "chrono",
- "clap",
- "clap_complete",
- "console",
- "doublezero-cli-core",
- "doublezero-config",
- "doublezero-program-common",
- "doublezero-sentinel",
- "doublezero-serviceability",
- "doublezero-serviceability-cli",
- "doublezero_sdk",
- "eyre",
- "futures",
- "futures-util",
- "http 1.3.1",
- "http-body-util",
- "hyper",
- "hyper-util",
- "hyperlocal",
- "indicatif",
- "libc",
- "mockall",
- "serde",
- "serde_json",
- "serde_yaml",
- "solana-client",
- "solana-program",
- "solana-pubsub-client",
- "solana-sdk",
- "tabled",
- "tokio",
-]
-
-[[package]]
 name = "doublezero-cli-core"
 version = "0.27.1"
 dependencies = [

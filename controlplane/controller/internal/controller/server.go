@@ -657,7 +657,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 			for _, intf := range d.Interfaces {
 				if intf.IsVpnv4Loopback() && len(intf.FlexAlgoNodeSegments) == 0 {
-					c.log.Error("flex_algo.enabled=true but VPNv4 loopback has no flex_algo_node_segments — run 'doublezero-admin migrate' and restart",
+					c.log.Error("flex_algo.enabled=true but VPNv4 loopback has no flex_algo_node_segments — run 'doublezero migrate flex-algo' and restart",
 						"device_pubkey", devicePubKey,
 						"interface", intf.Name)
 				}
@@ -712,7 +712,7 @@ func (c *Controller) Run(ctx context.Context) error {
 		if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled {
 			c.mu.RLock()
 			if len(c.cache.Topologies) == 0 {
-				c.log.Warn("flex_algo.enabled=true but no topology accounts found on-chain — verify doublezero-admin migrate has been run")
+				c.log.Warn("flex_algo.enabled=true but no topology accounts found on-chain — verify doublezero migrate flex-algo has been run")
 			}
 			c.mu.RUnlock()
 		}

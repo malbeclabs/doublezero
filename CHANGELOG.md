@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI
+  - Remove the `doublezero-admin` binary. Its commands now live in the `doublezero` CLI as hidden subcommands (e.g. `doublezero sentinel ...`, `doublezero migrate flex-algo`).
+
 ### Changes
 
 - Client

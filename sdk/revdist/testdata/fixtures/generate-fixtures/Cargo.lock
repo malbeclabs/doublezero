@@ -405,7 +405,7 @@ dependencies = [
 [[package]]
 name = "doublezero-program-tools"
 version = "0.0.0"
-source = "git+https://github.com/doublezerofoundation/doublezero-solana.git#4130860a94c7c7707e7117fa661273e3f5d9e9b9"
+source = "git+https://github.com/doublezerofoundation/doublezero-solana.git#4368da2c446b799f354aecb6156fc0e77343634b"
 dependencies = [
  "bincode",
  "borsh",
@@ -427,8 +427,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-revenue-distribution"
-version = "0.3.1"
-source = "git+https://github.com/doublezerofoundation/doublezero-solana.git#4130860a94c7c7707e7117fa661273e3f5d9e9b9"
+version = "0.3.7"
+source = "git+https://github.com/doublezerofoundation/doublezero-solana.git#4368da2c446b799f354aecb6156fc0e77343634b"
 dependencies = [
  "borsh",
  "bytemuck",

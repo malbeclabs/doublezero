@@ -126,11 +126,14 @@ func TestGetConfig_LedgerAbsentPubkey(t *testing.T) {
 
 	before := testutil.ToFloat64(getConfigUnknownPubkey)
 
-	_, err := c.GetConfig(context.Background(), &pb.ConfigRequest{Pubkey: absent})
-
-	// Returns the existing not-found error path.
-	if status.Code(err) != codes.NotFound {
-		t.Fatalf("expected NotFound, got %v", err)
+	// Call twice in quick succession: the aggregate counter must count every
+	// call, but the warning is rate-limited so only one is emitted per minute.
+	for i := 0; i < 2; i++ {
+		_, err := c.GetConfig(context.Background(), &pb.ConfigRequest{Pubkey: absent})
+		// Returns the existing not-found error path.
+		if status.Code(err) != codes.NotFound {
+			t.Fatalf("expected NotFound, got %v", err)
+		}
 	}
 
 	// No per-pubkey getConfigOps series is created for an absent device.
@@ -138,27 +141,27 @@ func TestGetConfig_LedgerAbsentPubkey(t *testing.T) {
 		t.Errorf("expected no getConfigOps series for absent pubkey, got %d", got)
 	}
 
-	// The low-cardinality aggregate counter incremented by exactly one.
-	if got := testutil.ToFloat64(getConfigUnknownPubkey) - before; got != 1 {
-		t.Errorf("expected getConfigUnknownPubkey to increase by 1, got %v", got)
+	// The low-cardinality aggregate counter incremented once per call.
+	if got := testutil.ToFloat64(getConfigUnknownPubkey) - before; got != 2 {
+		t.Errorf("expected getConfigUnknownPubkey to increase by 2, got %v", got)
 	}
 
-	// A WARN-level log naming the device pubkey was emitted.
-	var warned bool
+	// Exactly one rate-limited WARN log naming the device pubkey was emitted.
+	warned := 0
 	for _, r := range handler.records {
 		if r.Level != slog.LevelWarn {
 			continue
 		}
 		r.Attrs(func(a slog.Attr) bool {
 			if a.Key == "device_pubkey" && a.Value.String() == absent {
-				warned = true
+				warned++
 				return false
 			}
 			return true
 		})
 	}
-	if !warned {
-		t.Errorf("expected a WARN log with device_pubkey=%s", absent)
+	if warned != 1 {
+		t.Errorf("expected exactly 1 rate-limited WARN log with device_pubkey=%s, got %d", absent, warned)
 	}
 }
 

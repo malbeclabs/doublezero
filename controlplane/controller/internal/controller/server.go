@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -78,6 +79,10 @@ type Controller struct {
 	clickhouse         *ClickhouseWriter
 	featuresConfig     *FeaturesConfig
 	maxUserTunnelSlots int
+
+	// lastUnknownPubkeyWarnNanos rate-limits the unknown-pubkey warning log.
+	// It holds the unix-nanos timestamp of the last emitted warning.
+	lastUnknownPubkeyWarnNanos atomic.Int64
 }
 
 type Option func(*Controller)
@@ -860,7 +865,13 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		// silent today) and return without touching the per-pubkey getConfigOps
 		// series, so a pruned pubkey is not resurrected.
 		getConfigUnknownPubkey.Inc()
-		c.log.Warn("device not found in ledger cache; refusing config (device may have been removed from the ledger but is still calling in)", "device_pubkey", req.GetPubkey())
+		// Rate-limit the warning to at most once per minute. A decommissioned
+		// device still polling (every ~5s) would otherwise flood the logs; the
+		// aggregate counter above tracks the true call volume.
+		now := time.Now().UnixNano()
+		if last := c.lastUnknownPubkeyWarnNanos.Load(); now-last >= int64(time.Minute) && c.lastUnknownPubkeyWarnNanos.CompareAndSwap(last, now) {
+			c.log.Warn("device not found in ledger cache; refusing config (device may have been removed from the ledger but is still calling in)", "device_pubkey", req.GetPubkey())
+		}
 		err := status.Errorf(codes.NotFound, "pubkey %s not found", req.Pubkey)
 		return nil, err
 	}

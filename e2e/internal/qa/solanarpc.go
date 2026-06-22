@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -24,6 +25,10 @@ const (
 	defaultRPCInitialBackoff = 1 * time.Second
 	defaultRPCMaxElapsed     = 30 * time.Second
 	defaultRPCMaxRetries     = uint64(5)
+	// Dedicated (short) timeout for slot-lag probes; a healthy getSlot returns
+	// in well under a second, so probes shouldn't inherit the full per-call
+	// budget and stall a read behind a dead endpoint.
+	defaultRPCProbeTimeout = 5 * time.Second
 	// Default slot-lag threshold (in slots) above which an endpoint is
 	// considered stale and skipped in favor of a fresher one. ~150 slots is
 	// roughly 60s at 400ms/slot.
@@ -52,6 +57,39 @@ func rpcBudgetFromEnv() rpcBudget {
 		maxRetries:     envUint("QA_SOLANA_RPC_MAX_RETRIES", defaultRPCMaxRetries),
 		maxSlotLag:     envUint("QA_SOLANA_RPC_MAX_SLOT_LAG", defaultRPCMaxSlotLag),
 	}
+}
+
+// redactURL strips credentials from an RPC URL before logging. Private Solana
+// RPC providers (Helius, QuickNode, Triton, ...) commonly embed an API key in
+// the userinfo, path, or query string, so log only scheme://host and replace
+// any path/query with a placeholder. On parse failure it returns a coarse
+// placeholder rather than risk leaking the raw string into CI logs.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "<redacted-rpc-url>"
+	}
+	out := u.Scheme + "://" + u.Host
+	if (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.User != nil {
+		out += "/<redacted>"
+	}
+	return out
+}
+
+// scrubErr returns the error message with any of the pool's endpoint URLs
+// replaced by their redacted form, since solana-go errors often embed the full
+// request URL (which may carry an API key).
+func (p *solanaRPCPool) scrubErr(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	for _, u := range p.urls {
+		if strings.Contains(msg, u) {
+			msg = strings.ReplaceAll(msg, u, redactURL(u))
+		}
+	}
+	return msg
 }
 
 func envDuration(key string, def time.Duration) time.Duration {
@@ -224,7 +262,7 @@ func (p *solanaRPCPool) withFailover(ctx context.Context, fn func(c jsonrpc.RPCC
 			return err
 		}
 		p.log.Warn("Solana RPC endpoint failed, failing over",
-			"endpoint", p.urls[idx], "error", err)
+			"endpoint", redactURL(p.urls[idx]), "error", p.scrubErr(err))
 		p.advance(idx)
 	}
 	return lastErr
@@ -264,19 +302,36 @@ func (p *solanaRPCPool) SelectHealthiestEndpoint(ctx context.Context) {
 		return
 	}
 
+	// Probe all endpoints concurrently with a short, dedicated probe timeout
+	// (a healthy getSlot returns in well under a second). Probing serially with
+	// the full per-call budget could otherwise add timeout*N latency in front of
+	// every staleness-sensitive read.
+	probeTimeout := p.budget.timeout
+	if probeTimeout > defaultRPCProbeTimeout {
+		probeTimeout = defaultRPCProbeTimeout
+	}
 	slots := make([]uint64, len(p.clients))
-	var maxSlot uint64
+	var wg sync.WaitGroup
 	for i := range p.endpointRPC {
-		cctx, cancel := context.WithTimeout(ctx, p.budget.timeout)
-		slot, err := p.endpointRPC[i].GetSlot(cctx, rpc.CommitmentConfirmed)
-		cancel()
-		if err != nil {
-			p.log.Debug("Solana RPC slot probe failed", "endpoint", p.urls[i], "error", err)
-			continue
-		}
-		slots[i] = slot
-		if slot > maxSlot {
-			maxSlot = slot
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			cctx, cancel := context.WithTimeout(ctx, probeTimeout)
+			defer cancel()
+			slot, err := p.endpointRPC[i].GetSlot(cctx, rpc.CommitmentConfirmed)
+			if err != nil {
+				p.log.Debug("Solana RPC slot probe failed", "endpoint", redactURL(p.urls[i]), "error", p.scrubErr(err))
+				return
+			}
+			slots[i] = slot
+		}(i)
+	}
+	wg.Wait()
+
+	var maxSlot uint64
+	for _, s := range slots {
+		if s > maxSlot {
+			maxSlot = s
 		}
 	}
 	if maxSlot == 0 {
@@ -303,8 +358,8 @@ func (p *solanaRPCPool) SelectHealthiestEndpoint(ctx context.Context) {
 	curSlot := slots[p.current]
 	if maxSlot-curSlot > p.budget.maxSlotLag {
 		p.log.Info("Solana RPC endpoint lagging, failing over to fresher endpoint",
-			"from", p.urls[p.current], "fromSlot", curSlot,
-			"to", p.urls[best], "toSlot", bestSlot,
+			"from", redactURL(p.urls[p.current]), "fromSlot", curSlot,
+			"to", redactURL(p.urls[best]), "toSlot", bestSlot,
 			"lag", maxSlot-curSlot, "threshold", p.budget.maxSlotLag)
 		p.current = best
 	}

@@ -98,7 +98,7 @@ func (c *Client) ClosestDevice(ctx context.Context) (*Device, error) {
 func (c *Client) FeedSeatPrice(ctx context.Context) ([]*pb.DevicePrice, error) {
 	c.log.Debug("Querying seat prices", "host", c.Host)
 	var prices []*pb.DevicePrice
-	err := c.withWriteFailover(func(rpcURL string) error {
+	err := c.withReadFailover(func(rpcURL string) error {
 		resp, err := c.grpcClient.FeedSeatPrice(ctx, &pb.FeedSeatPriceRequest{
 			SolanaRpcUrl:               rpcURL,
 			DzLedgerUrl:                c.DZLedgerURL,
@@ -119,13 +119,14 @@ func (c *Client) FeedSeatPrice(ctx context.Context) ([]*pb.DevicePrice, error) {
 	return prices, nil
 }
 
-// withWriteFailover runs an agent-driven settlement command against the pool's
-// current Solana RPC endpoint, failing over to the next endpoint and retrying
-// on error. It is only safe for idempotent operations (reads/queries) — see
-// the note on FeedSeatPay/FeedSeatWithdraw, which deliberately do not retry to
-// avoid double-submitting a settlement transaction. With a single endpoint (or
-// no pool) it runs fn exactly once.
-func (c *Client) withWriteFailover(fn func(rpcURL string) error) error {
+// withReadFailover runs an agent-driven settlement query against the pool's
+// current Solana RPC endpoint, failing over to the next endpoint on a retryable
+// error. It is ONLY safe for idempotent operations (reads/queries): the
+// settlement WRITES (FeedSeatPay/FeedSeatWithdraw) deliberately bypass this and
+// do not retry across endpoints, since a write that timed out on submission may
+// have landed onchain and a blind retry risks double-submission. With a single
+// endpoint (or no pool) it runs fn exactly once.
+func (c *Client) withReadFailover(fn func(rpcURL string) error) error {
 	attempts := 1
 	if c.solanaRPC != nil {
 		attempts = c.solanaRPC.EndpointCount()
@@ -136,10 +137,14 @@ func (c *Client) withWriteFailover(fn func(rpcURL string) error) error {
 		if lastErr == nil {
 			return nil
 		}
-		if c.solanaRPC != nil {
+		// Only fail over on retryable (connectivity/timeout) failures; a genuine
+		// business error should surface rather than burn the remaining endpoints.
+		if c.solanaRPC != nil && isRetryableRPCErr(lastErr) {
 			c.log.Warn("Settlement query failed, failing over to next endpoint",
-				"host", c.Host, "endpoint", c.currentSolanaRPCURL(), "error", lastErr)
+				"host", c.Host, "endpoint", redactURL(c.currentSolanaRPCURL()), "error", c.solanaRPC.scrubErr(lastErr))
 			c.solanaRPC.Failover()
+		} else {
+			return lastErr
 		}
 	}
 	return lastErr
@@ -260,7 +265,10 @@ func (c *Client) GetEffectiveSeatPrice(ctx context.Context, devicePubkey string,
 	var seat *shreds.ClientSeat
 	if err := poll.Until(ctx, func() (bool, error) {
 		s, fetchErr := shredsClient.FetchClientSeat(ctx, deviceKey, clientIPBits)
-		if errors.Is(fetchErr, shreds.ErrAccountNotFound) {
+		// A missing account surfaces as rpc.ErrNotFound through the live RPC
+		// path (gagliardetto GetAccountInfo) and as shreds.ErrAccountNotFound
+		// through the shreds nil-result path; treat both as "not yet visible".
+		if errors.Is(fetchErr, shreds.ErrAccountNotFound) || errors.Is(fetchErr, rpc.ErrNotFound) {
 			c.log.Debug("Client seat not yet visible, polling", "host", c.Host)
 			return false, nil
 		}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -135,7 +136,7 @@ func TestSelectHealthiestEndpoint_AllProbesFailKeepsCurrent(t *testing.T) {
 }
 
 func TestFailover_AdvancesOnRetryableError(t *testing.T) {
-	timeoutErr := &jsonrpc.HTTPError{Code: 503}
+	timeoutErr := jsonrpc.NewHTTPError(503, errors.New("http error"))
 	ep0 := &fakeJSONRPCClient{name: "0", callForInto: func(any, string, []any) error { return timeoutErr }}
 	ep1 := &fakeJSONRPCClient{name: "1", callForInto: func(any, string, []any) error { return nil }}
 	pool := newTestPool(ep0, ep1)
@@ -154,7 +155,7 @@ func TestFailover_AdvancesOnRetryableError(t *testing.T) {
 }
 
 func TestFailover_ExhaustionReturnsLastError(t *testing.T) {
-	httpErr := &jsonrpc.HTTPError{Code: 500}
+	httpErr := jsonrpc.NewHTTPError(500, errors.New("http error"))
 	ep0 := &fakeJSONRPCClient{name: "0", callForInto: func(any, string, []any) error { return httpErr }}
 	ep1 := &fakeJSONRPCClient{name: "1", callForInto: func(any, string, []any) error { return httpErr }}
 	pool := newTestPool(ep0, ep1)
@@ -187,7 +188,7 @@ func TestFailover_NonRetryableDoesNotAdvance(t *testing.T) {
 }
 
 func TestFailover_SingleEndpointPassthrough(t *testing.T) {
-	httpErr := &jsonrpc.HTTPError{Code: 503}
+	httpErr := jsonrpc.NewHTTPError(503, errors.New("http error"))
 	ep0 := &fakeJSONRPCClient{name: "0", callForInto: func(any, string, []any) error { return httpErr }}
 	pool := newTestPool(ep0)
 
@@ -273,9 +274,9 @@ func TestIsRetryableRPCErr(t *testing.T) {
 		{"nil", nil, false},
 		{"context canceled", context.Canceled, false},
 		{"context deadline", context.DeadlineExceeded, true},
-		{"http 429", &jsonrpc.HTTPError{Code: 429}, true},
-		{"http 503", &jsonrpc.HTTPError{Code: 503}, true},
-		{"http 400", &jsonrpc.HTTPError{Code: 400}, false},
+		{"http 429", jsonrpc.NewHTTPError(429, errors.New("http error")), true},
+		{"http 503", jsonrpc.NewHTTPError(503, errors.New("http error")), true},
+		{"http 400", jsonrpc.NewHTTPError(400, errors.New("http error")), false},
 		{"connection reset", errors.New("read tcp: connection reset by peer"), true},
 		{"eof", errors.New("unexpected EOF"), true},
 		{"business error", errors.New("invalid params: bad pubkey"), false},
@@ -289,7 +290,7 @@ func TestIsRetryableRPCErr(t *testing.T) {
 	}
 }
 
-func TestWriteFailover_RetriesThenSucceeds(t *testing.T) {
+func TestReadFailover_RetriesThenSucceeds(t *testing.T) {
 	pool := newTestPool(
 		&fakeJSONRPCClient{name: "0"},
 		&fakeJSONRPCClient{name: "1"},
@@ -297,10 +298,10 @@ func TestWriteFailover_RetriesThenSucceeds(t *testing.T) {
 	c := &Client{log: testLogger(), solanaRPC: pool, SolanaRPCURL: "http://endpoint-0"}
 
 	var seenURLs []string
-	err := c.withWriteFailover(func(url string) error {
+	err := c.withReadFailover(func(url string) error {
 		seenURLs = append(seenURLs, url)
 		if url == "http://endpoint-0" {
-			return errors.New("rpc unreachable")
+			return errors.New("dial tcp: connection refused")
 		}
 		return nil
 	})
@@ -312,10 +313,30 @@ func TestWriteFailover_RetriesThenSucceeds(t *testing.T) {
 	}
 }
 
-func TestWriteFailover_NoPoolRunsOnce(t *testing.T) {
+func TestReadFailover_NonRetryableDoesNotFailOver(t *testing.T) {
+	pool := newTestPool(
+		&fakeJSONRPCClient{name: "0"},
+		&fakeJSONRPCClient{name: "1"},
+	)
+	c := &Client{log: testLogger(), solanaRPC: pool, SolanaRPCURL: "http://endpoint-0"}
+
+	calls := 0
+	err := c.withReadFailover(func(url string) error {
+		calls++
+		return errors.New("invalid program config: business rejection")
+	})
+	if err == nil {
+		t.Fatal("expected business error to surface")
+	}
+	if calls != 1 {
+		t.Fatalf("expected single attempt for non-retryable error, got %d", calls)
+	}
+}
+
+func TestReadFailover_NoPoolRunsOnce(t *testing.T) {
 	c := &Client{log: testLogger(), SolanaRPCURL: "http://only"}
 	calls := 0
-	err := c.withWriteFailover(func(url string) error {
+	err := c.withReadFailover(func(url string) error {
 		calls++
 		if url != "http://only" {
 			t.Fatalf("expected static URL, got %s", url)
@@ -327,5 +348,59 @@ func TestWriteFailover_NoPoolRunsOnce(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("expected single attempt without pool, got %d", calls)
+	}
+}
+
+func TestRedactURL(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"https://mainnet.helius-rpc.com/?api-key=SECRET", "https://mainnet.helius-rpc.com/<redacted>"},
+		{"https://example.quiknode.pro/TOKEN123/", "https://example.quiknode.pro/<redacted>"},
+		{"https://api.mainnet-beta.solana.com", "https://api.mainnet-beta.solana.com"},
+		{"https://user:pass@rpc.example.com", "https://rpc.example.com/<redacted>"},
+		{"not a url", "<redacted-rpc-url>"},
+	}
+	for _, tt := range tests {
+		if got := redactURL(tt.in); got != tt.want {
+			t.Fatalf("redactURL(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
+func TestScrubErr_RemovesEndpointURLs(t *testing.T) {
+	pool := newTestPool(&fakeJSONRPCClient{name: "0"})
+	pool.urls = []string{"https://mainnet.helius-rpc.com/?api-key=SECRET"}
+	err := errors.New("rpc call failed on https://mainnet.helius-rpc.com/?api-key=SECRET: timeout")
+	got := pool.scrubErr(err)
+	if strings.Contains(got, "SECRET") {
+		t.Fatalf("scrubErr leaked credential: %q", got)
+	}
+}
+
+// TestFailover_ConcurrentAdvanceConverges exercises many goroutines failing over
+// through a shared pool where only the last endpoint succeeds, asserting the
+// sticky index converges to exactly the healthy endpoint and never overshoots.
+// Run with -race to catch index races.
+func TestFailover_ConcurrentAdvanceConverges(t *testing.T) {
+	httpErr := jsonrpc.NewHTTPError(503, errors.New("http error"))
+	ep0 := &fakeJSONRPCClient{name: "0", callForInto: func(any, string, []any) error { return httpErr }}
+	ep1 := &fakeJSONRPCClient{name: "1", callForInto: func(any, string, []any) error { return httpErr }}
+	ep2 := &fakeJSONRPCClient{name: "2", callForInto: func(any, string, []any) error { return nil }}
+	pool := newTestPool(ep0, ep1, ep2)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = pool.CallForInto(context.Background(), nil, "getSlot", nil)
+		}()
+	}
+	wg.Wait()
+
+	if pool.CurrentURL() != "http://endpoint-2" {
+		t.Fatalf("expected convergence to healthy endpoint-2, got %s", pool.CurrentURL())
 	}
 }

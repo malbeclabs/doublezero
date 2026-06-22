@@ -105,6 +105,11 @@ type Client struct {
 	serviceability *serviceability.Client
 	devices        map[string]*Device
 
+	// solanaRPC is the multi-endpoint failover pool used for all Solana RPC
+	// reads (USDC balance, shred-subscription program state). It transparently
+	// fails over a dead/timing-out endpoint and can fail over a lagging node.
+	solanaRPC *solanaRPCPool
+
 	Host         string
 	AllocateAddr bool
 
@@ -158,6 +163,21 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 		solanaRPCURL = networkConfig.LedgerPublicRPCURL
 	}
 
+	// Build the failover RPC pool. On mainnet the public Solana RPC is appended
+	// as a default fallback when SOLANA_RPC_FALLBACK_URLS is unset, so a private
+	// primary automatically gets a safety net. On testnet/devnet (DZ ledger RPC)
+	// there is no public default — the pool collapses to a single endpoint and
+	// behaves exactly as before unless fallbacks are explicitly configured.
+	publicDefault := ""
+	if networkConfig.Moniker == config.EnvMainnetBeta || networkConfig.Moniker == config.EnvMainnet {
+		publicDefault = config.MainnetSolanaRPC
+	}
+	solanaRPC := newSolanaRPCPool(log, solanaRPCURL, publicDefault, rpcBudgetFromEnv())
+	if solanaRPC.EndpointCount() > 1 {
+		// Pick the freshest endpoint to start on, skipping any that are lagging.
+		solanaRPC.SelectHealthiestEndpoint(ctx)
+	}
+
 	return &Client{
 		log:            log,
 		grpcClient:     grpcClient,
@@ -165,6 +185,7 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 		publicIP:       publicIP,
 		serviceability: serviceabilityClient,
 		devices:        devices,
+		solanaRPC:      solanaRPC,
 
 		Host:                       hostname,
 		AllocateAddr:               allocateAddr,

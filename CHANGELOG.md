@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
   - Reduce agent CPU usage by continuing to fetch the full config every 5 seconds but only applying when it has changed or after 60s timeout
 - E2E tests
   - Route all devnet networks (CYOA, default, and miscellaneous) through a shared collision-safe subnet allocator to prevent overlapping subnet assignments across concurrent test runs. (#3919)
+  - Harden the mainnet-beta QA client against flaky/stale Solana RPC: multi-endpoint failover (with a public-RPC default fallback when `SOLANA_RPC_FALLBACK_URLS` is unset), active slot-lag detection, poll-until-consistent post-write reads, and configurable timeout/retry budgets. Eliminates manual `SOLANA_RPC_URL` repointing during RPC outages. (#3930)
 
 ## [v0.27.1](https://github.com/malbeclabs/doublezero/compare/client/v0.27.0...client/v0.27.1) - 2026-06-10
 

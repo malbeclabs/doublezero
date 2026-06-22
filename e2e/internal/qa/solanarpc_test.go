@@ -154,6 +154,22 @@ func TestFailover_AdvancesOnRetryableError(t *testing.T) {
 	}
 }
 
+func TestFailover_AdvancesOnStaleNodeRPCError(t *testing.T) {
+	// A node that explicitly reports it is behind (-32005) should trigger
+	// failover, not surface as a non-retryable business error.
+	behind := &jsonrpc.RPCError{Code: -32005, Message: "Node is behind by 153 slots"}
+	ep0 := &fakeJSONRPCClient{name: "0", callForInto: func(any, string, []any) error { return behind }}
+	ep1 := &fakeJSONRPCClient{name: "1", callForInto: func(any, string, []any) error { return nil }}
+	pool := newTestPool(ep0, ep1)
+
+	if err := pool.CallForInto(context.Background(), nil, "getSlot", nil); err != nil {
+		t.Fatalf("expected failover past stale node, got %v", err)
+	}
+	if pool.CurrentURL() != "http://endpoint-1" {
+		t.Fatalf("expected failover to endpoint-1, got %s", pool.CurrentURL())
+	}
+}
+
 func TestFailover_ExhaustionReturnsLastError(t *testing.T) {
 	httpErr := jsonrpc.NewHTTPError(500, errors.New("http error"))
 	ep0 := &fakeJSONRPCClient{name: "0", callForInto: func(any, string, []any) error { return httpErr }}
@@ -280,6 +296,9 @@ func TestIsRetryableRPCErr(t *testing.T) {
 		{"connection reset", errors.New("read tcp: connection reset by peer"), true},
 		{"eof", errors.New("unexpected EOF"), true},
 		{"business error", errors.New("invalid params: bad pubkey"), false},
+		{"rpc node behind -32005", &jsonrpc.RPCError{Code: -32005, Message: "Node is behind by 153 slots"}, true},
+		{"rpc block unavailable -32004", &jsonrpc.RPCError{Code: -32004, Message: "Block not available for slot"}, true},
+		{"rpc invalid params -32602", &jsonrpc.RPCError{Code: -32602, Message: "invalid params"}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

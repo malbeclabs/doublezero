@@ -386,6 +386,22 @@ func isRetryableRPCErr(err error) bool {
 		return httpErr.Code == 429 || httpErr.Code >= 500
 	}
 
+	// JSON-RPC-level errors. CallForInto returns the response's *jsonrpc.RPCError
+	// directly, so an endpoint that explicitly reports it is behind the cluster
+	// surfaces here, not as an HTTP/network error. Fail over on those stale-node
+	// codes; all other JSON-RPC errors are business errors that should surface.
+	var rpcErr *jsonrpc.RPCError
+	if errors.As(err, &rpcErr) {
+		switch rpcErr.Code {
+		// -32005: node is behind by N slots. -32004: block not available for the
+		// requested slot (node still catching up). Both are the stale-endpoint
+		// condition this failover targets.
+		case -32005, -32004:
+			return true
+		}
+		return false
+	}
+
 	var netErr net.Error
 	if errors.As(err, &netErr) {
 		return true

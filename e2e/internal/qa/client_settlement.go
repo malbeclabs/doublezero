@@ -35,6 +35,20 @@ func (c *Client) currentSolanaRPCURL() string {
 	return c.SolanaRPCURL
 }
 
+// scrubRPCErr redacts any endpoint credential embedded in an RPC error string
+// (solana-go embeds the full request URL, which may carry an API key, in its
+// connectivity/HTTP error messages). Returns the plain error string when there
+// is no pool to source endpoint URLs from.
+func (c *Client) scrubRPCErr(err error) string {
+	if err == nil {
+		return ""
+	}
+	if c.solanaRPC != nil {
+		return c.solanaRPC.scrubErr(err)
+	}
+	return err.Error()
+}
+
 // shredsClient builds a shred-subscription client backed by the failover RPC
 // pool when present, so reads transparently fail over a dead or lagging
 // endpoint. Falls back to a single-endpoint client for hand-built test clients.
@@ -372,12 +386,14 @@ func (c *Client) GetUSDCBalance(ctx context.Context) (uint64, error) {
 		var rpcErr error
 		result, rpcErr = solanaClient.GetTokenAccountBalance(ctx, ata, rpc.CommitmentConfirmed)
 		if rpcErr != nil {
-			c.log.Debug("Retryable RPC error fetching USDC balance", "host", c.Host, "ata", ata, "error", rpcErr)
+			// Scrub: solana-go embeds the (possibly API-keyed) endpoint URL in
+			// its error strings, so never log/return the raw error.
+			c.log.Debug("Retryable RPC error fetching USDC balance", "host", c.Host, "ata", ata, "error", c.scrubRPCErr(rpcErr))
 			return rpcErr
 		}
 		return nil
 	}, retryPolicy); err != nil {
-		return 0, fmt.Errorf("failed to get token account balance for ATA %s on host %s: %w", ata, c.Host, err)
+		return 0, fmt.Errorf("failed to get token account balance for ATA %s on host %s: %s", ata, c.Host, c.scrubRPCErr(err))
 	}
 
 	balance, err := strconv.ParseUint(result.Value.Amount, 10, 64)

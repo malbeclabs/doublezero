@@ -47,6 +47,7 @@ doublezero-cli-core.workspace = true
 doublezero-config.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-program-common.workspace = true
+doublezero-sentinel.workspace = true
 tracing.workspace = true
 
 [features]

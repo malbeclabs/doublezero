@@ -336,6 +336,14 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		devicePubKey := base58.Encode(device.PubKey[:])
 		d := NewDevice(ip, devicePubKey, c.maxUserTunnelSlots)
 
+		// Clear this device's link gauges before rebuilding them below. Doing it
+		// here (before the pathology continue and the interface loop) drops any
+		// series that should no longer be exported on a surviving device: a link
+		// that went inactive, an interface removed/renamed on-chain, a device code
+		// change, or a device that develops a pathology and never reaches the
+		// interface loop. Active links are re-Set further down.
+		clearDeviceLinkMetrics(devicePubKey)
+
 		d.MgmtVrf = device.MgmtVrf
 		d.Code = device.Code
 		d.Status = device.Status
@@ -425,16 +433,13 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				d.Interfaces[i].IsLink = false
 				d.Interfaces[i].Metric = 0
 				d.Interfaces[i].LinkStatus = linkStatusUnknown
-				// Drop any stale gauge for an interface that is no longer an active
-				// link so a surviving device stops exporting its last delay value.
-				linkMetrics.DeleteLabelValues(device.Code, iface.Name, d.PubKey)
+				// Gauge already cleared at the top of the loop; nothing to re-Set.
 				continue
 			}
 
 			if link.DelayNs <= 0 {
 				linkMetricInvalid.WithLabelValues(base58.Encode(link.PubKey[:]), device.Code, iface.Name).Inc()
-				// Delay is no longer valid; clear any previously exported gauge.
-				linkMetrics.DeleteLabelValues(device.Code, iface.Name, d.PubKey)
+				// Delay is invalid; gauge already cleared at the top of the loop.
 				continue
 			}
 
@@ -692,9 +697,9 @@ func (c *Controller) swapCache(cache stateCache) {
 	// Otherwise their counters stay registered with a frozen value and keep
 	// being scraped, making the series look perpetually fresh and tripping the
 	// "Device Stopped Calling Controller" alert forever.
-	for pubkey := range c.cache.Devices {
+	for pubkey, device := range c.cache.Devices {
 		if _, ok := cache.Devices[pubkey]; !ok {
-			deleteDeviceMetrics(pubkey)
+			deleteDeviceMetrics(pubkey, device.Code)
 			c.log.Info("pruned metrics for device removed from ledger", "device_pubkey", pubkey)
 		}
 	}

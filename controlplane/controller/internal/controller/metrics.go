@@ -120,15 +120,32 @@ func init() {
 }
 
 // deleteDeviceMetrics drops every per-device series carrying the given device
-// pubkey from the metric vectors. It is called when a device is removed from the
-// on-chain ledger so Prometheus can no longer scrape its now-frozen counters;
-// after a scrape interval plus the staleness window the series go stale and
-// queries return empty. DeletePartialMatch removes all series matching just the
-// pubkey label, regardless of the other (agent_version, etc.) label values.
-func deleteDeviceMetrics(pubkey string) {
+// pubkey (and code) from the metric vectors. It is called when a device is
+// removed from the on-chain ledger so Prometheus can no longer scrape its
+// now-frozen counters; after a scrape interval plus the staleness window the
+// series go stale and queries return empty. DeletePartialMatch removes all
+// series matching just the given label(s), regardless of the other
+// (agent_version, etc.) label values.
+//
+// linkMetricInvalid is keyed by link_pubkey rather than device_pubkey, so it is
+// pruned by device_code instead (device codes are unique per device).
+func deleteDeviceMetrics(pubkey, code string) {
 	byPubkey := prometheus.Labels{"pubkey": pubkey}
 	getConfigOps.DeletePartialMatch(byPubkey)
 	getConfigRenderErrors.DeletePartialMatch(byPubkey)
 	duplicateTunnelPairs.DeletePartialMatch(byPubkey)
 	linkMetrics.DeletePartialMatch(prometheus.Labels{"device_pubkey": pubkey})
+	linkMetricInvalid.DeletePartialMatch(prometheus.Labels{"device_code": code})
+}
+
+// clearDeviceLinkMetrics drops every controller_link_metrics gauge series for a
+// device that is still present in the ledger, keyed by its pubkey. updateStateCache
+// calls this at the top of each per-device iteration before re-Setting the gauges
+// for the device's currently active links. Clearing by device_pubkey (rather than
+// per-interface) covers every way a gauge can go stale on a surviving device: a
+// link removed or drained to an unlisted status, an interface removed or renamed
+// on-chain, a device code change, or a device that gains a pathology and never
+// reaches the interface loop.
+func clearDeviceLinkMetrics(devicePubKey string) {
+	linkMetrics.DeletePartialMatch(prometheus.Labels{"device_pubkey": devicePubKey})
 }

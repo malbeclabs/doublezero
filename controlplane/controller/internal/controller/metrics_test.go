@@ -49,6 +49,9 @@ func seedDeviceMetrics(pubkey, code string) {
 	getConfigRenderErrors.WithLabelValues(pubkey).Inc()
 	duplicateTunnelPairs.WithLabelValues(pubkey, code).Inc()
 	linkMetrics.WithLabelValues(code, "Ethernet1", pubkey).Set(1)
+	// linkMetricInvalid is keyed by link_pubkey/device_code/interface; the
+	// link_pubkey is derived from the code so each seeded device is distinct.
+	linkMetricInvalid.WithLabelValues("link-"+code, code, "Ethernet1").Inc()
 }
 
 func TestSwapCache_PrunesRemovedDeviceMetrics(t *testing.T) {
@@ -99,6 +102,15 @@ func TestSwapCache_PrunesRemovedDeviceMetrics(t *testing.T) {
 		if got := countSeriesWithLabel(tc.vec, tc.label, surviving); got != 1 {
 			t.Errorf("%s: expected surviving pubkey series to be untouched, got %d", tc.name, got)
 		}
+	}
+
+	// linkMetricInvalid is keyed by link_pubkey, so it is pruned by device_code:
+	// the removed device's series is gone, the surviving device's is untouched.
+	if got := countSeriesWithLabel(linkMetricInvalid, "device_code", "dev-removed"); got != 0 {
+		t.Errorf("linkMetricInvalid: expected removed device series to be pruned, got %d", got)
+	}
+	if got := countSeriesWithLabel(linkMetricInvalid, "device_code", "dev-surviving"); got != 1 {
+		t.Errorf("linkMetricInvalid: expected surviving device series to be untouched, got %d", got)
 	}
 }
 

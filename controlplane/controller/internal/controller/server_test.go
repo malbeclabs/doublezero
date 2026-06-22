@@ -3258,3 +3258,105 @@ func TestStateCache_ClearsLinkMetricOnLinkLoss(t *testing.T) {
 		t.Errorf("expected linkMetrics series to be cleared after link loss, got %d", got)
 	}
 }
+
+// TestStateCache_ClearsLinkMetricOnDevicePathology verifies that a surviving
+// device's controller_link_metrics gauge is cleared even when the device gains a
+// pathology and `continue`s before the interface loop runs. The gauge is cleared
+// at the top of the per-device iteration (before the pathology check), so a stale
+// delay value is not left exported until the whole device is pruned.
+func TestStateCache_ClearsLinkMetricOnDevicePathology(t *testing.T) {
+	const code = "pathology01"
+
+	device := serviceability.Device{
+		ExchangePubKey: [32]uint8{2},
+		PublicIp:       [4]uint8{2, 2, 2, 2},
+		Interfaces: []serviceability.Interface{
+			{
+				InterfaceType: serviceability.InterfaceTypeLoopback,
+				LoopbackType:  serviceability.LoopbackTypeVpnv4,
+				IpNet:         [5]uint8{14, 14, 14, 14, 32},
+				Name:          "Loopback255",
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypeLoopback,
+				LoopbackType:  serviceability.LoopbackTypeIpv4,
+				IpNet:         [5]uint8{12, 12, 12, 12, 32},
+				Name:          "Loopback256",
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				Name:          "Ethernet1/1",
+				IpNet:         [5]uint8{172, 16, 0, 2, 31},
+				Mtu:           2048,
+				Status:        serviceability.InterfaceStatusActivated,
+			},
+		},
+		Status: serviceability.DeviceStatusActivated,
+		Code:   code,
+		PubKey: [32]byte{1},
+	}
+	links := []serviceability.Link{
+		{
+			AccountType:    serviceability.LinkType,
+			SideAPubKey:    [32]uint8{1},
+			SideZPubKey:    [32]uint8{2},
+			Mtu:            2048,
+			DelayNs:        400000000,
+			Status:         serviceability.LinkStatusActivated,
+			SideAIfaceName: "Ethernet1/1",
+			SideZIfaceName: "Ethernet1/1",
+		},
+	}
+	config := serviceability.GlobalConfig{MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24}}
+
+	// The exchange BGP community is valid on the first update and zeroed on the
+	// second, which gives the device a pathology so it `continue`s before the
+	// interface loop.
+	exchanges := []serviceability.Exchange{
+		{PubKey: [32]uint8{2}, Code: "tst", BgpCommunity: 10050},
+	}
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	m := &mockServiceabilityProgramClient{
+		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{
+				GlobalConfig: &config,
+				Devices:      []serviceability.Device{device},
+				Links:        links,
+				Exchanges:    exchanges,
+			}, nil
+		},
+		ProgramIDFunc: func() solana.PublicKey {
+			return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+		},
+	}
+	controller, err := NewController(
+		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		WithServiceabilityProgramClient(m),
+		WithListener(lis),
+		WithDeviceLocalASN(65342),
+	)
+	if err != nil {
+		t.Fatalf("error creating controller: %v", err)
+	}
+
+	// First update: healthy device with an active link sets the gauge.
+	if err := controller.updateStateCache(context.Background()); err != nil {
+		t.Fatalf("error populating state cache: %v", err)
+	}
+	if got := countSeriesWithLabel(linkMetrics, "device_code", code); got != 1 {
+		t.Fatalf("expected 1 linkMetrics series after active link, got %d", got)
+	}
+
+	// Second update: the device gains a pathology and skips the interface loop.
+	exchanges[0].BgpCommunity = 0
+	if err := controller.updateStateCache(context.Background()); err != nil {
+		t.Fatalf("error updating state cache: %v", err)
+	}
+	if got := countSeriesWithLabel(linkMetrics, "device_code", code); got != 0 {
+		t.Errorf("expected linkMetrics series to be cleared for pathological device, got %d", got)
+	}
+}

@@ -24,7 +24,7 @@ All notable changes to this project will be documented in this file.
   - Pass the `user_payer` account on the multicast allowlist add instructions so the onchain credit transfer can fund it.
 - Controller
   - Skip rendering device config when a string field would not survive as a single config token (contains control or whitespace characters).
-  - Prune a device's per-pubkey Prometheus series when it is removed from the on-chain ledger, so the `Network: Device Stopped Calling Controller` alert auto-resolves instead of firing forever on a frozen counter. Check-ins from ledger-absent pubkeys are rejected, counted on the new aggregate `controller_grpc_getconfig_unknown_pubkey_total`, and logged at WARN (rate-limited). (#3931)
+  - Prune a device's per-pubkey Prometheus series when it is removed from the on-chain ledger, so the `Network: Device Stopped Calling Controller` alert auto-resolves instead of firing forever on a frozen counter. Check-ins from ledger-absent pubkeys are rejected, counted on the new aggregate `controller_grpc_getconfig_unknown_pubkey_total`, and logged at WARN (rate-limited). Register `controller_link_metrics`/`controller_link_metrics_invalid_total` (previously populated but never exposed) and clear a device's `controller_link_metrics` gauge when an interface stops being an active link, so a surviving device no longer exports a stale delay value. (#3931)
 - Device agents
   - Reduce agent CPU usage by continuing to fetch the full config every 5 seconds but only applying when it has changed or after 60s timeout
 - E2E tests

@@ -425,11 +425,16 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				d.Interfaces[i].IsLink = false
 				d.Interfaces[i].Metric = 0
 				d.Interfaces[i].LinkStatus = linkStatusUnknown
+				// Drop any stale gauge for an interface that is no longer an active
+				// link so a surviving device stops exporting its last delay value.
+				linkMetrics.DeleteLabelValues(device.Code, iface.Name, d.PubKey)
 				continue
 			}
 
 			if link.DelayNs <= 0 {
 				linkMetricInvalid.WithLabelValues(base58.Encode(link.PubKey[:]), device.Code, iface.Name).Inc()
+				// Delay is no longer valid; clear any previously exported gauge.
+				linkMetrics.DeleteLabelValues(device.Code, iface.Name, d.PubKey)
 				continue
 			}
 

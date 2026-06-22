@@ -3158,3 +3158,103 @@ func TestRenderConfig_PhysicalZeroMtuFails(t *testing.T) {
 		t.Errorf("expected error to mention interface name Ethernet1/1, got: %v", err)
 	}
 }
+
+// TestStateCache_ClearsLinkMetricOnLinkLoss verifies that the controller_link_metrics
+// gauge for a surviving device is cleared when its interface stops being an active
+// link. The gauge is only ever Set when a valid, active link is found; without an
+// explicit Delete on the non-link path a device that loses a link would keep
+// exporting its last delay value indefinitely.
+func TestStateCache_ClearsLinkMetricOnLinkLoss(t *testing.T) {
+	const code = "linkloss01"
+
+	device := serviceability.Device{
+		ExchangePubKey: [32]uint8{2},
+		PublicIp:       [4]uint8{2, 2, 2, 2},
+		Interfaces: []serviceability.Interface{
+			{
+				InterfaceType: serviceability.InterfaceTypeLoopback,
+				LoopbackType:  serviceability.LoopbackTypeVpnv4,
+				IpNet:         [5]uint8{14, 14, 14, 14, 32},
+				Name:          "Loopback255",
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypeLoopback,
+				LoopbackType:  serviceability.LoopbackTypeIpv4,
+				IpNet:         [5]uint8{12, 12, 12, 12, 32},
+				Name:          "Loopback256",
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				Name:          "Ethernet1/1",
+				IpNet:         [5]uint8{172, 16, 0, 2, 31},
+				Mtu:           2048,
+				Status:        serviceability.InterfaceStatusActivated,
+			},
+		},
+		Status: serviceability.DeviceStatusActivated,
+		Code:   code,
+		PubKey: [32]byte{1},
+	}
+	exchanges := []serviceability.Exchange{
+		{PubKey: [32]uint8{2}, Code: "tst", BgpCommunity: 10050},
+	}
+	config := serviceability.GlobalConfig{MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24}}
+
+	// The link is present and active on the first update, gone on the second.
+	links := []serviceability.Link{
+		{
+			AccountType:    serviceability.LinkType,
+			SideAPubKey:    [32]uint8{1},
+			SideZPubKey:    [32]uint8{2},
+			Mtu:            2048,
+			DelayNs:        400000000,
+			Status:         serviceability.LinkStatusActivated,
+			SideAIfaceName: "Ethernet1/1",
+			SideZIfaceName: "Ethernet1/1",
+		},
+	}
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	m := &mockServiceabilityProgramClient{
+		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{
+				GlobalConfig: &config,
+				Devices:      []serviceability.Device{device},
+				Links:        links,
+				Exchanges:    exchanges,
+			}, nil
+		},
+		ProgramIDFunc: func() solana.PublicKey {
+			return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+		},
+	}
+	controller, err := NewController(
+		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		WithServiceabilityProgramClient(m),
+		WithListener(lis),
+		WithDeviceLocalASN(65342),
+	)
+	if err != nil {
+		t.Fatalf("error creating controller: %v", err)
+	}
+
+	// First update: the active link sets the gauge.
+	if err := controller.updateStateCache(context.Background()); err != nil {
+		t.Fatalf("error populating state cache: %v", err)
+	}
+	if got := countSeriesWithLabel(linkMetrics, "device_code", code); got != 1 {
+		t.Fatalf("expected 1 linkMetrics series after active link, got %d", got)
+	}
+
+	// The link is removed from the ledger; the device survives.
+	links = []serviceability.Link{}
+	if err := controller.updateStateCache(context.Background()); err != nil {
+		t.Fatalf("error updating state cache: %v", err)
+	}
+	if got := countSeriesWithLabel(linkMetrics, "device_code", code); got != 0 {
+		t.Errorf("expected linkMetrics series to be cleared after link loss, got %d", got)
+	}
+}

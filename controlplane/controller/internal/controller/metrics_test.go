@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"net"
 	"sync"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -126,10 +128,16 @@ func TestGetConfig_LedgerAbsentPubkey(t *testing.T) {
 
 	before := testutil.ToFloat64(getConfigUnknownPubkey)
 
+	// Attach a gRPC peer so the warning can record the caller's address.
+	const peerAddr = "203.0.113.7:51234"
+	ctx := peer.NewContext(context.Background(), &peer.Peer{
+		Addr: &net.TCPAddr{IP: net.ParseIP("203.0.113.7"), Port: 51234},
+	})
+
 	// Call twice in quick succession: the aggregate counter must count every
 	// call, but the warning is rate-limited so only one is emitted per minute.
 	for i := 0; i < 2; i++ {
-		_, err := c.GetConfig(context.Background(), &pb.ConfigRequest{Pubkey: absent})
+		_, err := c.GetConfig(ctx, &pb.ConfigRequest{Pubkey: absent})
 		// Returns the existing not-found error path.
 		if status.Code(err) != codes.NotFound {
 			t.Fatalf("expected NotFound, got %v", err)
@@ -146,19 +154,30 @@ func TestGetConfig_LedgerAbsentPubkey(t *testing.T) {
 		t.Errorf("expected getConfigUnknownPubkey to increase by 2, got %v", got)
 	}
 
-	// Exactly one rate-limited WARN log naming the device pubkey was emitted.
+	// Exactly one rate-limited WARN log naming the device pubkey and the caller's
+	// address was emitted.
 	warned := 0
 	for _, r := range handler.records {
 		if r.Level != slog.LevelWarn {
 			continue
 		}
+		var gotPubkey, gotPeer string
 		r.Attrs(func(a slog.Attr) bool {
-			if a.Key == "device_pubkey" && a.Value.String() == absent {
-				warned++
-				return false
+			switch a.Key {
+			case "device_pubkey":
+				gotPubkey = a.Value.String()
+			case "peer":
+				gotPeer = a.Value.String()
 			}
 			return true
 		})
+		if gotPubkey != absent {
+			continue
+		}
+		warned++
+		if gotPeer != peerAddr {
+			t.Errorf("expected WARN log peer=%s, got %q", peerAddr, gotPeer)
+		}
 	}
 	if warned != 1 {
 		t.Errorf("expected exactly 1 rate-limited WARN log with device_pubkey=%s, got %d", absent, warned)

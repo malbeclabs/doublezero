@@ -28,6 +28,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -870,7 +871,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		// aggregate counter above tracks the true call volume.
 		now := time.Now().UnixNano()
 		if last := c.lastUnknownPubkeyWarnNanos.Load(); now-last >= int64(time.Minute) && c.lastUnknownPubkeyWarnNanos.CompareAndSwap(last, now) {
-			c.log.Warn("device not found in ledger cache; refusing config (device may have been removed from the ledger but is still calling in)", "device_pubkey", req.GetPubkey())
+			c.log.Warn("device not found in ledger cache; refusing config (device may have been removed from the ledger but is still calling in)", "device_pubkey", req.GetPubkey(), "peer", peerAddr(ctx))
 		}
 		err := status.Errorf(codes.NotFound, "pubkey %s not found", req.Pubkey)
 		return nil, err
@@ -1012,6 +1013,15 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		})
 	}
 	return resp, nil
+}
+
+// peerAddr returns the remote address of the gRPC caller, or "unknown" if it
+// cannot be determined from the request context.
+func peerAddr(ctx context.Context) string {
+	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+		return p.Addr.String()
+	}
+	return "unknown"
 }
 
 // formatCIDR formats a 5-byte network block into CIDR notation

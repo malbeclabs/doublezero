@@ -21,9 +21,11 @@ import (
 // registry to avoid interference from other tests) and counts the series whose
 // label `name` equals `value`. Tests use unique pubkeys so the count is exact.
 func countSeriesWithLabel(c prometheus.Collector, name, value string) int {
-	ch := make(chan prometheus.Metric, 1024)
-	c.Collect(ch)
-	close(ch)
+	ch := make(chan prometheus.Metric)
+	go func() {
+		c.Collect(ch)
+		close(ch)
+	}()
 	n := 0
 	for m := range ch {
 		d := &dto.Metric{}

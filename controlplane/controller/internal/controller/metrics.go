@@ -111,6 +111,10 @@ func init() {
 	prometheus.MustRegister(cacheUpdateFetchErrors)
 	prometheus.MustRegister(cacheUpdateOps)
 
+	// link metrics
+	prometheus.MustRegister(linkMetrics)
+	prometheus.MustRegister(linkMetricInvalid)
+
 	// gRPC middleware metrics
 	prometheus.MustRegister(srvMetrics)
 }

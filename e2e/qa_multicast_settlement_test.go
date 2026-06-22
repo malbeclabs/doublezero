@@ -136,6 +136,13 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		return
 	}
 
+	if !t.Run("wait_for_open_phase", func(t *testing.T) {
+		err := client.WaitForOpenForRequests(ctx)
+		require.NoError(t, err, "shred-subscription program did not enter OpenForRequests phase within timeout")
+	}) {
+		return
+	}
+
 	if !t.Run("record_balance_before_pay", func(t *testing.T) {
 		var err error
 		balanceBeforePay, err = client.GetUSDCBalance(ctx)

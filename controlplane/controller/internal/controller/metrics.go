@@ -15,13 +15,6 @@ var (
 	)
 
 	// gRPC metrics
-	getConfigPubkeyErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "controller_grpc_getconfig_pubkey_errors_total",
-		Help: "The total number of missing pubkeys in cache",
-	},
-		[]string{"pubkey"},
-	)
-
 	getConfigRenderErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "controller_grpc_getconfig_render_errors_total",
 		Help: "The total number of failed config renderings",
@@ -106,7 +99,6 @@ func init() {
 	prometheus.MustRegister(BuildInfo)
 
 	// gRPC metrics
-	prometheus.MustRegister(getConfigPubkeyErrors)
 	prometheus.MustRegister(getConfigRenderErrors)
 	prometheus.MustRegister(duplicateTunnelPairs)
 	prometheus.MustRegister(getConfigOps)
@@ -132,7 +124,6 @@ func init() {
 func deleteDeviceMetrics(pubkey string) {
 	byPubkey := prometheus.Labels{"pubkey": pubkey}
 	getConfigOps.DeletePartialMatch(byPubkey)
-	getConfigPubkeyErrors.DeletePartialMatch(byPubkey)
 	getConfigRenderErrors.DeletePartialMatch(byPubkey)
 	duplicateTunnelPairs.DeletePartialMatch(byPubkey)
 	linkMetrics.DeletePartialMatch(prometheus.Labels{"device_pubkey": pubkey})

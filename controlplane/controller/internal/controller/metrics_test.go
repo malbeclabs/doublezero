@@ -42,7 +42,6 @@ func countSeriesWithLabel(c prometheus.Collector, name, value string) int {
 // of the per-device metric vectors that deleteDeviceMetrics is expected to prune.
 func seedDeviceMetrics(pubkey, code string) {
 	getConfigOps.WithLabelValues(pubkey, code, "contrib", "exch", "loc", "Activated", "v1", "abc", "2026-01-01").Inc()
-	getConfigPubkeyErrors.WithLabelValues(pubkey).Inc()
 	getConfigRenderErrors.WithLabelValues(pubkey).Inc()
 	duplicateTunnelPairs.WithLabelValues(pubkey, code).Inc()
 	linkMetrics.WithLabelValues(code, "Ethernet1", pubkey).Set(1)
@@ -86,7 +85,6 @@ func TestSwapCache_PrunesRemovedDeviceMetrics(t *testing.T) {
 		label string
 	}{
 		{"getConfigOps", getConfigOps, "pubkey"},
-		{"getConfigPubkeyErrors", getConfigPubkeyErrors, "pubkey"},
 		{"getConfigRenderErrors", getConfigRenderErrors, "pubkey"},
 		{"duplicateTunnelPairs", duplicateTunnelPairs, "pubkey"},
 		{"linkMetrics", linkMetrics, "device_pubkey"},

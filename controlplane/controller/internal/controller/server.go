@@ -853,11 +853,13 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	defer c.mu.RUnlock()
 	device, ok := c.cache.Devices[req.GetPubkey()]
 	if !ok {
-		getConfigPubkeyErrors.WithLabelValues(req.GetPubkey()).Inc()
+		// Count on a single aggregate counter that carries no per-pubkey label:
+		// req.GetPubkey() is caller-controlled, so labeling by it would let an
+		// unknown caller blow up metric cardinality. A device removed from the
+		// ledger may keep calling in with its old pubkey; surface it (otherwise
+		// silent today) and return without touching the per-pubkey getConfigOps
+		// series, so a pruned pubkey is not resurrected.
 		getConfigUnknownPubkey.Inc()
-		// A device removed from the ledger may keep calling in with its old
-		// pubkey. Surface it (otherwise silent today) and return without touching
-		// the per-pubkey getConfigOps series, so a pruned pubkey is not resurrected.
 		c.log.Warn("device not found in ledger cache; refusing config (device may have been removed from the ledger but is still calling in)", "device_pubkey", req.GetPubkey())
 		err := status.Errorf(codes.NotFound, "pubkey %s not found", req.Pubkey)
 		return nil, err

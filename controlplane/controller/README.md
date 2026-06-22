@@ -72,10 +72,12 @@ alert firing indefinitely.
 A device removed from the ledger may keep calling `GetConfig` with its old pubkey.
 Such requests are rejected with `NotFound`, logged at `WARN`
 (`device not found in ledger cache; refusing config ...`), and counted on the
-low-cardinality aggregate `controller_grpc_getconfig_unknown_pubkey_total` (which
-carries no per-pubkey label). The controller does not re-register the per-pubkey
-`controller_grpc_getconfig_requests_total` series for these requests, so a pruned
-pubkey is not resurrected by a decommissioned box that is still calling in.
+low-cardinality aggregate `controller_grpc_getconfig_unknown_pubkey_total`. This
+counter deliberately carries no per-pubkey label: `pubkey` is a caller-supplied
+value, so labeling by it would let an unknown caller blow up metric cardinality.
+The controller does not register any per-pubkey series for these requests, so a
+pruned pubkey is not resurrected by a decommissioned box that is still calling in.
+This counter replaces the former per-pubkey `controller_grpc_getconfig_pubkey_errors_total`.
 
 ## Configuration
 

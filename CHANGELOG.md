@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI
+  - Remove the `doublezero-admin` binary. Its commands now live in the `doublezero` CLI as hidden subcommands (e.g. `doublezero sentinel ...`, `doublezero migrate flex-algo`).
+
 ### Changes
 
 - Client
@@ -13,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Add hidden `migrate flex-algo` (RFC-18 link-topology and Vpnv4 loopback FlexAlgoNodeSegment backfill); the prior `migrate` command is now `migrate user-pda`. Moved from `doublezero-admin`.
   - Add hidden `device migrate-multicast-counts` and `device migrate-unicast-counts` to reconcile stale per-device subscriber, publisher, and unicast-user counts. Moved from `doublezero-admin`.
+  - Add hidden `sentinel find-validator-multicast-publishers` and `sentinel create-validator-multicast-publishers` commands. Moved from `doublezero-admin`.
 - Onchain programs
   - Validate the device `mgmt_vrf` field against the account-code charset (`[A-Za-z0-9:_-]`) and a 32-byte length cap, matching the device `code` field. Empty (the default VRF) is still accepted.
   - Transfer connect/disconnect credits to the user's account when adding a user to a multicast group's publisher or subscriber allowlist, so the user can connect immediately. The airdrop is atomic with the allowlist update and mirrors `set_access_pass` (scaled for `allow_multiple_ip` passes). (#3851)
@@ -24,6 +28,7 @@ All notable changes to this project will be documented in this file.
   - Reduce agent CPU usage by continuing to fetch the full config every 5 seconds but only applying when it has changed or after 60s timeout
 - E2E tests
   - Route all devnet networks (CYOA, default, and miscellaneous) through a shared collision-safe subnet allocator to prevent overlapping subnet assignments across concurrent test runs. (#3919)
+  - Harden the mainnet-beta QA client against flaky/stale Solana RPC: multi-endpoint failover (with a public-RPC default fallback when `SOLANA_RPC_FALLBACK_URLS` is unset), active slot-lag detection, poll-until-consistent post-write reads, and configurable timeout/retry budgets. Eliminates manual `SOLANA_RPC_URL` repointing during RPC outages. (#3930)
 
 ## [v0.27.1](https://github.com/malbeclabs/doublezero/compare/client/v0.27.0...client/v0.27.1) - 2026-06-10
 

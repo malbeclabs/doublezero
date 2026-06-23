@@ -257,9 +257,7 @@ jobs:
       run:
         working-directory: "e2e/"
     runs-on: doublezero-k8s-ci
-    # Keep above the go test -timeout (20m) plus rerun headroom, so Go dumps its
-    # per-test stack on timeout instead of GitHub killing the job with no diagnostics.
-    timeout-minutes: 30
+    timeout-minutes: 15
     permissions:
       packages: read
       contents: read
@@ -344,24 +342,11 @@ jobs:
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/validator-metadata-service-mock:${{ env.DZ_IMAGE_TAG }}
           pull_with_retry ghcr.io/malbeclabs/dz-e2e/prometheus:v2.54.1
           pull_with_retry public.ecr.aws/influxdb/influxdb:1.8
-      - name: Install gotestsum
-        run: go install gotest.tools/gotestsum@v1.13.0
       - name: test
         id: test
         env:
           DZ_E2E_NO_BUILD: "1"
-        # Run once, then automatically rerun only the tests that failed. A transient
-        # flake passes on the rerun and the shard stays green; a real failure fails
-        # both attempts and stays red. gotestsum lists which tests were retried, so
-        # flakes remain visible and trackable instead of being silently masked.
-        # rerun-fails-max-failures caps reruns: if more tests than that fail at once,
-        # the build is broadly broken, so we don't rerun and report failure.
-        run: |
-          "$(go env GOPATH)/bin/gotestsum" \
-            --rerun-fails=1 \
-            --rerun-fails-max-failures=15 \
-            --packages=. \
-            -- -tags=e2e -timeout=20m -parallel=12 -run '${{ matrix.run }}' -v
+        run: go test -tags=e2e -timeout=20m -parallel=12 -run '${{ matrix.run }}' -v
       - name: Report check-run result on PR head
         if: always() && github.event_name == 'workflow_dispatch' && steps.check.outputs.id
         uses: actions/github-script@v7

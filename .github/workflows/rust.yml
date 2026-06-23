@@ -47,3 +47,21 @@ jobs:
           sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.13/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - run: make rust-validator-test
+  # The doublezero CLI must not link aws-lc-sys (raises the glibc floor to 2.38, breaks
+  # installs on Ubuntu 22.04). It reaches the CLI only via
+  # sentinel's server-only deps, which are feature-gated off. cargo tree -i exits non-zero
+  # when the package is absent (the wanted state); exit 0 means it crept back in.
+  rust-cli-no-aws-lc:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Assert aws-lc-sys absent from doublezero CLI
+        run: |
+          if cargo tree -p doublezero -e normal -i aws-lc-sys >/dev/null 2>&1; then
+            echo "::error::aws-lc-sys is linked into the doublezero CLI"
+            cargo tree -p doublezero -e normal -i aws-lc-sys
+            exit 1
+          fi
+          echo "OK: aws-lc-sys not in the doublezero CLI dependency tree"

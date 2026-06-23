@@ -106,7 +106,11 @@ tokio = { version = "1", default-features = false, features = [
 doublezero-cli-core = { path = "crates/doublezero-cli-core" }
 doublezero-config = { path = "config" }
 doublezero-geolocation-cli = { path = "crates/doublezero-geolocation-cli" }
-doublezero-sentinel = { path = "crates/sentinel" }
+# default-features = false MUST be set here, not on the consumer edge: an inheriting
+# member's `default-features = false` is ignored unless the workspace dep declares it.
+# This keeps sentinel's server-only deps (Prometheus exporter → rustls/aws-lc-sys) out of
+# the `doublezero` CLI.
+doublezero-sentinel = { path = "crates/sentinel", default-features = false }
 doublezero-serviceability-cli = { path = "smartcontract/cli" }
 doublezero-program-common = { path = "smartcontract/programs/common" }
 doublezero_sdk = { path = "smartcontract/sdk/rs" }

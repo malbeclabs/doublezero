@@ -30,6 +30,10 @@ All notable changes to this project will be documented in this file.
 - E2E tests
   - Route all devnet networks (CYOA, default, and miscellaneous) through a shared collision-safe subnet allocator to prevent overlapping subnet assignments across concurrent test runs. (#3919)
   - Harden the mainnet-beta QA client against flaky/stale Solana RPC: multi-endpoint failover (with a public-RPC default fallback when `SOLANA_RPC_FALLBACK_URLS` is unset), active slot-lag detection, poll-until-consistent post-write reads, and configurable timeout/retry budgets. Eliminates manual `SOLANA_RPC_URL` repointing during RPC outages. (#3930)
+  - Make device selection deterministic in the maxusers rollover test by waiting until the nearby device is measured faster than the faraway device by more than the client's 5ms latency tolerance, so the client cannot connect to the wrong device on a tie. (#3936)
+  - Match CLI validation errors case-insensitively in the interface validation test, decoupling assertions from the program's error-message casing. (#3936)
+- CI
+  - Rerun only the failed e2e tests via `gotestsum --rerun-fails=1` so transient flakes don't redden a shard while staying visible, and raise the e2e job timeout above the `go test` timeout so Go dumps per-test stacks on timeout. (#3936)
 
 ## [v0.27.1](https://github.com/malbeclabs/doublezero/compare/client/v0.27.0...client/v0.27.1) - 2026-06-10
 

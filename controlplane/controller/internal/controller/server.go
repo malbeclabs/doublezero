@@ -282,6 +282,15 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 
 	devices := data.Devices
 	if len(devices) == 0 {
+		// Guard against a transient empty fetch mass-pruning every device's
+		// metrics. Tradeoff: if the *last* device is genuinely removed from the
+		// ledger, the cache is never rebuilt/swapped, so neither
+		// pruneStaleLinkMetrics nor swapCache's device-removal prune runs, and
+		// that device's frozen series (link gauges, per-device counters) keep
+		// being scraped until a device reappears. This is an accepted limitation:
+		// we cannot distinguish a genuinely empty ledger from a transient empty
+		// result here, and a stuck "Device Stopped Calling Controller" alert is
+		// preferable to false-pruning every device on a flaky fetch.
 		return fmt.Errorf("0 devices found on-chain")
 	}
 	users := data.Users
@@ -431,13 +440,17 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				d.Interfaces[i].IsLink = false
 				d.Interfaces[i].Metric = 0
 				d.Interfaces[i].LinkStatus = linkStatusUnknown
-				// Gauge already cleared at the top of the loop; nothing to re-Set.
+				// Not an active link: skip recording it in activeLinkSeries, so any
+				// existing gauge for this series is removed by pruneStaleLinkMetrics
+				// at the end of the update.
 				continue
 			}
 
 			if link.DelayNs <= 0 {
 				linkMetricInvalid.WithLabelValues(base58.Encode(link.PubKey[:]), device.Code, iface.Name).Inc()
-				// Delay is invalid; gauge already cleared at the top of the loop.
+				// Delay is invalid: leave it out of activeLinkSeries so any existing
+				// gauge for this series is pruned by pruneStaleLinkMetrics at the end
+				// of the update.
 				continue
 			}
 

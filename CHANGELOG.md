@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
   - Add hidden `device migrate-multicast-counts` and `device migrate-unicast-counts` to reconcile stale per-device subscriber, publisher, and unicast-user counts. Moved from `doublezero-admin`.
   - Add hidden `sentinel find-validator-multicast-publishers` and `sentinel create-validator-multicast-publishers` commands. Moved from `doublezero-admin`.
   - Feature-gate `doublezero-sentinel`'s server-mode deps (Prometheus exporter) behind a default-on `server` feature and depend on it with `default-features = false`, so the `doublezero` binary no longer links `rustls`/`aws-lc-sys`. Restores the glibc floor (binaries built on Ubuntu 24.04 load on 22.04 again) and shrinks the binary.
+  - Add a `--narrow` flag to `device list`, `link list`, and `access-pass list` that renders a width-reduced table for wide output — dropping low-value columns, abbreviating pubkeys to a copyable leading-prefix, and shortening headers — while leaving `--json` and the default table unchanged. (#3938)
 - Onchain programs
   - Validate the device `mgmt_vrf` field against the account-code charset (`[A-Za-z0-9:_-]`) and a 32-byte length cap, matching the device `code` field. Empty (the default VRF) is still accepted.
   - Transfer connect/disconnect credits to the user's account when adding a user to a multicast group's publisher or subscriber allowlist, so the user can connect immediately. The airdrop is atomic with the allowlist update and mirrors `set_access_pass` (scaled for `allow_multiple_ip` passes). (#3851)

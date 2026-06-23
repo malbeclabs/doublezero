@@ -1,4 +1,7 @@
-use crate::{doublezerocommand::CliCommand, topology::resolve_topology_names};
+use crate::{
+    doublezerocommand::CliCommand,
+    topology::{resolve_topology_names, resolve_topology_names_short},
+};
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_program_common::{serializer, types::NetworkV4};
@@ -58,6 +61,10 @@ pub struct ListLinkCliCommand {
     /// Output as compact JSON.
     #[arg(long, default_value_t = false)]
     pub json_compact: bool,
+    /// Narrow table output: drops side names, mtu, tunnel_net, and owner;
+    /// abbreviates health and drained status; shortens column headers.
+    #[arg(long, default_value_t = false)]
+    pub narrow: bool,
 }
 
 #[derive(Tabled, Serialize)]
@@ -99,6 +106,78 @@ pub struct LinkDisplay {
     pub owner: Pubkey,
     pub link_topologies: String,
     pub unicast_drained: bool,
+    #[tabled(skip)]
+    #[serde(skip)]
+    pub link_topologies_narrow: String,
+}
+
+/// Narrow variant of [`LinkDisplay`] for terminals: drops the side device
+/// names, mtu, tunnel_net, and owner; abbreviates health and drained status;
+/// shortens the wider headers.
+#[derive(Tabled)]
+pub struct LinkDisplayNarrow {
+    #[tabled(display = "crate::util::display_pubkey_short")]
+    pub account: Pubkey,
+    pub code: String,
+    #[tabled(rename = "contributor")]
+    pub contributor_code: String,
+    pub side_a_iface_name: String,
+    pub side_z_iface_name: String,
+    pub link_type: LinkLinkType,
+    #[tabled(display = "crate::util::display_as_bandwidth", rename = "bandwidth")]
+    pub bandwidth: u64,
+    #[tabled(display = "crate::util::display_as_ms", rename = "delay_ms")]
+    pub delay_ns: u64,
+    #[tabled(display = "crate::util::display_as_ms", rename = "jtr_ms")]
+    pub jitter_ns: u64,
+    #[tabled(display = "crate::util::display_as_ms", rename = "dly_ovrd_ms")]
+    pub delay_override_ns: u64,
+    #[tabled(rename = "tnl_id")]
+    pub tunnel_id: u16,
+    pub status: String,
+    pub health: String,
+    #[tabled(rename = "topos")]
+    pub link_topologies: String,
+    pub unicast_drained: bool,
+}
+
+/// Abbreviate the drained statuses for narrow output; pass others through.
+fn abbreviate_link_status(status: &LinkStatus) -> String {
+    match status {
+        LinkStatus::SoftDrained => "sft_drain".to_string(),
+        LinkStatus::HardDrained => "hrd_drain".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Abbreviate the one long health value for narrow output; pass others through.
+fn abbreviate_link_health(health: &LinkHealth) -> String {
+    match health {
+        LinkHealth::ReadyForService => "ready".to_string(),
+        other => other.to_string(),
+    }
+}
+
+impl LinkDisplayNarrow {
+    fn from_display(d: &LinkDisplay) -> Self {
+        Self {
+            account: d.account,
+            code: d.code.clone(),
+            contributor_code: d.contributor_code.clone(),
+            side_a_iface_name: d.side_a_iface_name.clone(),
+            side_z_iface_name: d.side_z_iface_name.clone(),
+            link_type: d.link_type,
+            bandwidth: d.bandwidth,
+            delay_ns: d.delay_ns,
+            jitter_ns: d.jitter_ns,
+            delay_override_ns: d.delay_override_ns,
+            tunnel_id: d.tunnel_id,
+            status: abbreviate_link_status(&d.status),
+            health: abbreviate_link_health(&d.health),
+            link_topologies: d.link_topologies_narrow.clone(),
+            unicast_drained: d.unicast_drained,
+        }
+    }
 }
 
 impl ListLinkCliCommand {
@@ -251,6 +330,10 @@ impl ListLinkCliCommand {
                     unicast_drained: link.link_flags
                         & doublezero_serviceability::state::link::LINK_FLAG_UNICAST_DRAINED
                         != 0,
+                    link_topologies_narrow: resolve_topology_names_short(
+                        &link.link_topologies,
+                        &topology_map,
+                    ),
                 }
             })
             .collect();
@@ -266,6 +349,14 @@ impl ListLinkCliCommand {
             serde_json::to_string_pretty(&tunnel_displays)?
         } else if self.json_compact {
             serde_json::to_string(&tunnel_displays)?
+        } else if self.narrow {
+            let narrow: Vec<LinkDisplayNarrow> = tunnel_displays
+                .iter()
+                .map(LinkDisplayNarrow::from_display)
+                .collect();
+            Table::new(narrow)
+                .with(Style::psql().remove_horizontals())
+                .to_string()
         } else {
             Table::new(tunnel_displays)
                 .with(Style::psql().remove_horizontals())
@@ -447,6 +538,7 @@ mod tests {
                 dzx: false,
                 json: false,
                 json_compact: false,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -471,6 +563,7 @@ mod tests {
                 dzx: false,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -478,6 +571,104 @@ mod tests {
 
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"code\":\"tunnel_code\",\"contributor_code\":\"contributor1_code\",\"side_a_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_a_name\":\"device2_code\",\"side_a_iface_name\":\"eth0\",\"side_z_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"side_z_name\":\"device2_code\",\"side_z_iface_name\":\"eth1\",\"link_type\":\"WAN\",\"bandwidth\":10000000000,\"mtu\":4500,\"delay_ns\":20000,\"jitter_ns\":1121,\"delay_override_ns\":0,\"tunnel_id\":1234,\"tunnel_net\":\"1.2.3.4/32\",\"desired_status\":\"Activated\",\"status\":\"Activated\",\"health\":\"ReadyForService\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"link_topologies\":\"default\",\"unicast_drained\":false}]\n");
+        // Narrow output: drops side names, mtu, tunnel_net, owner; abbreviates
+        // health/status; shortens headers; fits within 240 cols.
+        let mut output = Vec::new();
+        let res = block_on(
+            ListLinkCliCommand {
+                contributor: None,
+                side_a: None,
+                side_z: None,
+                link_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                topology: None,
+                wan: false,
+                dzx: false,
+                json: false,
+                json_compact: false,
+                narrow: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        let header = output_str.lines().next().unwrap();
+        for expected in [
+            "account",
+            "code",
+            "contributor",
+            "side_a_iface_name",
+            "side_z_iface_name",
+            "link_type",
+            "bandwidth",
+            "delay_ms",
+            "jtr_ms",
+            "dly_ovrd_ms",
+            "tnl_id",
+            "status",
+            "health",
+            "topos",
+            "unicast_drained",
+        ] {
+            assert!(header.contains(expected), "missing header {expected}");
+        }
+        for hidden in [
+            "side_a_name",
+            "side_z_name",
+            "mtu",
+            "tunnel_net",
+            "tunnel_id",
+            "jitter_ms",
+            "delay_override_ms",
+            "link_topologies",
+            "owner",
+        ] {
+            assert!(
+                !header.contains(hidden),
+                "narrow header should not contain {hidden}"
+            );
+        }
+        // ReadyForService is abbreviated to "ready".
+        assert!(!output_str.contains("ready-for-service"));
+        for line in output_str.lines() {
+            assert!(
+                line.len() <= 240,
+                "narrow line exceeds 240 cols: {}",
+                line.len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_abbreviate_link_status_and_health() {
+        use doublezero_serviceability::state::link::{LinkHealth, LinkStatus};
+        assert_eq!(
+            super::abbreviate_link_status(&LinkStatus::SoftDrained),
+            "sft_drain"
+        );
+        assert_eq!(
+            super::abbreviate_link_status(&LinkStatus::HardDrained),
+            "hrd_drain"
+        );
+        assert_eq!(
+            super::abbreviate_link_status(&LinkStatus::Activated),
+            "activated"
+        );
+        assert_eq!(
+            super::abbreviate_link_health(&LinkHealth::ReadyForService),
+            "ready"
+        );
+        assert_eq!(
+            super::abbreviate_link_health(&LinkHealth::Impaired),
+            "impaired"
+        );
+        assert_eq!(
+            super::abbreviate_link_health(&LinkHealth::Pending),
+            "pending"
+        );
     }
 
     #[test]
@@ -685,6 +876,7 @@ mod tests {
                 dzx: false,
                 json: false,
                 json_compact: false,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -874,6 +1066,7 @@ mod tests {
                 dzx: false,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -1062,6 +1255,7 @@ mod tests {
                 dzx: false,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -1216,6 +1410,7 @@ mod tests {
                 dzx: false,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );

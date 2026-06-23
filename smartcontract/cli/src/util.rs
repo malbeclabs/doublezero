@@ -22,6 +22,23 @@ pub fn display_as_bandwidth(bandwidth: &u64) -> String {
     bandwidth_to_string(bandwidth)
 }
 
+/// Number of leading base58 characters kept when abbreviating a pubkey for
+/// narrow table output. A contiguous prefix (not a first..last split) keeps the
+/// abbreviation copyable for prefix searches in explorers.
+const SHORT_PUBKEY_PREFIX_LEN: usize = 10;
+
+/// Abbreviate a pubkey for narrow table output: the leading
+/// [`SHORT_PUBKEY_PREFIX_LEN`] base58 characters followed by `..`
+/// (e.g. `7Np3kR9xQ2..`). Base58 is ASCII, so byte slicing is safe.
+pub fn display_pubkey_short(pk: &Pubkey) -> String {
+    let s = pk.to_string();
+    if s.len() > SHORT_PUBKEY_PREFIX_LEN + 2 {
+        format!("{}..", &s[..SHORT_PUBKEY_PREFIX_LEN])
+    } else {
+        s
+    }
+}
+
 pub fn display_string_vec(v: &[String]) -> String {
     v.join(", ")
 }

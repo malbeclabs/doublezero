@@ -58,8 +58,8 @@ pub struct ListAccessPassCliCommand {
     #[arg(long, default_value_t = false)]
     pub json_compact: bool,
     /// Narrow table output: shortens pubkeys, abbreviates accesspass_type, shows
-    /// the first multicast group per role (`+N` for the rest), maps the default
-    /// tenant pubkey to `empty`, and shortens the epoch/connections headers.
+    /// the first multicast group per role (`+N` for the rest), labels a
+    /// no-tenant pass `empty`, and shortens the epoch/connections headers.
     #[arg(long, default_value_t = false)]
     pub narrow: bool,
 }
@@ -95,8 +95,8 @@ pub struct AccessPassDisplay {
 }
 
 /// Narrow variant of [`AccessPassDisplay`] for terminals: shortens every
-/// pubkey, abbreviates the multicast and accesspass_type columns, maps the
-/// blank tenant pubkey to `empty`, and shortens the wider headers.
+/// pubkey, abbreviates the multicast and accesspass_type columns, labels a
+/// no-tenant pass `empty`, and shortens the wider headers.
 #[derive(Tabled)]
 pub struct AccessPassDisplayNarrow {
     #[tabled(display = "crate::util::display_pubkey_short")]
@@ -136,21 +136,12 @@ fn accesspass_type_short(t: &AccessPassType) -> String {
             format!("solana_rpc: {}", crate::util::display_pubkey_short(pk))
         }
         AccessPassType::Others(type_name, key) => {
-            format!("others: {type_name} ({})", shorten_str(key))
+            format!(
+                "others: {type_name} ({})",
+                crate::util::abbreviate_prefix(key)
+            )
         }
         AccessPassType::Prepaid | AccessPassType::EdgeSeat => t.to_string(),
-    }
-}
-
-/// Truncate an arbitrary string to a copyable leading-10-char prefix + `..`
-/// (matching the pubkey abbreviation length) for narrow output. char-based, so
-/// it never splits a multibyte boundary on a non-ASCII `Others` key.
-fn shorten_str(s: &str) -> String {
-    if s.chars().count() > 12 {
-        let prefix: String = s.chars().take(10).collect();
-        format!("{prefix}..")
-    } else {
-        s.to_string()
     }
 }
 
@@ -161,10 +152,15 @@ impl AccessPassDisplayNarrow {
             accesspass_type: accesspass_type_short(&d.accesspass_type_value),
             client_ip: d.client_ip,
             user_payer: d.user_payer,
-            // A literal default (all-ones) tenant pubkey reads as blank; show
-            // "empty". Non-default tenants stringify differently and are
-            // unaffected; the substring can't occur inside a real code/pubkey.
-            tenant: d.tenant.replace(&Pubkey::default().to_string(), "empty"),
+            // A pass with no tenant renders blank (empty allowlist) or shows the
+            // all-ones default pubkey when it is explicitly allowlisted; surface
+            // both as "empty". A real tenant code/pubkey stringifies differently
+            // and is unaffected.
+            tenant: if d.tenant.is_empty() {
+                "empty".to_string()
+            } else {
+                d.tenant.replace(&Pubkey::default().to_string(), "empty")
+            },
             multicast: narrow_groups(&d.mgroup_pub_allowlist, &d.mgroup_sub_allowlist, mgroups),
             last_access_epoch: d.last_access_epoch.clone(),
             remaining_epoch: d.remaining_epoch.clone(),
@@ -614,6 +610,11 @@ mod tests {
         // SolanaValidator type keeps its label but shortens the embedded key.
         assert!(output_str.contains("solana_validator: 1111111FVA.."));
         assert!(!output_str.contains("solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"));
+        // No-tenant passes (empty allowlist) render as `empty`, not blank.
+        assert!(
+            output_str.contains("empty"),
+            "tenant should render as empty"
+        );
         for line in output_str.lines() {
             assert!(
                 line.len() <= 240,

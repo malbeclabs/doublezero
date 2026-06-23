@@ -12,12 +12,12 @@ use doublezero_sdk::{
         link::list::ListLinkCommand,
         topology::list::ListTopologyCommand,
     },
-    Link, LinkLinkType, LinkStatus,
+    Link, LinkLinkType, LinkStatus, TopologyInfo,
 };
 use doublezero_serviceability::state::link::{LinkDesiredStatus, LinkHealth};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, str::FromStr};
+use std::{collections::HashMap, io::Write, str::FromStr};
 use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug)]
@@ -106,9 +106,11 @@ pub struct LinkDisplay {
     pub owner: Pubkey,
     pub link_topologies: String,
     pub unicast_drained: bool,
+    /// Raw topology pubkeys, moved from the source link, so `--narrow` can build
+    /// an abbreviated `topos` cell lazily without precomputing it for every row.
     #[tabled(skip)]
     #[serde(skip)]
-    pub link_topologies_narrow: String,
+    pub link_topologies_raw: Vec<Pubkey>,
 }
 
 /// Narrow variant of [`LinkDisplay`] for terminals: drops the side device
@@ -159,7 +161,7 @@ fn abbreviate_link_health(health: &LinkHealth) -> String {
 }
 
 impl LinkDisplayNarrow {
-    fn from_display(d: &LinkDisplay) -> Self {
+    fn from_display(d: &LinkDisplay, topology_map: &HashMap<Pubkey, TopologyInfo>) -> Self {
         Self {
             account: d.account,
             code: d.code.clone(),
@@ -174,7 +176,7 @@ impl LinkDisplayNarrow {
             tunnel_id: d.tunnel_id,
             status: abbreviate_link_status(&d.status),
             health: abbreviate_link_health(&d.health),
-            link_topologies: d.link_topologies_narrow.clone(),
+            link_topologies: resolve_topology_names_short(&d.link_topologies_raw, topology_map),
             unicast_drained: d.unicast_drained,
         }
     }
@@ -330,10 +332,7 @@ impl ListLinkCliCommand {
                     unicast_drained: link.link_flags
                         & doublezero_serviceability::state::link::LINK_FLAG_UNICAST_DRAINED
                         != 0,
-                    link_topologies_narrow: resolve_topology_names_short(
-                        &link.link_topologies,
-                        &topology_map,
-                    ),
+                    link_topologies_raw: link.link_topologies,
                 }
             })
             .collect();
@@ -352,7 +351,7 @@ impl ListLinkCliCommand {
         } else if self.narrow {
             let narrow: Vec<LinkDisplayNarrow> = tunnel_displays
                 .iter()
-                .map(LinkDisplayNarrow::from_display)
+                .map(|d| LinkDisplayNarrow::from_display(d, &topology_map))
                 .collect();
             Table::new(narrow)
                 .with(Style::psql().remove_horizontals())

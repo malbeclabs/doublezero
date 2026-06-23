@@ -42,6 +42,38 @@ func countSeriesWithLabel(c prometheus.Collector, name, value string) int {
 	return n
 }
 
+// countLinkMetricsSeries counts controller_link_metrics series matching both the
+// given device_code and interface labels. The vec is package-global and other
+// tests leave series with the same interface names under different device codes,
+// so filtering on a single label is not specific enough.
+func countLinkMetricsSeries(deviceCode, iface string) int {
+	ch := make(chan prometheus.Metric)
+	go func() {
+		linkMetrics.Collect(ch)
+		close(ch)
+	}()
+	n := 0
+	for m := range ch {
+		d := &dto.Metric{}
+		if err := m.Write(d); err != nil {
+			continue
+		}
+		var gotCode, gotIface string
+		for _, lp := range d.GetLabel() {
+			switch lp.GetName() {
+			case "device_code":
+				gotCode = lp.GetValue()
+			case "interface":
+				gotIface = lp.GetValue()
+			}
+		}
+		if gotCode == deviceCode && gotIface == iface {
+			n++
+		}
+	}
+	return n
+}
+
 // seedDeviceMetrics registers a series carrying the given device pubkey in each
 // of the per-device metric vectors that deleteDeviceMetrics is expected to prune.
 func seedDeviceMetrics(pubkey, code string) {

@@ -127,8 +127,14 @@ func init() {
 // series matching just the given label(s), regardless of the other
 // (agent_version, etc.) label values.
 //
-// linkMetricInvalid is keyed by link_pubkey rather than device_pubkey, so it is
-// pruned by device_code instead (device codes are unique per device).
+// linkMetricInvalid is keyed by link_pubkey rather than device_pubkey, so it
+// can't be pruned by device pubkey; it is pruned by device_code instead. Device
+// codes are not guaranteed unique on-chain (CreateDevice only normalizes the
+// code and keys the device PDA by a global index), so if two devices ever share
+// a code, removing one also clears the other's controller_link_metrics_invalid_total
+// series. That is an accepted, self-healing edge case: it is a counter that
+// re-increments on the next cache update if the surviving device still has an
+// invalid link.
 func deleteDeviceMetrics(pubkey, code string) {
 	byPubkey := prometheus.Labels{"pubkey": pubkey}
 	getConfigOps.DeletePartialMatch(byPubkey)
@@ -138,14 +144,34 @@ func deleteDeviceMetrics(pubkey, code string) {
 	linkMetricInvalid.DeletePartialMatch(prometheus.Labels{"device_code": code})
 }
 
-// clearDeviceLinkMetrics drops every controller_link_metrics gauge series for a
-// device that is still present in the ledger, keyed by its pubkey. updateStateCache
-// calls this at the top of each per-device iteration before re-Setting the gauges
-// for the device's currently active links. Clearing by device_pubkey (rather than
-// per-interface) covers every way a gauge can go stale on a surviving device: a
-// link removed or drained to an unlisted status, an interface removed or renamed
-// on-chain, a device code change, or a device that gains a pathology and never
-// reaches the interface loop.
-func clearDeviceLinkMetrics(devicePubKey string) {
-	linkMetrics.DeletePartialMatch(prometheus.Labels{"device_pubkey": devicePubKey})
+// linkSeriesKey identifies a single controller_link_metrics gauge series by its
+// full label set.
+type linkSeriesKey struct {
+	deviceCode   string
+	ifaceName    string
+	devicePubKey string
+}
+
+// pruneStaleLinkMetrics deletes only the controller_link_metrics series that were
+// active in the previous cache (prev) but are absent from the set of series set by
+// the current cache update (active). Series that are still active are left alone —
+// updateStateCache re-Set them in place — so a concurrent Prometheus scrape never
+// observes a gap on a link that remains up. This targeted prune (rather than a
+// blanket delete-and-recreate every cycle) covers every staleness path on a
+// surviving device: a link that went inactive, an interface removed or renamed
+// on-chain, a device code change, or a device that gained a pathology and never
+// reached the interface loop. Devices removed from the ledger entirely are also
+// covered, since none of their series appear in active.
+func pruneStaleLinkMetrics(prev map[string]*Device, active map[linkSeriesKey]struct{}) {
+	for _, d := range prev {
+		for _, iface := range d.Interfaces {
+			if !iface.IsLink {
+				continue
+			}
+			key := linkSeriesKey{deviceCode: d.Code, ifaceName: iface.Name, devicePubKey: d.PubKey}
+			if _, ok := active[key]; !ok {
+				linkMetrics.DeleteLabelValues(key.deviceCode, key.ifaceName, key.devicePubKey)
+			}
+		}
+	}
 }

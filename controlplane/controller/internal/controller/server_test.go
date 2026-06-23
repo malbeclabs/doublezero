@@ -3360,3 +3360,123 @@ func TestStateCache_ClearsLinkMetricOnDevicePathology(t *testing.T) {
 		t.Errorf("expected linkMetrics series to be cleared for pathological device, got %d", got)
 	}
 }
+
+// TestStateCache_PrunesOnlyStaleLinkMetric verifies the targeted prune: when a
+// device has two active links and one goes inactive, only the stale gauge series
+// is deleted. The series for the link that stays up is updated in place and is
+// never removed, so a concurrent scrape cannot observe a gap on it.
+func TestStateCache_PrunesOnlyStaleLinkMetric(t *testing.T) {
+	const code = "twolink01"
+
+	device := serviceability.Device{
+		ExchangePubKey: [32]uint8{2},
+		PublicIp:       [4]uint8{2, 2, 2, 2},
+		Interfaces: []serviceability.Interface{
+			{
+				InterfaceType: serviceability.InterfaceTypeLoopback,
+				LoopbackType:  serviceability.LoopbackTypeVpnv4,
+				IpNet:         [5]uint8{14, 14, 14, 14, 32},
+				Name:          "Loopback255",
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypeLoopback,
+				LoopbackType:  serviceability.LoopbackTypeIpv4,
+				IpNet:         [5]uint8{12, 12, 12, 12, 32},
+				Name:          "Loopback256",
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				Name:          "Ethernet1/1",
+				IpNet:         [5]uint8{172, 16, 0, 2, 31},
+				Mtu:           2048,
+				Status:        serviceability.InterfaceStatusActivated,
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				Name:          "Ethernet1/2",
+				IpNet:         [5]uint8{172, 16, 0, 4, 31},
+				Mtu:           2048,
+				Status:        serviceability.InterfaceStatusActivated,
+			},
+		},
+		Status: serviceability.DeviceStatusActivated,
+		Code:   code,
+		PubKey: [32]byte{1},
+	}
+	exchanges := []serviceability.Exchange{
+		{PubKey: [32]uint8{2}, Code: "tst", BgpCommunity: 10050},
+	}
+	config := serviceability.GlobalConfig{MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24}}
+
+	link1 := serviceability.Link{
+		AccountType:    serviceability.LinkType,
+		SideAPubKey:    [32]uint8{1},
+		SideZPubKey:    [32]uint8{2},
+		Mtu:            2048,
+		DelayNs:        400000000,
+		Status:         serviceability.LinkStatusActivated,
+		SideAIfaceName: "Ethernet1/1",
+		SideZIfaceName: "Ethernet1/1",
+	}
+	link2 := serviceability.Link{
+		AccountType:    serviceability.LinkType,
+		SideAPubKey:    [32]uint8{1},
+		SideZPubKey:    [32]uint8{2},
+		Mtu:            2048,
+		DelayNs:        500000000,
+		Status:         serviceability.LinkStatusActivated,
+		SideAIfaceName: "Ethernet1/2",
+		SideZIfaceName: "Ethernet1/2",
+	}
+	links := []serviceability.Link{link1, link2}
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	m := &mockServiceabilityProgramClient{
+		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{
+				GlobalConfig: &config,
+				Devices:      []serviceability.Device{device},
+				Links:        links,
+				Exchanges:    exchanges,
+			}, nil
+		},
+		ProgramIDFunc: func() solana.PublicKey {
+			return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+		},
+	}
+	controller, err := NewController(
+		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		WithServiceabilityProgramClient(m),
+		WithListener(lis),
+		WithDeviceLocalASN(65342),
+	)
+	if err != nil {
+		t.Fatalf("error creating controller: %v", err)
+	}
+
+	// First update: both links active, both gauges set.
+	if err := controller.updateStateCache(context.Background()); err != nil {
+		t.Fatalf("error populating state cache: %v", err)
+	}
+	if got := countSeriesWithLabel(linkMetrics, "device_code", code); got != 2 {
+		t.Fatalf("expected 2 linkMetrics series with both links active, got %d", got)
+	}
+
+	// Second update: only Ethernet1/2's link is removed; Ethernet1/1 stays up.
+	links = []serviceability.Link{link1}
+	if err := controller.updateStateCache(context.Background()); err != nil {
+		t.Fatalf("error updating state cache: %v", err)
+	}
+	if got := countLinkMetricsSeries(code, "Ethernet1/2"); got != 0 {
+		t.Errorf("expected stale Ethernet1/2 series to be pruned, got %d", got)
+	}
+	if got := countLinkMetricsSeries(code, "Ethernet1/1"); got != 1 {
+		t.Errorf("expected still-active Ethernet1/1 series to be untouched, got %d", got)
+	}
+	if got := countSeriesWithLabel(linkMetrics, "device_code", code); got != 1 {
+		t.Errorf("expected exactly 1 remaining linkMetrics series for device, got %d", got)
+	}
+}

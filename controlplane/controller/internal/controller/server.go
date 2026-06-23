@@ -324,6 +324,12 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 	// - subinterface parent can't be defined onchain
 	// - node segments can only be defined on vpnv4 loopback interfaces
 
+	// Track every controller_link_metrics series set during this update so that,
+	// once the new cache is built, only the series that have gone stale (active
+	// last cycle, absent now) are deleted. Series that stay active are updated in
+	// place below, so a scrape never sees a gap on a still-up link.
+	activeLinkSeries := make(map[linkSeriesKey]struct{})
+
 	// build cache of devices
 	for _, device := range devices {
 		ip := net.IP(device.PublicIp[:])
@@ -335,14 +341,6 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 
 		devicePubKey := base58.Encode(device.PubKey[:])
 		d := NewDevice(ip, devicePubKey, c.maxUserTunnelSlots)
-
-		// Clear this device's link gauges before rebuilding them below. Doing it
-		// here (before the pathology continue and the interface loop) drops any
-		// series that should no longer be exported on a surviving device: a link
-		// that went inactive, an interface removed/renamed on-chain, a device code
-		// change, or a device that develops a pathology and never reaches the
-		// interface loop. Active links are re-Set further down.
-		clearDeviceLinkMetrics(devicePubKey)
 
 		d.MgmtVrf = device.MgmtVrf
 		d.Code = device.Code
@@ -474,6 +472,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 
 			linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
+			activeLinkSeries[linkSeriesKey{deviceCode: device.Code, ifaceName: iface.Name, devicePubKey: d.PubKey}] = struct{}{}
 		}
 
 		// Populate flex-algo node-segment data for VPNv4 loopback interfaces.
@@ -680,6 +679,13 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 		}
 	}
+
+	// Delete only the link gauges that were active in the previous cache but are
+	// no longer active, leaving still-active series in place. Done before the swap
+	// so c.cache still holds the previous device set. Safe without a lock: only
+	// this (single) cache-update goroutine writes c.cache, and GetConfig only reads
+	// it.
+	pruneStaleLinkMetrics(c.cache.Devices, activeLinkSeries)
 
 	// swap out state cache with new version
 	c.log.Debug("updating state cache", "state cache", cache)

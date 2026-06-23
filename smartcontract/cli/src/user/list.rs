@@ -510,7 +510,7 @@ fn abbreviate_user_type(ut: &UserType) -> String {
 /// Build the narrow `groups` cell: up to one `P:` entry and one `S:` entry,
 /// each showing the first group's abbreviated name plus `+N` for remaining
 /// groups of that role. Empty roles are omitted.
-fn narrow_groups(
+pub(crate) fn narrow_groups(
     publishers: &[Pubkey],
     subscribers: &[Pubkey],
     mgroups: &HashMap<Pubkey, MulticastGroup>,
@@ -531,9 +531,10 @@ fn narrow_role_entry(
     mgroups: &HashMap<Pubkey, MulticastGroup>,
 ) -> Option<String> {
     let first = pks.first()?;
-    let name = mgroups
-        .get(first)
-        .map_or_else(|| first.to_string(), |g| abbreviate_name(&g.code));
+    let name = mgroups.get(first).map_or_else(
+        || crate::util::display_pubkey_short(first),
+        |g| abbreviate_name(&g.code),
+    );
     let extra = pks.len() - 1;
     Some(if extra > 0 {
         format!("{prefix}:{name}+{extra}")
@@ -610,6 +611,13 @@ mod tests {
         assert_eq!(
             narrow_groups(&[g1, g2], &[g3, g1], &mgroups),
             "P:edge..reds+1,S:jito..ream+1",
+        );
+        // A group absent from the map falls back to a shortened pubkey, not the
+        // full 44-char key.
+        let unknown = Pubkey::new_unique();
+        assert_eq!(
+            narrow_groups(&[unknown], &[], &mgroups),
+            format!("P:{}", crate::util::display_pubkey_short(&unknown)),
         );
     }
 

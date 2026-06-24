@@ -446,15 +446,14 @@ func (m *manager) WithdrawRoute(r *Route, iface string) error {
 
 	m.log.Info("liveness: withdrawing route", "route", r.String(), "iface", iface)
 
-	if m.cfg.PassiveMode && !r.NoUninstall {
-		// Passive-mode: caller wants immediate kernel update independent of liveness.
-		if err := m.cfg.Netlinker.RouteDelete(&r.Route); err != nil {
-			m.metrics.RouteUninstallFailures.WithLabelValues(iface, srcIP).Inc()
-			return fmt.Errorf("error withdrawing route: %v", err)
-		}
-		m.metrics.routeWithdraw(iface, srcIP)
-	}
-
+	// Clear desired/installed under the lock *before* issuing any kernel
+	// RouteDelete, mirroring onSessionDown. reconcileRoutes re-checks
+	// installed[rk] under m.mu before its RouteAdd, so clearing the flag first
+	// closes the resurrection race: reconcile either observes the withdrawal
+	// and skips, or its add lands before our delete and the end state is the
+	// route gone. (The previous passive-mode ordering deleted the kernel route
+	// first, leaving a window where reconcile could resurrect a route the
+	// manager believed was withdrawn.)
 	rk := routeKeyFor(iface, r)
 	m.mu.Lock()
 	delete(m.desired, rk)
@@ -479,12 +478,13 @@ func (m *manager) WithdrawRoute(r *Route, iface string) error {
 	m.metrics.SessionsMapSize.Set(float64(len(m.sessions)))
 	m.mu.Unlock()
 
-	// If we previously installed the route (and not in PassiveMode), remove it now.
-	if wasInstalled && !m.cfg.PassiveMode && !r.NoUninstall {
-		err := m.cfg.Netlinker.RouteDelete(&r.Route)
-		if err != nil {
+	// Remove the kernel route. In passive mode the caller wants an immediate
+	// kernel update independent of liveness, so we always delete; otherwise we
+	// only delete a route we previously installed.
+	if !r.NoUninstall && (m.cfg.PassiveMode || wasInstalled) {
+		if err := m.cfg.Netlinker.RouteDelete(&r.Route); err != nil {
 			m.metrics.RouteUninstallFailures.WithLabelValues(iface, srcIP).Inc()
-			return err
+			return fmt.Errorf("error withdrawing route: %v", err)
 		}
 		m.metrics.routeWithdraw(iface, srcIP)
 	}

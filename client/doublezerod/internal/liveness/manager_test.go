@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	prom "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 )
 
 func TestClient_Liveness_Manager_ConfigValidate(t *testing.T) {
@@ -1714,8 +1715,19 @@ func TestClient_Liveness_Manager_ReconcileRoutes_SkipsPresent(t *testing.T) {
 			return nil
 		},
 		RouteByProtocolFunc: func(int) ([]*routing.Route, error) {
-			// Return the route as present in kernel.
-			return []*routing.Route{&r.Route}, nil
+			// Return a freshly-constructed route with the same field values rather
+			// than the identical &r.Route pointer the manager installed. This is
+			// how the real netlink backend behaves (4-byte vs 16-byte net.IP,
+			// prefsrc echo, mask normalization), so it genuinely exercises
+			// kernelKey construction on both the kernel and desired sides instead
+			// of trivially matching by pointer identity.
+			return []*routing.Route{{
+				Table:    r.Table,
+				Src:      net.IPv4(10, 4, 0, 1).To4(),
+				Dst:      &net.IPNet{IP: net.IPv4(10, 4, 0, 11).To4(), Mask: net.CIDRMask(32, 32)},
+				NextHop:  net.IPv4(10, 5, 0, 1).To4(),
+				Protocol: unix.RTPROT_BGP,
+			}}, nil
 		},
 	}
 
@@ -1882,6 +1894,49 @@ func TestClient_Liveness_Manager_ReconcileRoutes_IncrementsInstallFailureMetric(
 	reinstalls := getCounterValue(t, reg, "doublezero_liveness_route_reinstalls_total",
 		prometheus.Labels{LabelIface: "lo", LabelLocalIP: r.Src.To4().String()})
 	require.Equal(t, float64(0), reinstalls, "a failed reinstall must not increment the reinstall counter")
+}
+
+// TestClient_Liveness_Manager_WithdrawRoute_PassiveClearsInstalledBeforeDelete
+// guards the ordering the reconcile resurrection-race fix depends on: in passive
+// mode WithdrawRoute must clear installed[rk] under the lock *before* issuing the
+// kernel RouteDelete. If it deleted first (the old ordering), reconcile could
+// observe the route missing from the kernel while installed[rk] was still true
+// and resurrect a route the manager believed was withdrawn.
+func TestClient_Liveness_Manager_WithdrawRoute_PassiveClearsInstalledBeforeDelete(t *testing.T) {
+	t.Parallel()
+
+	r := newTestRoute(nil)
+	rk := routeKeyFor("lo", r)
+
+	var installedAtDelete bool
+	var deleteCalled bool
+	var mgr *manager
+	mock := &MockRouteReaderWriter{
+		RouteDeleteFunc: func(*routing.Route) error {
+			deleteCalled = true
+			installedAtDelete = mgr.IsInstalled(rk)
+			return nil
+		},
+	}
+
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = mock
+		cfg.PassiveMode = true
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+	mgr = m
+
+	err = m.RegisterRoute(r, "lo", m.LocalAddr().Port)
+	require.NoError(t, err)
+	require.True(t, mgr.IsInstalled(rk), "route should be installed after RegisterRoute in passive mode")
+
+	err = m.WithdrawRoute(r, "lo")
+	require.NoError(t, err)
+
+	require.True(t, deleteCalled, "passive WithdrawRoute must issue a kernel delete")
+	require.False(t, installedAtDelete, "installed[rk] must be cleared before the kernel RouteDelete")
+	require.False(t, mgr.IsInstalled(rk), "route should not be installed after WithdrawRoute")
 }
 
 func getHistogramCount(t *testing.T, reg *prometheus.Registry, name string, labels prometheus.Labels) float64 {

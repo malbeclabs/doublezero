@@ -70,7 +70,11 @@ func wait[T any](t *testing.T, ch <-chan T, d time.Duration, name string) T {
 
 func newTestRoute(mutate func(*Route)) *Route {
 	r := &Route{Route: routing.Route{
-		Table:    100,
+		// Use the main routing table: liveness only attaches in IBRL mode, whose
+		// routes live in RT_TABLE_MAIN, and RouteByProtocol only returns
+		// main-table routes. A non-main table would never come back from the real
+		// backend, so reconcile tests must mirror production here.
+		Table:    unix.RT_TABLE_MAIN,
 		Src:      net.IPv4(10, 4, 0, 1),
 		Dst:      &net.IPNet{IP: net.IPv4(10, 4, 0, 11), Mask: net.CIDRMask(32, 32)},
 		NextHop:  net.IPv4(10, 5, 0, 1),

@@ -19,6 +19,7 @@ exclude = [
     "sdk/revdist/testdata/fixtures/generate-fixtures",
     "sdk/serviceability/testdata/fixtures/generate-fixtures",
     "sdk/telemetry/testdata/fixtures/generate-fixtures",
+    "sdk/geolocation/testdata/fixtures/generate-fixtures",
 ]
 resolver = "2"
 

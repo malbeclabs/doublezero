@@ -136,6 +136,7 @@ rust-program-accounts-compat:
 .PHONY: sdk-test
 sdk-test:
 	go test ./sdk/borsh-incremental/go/...
+	go test ./sdk/geolocation/go/...
 	go test ./sdk/revdist/go/...
 	$(MAKE) python-test-borsh-incremental
 	$(MAKE) python-test-revdist
@@ -207,6 +208,7 @@ generate-fixtures:
 	cd sdk/revdist/testdata/fixtures/generate-fixtures && cargo run
 	cd sdk/serviceability/testdata/fixtures/generate-fixtures && cargo run
 	cd sdk/telemetry/testdata/fixtures/generate-fixtures && cargo run
+	cd sdk/geolocation/testdata/fixtures/generate-fixtures && cargo run
 
 # -----------------------------------------------------------------------------
 # E2E targets

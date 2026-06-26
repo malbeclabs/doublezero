@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.8](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.8)
+
+- uptick crate to v0.5.8 (#392)
 - use the shared `Wallet` memo helpers from `solana-client-tools` in place of the local `RELAY_MEMO_CU` constant and the inline 5,000/15,000 memo estimates in `validator-deposit`
 - use the shared create-ATA compute-unit helper from `solana-client-tools` (#386)
+- `shreds list --all`: restrict to seats active in the latest subscription epoch (`active_epoch == max` across the queried seats) and print that epoch, so the result reflects current subscriptions instead of every seat that still has an on-chain escrow (lapsed seats whose accounts persist are excluded) (#392)
 
 ## [0.5.7](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.7)
 

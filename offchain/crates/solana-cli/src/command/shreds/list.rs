@@ -38,13 +38,18 @@ pub struct ListCommand {
     #[arg(long)]
     client_ip: Option<Ipv4Addr>,
 
-    /// Show all seats regardless of funder.
+    /// Show seats regardless of funder, restricted to those active in the
+    /// current subscription epoch (whose `active_epoch >= current_epoch`).
+    /// Lapsed seats, whose accounts persist on-chain, are excluded.
     #[arg(long)]
     all: bool,
 
     #[command(flatten)]
     connection_options: SolanaConnectionOptions,
 }
+
+/// A parsed client seat: `(seat_key, device_key, client_ip, tenure)`.
+type ParsedSeat = (Pubkey, Pubkey, Ipv4Addr, u16);
 
 #[derive(Debug, Tabled)]
 struct SeatRow {
@@ -115,12 +120,17 @@ impl ListCommand {
             return Ok(());
         }
 
-        // Parse all seats.
-        let parsed_seats: Vec<_> = accounts
+        // Parse all seats. When `--all` is set, also record each seat's
+        // active_epoch for the active-seat filter below.
+        let mut active_epoch_by_seat: HashMap<Pubkey, u64> = HashMap::new();
+        let parsed_seats: Vec<ParsedSeat> = accounts
             .iter()
             .filter_map(|(seat_key, account)| {
-                let (device_key, client_ip, tenure, _, _) =
+                let (device_key, client_ip, tenure, _, active_epoch) =
                     state::parse_client_seat(&account.data)?;
+                if self.all {
+                    active_epoch_by_seat.insert(*seat_key, active_epoch);
+                }
                 Some((*seat_key, device_key, client_ip, tenure))
             })
             .collect();
@@ -187,6 +197,14 @@ impl ListCommand {
                 .filter(|(seat_key, _, _, _)| balances.contains_key(seat_key))
                 .collect();
             (balances, matching_seats)
+        };
+
+        let filtered_seats = if self.all {
+            let current_epoch = connection.get_epoch_info().await?.epoch;
+            println!("Active subscription epoch: {current_epoch}\n");
+            active_seats(filtered_seats, &active_epoch_by_seat, current_epoch)
+        } else {
+            filtered_seats
         };
 
         if filtered_seats.is_empty() {
@@ -265,6 +283,21 @@ impl ListCommand {
     }
 }
 
+fn active_seats(
+    seats: Vec<ParsedSeat>,
+    active_epoch_by_seat: &HashMap<Pubkey, u64>,
+    current_epoch: u64,
+) -> Vec<ParsedSeat> {
+    seats
+        .into_iter()
+        .filter(|(seat_key, _, _, _)| {
+            active_epoch_by_seat
+                .get(seat_key)
+                .is_some_and(|&active_epoch| active_epoch >= current_epoch)
+        })
+        .collect()
+}
+
 /// Fetch the current epoch price (base + premium, in whole USDC) for each device.
 async fn fetch_device_prices(
     connection: &SolanaConnection,
@@ -316,4 +349,58 @@ async fn fetch_device_prices(
     }
 
     Ok(prices)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a seat with the given active_epoch, returning the seat tuple and
+    /// its `(seat_key, active_epoch)` entry for the lookup map.
+    fn make_seat(active_epoch: u64) -> (ParsedSeat, (Pubkey, u64)) {
+        let seat_key = Pubkey::new_unique();
+        let seat = (
+            seat_key,
+            Pubkey::new_unique(),
+            Ipv4Addr::new(10, 0, 0, 1),
+            1,
+        );
+        (seat, (seat_key, active_epoch))
+    }
+
+    #[test]
+    fn active_seats_keeps_current_and_future_epochs() {
+        let (lapsed, lapsed_e) = make_seat(4);
+        let (current, current_e) = make_seat(5);
+        let (ahead, ahead_e) = make_seat(6);
+        let seats = vec![lapsed, current, ahead];
+        let map = HashMap::from([lapsed_e, current_e, ahead_e]);
+
+        let result = active_seats(seats, &map, 5);
+
+        let keys: Vec<Pubkey> = result.iter().map(|(k, ..)| *k).collect();
+        assert_eq!(keys, vec![current.0, ahead.0]);
+    }
+
+    #[test]
+    fn active_seats_excludes_all_when_subset_is_lapsed() {
+        // Regression: a --device subset where every seat has lapsed must not
+        // report stale seats as active. The old max()/== logic treated the
+        // most-recent lapsed seat as "active" against a stale derived epoch.
+        let (s1, e1) = make_seat(3);
+        let (s2, e2) = make_seat(4);
+        let seats = vec![s1, s2];
+        let map = HashMap::from([e1, e2]);
+
+        let result = active_seats(seats, &map, 5);
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn active_seats_excludes_seat_missing_from_map() {
+        let (seat, _) = make_seat(5);
+        let result = active_seats(vec![seat], &HashMap::new(), 5);
+        assert!(result.is_empty());
+    }
 }

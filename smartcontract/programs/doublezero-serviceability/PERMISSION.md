@@ -37,16 +37,19 @@ sufficient.
 | `PERMISSION_ADMIN`   | `1<<1`  | Manage Permission accounts (create/update/suspend/resume/delete)    |
 | `GLOBALSTATE_ADMIN`  | `1<<13` | Manage GlobalState: feature flags, allowlists, authority keys       |
 | `CONTRIBUTOR_ADMIN`  | `1<<14` | Manage Contributors: create, update, delete                         |
+| `INDEX_ADMIN`        | `1<<17` | Manage internal Index accounts: create, delete                      |
 
 ### Tier 2 — Infrastructure management
 
-| Constant          | Bit    | Description                                                |
-|-------------------|--------|------------------------------------------------------------|
-| `INFRA_ADMIN`     | `1<<2` | Manage locations and exchanges                             |
-| `NETWORK_ADMIN`   | `1<<3` | Manage devices and links                                   |
-| `TENANT_ADMIN`    | `1<<4` | Manage tenants                                             |
-| `MULTICAST_ADMIN` | `1<<5` | Manage multicast groups and their allowlists               |
-| `FEED_AUTHORITY`  | `1<<6` | Manage access for feeds                                    |
+| Constant          | Bit     | Description                                                |
+|-------------------|---------|------------------------------------------------------------|
+| `INFRA_ADMIN`     | `1<<2`  | Manage locations and exchanges                             |
+| `NETWORK_ADMIN`   | `1<<3`  | Manage devices and links                                   |
+| `TENANT_ADMIN`    | `1<<4`  | Manage tenants                                             |
+| `MULTICAST_ADMIN` | `1<<5`  | Manage multicast groups and their allowlists               |
+| `FEED_AUTHORITY`  | `1<<6`  | Manage access for feeds                                    |
+| `TOPOLOGY_ADMIN`  | `1<<15` | Manage segment-routing topologies: create, delete, clear, assign node segments |
+| `RESOURCE_ADMIN`  | `1<<16` | Manage ResourceExtension accounts: create, allocate, deallocate, close |
 
 ### Tier 3 — Operational roles
 
@@ -100,6 +103,9 @@ Falls back to `GlobalState` fields:
 | `INFRA_ADMIN`       | `foundation_allowlist`                                                             |
 | `GLOBALSTATE_ADMIN` | `foundation_allowlist`                                                             |
 | `CONTRIBUTOR_ADMIN` | `foundation_allowlist`                                                             |
+| `TOPOLOGY_ADMIN`    | `foundation_allowlist`                                                             |
+| `RESOURCE_ADMIN`    | `foundation_allowlist`                                                             |
+| `INDEX_ADMIN`       | `foundation_allowlist`                                                             |
 
 ### Foundation bypass for `PERMISSION_ADMIN`
 
@@ -172,7 +178,7 @@ Closes the account and refunds rent to the payer.
 
    ```rust
    /// Can manage Foo accounts: create, update, delete.
-   pub const FOO_ADMIN: u128 = 1 << 15;  // next available bit
+   pub const FOO_ADMIN: u128 = 1 << 18;  // next available bit
    ```
 
    Place it in the appropriate tier with a doc comment describing what it gates.
@@ -206,17 +212,17 @@ Closes the account and refunds rent to the payer.
 
    - **Go** (`smartcontract/sdk/go/serviceability/state.go`):
      ```go
-     PermissionFlagFooAdmin uint64 = 1 << 15
+     PermissionFlagFooAdmin uint64 = 1 << 18
      ```
 
    - **TypeScript** (`sdk/serviceability/typescript/serviceability/state.ts`):
      ```ts
-     export const PERMISSION_FLAG_FOO_ADMIN = 1n << 15n;
+     export const PERMISSION_FLAG_FOO_ADMIN = 1n << 18n;
      ```
 
    - **Python** (`sdk/serviceability/python/serviceability/state.py`):
      ```python
-     PERMISSION_FLAG_FOO_ADMIN = 1 << 15
+     PERMISSION_FLAG_FOO_ADMIN = 1 << 18
      ```
 
 5. **Add tests:**

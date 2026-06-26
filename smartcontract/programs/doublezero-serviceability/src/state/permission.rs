@@ -18,12 +18,18 @@ pub mod permission_flags {
     pub const GLOBALSTATE_ADMIN: u128 = 1 << 13;
     /// Can manage Contributors: create, update, delete.
     pub const CONTRIBUTOR_ADMIN: u128 = 1 << 14;
+    /// Can manage internal Index accounts: create, delete.
+    pub const INDEX_ADMIN: u128 = 1 << 17;
 
     // ── Tier 2: Infrastructure management ─────────────────────────────────
     /// Can manage infrastructure: locations and exchanges.
     pub const INFRA_ADMIN: u128 = 1 << 2;
     /// Can manage network devices and links: create, activate, reject, update, delete, sethealth.
     pub const NETWORK_ADMIN: u128 = 1 << 3;
+    /// Can manage segment-routing topologies: create, delete, clear, assign node segments.
+    pub const TOPOLOGY_ADMIN: u128 = 1 << 15;
+    /// Can manage ResourceExtension accounts: create, allocate, deallocate, close.
+    pub const RESOURCE_ADMIN: u128 = 1 << 16;
     /// Can manage tenants: create, update, delete, add/remove administrators, update payment status.
     pub const TENANT_ADMIN: u128 = 1 << 4;
     /// Can manage multicast groups: create, activate, reject, update, suspend, delete, allowlists.

@@ -567,10 +567,13 @@ All notable changes to this project will be documented in this file.
   - Optimize outbound probe RTT accuracy: send a staggered warmup probe on a separate socket 2ms before the measurement probe to wake the reflector's thread, then take the min RTT of both
 - Onchain Programs
   - Serviceability: add `Permission` account with `CreatePermission`, `UpdatePermission`, `DeletePermission`, `SuspendPermission`, and `ResumePermission` instructions for managing per-keypair permission bitmasks onchain
+  - Serviceability: add `TOPOLOGY_ADMIN`, `RESOURCE_ADMIN`, and `INDEX_ADMIN` permission flags for delegating management of segment-routing topologies, ResourceExtension accounts, and internal Index accounts (legacy authorization maps each to the foundation allowlist)
 - SDK
   - Add `execute_authorized_transaction` (and its `_quiet` variant) alongside `execute_transaction`. The authorized variants append the payer's Permission PDA (read-only) as the trailing account when it exists on-chain, so `authorize()` can find it. All variants share the same builder, so the protocol-max compute-budget/heap-frame requests, preflight, and error-reporting behavior are identical to `execute_transaction`; the only difference is the optional trailing Permission account. The Permission PDA lookup is retried on transient RPC errors and memoized per client.
+  - Add `TOPOLOGY_ADMIN`/`RESOURCE_ADMIN`/`INDEX_ADMIN` permission-flag constants to the Go, TypeScript, and Python serviceability SDKs
 - CLI
   - Add `permission get`, `permission list`, and `permission set` commands with table and JSON output; `permission set` supports incremental `--add` / `--remove` flags and creates or updates the account as needed
+  - Add `topology-admin`, `resource-admin`, and `index-admin` to the named permissions accepted by `permission set --add` / `--remove`
 
 ## [v0.11.0](https://github.com/malbeclabs/doublezero/compare/client/v0.10.0...client/v0.11.0) - 2026-03-12
 

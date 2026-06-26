@@ -1,4 +1,7 @@
-use crate::{error::DoubleZeroError, state::globalstate::GlobalState};
+use crate::{
+    authorize::authorize,
+    state::{globalstate::GlobalState, permission::permission_flags},
+};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 #[cfg(test)]
@@ -65,10 +68,15 @@ pub fn process_create_resource(
         "Resource Account must be uninitialized"
     );
 
+    // Authorization: RESOURCE_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::RESOURCE_ADMIN,
+    )?;
 
     super::create_resource(
         program_id,

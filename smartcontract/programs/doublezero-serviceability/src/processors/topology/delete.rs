@@ -1,9 +1,10 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::{get_globalstate_pda, get_topology_pda},
     processors::validation::validate_program_account,
     serializer::try_acc_close,
-    state::{globalstate::GlobalState, topology::TopologyInfo},
+    state::{globalstate::GlobalState, permission::permission_flags, topology::TopologyInfo},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -22,8 +23,9 @@ pub struct TopologyDeleteArgs {
 /// Accounts layout:
 /// [0] topology PDA     (writable, to be closed)
 /// [1] globalstate      (readonly)
-/// [2] payer            (writable, signer, must be in foundation_allowlist)
+/// [2] payer            (writable, signer, must hold TOPOLOGY_ADMIN)
 /// [3] system_program
+/// [4] permission       (readonly, optional — payer's Permission PDA)
 pub fn process_topology_delete(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -60,12 +62,15 @@ pub fn process_topology_delete(
         "GlobalState"
     );
 
-    // Authorization: foundation keys only
+    // Authorization: TOPOLOGY_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        msg!("TopologyDelete: unauthorized — foundation key required");
-        return Err(DoubleZeroError::Unauthorized.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::TOPOLOGY_ADMIN,
+    )?;
 
     // Guard: topology must have no remaining Link references.
     let topology = TopologyInfo::try_from(topology_account)?;

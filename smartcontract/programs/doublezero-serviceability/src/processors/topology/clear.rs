@@ -1,9 +1,12 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
-    pda::{get_globalstate_pda, get_link_pda, get_topology_pda},
+    pda::{get_globalstate_pda, get_link_pda, get_permission_pda, get_topology_pda},
     processors::validation::validate_program_account,
     serializer::try_acc_write,
-    state::{globalstate::GlobalState, link::Link, topology::TopologyInfo},
+    state::{
+        globalstate::GlobalState, link::Link, permission::permission_flags, topology::TopologyInfo,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -23,9 +26,10 @@ pub struct TopologyClearArgs {
 /// [0] topology PDA     (writable when account still exists; readonly is accepted when
 ///                      the topology has already been closed — clear is tolerant of that)
 /// [1] globalstate      (readonly)
-/// [2] payer            (writable, signer, must be in foundation_allowlist)
+/// [2] payer            (writable, signer, must hold TOPOLOGY_ADMIN)
 /// [3] system_program
 /// [4+] Link accounts   (writable) — remove topology pubkey from link_topologies on each
+/// [last] permission    (readonly, optional — payer's Permission PDA, after the links)
 pub fn process_topology_clear(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -56,12 +60,31 @@ pub fn process_topology_clear(
         "GlobalState"
     );
 
-    // Authorization: foundation keys only
+    // The remaining accounts are the variable-length Link list, optionally
+    // followed by the payer's Permission account (appended last by the SDK).
+    // Peel it off so it is not mistaken for a Link in the loop below.
+    let remaining: Vec<&AccountInfo> = accounts_iter.collect();
+    let (permission_account, link_accounts) = match remaining.last() {
+        Some(last) => {
+            let (perm_pda, _) = get_permission_pda(program_id, payer_account.key);
+            if last.key == &perm_pda {
+                (Some(*last), &remaining[..remaining.len() - 1])
+            } else {
+                (None, &remaining[..])
+            }
+        }
+        None => (None, &remaining[..]),
+    };
+
+    // Authorization: TOPOLOGY_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        msg!("TopologyClear: unauthorized — foundation key required");
-        return Err(DoubleZeroError::Unauthorized.into());
-    }
+    authorize(
+        program_id,
+        &mut permission_account.into_iter(),
+        payer_account.key,
+        &globalstate,
+        permission_flags::TOPOLOGY_ADMIN,
+    )?;
 
     // Validate topology PDA. Clear is tolerant of an already-closed topology,
     // so we cannot call validate_program_account! (it asserts non-empty). If
@@ -83,7 +106,7 @@ pub fn process_topology_clear(
     let mut cleared_count: usize = 0;
 
     // Process remaining Link accounts: remove topology key from link_topologies
-    for link_account in accounts_iter {
+    for link_account in link_accounts.iter().copied() {
         validate_program_account!(link_account, program_id, writable = true, "Link");
         let mut link = Link::try_from(link_account)?;
         assert_eq!(

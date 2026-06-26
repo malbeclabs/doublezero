@@ -32,7 +32,7 @@ impl AllocateResourceCommand {
             _ => Pubkey::default(),
         };
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::AllocateResource(resource_allocate_args),
             vec![
                 AccountMeta::new(resource_pubkey, false),

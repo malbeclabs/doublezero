@@ -1,4 +1,8 @@
-use crate::{error::DoubleZeroError, serializer::try_acc_close, state::globalstate::GlobalState};
+use crate::{
+    authorize::authorize,
+    serializer::try_acc_close,
+    state::{globalstate::GlobalState, permission::permission_flags},
+};
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
@@ -51,10 +55,15 @@ pub fn process_closeaccount_resource_extension(
     assert!(resource_account.is_writable, "PDA Account is not writable");
     assert!(owner_account.is_writable, "Owner Account is not writable");
 
+    // Authorization: RESOURCE_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::RESOURCE_ADMIN,
+    )?;
 
     try_acc_close(resource_account, owner_account)?;
 

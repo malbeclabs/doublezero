@@ -39,7 +39,7 @@ impl ClearTopologyCommand {
                 accounts.push(AccountMeta::new(*link_pk, false));
             }
 
-            let sig = client.execute_transaction(
+            let sig = client.execute_authorized_transaction(
                 DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
                     name: self.name.clone(),
                 }),
@@ -91,7 +91,7 @@ mod tests {
         let link2 = Pubkey::new_unique();
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
                     name: "my-topology".to_string(),
@@ -142,7 +142,7 @@ mod tests {
                 expected_accounts.push(AccountMeta::new(*link_pk, false));
             }
             client
-                .expect_execute_transaction()
+                .expect_execute_authorized_transaction()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(

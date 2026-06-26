@@ -1,8 +1,11 @@
 use crate::{
-    error::DoubleZeroError,
+    authorize::authorize,
     pda::get_resource_extension_pda,
     resource::IdOrIp,
-    state::{globalstate::GlobalState, resource_extension::ResourceExtensionBorrowed},
+    state::{
+        globalstate::GlobalState, permission::permission_flags,
+        resource_extension::ResourceExtensionBorrowed,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -67,10 +70,15 @@ pub fn process_allocate_resource(
     // Check if the account is writable
     assert!(resource_account.is_writable, "PDA Account is not writable");
 
+    // Authorization: RESOURCE_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::RESOURCE_ADMIN,
+    )?;
 
     match value.resource_type {
         crate::resource::ResourceType::DzPrefixBlock(ref associated_pk, _)

@@ -32,7 +32,7 @@ impl CreateResourceCommand {
             _ => Pubkey::default(),
         };
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::CreateResource(resource_create_args),
             vec![
                 AccountMeta::new(resource_pubkey, false),

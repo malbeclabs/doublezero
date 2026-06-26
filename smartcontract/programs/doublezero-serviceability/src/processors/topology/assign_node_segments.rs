@@ -1,12 +1,13 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
-    pda::{get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
+    pda::{get_globalstate_pda, get_permission_pda, get_resource_extension_pda, get_topology_pda},
     processors::{resource::allocate_id, validation::validate_program_account},
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
         device::Device, globalstate::GlobalState, interface::LoopbackType,
-        topology::FlexAlgoNodeSegment,
+        permission::permission_flags, topology::FlexAlgoNodeSegment,
     },
 };
 use borsh::BorshSerialize;
@@ -35,11 +36,13 @@ pub type TopologyBackfillArgs = AssignTopologyNodeSegmentsArgs;
 /// [1]    segment_routing_ids (writable, ResourceExtension)
 /// [2]    globalstate         (readonly)
 /// [3..n] Device accounts     (writable)
-/// [n+1]  payer               (writable, signer, must be in foundation_allowlist)
+/// [n+1]  payer               (writable, signer, must hold TOPOLOGY_ADMIN)
 /// [n+2]  system_program
+/// [n+3]  permission          (readonly, optional — payer's Permission PDA)
 ///
-/// Note: payer and system_program are the last two accounts. The SDK client
-/// always appends them after the variable-length device list.
+/// Note: payer and system_program are the last two accounts (or the last two
+/// before the optional Permission account). The SDK client always appends them
+/// after the variable-length device list.
 pub fn process_assign_topology_node_segments(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -52,15 +55,37 @@ pub fn process_assign_topology_node_segments(
     let globalstate_account = next_account_info(accounts_iter)?;
 
     // Collect remaining accounts. The SDK client always appends payer and
-    // system_program at the end, after the variable-length device list.
+    // system_program at the end, after the variable-length device list, plus an
+    // optional Permission account when one exists for the payer.
     let all_remaining: Vec<&AccountInfo> = accounts_iter.collect();
     if all_remaining.len() < 2 {
         msg!("AssignTopologyNodeSegments: expected at least payer and system_program accounts");
         return Err(DoubleZeroError::InvalidArgument.into());
     }
-    let payer_account = all_remaining[all_remaining.len() - 2];
-    let _system_program = all_remaining[all_remaining.len() - 1];
-    let device_accounts = &all_remaining[..all_remaining.len() - 2];
+    let n = all_remaining.len();
+    // Detect an optional trailing Permission account. With it present the layout
+    // is [devices.., payer, system, permission]; the payer would then be at n-3,
+    // so the last account is a Permission account iff it matches that payer's PDA.
+    let permission_account = if n >= 3 {
+        let candidate_payer = all_remaining[n - 3];
+        let (perm_pda, _) = get_permission_pda(program_id, candidate_payer.key);
+        (all_remaining[n - 1].key == &perm_pda).then_some(all_remaining[n - 1])
+    } else {
+        None
+    };
+    let (payer_account, _system_program, device_accounts) = if permission_account.is_some() {
+        (
+            all_remaining[n - 3],
+            all_remaining[n - 2],
+            &all_remaining[..n - 3],
+        )
+    } else {
+        (
+            all_remaining[n - 2],
+            all_remaining[n - 1],
+            &all_remaining[..n - 2],
+        )
+    };
 
     #[cfg(test)]
     msg!("process_assign_topology_node_segments(name={})", value.name);
@@ -114,11 +139,15 @@ pub fn process_assign_topology_node_segments(
         "GlobalState"
     );
 
+    // Authorization: TOPOLOGY_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        msg!("AssignTopologyNodeSegments: unauthorized — foundation key required");
-        return Err(DoubleZeroError::Unauthorized.into());
-    }
+    authorize(
+        program_id,
+        &mut permission_account.into_iter(),
+        payer_account.key,
+        &globalstate,
+        permission_flags::TOPOLOGY_ADMIN,
+    )?;
 
     let topology_key = topology_account.key;
     let mut backfilled_count: usize = 0;

@@ -1,8 +1,12 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
     resource::{IdOrIp, ResourceType},
-    state::{globalstate::GlobalState, resource_extension::ResourceExtensionBorrowed},
+    state::{
+        globalstate::GlobalState, permission::permission_flags,
+        resource_extension::ResourceExtensionBorrowed,
+    },
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(test)]
@@ -75,10 +79,15 @@ pub fn process_deallocate_resource(
     // Check if the account is writable
     assert!(resource_account.is_writable, "PDA Account is not writable");
 
+    // Authorization: RESOURCE_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::RESOURCE_ADMIN,
+    )?;
 
     let (expected_resource_pda, _, _) = get_resource_extension_pda(program_id, value.resource_type);
     assert_eq!(

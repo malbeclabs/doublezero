@@ -41,7 +41,7 @@ impl AssignTopologyNodeSegmentsCommand {
                 accounts.push(AccountMeta::new(*device_pk, false));
             }
 
-            let sig = client.execute_transaction(
+            let sig = client.execute_authorized_transaction(
                 DoubleZeroInstruction::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs {
                     name: self.name.clone(),
                 }),
@@ -97,7 +97,7 @@ mod tests {
         let device2 = Pubkey::new_unique();
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::AssignTopologyNodeSegments(
                     AssignTopologyNodeSegmentsArgs {
@@ -152,7 +152,7 @@ mod tests {
                 expected_accounts.push(AccountMeta::new(*device_pk, false));
             }
             client
-                .expect_execute_transaction()
+                .expect_execute_authorized_transaction()
                 .times(1)
                 .in_sequence(&mut seq)
                 .with(

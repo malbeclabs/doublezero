@@ -1,16 +1,3 @@
-pub mod accesspass;
 pub mod command;
-pub mod config;
-pub mod contributor;
-pub mod device;
-pub mod exchange;
-pub mod geolocation;
-pub mod globalconfig;
-pub mod link;
-pub mod location;
 pub mod multicast;
-pub mod multicastgroup;
-pub mod permission;
-pub mod resource;
-pub mod tenant;
-pub mod user;
+pub mod sentinel;

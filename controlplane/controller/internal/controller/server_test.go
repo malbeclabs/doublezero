@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log"
 	"log/slog"
@@ -27,7 +28,7 @@ import (
 )
 
 // helper that creates a slice of Tunnel structs with sequential IDs. We can use this to populate
-// a list of tunnel slots so we don't have to update tests by hand when MaxUserTunnelSlots changes.
+// a list of tunnel slots so we don't have to update tests by hand when DefaultMaxUserTunnelSlots changes.
 func generateEmptyTunnelSlots(startID, count int) []*Tunnel {
 	tunnels := make([]*Tunnel, count)
 	for i := 0; i < count; i++ {
@@ -573,7 +574,7 @@ func TestGetConfig(t *testing.T) {
 			if strings.HasSuffix(test.Want, ".tmpl") {
 				templateData := map[string]int{
 					"StartTunnel": config.StartUserTunnelNum,
-					"EndTunnel":   config.StartUserTunnelNum + config.MaxUserTunnelSlots - 1,
+					"EndTunnel":   config.StartUserTunnelNum + config.DefaultMaxUserTunnelSlots - 1,
 				}
 				rendered, err := renderTemplateFile(test.Want, templateData)
 				if err != nil {
@@ -981,8 +982,8 @@ func TestStateCache(t *testing.T) {
 									{239, 0, 0, 1},
 								},
 							},
-						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+2, config.MaxUserTunnelSlots-2)...),
-						TunnelSlots: config.MaxUserTunnelSlots,
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+2, config.DefaultMaxUserTunnelSlots-2)...),
+						TunnelSlots: config.DefaultMaxUserTunnelSlots,
 						Interfaces: []Interface{
 							{
 								InterfaceType: InterfaceTypePhysical,
@@ -1117,8 +1118,8 @@ func TestStateCache(t *testing.T) {
 								MetroRouting:  true,
 								TenantPubKey:  "11111111111111111111111111111111",
 							},
-						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
-						TunnelSlots: config.MaxUserTunnelSlots,
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.DefaultMaxUserTunnelSlots-1)...),
+						TunnelSlots: config.DefaultMaxUserTunnelSlots,
 					},
 				},
 			},
@@ -1231,8 +1232,8 @@ func TestStateCache(t *testing.T) {
 								MetroRouting:  true,
 								TenantPubKey:  "11111111111111111111111111111111",
 							},
-						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.MaxUserTunnelSlots-1)...),
-						TunnelSlots: config.MaxUserTunnelSlots,
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+1, config.DefaultMaxUserTunnelSlots-1)...),
+						TunnelSlots: config.DefaultMaxUserTunnelSlots,
 					},
 				},
 			},
@@ -1384,8 +1385,8 @@ func TestStateCache(t *testing.T) {
 								MetroRouting:  true,
 								TenantPubKey:  "11111111111111111111111111111111",
 							},
-						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+2, config.MaxUserTunnelSlots-2)...),
-						TunnelSlots: config.MaxUserTunnelSlots,
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+2, config.DefaultMaxUserTunnelSlots-2)...),
+						TunnelSlots: config.DefaultMaxUserTunnelSlots,
 					},
 				},
 			},
@@ -1558,8 +1559,8 @@ func TestStateCache(t *testing.T) {
 								MetroRouting:  true,
 								TenantPubKey:  "7fTN12qMUn1gSUuTMxNCdjndcxwJu45kosXuqJiXMeT9",
 							},
-						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+3, config.MaxUserTunnelSlots-3)...),
-						TunnelSlots: config.MaxUserTunnelSlots,
+						}, generateEmptyTunnelSlots(config.StartUserTunnelNum+3, config.DefaultMaxUserTunnelSlots-3)...),
+						TunnelSlots: config.DefaultMaxUserTunnelSlots,
 						Interfaces: []Interface{
 							{
 								InterfaceType:  InterfaceTypeLoopback,
@@ -1786,6 +1787,93 @@ func TestServiceabilityProgramClientArg(t *testing.T) {
 			_, err := NewController(opts...)
 			if err != test.wantErr {
 				t.Fatalf("expected error %v, got %v", test.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestMaxUserTunnelSlotsOption(t *testing.T) {
+	mockClient := &mockServiceabilityProgramClient{
+		ProgramIDFunc: func() solana.PublicKey {
+			return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+		},
+	}
+
+	tests := []struct {
+		name     string
+		opts     []Option
+		wantErr  error
+		wantSize int
+	}{
+		{
+			name:     "default_when_option_omitted",
+			opts:     nil,
+			wantErr:  nil,
+			wantSize: config.DefaultMaxUserTunnelSlots,
+		},
+		{
+			name:     "valid_min",
+			opts:     []Option{WithMaxUserTunnelSlots(1)},
+			wantErr:  nil,
+			wantSize: 1,
+		},
+		{
+			name:     "valid_default",
+			opts:     []Option{WithMaxUserTunnelSlots(config.DefaultMaxUserTunnelSlots)},
+			wantErr:  nil,
+			wantSize: config.DefaultMaxUserTunnelSlots,
+		},
+		{
+			name:     "valid_large",
+			opts:     []Option{WithMaxUserTunnelSlots(1024)},
+			wantErr:  nil,
+			wantSize: 1024,
+		},
+		{
+			name:    "invalid_zero",
+			opts:    []Option{WithMaxUserTunnelSlots(0)},
+			wantErr: ErrInvalidMaxUserTunnelSlots,
+		},
+		{
+			name:    "invalid_negative",
+			opts:    []Option{WithMaxUserTunnelSlots(-1)},
+			wantErr: ErrInvalidMaxUserTunnelSlots,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			opts := []Option{
+				WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+				WithListener(bufconn.Listen(1024 * 1024)),
+				WithServiceabilityProgramClient(mockClient),
+			}
+			opts = append(opts, test.opts...)
+			c, err := NewController(opts...)
+			if test.wantErr != nil {
+				if !errors.Is(err, test.wantErr) {
+					t.Fatalf("expected error %v, got %v", test.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if c.maxUserTunnelSlots != test.wantSize {
+				t.Errorf("expected maxUserTunnelSlots=%d, got %d", test.wantSize, c.maxUserTunnelSlots)
+			}
+			d := NewDevice(net.IPv4(1, 2, 3, 4), "pk", c.maxUserTunnelSlots)
+			if len(d.Tunnels) != test.wantSize {
+				t.Errorf("expected %d tunnel slots on device, got %d", test.wantSize, len(d.Tunnels))
+			}
+			if d.TunnelSlots != test.wantSize {
+				t.Errorf("expected device.TunnelSlots=%d, got %d", test.wantSize, d.TunnelSlots)
+			}
+			if d.Tunnels[0].Id != config.StartUserTunnelNum {
+				t.Errorf("expected first tunnel id=%d, got %d", config.StartUserTunnelNum, d.Tunnels[0].Id)
+			}
+			if d.Tunnels[test.wantSize-1].Id != config.StartUserTunnelNum+test.wantSize-1 {
+				t.Errorf("expected last tunnel id=%d, got %d", config.StartUserTunnelNum+test.wantSize-1, d.Tunnels[test.wantSize-1].Id)
 			}
 		})
 	}
@@ -2283,7 +2371,7 @@ func TestEndToEnd(t *testing.T) {
 			if strings.HasSuffix(test.Want, ".tmpl") {
 				templateData := map[string]int{
 					"StartTunnel": config.StartUserTunnelNum,
-					"EndTunnel":   config.StartUserTunnelNum + config.MaxUserTunnelSlots - 1,
+					"EndTunnel":   config.StartUserTunnelNum + config.DefaultMaxUserTunnelSlots - 1,
 				}
 				rendered, err := renderTemplateFile(test.Want, templateData)
 				if err != nil {
@@ -3068,5 +3156,327 @@ func TestRenderConfig_PhysicalZeroMtuFails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Ethernet1/1") {
 		t.Errorf("expected error to mention interface name Ethernet1/1, got: %v", err)
+	}
+}
+
+// TestStateCache_ClearsLinkMetricOnLinkLoss verifies that the controller_link_metrics
+// gauge for a surviving device is cleared when its interface stops being an active
+// link. The gauge is only ever Set when a valid, active link is found; without an
+// explicit Delete on the non-link path a device that loses a link would keep
+// exporting its last delay value indefinitely.
+func TestStateCache_ClearsLinkMetricOnLinkLoss(t *testing.T) {
+	const code = "linkloss01"
+
+	device := serviceability.Device{
+		ExchangePubKey: [32]uint8{2},
+		PublicIp:       [4]uint8{2, 2, 2, 2},
+		Interfaces: []serviceability.Interface{
+			{
+				InterfaceType: serviceability.InterfaceTypeLoopback,
+				LoopbackType:  serviceability.LoopbackTypeVpnv4,
+				IpNet:         [5]uint8{14, 14, 14, 14, 32},
+				Name:          "Loopback255",
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypeLoopback,
+				LoopbackType:  serviceability.LoopbackTypeIpv4,
+				IpNet:         [5]uint8{12, 12, 12, 12, 32},
+				Name:          "Loopback256",
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				Name:          "Ethernet1/1",
+				IpNet:         [5]uint8{172, 16, 0, 2, 31},
+				Mtu:           2048,
+				Status:        serviceability.InterfaceStatusActivated,
+			},
+		},
+		Status: serviceability.DeviceStatusActivated,
+		Code:   code,
+		PubKey: [32]byte{1},
+	}
+	exchanges := []serviceability.Exchange{
+		{PubKey: [32]uint8{2}, Code: "tst", BgpCommunity: 10050},
+	}
+	config := serviceability.GlobalConfig{MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24}}
+
+	// The link is present and active on the first update, gone on the second.
+	links := []serviceability.Link{
+		{
+			AccountType:    serviceability.LinkType,
+			SideAPubKey:    [32]uint8{1},
+			SideZPubKey:    [32]uint8{2},
+			Mtu:            2048,
+			DelayNs:        400000000,
+			Status:         serviceability.LinkStatusActivated,
+			SideAIfaceName: "Ethernet1/1",
+			SideZIfaceName: "Ethernet1/1",
+		},
+	}
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	m := &mockServiceabilityProgramClient{
+		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{
+				GlobalConfig: &config,
+				Devices:      []serviceability.Device{device},
+				Links:        links,
+				Exchanges:    exchanges,
+			}, nil
+		},
+		ProgramIDFunc: func() solana.PublicKey {
+			return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+		},
+	}
+	controller, err := NewController(
+		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		WithServiceabilityProgramClient(m),
+		WithListener(lis),
+		WithDeviceLocalASN(65342),
+	)
+	if err != nil {
+		t.Fatalf("error creating controller: %v", err)
+	}
+
+	// First update: the active link sets the gauge.
+	if err := controller.updateStateCache(context.Background()); err != nil {
+		t.Fatalf("error populating state cache: %v", err)
+	}
+	if got := countSeriesWithLabel(linkMetrics, "device_code", code); got != 1 {
+		t.Fatalf("expected 1 linkMetrics series after active link, got %d", got)
+	}
+
+	// The link is removed from the ledger; the device survives.
+	links = []serviceability.Link{}
+	if err := controller.updateStateCache(context.Background()); err != nil {
+		t.Fatalf("error updating state cache: %v", err)
+	}
+	if got := countSeriesWithLabel(linkMetrics, "device_code", code); got != 0 {
+		t.Errorf("expected linkMetrics series to be cleared after link loss, got %d", got)
+	}
+}
+
+// TestStateCache_ClearsLinkMetricOnDevicePathology verifies that a surviving
+// device's controller_link_metrics gauge is cleared even when the device gains a
+// pathology and `continue`s before the interface loop runs. The gauge is cleared
+// at the top of the per-device iteration (before the pathology check), so a stale
+// delay value is not left exported until the whole device is pruned.
+func TestStateCache_ClearsLinkMetricOnDevicePathology(t *testing.T) {
+	const code = "pathology01"
+
+	device := serviceability.Device{
+		ExchangePubKey: [32]uint8{2},
+		PublicIp:       [4]uint8{2, 2, 2, 2},
+		Interfaces: []serviceability.Interface{
+			{
+				InterfaceType: serviceability.InterfaceTypeLoopback,
+				LoopbackType:  serviceability.LoopbackTypeVpnv4,
+				IpNet:         [5]uint8{14, 14, 14, 14, 32},
+				Name:          "Loopback255",
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypeLoopback,
+				LoopbackType:  serviceability.LoopbackTypeIpv4,
+				IpNet:         [5]uint8{12, 12, 12, 12, 32},
+				Name:          "Loopback256",
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				Name:          "Ethernet1/1",
+				IpNet:         [5]uint8{172, 16, 0, 2, 31},
+				Mtu:           2048,
+				Status:        serviceability.InterfaceStatusActivated,
+			},
+		},
+		Status: serviceability.DeviceStatusActivated,
+		Code:   code,
+		PubKey: [32]byte{1},
+	}
+	links := []serviceability.Link{
+		{
+			AccountType:    serviceability.LinkType,
+			SideAPubKey:    [32]uint8{1},
+			SideZPubKey:    [32]uint8{2},
+			Mtu:            2048,
+			DelayNs:        400000000,
+			Status:         serviceability.LinkStatusActivated,
+			SideAIfaceName: "Ethernet1/1",
+			SideZIfaceName: "Ethernet1/1",
+		},
+	}
+	config := serviceability.GlobalConfig{MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24}}
+
+	// The exchange BGP community is valid on the first update and zeroed on the
+	// second, which gives the device a pathology so it `continue`s before the
+	// interface loop.
+	exchanges := []serviceability.Exchange{
+		{PubKey: [32]uint8{2}, Code: "tst", BgpCommunity: 10050},
+	}
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	m := &mockServiceabilityProgramClient{
+		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{
+				GlobalConfig: &config,
+				Devices:      []serviceability.Device{device},
+				Links:        links,
+				Exchanges:    exchanges,
+			}, nil
+		},
+		ProgramIDFunc: func() solana.PublicKey {
+			return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+		},
+	}
+	controller, err := NewController(
+		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		WithServiceabilityProgramClient(m),
+		WithListener(lis),
+		WithDeviceLocalASN(65342),
+	)
+	if err != nil {
+		t.Fatalf("error creating controller: %v", err)
+	}
+
+	// First update: healthy device with an active link sets the gauge.
+	if err := controller.updateStateCache(context.Background()); err != nil {
+		t.Fatalf("error populating state cache: %v", err)
+	}
+	if got := countSeriesWithLabel(linkMetrics, "device_code", code); got != 1 {
+		t.Fatalf("expected 1 linkMetrics series after active link, got %d", got)
+	}
+
+	// Second update: the device gains a pathology and skips the interface loop.
+	exchanges[0].BgpCommunity = 0
+	if err := controller.updateStateCache(context.Background()); err != nil {
+		t.Fatalf("error updating state cache: %v", err)
+	}
+	if got := countSeriesWithLabel(linkMetrics, "device_code", code); got != 0 {
+		t.Errorf("expected linkMetrics series to be cleared for pathological device, got %d", got)
+	}
+}
+
+// TestStateCache_PrunesOnlyStaleLinkMetric verifies the targeted prune: when a
+// device has two active links and one goes inactive, only the stale gauge series
+// is deleted. The series for the link that stays up is updated in place and is
+// never removed, so a concurrent scrape cannot observe a gap on it.
+func TestStateCache_PrunesOnlyStaleLinkMetric(t *testing.T) {
+	const code = "twolink01"
+
+	device := serviceability.Device{
+		ExchangePubKey: [32]uint8{2},
+		PublicIp:       [4]uint8{2, 2, 2, 2},
+		Interfaces: []serviceability.Interface{
+			{
+				InterfaceType: serviceability.InterfaceTypeLoopback,
+				LoopbackType:  serviceability.LoopbackTypeVpnv4,
+				IpNet:         [5]uint8{14, 14, 14, 14, 32},
+				Name:          "Loopback255",
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypeLoopback,
+				LoopbackType:  serviceability.LoopbackTypeIpv4,
+				IpNet:         [5]uint8{12, 12, 12, 12, 32},
+				Name:          "Loopback256",
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				Name:          "Ethernet1/1",
+				IpNet:         [5]uint8{172, 16, 0, 2, 31},
+				Mtu:           2048,
+				Status:        serviceability.InterfaceStatusActivated,
+			},
+			{
+				InterfaceType: serviceability.InterfaceTypePhysical,
+				Name:          "Ethernet1/2",
+				IpNet:         [5]uint8{172, 16, 0, 4, 31},
+				Mtu:           2048,
+				Status:        serviceability.InterfaceStatusActivated,
+			},
+		},
+		Status: serviceability.DeviceStatusActivated,
+		Code:   code,
+		PubKey: [32]byte{1},
+	}
+	exchanges := []serviceability.Exchange{
+		{PubKey: [32]uint8{2}, Code: "tst", BgpCommunity: 10050},
+	}
+	config := serviceability.GlobalConfig{MulticastGroupBlock: [5]uint8{239, 0, 0, 0, 24}}
+
+	link1 := serviceability.Link{
+		AccountType:    serviceability.LinkType,
+		SideAPubKey:    [32]uint8{1},
+		SideZPubKey:    [32]uint8{2},
+		Mtu:            2048,
+		DelayNs:        400000000,
+		Status:         serviceability.LinkStatusActivated,
+		SideAIfaceName: "Ethernet1/1",
+		SideZIfaceName: "Ethernet1/1",
+	}
+	link2 := serviceability.Link{
+		AccountType:    serviceability.LinkType,
+		SideAPubKey:    [32]uint8{1},
+		SideZPubKey:    [32]uint8{2},
+		Mtu:            2048,
+		DelayNs:        500000000,
+		Status:         serviceability.LinkStatusActivated,
+		SideAIfaceName: "Ethernet1/2",
+		SideZIfaceName: "Ethernet1/2",
+	}
+	links := []serviceability.Link{link1, link2}
+
+	lis, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	m := &mockServiceabilityProgramClient{
+		GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+			return &serviceability.ProgramData{
+				GlobalConfig: &config,
+				Devices:      []serviceability.Device{device},
+				Links:        links,
+				Exchanges:    exchanges,
+			}, nil
+		},
+		ProgramIDFunc: func() solana.PublicKey {
+			return solana.MustPublicKeyFromBase58("11111111111111111111111111111111")
+		},
+	}
+	controller, err := NewController(
+		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		WithServiceabilityProgramClient(m),
+		WithListener(lis),
+		WithDeviceLocalASN(65342),
+	)
+	if err != nil {
+		t.Fatalf("error creating controller: %v", err)
+	}
+
+	// First update: both links active, both gauges set.
+	if err := controller.updateStateCache(context.Background()); err != nil {
+		t.Fatalf("error populating state cache: %v", err)
+	}
+	if got := countSeriesWithLabel(linkMetrics, "device_code", code); got != 2 {
+		t.Fatalf("expected 2 linkMetrics series with both links active, got %d", got)
+	}
+
+	// Second update: only Ethernet1/2's link is removed; Ethernet1/1 stays up.
+	links = []serviceability.Link{link1}
+	if err := controller.updateStateCache(context.Background()); err != nil {
+		t.Fatalf("error updating state cache: %v", err)
+	}
+	if got := countLinkMetricsSeries(code, "Ethernet1/2"); got != 0 {
+		t.Errorf("expected stale Ethernet1/2 series to be pruned, got %d", got)
+	}
+	if got := countLinkMetricsSeries(code, "Ethernet1/1"); got != 1 {
+		t.Errorf("expected still-active Ethernet1/1 series to be untouched, got %d", got)
+	}
+	if got := countSeriesWithLabel(linkMetrics, "device_code", code); got != 1 {
+		t.Errorf("expected exactly 1 remaining linkMetrics series for device, got %d", got)
 	}
 }

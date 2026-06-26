@@ -40,14 +40,21 @@ tabled.workspace = true
 tokio.workspace = true
 
 # Dependencies from this workspace
-doublezero_sdk.workspace = true
-doublezero_cli.workspace = true
+doublezero_sdk = { workspace = true, features = ["cli-context"] }
+doublezero-geolocation-cli.workspace = true
+doublezero-serviceability-cli.workspace = true
+doublezero-cli-core.workspace = true
 doublezero-config.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-program-common.workspace = true
+# Inherits default-features = false from [workspace.dependencies] (the override is ignored
+# if set here), keeping sentinel's `server` deps (Prometheus exporter → rustls/aws-lc-sys)
+# out of the CLI.
+doublezero-sentinel.workspace = true
+tracing.workspace = true
 
 [features]
-default-mainnet-beta = ["doublezero_sdk/default-mainnet-beta", "doublezero_cli/default-mainnet-beta"]
+default-mainnet-beta = ["doublezero_sdk/default-mainnet-beta", "doublezero-serviceability-cli/default-mainnet-beta"]
 
 [dev-dependencies]
 assert_cmd.workspace = true

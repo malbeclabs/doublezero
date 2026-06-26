@@ -131,6 +131,30 @@ func NewProbePacket(seq uint32, signer Signer) *ProbePacket {
 	return p
 }
 
+// newChallengedProbePacket constructs a probe whose Sec/Frac carry the
+// challenge nonce (BigEndian: Sec = upper 4 bytes, Frac = lower 4 bytes)
+// rather than an NTP timestamp. The signature is computed over the
+// nonce-bearing payload. Used by senders running in challenged mode.
+func newChallengedProbePacket(seq uint32, signer Signer, nonce uint64) *ProbePacket {
+	pub := signer.Public()
+	p := &ProbePacket{
+		Seq:  seq,
+		Sec:  uint32(nonce >> 32),
+		Frac: uint32(nonce & 0xFFFFFFFF),
+	}
+	copy(p.SenderPubkey[:], pub)
+
+	var payload [probePayloadSize]byte
+	binary.BigEndian.PutUint32(payload[0:4], p.Seq)
+	binary.BigEndian.PutUint32(payload[4:8], p.Sec)
+	binary.BigEndian.PutUint32(payload[8:12], p.Frac)
+	copy(payload[12:44], p.SenderPubkey[:])
+
+	sig := signer.Sign(payload[:])
+	copy(p.Signature[:], sig)
+	return p
+}
+
 func (p *ProbePacket) Marshal(buf []byte) error {
 	if len(buf) < ProbePacketSize {
 		return fmt.Errorf("buffer too small: %d < %d", len(buf), ProbePacketSize)

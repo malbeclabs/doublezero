@@ -31,7 +31,7 @@ mod test_helpers;
 
 use test_helpers::*;
 
-const EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION: u64 = 3319920;
+const EXPECTED_LAMPORTS_USED_FOR_ACCOUNT_CREATION: u64 = 3_319_920;
 
 #[tokio::test]
 async fn test_initialize_device_latency_samples_success_active_devices_and_link() {
@@ -857,8 +857,8 @@ async fn test_initialize_device_latency_samples_success_provisioning_link() {
                 link_type: LinkLinkType::WAN,
                 bandwidth: 10_000_000_000,
                 mtu: 9000,
-                delay_ns: 1000000,
-                jitter_ns: 100000,
+                delay_ns: 1_000_000,
+                jitter_ns: 100_000,
                 side_a_iface_name: "Ethernet0".to_string(),
                 side_z_iface_name: Some("Ethernet1".to_string()),
                 desired_status: Some(LinkDesiredStatus::Activated),
@@ -1121,8 +1121,8 @@ async fn test_initialize_device_latency_samples_fail_link_wrong_devices() {
                 link_type: LinkLinkType::WAN,
                 bandwidth: 10_000_000_000,
                 mtu: 9000,
-                delay_ns: 1000000,
-                jitter_ns: 100000,
+                delay_ns: 1_000_000,
+                jitter_ns: 100_000,
                 side_a_iface_name: "Ethernet0".to_string(),
                 side_z_iface_name: Some("Ethernet1".to_string()),
                 desired_status: Some(LinkDesiredStatus::Activated),
@@ -1257,8 +1257,8 @@ async fn test_initialize_device_latency_samples_succeeds_with_reversed_link_side
                 link_type: LinkLinkType::WAN,
                 bandwidth: 10_000_000_000,
                 mtu: 9000,
-                delay_ns: 1000000,
-                jitter_ns: 100000,
+                delay_ns: 1_000_000,
+                jitter_ns: 100_000,
                 side_a_iface_name: "Ethernet1".to_string(),
                 side_z_iface_name: Some("Ethernet0".to_string()),
                 desired_status: Some(LinkDesiredStatus::Activated),
@@ -1590,8 +1590,8 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
                 link_type: LinkLinkType::WAN,
                 bandwidth: 10_000_000_000,
                 mtu: 9000,
-                delay_ns: 1000000,
-                jitter_ns: 100000,
+                delay_ns: 1_000_000,
+                jitter_ns: 100_000,
                 side_a_iface_name: "Ethernet0".to_string(),
                 side_z_iface_name: Some("Ethernet1".to_string()),
                 desired_status: Some(LinkDesiredStatus::Activated),

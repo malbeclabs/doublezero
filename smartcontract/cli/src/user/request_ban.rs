@@ -1,3 +1,4 @@
+use doublezero_cli_core::CliContext;
 use std::str::FromStr;
 
 use crate::{
@@ -18,7 +19,12 @@ pub struct RequestBanUserCliCommand {
 }
 
 impl RequestBanUserCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE | CHECK_FOUNDATION_ALLOWLIST)?;
 
@@ -32,6 +38,8 @@ impl RequestBanUserCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand,
         requirements::{CHECK_BALANCE, CHECK_FOUNDATION_ALLOWLIST, CHECK_ID_JSON},
@@ -112,10 +120,13 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = RequestBanUserCliCommand {
-            pubkey: pda_pubkey.to_string(),
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            RequestBanUserCliCommand {
+                pubkey: pda_pubkey.to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

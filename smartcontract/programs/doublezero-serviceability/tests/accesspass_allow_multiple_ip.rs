@@ -280,6 +280,8 @@ async fn test_accesspass_allow_multiple_ip() {
             client_ip: Ipv4Addr::UNSPECIFIED,
             last_access_epoch: 9999,
             allow_multiple_ip: true,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

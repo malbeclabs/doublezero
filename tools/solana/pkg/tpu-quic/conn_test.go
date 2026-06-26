@@ -51,6 +51,7 @@ func TestTools_Solana_TPUQUICConn_Dial_NilConfig_UsesDefaults(t *testing.T) {
 
 	serverAddrCh := make(chan string, 1)
 	errCh := make(chan error, 1)
+	releaseServer := make(chan struct{})
 
 	go func() {
 		tlsConf, err := createTlsConfig()
@@ -74,12 +75,15 @@ func TestTools_Solana_TPUQUICConn_Dial_NilConfig_UsesDefaults(t *testing.T) {
 
 		serverAddrCh <- l.Addr().String()
 
-		// Accept a single connection and then close it; don't wait on Context().
+		// Accept a single connection and hold it open until the client has
+		// finished its liveness checks, so the server's close can't race
+		// conn.IsClosed() below.
 		sess, err := l.Accept(context.Background())
 		if err != nil {
 			errCh <- err
 			return
 		}
+		<-releaseServer
 		_ = sess.CloseWithError(0, "server done")
 	}()
 
@@ -102,6 +106,8 @@ func TestTools_Solana_TPUQUICConn_Dial_NilConfig_UsesDefaults(t *testing.T) {
 
 	require.False(t, conn.IsClosed())
 
+	close(releaseServer)
+
 	require.NoError(t, conn.Close())
 	require.Eventually(t, func() bool { return conn.IsClosed() }, time.Second, 10*time.Millisecond)
 
@@ -117,6 +123,7 @@ func TestTools_Solana_TPUQUICConn_Dial_WithExplicitConfig_Success(t *testing.T) 
 
 	serverAddrCh := make(chan string, 1)
 	errCh := make(chan error, 1)
+	releaseServer := make(chan struct{})
 
 	go func() {
 		tlsConf, err := createTlsConfig()
@@ -145,6 +152,7 @@ func TestTools_Solana_TPUQUICConn_Dial_WithExplicitConfig_Success(t *testing.T) 
 			errCh <- err
 			return
 		}
+		<-releaseServer
 		_ = sess.CloseWithError(0, "server done")
 	}()
 
@@ -168,6 +176,9 @@ func TestTools_Solana_TPUQUICConn_Dial_WithExplicitConfig_Success(t *testing.T) 
 	_ = stats
 
 	require.False(t, conn.IsClosed())
+
+	close(releaseServer)
+
 	require.NoError(t, conn.Close())
 	require.Eventually(t, func() bool { return conn.IsClosed() }, time.Second, 10*time.Millisecond)
 
@@ -209,6 +220,7 @@ func TestTools_Solana_TPUQUICConn_DialWithRetry_Success(t *testing.T) {
 
 	serverAddrCh := make(chan string, 1)
 	errCh := make(chan error, 1)
+	releaseServer := make(chan struct{})
 
 	go func() {
 		tlsConf, err := createTlsConfig()
@@ -237,6 +249,7 @@ func TestTools_Solana_TPUQUICConn_DialWithRetry_Success(t *testing.T) {
 			errCh <- err
 			return
 		}
+		<-releaseServer
 		_ = sess.CloseWithError(0, "server done")
 	}()
 
@@ -259,6 +272,8 @@ func TestTools_Solana_TPUQUICConn_DialWithRetry_Success(t *testing.T) {
 	// Ensure stats and basic methods work.
 	_ = conn.ConnectionStats()
 	require.False(t, conn.IsClosed())
+
+	close(releaseServer)
 
 	require.NoError(t, conn.Close())
 	require.Eventually(t, func() bool { return conn.IsClosed() }, time.Second, 10*time.Millisecond)

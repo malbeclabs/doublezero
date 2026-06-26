@@ -1,0 +1,77 @@
+name: release.docker.client.devnet
+
+# Builds and publishes the PRIVATE devnet client image
+# (ghcr.io/<owner>/doublezero-devnet) after the nightly devnet release. Chained
+# off release.devnet.all.daily, the scheduled umbrella that publishes the devnet
+# client deb (via the reusable release.daily.yml). It must watch that top-level
+# workflow, not release.devnet.client.daily: workflow_run never fires for
+# reusable/called workflows, and release.devnet.client.daily is manual-only.
+on:
+  workflow_run:
+    workflows: ["release.devnet.all.daily"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/doublezero-devnet
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  publish:
+    # Build on the nightly's completion regardless of its overall conclusion: the
+    # client deb is published by an early matrix leg, so an unrelated later
+    # failure (e.g. qa) must not skip the image. The version is resolved from the
+    # devnet Cloudsmith repo, so a no-op/early run just rebuilds the latest. Skip
+    # only cancelled runs.
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve devnet nightly version + tag
+        id: v
+        shell: bash
+        run: |
+          RAW="$(docker run --rm --entrypoint bash ubuntu:24.04 -c '
+            apt-get update -qq >/dev/null 2>&1
+            apt-get install -y -qq --no-install-recommends ca-certificates curl >/dev/null 2>&1
+            curl -1sLf "https://dl.cloudsmith.io/public/malbeclabs/doublezero-devnet/setup.deb.sh" | bash >/dev/null 2>&1
+            apt-get update -qq >/dev/null 2>&1
+            apt-cache madison doublezero | head -1 | awk "{print \$3}"')"
+          [[ -n "$RAW" ]] || { echo "could not resolve devnet version"; exit 1; }
+          TAG="$(printf '%s' "$RAW" | tr '~:' '--')"
+          echo "version=$RAW" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved devnet version: $RAW (tag: $TAG)"
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push devnet (:latest + sanitized version)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            DZ_CLOUDSMITH_REPO=doublezero-devnet
+            DZ_DEP_REPO=doublezero-testnet
+            DZ_DEFAULT_ENV=devnet
+            DZ_VERSION=${{ steps.v.outputs.version }}
+            BUILD_VERSION=${{ steps.v.outputs.version }}
+            BUILD_COMMIT=${{ github.sha }}
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ steps.v.outputs.tag }}

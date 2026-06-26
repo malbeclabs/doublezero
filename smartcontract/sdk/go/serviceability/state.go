@@ -1092,21 +1092,20 @@ type ProgramConfig struct {
 type AccessPassTypeTag uint8
 
 const (
-	AccessPassTypePrepaid            AccessPassTypeTag = 0
-	AccessPassTypeSolanaValidator    AccessPassTypeTag = 1
-	AccessPassTypeSolanaRPC          AccessPassTypeTag = 2
-	AccessPassTypeSolanaMulticastPub AccessPassTypeTag = 3
-	AccessPassTypeSolanaMulticastSub AccessPassTypeTag = 4
-	AccessPassTypeOthers             AccessPassTypeTag = 5
+	AccessPassTypePrepaid         AccessPassTypeTag = 0
+	AccessPassTypeSolanaValidator AccessPassTypeTag = 1
+	AccessPassTypeSolanaRPC       AccessPassTypeTag = 2
+	AccessPassTypeOthers          AccessPassTypeTag = 3
+	AccessPassTypeEdgeSeat        AccessPassTypeTag = 4
 )
 
 type AccessPassStatus uint8
 
 const (
-	AccessPassStatusRequested    AccessPassStatus = 0
-	AccessPassStatusConnected    AccessPassStatus = 1
-	AccessPassStatusDisconnected AccessPassStatus = 2
-	AccessPassStatusExpired      AccessPassStatus = 3
+	AccessPassStatusRequested         AccessPassStatus = 0
+	AccessPassStatusConnected         AccessPassStatus = 1
+	AccessPassStatusDisconnected      AccessPassStatus = 2
+	AccessPassStatusExpiredDeprecated AccessPassStatus = 3 // deprecated; epoch expiry no longer demotes access passes
 )
 
 func (s AccessPassStatus) String() string {
@@ -1117,8 +1116,8 @@ func (s AccessPassStatus) String() string {
 		return "connected"
 	case AccessPassStatusDisconnected:
 		return "disconnected"
-	case AccessPassStatusExpired:
-		return "expired"
+	case AccessPassStatusExpiredDeprecated:
+		return "expired (deprecated)"
 	default:
 		return "unknown"
 	}
@@ -1129,7 +1128,7 @@ type AccessPass struct {
 	Owner              [32]byte
 	BumpSeed           uint8
 	AccessPassTypeTag  AccessPassTypeTag
-	AssociatedPubkey   [32]byte // for SolanaValidator, SolanaRPC, SolanaMulticast*
+	AssociatedPubkey   [32]byte // for SolanaValidator, SolanaRPC
 	OthersTypeName     string   // for Others variant
 	OthersKey          string   // for Others variant
 	ClientIp           [4]uint8
@@ -1140,6 +1139,11 @@ type AccessPass struct {
 	MGroupPubAllowlist [][32]byte
 	MGroupSubAllowlist [][32]byte
 	Flags              uint8
+	TenantAllowlist    [][32]byte
+	UnicastUserCount   uint16
+	MaxUnicastUsers    uint16
+	MulticastUserCount uint16
+	MaxMulticastUsers  uint16
 	PubKey             [32]byte
 }
 

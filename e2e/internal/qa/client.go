@@ -105,6 +105,11 @@ type Client struct {
 	serviceability *serviceability.Client
 	devices        map[string]*Device
 
+	// solanaRPC is the multi-endpoint failover pool used for all Solana RPC
+	// reads (USDC balance, shred-subscription program state). It transparently
+	// fails over a dead/timing-out endpoint and can fail over a lagging node.
+	solanaRPC *solanaRPCPool
+
 	Host         string
 	AllocateAddr bool
 
@@ -158,6 +163,21 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 		solanaRPCURL = networkConfig.LedgerPublicRPCURL
 	}
 
+	// Build the failover RPC pool. On mainnet the public Solana RPC is appended
+	// as a default fallback when SOLANA_RPC_FALLBACK_URLS is unset, so a private
+	// primary automatically gets a safety net. On testnet/devnet (DZ ledger RPC)
+	// there is no public default — the pool collapses to a single endpoint and
+	// behaves exactly as before unless fallbacks are explicitly configured.
+	publicDefault := ""
+	if networkConfig.Moniker == config.EnvMainnetBeta || networkConfig.Moniker == config.EnvMainnet {
+		publicDefault = config.MainnetSolanaRPC
+	}
+	solanaRPC := newSolanaRPCPool(log, solanaRPCURL, publicDefault, rpcBudgetFromEnv())
+	if solanaRPC.EndpointCount() > 1 {
+		// Pick the freshest endpoint to start on, skipping any that are lagging.
+		solanaRPC.SelectHealthiestEndpoint(ctx)
+	}
+
 	return &Client{
 		log:            log,
 		grpcClient:     grpcClient,
@@ -165,6 +185,7 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 		publicIP:       publicIP,
 		serviceability: serviceabilityClient,
 		devices:        devices,
+		solanaRPC:      solanaRPC,
 
 		Host:                       hostname,
 		AllocateAddr:               allocateAddr,
@@ -206,6 +227,9 @@ func (c *Client) DoublezeroOrPublicIP() net.IP {
 }
 
 func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitForDeletion bool) error {
+	ctx, cancel := context.WithTimeout(ctx, disconnectTimeout)
+	defer cancel()
+
 	resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
 	if err != nil {
 		return fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
@@ -222,8 +246,6 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	// We do this to handle the case where the client thinks it's disconnected but the user exists
 	// onchain, which can happen if the previous connect attempt timed out in the CLI but eventually
 	// succeeded onchain.
-	ctx, cancel := context.WithTimeout(ctx, disconnectTimeout)
-	defer cancel()
 	_, err = c.grpcClient.Disconnect(ctx, &emptypb.Empty{})
 	if err != nil {
 		return fmt.Errorf("failed to disconnect on host %s: %w", c.Host, err)
@@ -473,6 +495,62 @@ func (c *Client) WaitForStatusDisconnected(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for status to be disconnected on host %s: %w", c.Host, err)
 	}
 	c.log.Debug("Confirmed status is disconnected", "host", c.Host)
+	return nil
+}
+
+// WaitForMulticastStatusDisconnected polls until the Multicast status entry is
+// either absent from the status list or has session status disconnected.
+// Prefer this over WaitForStatusDisconnected in multi-tunnel contexts where
+// other tunnel types (e.g. IBRL) remain up after a multicast seat is withdrawn.
+func (c *Client) WaitForMulticastStatusDisconnected(ctx context.Context) error {
+	return c.waitForUserTypeStatusDisconnected(ctx, "Multicast", FindMulticastStatus)
+}
+
+// WaitForIBRLStatusDisconnected polls until no IBRL (or IBRLWithAllocatedIP)
+// status entry remains with a non-disconnected session. Non-IBRL tunnel types
+// (e.g. Multicast) are ignored. Prefer this over WaitForStatusDisconnected in
+// multi-tunnel contexts where a Multicast tunnel can persist independently of
+// the unicast lifecycle — e.g. when a stale shred-subscription seat cannot be
+// withdrawn and its multicast tunnel stays up. Walks the status list directly
+// rather than reusing FindIBRLStatus, which has a single-status fallback that
+// would misclassify a lone Multicast entry as IBRL.
+func (c *Client) WaitForIBRLStatusDisconnected(ctx context.Context) error {
+	c.log.Debug("Waiting for IBRL status to be disconnected", "host", c.Host)
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
+		if err != nil {
+			return false, err
+		}
+		for _, s := range resp.Status {
+			if IsIBRLStatus(s) && s.SessionStatus != UserStatusDisconnected {
+				return false, nil
+			}
+		}
+		return true, nil
+	}, waitForStatusDisconnectedTimeout, waitInterval)
+	if err != nil {
+		return fmt.Errorf("failed to wait for IBRL status to be disconnected on host %s: %w", c.Host, err)
+	}
+	c.log.Debug("Confirmed IBRL status is disconnected", "host", c.Host)
+	return nil
+}
+
+// waitForUserTypeStatusDisconnected polls until find returns nil or a status
+// whose session is disconnected. userType is used only for log context.
+func (c *Client) waitForUserTypeStatusDisconnected(ctx context.Context, userType string, find func([]*pb.Status) *pb.Status) error {
+	c.log.Debug("Waiting for status to be disconnected", "host", c.Host, "userType", userType)
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
+		if err != nil {
+			return false, err
+		}
+		s := find(resp.Status)
+		return s == nil || s.SessionStatus == UserStatusDisconnected, nil
+	}, waitForStatusDisconnectedTimeout, waitInterval)
+	if err != nil {
+		return fmt.Errorf("failed to wait for %s status to be disconnected on host %s: %w", userType, c.Host, err)
+	}
+	c.log.Debug("Confirmed status is disconnected", "host", c.Host, "userType", userType)
 	return nil
 }
 

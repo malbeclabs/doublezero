@@ -71,34 +71,32 @@ func (n *CYOANetwork) CreateIfNotExists(ctx context.Context) (bool, error) {
 func (n *CYOANetwork) Create(ctx context.Context) error {
 	n.log.Debug("==> Creating CYOA network", "labels", n.dn.labels)
 
-	// Get an available subnet for the CYOA network.
-	subnetCIDR, err := n.dn.subnetAllocator.FindAvailableSubnet(ctx, n.dn.Spec.DeployID)
-	if err != nil {
-		return fmt.Errorf("failed to get available subnet: %w", err)
-	}
-	n.log.Debug("--> Network subnet selected", "subnet", subnetCIDR)
-
-	// Create the docker network.
-	// NOTE: We use the deprecated GenericNetworkRequest because the newer network.New doesn't
-	// allow us to set the name of the network, and we want something we can find by name.
-	//nolint:staticcheck // SA1019
 	networkName := n.dockerNetworkName()
-	req := testcontainers.GenericNetworkRequest{
-		NetworkRequest: testcontainers.NetworkRequest{
-			Name:       networkName,
-			Driver:     "bridge",
-			Attachable: true,
-			Labels:     n.dn.labels,
-			Internal:   true,
-			IPAM: &dockernetwork.IPAM{
-				Config: []dockernetwork.IPAMConfig{
-					{Subnet: subnetCIDR},
+
+	// Allocate a collision-safe subnet and create the network, retrying on a Docker pool-overlap
+	// error so a concurrent process grabbing the CIDR between allocation and creation self-heals.
+	subnetCIDR, err := createNetworkWithSubnet(ctx, n.dn.subnetAllocator, n.dn.Spec.DeployID, func(subnetCIDR string) error {
+		// NOTE: We use the deprecated GenericNetworkRequest because the newer network.New doesn't
+		// allow us to set the name of the network, and we want something we can find by name.
+		//nolint:staticcheck // SA1019
+		req := testcontainers.GenericNetworkRequest{
+			NetworkRequest: testcontainers.NetworkRequest{
+				Name:       networkName,
+				Driver:     "bridge",
+				Attachable: true,
+				Labels:     n.dn.labels,
+				Internal:   true,
+				IPAM: &dockernetwork.IPAM{
+					Config: []dockernetwork.IPAMConfig{
+						{Subnet: subnetCIDR},
+					},
 				},
 			},
-		},
-	}
-	//nolint:staticcheck // SA1019
-	_, err = testcontainers.GenericNetwork(ctx, req)
+		}
+		//nolint:staticcheck // SA1019
+		_, err := testcontainers.GenericNetwork(ctx, req)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create network: %w", err)
 	}

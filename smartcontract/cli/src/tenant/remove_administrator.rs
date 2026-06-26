@@ -1,12 +1,9 @@
 use crate::{
-    doublezerocommand::CliCommand,
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::validate_pubkey_or_code,
+    doublezerocommand::CliCommand, helpers::resolve_tenant_pk, validators::validate_pubkey_or_code,
 };
 use clap::Args;
-use doublezero_sdk::commands::tenant::{
-    get::GetTenantCommand, remove_administrator::RemoveAdministratorTenantCommand,
-};
+use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
+use doublezero_sdk::commands::tenant::remove_administrator::RemoveAdministratorTenantCommand;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
 
@@ -21,13 +18,18 @@ pub struct RemoveAdministratorTenantCliCommand {
 }
 
 impl RemoveAdministratorTenantCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
-        let (tenant_pubkey, _tenant) = client.get_tenant(GetTenantCommand {
-            pubkey_or_code: self.pubkey,
-        })?;
+        let tenant_pubkey = resolve_tenant_pk(client, &self.pubkey)?;
 
         let administrator = Pubkey::from_str(&self.administrator)
             .map_err(|_| eyre::eyre!("Invalid administrator pubkey"))?;
@@ -37,9 +39,7 @@ impl RemoveAdministratorTenantCliCommand {
             administrator,
         })?;
 
-        writeln!(out, "Signature: {signature}")?;
-
-        Ok(())
+        print_signature(out, &signature)
     }
 }
 
@@ -50,6 +50,7 @@ mod tests {
         tenant::remove_administrator::RemoveAdministratorTenantCliCommand,
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{commands::tenant::get::GetTenantCommand, AccountType};
     use doublezero_serviceability::state::tenant::{
         Tenant, TenantBillingConfig, TenantPaymentStatus,
@@ -103,13 +104,15 @@ mod tests {
             })
             .returning(move |_| Ok(signature));
 
-        /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = RemoveAdministratorTenantCliCommand {
-            pubkey: tenant_pubkey.to_string(),
-            administrator: admin_pubkey.to_string(),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            RemoveAdministratorTenantCliCommand {
+                pubkey: tenant_pubkey.to_string(),
+                administrator: admin_pubkey.to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

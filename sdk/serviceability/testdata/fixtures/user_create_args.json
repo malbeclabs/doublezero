@@ -1,0 +1,31 @@
+{
+  "name": "UserCreateArgs",
+  "account_type": 0,
+  "fields": [
+    {
+      "name": "UserType",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "CyoaType",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "ClientIp",
+      "value": "10.11.12.13",
+      "typ": "ipv4"
+    },
+    {
+      "name": "TunnelEndpoint",
+      "value": "192.168.1.2",
+      "typ": "ipv4"
+    },
+    {
+      "name": "DzPrefixCount",
+      "value": "2",
+      "typ": "u8"
+    }
+  ]
+}

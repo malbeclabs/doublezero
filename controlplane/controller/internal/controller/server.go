@@ -12,12 +12,14 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/malbeclabs/doublezero/config"
+	controllerconfig "github.com/malbeclabs/doublezero/controlplane/controller/config"
 	pb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
 	telemetryconfig "github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -26,6 +28,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -40,8 +43,9 @@ const (
 )
 
 var (
-	ErrServiceabilityRequired = errors.New("serviceability program client is required")
-	ErrLoggerRequired         = errors.New("logger is required")
+	ErrServiceabilityRequired    = errors.New("serviceability program client is required")
+	ErrLoggerRequired            = errors.New("logger is required")
+	ErrInvalidMaxUserTunnelSlots = errors.New("max user tunnel slots must be positive")
 )
 
 type ServiceabilityProgramClient interface {
@@ -63,28 +67,37 @@ type stateCache struct {
 type Controller struct {
 	pb.UnimplementedControllerServer
 
-	log            *slog.Logger
-	cache          stateCache
-	mu             sync.RWMutex
-	serviceability ServiceabilityProgramClient
-	listener       net.Listener
-	noHardware     bool
-	updateDone     chan struct{}
-	tlsConfig      *tls.Config
-	environment    string
-	deviceLocalASN uint32
-	clickhouse     *ClickhouseWriter
-	featuresConfig *FeaturesConfig
+	log                *slog.Logger
+	cache              stateCache
+	mu                 sync.RWMutex
+	serviceability     ServiceabilityProgramClient
+	listener           net.Listener
+	noHardware         bool
+	updateDone         chan struct{}
+	tlsConfig          *tls.Config
+	environment        string
+	deviceLocalASN     uint32
+	clickhouse         *ClickhouseWriter
+	featuresConfig     *FeaturesConfig
+	maxUserTunnelSlots int
+
+	// lastUnknownPubkeyWarnNanos rate-limits the unknown-pubkey warning log.
+	// It holds the unix-nanos timestamp of the last emitted warning.
+	lastUnknownPubkeyWarnNanos atomic.Int64
 }
 
 type Option func(*Controller)
 
 func NewController(options ...Option) (*Controller, error) {
 	controller := &Controller{
-		cache: stateCache{},
+		cache:              stateCache{},
+		maxUserTunnelSlots: controllerconfig.DefaultMaxUserTunnelSlots,
 	}
 	for _, o := range options {
 		o(controller)
+	}
+	if controller.maxUserTunnelSlots < 1 {
+		return nil, fmt.Errorf("%w: got %d", ErrInvalidMaxUserTunnelSlots, controller.maxUserTunnelSlots)
 	}
 	if controller.listener == nil {
 		lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 443))
@@ -167,6 +180,12 @@ func WithClickhouse(cw *ClickhouseWriter) Option {
 func WithFeaturesConfig(cfg *FeaturesConfig) Option {
 	return func(c *Controller) {
 		c.featuresConfig = cfg
+	}
+}
+
+func WithMaxUserTunnelSlots(n int) Option {
+	return func(c *Controller) {
+		c.maxUserTunnelSlots = n
 	}
 }
 
@@ -263,6 +282,15 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 
 	devices := data.Devices
 	if len(devices) == 0 {
+		// Guard against a transient empty fetch mass-pruning every device's
+		// metrics. Tradeoff: if the *last* device is genuinely removed from the
+		// ledger, the cache is never rebuilt/swapped, so neither
+		// pruneStaleLinkMetrics nor swapCache's device-removal prune runs, and
+		// that device's frozen series (link gauges, per-device counters) keep
+		// being scraped until a device reappears. This is an accepted limitation:
+		// we cannot distinguish a genuinely empty ledger from a transient empty
+		// result here, and a stuck "Device Stopped Calling Controller" alert is
+		// preferable to false-pruning every device on a flaky fetch.
 		return fmt.Errorf("0 devices found on-chain")
 	}
 	users := data.Users
@@ -305,6 +333,12 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 	// - subinterface parent can't be defined onchain
 	// - node segments can only be defined on vpnv4 loopback interfaces
 
+	// Track every controller_link_metrics series set during this update so that,
+	// once the new cache is built, only the series that have gone stale (active
+	// last cycle, absent now) are deleted. Series that stay active are updated in
+	// place below, so a scrape never sees a gap on a still-up link.
+	activeLinkSeries := make(map[linkSeriesKey]struct{})
+
 	// build cache of devices
 	for _, device := range devices {
 		ip := net.IP(device.PublicIp[:])
@@ -315,7 +349,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 		}
 
 		devicePubKey := base58.Encode(device.PubKey[:])
-		d := NewDevice(ip, devicePubKey)
+		d := NewDevice(ip, devicePubKey, c.maxUserTunnelSlots)
 
 		d.MgmtVrf = device.MgmtVrf
 		d.Code = device.Code
@@ -406,11 +440,17 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 				d.Interfaces[i].IsLink = false
 				d.Interfaces[i].Metric = 0
 				d.Interfaces[i].LinkStatus = linkStatusUnknown
+				// Not an active link: skip recording it in activeLinkSeries, so any
+				// existing gauge for this series is removed by pruneStaleLinkMetrics
+				// at the end of the update.
 				continue
 			}
 
 			if link.DelayNs <= 0 {
 				linkMetricInvalid.WithLabelValues(base58.Encode(link.PubKey[:]), device.Code, iface.Name).Inc()
+				// Delay is invalid: leave it out of activeLinkSeries so any existing
+				// gauge for this series is pruned by pruneStaleLinkMetrics at the end
+				// of the update.
 				continue
 			}
 
@@ -445,6 +485,7 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 
 			linkMetrics.WithLabelValues(device.Code, iface.Name, d.PubKey).Set(float64(d.Interfaces[i].Metric))
+			activeLinkSeries[linkSeriesKey{deviceCode: device.Code, ifaceName: iface.Name, devicePubKey: d.PubKey}] = struct{}{}
 		}
 
 		// Populate flex-algo node-segment data for VPNv4 loopback interfaces.
@@ -644,13 +685,20 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 			}
 			for _, intf := range d.Interfaces {
 				if intf.IsVpnv4Loopback() && len(intf.FlexAlgoNodeSegments) == 0 {
-					c.log.Error("flex_algo.enabled=true but VPNv4 loopback has no flex_algo_node_segments — run 'doublezero-admin migrate' and restart",
+					c.log.Error("flex_algo.enabled=true but VPNv4 loopback has no flex_algo_node_segments — run 'doublezero migrate flex-algo' and restart",
 						"device_pubkey", devicePubKey,
 						"interface", intf.Name)
 				}
 			}
 		}
 	}
+
+	// Delete only the link gauges that were active in the previous cache but are
+	// no longer active, leaving still-active series in place. Done before the swap
+	// so c.cache still holds the previous device set. Safe without a lock: only
+	// this (single) cache-update goroutine writes c.cache, and GetConfig only reads
+	// it.
+	pruneStaleLinkMetrics(c.cache.Devices, activeLinkSeries)
 
 	// swap out state cache with new version
 	c.log.Debug("updating state cache", "state cache", cache)
@@ -663,6 +711,17 @@ func (c *Controller) updateStateCache(ctx context.Context) error {
 func (c *Controller) swapCache(cache stateCache) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	// Prune per-device metric series for devices that were present in the
+	// previous cache but are gone from the new one (removed from the ledger).
+	// Otherwise their counters stay registered with a frozen value and keep
+	// being scraped, making the series look perpetually fresh and tripping the
+	// "Device Stopped Calling Controller" alert forever.
+	for pubkey, device := range c.cache.Devices {
+		if _, ok := cache.Devices[pubkey]; !ok {
+			deleteDeviceMetrics(pubkey, device.Code)
+			c.log.Info("pruned metrics for device removed from ledger", "device_pubkey", pubkey)
+		}
+	}
 	c.cache = cache
 	if c.updateDone != nil {
 		c.updateDone <- struct{}{}
@@ -699,7 +758,7 @@ func (c *Controller) Run(ctx context.Context) error {
 		if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled {
 			c.mu.RLock()
 			if len(c.cache.Topologies) == 0 {
-				c.log.Warn("flex_algo.enabled=true but no topology accounts found on-chain — verify doublezero-admin migrate has been run")
+				c.log.Warn("flex_algo.enabled=true but no topology accounts found on-chain — verify doublezero migrate flex-algo has been run")
 			}
 			c.mu.RUnlock()
 		}
@@ -829,7 +888,20 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 	defer c.mu.RUnlock()
 	device, ok := c.cache.Devices[req.GetPubkey()]
 	if !ok {
-		getConfigPubkeyErrors.WithLabelValues(req.GetPubkey()).Inc()
+		// Count on a single aggregate counter that carries no per-pubkey label:
+		// req.GetPubkey() is caller-controlled, so labeling by it would let an
+		// unknown caller blow up metric cardinality. A device removed from the
+		// ledger may keep calling in with its old pubkey; surface it (otherwise
+		// silent today) and return without touching the per-pubkey getConfigOps
+		// series, so a pruned pubkey is not resurrected.
+		getConfigUnknownPubkey.Inc()
+		// Rate-limit the warning to at most once per minute. A decommissioned
+		// device still polling (every ~5s) would otherwise flood the logs; the
+		// aggregate counter above tracks the true call volume.
+		now := time.Now().UnixNano()
+		if last := c.lastUnknownPubkeyWarnNanos.Load(); now-last >= int64(time.Minute) && c.lastUnknownPubkeyWarnNanos.CompareAndSwap(last, now) {
+			c.log.Warn("device not found in ledger cache; refusing config (device may have been removed from the ledger but is still calling in)", "device_pubkey", req.GetPubkey(), "peer", peerAddr(ctx))
+		}
 		err := status.Errorf(codes.NotFound, "pubkey %s not found", req.Pubkey)
 		return nil, err
 	}
@@ -970,6 +1042,15 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		})
 	}
 	return resp, nil
+}
+
+// peerAddr returns the remote address of the gRPC caller, or "unknown" if it
+// cannot be determined from the request context.
+func peerAddr(ctx context.Context) string {
+	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+		return p.Addr.String()
+	}
+	return "unknown"
 }
 
 // formatCIDR formats a 5-byte network block into CIDR notation

@@ -25,7 +25,13 @@ done
 
 # Initialize doublezero CLI config.
 # NOTE: We assume that /root/.config/doublezero/id.json exists already.
+#
+# `--env local` provides the localnet defaults; the per-field flags override the
+# container-specific ledger URLs and the serviceability program ID. The override
+# matters for stacks that deploy a different program (e.g. compatibility tests
+# clone a testnet/mainnet program); for standard stacks it equals the localnet pubkey.
 doublezero config set \
+  --env local \
   --url $DZ_LEDGER_URL \
   --ws $DZ_LEDGER_WS \
   --program-id $DZ_SERVICEABILITY_PROGRAM_ID

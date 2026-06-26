@@ -31,4 +31,16 @@ var (
 			Help: "Number of errors encountered while applying config to the device",
 		},
 	)
+	ConfigSizeInLines = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "doublezero_agent_config_size_in_lines",
+			Help: "Size in lines of the most recently received configuration from the controller",
+		},
+	)
+	ConfigSizeInBytes = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "doublezero_agent_config_size_in_bytes",
+			Help: "Size in bytes of the most recently received configuration from the controller",
+		},
+	)
 )

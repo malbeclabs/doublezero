@@ -93,7 +93,7 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		require.True(t, ok, "device %q not found in devices map", mcast.CurrentDevice)
 		err = client.FeedSeatWithdraw(ctx, dev.PubKey)
 		require.NoError(t, err, "failed to withdraw existing seat")
-		err = client.WaitForStatusDisconnected(ctx)
+		err = client.WaitForMulticastStatusDisconnected(ctx)
 		require.NoError(t, err, "existing multicast session did not disconnect")
 	}) {
 		return
@@ -132,6 +132,13 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		amount = strconv.FormatUint(epochPrice, 10)
 		parsedAmount = epochPrice * 1_000_000 // convert dollars to USDC raw units (6 decimals)
 		log.Info("Found epoch price", "device", device.Code, "amount", amount)
+	}) {
+		return
+	}
+
+	if !t.Run("wait_for_open_phase", func(t *testing.T) {
+		err := client.WaitForOpenForRequests(ctx)
+		require.NoError(t, err, "shred-subscription program did not enter OpenForRequests phase within timeout")
 	}) {
 		return
 	}
@@ -209,7 +216,7 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("validate_tunnel_down", func(t *testing.T) {
-		err := client.WaitForStatusDisconnected(ctx)
+		err := client.WaitForMulticastStatusDisconnected(ctx)
 		require.NoError(t, err, "tunnel did not come down after seat withdrawal")
 	}) {
 		return

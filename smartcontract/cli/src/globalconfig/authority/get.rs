@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::GetGlobalStateCommand;
 use serde::Serialize;
@@ -27,7 +28,12 @@ pub struct AuthorityDisplay {
 }
 
 impl GetAuthorityCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (_, gstate) = client.get_globalstate(GetGlobalStateCommand)?;
 
         let config_display = AuthorityDisplay {
@@ -55,6 +61,8 @@ impl GetAuthorityCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         globalconfig::authority::get::GetAuthorityCliCommand, tests::utils::create_test_client,
     };
@@ -95,7 +103,9 @@ mod tests {
 
         // Table output
         let mut output = Vec::new();
-        let res = GetAuthorityCliCommand { json: false }.execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res =
+            block_on(GetAuthorityCliCommand { json: false }.execute(&ctx, &client, &mut output));
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -122,7 +132,8 @@ mod tests {
 
         // JSON output
         let mut output = Vec::new();
-        let res = GetAuthorityCliCommand { json: true }.execute(&client, &mut output);
+        let res =
+            block_on(GetAuthorityCliCommand { json: true }.execute(&ctx, &client, &mut output));
         assert!(res.is_ok());
         let json: serde_json::Value =
             serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();

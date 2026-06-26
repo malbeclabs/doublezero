@@ -20,9 +20,10 @@ import (
 
 // ibrlUserTunnelInfo holds tunnel assignment info for an IBRL user, parsed from user list output.
 type ibrlUserTunnelInfo struct {
-	ClientIP  string
-	TunnelID  string
-	TunnelNet string
+	ClientIP       string
+	TunnelID       string
+	TunnelNet      string
+	TunnelEndpoint string
 }
 
 // parseIBRLTunnelInfo parses user list output and returns tunnel info for IBRL and IBRLWithAllocatedIP users.
@@ -32,9 +33,10 @@ func parseIBRLTunnelInfo(output []byte) (ibrlUsers []ibrlUserTunnelInfo, allocUs
 		switch row["user_type"] {
 		case "IBRL":
 			ibrlUsers = append(ibrlUsers, ibrlUserTunnelInfo{
-				ClientIP:  row["client_ip"],
-				TunnelID:  row["tunnel_id"],
-				TunnelNet: row["tunnel_net"],
+				ClientIP:       row["client_ip"],
+				TunnelID:       row["tunnel_id"],
+				TunnelNet:      row["tunnel_net"],
+				TunnelEndpoint: row["tunnel_endpoint"],
 			})
 		case "IBRLWithAllocatedIP":
 			allocUserTunnelID = row["tunnel_id"]
@@ -131,7 +133,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 					"DeviceIP":                  device.CYOANetworkIP,
 					"ExpectedAllocatedClientIP": expectedAllocatedClientIP,
 					"StartTunnel":               controllerconfig.StartUserTunnelNum,
-					"EndTunnel":                 controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+					"EndTunnel":                 controllerconfig.StartUserTunnelNum + controllerconfig.DefaultMaxUserTunnelSlots - 1,
 				}))
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))
@@ -323,7 +325,7 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 				dn.BuildAgentConfigData(t, device.Spec.Code, map[string]any{
 					"DeviceIP":    device.CYOANetworkIP,
 					"StartTunnel": controllerconfig.StartUserTunnelNum,
-					"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.MaxUserTunnelSlots - 1,
+					"EndTunnel":   controllerconfig.StartUserTunnelNum + controllerconfig.DefaultMaxUserTunnelSlots - 1,
 				}))
 			require.NoError(t, err, "error reading agent configuration fixture")
 			err = dn.WaitForAgentConfigMatchViaController(t, device.ID, string(config))

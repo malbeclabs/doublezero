@@ -1,6 +1,7 @@
 use crate::doublezerocommand::CliCommand;
 use ::serde::Serialize;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
     accesspass::list::ListAccessPassCommand, multicastgroup::get::GetMulticastGroupCommand,
@@ -33,7 +34,12 @@ pub struct MulticastAllowlistDisplay {
 }
 
 impl ListMulticastGroupPubAllowlistCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (mgroup_pubkey, mgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
             pubkey_or_code: self.code.clone(),
         })?;
@@ -69,6 +75,8 @@ impl ListMulticastGroupPubAllowlistCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use std::collections::HashMap;
 
     use crate::{
@@ -101,7 +109,7 @@ mod tests {
             bump_seed: 1,
             code: "test".to_string(),
             multicast_ip: [239, 0, 0, 1].into(),
-            max_bandwidth: 1000000000,
+            max_bandwidth: 1_000_000_000,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             tenant_pk: Pubkey::default(),
             status: doublezero_sdk::MulticastGroupStatus::Activated,
@@ -124,6 +132,10 @@ mod tests {
             connection_count: 0,
             status: AccessPassStatus::Requested,
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         let accesspass2_pk = Pubkey::from_str_const("11111112D1oxKts8YPdTJRG5FzxTNpMtWmq8hkVx3");
@@ -141,6 +153,10 @@ mod tests {
             connection_count: 0,
             status: AccessPassStatus::Requested,
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         client
@@ -165,12 +181,15 @@ mod tests {
 
         /*****************************************************************************************************/
         let mut output = Vec::new();
-        let res = ListMulticastGroupPubAllowlistCliCommand {
-            code: "test".to_string(),
-            json: false,
-            json_compact: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            ListMulticastGroupPubAllowlistCliCommand {
+                code: "test".to_string(),
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -178,12 +197,14 @@ mod tests {
         );
 
         let mut output = Vec::new();
-        let res = ListMulticastGroupPubAllowlistCliCommand {
-            code: "test".to_string(),
-            json: false,
-            json_compact: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            ListMulticastGroupPubAllowlistCliCommand {
+                code: "test".to_string(),
+                json: false,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

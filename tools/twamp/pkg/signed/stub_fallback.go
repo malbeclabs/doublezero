@@ -12,7 +12,7 @@ import (
 
 var errPlatformNotSupported = errors.New("platform not supported")
 
-func NewLinuxSender(_ context.Context, _ string, _, _ *net.UDPAddr, _ Signer, _ [32]byte) (Sender, error) {
+func NewLinuxSender(_ context.Context, _ string, _, _ *net.UDPAddr, _ Signer, _ [32]byte, _ bool) (Sender, error) {
 	return nil, errPlatformNotSupported
 }
 

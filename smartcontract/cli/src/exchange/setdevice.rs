@@ -1,12 +1,11 @@
 use crate::{
-    doublezerocommand::CliCommand,
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    doublezerocommand::CliCommand, helpers::resolve_exchange_pk,
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
+use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::{
-    device::get::GetDeviceCommand,
-    exchange::{get::GetExchangeCommand, setdevice::SetDeviceExchangeCommand},
+    device::get::GetDeviceCommand, exchange::setdevice::SetDeviceExchangeCommand,
 };
 use std::io::Write;
 
@@ -24,14 +23,22 @@ pub struct SetDeviceExchangeCliCommand {
 }
 
 impl SetDeviceExchangeCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
-        let (pubkey, _) = client.get_exchange(GetExchangeCommand {
-            pubkey_or_code: self.pubkey,
-        })?;
+        let pubkey = resolve_exchange_pk(client, &self.pubkey)?;
 
+        // The legacy code uses `.and_then` over the device lookup so an
+        // unknown device silently resolves to None. Preserve that behavior:
+        // operators rely on it to clear a device by passing an invalid value.
         let device1_pubkey = self.device1.and_then(|d| {
             client
                 .get_device(GetDeviceCommand { pubkey_or_code: d })
@@ -51,9 +58,8 @@ impl SetDeviceExchangeCliCommand {
             device1_pubkey,
             device2_pubkey,
         })?;
-        writeln!(out, "Signature: {signature}",)?;
 
-        Ok(())
+        print_signature(out, &signature)
     }
 }
 
@@ -65,6 +71,7 @@ mod tests {
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
         commands::{
             device::get::GetDeviceCommand,
@@ -166,14 +173,16 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(signature));
 
-        // Expected success
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = SetDeviceExchangeCliCommand {
-            pubkey: exchange_pubkey.to_string(),
-            device1: Some(device_pk.to_string()),
-            device2: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            SetDeviceExchangeCliCommand {
+                pubkey: exchange_pubkey.to_string(),
+                device1: Some(device_pk.to_string()),
+                device2: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();

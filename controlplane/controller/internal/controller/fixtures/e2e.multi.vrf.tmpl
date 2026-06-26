@@ -66,6 +66,9 @@ ip access-list MAIN-CONTROL-PLANE-ACL
 system control-plane
    ip access-group MAIN-CONTROL-PLANE-ACL in
 !
+management api gnmi
+   provider eos-native
+!
 interface Loopback255
    ip address 14.14.14.14/32
    node-segment ipv4 index 101

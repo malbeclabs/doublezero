@@ -106,9 +106,9 @@ use doublezero_sdk::{
         },
     },
     telemetry::LinkLatencyStats,
-    DZClient, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand, GetGlobalStateCommand,
-    GlobalConfig, GlobalState, Link, Location, MulticastGroup, ResourceExtensionOwned,
-    TopologyInfo, User,
+    DZClient, DZTransaction, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand,
+    GetGlobalStateCommand, GlobalConfig, GlobalState, Link, Location, MulticastGroup,
+    ResourceExtensionOwned, TopologyInfo, User,
 };
 use doublezero_serviceability::state::{
     accesspass::AccessPass, accountdata::AccountData, contributor::Contributor,
@@ -122,6 +122,15 @@ use std::collections::HashMap;
 #[automock]
 pub trait CliCommand {
     fn check_requirements(&self, checks: u8) -> eyre::Result<()>;
+
+    /// Whether a keypair source is available (CLI flag, env var, or piped stdin).
+    ///
+    /// Used by pre-flight checks to skip the default-path keypair file check
+    /// when an alternative source is present. Default is `false`; the binary
+    /// sets it at startup based on resolved inputs.
+    fn has_keypair_source(&self) -> bool {
+        false
+    }
 
     fn get_program_config(
         &self,
@@ -140,6 +149,8 @@ pub trait CliCommand {
     fn get_multiple_accounts(&self, pubkeys: Vec<Pubkey>) -> eyre::Result<Vec<Option<Account>>>;
     fn transfer_sol(&self, to: Pubkey, lamports: u64) -> eyre::Result<Signature>;
     fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>>;
+    fn get_account_data(&self, pubkey: Pubkey) -> eyre::Result<AccountData>;
+    fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>>;
     fn get_program_accounts(
         &self,
         program_id: &Pubkey,
@@ -336,17 +347,30 @@ pub trait CliCommand {
 
 pub struct CliCommandImpl<'a> {
     client: &'a DZClient,
+    keypair_source: bool,
 }
 
 impl CliCommandImpl<'_> {
     pub fn new(client: &DZClient) -> CliCommandImpl<'_> {
-        CliCommandImpl { client }
+        CliCommandImpl {
+            client,
+            keypair_source: false,
+        }
+    }
+
+    pub fn with_keypair_source(mut self, has: bool) -> Self {
+        self.keypair_source = has;
+        self
     }
 }
 
 impl CliCommand for CliCommandImpl<'_> {
     fn check_requirements(&self, checks: u8) -> eyre::Result<()> {
         crate::requirements::check_requirements(self, None, checks)
+    }
+
+    fn has_keypair_source(&self) -> bool {
+        self.keypair_source
     }
 
     fn get_program_config(
@@ -393,6 +417,12 @@ impl CliCommand for CliCommandImpl<'_> {
     }
     fn get_all(&self) -> eyre::Result<HashMap<Box<Pubkey>, Box<AccountData>>> {
         self.client.get_all()
+    }
+    fn get_account_data(&self, pubkey: Pubkey) -> eyre::Result<AccountData> {
+        self.client.get(pubkey)
+    }
+    fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>> {
+        self.client.get_transactions(pubkey)
     }
     fn get_program_accounts(
         &self,

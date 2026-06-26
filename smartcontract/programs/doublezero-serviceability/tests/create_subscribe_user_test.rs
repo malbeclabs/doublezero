@@ -268,6 +268,8 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -291,6 +293,7 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )
@@ -308,6 +311,7 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )
@@ -566,6 +570,8 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -591,6 +597,7 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )
@@ -608,6 +615,7 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
         ],
         &payer,
     )
@@ -690,6 +698,8 @@ async fn test_create_subscribe_user_ignores_expired_epoch() {
             client_ip: user_ip,
             last_access_epoch: 0,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -737,10 +747,10 @@ async fn test_create_subscribe_user_ignores_expired_epoch() {
         .expect("User should exist")
         .get_user()
         .unwrap();
-    // Multicast creation is not blocked by an expired access pass — the user is
-    // still created (and ends up in OutOfCredits because try_activate sees the
-    // pass as Expired). Multicast access is then gated by mgroup_*_allowlist.
-    assert_eq!(user.status, UserStatus::OutOfCredits);
+    // Multicast creation is not blocked by an expired access pass, and the user is
+    // not transitioned to OutOfCredits by epoch expiry: multicast access is gated
+    // by mgroup_*_allowlist, not by accesspass.last_access_epoch.
+    assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.publishers, vec![mgroup_pubkey]);
     assert_eq!(user.user_type, UserType::Multicast);
 }
@@ -819,6 +829,8 @@ async fn test_check_access_pass_multicast_stays_activated() {
             client_ip: user_ip,
             last_access_epoch: 0,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1059,6 +1071,8 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1082,6 +1096,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(custom_owner, false),
         ],
         &payer,
     )
@@ -1360,6 +1375,8 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1383,6 +1400,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(custom_owner, false),
         ],
         &payer,
     )
@@ -1643,6 +1661,8 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1666,6 +1686,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             AccountMeta::new(mgroup_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(non_foundation_payer.pubkey(), false),
         ],
         &payer,
     )

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
@@ -50,34 +49,10 @@ func NewPinger(cfg *PingerConfig) *Pinger {
 	}
 }
 
-func isBindError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "bind:")
-}
-
 func newSenderWithRetry(ctx context.Context, log *slog.Logger, iface string, local, remote *net.UDPAddr) (twamplight.Sender, error) {
-	var lastErr error
-	for attempt := range senderRetries {
-		sender, err := twamplight.NewSender(ctx, log, iface, local, remote)
-		if err == nil {
-			return sender, nil
-		}
-		lastErr = err
-		if !isBindError(err) {
-			return nil, err
-		}
-		delay := senderRetryMin * time.Duration(1<<attempt)
-		log.Warn("Bind failed, retrying", "attempt", attempt+1, "delay", delay, "error", err)
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(delay):
-		}
-	}
-	return nil, lastErr
+	return retryOnBindError(ctx, log, func() (twamplight.Sender, error) {
+		return twamplight.NewSender(ctx, log, iface, local, remote)
+	})
 }
 
 func (p *Pinger) AddProbe(ctx context.Context, addr ProbeAddress) error {

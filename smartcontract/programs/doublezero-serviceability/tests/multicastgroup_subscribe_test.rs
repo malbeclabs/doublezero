@@ -256,6 +256,8 @@ async fn setup_fixture() -> TestFixture {
             client_ip: user_ip,
             last_access_epoch: 9999,
             allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -282,6 +284,7 @@ async fn setup_fixture() -> TestFixture {
                 AccountMeta::new(mgroup_pk, false),
                 AccountMeta::new(accesspass_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(payer.pubkey(), false),
             ],
             &payer,
         )
@@ -304,6 +307,7 @@ async fn setup_fixture() -> TestFixture {
                 AccountMeta::new(mgroup_pk, false),
                 AccountMeta::new(accesspass_pubkey, false),
                 AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(payer.pubkey(), false),
             ],
             &payer,
         )

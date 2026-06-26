@@ -1,7 +1,7 @@
 PREFIX:=github.com/malbeclabs/doublezero/smartcontract
 BUILD:=`git rev-parse --short HEAD`
 LDFLAGS=
-CLIPPY_FLAGS=-- -Dclippy::all -D warnings
+CLIPPY_FLAGS=-- -Dclippy::all -Dclippy::unreadable_literal -D warnings
 env ?= localnet
 
 UNAME_S := $(shell uname -s)

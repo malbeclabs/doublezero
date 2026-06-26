@@ -2,6 +2,7 @@ use crate::{
     doublezerocommand::CliCommand, topology::resolve_topology_names, validators::validate_code,
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::link::get::GetLinkCommand;
 use serde::Serialize;
@@ -54,7 +55,12 @@ struct LinkDisplay {
 }
 
 impl GetLinkCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let (pubkey, link) = client.get_link(GetLinkCommand {
             pubkey_or_code: self.code,
         })?;
@@ -124,6 +130,8 @@ impl GetLinkCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand, link::get::GetLinkCliCommand,
         tests::utils::create_test_client,
@@ -158,10 +166,10 @@ mod tests {
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
-            bandwidth: 1000000000,
+            bandwidth: 1_000_000_000,
             mtu: 1500,
-            delay_ns: 10000000000,
-            jitter_ns: 5000000000,
+            delay_ns: 10_000_000_000,
+            jitter_ns: 5_000_000_000,
             delay_override_ns: 0,
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
@@ -261,21 +269,26 @@ mod tests {
             .returning(|_| Ok(HashMap::new()));
 
         // Expected failure
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = GetLinkCliCommand {
-            code: Pubkey::new_unique().to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetLinkCliCommand {
+                code: Pubkey::new_unique().to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err(), "I shouldn't find anything.");
 
         // Expected success by pubkey (table)
         let mut output = Vec::new();
-        let res = GetLinkCliCommand {
-            code: pda_pubkey.to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetLinkCliCommand {
+                code: pda_pubkey.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -299,11 +312,13 @@ mod tests {
 
         // Expected success by code (JSON)
         let mut output = Vec::new();
-        let res = GetLinkCliCommand {
-            code: "test".to_string(),
-            json: true,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetLinkCliCommand {
+                code: "test".to_string(),
+                json: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by code");
         let json: serde_json::Value =
             serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();

@@ -9,6 +9,7 @@ use crate::{
     },
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::validate_iface;
 use doublezero_sdk::{
     commands::{
@@ -63,7 +64,12 @@ pub struct CreateDZXLinkCliCommand {
 }
 
 impl CreateDZXLinkCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -132,6 +138,13 @@ impl CreateDZXLinkCliCommand {
             ));
         }
 
+        if side_a_iface.bandwidth < self.bandwidth {
+            return Err(eyre!(
+                "Interface '{}' on side A device has bandwidth {} which is less than link bandwidth {}",
+                self.side_a_interface, side_a_iface.bandwidth, self.bandwidth
+            ));
+        }
+
         if self.mtu != 9000 {
             return Err(eyre!("Link MTU must be 9000"));
         }
@@ -154,8 +167,8 @@ impl CreateDZXLinkCliCommand {
             link_type: LinkLinkType::DZX,
             bandwidth: self.bandwidth,
             mtu: self.mtu,
-            delay_ns: (self.delay_ms * 1000000.0) as u64,
-            jitter_ns: (self.jitter_ms * 1000000.0) as u64,
+            delay_ns: (self.delay_ms * 1_000_000.0) as u64,
+            jitter_ns: (self.jitter_ms * 1_000_000.0) as u64,
             side_a_iface_name: self.side_a_interface.clone(),
             side_z_iface_name: None, // External links do not require side Z interface name
         })?;
@@ -173,6 +186,8 @@ impl CreateDZXLinkCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand,
         link::dzx_create::CreateDZXLinkCliCommand,
@@ -234,6 +249,7 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
                 mtu: 9000,
+                bandwidth: 1_000_000_000,
                 ..Default::default()
             }],
             max_users: 255,
@@ -279,6 +295,7 @@ mod tests {
                 node_segment_idx: 0,
                 user_tunnel_endpoint: true,
                 mtu: 9000,
+                bandwidth: 1_000_000_000,
                 ..Default::default()
             }],
             max_users: 255,
@@ -348,10 +365,10 @@ mod tests {
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
-            bandwidth: 1000000000,
+            bandwidth: 1_000_000_000,
             mtu: 9000,
-            delay_ns: 10000000000,
-            jitter_ns: 5000000000,
+            delay_ns: 10_000_000_000,
+            jitter_ns: 5_000_000_000,
             delay_override_ns: 0,
             tunnel_id: 500,
             tunnel_net: NetworkV4::default(),
@@ -404,10 +421,10 @@ mod tests {
                 side_a_pk: device1_pk,
                 side_z_pk: device2_pk,
                 link_type: LinkLinkType::DZX,
-                bandwidth: 1000000000,
+                bandwidth: 1_000_000_000,
                 mtu: 9000,
-                delay_ns: 10000000000,
-                jitter_ns: 5000000000,
+                delay_ns: 10_000_000_000,
+                jitter_ns: 5_000_000_000,
                 side_a_iface_name: "Ethernet1/1".to_string(),
                 side_z_iface_name: None,
             }))
@@ -415,21 +432,24 @@ mod tests {
             .returning(move |_| Ok((signature, pda_pubkey)));
 
         /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = CreateDZXLinkCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            desired_status: None,
-            side_a: device1_pk.to_string(),
-            side_z: device2_pk.to_string(),
-            bandwidth: 1000000000,
-            mtu: 9000,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
-            side_a_interface: "Ethernet1/1".to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDZXLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device1_pk.to_string(),
+                side_z: device2_pk.to_string(),
+                bandwidth: 1_000_000_000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/1".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "Error: {}", res.unwrap_err());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -444,20 +464,22 @@ mod tests {
             .returning(move |_| Ok((Pubkey::default(), link.clone())));
 
         let mut output = Vec::new();
-        let res = CreateDZXLinkCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            desired_status: None,
-            side_a: device2_pk.to_string(),
-            side_z: device3_pk.to_string(),
-            bandwidth: 1000000000,
-            mtu: 9000,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
-            side_a_interface: "Ethernet1/2".to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDZXLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device2_pk.to_string(),
+                side_z: device3_pk.to_string(),
+                bandwidth: 1_000_000_000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/2".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert_eq!(
             res.unwrap_err().to_string(),
             "Link with code 'test' already exists"
@@ -546,27 +568,137 @@ mod tests {
                 ))
             });
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateDZXLinkCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            desired_status: None,
-            side_a: device1_pk.to_string(),
-            side_z: device2_pk.to_string(),
-            bandwidth: 1000000000,
-            mtu: 9000,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
-            side_a_interface: "Ethernet1/1".to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDZXLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device1_pk.to_string(),
+                side_z: device2_pk.to_string(),
+                bandwidth: 1_000_000_000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/1".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         assert!(res
             .unwrap_err()
             .to_string()
             .contains("CYOA or DIA assignment"),);
+    }
+
+    #[test]
+    fn test_cli_dzx_link_create_rejects_insufficient_interface_bandwidth() {
+        let mut client = create_test_client();
+
+        let (pda_pubkey, _bump_seed) = get_device_pda(&client.get_program_id(), 1);
+
+        let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
+        let device1_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcb");
+        let device1 = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 255,
+            reference_count: 0,
+            code: "test".to_string(),
+            contributor_pk,
+            location_pk: Pubkey::default(),
+            exchange_pk: Pubkey::default(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [10, 0, 0, 1].into(),
+            dz_prefixes: "10.1.0.0/16".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            status: DeviceStatus::Activated,
+            owner: pda_pubkey,
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![Interface {
+                status: InterfaceStatus::Unlinked,
+                name: "Ethernet1/1".to_string(),
+                interface_type: InterfaceType::Physical,
+                loopback_type: LoopbackType::None,
+                mtu: 9000,
+                bandwidth: 500_000_000,
+                vlan_id: 16,
+                ip_net: "10.2.0.1/24".parse().unwrap(),
+                node_segment_idx: 0,
+                user_tunnel_endpoint: true,
+                ..Default::default()
+            }],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_subscribers_count: 0,
+            multicast_publishers_count: 0,
+            max_unicast_users: 0,
+            max_multicast_subscribers: 0,
+            max_multicast_publishers: 0,
+            reserved_seats: 0,
+            ..Default::default()
+        };
+        let device2_pk = Pubkey::from_str_const("HQ2UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcf");
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: device1_pk.to_string(),
+            }))
+            .returning(move |_| Ok((device1_pk, device1.clone())));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: device2_pk.to_string(),
+            }))
+            .returning(move |_| {
+                Ok((
+                    device2_pk,
+                    Device {
+                        account_type: AccountType::Device,
+                        code: "z".to_string(),
+                        ..Default::default()
+                    },
+                ))
+            });
+
+        let ctx = cli_context_default_for_tests();
+
+        let mut output = Vec::new();
+        let res = block_on(
+            CreateDZXLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device1_pk.to_string(),
+                side_z: device2_pk.to_string(),
+                bandwidth: 1_000_000_000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/1".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+
+        assert!(res.is_err());
+        assert_eq!(
+            res.unwrap_err().to_string(),
+            "Interface 'Ethernet1/1' on side A device has bandwidth 500000000 which is less than link bandwidth 1000000000"
+        );
     }
 
     #[test]
@@ -647,21 +779,25 @@ mod tests {
                 ))
             });
 
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = CreateDZXLinkCliCommand {
-            code: "test".to_string(),
-            contributor: contributor_pk.to_string(),
-            desired_status: None,
-            side_a: device1_pk.to_string(),
-            side_z: device2_pk.to_string(),
-            bandwidth: 1000000000,
-            mtu: 9000,
-            delay_ms: 10000.0,
-            jitter_ms: 5000.0,
-            side_a_interface: "Ethernet1/1".to_string(),
-            wait: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            CreateDZXLinkCliCommand {
+                code: "test".to_string(),
+                contributor: contributor_pk.to_string(),
+                desired_status: None,
+                side_a: device1_pk.to_string(),
+                side_z: device2_pk.to_string(),
+                bandwidth: 1_000_000_000,
+                mtu: 9000,
+                delay_ms: 10000.0,
+                jitter_ms: 5000.0,
+                side_a_interface: "Ethernet1/1".to_string(),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
 
         assert!(res.is_err());
         assert_eq!(

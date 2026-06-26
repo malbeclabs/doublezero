@@ -47,6 +47,7 @@ var (
 	logFormat         = flag.String("log-format", "text", "Log format: text or json")
 	verbose           = flag.Bool("verbose", false, "Enable debug logging")
 	showVersion       = flag.Bool("version", false, "Print version and exit")
+	challenged        = flag.Bool("challenged", false, "Use challenge-response inbound probing (nonce echo). Adds sender-side compute time between Reply 0 and Probe 1; only set when the geoprobe agent supports RFC16 challenged inbound. Default: off (preserves the fast pre-signed flow).")
 
 	version = "dev"
 	commit  = "none"
@@ -77,6 +78,7 @@ func main() {
 		"timeout", *timeout,
 		"count", *count,
 		"max_measurement_age", *maxMeasurementAge,
+		"challenged", *challenged,
 	)
 
 	cache := geoprobe.NewMinCache[measurement](*maxMeasurementAge, func(m measurement) uint64 {
@@ -115,7 +117,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	sender, err := signed.NewSender(ctx, "", localAddr, remoteAddr, signer, remotePubkey)
+	sender, err := signed.NewSender(ctx, "", localAddr, remoteAddr, signer, remotePubkey, *challenged)
 	if err != nil {
 		log.Error("failed to create sender", "error", err)
 		os.Exit(1)
@@ -190,7 +192,8 @@ func probePair(ctx context.Context, log *slog.Logger, sender signed.Sender, seq 
 		"reply0_probe_sig", reply0ProbeSigValid,
 		"reply0_sig", reply0SigValid,
 		"reply1_probe_sig", reply1ProbeSigValid,
-		"reply1_sig", reply1SigValid)
+		"reply1_sig", reply1SigValid,
+		"challenged", result.Reply1.Challenged)
 
 	m := measurement{
 		probeMeasuredRttNs:  probeMeasuredRttNs,
@@ -235,6 +238,7 @@ func logPairedResult(log *slog.Logger, seq uint32, probeMeasuredRttNs uint64, ta
 			MaxDistanceMiles:    distMiles,
 			MaxDistanceKm:       distMiles * kmPerMile,
 			SinceLastRxNs:       reply.SinceLastRxNs,
+			Challenged:          reply.Challenged,
 			AuthorityPubkey:     authorityPK.String(),
 			GeoprobePubkey:      geoprobePK.String(),
 			Offsets:             offsets,
@@ -320,6 +324,7 @@ type probeOutput struct {
 	MaxDistanceMiles    float64        `json:"max_distance_miles,omitempty"`
 	MaxDistanceKm       float64        `json:"max_distance_km,omitempty"`
 	SinceLastRxNs       uint64         `json:"since_last_rx_ns,omitempty"`
+	Challenged          bool           `json:"challenged"`
 	AuthorityPubkey     string         `json:"authority_pubkey,omitempty"`
 	GeoprobePubkey      string         `json:"geoprobe_pubkey,omitempty"`
 	Offsets             []offsetOutput `json:"offsets,omitempty"`
@@ -419,6 +424,7 @@ func formatTextResult(seq uint32, probeMeasuredRttNs uint64, targetMeasuredRtt t
 	fmt.Fprintf(&sb, "[%s] Probe Pair #%d\n", time.Now().UTC().Format("2006-01-02 15:04:05 MST"), seq)
 	fmt.Fprintf(&sb, "  Probe-Measured RTT:  %s\n", formatNsAsMs(probeMeasuredRttNs))
 	fmt.Fprintf(&sb, "  Target-Measured RTT: %s\n", formatRTT(targetMeasuredRtt))
+	fmt.Fprintf(&sb, "  Challenged Inbound:  %v\n", reply.Challenged)
 	accumDistMiles := calculateMaxDistance(reply.RttNs)
 	accumDistKm := accumDistMiles * kmPerMile
 	fmt.Fprintf(&sb, "  Reference Point: %s\n", formatCoordinate(reply.Lat, reply.Lng))

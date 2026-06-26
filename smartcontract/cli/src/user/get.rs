@@ -2,6 +2,7 @@ use crate::{
     doublezerocommand::CliCommand, helpers::slot_to_datetime, validators::validate_pubkey,
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
     accesspass::get::GetAccessPassCommand, device::list::ListDeviceCommand,
@@ -71,7 +72,12 @@ fn format_bgp_rtt_ns(ns: u64) -> String {
 }
 
 impl GetUserCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let pubkey = Pubkey::from_str(&self.pubkey)?;
         let (pubkey, user) = client.get_user(GetUserCommand { pubkey })?;
 
@@ -82,9 +88,10 @@ impl GetUserCliCommand {
             })?
             .map(|(_, ap)| ap.to_string());
         if accesspass_str.is_none() {
-            eprintln!(
-                "Warning: no Access Pass found for this user (client-ip: {}, payer: {})",
-                user.client_ip, user.owner
+            tracing::warn!(
+                client_ip = %user.client_ip,
+                payer = %user.owner,
+                "no access pass found for user"
             );
         }
         let multicast_groups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
@@ -163,6 +170,8 @@ impl GetUserCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand, tests::utils::create_test_client,
         user::get::GetUserCliCommand,
@@ -305,6 +314,10 @@ mod tests {
             tenant_allowlist: vec![],
             owner: client.get_payer(),
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         client
@@ -351,11 +364,14 @@ mod tests {
 
         // Expected success (table)
         let mut output = Vec::new();
-        let res = GetUserCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            GetUserCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "I should find a item by pubkey");
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -503,11 +519,14 @@ mod tests {
             .returning(move |_| Ok((pda_pubkey, user.clone())));
 
         let mut output = Vec::new();
-        let res = GetUserCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            GetUserCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok(), "should succeed even without an access pass");
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {

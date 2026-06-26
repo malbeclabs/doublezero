@@ -2,7 +2,6 @@ package devnet
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"log/slog"
 
@@ -61,30 +60,33 @@ func (n *DefaultNetwork) CreateIfNotExists(ctx context.Context) (bool, error) {
 func (n *DefaultNetwork) Create(ctx context.Context) error {
 	n.log.Debug("==> Creating default network", "labels", n.dn.labels)
 
-	// Generate a subnet from 10.0.0.0/8 range based on deploy ID.
-	// This uses a different range than the CYOA network (9.128.0.0/9) to avoid
-	// conflicts in tests that detect interfaces by IP range.
-	subnetCIDR := n.generateSubnetCIDR(n.dn.Spec.DeployID)
-	n.log.Debug("--> Default network subnet selected", "subnet", subnetCIDR)
-
-	// Create a docker network.
-	//nolint:staticcheck // SA1019
 	networkName := n.dockerNetworkName()
-	req := testcontainers.GenericNetworkRequest{
-		NetworkRequest: testcontainers.NetworkRequest{
-			Name:       networkName,
-			Driver:     "bridge",
-			Attachable: true,
-			Labels:     n.dn.labels,
-			IPAM: &dockernetwork.IPAM{
-				Config: []dockernetwork.IPAMConfig{
-					{Subnet: subnetCIDR},
+
+	// Allocate a collision-safe subnet from the 10.0.0.0/8 range via the dedicated default-network
+	// allocator (which skips subnets already in use by existing docker networks and retries on
+	// overlap) instead of a fixed deterministic hash, which fails hard with "Pool overlaps" when
+	// the chosen CIDR is already taken by a leftover or concurrently-created network. This range is
+	// kept separate from the CYOA network (9.128.0.0/9) to avoid conflicts in tests that detect
+	// interfaces by IP range.
+	subnetCIDR, err := createNetworkWithSubnet(ctx, n.dn.defaultNetworkAllocator, n.dn.Spec.DeployID, func(subnetCIDR string) error {
+		//nolint:staticcheck // SA1019
+		req := testcontainers.GenericNetworkRequest{
+			NetworkRequest: testcontainers.NetworkRequest{
+				Name:       networkName,
+				Driver:     "bridge",
+				Attachable: true,
+				Labels:     n.dn.labels,
+				IPAM: &dockernetwork.IPAM{
+					Config: []dockernetwork.IPAMConfig{
+						{Subnet: subnetCIDR},
+					},
 				},
 			},
-		},
-	}
-	//nolint:staticcheck // SA1019
-	_, err := testcontainers.GenericNetwork(ctx, req)
+		}
+		//nolint:staticcheck // SA1019
+		_, err := testcontainers.GenericNetwork(ctx, req)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create network: %w", err)
 	}
@@ -107,12 +109,4 @@ func (n *DefaultNetwork) getSubnetCIDR(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("network %s has no IPAM config", networkName)
 	}
 	return inspect.IPAM.Config[0].Subnet, nil
-}
-
-// generateSubnetCIDR generates a /24 subnet from the 10.0.0.0/8 range based on the deploy ID.
-// This ensures each test gets a unique subnet while using a different range than the CYOA network.
-func (n *DefaultNetwork) generateSubnetCIDR(deployID string) string {
-	h := sha256.Sum256([]byte(deployID))
-	// Use first two bytes of hash for second and third octets (10.X.Y.0/24)
-	return fmt.Sprintf("10.%d.%d.0/24", h[0], h[1])
 }

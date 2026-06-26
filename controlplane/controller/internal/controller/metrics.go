@@ -15,13 +15,6 @@ var (
 	)
 
 	// gRPC metrics
-	getConfigPubkeyErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "controller_grpc_getconfig_pubkey_errors_total",
-		Help: "The total number of missing pubkeys in cache",
-	},
-		[]string{"pubkey"},
-	)
-
 	getConfigRenderErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "controller_grpc_getconfig_render_errors_total",
 		Help: "The total number of failed config renderings",
@@ -42,6 +35,15 @@ var (
 	},
 		[]string{"pubkey", "device_code", "contributor_code", "exchange_code", "location_code", "device_status", "agent_version", "agent_commit", "agent_date"},
 	)
+
+	// getConfigUnknownPubkey counts GetConfig requests from pubkeys that are not
+	// present in the ledger cache (e.g. a device removed from the on-chain ledger
+	// that is still calling in). It deliberately carries no per-pubkey label so a
+	// flood of distinct removed pubkeys cannot reintroduce unbounded cardinality.
+	getConfigUnknownPubkey = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "controller_grpc_getconfig_unknown_pubkey_total",
+		Help: "The total number of GetConfig requests from pubkeys not present in the ledger cache",
+	})
 
 	getConfigMsgSize = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "controller_grpc_getconfig_msg_size_bytes",
@@ -97,10 +99,10 @@ func init() {
 	prometheus.MustRegister(BuildInfo)
 
 	// gRPC metrics
-	prometheus.MustRegister(getConfigPubkeyErrors)
 	prometheus.MustRegister(getConfigRenderErrors)
 	prometheus.MustRegister(duplicateTunnelPairs)
 	prometheus.MustRegister(getConfigOps)
+	prometheus.MustRegister(getConfigUnknownPubkey)
 	prometheus.MustRegister(getConfigMsgSize)
 	prometheus.MustRegister(getConfigDuration)
 
@@ -109,6 +111,67 @@ func init() {
 	prometheus.MustRegister(cacheUpdateFetchErrors)
 	prometheus.MustRegister(cacheUpdateOps)
 
+	// link metrics
+	prometheus.MustRegister(linkMetrics)
+	prometheus.MustRegister(linkMetricInvalid)
+
 	// gRPC middleware metrics
 	prometheus.MustRegister(srvMetrics)
+}
+
+// deleteDeviceMetrics drops every per-device series carrying the given device
+// pubkey (and code) from the metric vectors. It is called when a device is
+// removed from the on-chain ledger so Prometheus can no longer scrape its
+// now-frozen counters; after a scrape interval plus the staleness window the
+// series go stale and queries return empty. DeletePartialMatch removes all
+// series matching just the given label(s), regardless of the other
+// (agent_version, etc.) label values.
+//
+// linkMetricInvalid is keyed by link_pubkey rather than device_pubkey, so it
+// can't be pruned by device pubkey; it is pruned by device_code instead. Device
+// codes are not guaranteed unique on-chain (CreateDevice only normalizes the
+// code and keys the device PDA by a global index), so if two devices ever share
+// a code, removing one also clears the other's controller_link_metrics_invalid_total
+// series. That is an accepted, self-healing edge case: it is a counter that
+// re-increments on the next cache update if the surviving device still has an
+// invalid link.
+func deleteDeviceMetrics(pubkey, code string) {
+	byPubkey := prometheus.Labels{"pubkey": pubkey}
+	getConfigOps.DeletePartialMatch(byPubkey)
+	getConfigRenderErrors.DeletePartialMatch(byPubkey)
+	duplicateTunnelPairs.DeletePartialMatch(byPubkey)
+	linkMetrics.DeletePartialMatch(prometheus.Labels{"device_pubkey": pubkey})
+	linkMetricInvalid.DeletePartialMatch(prometheus.Labels{"device_code": code})
+}
+
+// linkSeriesKey identifies a single controller_link_metrics gauge series by its
+// full label set.
+type linkSeriesKey struct {
+	deviceCode   string
+	ifaceName    string
+	devicePubKey string
+}
+
+// pruneStaleLinkMetrics deletes only the controller_link_metrics series that were
+// active in the previous cache (prev) but are absent from the set of series set by
+// the current cache update (active). Series that are still active are left alone —
+// updateStateCache re-Set them in place — so a concurrent Prometheus scrape never
+// observes a gap on a link that remains up. This targeted prune (rather than a
+// blanket delete-and-recreate every cycle) covers every staleness path on a
+// surviving device: a link that went inactive, an interface removed or renamed
+// on-chain, a device code change, or a device that gained a pathology and never
+// reached the interface loop. Devices removed from the ledger entirely are also
+// covered, since none of their series appear in active.
+func pruneStaleLinkMetrics(prev map[string]*Device, active map[linkSeriesKey]struct{}) {
+	for _, d := range prev {
+		for _, iface := range d.Interfaces {
+			if !iface.IsLink {
+				continue
+			}
+			key := linkSeriesKey{deviceCode: d.Code, ifaceName: iface.Name, devicePubKey: d.PubKey}
+			if _, ok := active[key]; !ok {
+				linkMetrics.DeleteLabelValues(key.deviceCode, key.ifaceName, key.devicePubKey)
+			}
+		}
+	}
 }

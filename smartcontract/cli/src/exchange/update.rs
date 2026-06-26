@@ -1,12 +1,12 @@
 use crate::{
     doublezerocommand::CliCommand,
-    requirements::{CHECK_BALANCE, CHECK_ID_JSON},
+    helpers::resolve_exchange_pk,
     validators::{validate_code, validate_pubkey_or_code},
 };
 use clap::Args;
+use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
 use doublezero_sdk::{
-    commands::exchange::{get::GetExchangeCommand, update::UpdateExchangeCommand},
-    BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN,
+    commands::exchange::update::UpdateExchangeCommand, BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN,
 };
 use std::io::Write;
 
@@ -33,9 +33,16 @@ pub struct UpdateExchangeCliCommand {
 }
 
 impl UpdateExchangeCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
-        // Check requirements
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        require!(
+            client,
+            RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
+        );
 
         if let Some(bgp_community) = self.bgp_community {
             if !(BGP_COMMUNITY_MIN..=BGP_COMMUNITY_MAX).contains(&bgp_community) {
@@ -48,9 +55,7 @@ impl UpdateExchangeCliCommand {
             }
         }
 
-        let (pubkey, _) = client.get_exchange(GetExchangeCommand {
-            pubkey_or_code: self.pubkey,
-        })?;
+        let pubkey = resolve_exchange_pk(client, &self.pubkey)?;
 
         let signature = client.update_exchange(UpdateExchangeCommand {
             pubkey,
@@ -60,9 +65,8 @@ impl UpdateExchangeCliCommand {
             lng: self.lng,
             bgp_community: self.bgp_community,
         })?;
-        writeln!(out, "Signature: {signature}",)?;
 
-        Ok(())
+        print_signature(out, &signature)
     }
 }
 
@@ -74,6 +78,7 @@ mod tests {
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
         commands::exchange::{get::GetExchangeCommand, update::UpdateExchangeCommand},
         get_exchange_pda, AccountType, Exchange, ExchangeStatus,
@@ -134,17 +139,19 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(signature));
 
-        // Expected success
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = UpdateExchangeCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: Some("test".to_string()),
-            name: Some("Test Exchange".to_string()),
-            lat: Some(12.34),
-            lng: Some(56.78),
-            bgp_community: None,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateExchangeCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: Some("test".to_string()),
+                name: Some("Test Exchange".to_string()),
+                lat: Some(12.34),
+                lng: Some(56.78),
+                bgp_community: None,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
@@ -163,31 +170,35 @@ mod tests {
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
 
-        // Test with BGP community below minimum
+        let ctx = cli_context_default_for_tests();
+
         let mut output = Vec::new();
-        let res = UpdateExchangeCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: None,
-            name: None,
-            lat: None,
-            lng: None,
-            bgp_community: Some(9999), // Below BGP_COMMUNITY_MIN (10000)
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateExchangeCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: None,
+                name: None,
+                lat: None,
+                lng: None,
+                bgp_community: Some(9999),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("out of valid range"));
 
-        // Test with BGP community above maximum
         let mut output = Vec::new();
-        let res = UpdateExchangeCliCommand {
-            pubkey: pda_pubkey.to_string(),
-            code: None,
-            name: None,
-            lat: None,
-            lng: None,
-            bgp_community: Some(11000), // Above BGP_COMMUNITY_MAX (10999)
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            UpdateExchangeCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: None,
+                name: None,
+                lat: None,
+                lng: None,
+                bgp_community: Some(11000),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().contains("out of valid range"));
     }

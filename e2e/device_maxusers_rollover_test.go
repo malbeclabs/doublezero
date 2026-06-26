@@ -126,11 +126,15 @@ func TestE2E_DeviceMaxusersRollover(t *testing.T) {
 	_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero access-pass set --accesspass-type prepaid --client-ip " + client.CYOANetworkIP + " --user-payer " + client.Pubkey})
 	require.NoError(t, err)
 
-	// Wait for client latency results.
-	log.Debug("==> Waiting for client latency results")
-	err = client.WaitForLatencyResults(t.Context(), devicePK1, 90*time.Second)
+	// Wait for client latency results. The 10ms netem delay applied to device2 should make
+	// device1 the nearest, but the client selects by min latency within a 5ms tolerance
+	// window. Wait until both devices are reachable AND device1 is measured as clearly
+	// faster than device2 (by more than that tolerance) so selection is deterministic and
+	// the client does not connect to faraway-dzd1 on a tie.
+	log.Debug("==> Waiting for latency ordering (nearby faster than faraway)")
+	err = client.WaitForLatencyOrdering(t.Context(), devicePK1, devicePK2, 5*time.Millisecond, 90*time.Second)
 	require.NoError(t, err)
-	log.Debug("--> Finished waiting for client latency results")
+	log.Debug("--> Latency ordering established")
 
 	// Connect client in IBRL mode.
 	log.Debug("==> Connecting client in IBRL mode")

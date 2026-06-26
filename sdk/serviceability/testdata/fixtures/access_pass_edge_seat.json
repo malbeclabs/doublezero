@@ -1,0 +1,91 @@
+{
+  "name": "AccessPassEdgeSeat",
+  "account_type": 11,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "11",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "Cr2knAhrJA8etkAUXosaa6BEYiSfGCvZmfHHbKc9rbMh",
+      "typ": "pubkey"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "242",
+      "typ": "u8"
+    },
+    {
+      "name": "AccessPassType",
+      "value": "4",
+      "typ": "u8"
+    },
+    {
+      "name": "ClientIp",
+      "value": "0.0.0.0",
+      "typ": "ipv4"
+    },
+    {
+      "name": "UserPayer",
+      "value": "CuwARfRwBzdNJSHT3K92U1vToj1RyA2UMXbB6Wv9aQ23",
+      "typ": "pubkey"
+    },
+    {
+      "name": "LastAccessEpoch",
+      "value": "18446744073709551615",
+      "typ": "u64"
+    },
+    {
+      "name": "ConnectionCount",
+      "value": "3",
+      "typ": "u16"
+    },
+    {
+      "name": "Status",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "MgroupPubAllowlistLen",
+      "value": "0",
+      "typ": "u32"
+    },
+    {
+      "name": "MgroupSubAllowlistLen",
+      "value": "0",
+      "typ": "u32"
+    },
+    {
+      "name": "Flags",
+      "value": "2",
+      "typ": "u8"
+    },
+    {
+      "name": "TenantAllowlistLen",
+      "value": "0",
+      "typ": "u32"
+    },
+    {
+      "name": "UnicastUserCount",
+      "value": "2",
+      "typ": "u16"
+    },
+    {
+      "name": "MaxUnicastUsers",
+      "value": "4",
+      "typ": "u16"
+    },
+    {
+      "name": "MulticastUserCount",
+      "value": "1",
+      "typ": "u16"
+    },
+    {
+      "name": "MaxMulticastUsers",
+      "value": "3",
+      "typ": "u16"
+    }
+  ]
+}

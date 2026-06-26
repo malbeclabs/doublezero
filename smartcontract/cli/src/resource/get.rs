@@ -1,6 +1,7 @@
 use super::ResourceType;
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::resource::get::GetResourceCommand;
 use serde::Serialize;
 use std::io::Write;
@@ -40,7 +41,12 @@ pub struct ResourceDisplay {
 }
 
 impl GetResourceCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let json = self.json;
         let (_, resource_extension) = client.get_resource(self.into())?;
 
@@ -68,6 +74,7 @@ impl GetResourceCliCommand {
 mod tests {
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{AccountType, ResourceType as SdkResourceType};
     use doublezero_serviceability::{
         id_allocator::IdAllocator,
@@ -110,8 +117,9 @@ mod tests {
             .expect_get_resource()
             .withf(|cmd: &GetResourceCommand| cmd.resource_type == SdkResourceType::LinkIds)
             .returning(move |_| Ok((Pubkey::default(), resource_ext.clone())));
+        let ctx = cli_context_default_for_tests();
         let mut output = Cursor::new(Vec::new());
-        let result = cli_cmd.execute(&mock_client, &mut output);
+        let result = block_on(cli_cmd.execute(&ctx, &mock_client, &mut output));
         assert!(result.is_ok());
         let output_str = String::from_utf8(output.into_inner()).unwrap();
         assert!(
@@ -145,8 +153,9 @@ mod tests {
             .expect_get_resource()
             .withf(|cmd: &GetResourceCommand| cmd.resource_type == SdkResourceType::LinkIds)
             .returning(move |_| Ok((Pubkey::default(), resource_ext.clone())));
+        let ctx = cli_context_default_for_tests();
         let mut output = Cursor::new(Vec::new());
-        let result = cli_cmd.execute(&mock_client, &mut output);
+        let result = block_on(cli_cmd.execute(&ctx, &mock_client, &mut output));
         assert!(result.is_ok());
         let json: serde_json::Value =
             serde_json::from_str(&String::from_utf8(output.into_inner()).unwrap()).unwrap();

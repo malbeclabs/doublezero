@@ -1,7 +1,7 @@
 use crate::command::util;
 use clap::Args;
-use doublezero_cli::doublezerocommand::CliCommand;
 use doublezero_sdk::commands::device::list::ListDeviceCommand;
+use doublezero_serviceability_cli::doublezerocommand::CliCommand;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
 

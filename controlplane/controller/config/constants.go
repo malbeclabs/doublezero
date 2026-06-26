@@ -4,6 +4,8 @@ const (
 	// StartUserTunnelNum is the starting tunnel number for user tunnels
 	StartUserTunnelNum = 500
 
-	// MaxUserTunnelSlots is the maximum number of user tunnel slots per device
-	MaxUserTunnelSlots = 128
+	// DefaultMaxUserTunnelSlots is the default maximum number of user tunnel slots
+	// per device. Controllers may override this at runtime via the
+	// --max-user-tunnel-slots flag (see cmd/controller).
+	DefaultMaxUserTunnelSlots = 128
 )

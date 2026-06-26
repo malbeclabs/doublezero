@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/json"
 	"testing"
@@ -190,6 +191,45 @@ func TestProbeOutput_SuccessJSON_OmitsError(t *testing.T) {
 
 	if _, ok := decoded["error"]; ok {
 		t.Error("expected error to be omitted for successful probe")
+	}
+}
+
+func TestProbeOutput_ChallengedFieldRoundTrip(t *testing.T) {
+	out := probeOutput{
+		Timestamp:  "2026-05-20T12:00:00Z",
+		Seq:        42,
+		Challenged: true,
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	var back probeOutput
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if !back.Challenged {
+		t.Fatalf("Challenged field did not round-trip; got JSON: %s", data)
+	}
+	if !bytes.Contains(data, []byte(`"challenged":true`)) {
+		t.Fatalf("expected JSON to contain \"challenged\":true; got: %s", data)
+	}
+}
+
+// Challenged is intentionally NOT omitempty: false is the default mode and
+// downstream consumers must be able to distinguish "challenged off" from
+// "field absent because the binary predates this PR".
+func TestProbeOutput_ChallengedFalseStillSerialized(t *testing.T) {
+	out := probeOutput{
+		Timestamp: "2026-05-20T12:00:00Z",
+		Seq:       43,
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if !bytes.Contains(data, []byte(`"challenged":false`)) {
+		t.Fatalf("expected JSON to contain \"challenged\":false; got: %s", data)
 	}
 }
 

@@ -1,6 +1,5 @@
 use std::net::Ipv4Addr;
 
-use doublezero_cli::{doublezerocommand::CliCommand, helpers::init_command};
 use doublezero_sdk::{
     commands::{
         multicastgroup::{
@@ -10,6 +9,7 @@ use doublezero_sdk::{
     },
     User, UserType,
 };
+use doublezero_serviceability_cli::{doublezerocommand::CliCommand, helpers::init_command};
 use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
 
@@ -324,11 +324,11 @@ mod tests {
         MulticastPublishCliCommand, MulticastSubscribeCliCommand, MulticastUnpublishCliCommand,
         MulticastUnsubscribeCliCommand,
     };
-    use doublezero_cli::tests::utils::create_test_client;
     use doublezero_sdk::{
         commands::multicastgroup::subscribe::UpdateMulticastGroupRolesCommand, AccountType,
         MulticastGroup, MulticastGroupStatus, User, UserCYOA, UserStatus,
     };
+    use doublezero_serviceability_cli::tests::utils::create_test_client;
     use std::collections::HashMap;
 
     fn make_user(client_ip: Ipv4Addr, user_type: UserType) -> User {

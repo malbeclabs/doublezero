@@ -3,20 +3,31 @@ on:
   push:
     branches: [main, 'hotfix/**']
   pull_request:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to test
+        required: true
+      head_sha:
+        description: Expected PR head SHA
+        required: true
+      image_tag:
+        description: GHCR image tag for this trusted run
+        required: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  DZ_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  DZ_SHA: ${{ github.event.inputs.head_sha || github.event.pull_request.head.sha || github.sha }}
   SHRED_IMAGE_REPO: ghcr.io/malbeclabs/dz-shreds-e2e
-  SHRED_IMAGE_TAG: ${{ github.event.pull_request.head.sha || github.sha }}
-  SHRED_BASE_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/base:${{ github.event.pull_request.head.sha || github.sha }}
-  SHRED_LEDGER_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/ledger:${{ github.event.pull_request.head.sha || github.sha }}
-  SHRED_MANAGER_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/manager:${{ github.event.pull_request.head.sha || github.sha }}
-  SHRED_ORACLE_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/oracle:${{ github.event.pull_request.head.sha || github.sha }}
-  SHRED_CLIENT_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/client:${{ github.event.pull_request.head.sha || github.sha }}
+  SHRED_IMAGE_TAG: ${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
+  SHRED_BASE_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/base:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
+  SHRED_LEDGER_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/ledger:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
+  SHRED_MANAGER_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/manager:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
+  SHRED_ORACLE_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/oracle:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
+  SHRED_CLIENT_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/client:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   setup:
@@ -25,36 +36,134 @@ jobs:
     permissions:
       packages: write
       contents: read
+      checks: write
     outputs:
+      run-e2e: ${{ steps.gate.outputs.run-e2e }}
       shreds-sha: ${{ steps.checkout-shreds.outputs.commit }}
       matrix: ${{ steps.shard.outputs.matrix }}
     steps:
+      # Version-bump PRs (only version lines change in Cargo.toml/Cargo.lock)
+      # and markdown-only PRs (docs, RFCs) get no signal from e2e. When
+      # skipping, report the required shard checks as successful on the PR
+      # head, because the gated matrix job never creates its check runs and
+      # branch protection would otherwise block the merge. Keep in sync with
+      # e2e.yml.
+      - name: Check for docs/version-bump-only PR
+        id: skip-check
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        env:
+          CHECK_NAME: shard-e2e
+          # 2 pinned shards + 2 round-robin shards; must match the required
+          # status check contexts in the main ruleset.
+          CHECK_SHARDS: "4"
+        with:
+          script: |
+            try {
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                per_page: 100,
+              });
+              // Missing patch (diff too large) fails closed: e2e runs.
+              const versionLinesOnly = (patch) => typeof patch === 'string' && patch
+                .split('\n')
+                .filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l))
+                .every((l) => /^[+-]version = "/.test(l));
+              const isMd = (name) => typeof name === 'string' && name.endsWith('.md');
+              // Markdown is inert for e2e; a rename/copy must come from
+              // markdown too, since a rename also deletes the source path.
+              const fileOk = (f) => {
+                if (isMd(f.filename)) {
+                  return (f.status !== 'renamed' && f.status !== 'copied') || isMd(f.previous_filename);
+                }
+                return (f.filename === 'Cargo.toml' || f.filename === 'Cargo.lock') &&
+                  f.status === 'modified' &&
+                  versionLinesOnly(f.patch);
+              };
+              const names = new Set(files.map((f) => f.filename));
+              // Cargo.toml and Cargo.lock must change together: a requirement
+              // change that leaves the lock untouched can still alter what
+              // unlocked CI builds resolve, and is not a version bump.
+              const skippable = files.length > 0 &&
+                names.has('Cargo.toml') === names.has('Cargo.lock') &&
+                files.every(fileOk);
+              core.setOutput('skip', String(skippable));
+              if (!skippable) return;
+              core.notice('Docs/version-bump-only PR; skipping shreds e2e and reporting shard checks as successful.');
+              const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+              for (let shard = 1; shard <= Number(process.env.CHECK_SHARDS); shard++) {
+                await github.rest.checks.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: `${process.env.CHECK_NAME} (shard ${shard})`,
+                  head_sha: context.payload.pull_request.head.sha,
+                  status: 'completed',
+                  conclusion: 'success',
+                  details_url: runUrl,
+                  output: {
+                    title: 'Skipped: docs/version-bump-only PR',
+                    summary: 'Only markdown files and version lines in Cargo.toml/Cargo.lock changed, so shreds e2e was skipped.',
+                  },
+                });
+              }
+            } catch (err) {
+              core.warning(`Skip gate failed; running shreds e2e: ${err}`);
+              core.setOutput('skip', 'false');
+            }
+      - name: Decide whether privileged shreds e2e can run
+        id: gate
+        run: |
+          if [ "${{ steps.skip-check.outputs.skip }}" = "true" ]; then
+            echo "run-e2e=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping shreds e2e: docs/version-bump-only PR."
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "run-e2e=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping privileged shreds e2e on an external fork PR. A maintainer can comment /run-e2e to start a trusted run."
+            {
+              echo "### Privileged shreds e2e skipped"
+              echo
+              echo "This pull request comes from an external fork, so GitHub withholds repository secrets."
+              echo "A maintainer can comment \`/run-e2e\` to dispatch trusted shreds e2e for this PR head SHA."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "run-e2e=true" >> "$GITHUB_OUTPUT"
       - name: Checkout doublezero-shreds
+        if: steps.gate.outputs.run-e2e == 'true'
         id: checkout-shreds
         uses: actions/checkout@v4
         with:
           repository: malbeclabs/doublezero-shreds
           token: ${{ secrets.MALBEC_INFRA_RO }}
       - uses: actions/setup-go@v5
+        if: steps.gate.outputs.run-e2e == 'true'
         with:
           go-version-file: go.mod
           cache: true
       - name: Login to GHCR
+        if: steps.gate.outputs.run-e2e == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Override doublezero SHA
+        if: steps.gate.outputs.run-e2e == 'true'
         run: |
           echo "Using doublezero SHA: $DZ_SHA"
           jq --arg sha "$DZ_SHA" '.doublezero = $sha' e2e/.dep-shas.json > e2e/.dep-shas.json.tmp
           mv e2e/.dep-shas.json.tmp e2e/.dep-shas.json
           cat e2e/.dep-shas.json
       - name: Build images
+        if: steps.gate.outputs.run-e2e == 'true'
         working-directory: e2e/
         run: go run -tags=e2e ./cmd/devnet build -v
       - name: Push images to registry
+        if: steps.gate.outputs.run-e2e == 'true'
         run: |
           docker push ${{ env.SHRED_IMAGE_REPO }}/base:${{ env.SHRED_IMAGE_TAG }}
           docker push ${{ env.SHRED_IMAGE_REPO }}/ledger:${{ env.SHRED_IMAGE_TAG }}
@@ -62,11 +171,12 @@ jobs:
           docker push ${{ env.SHRED_IMAGE_REPO }}/oracle:${{ env.SHRED_IMAGE_TAG }}
           docker push ${{ env.SHRED_IMAGE_REPO }}/client:${{ env.SHRED_IMAGE_TAG }}
       - name: Discover tests and distribute across shards
+        if: steps.gate.outputs.run-e2e == 'true'
         id: shard
         working-directory: e2e/
         run: |
           # Find all TestE2E_* functions in files with the e2e build tag.
-          tests=$(grep -rl '^//go:build e2e$' *_test.go \
+          tests=$(grep -rl '^//go:build e2e$' ./*_test.go \
             | xargs grep -h '^func TestE2E_' \
             | sed 's/func \(TestE2E_[a-zA-Z0-9_]*\).*/\1/' \
             | sort)
@@ -96,14 +206,14 @@ jobs:
 
           ROUND_ROBIN_SHARDS=2
           declare -a shards
-          for ((i=0; i<ROUND_ROBIN_SHARDS; i++)); do shards[$i]=""; done
+          for ((i=0; i<ROUND_ROBIN_SHARDS; i++)); do shards[i]=""; done
           i=0
           while IFS= read -r test; do
             idx=$((i % ROUND_ROBIN_SHARDS))
-            if [ -n "${shards[$idx]}" ]; then
-              shards[$idx]="${shards[$idx]}|${test}"
+            if [ -n "${shards[idx]}" ]; then
+              shards[idx]="${shards[idx]}|${test}"
             else
-              shards[$idx]="$test"
+              shards[idx]="$test"
             fi
             i=$((i + 1))
           done <<< "$remaining"
@@ -112,7 +222,7 @@ jobs:
           matrix="[{\"shard\":1,\"run\":\"^(${pinned_1})$\"}"
           matrix="${matrix},{\"shard\":2,\"run\":\"^(${pinned_2})$\"}"
           for ((i=0; i<ROUND_ROBIN_SHARDS; i++)); do
-            matrix="${matrix},{\"shard\":$((i + 3)),\"run\":\"^(${shards[$i]})$\"}"
+            matrix="${matrix},{\"shard\":$((i + 3)),\"run\":\"^(${shards[i]})$\"}"
           done
           matrix="${matrix}]"
 
@@ -122,6 +232,7 @@ jobs:
   shard-e2e:
     name: shard-e2e (shard ${{ matrix.shard }})
     needs: setup
+    if: needs.setup.outputs.run-e2e == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -131,10 +242,29 @@ jobs:
     permissions:
       packages: read
       contents: read
+      checks: write
     defaults:
       run:
         working-directory: e2e/
     steps:
+      # Trusted (workflow_dispatch) runs execute on the base ref, so their native
+      # check runs attach to that commit, not the PR head. Report a check run on
+      # the PR head SHA so branch protection's required context is met.
+      - name: Report check-run start on PR head
+        if: github.event_name == 'workflow_dispatch'
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'shard-e2e (shard ${{ matrix.shard }})',
+              head_sha: context.payload.inputs.head_sha,
+              status: 'in_progress',
+              details_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });
+            core.setOutput('id', String(data.id));
       - name: Checkout doublezero-shreds
         uses: actions/checkout@v4
         with:
@@ -175,6 +305,22 @@ jobs:
           pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/oracle:${{ env.SHRED_IMAGE_TAG }}
           pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/client:${{ env.SHRED_IMAGE_TAG }}
       - name: Run e2e tests
+        id: test
         env:
           SHRED_E2E_NO_BUILD: "1"
         run: go test -tags=e2e -timeout=12m -count=1 -run '${{ matrix.run }}' -v .
+      - name: Report check-run result on PR head
+        if: always() && github.event_name == 'workflow_dispatch' && steps.check.outputs.id
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const outcome = '${{ steps.test.outcome }}';
+            const conclusion = outcome === 'success' ? 'success' : (outcome === 'cancelled' ? 'cancelled' : 'failure');
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: Number('${{ steps.check.outputs.id }}'),
+              status: 'completed',
+              conclusion,
+              details_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            });

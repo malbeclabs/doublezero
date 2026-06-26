@@ -1,5 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::{
     accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
     tenant::list::ListTenantCommand,
@@ -37,12 +38,19 @@ struct AccessPassDisplay {
     pub remaining_epoch: String,
     pub flags: String,
     pub connections: u16,
+    pub unicast_users: String,
+    pub multicast_users: String,
     pub status: String,
     pub owner: String,
 }
 
 impl GetAccessPassCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         let epoch = client.get_epoch()?;
 
         let (pubkey, accesspass) = client
@@ -101,6 +109,14 @@ impl GetAccessPassCliCommand {
             remaining_epoch,
             flags: accesspass.flags_string(),
             connections: accesspass.connection_count,
+            unicast_users: format!(
+                "{} / {}",
+                accesspass.unicast_user_count, accesspass.max_unicast_users
+            ),
+            multicast_users: format!(
+                "{} / {}",
+                accesspass.multicast_user_count, accesspass.max_multicast_users
+            ),
             status: accesspass.status.to_string(),
             owner: accesspass.owner.to_string(),
         };
@@ -124,6 +140,7 @@ impl GetAccessPassCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{accesspass::get::GetAccessPassCliCommand, tests::utils::create_test_client};
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
         commands::{
             accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
@@ -172,7 +189,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             tenant_pk: tenant_pubkey,
             multicast_ip: [239, 0, 0, 1].into(),
-            max_bandwidth: 1000000000,
+            max_bandwidth: 1_000_000_000,
             status: doublezero_sdk::MulticastGroupStatus::Activated,
             code: "mcast-test".to_string(),
             publisher_count: 1,
@@ -193,6 +210,10 @@ mod tests {
             tenant_allowlist: vec![tenant_pubkey],
             owner: Pubkey::new_unique(),
             flags: 0,
+            unicast_user_count: 2,
+            max_unicast_users: 5,
+            multicast_user_count: 1,
+            max_multicast_users: 3,
         };
 
         let accesspass_clone = accesspass.clone();
@@ -221,13 +242,16 @@ mod tests {
                 Ok(map)
             });
 
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = GetAccessPassCliCommand {
-            client_ip,
-            user_payer,
-            json: false,
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            GetAccessPassCliCommand {
+                client_ip,
+                user_payer,
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         let has_row = |header: &str, value: &str| {
@@ -267,6 +291,14 @@ mod tests {
         assert!(
             has_row("connections", "3"),
             "connections row should contain value"
+        );
+        assert!(
+            has_row("unicast_users", "2 / 5"),
+            "unicast_users row should contain count / max"
+        );
+        assert!(
+            has_row("multicast_users", "1 / 3"),
+            "multicast_users row should contain count / max"
         );
         assert!(
             has_row("status", "connected"),

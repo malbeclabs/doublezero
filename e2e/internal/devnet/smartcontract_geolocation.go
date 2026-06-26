@@ -77,7 +77,7 @@ func (dn *Devnet) InitGeolocationProgramConfigIfNotInitialized(ctx context.Conte
 	dn.log.Debug("==> Initializing geolocation program config")
 
 	output, err := dn.Manager.Exec(ctx, []string{
-		"doublezero", "init-geolocation-config", "--yes",
+		"doublezero", "geolocation", "init", "--yes",
 	}, docker.NoPrintOnError())
 	if err != nil {
 		outputStr := strings.ToLower(string(output))

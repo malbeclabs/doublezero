@@ -1,7 +1,7 @@
 pub use crate::config::{
-    convert_geo_program_moniker, create_new_pubkey_user, default_geolocation_program_id,
-    default_program_id, get_doublezero_pubkey, read_doublezero_config, write_doublezero_config,
-    ClientConfig,
+    convert_geo_program_moniker, create_new_pubkey_user, default_environment,
+    default_geolocation_program_id, default_program_id, get_doublezero_pubkey,
+    read_doublezero_config, write_doublezero_config, ClientConfig,
 };
 pub use doublezero_serviceability::{
     addresses::*,
@@ -50,7 +50,10 @@ pub mod telemetry;
 pub mod tests;
 pub mod utils;
 
-pub use crate::{asyncclient::AsyncDZClient, client::DZClient, geolocation::client::GeoClient};
+pub use crate::{
+    asyncclient::AsyncDZClient, client::DZClient, dztransaction::DZTransaction,
+    geolocation::client::GeoClient,
+};
 
 pub use crate::{
     config::{convert_program_moniker, convert_url_moniker, convert_url_to_ws, convert_ws_moniker},

@@ -3,6 +3,7 @@ package qa
 import (
 	"fmt"
 	"net"
+	"reflect"
 	"testing"
 )
 
@@ -538,6 +539,196 @@ func TestComputeRouteTargets(t *testing.T) {
 
 		if len(result) != 0 {
 			t.Errorf("expected 0 targets for single client, got %d", len(result))
+		}
+	})
+}
+
+func TestComputeFailureStats(t *testing.T) {
+	// pass marks a BatchResult as a successful test (Success() returns true
+	// when FailedTests == 0 && PacketsSent > 0 && PacketsReceived > 0).
+	pass := func(d *Device) *BatchResult {
+		return &BatchResult{Device: d, PacketsSent: 10, PacketsReceived: 10}
+	}
+	// fail marks a BatchResult as a failed test.
+	fail := func(d *Device) *BatchResult {
+		return &BatchResult{Device: d, PacketsSent: 10, PacketsReceived: 0, FailedTests: 1}
+	}
+
+	dev1 := &Device{Code: "dev1", PubKey: "pk1"}
+	dev2 := &Device{Code: "dev2", PubKey: "pk2"}
+	dev3 := &Device{Code: "dev3", PubKey: "pk3"}
+
+	t.Run("empty batch data", func(t *testing.T) {
+		stats := ComputeFailureStats(BatchData{})
+		if len(stats.DeviceResults) != 0 {
+			t.Errorf("expected no device results, got %d", len(stats.DeviceResults))
+		}
+		if len(stats.PerHost) != 0 {
+			t.Errorf("expected no per-host stats, got %d", len(stats.PerHost))
+		}
+		if len(stats.Retests) != 0 {
+			t.Errorf("expected no retests, got %d", len(stats.Retests))
+		}
+	})
+
+	t.Run("single device single host fail", func(t *testing.T) {
+		batchData := BatchData{
+			0: {"hostA": fail(dev1)},
+		}
+		stats := ComputeFailureStats(batchData)
+
+		wantDevice := []DeviceTestResult{
+			{DeviceCode: "dev1", DevicePubkey: "pk1", Success: false},
+		}
+		if !reflect.DeepEqual(stats.DeviceResults, wantDevice) {
+			t.Errorf("device results: got %+v, want %+v", stats.DeviceResults, wantDevice)
+		}
+		host := stats.PerHost["hostA"]
+		if host.Total != 1 || host.Failed != 1 {
+			t.Errorf("per-host: got total=%d failed=%d, want 1/1", host.Total, host.Failed)
+		}
+		if len(stats.Retests) != 0 {
+			t.Errorf("expected no retests, got %d", len(stats.Retests))
+		}
+	})
+
+	t.Run("single device single host pass", func(t *testing.T) {
+		batchData := BatchData{
+			0: {"hostA": pass(dev1)},
+		}
+		stats := ComputeFailureStats(batchData)
+
+		if len(stats.DeviceResults) != 1 || !stats.DeviceResults[0].Success {
+			t.Errorf("expected one successful device, got %+v", stats.DeviceResults)
+		}
+		host := stats.PerHost["hostA"]
+		if host.Total != 1 || host.Failed != 0 {
+			t.Errorf("per-host: got total=%d failed=%d, want 1/0", host.Total, host.Failed)
+		}
+	})
+
+	t.Run("device retested 11 times with 3 successes", func(t *testing.T) {
+		// Mirrors the scenario from the issue: tyo-mn-qa01 tests tyo001-dz002
+		// 11 times, 3 of which succeeded and 8 failed. Expected: one
+		// unique device, marked success; per-host 0/1; one retest entry.
+		batch := BatchData{}
+		// 3 successes
+		for i := 0; i < 3; i++ {
+			batch[i] = map[string]*BatchResult{"hostA": pass(dev1)}
+		}
+		// 8 failures
+		for i := 3; i < 11; i++ {
+			batch[i] = map[string]*BatchResult{"hostA": fail(dev1)}
+		}
+
+		stats := ComputeFailureStats(batch)
+
+		if len(stats.DeviceResults) != 1 || !stats.DeviceResults[0].Success {
+			t.Errorf("expected single device marked success, got %+v", stats.DeviceResults)
+		}
+		host := stats.PerHost["hostA"]
+		if host.Total != 1 || host.Failed != 0 || len(host.FailedDevices) != 0 {
+			t.Errorf("per-host: got total=%d failed=%d failedDevices=%v, want 1/0/[]", host.Total, host.Failed, host.FailedDevices)
+		}
+		wantRetests := []DeviceRetest{
+			{Host: "hostA", DeviceCode: "dev1", Attempts: 11, Successes: 3, Failures: 8},
+		}
+		if !reflect.DeepEqual(stats.Retests, wantRetests) {
+			t.Errorf("retests: got %+v, want %+v", stats.Retests, wantRetests)
+		}
+	})
+
+	t.Run("device retested 11 times with 0 successes", func(t *testing.T) {
+		batch := BatchData{}
+		for i := 0; i < 11; i++ {
+			batch[i] = map[string]*BatchResult{"hostA": fail(dev1)}
+		}
+
+		stats := ComputeFailureStats(batch)
+
+		if len(stats.DeviceResults) != 1 || stats.DeviceResults[0].Success {
+			t.Errorf("expected single device marked failure, got %+v", stats.DeviceResults)
+		}
+		host := stats.PerHost["hostA"]
+		if host.Total != 1 || host.Failed != 1 {
+			t.Errorf("per-host: got total=%d failed=%d, want 1/1", host.Total, host.Failed)
+		}
+		if !reflect.DeepEqual(host.FailedDevices, []string{"dev1"}) {
+			t.Errorf("failedDevices: got %v, want [dev1]", host.FailedDevices)
+		}
+		wantRetests := []DeviceRetest{
+			{Host: "hostA", DeviceCode: "dev1", Attempts: 11, Successes: 0, Failures: 11},
+		}
+		if !reflect.DeepEqual(stats.Retests, wantRetests) {
+			t.Errorf("retests: got %+v, want %+v", stats.Retests, wantRetests)
+		}
+	})
+
+	t.Run("multiple devices on one host with mixed outcomes", func(t *testing.T) {
+		// hostA tests three distinct devices: dev1 passes, dev2 fails, dev3 passes.
+		batchData := BatchData{
+			0: {"hostA": pass(dev1)},
+			1: {"hostA": fail(dev2)},
+			2: {"hostA": pass(dev3)},
+		}
+		stats := ComputeFailureStats(batchData)
+
+		wantDevices := []DeviceTestResult{
+			{DeviceCode: "dev1", DevicePubkey: "pk1", Success: true},
+			{DeviceCode: "dev2", DevicePubkey: "pk2", Success: false},
+			{DeviceCode: "dev3", DevicePubkey: "pk3", Success: true},
+		}
+		if !reflect.DeepEqual(stats.DeviceResults, wantDevices) {
+			t.Errorf("device results: got %+v, want %+v", stats.DeviceResults, wantDevices)
+		}
+		host := stats.PerHost["hostA"]
+		if host.Total != 3 || host.Failed != 1 {
+			t.Errorf("per-host: got total=%d failed=%d, want 3/1", host.Total, host.Failed)
+		}
+		if !reflect.DeepEqual(host.FailedDevices, []string{"dev2"}) {
+			t.Errorf("failedDevices: got %v, want [dev2]", host.FailedDevices)
+		}
+		if len(stats.Retests) != 0 {
+			t.Errorf("expected no retests, got %+v", stats.Retests)
+		}
+	})
+
+	t.Run("multiple hosts and devices with sorted retests", func(t *testing.T) {
+		// hostA: dev1 attempted twice (one pass, one fail) — should be success.
+		// hostB: dev2 attempted twice, both fail — should be failure.
+		// hostA also tests dev3 once, passes.
+		batchData := BatchData{
+			0: {"hostA": pass(dev1), "hostB": fail(dev2)},
+			1: {"hostA": fail(dev1), "hostB": fail(dev2)},
+			2: {"hostA": pass(dev3), "hostB": fail(dev2)},
+		}
+		stats := ComputeFailureStats(batchData)
+
+		wantDevices := []DeviceTestResult{
+			{DeviceCode: "dev1", DevicePubkey: "pk1", Success: true},
+			{DeviceCode: "dev2", DevicePubkey: "pk2", Success: false},
+			{DeviceCode: "dev3", DevicePubkey: "pk3", Success: true},
+		}
+		if !reflect.DeepEqual(stats.DeviceResults, wantDevices) {
+			t.Errorf("device results: got %+v, want %+v", stats.DeviceResults, wantDevices)
+		}
+		hostA := stats.PerHost["hostA"]
+		if hostA.Total != 2 || hostA.Failed != 0 {
+			t.Errorf("hostA: got %+v, want total=2 failed=0", hostA)
+		}
+		hostB := stats.PerHost["hostB"]
+		if hostB.Total != 1 || hostB.Failed != 1 {
+			t.Errorf("hostB: got %+v, want total=1 failed=1", hostB)
+		}
+		if !reflect.DeepEqual(hostB.FailedDevices, []string{"dev2"}) {
+			t.Errorf("hostB failedDevices: got %v, want [dev2]", hostB.FailedDevices)
+		}
+		wantRetests := []DeviceRetest{
+			{Host: "hostA", DeviceCode: "dev1", Attempts: 2, Successes: 1, Failures: 1},
+			{Host: "hostB", DeviceCode: "dev2", Attempts: 3, Successes: 0, Failures: 3},
+		}
+		if !reflect.DeepEqual(stats.Retests, wantRetests) {
+			t.Errorf("retests: got %+v, want %+v", stats.Retests, wantRetests)
 		}
 	})
 }

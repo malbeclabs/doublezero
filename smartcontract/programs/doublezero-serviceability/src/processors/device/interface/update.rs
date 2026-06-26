@@ -160,6 +160,14 @@ pub fn process_update_device_interface(
 
     let mut device: Device = Device::try_from(device_account)?;
 
+    // The supplied contributor must be the one the device belongs to,
+    // unless the payer is on the foundation allowlist.
+    if !globalstate.foundation_allowlist.contains(payer_account.key)
+        && device.contributor_pk != *contributor_account.key
+    {
+        return Err(DoubleZeroError::InvalidContributorPubkey.into());
+    }
+
     let (idx, _) = device
         .find_interface(&value.name)
         .map_err(|_| DoubleZeroError::InterfaceNotFound)?;
@@ -333,6 +341,17 @@ pub fn process_update_device_interface(
     };
     if iface.mtu != expected_mtu {
         return Err(DoubleZeroError::InvalidMtu.into());
+    }
+
+    // CYOA/DIA interfaces must have a non-zero bandwidth. Only enforce when the
+    // transaction is changing CYOA, DIA, or bandwidth, so legacy zero-bandwidth
+    // CYOA/DIA interfaces created before this rule can still be updated for
+    // unrelated fields without first being repaired.
+    let touches_bw_or_edge = value.interface_cyoa.is_some()
+        || value.interface_dia.is_some()
+        || value.bandwidth.is_some();
+    if touches_bw_or_edge && is_cyoa_or_dia && iface.bandwidth == 0 {
+        return Err(DoubleZeroError::InvalidBandwidth.into());
     }
 
     iface.validate()?;

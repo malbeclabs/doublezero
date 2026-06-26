@@ -173,11 +173,22 @@ pub fn process_create_device_interface(
         if value.mtu != CYOA_DIA_INTERFACE_MTU {
             return Err(DoubleZeroError::InvalidMtu.into());
         }
+        if value.bandwidth == 0 {
+            return Err(DoubleZeroError::InvalidBandwidth.into());
+        }
     } else if value.mtu != INTERFACE_MTU {
         return Err(DoubleZeroError::InvalidMtu.into());
     }
 
     let mut device: Device = Device::try_from(device_account)?;
+
+    // The supplied contributor must be the one the device belongs to,
+    // unless the payer is on the foundation allowlist.
+    if !globalstate.foundation_allowlist.contains(payer_account.key)
+        && device.contributor_pk != *contributor_account.key
+    {
+        return Err(DoubleZeroError::InvalidContributorPubkey.into());
+    }
 
     if device.find_interface(&name).is_ok() {
         return Err(DoubleZeroError::InterfaceAlreadyExists.into());

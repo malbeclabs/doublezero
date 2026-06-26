@@ -190,6 +190,7 @@ pub fn load_keypair(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use solana_sdk::signer::Signer;
     use std::io::Write;
     use tempfile::TempDir;
@@ -264,6 +265,9 @@ mod tests {
     }
 
     #[test]
+    // Mutates the shared DOUBLEZERO_KEYPAIR env var; serialize against every
+    // other test that touches it (see `client::cli_context_tests`).
+    #[serial(doublezero_keypair_env)]
     fn test_load_keypair_default_fallback() {
         let tmp = TempDir::new().unwrap();
         let (default_path, default_keypair) = create_test_keypair_file(&tmp);
@@ -278,6 +282,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(doublezero_keypair_env)]
     fn test_load_keypair_no_source_available() {
         let tmp = TempDir::new().unwrap();
 

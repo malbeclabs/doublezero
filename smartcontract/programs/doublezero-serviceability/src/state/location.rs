@@ -188,7 +188,7 @@ mod tests {
             reference_count: 0,
             lat: 50.45,
             lng: 50.678,
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             country: "US".to_string(),
@@ -225,7 +225,7 @@ mod tests {
             reference_count: 0,
             lat: 10.0,
             lng: 10.0,
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             country: "US".to_string(),
@@ -246,7 +246,7 @@ mod tests {
             reference_count: 0,
             lat: 10.0,
             lng: 10.0,
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "a".repeat(33), // More than 32
             name: "test-test-test".to_string(),
             country: "US".to_string(),
@@ -267,7 +267,7 @@ mod tests {
             reference_count: 0,
             lat: 10.0,
             lng: 10.0,
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "test-321".to_string(),
             name: "a".repeat(65), // More than 64
             country: "US".to_string(),
@@ -288,7 +288,7 @@ mod tests {
             reference_count: 0,
             lat: 10.0,
             lng: 10.0,
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             country: "USA".to_string(), // More than 2 characters
@@ -309,7 +309,7 @@ mod tests {
             reference_count: 0,
             lat: -91.0, // Less than minimum
             lng: 10.0,
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             country: "US".to_string(),
@@ -338,7 +338,7 @@ mod tests {
             reference_count: 0,
             lat: 10.0,
             lng: -181.0, // Less than minimum
-            loc_id: 1212121,
+            loc_id: 1_212_121,
             code: "test-321".to_string(),
             name: "test-test-test".to_string(),
             country: "US".to_string(),

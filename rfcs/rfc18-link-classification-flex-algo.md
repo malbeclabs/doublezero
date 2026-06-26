@@ -486,7 +486,7 @@ At interface activation time, one `FlexAlgoNodeSegment` is allocated per known `
 
 In the template, `.FlexAlgoNodeSegments` is accessed directly on the current interface (the `.` context within `{{- range .Device.Interfaces }}`). The controller populates this from the interface's onchain `flex_algo_node_segments` list during rendering, resolving the topology name from each entry's `TopologyInfo` pubkey. This is intentionally distinct from `.LinkTopologies` (which describes which topologies a specific link is tagged with) — the loopback template is concerned with which topologies this device participates in, not with link tagging.
 
-**Migration for existing accounts:** A one-time `doublezero-admin` CLI migration command MUST be provided covering two tasks:
+**Migration for existing accounts:** A one-time `doublezero migrate flex-algo` CLI migration command MUST be provided covering two tasks:
 
 1. **Links** — iterate all existing `Link` accounts with `link_topologies = []` and set `link_topologies[0]` to the UNICAST-DEFAULT `TopologyInfo` pubkey. Links activated after this RFC are auto-tagged at activation; this migration covers links activated before the RFC was deployed.
 2. **Vpnv4 loopbacks** — iterate all existing `Interface` accounts with `loopback_type = Vpnv4` and allocate a `FlexAlgoNodeSegment` entry for each known `TopologyInfo` account. Existing `node_segment_idx` assignments (algo-0) are unchanged — this is purely additive. Loopbacks activated after this RFC will have entries allocated at activation time; topologies created after this RFC will be backfilled automatically at topology creation time.

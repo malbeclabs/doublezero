@@ -198,7 +198,7 @@ func startMetricsServer(ctx context.Context, log *slog.Logger, addr string, shut
 		}()
 
 		err = httpSrv.Serve(listener)
-		if errors.Is(err, http.ErrServerClosed) {
+		if errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed) {
 			return
 		}
 		if err != nil {

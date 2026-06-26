@@ -14,7 +14,10 @@ use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     pubsub_client::PubsubClient,
     rpc_client::RpcClient,
-    rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
+    rpc_config::{
+        RpcAccountInfoConfig, RpcProgramAccountsConfig, RpcSendTransactionConfig,
+        RpcTransactionConfig,
+    },
     rpc_filter::{Memcmp, MemcmpEncodedBytes, RpcFilterType},
 };
 use solana_rpc_client_api::client_error::{Error as ClientError, ErrorKind as ClientErrorKind};
@@ -109,6 +112,47 @@ impl DZClient {
         })
     }
 
+    /// Build a `DZClient` from a resolved RFC-20 [`CliContext`].
+    ///
+    /// Unlike [`DZClient::new`], this performs no `config.yml` read and no
+    /// moniker conversion: the context already carries the fully resolved
+    /// ledger RPC/WS URLs and serviceability program ID, so they are consumed
+    /// verbatim. This makes the context the single source of truth and removes
+    /// the double-resolution the binary previously incurred.
+    ///
+    /// `keypair` is the raw `--keypair` CLI flag (or `None`). It is passed as
+    /// the highest-precedence source to [`load_keypair`] so the standard chain
+    /// (CLI flag > `DOUBLEZERO_KEYPAIR` > stdin > config path > default) is
+    /// preserved. The context's `keypair_path` is used only as the lower-
+    /// precedence config/default path; passing it as the CLI source would mask
+    /// the env var.
+    #[cfg(feature = "cli-context")]
+    pub fn from_context(
+        ctx: &doublezero_cli_core::CliContext,
+        keypair: Option<PathBuf>,
+    ) -> eyre::Result<DZClient> {
+        let rpc_url = ctx.ledger_rpc_url.clone();
+        let rpc_ws_url = ctx.ledger_ws_rpc_url.clone();
+
+        let client = RpcClient::new_with_commitment(rpc_url.clone(), CommitmentConfig::confirmed());
+
+        let default_path = ctx
+            .keypair_path
+            .clone()
+            .unwrap_or_else(default_keypair_path);
+        let payer = load_keypair(keypair, None, default_path)
+            .ok()
+            .map(|r| r.keypair);
+
+        Ok(DZClient {
+            rpc_url,
+            client,
+            rpc_ws_url,
+            payer,
+            program_id: ctx.serviceability_program_id,
+        })
+    }
+
     pub fn get_rpc(&self) -> &String {
         &self.rpc_url
     }
@@ -176,30 +220,78 @@ impl DZClient {
         let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
         transaction.sign(&[&payer], blockhash);
 
-        debug!("Simulating transaction: {transaction:?}");
+        debug!("Sending transaction: {transaction:?}");
 
-        let result = self.client.simulate_transaction(&transaction)?;
-        let program_logs = result.value.logs.unwrap_or_default();
+        let signature = transaction.signatures[0];
+        let send_config = RpcSendTransactionConfig {
+            skip_preflight: true,
+            ..RpcSendTransactionConfig::default()
+        };
 
-        if let Some(ref err) = result.value.err {
-            if quiet {
-                // Return structured errors with logs attached for the caller to handle
-                if let TransactionError::InstructionError(
-                    _index,
-                    InstructionError::Custom(number),
-                ) = err
-                {
-                    return Err(eyre!(SimulationError {
-                        source: DoubleZeroError::from(*number),
-                        program_logs,
-                    }));
-                } else {
+        match self
+            .client
+            .send_and_confirm_transaction_with_spinner_and_config(
+                &transaction,
+                self.client.commitment(),
+                send_config,
+            ) {
+            Ok(sig) => Ok(sig),
+            Err(client_err) => {
+                let tx_err = match &client_err.kind {
+                    ClientErrorKind::TransactionError(e) => Some(e.clone()),
+                    ClientErrorKind::RpcError(
+                        solana_rpc_client_api::request::RpcError::RpcResponseError {
+                            data:
+                                solana_rpc_client_api::request::RpcResponseErrorData::SendTransactionPreflightFailure(
+                                    res,
+                                ),
+                            ..
+                        },
+                    ) => res.err.clone(),
+                    _ => None,
+                };
+
+                let Some(err) = tx_err else {
+                    return Err(eyre!(client_err));
+                };
+
+                // The tx may have landed onchain (skip_preflight=true means failing
+                // txs still land). Fetch logs from the confirmed tx if available.
+                let program_logs = self
+                    .client
+                    .get_transaction_with_config(
+                        &signature,
+                        RpcTransactionConfig {
+                            encoding: Some(UiTransactionEncoding::Base64),
+                            commitment: Some(self.client.commitment()),
+                            max_supported_transaction_version: Some(0),
+                        },
+                    )
+                    .ok()
+                    .and_then(|tx| tx.transaction.meta)
+                    .and_then(|meta| match meta.log_messages {
+                        OptionSerializer::Some(logs) => Some(logs),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+
+                if quiet {
+                    if let TransactionError::InstructionError(
+                        _index,
+                        InstructionError::Custom(number),
+                    ) = err
+                    {
+                        return Err(eyre!(SimulationError {
+                            source: DoubleZeroError::from(number),
+                            program_logs,
+                        }));
+                    }
                     return Err(eyre!(SimulationTransactionError {
-                        source: err.clone(),
+                        source: err,
                         program_logs,
                     }));
                 }
-            } else {
+
                 eprintln!("Program Logs:");
                 for log in &program_logs {
                     eprintln!("{log}");
@@ -210,16 +302,11 @@ impl DZClient {
                     InstructionError::Custom(number),
                 ) = err
                 {
-                    return Err(eyre!(DoubleZeroError::from(*number)));
-                } else {
-                    return Err(eyre!(err.clone()));
+                    return Err(eyre!(DoubleZeroError::from(number)));
                 }
+                Err(eyre!(err))
             }
         }
-
-        self.client
-            .send_and_confirm_transaction(&transaction)
-            .map_err(|e| eyre!(e))
     }
 
     /// Returns true for transient network errors that are worth retrying.
@@ -657,5 +744,72 @@ impl DoubleZeroClient for DZClient {
         }
 
         Ok(transactions)
+    }
+}
+
+#[cfg(all(test, feature = "cli-context"))]
+mod cli_context_tests {
+    use super::*;
+    use doublezero_cli_core::CliContextBuilder;
+    use doublezero_config::Environment;
+    use serial_test::serial;
+    use std::io::Write;
+
+    const ENV_KEYPAIR: &str = "DOUBLEZERO_KEYPAIR";
+
+    #[test]
+    #[serial(doublezero_keypair_env)]
+    fn from_context_uses_resolved_values_without_config_read() {
+        let pid = Pubkey::new_unique();
+        let ctx = CliContextBuilder::new()
+            .with_env(Environment::Devnet)
+            .with_ledger_rpc_url("http://localhost:8899/")
+            .with_serviceability_program_id(pid)
+            .build()
+            .unwrap();
+
+        let client = DZClient::from_context(&ctx, None).unwrap();
+
+        // Resolved values consumed verbatim from the context.
+        assert_eq!(client.get_rpc().as_str(), "http://localhost:8899/");
+        // WS derived from the RPC override by scheme swap (no env-default WS).
+        assert_eq!(client.get_ws().as_str(), "ws://localhost:8899/");
+        assert_eq!(client.get_program_id(), &pid);
+    }
+
+    /// Guards the masking hazard: `from_context` must pass the context's
+    /// keypair path only as the low-precedence fallback, never as the CLI
+    /// source, so `DOUBLEZERO_KEYPAIR` still wins over it.
+    #[test]
+    #[serial(doublezero_keypair_env)]
+    fn from_context_env_keypair_wins_over_context_path() {
+        let kp = Keypair::new();
+        let dir = tempfile::tempdir().unwrap();
+        let kp_path = dir.path().join("env-key.json");
+        let json = serde_json::to_string(&kp.to_bytes().to_vec()).unwrap();
+        std::fs::File::create(&kp_path)
+            .unwrap()
+            .write_all(json.as_bytes())
+            .unwrap();
+
+        // Context carries a bogus keypair path. If it were used as the CLI
+        // source it would win and fail to load; correct behavior is for the
+        // env var to win.
+        let ctx = CliContextBuilder::new()
+            .with_env(Environment::Devnet)
+            .with_ledger_rpc_url("http://localhost:8899/")
+            .with_serviceability_program_id(Pubkey::new_unique())
+            .with_keypair_path(PathBuf::from("/nonexistent/bogus.json"))
+            .build()
+            .unwrap();
+
+        std::env::set_var(ENV_KEYPAIR, &kp_path);
+        let client = DZClient::from_context(&ctx, None).unwrap();
+        std::env::remove_var(ENV_KEYPAIR);
+
+        assert_eq!(
+            client.payer_keypair().map(|k| k.pubkey()),
+            Some(kp.pubkey())
+        );
     }
 }

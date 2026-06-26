@@ -4,6 +4,7 @@ use crate::{
     validators::validate_pubkey,
 };
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::link::{delete::DeleteLinkCommand, get::GetLinkCommand};
 use std::io::Write;
 
@@ -15,7 +16,12 @@ pub struct DeleteLinkCliCommand {
 }
 
 impl DeleteLinkCliCommand {
-    pub fn execute<C: CliCommand, W: Write>(self, client: &C, out: &mut W) -> eyre::Result<()> {
+    pub async fn execute<C: CliCommand, W: Write>(
+        self,
+        _ctx: &CliContext,
+        client: &C,
+        out: &mut W,
+    ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -32,6 +38,8 @@ impl DeleteLinkCliCommand {
 
 #[cfg(test)]
 mod tests {
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+
     use crate::{
         doublezerocommand::CliCommand,
         link::delete::DeleteLinkCliCommand,
@@ -140,10 +148,10 @@ mod tests {
             side_a_pk: device1_pk,
             side_z_pk: device2_pk,
             link_type: LinkLinkType::WAN,
-            bandwidth: 1000000000,
+            bandwidth: 1_000_000_000,
             mtu: 9000,
-            delay_ns: 10000000000,
-            jitter_ns: 5000000000,
+            delay_ns: 10_000_000_000,
+            jitter_ns: 5_000_000_000,
             delay_override_ns: 0,
             tunnel_id: 1,
             tunnel_net: "10.0.0.1/16".parse().unwrap(),
@@ -185,11 +193,14 @@ mod tests {
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/
+        let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
-        let res = DeleteLinkCliCommand {
-            pubkey: pda_pubkey.to_string(),
-        }
-        .execute(&client, &mut output);
+        let res = block_on(
+            DeleteLinkCliCommand {
+                pubkey: pda_pubkey.to_string(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(

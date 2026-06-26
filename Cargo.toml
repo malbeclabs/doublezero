@@ -49,7 +49,7 @@ chrono = "0"
 clap = { version = "4", features = ["derive"] }
 clap_complete = { version = "4", features = ["unstable-dynamic"] }
 console = "0"
-ctor = "0"
+ctor = "1"
 directories-next = "2"
 dirs-next = "2"
 env_logger = "0"

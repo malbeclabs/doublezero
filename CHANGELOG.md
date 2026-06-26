@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.28.0](https://github.com/malbeclabs/doublezero/compare/client/v0.27.1...client/v0.28.0) - 2026-06-26
+
+
+### Breaking
+
 - CLI
   - Remove the `doublezero-admin` binary. Its commands now live in the `doublezero` CLI as hidden subcommands (e.g. `doublezero sentinel ...`, `doublezero migrate flex-algo`).
 

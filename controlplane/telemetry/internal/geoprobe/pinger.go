@@ -16,8 +16,21 @@ const (
 	ProbesPerWorker     = 512
 	DefaultStaggerDelay = 100 * time.Millisecond
 	DefaultWarmupDelay  = 2 * time.Millisecond
-	senderRetries       = 3
-	senderRetryMin      = 50 * time.Millisecond
+
+	// Bind-error retry budget; kept small because socket creation is now on the
+	// probe hot path and the transient EINVAL it guards clears quickly.
+	senderRetries  = 3
+	senderRetryMin = 20 * time.Millisecond
+
+	// maxPairBindBackoff is the backoff a successful createSenderPair incurs in
+	// the worst case: both sockets retry senderRetries-1 times before succeeding
+	// (senderRetryMin*(2^0+...+2^(senderRetries-2)) per socket, two sockets).
+	maxPairBindBackoff = 2 * senderRetryMin * ((1 << (senderRetries - 1)) - 1)
+
+	// slowSenderPairThreshold sits just below maxPairBindBackoff so the warning
+	// fires only on near-worst-case bind contention; the goal is to learn whether
+	// we hit that ceiling often, not to flag every retry.
+	slowSenderPairThreshold = maxPairBindBackoff - senderRetryMin
 )
 
 type senderFactory func(ctx context.Context, log *slog.Logger, iface string, local, remote *net.UDPAddr) (twamplight.Sender, error)
@@ -38,16 +51,12 @@ type Pinger struct {
 	newSender senderFactory
 }
 
-func defaultSenderFactory(ctx context.Context, log *slog.Logger, iface string, local, remote *net.UDPAddr) (twamplight.Sender, error) {
-	return newSenderWithRetry(ctx, log, iface, local, remote)
-}
-
 func NewPinger(cfg *PingerConfig) *Pinger {
 	return &Pinger{
 		log:       cfg.Logger,
 		cfg:       cfg,
 		targets:   make(map[string]ProbeAddress),
-		newSender: defaultSenderFactory,
+		newSender: newSenderWithRetry,
 	}
 }
 
@@ -95,6 +104,8 @@ func (p *Pinger) createSenderPair(ctx context.Context, addr ProbeAddress) (sende
 	resolvedAddr := &net.UDPAddr{IP: net.ParseIP(addr.Host), Port: int(addr.TWAMPPort)}
 	iface := p.cfg.ManagementNamespace
 
+	start := time.Now()
+
 	sender, err = p.newSender(ctx, p.log, iface, &net.UDPAddr{IP: net.IPv4zero, Port: 0}, resolvedAddr)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create sender for %s: %w", addr.String(), err)
@@ -104,6 +115,13 @@ func (p *Pinger) createSenderPair(ctx context.Context, addr ProbeAddress) (sende
 	if err != nil {
 		sender.Close()
 		return nil, nil, fmt.Errorf("create warmup sender for %s: %w", addr.String(), err)
+	}
+
+	if elapsed := time.Since(start); elapsed > slowSenderPairThreshold {
+		p.log.Warn("Slow sender pair creation",
+			"probe", addr.String(),
+			"elapsed", elapsed,
+			"threshold", slowSenderPairThreshold)
 	}
 
 	return sender, warmup, nil
@@ -121,6 +139,10 @@ func (p *Pinger) probeTarget(ctx context.Context, addr ProbeAddress) (time.Durat
 	probeCtx, cancel := context.WithTimeout(ctx, p.cfg.ProbeTimeout)
 	defer cancel()
 
+	// Send a warmup probe first to wake the reflector's thread, then send the
+	// measurement probe after a short delay. Both run on separate sockets so
+	// neither blocks the other; we take the min RTT. Note the naming: warmup
+	// fires immediately, while sender is the delayed measurement probe.
 	type probeResult struct {
 		rtt time.Duration
 		err error

@@ -17,9 +17,10 @@ func isBindError(err error) bool {
 	return strings.Contains(err.Error(), "bind:")
 }
 
-// retryOnBindError calls fn up to senderRetries times, retrying with
-// exponential backoff (senderRetryMin * 2^attempt) only when fn returns an
-// error classified by isBindError. Non-bind errors are returned immediately.
+// retryOnBindError calls fn up to senderRetries times, backing off between
+// attempts with exponential delay (senderRetryMin * 2^attempt) only when fn
+// returns an error classified by isBindError. Non-bind errors are returned
+// immediately. No delay follows the final attempt before giving up.
 func retryOnBindError[T any](ctx context.Context, log *slog.Logger, fn func() (T, error)) (T, error) {
 	var (
 		zero    T
@@ -33,6 +34,9 @@ func retryOnBindError[T any](ctx context.Context, log *slog.Logger, fn func() (T
 		lastErr = err
 		if !isBindError(err) {
 			return zero, err
+		}
+		if attempt == senderRetries-1 {
+			break
 		}
 		delay := senderRetryMin * time.Duration(1<<attempt)
 		log.Warn("Bind failed, retrying", "attempt", attempt+1, "delay", delay, "error", err)

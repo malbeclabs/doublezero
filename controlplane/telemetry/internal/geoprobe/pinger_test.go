@@ -29,6 +29,12 @@ func (m *mockSender) LocalAddr() *net.UDPAddr {
 	return &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 }
 
+// mockFactory returns a senderFactory that hands out sender on the first call
+// and warmup on the second, matching createSenderPair's sender-then-warmup
+// order. The call counter is unsynchronized, so this is only correct with a
+// single registered target: createSenderPair then runs serially, making exactly
+// two ordered calls. A multi-target test would race on call under -race and
+// could mis-pair senders; add synchronization here before introducing one.
 func mockFactory(sender, warmup *mockSender) senderFactory {
 	call := 0
 	return func(_ context.Context, _ *slog.Logger, _ string, _, _ *net.UDPAddr) (twamplight.Sender, error) {

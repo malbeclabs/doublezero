@@ -68,3 +68,10 @@ ENV DIND_LOCALHOST=host.docker.internal
 # Tell Testcontainers to connect to the Docker daemon via host.docker.internal,
 # so sidecar containers like Ryuk can reach the DinD container hosting the daemon.
 ENV TESTCONTAINERS_HOST_OVERRIDE=${DIND_LOCALHOST}
+
+# Install uv for the Python SDKs (sdk/*/python use uv + committed uv.lock files).
+# CI provisions uv via astral-sh/setup-uv@v6; this mirrors it in the devcontainer
+# so `make sdk-test` / `uv lock` work here too. Installed via the standalone script
+# (rather than COPY --from=ghcr.io/astral-sh/uv) to avoid a ghcr.io auth dependency
+# during the image build.
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh

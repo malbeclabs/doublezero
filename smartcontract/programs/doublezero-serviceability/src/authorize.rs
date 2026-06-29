@@ -31,11 +31,11 @@ use solana_program::{
 ///   SENTINEL          → sentinel_authority_pk
 ///   HEALTH_ORACLE     → health_oracle_pk
 ///   FEED_AUTHORITY     → feed_authority_pk
-///   USER_ADMIN        → foundation_allowlist OR activator_authority_pk
+///   USER_ADMIN        → foundation_allowlist
 ///   ACCESS_PASS_ADMIN → foundation_allowlist OR sentinel_authority_pk OR feed_authority_pk
-///   NETWORK_ADMIN     → foundation_allowlist OR activator_authority_pk
+///   NETWORK_ADMIN     → foundation_allowlist
 ///   TENANT_ADMIN      → foundation_allowlist OR sentinel_authority_pk
-///   MULTICAST_ADMIN   → foundation_allowlist OR activator_authority_pk OR sentinel_authority_pk
+///   MULTICAST_ADMIN   → foundation_allowlist OR sentinel_authority_pk
 ///   PERMISSION_ADMIN  → foundation_allowlist (also allowed even when RequirePermissionAccounts is set)
 ///   INFRA_ADMIN       → foundation_allowlist
 ///   GLOBALSTATE_ADMIN → foundation_allowlist
@@ -57,11 +57,13 @@ where
             if permission_account.key != &expected_pda {
                 return Err(ProgramError::InvalidArgument);
             }
-            if permission_account.data_is_empty() {
-                return Err(DoubleZeroError::NotAllowed.into());
-            }
+            // Verify program ownership immediately after the PDA-address check, before
+            // inspecting the account's contents.
             if permission_account.owner != program_id {
                 return Err(ProgramError::InvalidAccountData);
+            }
+            if permission_account.data_is_empty() {
+                return Err(DoubleZeroError::NotAllowed.into());
             }
             let permission = Permission::try_from(permission_account)?;
             if permission.status != PermissionStatus::Activated {
@@ -117,14 +119,17 @@ fn check_legacy_any(payer: &Pubkey, globalstate: &GlobalState, any_of: u128) -> 
     if any_of & permission_flags::FEED_AUTHORITY != 0 && globalstate.feed_authority_pk == *payer {
         return true;
     }
-    // USER_ADMIN in legacy = foundation or activator (historical user management authorities).
+    // USER_ADMIN in legacy = foundation only. (The activator authority has been
+    // retired from the system, so it no longer grants user-management rights.)
     if any_of & permission_flags::USER_ADMIN != 0
-        && (globalstate.foundation_allowlist.contains(payer)
-            || globalstate.activator_authority_pk == *payer)
+        && globalstate.foundation_allowlist.contains(payer)
     {
         return true;
     }
-    // ACCESS_PASS_ADMIN in legacy = foundation, sentinel, or feed authority.
+    // ACCESS_PASS_ADMIN in legacy = foundation, sentinel, or feed authority. This
+    // mirrors the historical accesspass/set authority and is applied uniformly to
+    // all ACCESS_PASS_ADMIN instructions (so accesspass/close, previously
+    // foundation+feed only, now also accepts the sentinel authority).
     if any_of & permission_flags::ACCESS_PASS_ADMIN != 0
         && (globalstate.foundation_allowlist.contains(payer)
             || globalstate.sentinel_authority_pk == *payer
@@ -132,10 +137,10 @@ fn check_legacy_any(payer: &Pubkey, globalstate: &GlobalState, any_of: u128) -> 
     {
         return true;
     }
-    // NETWORK_ADMIN in legacy = foundation or activator.
+    // NETWORK_ADMIN in legacy = foundation only. (The activator authority has
+    // been retired from the system.)
     if any_of & permission_flags::NETWORK_ADMIN != 0
-        && (globalstate.foundation_allowlist.contains(payer)
-            || globalstate.activator_authority_pk == *payer)
+        && globalstate.foundation_allowlist.contains(payer)
     {
         return true;
     }
@@ -146,10 +151,10 @@ fn check_legacy_any(payer: &Pubkey, globalstate: &GlobalState, any_of: u128) -> 
     {
         return true;
     }
-    // MULTICAST_ADMIN in legacy = foundation, activator, or sentinel.
+    // MULTICAST_ADMIN in legacy = foundation or sentinel. (The activator authority
+    // has been retired from the system.)
     if any_of & permission_flags::MULTICAST_ADMIN != 0
         && (globalstate.foundation_allowlist.contains(payer)
-            || globalstate.activator_authority_pk == *payer
             || globalstate.sentinel_authority_pk == *payer)
     {
         return true;
@@ -347,11 +352,12 @@ mod tests {
     }
 
     #[test]
-    fn test_legacy_user_admin_via_activator() {
+    fn test_legacy_user_admin_activator_denied() {
+        // The activator authority has been retired and no longer grants USER_ADMIN.
         let program_id = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
         let gs = gs_with_activator(&payer);
-        assert!(authorize_legacy(&program_id, &payer, &gs, permission_flags::USER_ADMIN).is_ok());
+        assert!(authorize_legacy(&program_id, &payer, &gs, permission_flags::USER_ADMIN).is_err());
     }
 
     #[test]
@@ -429,12 +435,13 @@ mod tests {
     }
 
     #[test]
-    fn test_legacy_network_admin_via_activator() {
+    fn test_legacy_network_admin_activator_denied() {
+        // The activator authority has been retired and no longer grants NETWORK_ADMIN.
         let program_id = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
         let gs = gs_with_activator(&payer);
         assert!(
-            authorize_legacy(&program_id, &payer, &gs, permission_flags::NETWORK_ADMIN).is_ok()
+            authorize_legacy(&program_id, &payer, &gs, permission_flags::NETWORK_ADMIN).is_err()
         );
     }
 
@@ -485,12 +492,13 @@ mod tests {
     }
 
     #[test]
-    fn test_legacy_multicast_admin_via_activator() {
+    fn test_legacy_multicast_admin_activator_denied() {
+        // The activator authority has been retired and no longer grants MULTICAST_ADMIN.
         let program_id = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
         let gs = gs_with_activator(&payer);
         assert!(
-            authorize_legacy(&program_id, &payer, &gs, permission_flags::MULTICAST_ADMIN).is_ok()
+            authorize_legacy(&program_id, &payer, &gs, permission_flags::MULTICAST_ADMIN).is_err()
         );
     }
 

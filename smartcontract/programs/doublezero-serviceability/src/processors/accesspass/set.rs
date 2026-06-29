@@ -66,7 +66,19 @@ pub fn process_set_access_pass(
     let globalstate_account = next_account_info(accounts_iter)?;
     let user_payer = next_account_info(accounts_iter)?;
 
-    // Optional tenant accounts for reference counting (backwards compatible)
+    // Optional tenant accounts for reference counting (backwards compatible).
+    //
+    // The account layout is a fixed prefix `[accesspass, globalstate, user_payer]`,
+    // an optional `[tenant_remove, tenant_add]` pair, the fixed `[payer, system]`,
+    // and an optional trailing Permission account appended by the SDK for
+    // `authorize()`. That yields exactly four possible lengths:
+    //   5 = no tenant, no permission        6 = no tenant, permission
+    //   7 = tenant,   no permission         8 = tenant,   permission
+    // so `>= 7` unambiguously selects the tenant-present shapes. The trailing
+    // Permission account never collides with this check because it is read last
+    // by `authorize()`, which independently verifies its PDA address, program
+    // ownership, and `AccountType::Permission` discriminator — a misclassified
+    // account can never be accepted as either a tenant or a permission account.
     let (tenant_remove_account, tenant_add_account) = if accounts.len() >= 7 {
         let remove = next_account_info(accounts_iter)?;
         let add = next_account_info(accounts_iter)?;

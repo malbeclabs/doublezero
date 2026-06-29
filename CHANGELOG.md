@@ -568,7 +568,7 @@ All notable changes to this project will be documented in this file.
 - Onchain Programs
   - Serviceability: add `Permission` account with `CreatePermission`, `UpdatePermission`, `DeletePermission`, `SuspendPermission`, and `ResumePermission` instructions for managing per-keypair permission bitmasks onchain
 - SDK
-  - Split `execute_transaction` into `execute_transaction` (no auth) and `execute_authorized_transaction` (injects Permission PDA) to avoid breaking processors that use `accounts.len()` for optional-account detection
+  - Add `execute_authorized_transaction` (and its `_quiet` variant) alongside `execute_transaction`. The authorized variants append the payer's Permission PDA (read-only) as the trailing account when it exists on-chain, so `authorize()` can find it. All variants share the same builder, so the protocol-max compute-budget/heap-frame requests, preflight, and error-reporting behavior are identical to `execute_transaction`; the only difference is the optional trailing Permission account. The Permission PDA lookup is retried on transient RPC errors and memoized per client.
 - CLI
   - Add `permission get`, `permission list`, and `permission set` commands with table and JSON output; `permission set` supports incremental `--add` / `--remove` flags and creates or updates the account as needed
 

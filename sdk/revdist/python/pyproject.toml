@@ -7,8 +7,8 @@ dependencies = [
     "borsh-incremental",
     "solana>=0.40",
     "solders>=0.21",
-    "httpx>=0.27",
-    "httpx2>=2.5",
+    "httpx>=0.27",     # sync client used by oracle.py
+    "httpx2>=2.5",     # async RPC transport; solana-py 0.40 depends on httpx2[http2]
     "base58>=2.1",
 ]
 

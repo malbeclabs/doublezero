@@ -2,12 +2,13 @@
 """Example CLI that fetches and displays revenue distribution data."""
 
 import argparse
+import asyncio
 import sys
 
 from revdist.client import Client
 
 
-def main() -> None:
+async def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch revenue distribution data")
     parser.add_argument(
         "--env",
@@ -29,7 +30,7 @@ def main() -> None:
 
     # Fetch program config
     try:
-        config = client.fetch_config()
+        config = await client.fetch_config()
     except Exception as e:
         print(f"Error fetching config: {e}")
         sys.exit(1)
@@ -63,7 +64,7 @@ def main() -> None:
 
     if target_epoch > 0:
         try:
-            dist = client.fetch_distribution(target_epoch)
+            dist = await client.fetch_distribution(target_epoch)
             print(f"=== Distribution (epoch {dist.dz_epoch}) ===")
             print(f"Community Burn Rate:            {dist.community_burn_rate} ({dist.community_burn_rate / 1_000_000_000 * 100:.2f}%)")
             print(f"Total Solana Validators:        {dist.total_solana_validators}")
@@ -82,7 +83,7 @@ def main() -> None:
 
     # Fetch journal
     try:
-        journal = client.fetch_journal()
+        journal = await client.fetch_journal()
         print("=== Journal ===")
         print(f"Total SOL Balance:          {journal.total_sol_balance} lamports")
         print(f"Total 2Z Balance:           {journal.total_2z_balance}")
@@ -95,7 +96,7 @@ def main() -> None:
 
     # Fetch all validator deposits
     try:
-        deposits = client.fetch_all_validator_deposits()
+        deposits = await client.fetch_all_validator_deposits()
         print(f"=== Validator Deposits ({len(deposits)}) ===")
         for i, dep in enumerate(deposits[:10]):
             print(f"  {str(dep.node_id)[:16]}...: written off debt {dep.written_off_sol_debt}")
@@ -108,7 +109,7 @@ def main() -> None:
 
     # Fetch all contributor rewards
     try:
-        rewards = client.fetch_all_contributor_rewards()
+        rewards = await client.fetch_all_contributor_rewards()
         print(f"=== Contributor Rewards ({len(rewards)}) ===")
         for i, r in enumerate(rewards[:10]):
             print(f"  {str(r.service_key)[:16]}...: rewards manager {str(r.rewards_manager_key)[:16]}...")
@@ -123,4 +124,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

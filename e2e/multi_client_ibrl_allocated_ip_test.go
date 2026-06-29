@@ -14,6 +14,7 @@ import (
 
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -130,6 +131,7 @@ func TestE2E_MultiClientIBRLAllocatedIP(t *testing.T) {
 	client1, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID:       100,
 		RouteLivenessEnableActive: true,
+		RouteLivenessBackoffMax:   3 * time.Second,
 	})
 	require.NoError(t, err)
 	log.Debug("--> Client1 added", "client1Pubkey", client1.Pubkey, "client1IP", client1.CYOANetworkIP)
@@ -139,6 +141,7 @@ func TestE2E_MultiClientIBRLAllocatedIP(t *testing.T) {
 	client2, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID:        110,
 		RouteLivenessEnablePassive: true, // route liveness in passive mode for this client
+		RouteLivenessBackoffMax:    3 * time.Second,
 	})
 	require.NoError(t, err)
 	log.Debug("--> Client2 added", "client2Pubkey", client2.Pubkey, "client2IP", client2.CYOANetworkIP)
@@ -226,21 +229,32 @@ func runMultiClientIBRLAllocatedIPWorkflowTest(t *testing.T, log *slog.Logger, d
 	log.Debug("--> Cross-exchange routes have propagated via iBGP")
 
 	// Check that the clients have routes to each other.
+	// client1 runs route-liveness in active mode, so its kernel route to client2 is
+	// withheld until the client↔client liveness handshake reaches Up. On failure, dump
+	// diagnostics for both clients so a flake is self-explaining (see #3949).
 	log.Debug("==> Checking that the clients have routes to each other")
-	require.Eventually(t, func() bool {
+	if !assert.Eventually(t, func() bool {
 		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
 		if err != nil {
 			return false
 		}
 		return strings.Contains(string(output), client2DZIP)
-	}, 90*time.Second, 1*time.Second, "client1 should have route to client2")
-	require.Eventually(t, func() bool {
+	}, 90*time.Second, 1*time.Second, "client1 should have route to client2") {
+		dumpClientRouteDiag(t, log, "client1", client1, client2DZIP)
+		dumpClientRouteDiag(t, log, "client2", client2, client1DZIP)
+		t.Fatalf("client1 should have route to client2 (%s)", client2DZIP)
+	}
+	if !assert.Eventually(t, func() bool {
 		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
 		if err != nil {
 			return false
 		}
 		return strings.Contains(string(output), client1DZIP)
-	}, 90*time.Second, 1*time.Second, "client2 should have route to client1")
+	}, 90*time.Second, 1*time.Second, "client2 should have route to client1") {
+		dumpClientRouteDiag(t, log, "client1", client1, client2DZIP)
+		dumpClientRouteDiag(t, log, "client2", client2, client1DZIP)
+		t.Fatalf("client2 should have route to client1 (%s)", client1DZIP)
+	}
 	log.Debug("--> Clients have routes to each other")
 
 	// Disconnect client1.
@@ -283,4 +297,26 @@ func runMultiClientIBRLAllocatedIPWorkflowTest(t *testing.T, log *slog.Logger, d
 	require.Nil(t, status[0].DoubleZeroIP, status)
 	require.Equal(t, devnet.ClientSessionStatusDisconnected, status[0].DoubleZeroStatus.SessionStatus)
 	log.Debug("--> Confirmed clients are disconnected and do not have a DZ IP allocated")
+}
+
+// dumpClientRouteDiag emits tunnel/route state for a client when a route-convergence
+// assertion times out. These checks otherwise emit nothing on failure, which made the
+// #3949 flake slow to diagnose.
+func dumpClientRouteDiag(t *testing.T, log *slog.Logger, name string, client *devnet.Client, peerDZIP string) {
+	t.Helper()
+	for _, cmd := range [][]string{
+		{"doublezero", "status"},
+		{"ip", "route", "show"},
+		{"ip", "r", "list", "dev", "doublezero0"},
+	} {
+		out, err := client.Exec(t.Context(), cmd)
+		log.Error("route-diag",
+			"client", name,
+			"pubkey", client.Pubkey,
+			"peerDZIP", peerDZIP,
+			"cmd", strings.Join(cmd, " "),
+			"output", string(out),
+			"error", err,
+		)
+	}
 }

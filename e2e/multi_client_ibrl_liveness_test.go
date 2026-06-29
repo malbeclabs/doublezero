@@ -131,6 +131,7 @@ func TestE2E_MultiClientIBRL_RouteLiveness(t *testing.T) {
 	client1, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID:       100,
 		RouteLivenessEnableActive: true,
+		RouteLivenessBackoffMax:   3 * time.Second,
 	})
 	require.NoError(t, err)
 	log.Debug("--> Client1 added", "client1Pubkey", client1.Pubkey, "client1IP", client1.CYOANetworkIP)
@@ -140,6 +141,7 @@ func TestE2E_MultiClientIBRL_RouteLiveness(t *testing.T) {
 	client2, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID:        110,
 		RouteLivenessEnablePassive: true, // route liveness in passive mode for this client
+		RouteLivenessBackoffMax:    3 * time.Second,
 	})
 	require.NoError(t, err)
 	log.Debug("--> Client2 added", "client2Pubkey", client2.Pubkey, "client2IP", client2.CYOANetworkIP)
@@ -149,6 +151,7 @@ func TestE2E_MultiClientIBRL_RouteLiveness(t *testing.T) {
 	client3, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID:       120,
 		RouteLivenessEnableActive: true,
+		RouteLivenessBackoffMax:   3 * time.Second,
 	})
 	require.NoError(t, err)
 	log.Debug("--> Client3 added", "client3Pubkey", client3.Pubkey, "client3IP", client3.CYOANetworkIP)

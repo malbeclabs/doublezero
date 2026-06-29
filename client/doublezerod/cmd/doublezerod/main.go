@@ -50,6 +50,7 @@ var (
 	routeLivenessDetectMult  = flag.Uint("route-liveness-detect-mult", defaultRouteLivenessDetectMult, "route liveness detect mult")
 	routeLivenessMinTxFloor  = flag.Duration("route-liveness-min-tx-floor", defaultRouteLivenessMinTxFloor, "route liveness min tx floor")
 	routeLivenessMaxTxCeil   = flag.Duration("route-liveness-max-tx-ceil", defaultRouteLivenessMaxTxCeil, "route liveness max tx ceil")
+	routeLivenessBackoffMax  = flag.Duration("route-liveness-backoff-max", defaultRouteLivenessBackoffMax, "route liveness backoff max (cap on Down-state probe interval)")
 	routeLivenessPeerMetrics = flag.Bool("route-liveness-peer-metrics", false, "enables per peer metrics for route liveness (high cardinality)")
 	routeLivenessDebug       = flag.Bool("route-liveness-debug", false, "enables debug logging for route liveness")
 
@@ -72,6 +73,9 @@ const (
 	defaultRouteLivenessDetectMult = 3
 	defaultRouteLivenessMinTxFloor = 50 * time.Millisecond
 	defaultRouteLivenessMaxTxCeil  = 3 * time.Second
+	// Matches liveness.defaultBackoffMax so production behavior is unchanged; the
+	// e2e harness overrides this to a small value to avoid the Down-state probe gap.
+	defaultRouteLivenessBackoffMax = 1 * time.Minute
 
 	defaultRouteLivenessBindIP = "0.0.0.0"
 )
@@ -176,6 +180,7 @@ func main() {
 			DetectMult: uint8(*routeLivenessDetectMult),
 			MinTxFloor: *routeLivenessMinTxFloor,
 			MaxTxCeil:  *routeLivenessMaxTxCeil,
+			BackoffMax: *routeLivenessBackoffMax,
 
 			EnablePeerMetrics: *routeLivenessPeerMetrics,
 

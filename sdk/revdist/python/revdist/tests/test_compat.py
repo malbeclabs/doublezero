@@ -39,11 +39,11 @@ def _rpc_url() -> str:
     return os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
 
 
-def fetch_raw_account(addr: Pubkey) -> bytes:
+async def fetch_raw_account(addr: Pubkey) -> bytes:
     from revdist.rpc import new_rpc_client
 
     rpc = new_rpc_client(_rpc_url())
-    resp = rpc.get_account_info(addr)
+    resp = await rpc.get_account_info(addr)
     assert resp.value is not None, f"account not found: {addr}"
     return bytes(resp.value.data)
 
@@ -69,18 +69,18 @@ def read_pubkey(raw: bytes, offset: int) -> Pubkey:
 
 
 class TestCompatProgramConfig:
-    def test_deserialize(self) -> None:
+    async def test_deserialize(self) -> None:
         skip_unless_compat()
         client = compat_client()
 
-        config = client.fetch_config()
+        config = await client.fetch_config()
 
         # Fetch raw bytes for independent verification.
         from revdist.config import PROGRAM_ID
         from revdist.pda import derive_config_pda
 
         addr, _ = derive_config_pda(Pubkey.from_string(PROGRAM_ID))
-        raw = fetch_raw_account(addr)
+        raw = await fetch_raw_account(addr)
 
         # Verify fields at known raw byte offsets (offset = struct_offset + 8 for discriminator).
         assert config.flags == read_u64(raw, 8), "Flags"
@@ -125,21 +125,21 @@ class TestCompatProgramConfig:
 
 
 class TestCompatDistribution:
-    def test_deserialize(self) -> None:
+    async def test_deserialize(self) -> None:
         skip_unless_compat()
         client = compat_client()
 
-        config = client.fetch_config()
+        config = await client.fetch_config()
         epoch = config.next_completed_dz_epoch - 1
 
-        dist = client.fetch_distribution(epoch)
+        dist = await client.fetch_distribution(epoch)
 
         # Fetch raw bytes.
         from revdist.config import PROGRAM_ID
         from revdist.pda import derive_distribution_pda
 
         addr, _ = derive_distribution_pda(Pubkey.from_string(PROGRAM_ID), epoch)
-        raw = fetch_raw_account(addr)
+        raw = await fetch_raw_account(addr)
 
         assert dist.dz_epoch == read_u64(raw, 8), "DZEpoch"
         assert dist.dz_epoch == epoch
@@ -167,18 +167,18 @@ class TestCompatDistribution:
 
 
 class TestCompatJournal:
-    def test_deserialize(self) -> None:
+    async def test_deserialize(self) -> None:
         skip_unless_compat()
         client = compat_client()
 
-        journal = client.fetch_journal()
+        journal = await client.fetch_journal()
 
         # Fetch raw bytes.
         from revdist.config import PROGRAM_ID
         from revdist.pda import derive_journal_pda
 
         addr, _ = derive_journal_pda(Pubkey.from_string(PROGRAM_ID))
-        raw = fetch_raw_account(addr)
+        raw = await fetch_raw_account(addr)
 
         assert journal.bump_seed == read_u8(raw, 8), "BumpSeed"
         assert journal.total_sol_balance == read_u64(raw, 16), "TotalSOLBalance"
@@ -189,14 +189,14 @@ class TestCompatJournal:
 
 
 class TestCompatValidatorDebts:
-    def test_fetch(self) -> None:
+    async def test_fetch(self) -> None:
         skip_unless_compat()
         client = compat_client()
 
         # Use a known epoch that has validator debts on mainnet.
         epoch = 100
 
-        debts = client.fetch_validator_debts(epoch)
+        debts = await client.fetch_validator_debts(epoch)
 
         assert len(debts.debts) > 0, "expected validator debts for epoch 100"
         assert debts.last_solana_epoch > 0, "LastSolanaEpoch should be > 0"
@@ -206,14 +206,14 @@ class TestCompatValidatorDebts:
 
 
 class TestCompatRewardShares:
-    def test_fetch(self) -> None:
+    async def test_fetch(self) -> None:
         skip_unless_compat()
         client = compat_client()
 
-        config = client.fetch_config()
+        config = await client.fetch_config()
         epoch = config.next_completed_dz_epoch - 5
 
-        shares = client.fetch_reward_shares(epoch)
+        shares = await client.fetch_reward_shares(epoch)
 
         assert shares.epoch == epoch, f"Epoch = {shares.epoch}, want {epoch}"
         assert len(shares.rewards) > 0, "no reward shares found on mainnet"
@@ -221,31 +221,31 @@ class TestCompatRewardShares:
 
 
 class TestCompatValidatorDeposits:
-    def test_fetch_all(self) -> None:
+    async def test_fetch_all(self) -> None:
         skip_unless_compat()
         client = compat_client()
 
-        deposits = client.fetch_all_validator_deposits()
+        deposits = await client.fetch_all_validator_deposits()
         assert len(deposits) > 0, "no deposits found on mainnet"
 
         # Verify single lookup matches list entry.
         first = deposits[0]
-        single = client.fetch_validator_deposit(first.node_id)
+        single = await client.fetch_validator_deposit(first.node_id)
         assert single.node_id == first.node_id
         assert single.written_off_sol_debt == first.written_off_sol_debt
 
 
 class TestCompatContributorRewards:
-    def test_fetch_all(self) -> None:
+    async def test_fetch_all(self) -> None:
         skip_unless_compat()
         client = compat_client()
 
-        rewards = client.fetch_all_contributor_rewards()
+        rewards = await client.fetch_all_contributor_rewards()
         assert len(rewards) > 0, "no contributor rewards found on mainnet"
 
         # Verify single lookup matches list entry.
         first = rewards[0]
-        single = client.fetch_contributor_rewards(first.service_key)
+        single = await client.fetch_contributor_rewards(first.service_key)
         assert single.service_key == first.service_key
         assert single.rewards_manager_key == first.rewards_manager_key
         assert single.flags == first.flags

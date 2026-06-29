@@ -4,4 +4,3 @@ __pycache__/
 *.egg-info/
 dist/
 .pytest_cache/
-uv.lock

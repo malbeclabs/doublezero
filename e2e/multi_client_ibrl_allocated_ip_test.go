@@ -3,6 +3,7 @@
 package e2e_test
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -304,12 +305,16 @@ func runMultiClientIBRLAllocatedIPWorkflowTest(t *testing.T, log *slog.Logger, d
 // #3949 flake slow to diagnose.
 func dumpClientRouteDiag(t *testing.T, log *slog.Logger, name string, client *devnet.Client, peerDZIP string) {
 	t.Helper()
+	// Use a fresh bounded context: the test deadline may already have cancelled
+	// t.Context(), and a wedged container must not let the dump hang.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	for _, cmd := range [][]string{
 		{"doublezero", "status"},
 		{"ip", "route", "show"},
 		{"ip", "r", "list", "dev", "doublezero0"},
 	} {
-		out, err := client.Exec(t.Context(), cmd)
+		out, err := client.Exec(ctx, cmd)
 		log.Error("route-diag",
 			"client", name,
 			"pubkey", client.Pubkey,

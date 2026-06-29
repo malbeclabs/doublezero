@@ -49,6 +49,9 @@ pub struct ListDeviceCliCommand {
     /// Output as compact JSON
     #[arg(long, default_value_t = false)]
     pub json_compact: bool,
+    /// Narrow table output: drops dz_prefixes, mgmt_vrf, and owner.
+    #[arg(long, default_value_t = false)]
+    pub narrow: bool,
 }
 
 #[derive(Tabled, Serialize)]
@@ -107,6 +110,47 @@ pub struct DeviceDisplay {
     pub reference_count: u32,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
+}
+
+/// Narrow variant of [`DeviceDisplay`] for terminals: drops dz_prefixes,
+/// mgmt_vrf, and owner (the contributor code already identifies the operator).
+#[derive(Tabled)]
+pub struct DeviceDisplayNarrow {
+    pub account: Pubkey,
+    pub code: String,
+    #[tabled(rename = "contributor")]
+    pub contributor_code: String,
+    #[tabled(rename = "location")]
+    pub location_code: String,
+    #[tabled(rename = "exchange")]
+    pub exchange_code: String,
+    pub device_type: DeviceType,
+    pub public_ip: Ipv4Addr,
+    #[tabled(display = "crate::util::display_string_vec")]
+    pub cyoa_ips: Vec<String>,
+    pub users: u16,
+    pub max_users: u16,
+    pub status: DeviceStatus,
+    pub health: DeviceHealth,
+}
+
+impl DeviceDisplayNarrow {
+    fn from_display(d: &DeviceDisplay) -> Self {
+        Self {
+            account: d.account,
+            code: d.code.clone(),
+            contributor_code: d.contributor_code.clone(),
+            location_code: d.location_code.clone(),
+            exchange_code: d.exchange_code.clone(),
+            device_type: d.device_type,
+            public_ip: d.public_ip,
+            cyoa_ips: d.cyoa_ips.clone(),
+            users: d.users,
+            max_users: d.max_users,
+            status: d.status,
+            health: d.health,
+        }
+    }
 }
 
 impl ListDeviceCliCommand {
@@ -265,6 +309,14 @@ impl ListDeviceCliCommand {
             serde_json::to_string_pretty(&device_displays)?
         } else if self.json_compact {
             serde_json::to_string(&device_displays)?
+        } else if self.narrow {
+            let narrow: Vec<DeviceDisplayNarrow> = device_displays
+                .iter()
+                .map(DeviceDisplayNarrow::from_display)
+                .collect();
+            Table::new(narrow)
+                .with(Style::psql().remove_horizontals())
+                .to_string()
         } else {
             Table::new(device_displays)
                 .with(Style::psql().remove_horizontals())
@@ -412,6 +464,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: false,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -432,12 +485,63 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Hybrid\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"cyoa_ips\":[],\"users\":0,\"max_users\":255,\"unicast_users_count\":0,\"max_unicast_users\":0,\"multicast_subscribers_count\":0,\"max_multicast_subscribers\":0,\"multicast_publishers_count\":0,\"max_multicast_publishers\":0,\"status\":\"Activated\",\"health\":\"ReadyForUsers\",\"desired_status\":\"Activated\",\"mgmt_vrf\":\"default\",\"metrics_publisher_pk\":\"11111111111111111111111111111111\",\"reference_count\":0,\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        // Narrow output: drops dz_prefixes, mgmt_vrf, owner; fits within 240 cols.
+        let mut output = Vec::new();
+        let res = block_on(
+            ListDeviceCliCommand {
+                contributor: None,
+                exchange: None,
+                location: None,
+                device_type: None,
+                status: None,
+                health: None,
+                desired_status: None,
+                code: None,
+                json: false,
+                json_compact: false,
+                narrow: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        let header = output_str.lines().next().unwrap();
+        for expected in [
+            "account",
+            "code",
+            "contributor",
+            "location",
+            "exchange",
+            "device_type",
+            "public_ip",
+            "cyoa_ips",
+            "users",
+            "max_users",
+            "status",
+            "health",
+        ] {
+            assert!(header.contains(expected), "missing header {expected}");
+        }
+        for hidden in ["dz_prefixes", "mgmt_vrf", "owner"] {
+            assert!(
+                !header.contains(hidden),
+                "narrow header should not contain {hidden}"
+            );
+        }
+        for line in output_str.lines() {
+            assert!(
+                line.len() <= 240,
+                "narrow line exceeds 240 cols: {}",
+                line.len()
+            );
+        }
     }
 
     #[test]
@@ -596,6 +700,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -761,6 +866,7 @@ mod tests {
                 code: Some("ams".to_string()),
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -925,6 +1031,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -1107,6 +1214,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -1295,6 +1403,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -1479,6 +1588,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -1661,6 +1771,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -1826,6 +1937,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -1990,6 +2102,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -2121,6 +2234,7 @@ mod tests {
                 code: None,
                 json: true,
                 json_compact: false,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -2163,6 +2277,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -2206,6 +2321,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -2248,6 +2364,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -2290,6 +2407,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -2332,6 +2450,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -2371,6 +2490,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -2410,6 +2530,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -2449,6 +2570,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -2668,6 +2790,7 @@ mod tests {
                 code: None,
                 json: false,
                 json_compact: true,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );

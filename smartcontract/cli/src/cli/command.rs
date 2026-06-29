@@ -26,6 +26,7 @@ use crate::{
         },
         link::{CreateLinkCommands, LinkCliCommand, LinkCommands, TopologyCommands},
         location::{LocationCliCommand, LocationCommands},
+        migrate::{MigrateCliCommand, MigrateCommands},
         permission::{PermissionCliCommand, PermissionCommands},
         resource::{ResourceCliCommand, ResourceCommands},
         tenant::{AdministratorCommands, TenantCliCommand, TenantCommands},
@@ -36,7 +37,6 @@ use crate::{
     init::InitCliCommand,
     keygen::KeyGenCliCommand,
     logcommand::LogCliCommand,
-    migrate::MigrateCliCommand,
     subscribe::SubscribeCliCommand,
     version::VersionCliCommand,
 };
@@ -112,7 +112,10 @@ impl ServiceabilityCommand {
     {
         match self {
             Self::Init(args) => args.execute(ctx, client, out).await,
-            Self::Migrate(args) => args.execute(ctx, client, out).await,
+            Self::Migrate(args) => match args.command {
+                MigrateCommands::UserPda(cmd) => cmd.execute(ctx, client, out).await,
+                MigrateCommands::FlexAlgo(cmd) => cmd.execute(ctx, client, out).await,
+            },
             Self::Address(args) => args.execute(ctx, client, out).await,
             Self::Balance(args) => args.execute(ctx, client, out).await,
             Self::Export(args) => args.execute(ctx, client, out).await,
@@ -207,6 +210,10 @@ impl ServiceabilityCommand {
                     InterfaceCommands::Delete(args) => args.execute(ctx, client, out).await,
                 },
                 DeviceCommands::SetHealth(args) => args.execute(ctx, client, out).await,
+                DeviceCommands::MigrateMulticastCounts(args) => {
+                    args.execute(ctx, client, out).await
+                }
+                DeviceCommands::MigrateUnicastCounts(args) => args.execute(ctx, client, out).await,
             },
             Self::Link(cmd) => match cmd.command {
                 LinkCommands::Create(args) => match args.command {
@@ -396,10 +403,50 @@ mod tests {
         assert!(matches!(parsed.command, ServiceabilityCommand::Init(_)));
     }
 
+    // Bare `migrate` now requires a subcommand; assert the two leaves route.
     #[test]
-    fn parses_hidden_migrate() {
-        let parsed = TestCli::try_parse_from(["test", "migrate"]).unwrap();
-        assert!(matches!(parsed.command, ServiceabilityCommand::Migrate(_)));
+    fn parses_hidden_migrate_user_pda() {
+        let parsed = TestCli::try_parse_from(["test", "migrate", "user-pda"]).unwrap();
+        assert!(matches!(
+            parsed.command,
+            ServiceabilityCommand::Migrate(MigrateCliCommand {
+                command: MigrateCommands::UserPda(_),
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_hidden_migrate_flex_algo() {
+        let parsed =
+            TestCli::try_parse_from(["test", "migrate", "flex-algo", "--dry-run"]).unwrap();
+        assert!(matches!(
+            parsed.command,
+            ServiceabilityCommand::Migrate(MigrateCliCommand {
+                command: MigrateCommands::FlexAlgo(_),
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_hidden_device_migrate_counts() {
+        let multicast =
+            TestCli::try_parse_from(["test", "device", "migrate-multicast-counts"]).unwrap();
+        assert!(matches!(
+            multicast.command,
+            ServiceabilityCommand::Device(DeviceCliCommand {
+                command: DeviceCommands::MigrateMulticastCounts(_),
+            })
+        ));
+
+        let unicast =
+            TestCli::try_parse_from(["test", "device", "migrate-unicast-counts", "--dry-run"])
+                .unwrap();
+        assert!(matches!(
+            unicast.command,
+            ServiceabilityCommand::Device(DeviceCliCommand {
+                command: DeviceCommands::MigrateUnicastCounts(_),
+            })
+        ));
     }
 
     #[test]

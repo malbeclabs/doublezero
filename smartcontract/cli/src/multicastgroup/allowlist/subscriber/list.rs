@@ -107,7 +107,7 @@ mod tests {
             bump_seed: 1,
             code: "test".to_string(),
             multicast_ip: [239, 0, 0, 1].into(),
-            max_bandwidth: 1000000000,
+            max_bandwidth: 1_000_000_000,
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             tenant_pk: Pubkey::new_unique(),
             status: doublezero_sdk::MulticastGroupStatus::Activated,
@@ -130,6 +130,10 @@ mod tests {
             connection_count: 0,
             status: AccessPassStatus::Requested,
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         let accesspass2_pk = Pubkey::from_str_const("11111112D1oxKts8YPdTJRG5FzxTNpMtWmq8hkVx3");
@@ -147,6 +151,10 @@ mod tests {
             connection_count: 0,
             status: AccessPassStatus::Requested,
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         client

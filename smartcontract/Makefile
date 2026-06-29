@@ -1,7 +1,7 @@
 PREFIX:=github.com/malbeclabs/doublezero/smartcontract
 BUILD:=`git rev-parse --short HEAD`
 LDFLAGS=
-CLIPPY_FLAGS=-- -Dclippy::all -D warnings
+CLIPPY_FLAGS=-- -Dclippy::all -Dclippy::unreadable_literal -D warnings
 env ?= localnet
 # Platform-tools (Cargo/rustc) used by cargo build-sbf / test-sbf. The solana 3.0
 # program dependency tree pulls edition2024 crates (cpufeatures 0.3 via blake3),

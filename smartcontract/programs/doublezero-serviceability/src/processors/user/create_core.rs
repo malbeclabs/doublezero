@@ -167,10 +167,13 @@ pub fn create_user_core(
         );
         return Err(DoubleZeroError::Unauthorized.into());
     }
-    if accesspass.is_dynamic() && accesspass.client_ip == Ipv4Addr::UNSPECIFIED {
-        accesspass.client_ip = client_ip; // lock to the first used IP
-    }
-    if !accesspass.allow_multiple_ip() && accesspass.client_ip != client_ip {
+    // A pass stored at the UNSPECIFIED PDA (0.0.0.0) is valid for any client IP by construction;
+    // it is no longer locked to the first connecting IP. Specific-IP passes must match unless the
+    // pass allows multiple IPs. Mirrors the validation in delete.rs.
+    if accesspass.client_ip != Ipv4Addr::UNSPECIFIED
+        && accesspass.client_ip != client_ip
+        && !accesspass.allow_multiple_ip()
+    {
         msg!(
             "Invalid client_ip accesspass.{{client_ip: {}}} = {{ client_ip: {} }}",
             accesspass.client_ip,
@@ -206,16 +209,15 @@ pub fn create_user_core(
         }
     }
 
-    // Enforce epoch validity for unicast users only. Multicast access is
-    // governed by mgroup_*_allowlist on the access pass, not by epoch.
-    if user_type != UserType::Multicast {
+    // Enforce epoch validity for unicast users only. Multicast access (publisher or
+    // subscriber) is governed by mgroup_*_allowlist on the access pass, not by epoch.
+    if user_type.is_epoch_gated() {
         let clock = Clock::get()?;
-        let current_epoch = clock.epoch;
-        if accesspass.last_access_epoch < current_epoch {
+        if !epoch_allows_connection(user_type, accesspass.last_access_epoch, clock.epoch) {
             msg!(
                 "Invalid epoch last_access_epoch: {} < current_epoch: {}",
                 accesspass.last_access_epoch,
-                current_epoch
+                clock.epoch
             );
             return Err(DoubleZeroError::AccessPassUnauthorized.into());
         }
@@ -288,6 +290,10 @@ pub fn create_user_core(
             }
         }
     }
+
+    // Enforce per-category seat caps (EdgeSeat only; no-op otherwise). On error the processor
+    // returns before any account is written, so no state is persisted.
+    accesspass.try_add_user(user_type)?;
 
     // All validations passed - now update counters
     accesspass.connection_count += 1;

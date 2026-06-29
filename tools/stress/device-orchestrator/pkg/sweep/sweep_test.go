@@ -742,10 +742,279 @@ func TestRun_WaitsForAgentQuiescenceAfterDeprovision(t *testing.T) {
 		"Run returned %v after gate release; expected ≥ %v (quiet window)", elapsed, quietWindow/2)
 }
 
-// TestRun_SkipsQuiescenceWaitWhenNoAppliedObserved confirms the wait is a
-// no-op when the agent never emitted an Applied — common in --no-agent runs
-// and on early-failure paths where teardown shouldn't pay the wait cost.
-func TestRun_SkipsQuiescenceWaitWhenNoAppliedObserved(t *testing.T) {
+// TestRun_PerBatchCatchUpWaitsBetweenBatches proves that when
+// ApplyPerBatchCatchUp is set, the sweep blocks after each batch
+// until the agent has emitted enough Applied events to cover the
+// cumulative count submitted so far — i.e. the orchestrator stops
+// pre-creating batches faster than the agent can apply them. Without
+// this, batch 2 would start as soon as batch 1's onchain activates
+// land regardless of agent progress (the default behavior).
+func TestRun_PerBatchCatchUpWaitsBetweenBatches(t *testing.T) {
+	t.Parallel()
+
+	owner := solana.NewWallet().PublicKey()
+	exec := newFakeExecutor(owner)
+	ag := newScriptedAgent()
+
+	// Signal when batch 2 starts (the 9th CreateUser call). We use a
+	// large enough batch size (8) and target (16) that batch 1's
+	// cumulative target (8) sits above the catch-up grace (4), so
+	// applied=0 actually blocks rather than passing-with-grace.
+	const batchSize = 8
+	const target = 16
+	batch2Reached := make(chan struct{})
+	var once sync.Once
+	exec.afterCreate = func(calls int) {
+		if calls == batchSize+1 {
+			once.Do(func() { close(batch2Reached) })
+		}
+	}
+
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	w, err := runlog.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	cfg := sweep.Config{
+		RunID:                "run-per-batch-catch-up",
+		Target:               target,
+		UsersPerBatch:        batchSize,
+		Hold:                 0,
+		ApplyCatchUpTimeout:  3 * time.Second,
+		ApplyPerBatchCatchUp: true,
+		OwnerFilter:          owner,
+		Executor:             exec,
+		Agent:                ag,
+		Runlog:               w,
+		Clock:                sweep.RealClock{},
+	}
+	done := make(chan error, 1)
+	go func() { done <- sweep.Run(context.Background(), cfg) }()
+
+	// Wait for batch 1 to land (batchSize create calls), then confirm
+	// batch 2 hasn't started — the per-batch wait should block it.
+	deadline := time.Now().Add(2 * time.Second)
+	for exec.createN.Load() < batchSize {
+		if time.Now().After(deadline) {
+			t.Fatalf("batch 1 did not complete within 2s (got %d creates)", exec.createN.Load())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-batch2Reached:
+		t.Fatal("batch 2 started before any Applied event — per-batch wait did not block")
+	default:
+	}
+
+	// Emit batchSize-grace+1 Applied events to push applied+grace
+	// past the cumulative target and unblock the wait.
+	for i := 0; i < batchSize; i++ {
+		ag.Emit(agent.Event{Kind: agent.EventApplied, TunnelID: uint16(500 + i), At: time.Now()})
+	}
+
+	select {
+	case <-batch2Reached:
+		// Expected.
+	case <-time.After(3 * time.Second):
+		t.Fatal("batch 2 did not start within 3s of Applied events")
+	}
+
+	// Let the run finish; emit enough Applieds to clear remaining waits.
+	for i := 0; i < target; i++ {
+		ag.Emit(agent.Event{Kind: agent.EventApplied, TunnelID: uint16(500 + batchSize + i), At: time.Now()})
+	}
+	select {
+	case runErr := <-done:
+		require.NoError(t, runErr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return within 5s after all Applieds emitted")
+	}
+}
+
+// TestRun_BlocksDeprovisionUntilAppliedCatchesUp proves the
+// provision→deprovision wait blocks until enough EventApplied
+// observations have landed to cover the provisioned users. Without
+// this gate (hold=0) the orchestrator finishes provisioning ~40s
+// ahead of the agent's slowest commit at high user counts and starts
+// removing users before they've ever been added to the device.
+func TestRun_BlocksDeprovisionUntilAppliedCatchesUp(t *testing.T) {
+	t.Parallel()
+
+	owner := solana.NewWallet().PublicKey()
+	exec := newFakeExecutor(owner)
+	ag := newScriptedAgent()
+
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	w, err := runlog.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	cfg := sweep.Config{
+		RunID:               "run-catch-up",
+		Target:              5,
+		UsersPerBatch:       5,
+		Hold:                0,
+		ApplyCatchUpTimeout: 2 * time.Second,
+		OwnerFilter:         owner,
+		Executor:            exec,
+		Agent:               ag,
+		Runlog:              w,
+		Clock:               sweep.RealClock{},
+	}
+	done := make(chan error, 1)
+	go func() { done <- sweep.Run(context.Background(), cfg) }()
+
+	// Wait for provision to finish (5 create calls) but no deprovision
+	// yet — the catch-up wait should be blocking.
+	deadline := time.Now().Add(2 * time.Second)
+	for exec.createN.Load() < 5 {
+		if time.Now().After(deadline) {
+			t.Fatalf("provision did not reach 5 users in 2s (got %d)", exec.createN.Load())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// Give the wait a beat to enter the loop, then confirm deprovision
+	// hasn't started.
+	time.Sleep(50 * time.Millisecond)
+	require.Equal(t, int32(0), exec.deleteN.Load(), "deprovision started before applied caught up")
+
+	// Emit enough Applied events to satisfy target - grace (5 - 4 = 1).
+	ag.Emit(agent.Event{Kind: agent.EventApplied, TunnelID: 500, At: time.Now()})
+
+	select {
+	case runErr := <-done:
+		require.NoError(t, runErr)
+	case <-time.After(3 * time.Second):
+		t.Fatal("Run did not return within 3s after Applied caught up")
+	}
+	assert.Equal(t, int32(5), exec.deleteN.Load(), "all 5 users should have been deprovisioned")
+}
+
+// TestRun_CatchUpWaitHonorsTimeout confirms the wait gives up and
+// proceeds with deprovision when ApplyCatchUpTimeout fires, instead of
+// pinning the orchestrator indefinitely on a stuck agent.
+func TestRun_CatchUpWaitHonorsTimeout(t *testing.T) {
+	t.Parallel()
+
+	owner := solana.NewWallet().PublicKey()
+	exec := newFakeExecutor(owner)
+	ag := newScriptedAgent()
+
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	w, err := runlog.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	cfg := sweep.Config{
+		RunID:               "run-catch-up-timeout",
+		Target:              10,
+		UsersPerBatch:       10,
+		Hold:                0,
+		ApplyCatchUpTimeout: 200 * time.Millisecond,
+		OwnerFilter:         owner,
+		Executor:            exec,
+		Agent:               ag, // never emits Applied
+		Runlog:              w,
+		Clock:               sweep.RealClock{},
+	}
+	start := time.Now()
+	require.NoError(t, sweep.Run(context.Background(), cfg))
+	elapsed := time.Since(start)
+	// Wait should have taken roughly the timeout. The lower bound is
+	// timeout/2 (loose, absorbs scheduler jitter); the upper bound is
+	// timeout * 4 (loose enough to absorb the 1s tick interval).
+	assert.GreaterOrEqual(t, elapsed, 100*time.Millisecond,
+		"Run returned %v; expected at least the catch-up timeout floor", elapsed)
+	assert.Less(t, elapsed, 5*time.Second,
+		"Run took %v; expected catch-up wait to time out, not hang", elapsed)
+	assert.Equal(t, int32(10), exec.deleteN.Load(),
+		"deprovision should still run after the catch-up wait times out")
+}
+
+// TestRun_QuiescenceBlocksOnPendingCommit proves the wait does NOT
+// declare quiescence while the agent has a config received but not
+// yet committed. Without this, the wait could time out mid-diff-check
+// (which can run >30s at >1MB configs) and the orchestrator would
+// cancel the SSH session while the agent was still applying the
+// deprovision config.
+func TestRun_QuiescenceBlocksOnPendingCommit(t *testing.T) {
+	t.Parallel()
+
+	owner := solana.NewWallet().PublicKey()
+	exec := newFakeExecutor(owner)
+	// Block deprovision so we can emit a ConfigReceived during teardown
+	// and observe whether the wait honors the pending-commit flag.
+	gate := make(chan struct{})
+	exec.deleteGate = gate
+
+	ag := newScriptedAgent()
+
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	w, err := runlog.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	const quietWindow = 100 * time.Millisecond
+	cfg := sweep.Config{
+		RunID:                  "run-pending-commit",
+		Target:                 1,
+		UsersPerBatch:          1,
+		Hold:                   0,
+		AgentQuietWindow:       quietWindow,
+		AgentQuiescenceTimeout: 2 * time.Second,
+		OwnerFilter:            owner,
+		Executor:               exec,
+		Agent:                  ag,
+		Runlog:                 w,
+		Clock:                  sweep.RealClock{},
+	}
+	done := make(chan error, 1)
+	go func() { done <- sweep.Run(context.Background(), cfg) }()
+
+	deadline := time.Now().Add(time.Second)
+	for exec.deleteN.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("sweep did not reach deprovision within 1s")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// Emit a ConfigReceived to set the pending-commit flag, then go
+	// silent. The wait MUST NOT declare quiescence until the matching
+	// EventCommit lands — even after multiple quietWindow durations
+	// have elapsed.
+	ag.Emit(agent.Event{Kind: agent.EventConfigReceived, TunnelID: 0, At: time.Now()})
+
+	close(gate)
+
+	// Stay quiet for several quiet windows; the wait must still be
+	// blocked because the pending-commit flag is sticky.
+	time.Sleep(5 * quietWindow)
+	select {
+	case <-done:
+		t.Fatal("Run returned while a config was pending commit — quiescence wait should block")
+	default:
+	}
+
+	// Emit the matching commit; only now should the wait complete.
+	ag.Emit(agent.Event{Kind: agent.EventCommit, TunnelID: 0, At: time.Now()})
+
+	select {
+	case runErr := <-done:
+		require.NoError(t, runErr)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return within 2s of EventCommit clearing the pending flag")
+	}
+}
+
+// TestRun_SkipsQuiescenceWaitWhenNoAgent confirms the wait is a no-op
+// when the caller declared the run as --no-agent (Config.NoAgent=true).
+// The wait used to skip on an inferred "no events observed" signal,
+// but that inference raced with the consumer goroutine; the explicit
+// flag replaces it. With a 30s quiet window the wait would dominate
+// the run if NoAgent did not short-circuit it.
+func TestRun_SkipsQuiescenceWaitWhenNoAgent(t *testing.T) {
 	t.Parallel()
 
 	owner := solana.NewWallet().PublicKey()
@@ -766,6 +1035,7 @@ func TestRun_SkipsQuiescenceWaitWhenNoAppliedObserved(t *testing.T) {
 		OwnerFilter:            owner,
 		Executor:               exec,
 		Agent:                  agent.NewNoop(nil),
+		NoAgent:                true,
 		Runlog:                 w,
 		Clock:                  sweep.RealClock{},
 	}
@@ -774,5 +1044,96 @@ func TestRun_SkipsQuiescenceWaitWhenNoAppliedObserved(t *testing.T) {
 	require.NoError(t, sweep.Run(context.Background(), cfg))
 	elapsed := time.Since(start)
 	assert.Less(t, elapsed, time.Second,
-		"Run took %v with a 30s quiet window but no Applied events — wait should have skipped", elapsed)
+		"Run took %v with a 30s quiet window and NoAgent=true — wait should have skipped", elapsed)
+}
+
+// TestRun_WaitsForAgentQuiescenceEvenOnAbort proves that the quiescence
+// wait engages and blocks for the full window when provision was
+// cancelled by ctx (e.g. the observer's abort sentinel). The new branch
+// (introduced together with the elapsed-since-wait-start floor) needs
+// to be observable: the test asserts that the run blocks at least
+// `quietWindow` after deprovision returns, even though the agent emits
+// no events after ctx-cancellation. A regression that reverts either
+// (a) the `err == nil` guard removal or (b) the elapsed-since-wait-start
+// floor would surface here:
+//   - reverting (a) → wait is skipped, run returns in well under
+//     quietWindow.
+//   - reverting (b) → the absolute "silent for quietWindow" predicate
+//     is satisfied immediately (agent was already silent at wait
+//     start), so the wait returns instantly even with the new branch.
+func TestRun_WaitsForAgentQuiescenceEvenOnAbort(t *testing.T) {
+	t.Parallel()
+
+	owner := solana.NewWallet().PublicKey()
+	exec := newFakeExecutor(owner)
+	ag := newScriptedAgent()
+
+	path := filepath.Join(t.TempDir(), "orchestrator-runlog.json")
+	w, err := runlog.Open(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	// Cancel ctx after the first user is created so provision exits with
+	// context.Canceled on the next loop iteration. Deprovision still
+	// runs to completion (uses WithoutCancel internally), and the wait
+	// should engage despite the cancellation.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Emit the synthetic agent event well before cancellation so the
+	// tracker's `lastEvent` timestamp is meaningfully older than the
+	// wait's start. This forces the wait to rely on the elapsed-since-
+	// wait-start floor — the absolute "silent for quietWindow" predicate
+	// would otherwise be satisfied immediately.
+	ag.Emit(agent.Event{Kind: agent.EventCommit, TunnelID: 0, At: time.Now()})
+	exec.afterCreate = func(calls int) {
+		if calls == 1 {
+			cancel()
+		}
+	}
+
+	const quietWindow = 200 * time.Millisecond
+	cfg := sweep.Config{
+		RunID:                  "run-quiesce-abort",
+		Target:                 4,
+		UsersPerBatch:          1,
+		Hold:                   0,
+		AgentQuietWindow:       quietWindow,
+		AgentQuiescenceTimeout: 5 * time.Second,
+		OwnerFilter:            owner,
+		Executor:               exec,
+		Agent:                  ag,
+		Runlog:                 w,
+		Clock:                  sweep.RealClock{},
+	}
+
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() { done <- sweep.Run(ctx, cfg) }()
+
+	var runErr error
+	select {
+	case runErr = <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return within 2s")
+	}
+	elapsed := time.Since(start)
+	require.Error(t, runErr, "Run should surface the ctx-cancellation error")
+	assert.ErrorIs(t, runErr, context.Canceled)
+	// The wait must block at least quietWindow even though ctx is
+	// cancelled — that's the whole point of the abort-path branch.
+	// Allow a generous lower bound (quietWindow/2) to absorb scheduler
+	// jitter; the negative case (wait skipped) returns in well under
+	// 10 ms.
+	assert.GreaterOrEqual(t, elapsed, quietWindow/2,
+		"Run returned in %v under abort; expected ≥ %v (quiet window floor)", elapsed, quietWindow/2)
+	// Deprovision should still complete onchain regardless of the wait.
+	rows := readRows(t, path)
+	var sawDeprovisionActivate bool
+	for _, r := range rows {
+		if r.Event == runlog.EventDeprovisionActivate {
+			sawDeprovisionActivate = true
+			break
+		}
+	}
+	assert.True(t, sawDeprovisionActivate, "deprovision should still complete onchain after abort")
 }

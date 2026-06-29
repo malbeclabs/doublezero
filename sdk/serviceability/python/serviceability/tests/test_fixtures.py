@@ -435,8 +435,16 @@ class TestFixtureAccessPass:
                 "ConnectionCount": ap.connection_count,
                 "Status": ap.status,
                 "Flags": ap.flags,
+                "UnicastUserCount": ap.unicast_user_count,
+                "MaxUnicastUsers": ap.max_unicast_users,
+                "MulticastUserCount": ap.multicast_user_count,
+                "MaxMulticastUsers": ap.max_multicast_users,
             },
         )
+        assert ap.unicast_user_count == 2
+        assert ap.max_unicast_users == 4
+        assert ap.multicast_user_count == 1
+        assert ap.max_multicast_users == 3
 
 
 class TestFixtureAccessPassValidator:
@@ -457,6 +465,10 @@ class TestFixtureAccessPassValidator:
                 "ConnectionCount": ap.connection_count,
                 "Status": ap.status,
                 "Flags": ap.flags,
+                "UnicastUserCount": ap.unicast_user_count,
+                "MaxUnicastUsers": ap.max_unicast_users,
+                "MulticastUserCount": ap.multicast_user_count,
+                "MaxMulticastUsers": ap.max_multicast_users,
             },
         )
         assert ap.account_type == 11
@@ -474,3 +486,47 @@ class TestFixtureAccessPassValidator:
         assert len(ap.mgroup_pub_allowlist) == 1
         assert len(ap.mgroup_sub_allowlist) == 1
         assert ap.flags == 3
+        assert ap.max_unicast_users == 5
+        assert ap.max_multicast_users == 2
+
+
+class TestFixtureAccessPassEdgeSeat:
+    def test_deserialize(self):
+        data, meta = _load_fixture("access_pass_edge_seat")
+        ap = AccessPass.from_bytes(data)
+        _assert_fields(
+            meta["fields"],
+            {
+                "AccountType": ap.account_type,
+                "Owner": ap.owner,
+                "BumpSeed": ap.bump_seed,
+                "AccessPassType": ap.access_pass_type_tag,
+                "UserPayer": ap.user_payer,
+                "ConnectionCount": ap.connection_count,
+                "Status": ap.status,
+                "Flags": ap.flags,
+                "UnicastUserCount": ap.unicast_user_count,
+                "MaxUnicastUsers": ap.max_unicast_users,
+                "MulticastUserCount": ap.multicast_user_count,
+                "MaxMulticastUsers": ap.max_multicast_users,
+            },
+        )
+        # EdgeSeat is tag 4 and carries no payload; the seat is the user_payer.
+        assert ap.access_pass_type_tag == 4
+        assert ap.associated_pubkey is None
+        assert ap.unicast_user_count == 2
+        assert ap.max_unicast_users == 4
+        assert ap.multicast_user_count == 1
+        assert ap.max_multicast_users == 3
+
+
+class TestFixtureAccessPassLegacyCapDefaults:
+    def test_deserialize(self):
+        # A pre-migration account lacks the 8 trailing cap bytes; counts default to 0 and caps to 1,
+        # matching the Rust program's TryFrom unwrap_or defaults.
+        data, _ = _load_fixture("access_pass")
+        ap = AccessPass.from_bytes(data[:-8])
+        assert ap.unicast_user_count == 0
+        assert ap.max_unicast_users == 1
+        assert ap.multicast_user_count == 0
+        assert ap.max_multicast_users == 1

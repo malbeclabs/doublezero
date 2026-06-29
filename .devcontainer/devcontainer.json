@@ -11,9 +11,8 @@
     ],
     "features": {
         "ghcr.io/devcontainers/features/common-utils:2": {},
-        "ghcr.io/devcontainers/features/go:1": {
-            "version": "1.25.5"
-        },
+        // Go is installed directly in the Dockerfile at a pinned version to avoid
+        // stdlib conflicts from layering the Go feature on the base image's Go.
         "ghcr.io/devcontainers/features/rust:1": {
             "version": "1.90.0"
         },

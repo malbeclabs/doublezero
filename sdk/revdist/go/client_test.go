@@ -3,6 +3,7 @@ package revdist
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"testing"
 
 	"github.com/gagliardetto/solana-go"
@@ -31,6 +32,15 @@ func (m *mockRPC) GetProgramAccountsWithOpts(_ context.Context, _ solana.PublicK
 
 func (m *mockRPC) GetMinimumBalanceForRentExemption(_ context.Context, _ uint64, _ rpc.CommitmentType) (uint64, error) {
 	return 890880, nil
+}
+
+type mockLedger struct {
+	data []byte
+	err  error
+}
+
+func (m *mockLedger) GetRecordData(_ context.Context, _ solana.PublicKey) ([]byte, error) {
+	return m.data, m.err
 }
 
 func buildAccountData(disc [8]byte, structSize int) []byte {
@@ -127,5 +137,38 @@ func TestFetchValidatorDebtsNoLedger(t *testing.T) {
 	_, err := client.FetchValidatorDebts(context.Background(), 1)
 	if err != ErrLedgerClientNil {
 		t.Errorf("expected ErrLedgerClientNil, got %v", err)
+	}
+}
+
+// clientWithLedger builds a client whose config account resolves (so the
+// ledger-record fetch is reached) and whose ledger client is the given mock.
+func clientWithLedger(ledger LedgerRecordClient) *Client {
+	configAddr, _, _ := DeriveConfigPDA(testProgramID)
+	mock := &mockRPC{
+		accounts: map[solana.PublicKey]*rpc.Account{
+			configAddr: {
+				Data: rpc.DataBytesOrJSONFromBytes(buildAccountData(DiscriminatorProgramConfig, 600)),
+			},
+		},
+	}
+	return NewWithLedger(mock, testProgramID, ledger)
+}
+
+// The gagliardetto RPC reports a missing account as rpc.ErrNotFound, so a
+// pruned/absent ledger record must surface as ErrAccountNotFound for callers
+// that scan a window of epochs via errors.Is(err, ErrAccountNotFound).
+func TestFetchRewardSharesNotFoundIsErrAccountNotFound(t *testing.T) {
+	client := clientWithLedger(&mockLedger{err: rpc.ErrNotFound})
+	_, err := client.FetchRewardShares(context.Background(), 1)
+	if !errors.Is(err, ErrAccountNotFound) {
+		t.Fatalf("expected errors.Is(err, ErrAccountNotFound), got %v", err)
+	}
+}
+
+func TestFetchValidatorDebtsNotFoundIsErrAccountNotFound(t *testing.T) {
+	client := clientWithLedger(&mockLedger{err: rpc.ErrNotFound})
+	_, err := client.FetchValidatorDebts(context.Background(), 1)
+	if !errors.Is(err, ErrAccountNotFound) {
+		t.Fatalf("expected errors.Is(err, ErrAccountNotFound), got %v", err)
 	}
 }

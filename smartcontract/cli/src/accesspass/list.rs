@@ -1,15 +1,18 @@
-use crate::doublezerocommand::CliCommand;
+use crate::{doublezerocommand::CliCommand, user::list::narrow_groups};
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
-use doublezero_sdk::commands::{
-    accesspass::list::ListAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
-    tenant::list::ListTenantCommand,
+use doublezero_sdk::{
+    commands::{
+        accesspass::list::ListAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
+        tenant::list::ListTenantCommand,
+    },
+    MulticastGroup,
 };
 use doublezero_serviceability::state::accesspass::{AccessPassStatus, AccessPassType};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, net::Ipv4Addr};
+use std::{collections::HashMap, io::Write, net::Ipv4Addr};
 use tabled::{settings::Style, Table, Tabled};
 
 #[derive(Args, Debug, Default)]
@@ -26,9 +29,6 @@ pub struct ListAccessPassCliCommand {
     /// List EdgeSeat access passes
     #[arg(long, default_value_t = false)]
     pub edge_seat: bool,
-    /// Seat public key
-    #[arg(long)]
-    pub seat_pubkey: Option<Pubkey>,
     /// Client IP address
     #[arg(long)]
     pub client_ip: Option<Ipv4Addr>,
@@ -57,6 +57,11 @@ pub struct ListAccessPassCliCommand {
     /// Output as compact JSON
     #[arg(long, default_value_t = false)]
     pub json_compact: bool,
+    /// Narrow table output: shortens pubkeys, abbreviates accesspass_type, shows
+    /// the first multicast group per role (`+N` for the rest), labels a
+    /// no-tenant pass `empty`, and shortens the epoch/connections headers.
+    #[arg(long, default_value_t = false)]
+    pub narrow: bool,
 }
 
 #[derive(Tabled, Serialize)]
@@ -73,9 +78,100 @@ pub struct AccessPassDisplay {
     pub remaining_epoch: String,
     pub flags: String,
     pub connections: u16,
+    pub unicast_users: String,
+    pub multicast_users: String,
     pub status: AccessPassStatus,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
+    #[tabled(skip)]
+    #[serde(skip)]
+    pub accesspass_type_value: AccessPassType,
+    #[tabled(skip)]
+    #[serde(skip)]
+    pub mgroup_pub_allowlist: Vec<Pubkey>,
+    #[tabled(skip)]
+    #[serde(skip)]
+    pub mgroup_sub_allowlist: Vec<Pubkey>,
+}
+
+/// Narrow variant of [`AccessPassDisplay`] for terminals: shortens every
+/// pubkey, abbreviates the multicast and accesspass_type columns, labels a
+/// no-tenant pass `empty`, and shortens the wider headers.
+#[derive(Tabled)]
+pub struct AccessPassDisplayNarrow {
+    #[tabled(display = "crate::util::display_pubkey_short")]
+    pub account: Pubkey,
+    pub accesspass_type: String,
+    pub client_ip: Ipv4Addr,
+    #[tabled(display = "crate::util::display_pubkey_short")]
+    pub user_payer: Pubkey,
+    pub tenant: String,
+    pub multicast: String,
+    #[tabled(rename = "lst_epch")]
+    pub last_access_epoch: String,
+    #[tabled(rename = "rem_epch")]
+    pub remaining_epoch: String,
+    pub flags: String,
+    #[tabled(rename = "conns")]
+    pub connections: u16,
+    pub unicast_users: String,
+    pub multicast_users: String,
+    pub status: AccessPassStatus,
+    #[tabled(display = "crate::util::display_pubkey_short")]
+    pub owner: Pubkey,
+}
+
+/// Abbreviate the accesspass type for narrow output, shortening every embedded
+/// key. The match is exhaustive on purpose: a new payload-carrying variant must
+/// be handled here rather than silently rendering full-width.
+fn accesspass_type_short(t: &AccessPassType) -> String {
+    match t {
+        AccessPassType::SolanaValidator(pk) => {
+            format!(
+                "solana_validator: {}",
+                crate::util::display_pubkey_short(pk)
+            )
+        }
+        AccessPassType::SolanaRPC(pk) => {
+            format!("solana_rpc: {}", crate::util::display_pubkey_short(pk))
+        }
+        AccessPassType::Others(type_name, key) => {
+            format!(
+                "others: {type_name} ({})",
+                crate::util::abbreviate_prefix(key)
+            )
+        }
+        AccessPassType::Prepaid | AccessPassType::EdgeSeat => t.to_string(),
+    }
+}
+
+impl AccessPassDisplayNarrow {
+    fn from_display(d: &AccessPassDisplay, mgroups: &HashMap<Pubkey, MulticastGroup>) -> Self {
+        Self {
+            account: d.account,
+            accesspass_type: accesspass_type_short(&d.accesspass_type_value),
+            client_ip: d.client_ip,
+            user_payer: d.user_payer,
+            // A pass with no tenant renders blank (empty allowlist) or shows the
+            // all-ones default pubkey when it is explicitly allowlisted; surface
+            // both as "empty". A real tenant code/pubkey stringifies differently
+            // and is unaffected.
+            tenant: if d.tenant.is_empty() {
+                "empty".to_string()
+            } else {
+                d.tenant.replace(&Pubkey::default().to_string(), "empty")
+            },
+            multicast: narrow_groups(&d.mgroup_pub_allowlist, &d.mgroup_sub_allowlist, mgroups),
+            last_access_epoch: d.last_access_epoch.clone(),
+            remaining_epoch: d.remaining_epoch.clone(),
+            flags: d.flags.clone(),
+            connections: d.connections,
+            unicast_users: d.unicast_users.clone(),
+            multicast_users: d.multicast_users.clone(),
+            status: d.status,
+            owner: d.owner,
+        }
+    }
 }
 
 impl ListAccessPassCliCommand {
@@ -116,12 +212,8 @@ impl ListAccessPassCliCommand {
         // Filter access passes by EdgeSeat type
         if self.edge_seat {
             access_passes.retain(|(_, access_pass)| {
-                matches!(access_pass.accesspass_type, AccessPassType::EdgeSeat(_))
+                matches!(access_pass.accesspass_type, AccessPassType::EdgeSeat)
             });
-        }
-        // Filter access passes by seat pubkey
-        if let Some(seat_pk) = self.seat_pubkey {
-            access_passes.retain(|(_, ap)| ap.accesspass_type == AccessPassType::EdgeSeat(seat_pk));
         }
         // Filter access passes by client IP
         if let Some(client_ip) = self.client_ip {
@@ -251,8 +343,19 @@ impl ListAccessPassCliCommand {
                 },
                 flags: access_pass.flags_string(),
                 connections: access_pass.connection_count,
+                unicast_users: format!(
+                    "{} / {}",
+                    access_pass.unicast_user_count, access_pass.max_unicast_users
+                ),
+                multicast_users: format!(
+                    "{} / {}",
+                    access_pass.multicast_user_count, access_pass.max_multicast_users
+                ),
                 status: access_pass.status,
                 owner: access_pass.owner,
+                accesspass_type_value: access_pass.accesspass_type.clone(),
+                mgroup_pub_allowlist: access_pass.mgroup_pub_allowlist.clone(),
+                mgroup_sub_allowlist: access_pass.mgroup_sub_allowlist.clone(),
             })
             .collect();
 
@@ -262,6 +365,14 @@ impl ListAccessPassCliCommand {
             serde_json::to_string_pretty(&access_pass_displays)?
         } else if self.json_compact {
             serde_json::to_string(&access_pass_displays)?
+        } else if self.narrow {
+            let narrow: Vec<AccessPassDisplayNarrow> = access_pass_displays
+                .iter()
+                .map(|d| AccessPassDisplayNarrow::from_display(d, &mgroups))
+                .collect();
+            Table::new(narrow)
+                .with(Style::psql().remove_horizontals())
+                .to_string()
         } else {
             Table::new(access_pass_displays)
                 .with(Style::psql().remove_horizontals())
@@ -280,7 +391,7 @@ mod tests {
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::AccountType;
     use doublezero_serviceability::state::accesspass::{
-        AccessPass, AccessPassStatus, AccessPassType, IS_DYNAMIC,
+        AccessPass, AccessPassStatus, AccessPassType,
     };
     use solana_sdk::pubkey::Pubkey;
     use std::{collections::HashMap, net::Ipv4Addr};
@@ -297,7 +408,7 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             tenant_pk: Pubkey::new_unique(),
             multicast_ip: [239, 0, 0, 1].into(),
-            max_bandwidth: 1000000000,
+            max_bandwidth: 1_000_000_000,
             status: doublezero_sdk::MulticastGroupStatus::Activated,
             code: "test".to_string(),
             publisher_count: 5,
@@ -319,6 +430,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         let access2_pubkey = Pubkey::from_str_const("1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM");
@@ -337,7 +452,11 @@ mod tests {
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![mgroup_pubkey],
             tenant_allowlist: vec![],
-            flags: IS_DYNAMIC,
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         let access3_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9");
@@ -355,6 +474,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         client.expect_get_epoch().returning(move || Ok(123));
@@ -385,19 +508,19 @@ mod tests {
                 solana_validator: false,
                 solana_identity: None,
                 edge_seat: false,
-                seat_pubkey: None,
                 multicast_group_publisher: None,
                 multicast_group_subscriber: None,
                 not_multicast_group_publisher: None,
                 not_multicast_group_subscriber: None,
                 json: false,
                 json_compact: false,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type                                             | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags   | connections | status    | owner                                     \n 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  | solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 0.0.0.0   | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  |        | S:test    | 123               | 113             | dynamic | 0           | connected | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid                                                     | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |         | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | prepaid                                                     | 2.3.4.5   | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 |        | P:test    | 123               | 113             |         | 0           | connected | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | accesspass_type                                             | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | unicast_users | multicast_users | status    | owner                                     \n 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  | solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 0.0.0.0   | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  |        | S:test    | 123               | 113             |       | 0           | 0 / 1         | 0 / 1           | connected | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid                                                     | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | 0 / 1         | 0 / 1           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | prepaid                                                     | 2.3.4.5   | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 |        | P:test    | 123               | 113             |       | 0           | 0 / 1         | 0 / 1           | connected | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
         let res = block_on(
@@ -406,7 +529,6 @@ mod tests {
                 solana_validator: false,
                 solana_identity: None,
                 edge_seat: false,
-                seat_pubkey: None,
                 tenant: None,
                 json: false,
                 json_compact: true,
@@ -416,12 +538,13 @@ mod tests {
                 multicast_group_subscriber: None,
                 not_multicast_group_publisher: None,
                 not_multicast_group_subscriber: None,
+                narrow: false,
             }
             .execute(&ctx, &client, &mut output),
         );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"accesspass_type\":\"solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"client_ip\":\"0.0.0.0\",\"user_payer\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"tenant\":\"\",\"multicast\":\"S:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"dynamic\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\"},{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"tenant\":\"\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"},{\"account\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"2.3.4.5\",\"user_payer\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"tenant\":\"\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"status\":\"Connected\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"accesspass_type\":\"solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"client_ip\":\"0.0.0.0\",\"user_payer\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"tenant\":\"\",\"multicast\":\"S:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"unicast_users\":\"0 / 1\",\"multicast_users\":\"0 / 1\",\"status\":\"Connected\",\"owner\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\"},{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"tenant\":\"\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"unicast_users\":\"0 / 1\",\"multicast_users\":\"0 / 1\",\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"},{\"account\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"2.3.4.5\",\"user_payer\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"tenant\":\"\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"unicast_users\":\"0 / 1\",\"multicast_users\":\"0 / 1\",\"status\":\"Connected\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
 
         // Test filtering by client IP
         let mut output = Vec::new();
@@ -434,7 +557,7 @@ mod tests {
         );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | unicast_users | multicast_users | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | 0 / 1         | 0 / 1           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         // Test filtering by user payer
         let mut output = Vec::new();
@@ -449,7 +572,92 @@ mod tests {
         );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | unicast_users | multicast_users | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | 0 / 1         | 0 / 1           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        // Narrow output: shortened pubkeys, abbreviated type/multicast, short
+        // headers; fits within 240 cols.
+        let mut output = Vec::new();
+        let res = block_on(
+            ListAccessPassCliCommand {
+                narrow: true,
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        let header = output_str.lines().next().unwrap();
+        for expected in [
+            "account",
+            "accesspass_type",
+            "client_ip",
+            "user_payer",
+            "tenant",
+            "multicast",
+            "lst_epch",
+            "rem_epch",
+            "conns",
+            "status",
+            "owner",
+        ] {
+            assert!(header.contains(expected), "missing header {expected}");
+        }
+        for hidden in ["last_access_epoch", "remaining_epoch", "connections"] {
+            assert!(
+                !header.contains(hidden),
+                "narrow header should not contain {hidden}"
+            );
+        }
+        // SolanaValidator type keeps its label but shortens the embedded key.
+        assert!(output_str.contains("solana_validator: 1111111FVA.."));
+        assert!(!output_str.contains("solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"));
+        // No-tenant passes (empty allowlist) render as `empty`, not blank.
+        assert!(
+            output_str.contains("empty"),
+            "tenant should render as empty"
+        );
+        for line in output_str.lines() {
+            assert!(
+                line.len() <= 240,
+                "narrow line exceeds 240 cols: {}",
+                line.len()
+            );
+        }
+    }
+
+    #[test]
+    fn test_accesspass_type_short() {
+        let pk = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        assert_eq!(
+            super::accesspass_type_short(&AccessPassType::SolanaValidator(pk)),
+            "solana_validator: 1111111FVA.."
+        );
+        assert_eq!(
+            super::accesspass_type_short(&AccessPassType::SolanaRPC(pk)),
+            "solana_rpc: 1111111FVA.."
+        );
+        assert_eq!(
+            super::accesspass_type_short(&AccessPassType::Prepaid),
+            "prepaid"
+        );
+        assert_eq!(
+            super::accesspass_type_short(&AccessPassType::EdgeSeat),
+            "edge_seat"
+        );
+        // Others: type_name kept, embedded key truncated to a copyable prefix.
+        assert_eq!(
+            super::accesspass_type_short(&AccessPassType::Others(
+                "custom".to_string(),
+                "1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB".to_string()
+            )),
+            "others: custom (1111111FVA..)"
+        );
+        assert_eq!(
+            super::accesspass_type_short(&AccessPassType::Others(
+                "x".to_string(),
+                "short".to_string()
+            )),
+            "others: x (short)"
+        );
     }
 
     fn setup_multicast_client() -> (
@@ -468,7 +676,7 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             tenant_pk: Pubkey::new_unique(),
             multicast_ip: [239, 0, 0, 1].into(),
-            max_bandwidth: 1000000000,
+            max_bandwidth: 1_000_000_000,
             status: doublezero_sdk::MulticastGroupStatus::Activated,
             code: "test".to_string(),
             publisher_count: 5,
@@ -491,6 +699,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         // access2: subscriber of "test", IP 0.0.0.0
@@ -509,6 +721,10 @@ mod tests {
             mgroup_sub_allowlist: vec![mgroup_pubkey],
             tenant_allowlist: vec![],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         // access3: publisher of "test", IP 2.3.4.5
@@ -527,6 +743,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         };
 
         client.expect_list_multicastgroup().returning(move |_| {

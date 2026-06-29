@@ -364,7 +364,7 @@ mod tests {
             code: "test".to_string(),
             tenant_pk: Pubkey::default(),
             multicast_ip: [10, 0, 0, 1].into(),
-            max_bandwidth: 1000000000,
+            max_bandwidth: 1_000_000_000,
             status: MulticastGroupStatus::Activated,
             owner: mgroup_pubkey,
             publisher_count: 5,
@@ -400,6 +400,10 @@ mod tests {
                     tenant_allowlist: vec![],
                     status: AccessPassStatus::Requested,
                     flags: 0,
+                    unicast_user_count: 0,
+                    max_unicast_users: 1,
+                    multicast_user_count: 0,
+                    max_multicast_users: 1,
                 },
             );
             Ok(accesspasses)

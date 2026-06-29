@@ -363,16 +363,18 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 	ap.AccountType = AccountType(reader.ReadU8())
 	ap.Owner = reader.ReadPubkey()
 	ap.BumpSeed = reader.ReadU8()
-	// AccessPassType is a Borsh enum: 1-byte discriminant + optional data
+	// AccessPassType is a Borsh enum: 1-byte discriminant + optional data.
 	ap.AccessPassTypeTag = AccessPassTypeTag(reader.ReadU8())
-	// Variants 1-4 have an associated pubkey
-	if ap.AccessPassTypeTag >= 1 && ap.AccessPassTypeTag <= 4 {
+	switch ap.AccessPassTypeTag {
+	case AccessPassTypeSolanaValidator, AccessPassTypeSolanaRPC:
+		// SolanaValidator and SolanaRPC carry an associated pubkey.
 		ap.AssociatedPubkey = reader.ReadPubkey()
-	} else if ap.AccessPassTypeTag == AccessPassTypeOthers {
-		// Variant 5 (Others) has two strings
+	case AccessPassTypeOthers:
+		// Others carries two strings (type_name, key).
 		ap.OthersTypeName = reader.ReadString()
 		ap.OthersKey = reader.ReadString()
 	}
+	// Prepaid and EdgeSeat carry no associated data.
 	ap.ClientIp = reader.ReadIPv4()
 	ap.UserPayer = reader.ReadPubkey()
 	ap.LastAccessEpoch = reader.ReadU64()
@@ -381,6 +383,12 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 	ap.MGroupPubAllowlist = reader.ReadPubkeySlice()
 	ap.MGroupSubAllowlist = reader.ReadPubkeySlice()
 	ap.Flags = reader.ReadU8()
+	ap.TenantAllowlist = reader.ReadPubkeySlice()
+	ap.UnicastUserCount = reader.ReadU16()
+	// Caps default to 1 when absent (pre-migration accounts), matching the program's unwrap_or(1).
+	ap.MaxUnicastUsers = reader.ReadU16OrDefault(1)
+	ap.MulticastUserCount = reader.ReadU16()
+	ap.MaxMulticastUsers = reader.ReadU16OrDefault(1)
 }
 
 // ResourceExtension binary layout (from Rust):

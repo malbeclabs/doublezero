@@ -2,7 +2,6 @@
 members = [
     "client/doublezero",
     "config",
-    "controlplane/doublezero-admin",
     "smartcontract/cli",
     "smartcontract/sdk/rs",
     "smartcontract/programs/doublezero-record",
@@ -24,7 +23,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.25.1"
+version = "0.28.0"
 authors = ["Malbec Labs <dev@malbeclabs.com>"]
 readme = "README.md"
 edition = "2021"
@@ -77,7 +76,7 @@ serde = "1"
 serde_bytes = "0"
 serde_json = "1"
 serde_yaml = "0"
-serial_test = "0"
+serial_test = "3"
 solana-account-decoder = "3.0"
 solana-client = "3.0"
 solana-bincode = "3.0"
@@ -101,8 +100,8 @@ tokio-util = "0"
 tracing = "0"
 tracing-subscriber = { version = "0", default-features = true, features = ["env-filter", "fmt", "registry"] }
 url = "2"
-strum = "0.26"
-strum_macros = "0.26"
+strum = "0.28"
+strum_macros = "0.28"
 tokio = { version = "1", default-features = false, features = [
     "rt-multi-thread",
     "signal",
@@ -110,7 +109,11 @@ tokio = { version = "1", default-features = false, features = [
 doublezero-cli-core = { path = "crates/doublezero-cli-core" }
 doublezero-config = { path = "config" }
 doublezero-geolocation-cli = { path = "crates/doublezero-geolocation-cli" }
-doublezero-sentinel = { path = "crates/sentinel" }
+# default-features = false MUST be set here, not on the consumer edge: an inheriting
+# member's `default-features = false` is ignored unless the workspace dep declares it.
+# This keeps sentinel's server-only deps (Prometheus exporter → rustls/aws-lc-sys) out of
+# the `doublezero` CLI.
+doublezero-sentinel = { path = "crates/sentinel", default-features = false }
 doublezero-serviceability-cli = { path = "smartcontract/cli" }
 doublezero-program-common = { path = "smartcontract/programs/common" }
 doublezero_sdk = { path = "smartcontract/sdk/rs" }

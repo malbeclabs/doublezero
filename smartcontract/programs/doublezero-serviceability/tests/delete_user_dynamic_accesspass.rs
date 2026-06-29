@@ -248,6 +248,8 @@ async fn create_and_activate_user(
             client_ip: accesspass_ip,
             last_access_epoch: 9999,
             allow_multiple_ip,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -301,14 +303,14 @@ async fn create_and_activate_user(
     (accesspass_pubkey, user_pubkey)
 }
 
-/// IS_DYNAMIC pass (UNSPECIFIED PDA, no ALLOW_MULTIPLE_IP): DeleteUser succeeds and access pass
+/// Dynamic pass (UNSPECIFIED PDA, no ALLOW_MULTIPLE_IP): DeleteUser succeeds and access pass
 /// connection_count decrements to 0. The pass client_ip is NOT reset since allow_multiple_ip=false.
 #[tokio::test]
 async fn test_delete_user_is_dynamic_pass() {
     let mut env = setup_test_env().await;
     let user_ip: Ipv4Addr = [100, 0, 0, 1].into();
 
-    // IS_DYNAMIC pass: client_ip=UNSPECIFIED, allow_multiple_ip=false
+    // Dynamic pass: client_ip=UNSPECIFIED, allow_multiple_ip=false
     let (accesspass_pubkey, user_pubkey) = create_and_activate_user(
         &mut env,
         user_ip,
@@ -318,13 +320,13 @@ async fn test_delete_user_is_dynamic_pass() {
     )
     .await;
 
-    // CreateUser with IS_DYNAMIC pass locks the pass's client_ip to the user's IP
+    // A dynamic (UNSPECIFIED) pass is no longer locked to the first user's IP; it stays UNSPECIFIED.
     let pass = get_account_data(&mut env.banks_client, accesspass_pubkey)
         .await
         .unwrap()
         .get_accesspass()
         .unwrap();
-    assert_eq!(pass.client_ip, user_ip);
+    assert_eq!(pass.client_ip, Ipv4Addr::UNSPECIFIED);
     assert_eq!(pass.connection_count, 1);
     assert_eq!(pass.status, AccessPassStatus::Connected);
 
@@ -385,8 +387,8 @@ async fn test_delete_user_is_dynamic_pass() {
         .unwrap();
     assert_eq!(pass.connection_count, 0);
     assert_eq!(pass.status, AccessPassStatus::Disconnected);
-    // Not allow_multiple_ip — client_ip is NOT reset to UNSPECIFIED
-    assert_eq!(pass.client_ip, user_ip);
+    // Dynamic pass was never locked, so client_ip remains UNSPECIFIED.
+    assert_eq!(pass.client_ip, Ipv4Addr::UNSPECIFIED);
 }
 
 /// ALLOW_MULTIPLE_IP pass: after the last user is deleted, the pass's client_ip resets to
@@ -406,13 +408,13 @@ async fn test_delete_user_allow_multiple_ip_resets_client_ip() {
     )
     .await;
 
-    // Verify pass IP was locked to user_ip during CreateUser
+    // Dynamic pass is not locked to user_ip during CreateUser; it stays UNSPECIFIED.
     let pass = get_account_data(&mut env.banks_client, accesspass_pubkey)
         .await
         .unwrap()
         .get_accesspass()
         .unwrap();
-    assert_eq!(pass.client_ip, user_ip);
+    assert_eq!(pass.client_ip, Ipv4Addr::UNSPECIFIED);
     assert_eq!(pass.connection_count, 1);
 
     let recent_blockhash = env
@@ -546,13 +548,13 @@ async fn test_delete_user_specific_ip_pass() {
     assert_eq!(pass.client_ip, user_ip);
 }
 
-/// Multicast user with IS_DYNAMIC pass: DeleteUser succeeds with the same IP validation logic.
+/// Multicast user with a dynamic pass: DeleteUser succeeds with the same IP validation logic.
 #[tokio::test]
 async fn test_delete_multicast_user_dynamic_pass() {
     let mut env = setup_test_env().await;
     let user_ip: Ipv4Addr = [100, 0, 0, 4].into();
 
-    // IS_DYNAMIC pass at UNSPECIFIED PDA, no ALLOW_MULTIPLE_IP
+    // Dynamic pass at UNSPECIFIED PDA, no ALLOW_MULTIPLE_IP
     let (accesspass_pubkey, user_pubkey) = create_and_activate_user(
         &mut env,
         user_ip,
@@ -628,4 +630,146 @@ async fn test_delete_multicast_user_dynamic_pass() {
         .unwrap();
     assert_eq!(pass.connection_count, 0);
     assert_eq!(pass.status, AccessPassStatus::Disconnected);
+}
+
+/// Attempt to create a user against the given access pass, returning the transaction result so
+/// callers can assert on cap-rejection errors.
+async fn try_create_user(
+    env: &mut TestEnv,
+    user_ip: Ipv4Addr,
+    user_type: UserType,
+    accesspass_pubkey: Pubkey,
+) -> Result<(), BanksClientError> {
+    let recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+
+    let (user_pubkey, _) = get_user_pda(&env.program_id, &user_ip, user_type);
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&env.program_id, ResourceType::UserTunnelBlock);
+    let (multicast_publisher_block_pda, _, _) =
+        get_resource_extension_pda(&env.program_id, ResourceType::MulticastPublisherBlock);
+    let (device_tunnel_ids_pda, _, _) = get_resource_extension_pda(
+        &env.program_id,
+        ResourceType::TunnelIds(env.device_pubkey, 0),
+    );
+    let (dz_prefix_block_pda, _, _) = get_resource_extension_pda(
+        &env.program_id,
+        ResourceType::DzPrefixBlock(env.device_pubkey, 0),
+    );
+
+    try_execute_transaction(
+        &mut env.banks_client,
+        recent_blockhash,
+        env.program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: user_ip,
+            user_type,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(env.device_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(env.globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(multicast_publisher_block_pda, false),
+            AccountMeta::new(device_tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_block_pda, false),
+        ],
+        &env.payer,
+    )
+    .await
+}
+
+/// EdgeSeat passes admit at most `max_unicast_users` unicast and `max_multicast_users` multicast
+/// users; the (N+1)th in each category is rejected with the per-category error. The pass lives at
+/// the UNSPECIFIED PDA so distinct client IPs all map to the same seat.
+#[tokio::test]
+async fn test_edge_seat_user_caps_enforced() {
+    let mut env = setup_test_env().await;
+    let payer_pk = env.payer.pubkey();
+
+    let (accesspass_pubkey, _) =
+        get_accesspass_pda(&env.program_id, &Ipv4Addr::UNSPECIFIED, &payer_pk);
+
+    let recent_blockhash = env.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut env.banks_client,
+        recent_blockhash,
+        env.program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::EdgeSeat,
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            last_access_epoch: 9999,
+            allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(env.globalstate_pubkey, false),
+            AccountMeta::new(payer_pk, false),
+        ],
+        &env.payer,
+    )
+    .await;
+
+    // First unicast user fills the single unicast seat.
+    try_create_user(
+        &mut env,
+        [100, 0, 0, 10].into(),
+        UserType::IBRL,
+        accesspass_pubkey,
+    )
+    .await
+    .expect("first unicast user should be admitted");
+
+    // Second unicast user exceeds the unicast cap.
+    let err = try_create_user(
+        &mut env,
+        [100, 0, 0, 11].into(),
+        UserType::IBRL,
+        accesspass_pubkey,
+    )
+    .await
+    .expect_err("second unicast user should exceed the cap");
+    assert!(
+        format!("{err:?}").contains("Custom(89)"),
+        "expected AccessPassMaxUnicastUsersExceeded (Custom(89)), got: {err:?}"
+    );
+
+    // Multicast is a separate category, so the first multicast user is still admitted.
+    try_create_user(
+        &mut env,
+        [100, 0, 0, 12].into(),
+        UserType::Multicast,
+        accesspass_pubkey,
+    )
+    .await
+    .expect("first multicast user should be admitted");
+
+    // Second multicast user exceeds the multicast cap.
+    let err = try_create_user(
+        &mut env,
+        [100, 0, 0, 13].into(),
+        UserType::Multicast,
+        accesspass_pubkey,
+    )
+    .await
+    .expect_err("second multicast user should exceed the cap");
+    assert!(
+        format!("{err:?}").contains("Custom(90)"),
+        "expected AccessPassMaxMulticastUsersExceeded (Custom(90)), got: {err:?}"
+    );
+
+    // The pass tracks one seat per category; connection_count counts both connections.
+    let pass = get_account_data(&mut env.banks_client, accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(pass.unicast_user_count, 1);
+    assert_eq!(pass.multicast_user_count, 1);
+    assert_eq!(pass.connection_count, 2);
 }

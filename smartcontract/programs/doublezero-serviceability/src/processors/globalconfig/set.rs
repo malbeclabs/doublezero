@@ -1,5 +1,6 @@
 use crate::{
     error::DoubleZeroError,
+    helper::is_private_or_link_local,
     pda::*,
     processors::resource::create_resource,
     resource::ResourceType,
@@ -13,11 +14,10 @@ use crate::{
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::types::NetworkV4;
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 use std::fmt;
@@ -132,6 +132,13 @@ pub fn process_set_globalconfig(
         admin_group_bits_account.key, &admin_group_bits_pda,
         "Invalid AdminGroupBits PubKey"
     );
+
+    // The device tunnel block must be private or link-local, matching the
+    // restriction enforced on device interface IPs (see Interface::validate).
+    if !is_private_or_link_local(value.device_tunnel_block.ip()) {
+        msg!("Invalid device_tunnel_block: {}", value.device_tunnel_block);
+        return Err(DoubleZeroError::InvalidDeviceTunnelBlock.into());
+    }
 
     let next_bgp_community = if let Some(val) = value.next_bgp_community {
         val

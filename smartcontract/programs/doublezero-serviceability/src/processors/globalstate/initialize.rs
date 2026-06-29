@@ -1,5 +1,6 @@
 use crate::{
     pda::*,
+    processors::accesspass::DEFAULT_USER_AIRDROP_LAMPORTS,
     programversion::ProgramVersion,
     seeds::{SEED_GLOBALSTATE, SEED_PREFIX, SEED_PROGRAM_CONFIG},
     serializer::{try_acc_create, try_acc_write},
@@ -102,7 +103,7 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         activator_authority_pk: *payer_account.key,
         sentinel_authority_pk: *payer_account.key,
         contributor_airdrop_lamports: 1_000_000_000,
-        user_airdrop_lamports: 40_000,
+        user_airdrop_lamports: DEFAULT_USER_AIRDROP_LAMPORTS,
         health_oracle_pk: *payer_account.key,
         qa_allowlist: vec![*payer_account.key],
         feature_flags: 0,

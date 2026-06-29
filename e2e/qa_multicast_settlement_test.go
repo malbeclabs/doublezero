@@ -71,6 +71,20 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		}
 	})
 
+	if !t.Run("ensure_program_unpaused", func(t *testing.T) {
+		// Migrations pause the program; while paused the oracle cannot ack
+		// instant seat allocation requests, which would leave the seat
+		// un-withdrawable and fail the rest of the test with a confusing
+		// "invalid account data for instruction" rejection.
+		paused, err := client.IsProgramPaused(ctx)
+		require.NoError(t, err, "failed to read program-paused flag")
+		if paused {
+			t.Skip("Skipping: shred-subscription program is paused (migration in progress)")
+		}
+	}) {
+		return
+	}
+
 	if !t.Run("ensure_multicast_disconnected", func(t *testing.T) {
 		statuses, err := client.GetUserStatuses(ctx)
 		if err != nil {
@@ -136,6 +150,13 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		return
 	}
 
+	if !t.Run("wait_for_open_phase", func(t *testing.T) {
+		err := client.WaitForOpenForRequests(ctx)
+		require.NoError(t, err, "shred-subscription program did not enter OpenForRequests phase within timeout")
+	}) {
+		return
+	}
+
 	if !t.Run("record_balance_before_pay", func(t *testing.T) {
 		var err error
 		balanceBeforePay, err = client.GetUSDCBalance(ctx)
@@ -178,6 +199,17 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		effectivePrice, err = client.GetEffectiveSeatPrice(ctx, device.PubKey, epochPrice)
 		require.NoError(t, err, "failed to get effective seat price")
 		log.Info("Effective seat price", "effective_usdc", effectivePrice, "epoch_usdc", parsedAmount)
+	}) {
+		return
+	}
+
+	if !t.Run("wait_for_seat_allocation_acked", func(t *testing.T) {
+		// The tunnel can come up before the oracle has acked the instant
+		// allocation request. Withdraw rejects while the request is still
+		// pending, so wait here rather than racing the oracle on the
+		// withdraw_seat step.
+		err := client.WaitForSeatAllocationAcked(ctx, device.PubKey, 90*time.Second)
+		require.NoError(t, err, "oracle did not ack instant seat allocation")
 	}) {
 		return
 	}

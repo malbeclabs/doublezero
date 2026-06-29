@@ -222,3 +222,51 @@ write/device_delete_2                    PASS        PASS        PASS        PAS
 ```
 
 </details>
+
+## QA Client Solana RPC Resilience
+
+The mainnet-beta QA workflows drive settlement reads/writes (USDC balance,
+shred-subscription seat state) against a Solana RPC endpoint. That endpoint can
+flake two ways, each of which used to force a manual repoint of the
+`SOLANA_RPC_URL` CI secret:
+
+1. **Non-responsive / timeout** — the RPC stops answering.
+2. **Stale reads** — the RPC accepts the call and returns old-but-valid account
+   state because the node is lagging the cluster. This is not an error, so
+   error-based retries don't catch it.
+
+The QA client (`e2e/internal/qa/`) handles both automatically:
+
+- **Multi-endpoint failover.** Reads go through a sticky-index failover pool. On
+  a retryable failure (timeout, network error, HTTP 429/5xx) it advances to the
+  next endpoint and retries; once failed over it stays on the new endpoint for
+  the rest of the run. Failover is transparent to both direct RPC reads and the
+  shreds SDK reads.
+- **Active slot-lag detection.** Before a staleness-sensitive read (and at client
+  construction) the pool probes each endpoint's slot height (`getSlot`) and fails
+  over to the freshest one when the current endpoint trails the max observed slot
+  by more than the configured threshold.
+- **Poll-until-consistent reads.** Post-write reads (settlement USDC balance, the
+  client seat) poll until the expected state is observed rather than trusting a
+  single read after a write.
+
+Settlement **writes** (`FeedSeatPay`/`FeedSeatWithdraw`) target the pool's
+current (health-selected) endpoint but deliberately do **not** auto-retry across
+endpoints, since a payment that timed out on submission may have landed onchain
+and a blind retry risks double-submission.
+
+### Environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SOLANA_RPC_URL` | `api.mainnet-beta.solana.com` (mainnet) | Primary Solana RPC endpoint. |
+| `SOLANA_RPC_FALLBACK_URLS` | unset → public `api.mainnet-beta.solana.com` appended on mainnet | Comma-separated ordered fallback endpoints. When unset, the public mainnet RPC is used as the default fallback. On testnet/devnet (DZ ledger RPC) no public default is added. |
+| `QA_SOLANA_RPC_TIMEOUT` | `30s` | Per-call timeout before an endpoint is treated as failed. |
+| `QA_SOLANA_RPC_INITIAL_BACKOFF` | `1s` | Initial backoff for the USDC balance retry loop. |
+| `QA_SOLANA_RPC_MAX_ELAPSED` | `30s` | Max elapsed time for the balance retry loop. |
+| `QA_SOLANA_RPC_MAX_RETRIES` | `5` | Max retries for the balance retry loop. |
+| `QA_SOLANA_RPC_MAX_SLOT_LAG` | `150` | Slot-height lag (≈60s) above which a node is considered stale and is failed over. |
+
+A single resolved endpoint (testnet/devnet, or a primary that equals the public
+default after de-duplication) collapses the pool back to the prior
+single-endpoint behavior.

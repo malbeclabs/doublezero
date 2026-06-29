@@ -33,6 +33,7 @@ serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
 solana-client.workspace = true
+solana-commitment-config.workspace = true
 solana-program.workspace = true
 solana-pubsub-client.workspace = true
 solana-sdk.workspace = true
@@ -47,6 +48,10 @@ doublezero-cli-core.workspace = true
 doublezero-config.workspace = true
 doublezero-serviceability.workspace = true
 doublezero-program-common.workspace = true
+# Inherits default-features = false from [workspace.dependencies] (the override is ignored
+# if set here), keeping sentinel's `server` deps (Prometheus exporter → rustls/aws-lc-sys)
+# out of the CLI.
+doublezero-sentinel.workspace = true
 tracing.workspace = true
 
 [features]

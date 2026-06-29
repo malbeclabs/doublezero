@@ -99,7 +99,7 @@ mod tests {
             .expect_create_multicastgroup()
             .with(predicate::eq(CreateMulticastGroupCommand {
                 code: "test".to_string(),
-                max_bandwidth: 10000000000,
+                max_bandwidth: 10_000_000_000,
                 owner: pda_pubkey,
             }))
             .times(1)
@@ -111,7 +111,7 @@ mod tests {
         let res = block_on(
             CreateMulticastGroupCliCommand {
                 code: "test".to_string(),
-                max_bandwidth: 10000000000,
+                max_bandwidth: 10_000_000_000,
                 owner: pda_pubkey.to_string(),
                 wait: false,
             }

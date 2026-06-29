@@ -64,6 +64,15 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 	deviceConfig, err := prov.GetDeviceSpec(ctx, device)
 	require.NoError(t, err, "failed to capture device config")
 
+	// Resolve the device's metrics-publisher pubkey from the infra inventory keypair
+	// (the key the telemetry agent signs samples with) and pin it on recreate. The CLI
+	// otherwise defaults the publisher to the transaction payer, which silently strips
+	// the agent's permission to write samples to the ledger on every daily recreate.
+	metricsPublisher, err := prov.ResolveMetricsPublisherPubkey(ctx, deviceCode)
+	require.NoError(t, err, "failed to resolve metrics-publisher pubkey for device %s", deviceCode)
+	deviceConfig.MetricsPublisher = metricsPublisher
+	t.Logf("Resolved metrics-publisher pubkey: %s", metricsPublisher)
+
 	links, err := prov.GetLinksForDevice(ctx, deviceCode)
 	require.NoError(t, err, "failed to get links for device")
 	t.Logf("Found %d links connected to device", len(links))
@@ -149,6 +158,8 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 	device, err = prov.GetDeviceByCode(ctx, deviceCode)
 	require.NoError(t, err, "failed to get recreated device")
 	require.Equal(t, newPubkey, device.Pubkey, "device pubkey should match new pubkey")
+	require.Equal(t, metricsPublisher, device.MetricsPublisher,
+		"recreated device metrics_publisher must match the telemetry-agent keypair, not the payer")
 
 	t.Log("==> Provisioning complete!")
 	t.Logf("Old pubkey: %s", oldPubkey)

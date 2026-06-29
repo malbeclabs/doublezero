@@ -41,6 +41,31 @@ const (
 
 	containerDoublezeroKeypairPath = "/root/.config/doublezero/id.json"
 	containerSolanaKeypairPath     = "/root/.config/solana/id.json"
+
+	// defaultNetworkBaseCIDR is the address range the devnet's default network is allocated from.
+	// It is kept separate from the CYOA network range (9.128.0.0/9) so tests that detect interfaces
+	// by IP range do not confuse the two.
+	defaultNetworkBaseCIDR = "10.0.0.0/8"
+	// defaultNetworkSubnetMask is the prefix length for each default network subnet (a /24).
+	defaultNetworkSubnetMask = 24
+
+	// linkNetworkBaseCIDR is the address range the devnet's inter-device link (misc) networks are
+	// allocated from. It must stay disjoint from every other range in play so a link subnet can
+	// never silently overlap a routed prefix:
+	//   - the CYOA range (9.128.0.0/9), including the onchain dz_prefixes, which are derived from
+	//     CYOA public IPs in 9.x and so fall inside it; these prefixes are invisible to the
+	//     docker-network scan, so only range separation keeps a link subnet off them;
+	//   - the default network range (10.0.0.0/8);
+	//   - the device tunnel net (defaultDeviceTunnelNet, 172.16.0.0/16).
+	// TestNetworkRangesAreDisjoint enforces this invariant against the constants below.
+	linkNetworkBaseCIDR = "11.0.0.0/8"
+	// linkNetworkSubnetMask is the prefix length for each link network subnet (a /24).
+	linkNetworkSubnetMask = 24
+
+	// defaultDeviceTunnelNet is the onchain device-tunnel block used when DevnetSpec.DeviceTunnelNet
+	// is left unset. It is one of the ranges the CYOA/default/link allocators must avoid; see
+	// TestNetworkRangesAreDisjoint.
+	defaultDeviceTunnelNet = "172.16.0.0/16"
 )
 
 var (
@@ -81,13 +106,15 @@ type DevnetSpec struct {
 type Devnet struct {
 	Spec DevnetSpec
 
-	log               *slog.Logger
-	workspaceDir      string
-	subnetAllocator   *docker.SubnetAllocator
-	dockerClient      *client.Client
-	labels            map[string]string
-	mu                sync.RWMutex
-	onchainWriteMutex sync.Mutex
+	log                     *slog.Logger
+	workspaceDir            string
+	subnetAllocator         *docker.SubnetAllocator
+	defaultNetworkAllocator *docker.SubnetAllocator
+	linkNetworkAllocator    *docker.SubnetAllocator
+	dockerClient            *client.Client
+	labels                  map[string]string
+	mu                      sync.RWMutex
+	onchainWriteMutex       sync.Mutex
 
 	ExternalHost string
 
@@ -172,7 +199,7 @@ func (s *DevnetSpec) Validate() error {
 	}
 
 	if s.DeviceTunnelNet == "" {
-		s.DeviceTunnelNet = "172.16.0.0/16"
+		s.DeviceTunnelNet = defaultDeviceTunnelNet
 	}
 	return nil
 }
@@ -290,7 +317,13 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		workspaceDir:    workspaceDir,
 		dockerClient:    dockerClient,
 		subnetAllocator: subnetAllocator,
-		labels:          labels,
+		// The default and link networks use dedicated allocators over ranges disjoint from the CYOA
+		// network (9.128.0.0/9) and each other, so collision-safe allocation (which skips subnets
+		// already in use by docker networks) never hands out a CIDR that overlaps another network's
+		// range or an onchain prefix.
+		defaultNetworkAllocator: docker.NewSubnetAllocator(defaultNetworkBaseCIDR, defaultNetworkSubnetMask, dockerClient),
+		linkNetworkAllocator:    docker.NewSubnetAllocator(linkNetworkBaseCIDR, linkNetworkSubnetMask, dockerClient),
+		labels:                  labels,
 
 		Spec: spec,
 	}

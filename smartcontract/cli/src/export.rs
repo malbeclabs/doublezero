@@ -191,8 +191,8 @@ impl ExportCliCommand {
                                 link_type: link.link_type.to_string(),
                                 bandwidth: bandwidth_to_string(&link.bandwidth),
                                 mtu: link.mtu,
-                                delay_ms: link.delay_ns as f32 / 1000000.0,
-                                jitter_ms: link.jitter_ns as f32 / 1000000.0,
+                                delay_ms: link.delay_ns as f32 / 1_000_000.0,
+                                jitter_ms: link.jitter_ns as f32 / 1_000_000.0,
                                 owner: link.owner.to_string(),
                             })
                         })

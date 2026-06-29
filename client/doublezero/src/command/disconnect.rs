@@ -38,6 +38,12 @@ pub struct DecommissioningCliCommand {
     /// Allocate a new address for the user
     #[arg(short, long, default_value_t = false)]
     pub verbose: bool,
+    /// Skip waiting for the daemon to tear down the tunnel(s). The onchain user
+    /// deletion is still awaited (and can block up to ~127s per user when the RPC
+    /// is slow to reflect it); only the local tunnel-teardown wait is skipped, so
+    /// traffic may still route over DoubleZero briefly after this returns.
+    #[arg(long, default_value_t = false)]
+    pub no_wait: bool,
     #[arg(value_enum)]
     pub dz_mode: Option<DzMode>,
 }
@@ -60,27 +66,35 @@ impl DecommissioningCliCommand {
         let (_, gstate) = client.get_globalstate(GetGlobalStateCommand)?;
         self.delete_users(client, client_ip, gstate.feed_authority_pk, &spinner)?;
 
-        // Wait for daemon to deprovision the tunnel(s)
-        let user_type_filter: Option<&str> = match self.dz_mode {
-            Some(DzMode::IBRL) => Some("IBRL"),
-            Some(DzMode::Multicast) => Some("Multicast"),
-            None => None,
-        };
-        match self
-            .poll_for_daemon_deprovisioned(&controller, user_type_filter, &spinner)
-            .await
-        {
-            Ok(()) => {
-                spinner.println("    Tunnel confirmed removed");
+        if self.no_wait {
+            spinner.println(
+                "    Onchain user deletion confirmed. The daemon will tear down the \
+                 tunnel(s) shortly; traffic may still route over DoubleZero until then.",
+            );
+            spinner.println("✅  Onchain deletion complete (tunnel teardown pending)");
+        } else {
+            // Wait for daemon to deprovision the tunnel(s)
+            let user_type_filter: Option<&str> = match self.dz_mode {
+                Some(DzMode::IBRL) => Some("IBRL"),
+                Some(DzMode::Multicast) => Some("Multicast"),
+                None => None,
+            };
+            match self
+                .poll_for_daemon_deprovisioned(&controller, user_type_filter, &spinner)
+                .await
+            {
+                Ok(()) => {
+                    spinner.println("    Tunnel confirmed removed");
+                }
+                Err(e) => {
+                    spinner.println(format!(
+                        "    Daemon deprovisioning in progress (will complete automatically): {e}"
+                    ));
+                }
             }
-            Err(e) => {
-                spinner.println(format!(
-                    "    Daemon deprovisioning in progress (will complete automatically): {e}"
-                ));
-            }
+            spinner.println("✅  Deprovisioning Complete");
         }
 
-        spinner.println("✅  Deprovisioning Complete");
         spinner.finish_and_clear();
 
         Ok(())
@@ -260,6 +274,7 @@ mod tests {
             device: None,
             client_ip: None,
             verbose: false,
+            no_wait: false,
             dz_mode: None,
         }
     }
@@ -286,7 +301,7 @@ mod tests {
         StatusResponse {
             doublezero_status: DoubleZeroStatus {
                 session_status: "established".to_string(),
-                last_session_update: Some(1234567890),
+                last_session_update: Some(1_234_567_890),
             },
             tunnel_name: Some("doublezero1".to_string()),
             tunnel_src: Some("1.2.3.4".to_string()),

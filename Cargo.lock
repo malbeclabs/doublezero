@@ -1649,7 +1649,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero"
-version = "0.25.1"
+version = "0.28.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1662,46 +1662,6 @@ dependencies = [
  "doublezero-cli-core",
  "doublezero-config",
  "doublezero-geolocation-cli",
- "doublezero-program-common",
- "doublezero-serviceability",
- "doublezero-serviceability-cli",
- "doublezero_sdk",
- "eyre",
- "futures",
- "futures-util",
- "http 1.4.1",
- "http-body-util",
- "hyper",
- "hyper-util",
- "hyperlocal",
- "indicatif",
- "libc",
- "mockall 0.14.0",
- "serde",
- "serde_json",
- "serde_yaml",
- "solana-client",
- "solana-program",
- "solana-pubsub-client",
- "solana-sdk",
- "tabled",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "doublezero-admin"
-version = "0.25.1"
-dependencies = [
- "anyhow",
- "backon",
- "chrono",
- "clap",
- "clap_complete",
- "console",
- "doublezero-cli-core",
- "doublezero-config",
  "doublezero-program-common",
  "doublezero-sentinel",
  "doublezero-serviceability",
@@ -1727,12 +1687,14 @@ dependencies = [
  "solana-pubsub-client",
  "solana-sdk",
  "tabled",
+ "tempfile",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
 name = "doublezero-cli-core"
-version = "0.25.1"
+version = "0.28.0"
 dependencies = [
  "bitflags",
  "clap",
@@ -1753,7 +1715,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-config"
-version = "0.25.1"
+version = "0.28.0"
 dependencies = [
  "eyre",
  "serde",
@@ -1763,7 +1725,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-geolocation"
-version = "0.25.1"
+version = "0.28.0"
 dependencies = [
  "bincode 2.0.1",
  "borsh",
@@ -1786,7 +1748,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-geolocation-cli"
-version = "0.25.1"
+version = "0.28.0"
 dependencies = [
  "clap",
  "doublezero-cli-core",
@@ -1804,7 +1766,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.25.1"
+version = "0.28.0"
 dependencies = [
  "borsh",
  "byteorder",
@@ -1817,7 +1779,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-record"
-version = "0.25.1"
+version = "0.28.0"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -1851,8 +1813,8 @@ dependencies = [
  "solana-commitment-config",
  "solana-sdk",
  "solana-sdk-ids",
- "strum 0.26.3",
- "strum_macros 0.26.4",
+ "strum 0.28.0",
+ "strum_macros 0.28.0",
  "tabled",
  "thiserror 2.0.18",
  "tokio",
@@ -1864,7 +1826,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.25.1"
+version = "0.28.0"
 dependencies = [
  "base64 0.22.1",
  "bitflags",
@@ -1883,14 +1845,14 @@ dependencies = [
  "solana-sdk",
  "solana-sdk-ids",
  "solana-system-interface 3.2.0",
- "strum 0.26.3",
- "strum_macros 0.26.4",
+ "strum 0.28.0",
+ "strum_macros 0.28.0",
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "doublezero-serviceability-cli"
-version = "0.25.1"
+version = "0.28.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1926,7 +1888,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-telemetry"
-version = "0.25.1"
+version = "0.28.0"
 dependencies = [
  "bincode 2.0.1",
  "borsh",
@@ -1948,7 +1910,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero_sdk"
-version = "0.25.1"
+version = "0.28.0"
 dependencies = [
  "async-trait",
  "backon",
@@ -2420,7 +2382,7 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "fork-accounts"
-version = "0.25.1"
+version = "0.28.0"
 dependencies = [
  "base64 0.22.1",
  "borsh",
@@ -5185,27 +5147,27 @@ dependencies = [
 
 [[package]]
 name = "serial_test"
-version = "0.10.0"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c789ec87f4687d022a2405cf46e0cd6284889f1839de292cadeb6c6019506f2"
+checksum = "699f4197115b8a7e7ff19c9a315a4bd6fffec26cc4626ef45ecaea389e081c6d"
 dependencies = [
- "dashmap",
- "futures",
- "lazy_static",
+ "futures-executor",
+ "futures-util",
  "log",
+ "once_cell",
  "parking_lot",
  "serial_test_derive",
 ]
 
 [[package]]
 name = "serial_test_derive"
-version = "0.10.0"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b64f9e531ce97c88b4778aad0ceee079216071cffec6ac9b904277f8f92e7fe3"
+checksum = "94e153fc76e1c6a068703d6d29c508a0b15c061c4b7e43da59cc097bc342673c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -8662,9 +8624,9 @@ dependencies = [
 
 [[package]]
 name = "strum"
-version = "0.26.3"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
 
 [[package]]
 name = "strum_macros"
@@ -8681,14 +8643,13 @@ dependencies = [
 
 [[package]]
 name = "strum_macros"
-version = "0.26.4"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
+checksum = "ab85eea0270ee17587ed4156089e10b9e6880ee688791d45a905f5b1ca36f664"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "rustversion",
  "syn 2.0.117",
 ]
 

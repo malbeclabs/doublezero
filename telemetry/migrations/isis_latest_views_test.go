@@ -32,7 +32,10 @@ func TestIsisLatestViews_LastSeenPerNetworkInstance(t *testing.T) {
 	db := newClickHouseWithMigrations(t)
 
 	const device = "DZdev11111111111111111111111111111111111111111"
-	scrapeA := time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC)
+	// Anchor the scrapes near now so the rows stay within the table's 30-day
+	// TTL; a fixed past date would silently age out and the view would return
+	// no rows.
+	scrapeA := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
 	scrapeB := scrapeA.Add(time.Minute)
 
 	mustExec(t, db, `

@@ -33,6 +33,29 @@ const (
 	// otherwise see the agent as silent throughout the entire deprovision
 	// phase and skip the wait.
 	EventCommit
+	// EventConfigReceived marks the moment the agent finishes pulling a
+	// fresh config from the controller (the "Received N bytes of
+	// configuration from controller" log line). TunnelID is always 0;
+	// the event is purely an activity signal for the quiescence
+	// tracker, which would otherwise treat the agent as silent during
+	// the multi-second diff-check window between a config arrival and
+	// the next commit (~26 µs/byte → tens of seconds for the >1MB
+	// deprovision diff at 1k users). Without this signal, the post-
+	// deprovision quiescence wait can declare the agent "quiesced"
+	// while a deprovision diff is still being analyzed, and kill the
+	// SSH session before the commit lands on the device.
+	EventConfigReceived
+	// EventCommitAborted marks the moment the agent closes a
+	// configure-session with the `abort` command (the post-finalize
+	// log line ends `'...session-name abort'` rather than the more
+	// common `'...session-name commit'`). EOS emits an abort when the
+	// rendered config matches the running-config exactly — i.e. the
+	// agent saw a config it could ingest but found nothing to change.
+	// In steady state after deprovision the agent re-polls every 20s
+	// and aborts each one; the tracker uses this signal to clear the
+	// pending-commit flag set by EventConfigReceived so the quiescence
+	// wait doesn't time out on legitimate no-op poll loops.
+	EventCommitAborted
 )
 
 // Event is one observation emitted by the agent runner: a timestamped tunnel

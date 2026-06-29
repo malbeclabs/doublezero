@@ -113,6 +113,6 @@ mod tests {
         assert!((stats.min - 0.01).abs() < 1e-9);
         assert!((stats.max - 0.05).abs() < 1e-9);
 
-        assert!((stats.stddev - 0.0141421356237).abs() < 1e-9);
+        assert!((stats.stddev - 0.014_142_135_623_7).abs() < 1e-9);
     }
 }

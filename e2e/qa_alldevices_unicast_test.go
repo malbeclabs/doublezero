@@ -22,8 +22,8 @@ import (
 )
 
 var (
-	devicesFlag      = flag.String("devices", "", "comma separated list of devices to run tests against")
-	allocateAddrHosts = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
+	devicesFlag             = flag.String("devices", "", "comma separated list of devices to run tests against")
+	allocateAddrHosts       = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
 	failureThreshold        = flag.Float64("failure-threshold", 0.1, "maximum allowed overall device failure rate (0.0-1.0) before the test is marked as failed")
 	perHostFailureThreshold = flag.Float64("per-host-failure-threshold", 0.2, "maximum allowed per-host device failure rate (0.0-1.0) before the test is marked as failed")
 )
@@ -191,7 +191,6 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 
 	var totalSent, totalReceived uint32
 	batchesWithLoss := 0
-	deviceResults := make(map[string]*qa.DeviceTestResult)
 	for _, batch := range batchData {
 		for _, assignment := range batch {
 			totalSent += assignment.PacketsSent
@@ -199,29 +198,35 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			if assignment.PacketsReceived < assignment.PacketsSent {
 				batchesWithLoss++
 			}
-
-			if _, seen := deviceResults[assignment.Device.Code]; !seen {
-				deviceResults[assignment.Device.Code] = &qa.DeviceTestResult{
-					DeviceCode:   assignment.Device.Code,
-					DevicePubkey: assignment.Device.PubKey,
-					Success:      true,
-				}
-			}
-			if !assignment.Success() {
-				deviceResults[assignment.Device.Code].Success = false
-			}
 		}
 	}
 	log.Debug("Test summary", "packetsReceived", totalReceived, "packetsSent", totalSent, "batchesWithLoss", batchesWithLoss, "totalBatches", batchCount)
 
+	// Aggregate device results with the "any success counts as success" rule:
+	// a device tested multiple times that succeeded at least once is treated as a
+	// success; a device that never succeeded counts as a single failure regardless
+	// of how many times it was retested. See `AssignDevicesToClients` for why the
+	// same (host, device) pair may appear in multiple batches.
+	stats := qa.ComputeFailureStats(batchData)
+
+	for _, r := range stats.Retests {
+		log.Debug("Device retested",
+			"host", r.Host,
+			"device", r.DeviceCode,
+			"attempts", r.Attempts,
+			"successes", r.Successes,
+			"failures", r.Failures,
+		)
+	}
+
 	// Evaluate failure rates against threshold
-	totalDevices := len(deviceResults)
+	totalDevices := len(stats.DeviceResults)
 	failedDevices := 0
 	var failedDeviceCodes []string
-	for code, result := range deviceResults {
+	for _, result := range stats.DeviceResults {
 		if !result.Success {
 			failedDevices++
-			failedDeviceCodes = append(failedDeviceCodes, code)
+			failedDeviceCodes = append(failedDeviceCodes, result.DeviceCode)
 		}
 	}
 
@@ -233,54 +238,31 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		"threshold", fmt.Sprintf("%.1f%%", *failureThreshold*100),
 	)
 	if overallRate > *failureThreshold {
-		slices.Sort(failedDeviceCodes)
 		t.Errorf("Overall device failure rate %.1f%% (%d/%d) exceeds threshold %.1f%%. Failed devices: %s",
 			overallRate*100, failedDevices, totalDevices, *failureThreshold*100,
 			strings.Join(failedDeviceCodes, ", "))
 	}
 
-	type hostStats struct {
-		total         int
-		failed        int
-		failedDevices []string
-	}
-	perHost := make(map[string]*hostStats)
-	for _, batch := range batchData {
-		for host, assignment := range batch {
-			if perHost[host] == nil {
-				perHost[host] = &hostStats{}
-			}
-			perHost[host].total++
-			if !assignment.Success() {
-				perHost[host].failed++
-				perHost[host].failedDevices = append(perHost[host].failedDevices, assignment.Device.Code)
-			}
-		}
-	}
-	for host, stats := range perHost {
-		hostRate := float64(stats.failed) / float64(stats.total)
+	for _, host := range slices.Sorted(maps.Keys(stats.PerHost)) {
+		hs := stats.PerHost[host]
+		hostRate := float64(hs.Failed) / float64(hs.Total)
 		log.Debug("Per-host failure rate",
 			"host", host,
-			"failed", stats.failed,
-			"total", stats.total,
+			"failed", hs.Failed,
+			"total", hs.Total,
 			"rate", fmt.Sprintf("%.1f%%", hostRate*100),
 		)
 		if hostRate > *perHostFailureThreshold {
-			slices.Sort(stats.failedDevices)
 			t.Errorf("Host %s failure rate %.1f%% (%d/%d) exceeds threshold %.1f%%. Failed devices: %s",
-				host, hostRate*100, stats.failed, stats.total, *perHostFailureThreshold*100,
-				strings.Join(stats.failedDevices, ", "))
+				host, hostRate*100, hs.Failed, hs.Total, *perHostFailureThreshold*100,
+				strings.Join(hs.FailedDevices, ", "))
 		}
 	}
 
-	results := make([]qa.DeviceTestResult, 0, len(deviceResults))
-	for _, result := range deviceResults {
-		results = append(results, *result)
-	}
-	if err := qa.PublishMetrics(ctx, log, qa.MetricsConfigFromEnv(), envArg, results, time.Since(startTime)); err != nil {
+	if err := qa.PublishMetrics(ctx, log, qa.MetricsConfigFromEnv(), envArg, stats.DeviceResults, time.Since(startTime)); err != nil {
 		log.Error("Failed to publish metrics", "error", err)
 	}
-	if err := qa.PublishToClickhouse(ctx, log, qa.ClickhouseConfigFromEnv(), envArg, results, time.Since(startTime)); err != nil {
+	if err := qa.PublishToClickhouse(ctx, log, qa.ClickhouseConfigFromEnv(), envArg, stats.DeviceResults, time.Since(startTime)); err != nil {
 		log.Error("Failed to publish metrics to ClickHouse", "error", err)
 	}
 }
@@ -482,7 +464,7 @@ func runConnectivitySubtests(
 						dstReady := dstDevice.Status == serviceability.DeviceStatusActivated && dstDevice.MaxUsers > 0
 						if srcReady && dstReady {
 							t.Logf("DEVICE FAILURE: connectivity test failed from %s to %s (device %s -> %s): %v",
-							src.Host, target.Host, srcDevice.Code, dstDevice.Code, err)
+								src.Host, target.Host, srcDevice.Code, dstDevice.Code, err)
 						} else {
 							log.Warn("Ignoring connectivity failure involving device not ready for users",
 								"sourceDevice", srcDevice.Code, "sourceStatus", srcDevice.Status, "sourceMaxUsers", srcDevice.MaxUsers,

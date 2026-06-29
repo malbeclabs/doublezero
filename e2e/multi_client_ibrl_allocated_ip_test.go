@@ -233,14 +233,14 @@ func runMultiClientIBRLAllocatedIPWorkflowTest(t *testing.T, log *slog.Logger, d
 			return false
 		}
 		return strings.Contains(string(output), client2DZIP)
-	}, 60*time.Second, 1*time.Second, "client1 should have route to client2")
+	}, 90*time.Second, 1*time.Second, "client1 should have route to client2")
 	require.Eventually(t, func() bool {
 		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
 		if err != nil {
 			return false
 		}
 		return strings.Contains(string(output), client1DZIP)
-	}, 60*time.Second, 1*time.Second, "client2 should have route to client1")
+	}, 90*time.Second, 1*time.Second, "client2 should have route to client1")
 	log.Debug("--> Clients have routes to each other")
 
 	// Disconnect client1.

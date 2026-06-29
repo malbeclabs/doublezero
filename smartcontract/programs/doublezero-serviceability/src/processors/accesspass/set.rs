@@ -1,10 +1,11 @@
 use crate::{
     error::DoubleZeroError,
     pda::*,
+    processors::accesspass::airdrop_user_credits,
     seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
-        accesspass::{AccessPass, AccessPassStatus, AccessPassType, ALLOW_MULTIPLE_IP, IS_DYNAMIC},
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType, ALLOW_MULTIPLE_IP},
         accounttype::AccountType,
         globalstate::GlobalState,
         tenant::Tenant,
@@ -18,17 +19,11 @@ use solana_program::{
     clock::Clock,
     entrypoint::ProgramResult,
     msg,
-    program::invoke_signed_unchecked,
     pubkey::Pubkey,
-    rent::Rent,
     sysvar::Sysvar,
 };
 
 use std::net::Ipv4Addr;
-
-// Value to rent exempt two `User` accounts + configurable amount for connect/disconnect txns
-// `User` account size assumes a single publisher and subscriber pubkey registered
-const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 266 * 3; // 266 bytes per User account x 3 accounts = 798 bytes
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct SetAccessPassArgs {
@@ -37,14 +32,23 @@ pub struct SetAccessPassArgs {
     pub client_ip: Ipv4Addr, // 4
     pub last_access_epoch: u64,          // 8
     pub allow_multiple_ip: bool,         // 1
+    #[incremental(default = 1)]
+    pub max_unicast_users: u16, // 2
+    #[incremental(default = 1)]
+    pub max_multicast_users: u16, // 2
 }
 
 impl fmt::Debug for SetAccessPassArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "accesspass_type: {}, ip: {}, last_access_epoch: {}, allow_multiple_ip: {}",
-            self.accesspass_type, self.client_ip, self.last_access_epoch, self.allow_multiple_ip,
+            "accesspass_type: {}, ip: {}, last_access_epoch: {}, allow_multiple_ip: {}, max_unicast_users: {}, max_multicast_users: {}",
+            self.accesspass_type,
+            self.client_ip,
+            self.last_access_epoch,
+            self.allow_multiple_ip,
+            self.max_unicast_users,
+            self.max_multicast_users,
         )
     }
 }
@@ -151,13 +155,6 @@ pub fn process_set_access_pass(
         }
     }
 
-    if let AccessPassType::EdgeSeat(seat_pk) = value.accesspass_type {
-        if seat_pk == Pubkey::default() {
-            msg!("EdgeSeat access pass type requires a seat pubkey");
-            return Err(DoubleZeroError::InvalidSolanaPubkey.into());
-        }
-    }
-
     let clock = Clock::get()?;
     let current_epoch = clock.epoch;
 
@@ -167,9 +164,6 @@ pub fn process_set_access_pass(
 
     // Flags
     let mut flags = 0;
-    if value.client_ip == Ipv4Addr::UNSPECIFIED {
-        flags |= IS_DYNAMIC;
-    }
     if value.allow_multiple_ip {
         flags |= ALLOW_MULTIPLE_IP;
     }
@@ -194,6 +188,10 @@ pub fn process_set_access_pass(
                 vec![]
             },
             flags,
+            unicast_user_count: 0,
+            max_unicast_users: value.max_unicast_users,
+            multicast_user_count: 0,
+            max_multicast_users: value.max_multicast_users,
         };
 
         try_acc_create(
@@ -247,13 +245,20 @@ pub fn process_set_access_pass(
                 mgroup_pub_allowlist: vec![],
                 mgroup_sub_allowlist: vec![],
                 tenant_allowlist: vec![],
+                unicast_user_count: 0,
+                max_unicast_users: value.max_unicast_users,
+                multicast_user_count: 0,
+                max_multicast_users: value.max_multicast_users,
             }
         };
 
-        // Update fields
+        // Update fields. The max caps are overwritten from args; the live counts are left
+        // untouched so an in-flight pass keeps its current seat usage.
         accesspass.accesspass_type = value.accesspass_type.clone();
         accesspass.last_access_epoch = value.last_access_epoch;
         accesspass.flags = flags;
+        accesspass.max_unicast_users = value.max_unicast_users;
+        accesspass.max_multicast_users = value.max_multicast_users;
 
         if let Some(tenant_remove) = tenant_remove_account {
             accesspass
@@ -335,22 +340,21 @@ pub fn process_set_access_pass(
         }
     }
 
-    // Airdrop rent exempt + configured lamports to user_payer account
-    let deposit = Rent::get()
-        .unwrap()
-        .minimum_balance(AIRDROP_USER_RENT_LAMPORTS_BYTES)
-        .saturating_add(globalstate.user_airdrop_lamports)
-        .saturating_sub(user_payer.lamports());
-
-    msg!("Airdropping {} lamports to user account", deposit);
-    invoke_signed_unchecked(
-        &solana_system_interface::instruction::transfer(payer_account.key, user_payer.key, deposit),
-        &[
-            payer_account.clone(),
-            user_payer.clone(),
-            system_program.clone(),
-        ],
-        &[],
+    // Airdrop rent exempt + configured lamports to user_payer account. For passes that allow
+    // multiple IPs (e.g. seat keypairs that provision many nodes), scale the target by the sum of
+    // the per-category caps so the keypair holds enough SOL to pay for every create_user it admits.
+    // Passes without the flag keep today's fixed (1x) airdrop.
+    let multiplier = if value.allow_multiple_ip {
+        (value.max_unicast_users as u64).saturating_add(value.max_multicast_users as u64)
+    } else {
+        1
+    };
+    airdrop_user_credits(
+        payer_account,
+        user_payer,
+        system_program,
+        globalstate.user_airdrop_lamports,
+        multiplier,
     )?;
 
     Ok(())
@@ -358,8 +362,10 @@ pub fn process_set_access_pass(
 
 #[cfg(test)]
 mod tests {
-    use super::AIRDROP_USER_RENT_LAMPORTS_BYTES;
-    use crate::state::{accounttype::AccountType, user::User};
+    use crate::{
+        processors::accesspass::AIRDROP_USER_RENT_LAMPORTS_BYTES,
+        state::{accounttype::AccountType, user::User},
+    };
     use doublezero_program_common::types::NetworkV4;
     use solana_program::pubkey::Pubkey;
     use std::net::Ipv4Addr;

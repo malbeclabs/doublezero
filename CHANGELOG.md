@@ -6,32 +6,103 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- SDK
+  - revdist Python SDK migrated to the async solana-py RPC API (solana-py 0.40.0 removed the sync `Client`). The `Client` read methods (`fetch_config`, `fetch_distribution`, etc.) are now coroutines and must be awaited; `new_rpc_client` returns an `AsyncClient`. (#3945)
+
 ### Changes
 
+## [v0.28.0](https://github.com/malbeclabs/doublezero/compare/client/v0.27.1...client/v0.28.0) - 2026-06-26
+
+
+### Breaking
+
+- CLI
+  - Remove the `doublezero-admin` binary. Its commands now live in the `doublezero` CLI as hidden subcommands (e.g. `doublezero sentinel ...`, `doublezero migrate flex-algo`).
+
+### Changes
+
+- Client
+  - Add a `--no-wait` flag to `doublezero disconnect` that skips waiting for the daemon to tear down the tunnel(s), exiting once the onchain user deletion is confirmed. (#3911)
+- CLI
+  - `doublezero user subscribe` can now remove multicast roles: `--publisher`/`--subscriber` accept an explicit value (`--publisher false` / `--subscriber false`) to drop a role, an omitted flag preserves the user's current role for the group, and the command errors when neither flag is given. Bare `--publisher`/`--subscriber` still mean `true`. (#3914)
+  - Add hidden `migrate flex-algo` (RFC-18 link-topology and Vpnv4 loopback FlexAlgoNodeSegment backfill); the prior `migrate` command is now `migrate user-pda`. Moved from `doublezero-admin`.
+  - Add hidden `device migrate-multicast-counts` and `device migrate-unicast-counts` to reconcile stale per-device subscriber, publisher, and unicast-user counts. Moved from `doublezero-admin`.
+  - Add hidden `sentinel find-validator-multicast-publishers` and `sentinel create-validator-multicast-publishers` commands. Moved from `doublezero-admin`.
+  - Feature-gate `doublezero-sentinel`'s server-mode deps (Prometheus exporter) behind a default-on `server` feature and depend on it with `default-features = false`, so the `doublezero` binary no longer links `rustls`/`aws-lc-sys`. Restores the glibc floor (binaries built on Ubuntu 24.04 load on 22.04 again) and shrinks the binary.
+  - Add a `--narrow` flag to `device list`, `link list`, and `access-pass list` that renders a width-reduced table for wide output — dropping low-value columns, abbreviating pubkeys to a copyable leading-prefix, and shortening headers — while leaving `--json` and the default table unchanged. (#3938)
+- Onchain programs
+  - Validate the device `mgmt_vrf` field against the account-code charset (`[A-Za-z0-9:_-]`) and a 32-byte length cap, matching the device `code` field. Empty (the default VRF) is still accepted.
+  - Transfer connect/disconnect credits to the user's account when adding a user to a multicast group's publisher or subscriber allowlist, so the user can connect immediately. The airdrop is atomic with the allowlist update and mirrors `set_access_pass` (scaled for `allow_multiple_ip` passes). (#3851)
+- SDK
+  - Pass the `user_payer` account on the multicast allowlist add instructions so the onchain credit transfer can fund it.
+- Controller
+  - Skip rendering device config when a string field would not survive as a single config token (contains control or whitespace characters).
+  - Prune a device's per-pubkey Prometheus series when it is removed from the on-chain ledger, so the `Network: Device Stopped Calling Controller` alert auto-resolves instead of firing forever on a frozen counter. Check-ins from ledger-absent pubkeys are rejected, counted on the new aggregate `controller_grpc_getconfig_unknown_pubkey_total`, and logged at WARN (rate-limited). Register `controller_link_metrics`/`controller_link_metrics_invalid_total` (previously populated but never exposed); on each cache update delete only the `controller_link_metrics` gauge series that have gone stale (active last cycle, absent now — covering inactive links, removed/renamed interfaces, code changes, and devices that gain a pathology) while leaving still-active series in place so scrapes never see a gap; and prune `controller_link_metrics_invalid_total` by device code when a device is removed from the ledger. (#3931)
+- Device agents
+  - Reduce agent CPU usage by continuing to fetch the full config every 5 seconds but only applying when it has changed or after 60s timeout
+- E2E tests
+  - Route all devnet networks (CYOA, default, and miscellaneous) through a shared collision-safe subnet allocator to prevent overlapping subnet assignments across concurrent test runs. (#3919)
+  - Harden the mainnet-beta QA client against flaky/stale Solana RPC: multi-endpoint failover (with a public-RPC default fallback when `SOLANA_RPC_FALLBACK_URLS` is unset), active slot-lag detection, poll-until-consistent post-write reads, and configurable timeout/retry budgets. Eliminates manual `SOLANA_RPC_URL` repointing during RPC outages. (#3930)
+  - Make device selection deterministic in the maxusers rollover test by waiting until the nearby device is measured faster than the faraway device by more than the client's 5ms latency tolerance, so the client cannot connect to the wrong device on a tie. (#3936)
+  - Match CLI validation errors case-insensitively in the interface validation test, decoupling assertions from the program's error-message casing. (#3936)
+
+## [v0.27.1](https://github.com/malbeclabs/doublezero/compare/client/v0.27.0...client/v0.27.1) - 2026-06-10
+
+### Breaking
+
+### Changes
+
+- Client
+  - Revert auto-enabling allocated-IP mode on `doublezero connect ibrl` behind NAT (#3861): the RFC1918 heuristic misfires on 1:1 NAT hosts where plain IBRL works, silently changing the user type.
+
+## [v0.27.0](https://github.com/malbeclabs/doublezero/compare/client/v0.26.0...client/v0.27.0) - 2026-06-10
+
+### Breaking
+
+### Changes
+
+- Client
+  - Auto-enable allocated-IP mode for `doublezero connect ibrl` when the daemon detects a private RFC1918 default-route source (behind NAT), unless `-a` or `--client-ip` is set.
+  - `doublezero connect multicast` with no groups now auto-joins every group authorized in the caller's AccessPass — publishing to `mgroup_pub_allowlist` and subscribing to `mgroup_sub_allowlist`. An AccessPass with no authorized groups is a no-op.
+- Onchain programs
+  - Add per-category seat caps to `EdgeSeat` access passes (errors 89/90 on overflow), scale the `SetAccessPass` airdrop by the cap sum when `allow_multiple_ip` is set, and drop the dynamic-pass IP-lock and `IS_DYNAMIC` flag. (#3859)
+- CLI
+  - `access-pass set` gains `--max-unicast-users` / `--max-multicast-users`; `get`/`list` show the per-category counts and caps.
+- SDK
+  - Decode the four new `AccessPass` cap fields (and the previously-missing `tenant_allowlist`) in the Go, Python, and TypeScript layouts.
+  - `GetAccessPassCommand` and the multicast allowlist resolver both resolve a shared dynamic-seat AccessPass (the `UNSPECIFIED` PDA) before the exact-IP pass, matching the onchain `create_user` lookup. (#3853)
+
+## [v0.26.0](https://github.com/malbeclabs/doublezero/compare/client/v0.25.1...client/v0.26.0) - 2026-06-05
+
+### Breaking
+
+### Changes
+
+- Onchain programs
+  - Deprecate the `AccessPassStatus::Expired` access-pass status (renamed `ExpiredDeprecated`; discriminant `3` retained for wire compatibility). Access-pass epoch expiry no longer demotes users to `OutOfCredits`: `update_status` stops producing the status, and both `try_activate` (user creation) and `CheckUserAccessPass` (periodic re-check) keep users `Activated`. Epoch validity is still enforced at user creation for unicast users only; multicast publishers and subscribers are governed by `mgroup_*_allowlist`, not by epoch.
+- SDK
+  - Mirror the access-pass status rename in the Go, Python, and TypeScript deserializers: `AccessPassStatusExpiredDeprecated` (Go), `EXPIRED_DEPRECATED` (Python), and the `"expired (deprecated)"` string across all three.
+- SDK (Rust)
+  - Remove the client-side `User not active` precheck from the multicast subscribe/publish command (`UpdateMulticastGroupRoles`) so non-`Activated` users are no longer blocked before submission; authorization is enforced onchain.
 - CLI
   - Fold `version`, `account`, `accounts`, `log`, and `subscribe` diagnostic verbs from the binary's top-level `Command` enum into `ServiceabilityCommand` per RFC-20. Each verb now takes `&CliContext` + generic `&C: CliCommand` + `&mut W` writer and is async. Add `--json` to `account`, `accounts`, and `log` (RFC-20 §Output). The binary-level `subscribe` override uses the real blocking `DZClient::subscribe` for live event streaming; the module crate's implementation falls back to a `get_all()` snapshot for testability.
   - Change `geolocation user update-payment` to `update-payment-status` for clarity. 
   - geolocation `user get`: Show probe code, rather than probe pubkey in target list. 
   - geolocation `probe get`: Show exchange code, rather than exchange pubkeys.
-- ci(e2e): report trusted fork e2e/shreds shard results onto the PR head SHA so branch protection's required `e2e (shard N)` / `shard-e2e (shard N)` checks are satisfied by a `/run-e2e` dispatch, removing the need for a maintainer to bypass the ruleset to merge fork PRs; also make the dispatcher's confirmation comment non-fatal so a capped `GITHUB_TOKEN` no longer fails the job after the runs have already launched (follow-up to [#3777](https://github.com/malbeclabs/doublezero/pull/3777))
-  - Add `--json` output to `globalconfig feature-flags get` and `accesspass user-balances` per RFC-20 §Output. `feature-flags get` now renders a two-column (`flags`, `raw`) table by default instead of the prior `Enabled feature flags: <names> (raw: <N>)` / `No feature flags enabled (raw: <N>)` sentence.
   - Remove `env`/`argv` reads and `eprintln!` from the serviceability CLI module per RFC-20 §67. The keypair-source pre-flight check moves from a standalone `has_keypair_source()` (which read `std::env::args` and `stdin`) to a `CliCommand::has_keypair_source` method computed once by the binary at startup; diagnostic output in `check_id`, `check_balance`, `check_allowlist`, and `print_error` now routes through `tracing::error!` instead of writing to stderr directly.
+  - Add `--json` output to `globalconfig feature-flags get` and `accesspass user-balances` per RFC-20 §Output. `feature-flags get` now renders a two-column (`flags`, `raw`) table by default instead of the prior `Enabled feature flags: <names> (raw: <N>)` / `No feature flags enabled (raw: <N>)` sentence.
+- CI
+  - e2e: report trusted fork e2e/shreds shard results onto the PR head SHA so branch protection's required `e2e (shard N)` / `shard-e2e (shard N)` checks are satisfied by a `/run-e2e` dispatch, removing the need for a maintainer to bypass the ruleset to merge fork PRs; also make the dispatcher's confirmation comment non-fatal so a capped `GITHUB_TOKEN` no longer fails the job after the runs have already launched (follow-up to [#3777](https://github.com/malbeclabs/doublezero/pull/3777))
 - Tools
+  - `tools/stress/device-reporter`: surface device CPU + memory + agent RSS in the post-run summary. The `summary` subcommand now reads the observer's per-tick `show processes top once` JSON captures and `observer.agent_metrics.json` to render a `## Resource usage` section: device CPU peak / p95 / sustained ≥ 80 % windows (matching the observer's `cpu_sustained` abort threshold), memory peak free / used / floor-violation count, and doublezero-agent resident-memory peak / end / per-minute slope. New `-free-mem-floor-mb` flag (default `1024`, set `0` to disable) ([#3845](https://github.com/malbeclabs/doublezero/issues/3845))
   - Complete the device-stress orchestrator (part 3): replace the stubbed agent runner with an SSH-backed runner that execs `doublezero-agent -verbose` on the DUT and tees its output to `orchestrator.agent.log`, and a log parser that turns the agent's commit-diff lines into `pre_commit_log` / `applied` runlog events. Adds `--dut-ssh-user` and `--no-agent` flags.
-  - Add `tools/stress/device-observer/`, a per-device sampling tool for the GRE Tunnel Capacity Study. Each tick issues five eAPI `show` commands, scrapes the doublezero-agent Prometheus endpoint, polls EOS syslog via `show logging last` with cross-tick dedupe, tails the orchestrator's agent log for abort-trigger patterns, and tails the orchestrator's runlog to compute provision/deprovision durations. The abort decider evaluates the trigger list on every tick (provision/deprovision p95 and single-user thresholds, sustained CPU, agent error-counter increments, agent-log pattern matches, agent silence, ledger heartbeat staleness) and writes a JSON sentinel at `<working-dir>/abort` on the first match; the observer process then exits so the orchestrator's `abort.Watch` can archive. A `--force` flag is required to start over an existing sentinel from a previous run. The trigger consumes `<working-dir>/orchestrator.ledger_heartbeat` (file written by the orchestrator) when present; an absent file suppresses the heartbeat trigger so the contract is forward-compatible.
+  - Add `tools/stress/device-observer/`, a per-device sampling tool that analyzes the output of the device-stress orchestrator and observer
 - Telemetry
   - Drop the redundant `ip-msdp-sa-cache` kind from the state-ingest server's default state-collect command list. `show ip msdp sa-cache rejected` already returns the full SA cache (accepted SAs in the `acceptedSaMsg` array plus any rejected SAs in `rejectedSaMsg`), so the bare `show ip msdp sa-cache` collection is redundant — devices were running both commands per tick and uploading the same accepted-SA data twice. The `ip-msdp-sa-cache-rejected` kind is retained.
 - Telemetry (geoprobe)
   - Retry transient `bind: invalid argument` failures when allocating per-probe UDP sockets in `Publisher.AddProbe`, matching the existing retry-on-bind pattern in `Pinger`. The shared retry helper is lifted into `retry.go` so the publisher and pinger paths use the same exponential-backoff logic. Fixes intermittent `TestPublisher_RemoveProbe`/`TestPublisher_AddProbe` CI flakes caused by concurrent ephemeral-port allocation ([#3765](https://github.com/malbeclabs/doublezero/issues/3765))
-- Dependencies
-  - Migrate the entire Rust workspace from solana-sdk 2.3.x to the solana 3.0 line plus the granular split crates (`solana-pubkey`, `solana-instruction`, `solana-cpi`, `solana-sdk-ids`, `solana-system-interface`, `solana-commitment-config`, `solana-compute-budget-interface`), aligning with the doublezero-solana programs. Onchain account layouts are unchanged (regenerated fixtures are byte-identical), so the Go, TypeScript, and Python SDKs are unaffected.
-- Onchain programs
-  - Adapt to the solana 3.0 APIs: `AccountInfo::realloc` becomes `resize`, system-program and BPF-upgradeable-loader IDs move to `solana-sdk-ids`, `ProgramError::BorshIoError` is now a unit variant, and `AccountInfo::new` drops its `rent_epoch` argument. Bump the programs build toolchain to Rust 1.91.
-- CI
-  - Install agave v3.0.4 and build/test the SBF programs with platform-tools v1.54 (`SBF_TOOLS_VERSION`), required because the solana 3.0 dependency tree pulls edition2024 crates that need Cargo >= 1.85 (agave's default platform-tools v1.51 ships Cargo 1.84.1).
-- E2E tests
-  - Bump the e2e base image to agave v3.0.4 and build the onchain programs with platform-tools v1.54 to match the solana 3.0 migration.
-  - Fix a `TestE2E_Multicast` flake where the post-connect `doublezero status` check could observe only the first multicast group. After incrementally adding the second group, the test relied on `WaitForTunnelUp`, which returns immediately because the first tunnel is already up, so the single-shot status assertion could race the onchain propagation and the daemon's cached program data. Add an `Eventually` poll on `doublezero user list` for both groups before the post-connect checks.
+- Makefile
+  - Add `unreadable_literal` to make cargo clippy alert on large numbers written without `_`.
 
 ## [v0.25.1](https://github.com/malbeclabs/doublezero/compare/client/v0.24.0...client/v0.25.1) - 2026-06-01
 
@@ -245,6 +316,7 @@ All notable changes to this project will be documented in this file.
 - SDK
   - Go serviceability SDK adds `TopologyInfo` account type with `TopologyConstraint`, `IndexType` / `TopologyType` account-type constants, and `GetProgramData` dispatch case; extends `Link` with `LinkTopologies` and `LinkFlags`; extends `Tenant` with `IncludeTopologies`
 - CLI
+  - Add `tunnel_endpoint` field to `doublezero user list` output (table and JSON) showing the device-side GRE endpoint IP assigned to each user
   - Add `cyoa_ips` field to `doublezero device get` and `doublezero device list` output, showing the IP networks of interfaces with `user_tunnel_endpoint` enabled
   - Add `--tunnel_endpoint` flag to `user update` command so operators can set the tunnel endpoint IP of an existing user
   - Extend `doublezero resource verify` to check `MulticastPublisherBlock` against multicast publisher users' `dz_ip` allocations; legacy `dz_ip`s that fall outside the block's range are ignored so pre-existing users allocated before this extension existed do not produce false discrepancies

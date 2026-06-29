@@ -53,3 +53,32 @@ jobs:
             --program-id program-keypair.json \
             -k id.json \
             target/deploy/${{ matrix.binary }}
+      - name: Build doublezero CLI
+        if: matrix.program == 'serviceability'
+        run: cargo build --release -p doublezero
+      # `init` refreshes ProgramConfig.version to the just-deployed binary's
+      # compiled-in version (and min_compatible_version to the program's
+      # MIN_COMPATIBLE_VERSION constant). GlobalState is untouched when it
+      # already exists, so this is safe to run on every deploy.
+      - name: Refresh onchain program version
+        if: matrix.program == 'serviceability'
+        run: |
+          target/release/doublezero init \
+            --url https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16 \
+            --ws wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig \
+            --program-id "$(solana address -k program-keypair.json)" \
+            --keypair id.json
+      - name: Verify onchain program version matches build
+        if: matrix.program == 'serviceability'
+        run: |
+          expected="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          target/release/doublezero version \
+            --url https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16 \
+            --ws wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig \
+            --program-id "$(solana address -k program-keypair.json)" \
+            | tee version.txt
+          actual="$(awk '/^program version:/ {print $3}' version.txt)"
+          if [ "$actual" != "$expected" ]; then
+            echo "onchain program version '$actual' does not match built version '$expected'"
+            exit 1
+          fi

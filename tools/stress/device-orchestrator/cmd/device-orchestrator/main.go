@@ -43,6 +43,8 @@ type orchestratorConfig struct {
 	HoldSeconds                   int    `json:"hold_seconds"`
 	AgentQuietSeconds             int    `json:"agent_quiet_seconds"`
 	AgentQuiescenceTimeoutSeconds int    `json:"agent_quiescence_timeout_seconds"`
+	ApplyCatchUpTimeoutSeconds    int    `json:"apply_catch_up_timeout_seconds"`
+	ApplyPerBatchCatchUp          bool   `json:"apply_per_batch_catch_up"`
 	DUTPubkey                     string `json:"dut_pubkey"`
 	DUTSSHHost                    string `json:"dut_ssh_host"`
 	DUTSSHKey                     string `json:"dut_ssh_key"`
@@ -57,6 +59,10 @@ type orchestratorConfig struct {
 	TunnelEndpoint                string `json:"tunnel_endpoint"`
 	TenantPubkey                  string `json:"tenant_pubkey,omitempty"`
 	NoAgent                       bool   `json:"no_agent"`
+	AgentBinary                   string `json:"agent_binary,omitempty"`
+	AgentCommandPrefix            string `json:"agent_command_prefix,omitempty"`
+	AgentPubkey                   string `json:"agent_pubkey,omitempty"`
+	AgentMetricsAddr              string `json:"agent_metrics_addr,omitempty"`
 }
 
 func main() {
@@ -94,6 +100,32 @@ func run() error {
 		// Default: 300 s — accommodates the 22k-line / ~650 KB final config
 		// commit at 1024 tunnels.
 		agentQuiescenceTimeoutSeconds = flag.Int("agent-quiescence-timeout-seconds", 300, "Hard cap on the post-deprovision agent quiescence wait, in seconds.")
+		// Default: 300 s — same cap as agent-quiescence-timeout-seconds.
+		// Aligns the provision→deprovision boundary wait with the
+		// post-deprovision one. The wait blocks until applied >= target
+		// (minus a small grace), which prevents deprovision from
+		// removing users before the agent has had time to add them.
+		// Set to 0 to disable; useful when reproducing pre-3796
+		// behavior or for --no-agent runs where applied never lands.
+		applyCatchUpTimeoutSeconds = flag.Int("apply-catch-up-timeout-seconds", 300, "Hard cap on the provision→deprovision wait for the agent's applied count to catch up to the provisioned-user count. 0 disables the wait.")
+		// Off by default. Real production traffic adds users at
+		// human cadence, not in burst-fashion, so this flag is the
+		// closer match for measuring per-user latency under steady-
+		// state load. Off matches the default "stress the agent" shape
+		// the harness was originally built for.
+		applyPerBatchCatchUp = flag.Bool("apply-per-batch-catch-up", false, "Pause after each provision batch until the agent's applied count covers the cumulative target; honors --apply-catch-up-timeout-seconds per batch.")
+		// The containerized harness ships a device-side wrapper (see
+		// tools/stress/docker/device/agent-wrapper.sh) that injects -pubkey from
+		// /etc/doublezero/agent/pubkey and re-execs through sudo, so the
+		// orchestrator can leave these empty and rely on PATH + the wrapper.
+		// Against a physical device with no wrapper, set --agent-binary to the
+		// full path on the device, --agent-command-prefix to e.g.
+		// "/sbin/ip netns exec ns-management", and --agent-pubkey to the device
+		// pubkey so the SSH-exec'd command is fully self-contained.
+		agentBinary        = flag.String("agent-binary", "doublezero-agent", "Path to doublezero-agent on the DUT; the orchestrator SSH-execs this directly.")
+		agentCommandPrefix = flag.String("agent-command-prefix", "", "Optional prefix prepended to the agent command (e.g. \"/sbin/ip netns exec ns-management\" on a physical device).")
+		agentPubkey        = flag.String("agent-pubkey", "", "When set, appended as `-pubkey <value>` to the agent command. Leave empty when the DUT has a wrapper that injects it locally.")
+		agentMetricsAddr   = flag.String("agent-metrics-addr", "", "When set, appended as `-metrics-enable -metrics-addr <value>` so the observer can scrape the agent. Leave empty when the DUT has a wrapper that turns metrics on locally.")
 	)
 	flag.Parse()
 
@@ -128,6 +160,8 @@ func run() error {
 		HoldSeconds:                   *holdSeconds,
 		AgentQuietSeconds:             *agentQuietSeconds,
 		AgentQuiescenceTimeoutSeconds: *agentQuiescenceTimeoutSeconds,
+		ApplyCatchUpTimeoutSeconds:    *applyCatchUpTimeoutSeconds,
+		ApplyPerBatchCatchUp:          *applyPerBatchCatchUp,
 		DUTPubkey:                     *dutPubkey,
 		DUTSSHHost:                    *dutSSHHost,
 		DUTSSHKey:                     *dutSSHKey,
@@ -142,6 +176,10 @@ func run() error {
 		TunnelEndpoint:                *tunnelEndpoint,
 		TenantPubkey:                  *tenantPubkey,
 		NoAgent:                       *noAgent,
+		AgentBinary:                   *agentBinary,
+		AgentCommandPrefix:            *agentCommandPrefix,
+		AgentPubkey:                   *agentPubkey,
+		AgentMetricsAddr:              *agentMetricsAddr,
 	}
 	// Validate required flags before writing anything, so a bad invocation
 	// doesn't leave a config file behind. A dry-run is exempt: its whole job is
@@ -231,7 +269,16 @@ func run() error {
 	ctx, abortCancel := abort.Watch(rootCtx, *abortFile, abort.DefaultPollInterval, logger)
 	defer abortCancel()
 
-	agentRunner := selectAgentRunner(*noAgent, *dutSSHHost, *dutSSHKey, *dutSSHUser, *controllerAddr, *workingDir, logger)
+	agentRunner := selectAgentRunner(*noAgent, *dutSSHHost, *dutSSHKey, *dutSSHUser, *controllerAddr, *workingDir, *agentBinary, *agentCommandPrefix, *agentPubkey, *agentMetricsAddr, logger)
+
+	// With --no-agent there is no agent to emit Applied events, so the
+	// catch-up wait would pin to its full timeout on every run. Zero it
+	// out automatically rather than asking the operator to remember the
+	// matching flag.
+	if *noAgent && *applyCatchUpTimeoutSeconds > 0 {
+		logger.Info("sweep: --no-agent disables apply catch-up wait", "previous_timeout_seconds", *applyCatchUpTimeoutSeconds)
+		*applyCatchUpTimeoutSeconds = 0
+	}
 
 	cfg := sweep.Config{
 		RunID:                  *runID,
@@ -240,6 +287,9 @@ func run() error {
 		Hold:                   time.Duration(*holdSeconds) * time.Second,
 		AgentQuietWindow:       time.Duration(*agentQuietSeconds) * time.Second,
 		AgentQuiescenceTimeout: time.Duration(*agentQuiescenceTimeoutSeconds) * time.Second,
+		ApplyCatchUpTimeout:    time.Duration(*applyCatchUpTimeoutSeconds) * time.Second,
+		ApplyPerBatchCatchUp:   *applyPerBatchCatchUp,
+		NoAgent:                *noAgent,
 		OwnerFilter:            signer.PublicKey(),
 		Executor:               liveExec,
 		Agent:                  agentRunner,
@@ -315,16 +365,33 @@ func requireFlags(required map[string]string) error {
 // this never silently falls back to the no-op runner.
 //
 // The SSH runner tees remote stdout/stderr into <working-dir>/orchestrator.agent.log.
-// The exec'd command appends --controller iff the operator passed --controller.
-func selectAgentRunner(noAgent bool, sshHost, sshKey, sshUser, controllerAddr, workingDir string, logger *slog.Logger) agent.Runner {
+// The exec'd command is constructed as:
+//
+//	[<prefix> ]<binary> -verbose[ -pubkey <pk>][ -controller <addr>]
+//
+// Containerized DUTs leave prefix and pubkey empty and rely on a device-side
+// wrapper that injects -pubkey from /etc/doublezero/agent/pubkey and re-execs
+// through sudo. Physical DUTs without a wrapper set prefix to e.g.
+// "/sbin/ip netns exec ns-management" and pubkey to the device's onchain pubkey
+// so the command is self-contained.
+func selectAgentRunner(noAgent bool, sshHost, sshKey, sshUser, controllerAddr, workingDir, agentBinary, agentCmdPrefix, agentPubkey, agentMetricsAddr string, logger *slog.Logger) agent.Runner {
 	if noAgent {
 		logger.Info("agent: --no-agent set; using no-op runner")
 		return agent.NewNoop(logger)
 	}
 
-	cmd := "doublezero-agent -verbose"
+	cmd := agentBinary + " -verbose"
+	if agentPubkey != "" {
+		cmd += " -pubkey " + agentPubkey
+	}
 	if controllerAddr != "" {
-		cmd = fmt.Sprintf("doublezero-agent -verbose -controller %s", controllerAddr)
+		cmd += " -controller " + controllerAddr
+	}
+	if agentMetricsAddr != "" {
+		cmd += " -metrics-enable -metrics-addr " + agentMetricsAddr
+	}
+	if agentCmdPrefix != "" {
+		cmd = agentCmdPrefix + " " + cmd
 	}
 	return agent.NewSSH(agent.SSHConfig{
 		Host:    sshHost,

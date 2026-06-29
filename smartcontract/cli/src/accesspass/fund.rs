@@ -214,6 +214,10 @@ mod tests {
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![],
             flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         }
     }
 
@@ -369,7 +373,7 @@ mod tests {
         let mut out = Vec::new();
         let res = block_on(
             FundAccessPassCliCommand {
-                min_balance: Some(0.000000001),
+                min_balance: Some(0.000_000_001),
                 dry_run: true,
                 ..Default::default()
             }

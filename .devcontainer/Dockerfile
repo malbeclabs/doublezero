@@ -1,5 +1,17 @@
 FROM mcr.microsoft.com/devcontainers/go:1.25
 
+# Install Go at a pinned version directly, replacing whatever the base image
+# ships. The devcontainers/features/go feature is intentionally not used: layering
+# it on top of the base image's Go produces stdlib conflicts (duplicate
+# fchmodat/at.go declarations). This keeps a single clean Go matching go.mod's
+# toolchain directive. GOTOOLCHAIN=auto lets Go fetch a newer toolchain on demand
+# if go.mod is bumped past this version (the base image otherwise pins it to local).
+ARG GO_VERSION=1.25.11
+RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') && \
+    rm -rf /usr/local/go && \
+    curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" | tar -C /usr/local -xz
+ENV GOTOOLCHAIN=auto
+
 # Install goreleaser, mtr, and cross-compilation dependencies
 RUN dpkg --add-architecture amd64 && \
     echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | tee /etc/apt/sources.list.d/goreleaser.list && \
@@ -56,3 +68,10 @@ ENV DIND_LOCALHOST=host.docker.internal
 # Tell Testcontainers to connect to the Docker daemon via host.docker.internal,
 # so sidecar containers like Ryuk can reach the DinD container hosting the daemon.
 ENV TESTCONTAINERS_HOST_OVERRIDE=${DIND_LOCALHOST}
+
+# Install uv for the Python SDKs (sdk/*/python use uv + committed uv.lock files).
+# CI provisions uv via astral-sh/setup-uv@v6; this mirrors it in the devcontainer
+# so `make sdk-test` / `uv lock` work here too. Installed via the standalone script
+# (rather than COPY --from=ghcr.io/astral-sh/uv) to avoid a ghcr.io auth dependency
+# during the image build.
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh

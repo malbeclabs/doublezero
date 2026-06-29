@@ -99,8 +99,9 @@ type Sources struct {
 	// been seen.
 	ActiveUserCount func() (count int, lastActivate time.Time, ok bool)
 	// TunnelCount returns the most recently observed number of user
-	// tunnels on the device (from `show gre tunnel static`). `ok=false`
-	// before the first successful sample.
+	// tunnels on the device (parsed from `show interfaces description`,
+	// filtered to interfaces whose description begins `USER-UCAST-`).
+	// `ok=false` before the first successful sample.
 	TunnelCount         func() (int, bool)
 	LedgerHeartbeatPath string
 }

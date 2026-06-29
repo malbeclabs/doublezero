@@ -1,0 +1,64 @@
+name: release.docker.client.cleanup
+
+# Weekly retention for the client images. Deletes orphaned untagged versions and
+# keeps the last 10 pinned versions per env family (testnet-* and mainnet-beta-*
+# each get their own 10-slot budget), never touching moving tags.
+on:
+  schedule:
+    - cron: "17 4 * * 1" # Mondays 04:17 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List what would be deleted without deleting"
+        type: boolean
+        default: true
+
+permissions:
+  packages: write
+
+jobs:
+  cleanup-public:
+    runs-on: ubuntu-latest
+    steps:
+      # Two passes to scope keep-n-tagged independently per tag family.
+      # delete-tags + keep-n-tagged limits retention within that family;
+      # exclude-tags hard-protects moving tags and the other family.
+      # Note: delete-untagged: true (first step only) removes ALL untagged
+      # manifests package-wide — it is not scoped by delete-tags.
+      - name: Prune testnet-* tags in ghcr.io/${{ github.repository_owner }}/doublezero
+        uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          package: doublezero
+          owner: ${{ github.repository_owner }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          delete-untagged: true
+          delete-tags: testnet-*
+          keep-n-tagged: 10
+          exclude-tags: latest,testnet,mainnet-beta,mainnet-beta-*
+          dry-run: ${{ inputs.dry_run || false }}
+
+      - name: Prune mainnet-beta-* tags in ghcr.io/${{ github.repository_owner }}/doublezero
+        uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          package: doublezero
+          owner: ${{ github.repository_owner }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          delete-untagged: false
+          delete-tags: mainnet-beta-*
+          keep-n-tagged: 10
+          exclude-tags: latest,testnet,mainnet-beta,testnet-*
+          dry-run: ${{ inputs.dry_run || false }}
+
+  cleanup-devnet:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune ghcr.io/${{ github.repository_owner }}/doublezero-devnet
+        uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          package: doublezero-devnet
+          owner: ${{ github.repository_owner }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          delete-untagged: true
+          keep-n-tagged: 10
+          exclude-tags: latest
+          dry-run: ${{ inputs.dry_run || false }}

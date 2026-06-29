@@ -1,0 +1,205 @@
+name: release.docker.client
+
+# Builds and publishes the thin doublezero client image
+# (ghcr.io/<owner>/doublezero). The image installs the released client from the
+# Cloudsmith apt repo, so publishing is chained off a successful `releaser.client`
+# run (which publishes that deb) rather than building from source on main.
+on:
+  workflow_run:
+    workflows: ["releaser.client"]
+    types: [completed]
+  pull_request:
+    paths:
+      - "client/Dockerfile"
+      - "client/docker-entrypoint.sh"
+      - ".github/workflows/release.docker.client.yml"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "mainnet-beta version to tag (blank = resolve public repo latest)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/doublezero
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  # Release path: a client release just published its testnet deb to Cloudsmith.
+  # Build the image (which installs that now-latest client) and push testnet tags.
+  publish:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0 # need tags to resolve the released version
+
+      - name: Resolve released version
+        id: v
+        shell: bash
+        run: |
+          # releaser.client is triggered by a client/v*.*.* tag; find it on the
+          # commit that triggered this run.
+          TAG="$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" | grep '^client/v' | head -n1 || true)"
+          if [[ -z "$TAG" ]]; then
+            echo "No client/v* tag points at ${{ github.event.workflow_run.head_sha }}; nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${TAG#client/v}" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "Resolved version: ${TAG#client/v}"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.v.outputs.publish == 'true'
+
+      - uses: docker/login-action@v3
+        if: steps.v.outputs.publish == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve exact testnet deb version
+        id: deb
+        if: steps.v.outputs.publish == 'true'
+        shell: bash
+        run: |
+          SEMVER='${{ steps.v.outputs.version }}'
+          DEB="$(docker run --rm --entrypoint bash ubuntu:24.04 -c "
+            apt-get update -qq >/dev/null 2>&1
+            apt-get install -y -qq --no-install-recommends ca-certificates curl >/dev/null 2>&1
+            curl -1sLf 'https://dl.cloudsmith.io/public/malbeclabs/doublezero-testnet/setup.deb.sh' | bash >/dev/null 2>&1
+            apt-get update -qq >/dev/null 2>&1
+            apt-cache madison doublezero | awk '{print \$3}' | grep -E '^${SEMVER}-' | head -1")"
+          [ -n "$DEB" ] || { echo "no doublezero-testnet deb found for ${SEMVER}"; exit 1; }
+          echo "debversion=$DEB" >> "$GITHUB_OUTPUT"
+          echo "Pinned testnet deb: $DEB"
+
+      - name: Build & push (:testnet + :testnet-version)
+        if: steps.v.outputs.publish == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            DZ_CLOUDSMITH_REPO=doublezero-testnet
+            DZ_DEFAULT_ENV=testnet
+            DZ_VERSION=${{ steps.deb.outputs.debversion }}
+            BUILD_VERSION=${{ steps.v.outputs.version }}
+            BUILD_COMMIT=${{ github.event.workflow_run.head_sha }}
+          tags: |
+            ${{ env.IMAGE }}:testnet
+            ${{ env.IMAGE }}:testnet-${{ steps.v.outputs.version }}
+
+  # Manual dispatch path: publish mainnet-beta tags (:mainnet-beta, :version, :latest).
+  # The version can be supplied directly or resolved from the public Cloudsmith repo.
+  publish-mainnet-beta:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve mainnet-beta version
+        id: v
+        shell: bash
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [[ -z "$VERSION" ]]; then
+            VERSION="$(docker run --rm --entrypoint bash ubuntu:24.04 -c '
+              apt-get update -qq >/dev/null 2>&1
+              apt-get install -y -qq --no-install-recommends ca-certificates curl >/dev/null 2>&1
+              curl -1sLf "https://dl.cloudsmith.io/public/malbeclabs/doublezero/setup.deb.sh" | bash >/dev/null 2>&1
+              apt-get update -qq >/dev/null 2>&1
+              apt-cache madison doublezero | head -1 | awk "{print \$3}"')"
+          fi
+          [[ -n "$VERSION" ]] || { echo "could not resolve mainnet-beta version"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$(printf '%s' "$VERSION" | tr '~:' '--')" >> "$GITHUB_OUTPUT"
+          echo "Resolved mainnet-beta version: $VERSION"
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push (:mainnet-beta + version + :latest)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            DZ_CLOUDSMITH_REPO=doublezero
+            DZ_DEFAULT_ENV=mainnet-beta
+            DZ_VERSION=${{ steps.v.outputs.version }}
+            BUILD_VERSION=${{ steps.v.outputs.version }}
+            BUILD_COMMIT=${{ github.sha }}
+          tags: |
+            ${{ env.IMAGE }}:mainnet-beta
+            ${{ env.IMAGE }}:mainnet-beta-${{ steps.v.outputs.tag }}
+            ${{ env.IMAGE }}:latest
+
+  # Validation path: on PRs touching the image, build all three variants for
+  # amd64 but do NOT push, to catch Dockerfile/entrypoint regressions before
+  # they reach a release.
+  build-only:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build testnet (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            DZ_CLOUDSMITH_REPO=doublezero-testnet
+            DZ_DEFAULT_ENV=testnet
+      - name: Build mainnet-beta (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            DZ_CLOUDSMITH_REPO=doublezero
+            DZ_DEFAULT_ENV=mainnet-beta
+      - name: Build devnet (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            DZ_CLOUDSMITH_REPO=doublezero-devnet
+            DZ_DEP_REPO=doublezero-testnet
+            DZ_DEFAULT_ENV=devnet

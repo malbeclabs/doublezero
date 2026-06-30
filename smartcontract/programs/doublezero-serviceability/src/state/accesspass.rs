@@ -11,6 +11,25 @@ use solana_program::{
 };
 use std::{fmt, net::Ipv4Addr};
 
+/// One purchased SKU seat on an EdgeSeat access pass. `feed_key` is the pubkey of the
+/// serviceability `Feed` account (the catalog entry); `max_users` is the per-feed concurrent-user
+/// cap seeded from the coupon; `current_users` is the live count, ticked at connect and released
+/// at disconnect.
+#[derive(BorshSerialize, BorshDeserialize, Debug, Default, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FeedSeat {
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    pub feed_key: Pubkey, // 32
+    pub max_users: u16,     // 2
+    pub current_users: u16, // 2
+}
+
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default, Clone, PartialEq)]
 #[borsh(use_discriminant = true)]
@@ -39,8 +58,13 @@ pub enum AccessPassType {
         Pubkey,
     ),
     Others(String, String), // (type_name, key)
-    // The seat is identified by the access pass `user_payer`, so the variant carries no payload.
-    EdgeSeat,
+    /// A metro-gated seat scoped to one or more feeds. Each `FeedSeat` is one SKU (feed_key +
+    /// per-feed cap). Provisioned by the oracle via `SetAccessPassFeeds`.
+    ///
+    /// Layout note (#1700): this variant previously carried no payload (#3865). EdgeSeat is new and
+    /// has no production passes, so changing the payload (same discriminant index 4) does not
+    /// orphan any deployed account; no migration is required.
+    EdgeSeat(Vec<FeedSeat>),
 }
 
 impl AccessPassType {
@@ -50,7 +74,7 @@ impl AccessPassType {
             AccessPassType::SolanaValidator(_) => "solana_validator".to_string(),
             AccessPassType::SolanaRPC(_) => "solana_rpc".to_string(),
             AccessPassType::Others(type_name, _) => type_name.clone(),
-            AccessPassType::EdgeSeat => "edge_seat".to_string(),
+            AccessPassType::EdgeSeat(_) => "edge_seat".to_string(),
         }
     }
 }
@@ -64,7 +88,7 @@ impl fmt::Display for AccessPassType {
             AccessPassType::Others(type_name, key) => {
                 write!(f, "others: {} ({})", type_name, key)
             }
-            AccessPassType::EdgeSeat => write!(f, "edge_seat"),
+            AccessPassType::EdgeSeat(seats) => write!(f, "edge_seat: {} feed(s)", seats.len()),
         }
     }
 }
@@ -194,7 +218,7 @@ impl fmt::Display for AccessPass {
             AccessPassType::Others(type_name, details) => {
                 write!(f, "Others: {} ({})", type_name, details)
             }
-            AccessPassType::EdgeSeat => write!(f, "EdgeSeat"),
+            AccessPassType::EdgeSeat(seats) => write!(f, "EdgeSeat: ({} feed(s))", seats.len()),
         }
     }
 }
@@ -274,7 +298,7 @@ impl AccessPass {
     /// types this is a no-op and always succeeds. Does NOT touch `connection_count` — that counter
     /// is maintained independently by the user create/delete processors.
     pub fn try_add_user(&mut self, user_type: UserType) -> Result<(), DoubleZeroError> {
-        if !matches!(self.accesspass_type, AccessPassType::EdgeSeat) {
+        if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
             return Ok(());
         }
         match user_type {
@@ -297,7 +321,7 @@ impl AccessPass {
     /// Release a seat held by a user. EdgeSeat-only: no-op for all other access-pass types. Does NOT
     /// touch `connection_count`.
     pub fn remove_user(&mut self, user_type: UserType) {
-        if !matches!(self.accesspass_type, AccessPassType::EdgeSeat) {
+        if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
             return;
         }
         match user_type {
@@ -307,6 +331,14 @@ impl AccessPass {
             _ => {
                 self.unicast_user_count = self.unicast_user_count.saturating_sub(1);
             }
+        }
+    }
+
+    /// The feed seats provisioned on this pass (empty for non-EdgeSeat passes).
+    pub fn feed_seats(&self) -> &[FeedSeat] {
+        match &self.accesspass_type {
+            AccessPassType::EdgeSeat(seats) => seats,
+            _ => &[],
         }
     }
 }
@@ -339,9 +371,13 @@ mod tests {
         let b = AccessPassType::SolanaValidator(Pubkey::default());
         assert_eq!(object_length(&b).unwrap(), 33);
 
-        // EdgeSeat carries no payload: a bare discriminant byte.
-        let c = AccessPassType::EdgeSeat;
-        assert_eq!(object_length(&c).unwrap(), 1);
+        // EdgeSeat: discriminant byte + borsh vec length prefix (4) for an empty seat vec.
+        let c = AccessPassType::EdgeSeat(vec![]);
+        assert_eq!(object_length(&c).unwrap(), 5);
+
+        // Each FeedSeat adds 36 bytes (32 pubkey + 2 + 2).
+        let d = AccessPassType::EdgeSeat(vec![FeedSeat::default()]);
+        assert_eq!(object_length(&d).unwrap(), 1 + 4 + 36);
     }
 
     #[test]
@@ -480,7 +516,7 @@ mod tests {
 
     #[test]
     fn test_edge_seat_user_caps() {
-        let mut ap = test_accesspass(AccessPassType::EdgeSeat);
+        let mut ap = test_accesspass(AccessPassType::EdgeSeat(vec![]));
 
         // Unicast: cap is 2.
         ap.try_add_user(UserType::IBRL).unwrap();

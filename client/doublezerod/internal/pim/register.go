@@ -17,6 +17,7 @@ import (
 // It ignores Register-Stop: there is no inbound path.
 type RegisterSender struct {
 	done       chan struct{}
+	closeOnce  sync.Once
 	wg         *sync.WaitGroup
 	mu         sync.Mutex
 	conn       RawConner
@@ -41,13 +42,16 @@ func (s *RegisterSender) Start(iface string, srcOverlay, innerSrc net.IP, groups
 	}
 	r, err := ipv4.NewRawConn(c)
 	if err != nil {
+		c.Close()
 		return fmt.Errorf("register: failed to create raw conn: %v", err)
 	}
 	if err := r.SetControlMessage(ipv4.FlagInterface, true); err != nil {
+		r.Close()
 		return fmt.Errorf("register: failed to enable control message: %v", err)
 	}
 	intf, err := net.InterfaceByName(iface)
 	if err != nil {
+		r.Close()
 		return fmt.Errorf("register: failed to get interface: %v", err)
 	}
 	s.srcOverlay = srcOverlay
@@ -132,12 +136,15 @@ func (s *RegisterSender) sendRegister(intf *net.Interface, group net.IP) error {
 }
 
 func (s *RegisterSender) UpdateGroups(groups []net.IP) error {
-	s.updateCh <- groups
+	select {
+	case s.updateCh <- groups:
+	case <-s.done:
+	}
 	return nil
 }
 
 func (s *RegisterSender) Close() error {
-	close(s.done)
+	s.closeOnce.Do(func() { close(s.done) })
 	if s.wg != nil {
 		s.wg.Wait()
 	}

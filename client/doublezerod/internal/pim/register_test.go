@@ -1,6 +1,7 @@
 package pim
 
 import (
+	"encoding/binary"
 	"net"
 	"sync"
 	"testing"
@@ -105,8 +106,13 @@ func TestRegisterSenderSendsRegisterToRP(t *testing.T) {
 	if c.b[0] != 0x21 {
 		t.Fatalf("pim byte0 = 0x%02x, want 0x21", c.b[0])
 	}
-	// Checksum is non-zero and computed over the first 8 bytes only.
-	if c.b[2] == 0 && c.b[3] == 0 {
-		t.Fatal("pim checksum not set")
+	// Checksum is computed over the first 8 bytes only (RFC 7761 4.9.1),
+	// with the checksum field itself zeroed during computation.
+	hdr := make([]byte, 8)
+	copy(hdr, c.b[:8])
+	hdr[2], hdr[3] = 0, 0
+	want := Checksum(hdr)
+	if got := binary.BigEndian.Uint16(c.b[2:4]); got != want {
+		t.Fatalf("pim checksum = 0x%04x, want 0x%04x", got, want)
 	}
 }

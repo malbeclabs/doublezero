@@ -43,6 +43,7 @@ class AccountTypeEnum(IntEnum):
     TENANT = 13
     PERMISSION = 15
     TOPOLOGY = 16
+    FEED = 18
 
 
 # ---------------------------------------------------------------------------
@@ -1024,6 +1025,15 @@ class Tenant:
 
 
 @dataclass
+class FeedSeat:
+    """One purchased SKU seat on an EdgeSeat access pass."""
+
+    feed_key: Pubkey = Pubkey.default()
+    max_users: int = 0
+    current_users: int = 0
+
+
+@dataclass
 class AccessPass:
     account_type: int = 0
     owner: Pubkey = Pubkey.default()
@@ -1032,6 +1042,7 @@ class AccessPass:
     associated_pubkey: Pubkey | None = None  # for SolanaValidator, SolanaRPC
     others_type_name: str = ""  # for Others variant
     others_key: str = ""  # for Others variant
+    feed_seats: list[FeedSeat] = field(default_factory=list)  # for EdgeSeat variant
     client_ip: bytes = b"\x00" * 4
     user_payer: Pubkey = Pubkey.default()
     last_access_epoch: int = 0
@@ -1065,7 +1076,19 @@ class AccessPass:
         elif tag == 3:
             ap.others_type_name = r.read_string()
             ap.others_key = r.read_string()
-        # Prepaid (0) and EdgeSeat (4) carry no associated data.
+        # EdgeSeat carries a Vec<FeedSeat>: u32 count, then each FeedSeat is
+        # feed_key (32) + max_users (u16) + current_users (u16).
+        elif tag == 4:
+            count = r.read_u32()
+            ap.feed_seats = [
+                FeedSeat(
+                    feed_key=_read_pubkey(r),
+                    max_users=r.read_u16(),
+                    current_users=r.read_u16(),
+                )
+                for _ in range(count)
+            ]
+        # Prepaid (0) carries no associated data.
         ap.client_ip = r.read_ipv4()
         ap.user_payer = _read_pubkey(r)
         ap.last_access_epoch = r.read_u64()
@@ -1182,3 +1205,52 @@ class TopologyInfo:
         t.flex_algo_number = r.read_u8()
         t.constraint = TopologyConstraint(r.read_u8())
         return t
+
+
+# ---------------------------------------------------------------------------
+# Feed
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class FeedMetro:
+    """Maps an exchange (metro) pubkey to the multicast groups joinable from it."""
+
+    exchange: Pubkey = Pubkey.default()
+    groups: list[Pubkey] = field(default_factory=list)
+
+
+@dataclass
+class Feed:
+    """Serviceability catalog entry: the metro(exchange) -> group-set map for one SKU.
+
+    A Feed with an empty metros list imposes no metro restriction.
+    """
+
+    account_type: int = 0
+    owner: Pubkey = Pubkey.default()
+    bump_seed: int = 0
+    code: str = ""
+    name: str = ""
+    reference_count: int = 0
+    metros: list[FeedMetro] = field(default_factory=list)
+    pub_key: Pubkey = Pubkey.default()  # set from account address after deserialization
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> Feed:
+        r = DefensiveReader(data)
+        f = cls()
+        f.account_type = r.read_u8()
+        f.owner = _read_pubkey(r)
+        f.bump_seed = r.read_u8()
+        f.code = r.read_string()
+        f.name = r.read_string()
+        f.reference_count = r.read_u32()
+        # metros is a Vec<(Pubkey, Vec<Pubkey>)>: u32 count, then each entry is an
+        # exchange pubkey followed by a Vec<Pubkey> of joinable groups.
+        count = r.read_u32()
+        f.metros = [
+            FeedMetro(exchange=_read_pubkey(r), groups=_read_pubkey_vec(r))
+            for _ in range(count)
+        ]
+        return f

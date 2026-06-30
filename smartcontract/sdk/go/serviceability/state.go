@@ -28,6 +28,7 @@ const (
 	PermissionType AccountType = 15
 	IndexType      AccountType = 16
 	TopologyType   AccountType = 17
+	FeedType       AccountType = 18
 )
 
 type LocationStatus uint8
@@ -1123,14 +1124,24 @@ func (s AccessPassStatus) String() string {
 	}
 }
 
+// FeedSeat is one purchased SKU seat on an EdgeSeat access pass. FeedKey is the pubkey of
+// the serviceability Feed account; MaxUsers is the per-feed concurrent-user cap; CurrentUsers
+// is the live count.
+type FeedSeat struct {
+	FeedKey      [32]byte
+	MaxUsers     uint16
+	CurrentUsers uint16
+}
+
 type AccessPass struct {
 	AccountType        AccountType
 	Owner              [32]byte
 	BumpSeed           uint8
 	AccessPassTypeTag  AccessPassTypeTag
-	AssociatedPubkey   [32]byte // for SolanaValidator, SolanaRPC
-	OthersTypeName     string   // for Others variant
-	OthersKey          string   // for Others variant
+	AssociatedPubkey   [32]byte   // for SolanaValidator, SolanaRPC
+	OthersTypeName     string     // for Others variant
+	OthersKey          string     // for Others variant
+	FeedSeats          []FeedSeat // for EdgeSeat variant
 	ClientIp           [4]uint8
 	UserPayer          [32]byte
 	LastAccessEpoch    uint64
@@ -1399,5 +1410,24 @@ type TopologyInfo struct {
 	FlexAlgoNumber uint8
 	Constraint     TopologyConstraint
 	ReferenceCount uint32
+	PubKey         [32]byte
+}
+
+// FeedMetro maps an exchange (metro) pubkey to the multicast groups joinable from it.
+type FeedMetro struct {
+	Exchange [32]byte
+	Groups   [][32]byte
+}
+
+// Feed is a serviceability catalog entry: the metro(exchange) → group-set map for one SKU.
+// A Feed with an empty Metros slice imposes no metro restriction.
+type Feed struct {
+	AccountType    AccountType
+	Owner          [32]byte
+	BumpSeed       uint8
+	Code           string
+	Name           string
+	ReferenceCount uint32
+	Metros         []FeedMetro
 	PubKey         [32]byte
 }

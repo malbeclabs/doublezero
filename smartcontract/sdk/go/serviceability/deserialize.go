@@ -373,8 +373,22 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 		// Others carries two strings (type_name, key).
 		ap.OthersTypeName = reader.ReadString()
 		ap.OthersKey = reader.ReadString()
+	case AccessPassTypeEdgeSeat:
+		// EdgeSeat carries a borsh Vec<FeedSeat>: u32 count, then each FeedSeat is
+		// feed_key (32) + max_users (u16) + current_users (u16).
+		count := reader.ReadU32()
+		if count > 0 && (count*36) <= reader.Remaining() {
+			ap.FeedSeats = make([]FeedSeat, count)
+			for i := uint32(0); i < count; i++ {
+				ap.FeedSeats[i] = FeedSeat{
+					FeedKey:      reader.ReadPubkey(),
+					MaxUsers:     reader.ReadU16(),
+					CurrentUsers: reader.ReadU16(),
+				}
+			}
+		}
 	}
-	// Prepaid and EdgeSeat carry no associated data.
+	// Prepaid carries no associated data.
 	ap.ClientIp = reader.ReadIPv4()
 	ap.UserPayer = reader.ReadPubkey()
 	ap.LastAccessEpoch = reader.ReadU64()
@@ -471,4 +485,26 @@ func DeserializeTopologyInfo(reader *ByteReader, t *TopologyInfo) {
 	t.Constraint = TopologyConstraint(reader.ReadU8())
 	t.ReferenceCount = reader.ReadU32()
 	// Note: t.PubKey is set from the account address in client.go after deserialization
+}
+
+func DeserializeFeed(reader *ByteReader, feed *Feed) {
+	feed.AccountType = AccountType(reader.ReadU8())
+	feed.Owner = reader.ReadPubkey()
+	feed.BumpSeed = reader.ReadU8()
+	feed.Code = reader.ReadString()
+	feed.Name = reader.ReadString()
+	feed.ReferenceCount = reader.ReadU32()
+	// metros is a borsh Vec<(Pubkey, Vec<Pubkey>)>: u32 count, then each entry is an
+	// exchange pubkey (32) followed by a Vec<Pubkey> of joinable groups.
+	count := reader.ReadU32()
+	if count > 0 && count <= reader.Remaining() {
+		feed.Metros = make([]FeedMetro, 0, count)
+		for i := uint32(0); i < count; i++ {
+			feed.Metros = append(feed.Metros, FeedMetro{
+				Exchange: reader.ReadPubkey(),
+				Groups:   reader.ReadPubkeySlice(),
+			})
+		}
+	}
+	// Note: feed.PubKey is set from the account address in client.go after deserialization
 }

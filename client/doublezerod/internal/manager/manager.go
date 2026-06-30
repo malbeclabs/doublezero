@@ -705,7 +705,7 @@ func (n *NetlinkManager) buildProvisionRequest(
 		}
 	}
 
-	return api.ProvisionRequest{
+	pr := api.ProvisionRequest{
 		UserType:           mapUserType(u.UserType),
 		TunnelSrc:          tunnelSrc,
 		TunnelDst:          tunnelDst,
@@ -716,7 +716,11 @@ func (n *NetlinkManager) buildProvisionRequest(
 		BgpRemoteAsn:       cfg.RemoteASN,
 		MulticastPubGroups: pubGroups,
 		MulticastSubGroups: subGroups,
-	}, nil
+	}
+	if err := pr.Validate(); err != nil {
+		return api.ProvisionRequest{}, fmt.Errorf("invalid provision request: %w", err)
+	}
+	return pr, nil
 }
 
 // mapUserType maps onchain UserUserType to daemon api.UserType.

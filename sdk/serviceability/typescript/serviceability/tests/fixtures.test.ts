@@ -19,6 +19,7 @@ import {
   deserializeContributor,
   deserializeAccessPass,
   deserializeTenant,
+  deserializeFeed,
 } from "../state.js";
 
 const FIXTURES_DIR = join(
@@ -359,19 +360,21 @@ describe("User fixture", () => {
       LastBgpUpAt: u.lastBgpUpAt,
       LastBgpReportedAt: u.lastBgpReportedAt,
       BgpRttNs: u.bgpRttNs,
+      FeedPk: u.feedPk,
     });
   });
 
   test("backward compat: old layout yields zero for new fields", () => {
     const [data] = loadFixture("user");
-    // Remove bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
-    // + bgp_rtt_ns (8) = 25 bytes
-    const truncated = data.slice(0, data.length - 25);
+    // Remove feed_pk (32) + bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
+    // + bgp_rtt_ns (8) = 57 bytes
+    const truncated = data.slice(0, data.length - 57);
     const u = deserializeUser(truncated);
     expect(u.bgpStatus).toBe(0);
     expect(u.lastBgpUpAt).toBe(0n);
     expect(u.lastBgpReportedAt).toBe(0n);
     expect(u.bgpRttNs).toBe(0n);
+    expect(u.feedPk.toBase58()).toBe(PublicKey.default.toBase58());
   });
 });
 
@@ -527,6 +530,10 @@ describe("AccessPassEdgeSeat fixture", () => {
       Owner: ap.owner,
       BumpSeed: ap.bumpSeed,
       AccessPassType: ap.accessPassType,
+      EdgeSeatFeedSeatsLen: ap.feedSeats.length,
+      EdgeSeatFeedSeat0FeedKey: ap.feedSeats[0]?.feedKey,
+      EdgeSeatFeedSeat0MaxUsers: ap.feedSeats[0]?.maxUsers,
+      EdgeSeatFeedSeat0CurrentUsers: ap.feedSeats[0]?.currentUsers,
       UserPayer: ap.userPayer,
       ConnectionCount: ap.connectionCount,
       Status: ap.status,
@@ -537,13 +544,42 @@ describe("AccessPassEdgeSeat fixture", () => {
       MaxMulticastUsers: ap.maxMulticastUsers,
     });
 
-    // EdgeSeat is tag 4 and carries no payload; the seat is the user_payer.
+    // EdgeSeat is tag 4 and now carries a Vec<FeedSeat> payload.
     expect(ap.accessPassType).toBe(4);
     expect(ap.associatedPubkey).toBeNull();
+    expect(ap.feedSeats).toHaveLength(1);
+    expect(ap.feedSeats[0].maxUsers).toBe(7);
+    expect(ap.feedSeats[0].currentUsers).toBe(3);
     expect(ap.unicastUserCount).toBe(2);
     expect(ap.maxUnicastUsers).toBe(4);
     expect(ap.multicastUserCount).toBe(1);
     expect(ap.maxMulticastUsers).toBe(3);
+  });
+});
+
+describe("Feed fixture", () => {
+  test("deserialize", () => {
+    const [data, meta] = loadFixture("feed");
+    const feed = deserializeFeed(data);
+    assertFields(meta.fields, {
+      AccountType: feed.accountType,
+      Owner: feed.owner,
+      BumpSeed: feed.bumpSeed,
+      Code: feed.code,
+      Name: feed.name,
+      ReferenceCount: feed.referenceCount,
+      Exchange: feed.exchange,
+      GroupsLen: feed.groups.length,
+      Group0: feed.groups[0],
+      Group1: feed.groups[1],
+    });
+
+    expect(feed.accountType).toBe(18);
+    expect(feed.bumpSeed).toBe(239);
+    expect(feed.code).toBe("shreds");
+    expect(feed.name).toBe("Shreds");
+    expect(feed.referenceCount).toBe(4);
+    expect(feed.groups).toHaveLength(2);
   });
 });
 

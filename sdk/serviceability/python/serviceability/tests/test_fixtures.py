@@ -12,6 +12,7 @@ from serviceability.state import (
     Contributor,
     Device,
     Exchange,
+    Feed,
     GlobalConfig,
     GlobalState,
     Link,
@@ -326,6 +327,7 @@ class TestFixtureUser:
                 "LastBgpUpAt": u.last_bgp_up_at,
                 "LastBgpReportedAt": u.last_bgp_reported_at,
                 "BgpRttNs": u.bgp_rtt_ns,
+                "FeedPk": u.feed_pk,
             },
         )
 
@@ -333,14 +335,15 @@ class TestFixtureUser:
         # Deserializing an account binary that predates the BGP fields must
         # return zero values for those fields rather than failing.
         data, _ = _load_fixture("user")
-        # Remove bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
-        # + bgp_rtt_ns (8) = 25 bytes.
-        truncated = data[:-25]
+        # Remove feed_pk (32) + bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
+        # + bgp_rtt_ns (8) = 57 bytes.
+        truncated = data[:-57]
         u = User.from_bytes(truncated)
         assert u.bgp_status == BGPStatus.UNKNOWN
         assert u.last_bgp_up_at == 0
         assert u.last_bgp_reported_at == 0
         assert u.bgp_rtt_ns == 0
+        assert u.feed_pk == Pubkey.default()
 
 
 class TestFixtureMulticastGroup:
@@ -501,6 +504,16 @@ class TestFixtureAccessPassEdgeSeat:
                 "Owner": ap.owner,
                 "BumpSeed": ap.bump_seed,
                 "AccessPassType": ap.access_pass_type_tag,
+                "EdgeSeatFeedSeatsLen": len(ap.feed_seats),
+                "EdgeSeatFeedSeat0FeedKey": ap.feed_seats[0].feed_key
+                if ap.feed_seats
+                else None,
+                "EdgeSeatFeedSeat0MaxUsers": ap.feed_seats[0].max_users
+                if ap.feed_seats
+                else None,
+                "EdgeSeatFeedSeat0CurrentUsers": ap.feed_seats[0].current_users
+                if ap.feed_seats
+                else None,
                 "UserPayer": ap.user_payer,
                 "ConnectionCount": ap.connection_count,
                 "Status": ap.status,
@@ -511,13 +524,43 @@ class TestFixtureAccessPassEdgeSeat:
                 "MaxMulticastUsers": ap.max_multicast_users,
             },
         )
-        # EdgeSeat is tag 4 and carries no payload; the seat is the user_payer.
+        # EdgeSeat is tag 4 and now carries a Vec<FeedSeat> payload.
         assert ap.access_pass_type_tag == 4
         assert ap.associated_pubkey is None
+        assert len(ap.feed_seats) == 1
+        assert ap.feed_seats[0].max_users == 7
+        assert ap.feed_seats[0].current_users == 3
         assert ap.unicast_user_count == 2
         assert ap.max_unicast_users == 4
         assert ap.multicast_user_count == 1
         assert ap.max_multicast_users == 3
+
+
+class TestFixtureFeed:
+    def test_deserialize(self):
+        data, meta = _load_fixture("feed")
+        feed = Feed.from_bytes(data)
+        _assert_fields(
+            meta["fields"],
+            {
+                "AccountType": feed.account_type,
+                "Owner": feed.owner,
+                "BumpSeed": feed.bump_seed,
+                "Code": feed.code,
+                "Name": feed.name,
+                "ReferenceCount": feed.reference_count,
+                "Exchange": feed.exchange,
+                "GroupsLen": len(feed.groups),
+                "Group0": feed.groups[0],
+                "Group1": feed.groups[1],
+            },
+        )
+        assert feed.account_type == 18
+        assert feed.bump_seed == 239
+        assert feed.code == "shreds"
+        assert feed.name == "Shreds"
+        assert feed.reference_count == 4
+        assert len(feed.groups) == 2
 
 
 class TestFixtureAccessPassLegacyCapDefaults:

@@ -205,14 +205,37 @@ func TestFixtureAccessPassEdgeSeat(t *testing.T) {
 	var ap serviceability.AccessPass
 	serviceability.DeserializeAccessPass(serviceability.NewByteReader(data), &ap)
 
-	// EdgeSeat is Rust discriminant 4 and carries no payload; the seat is the user_payer.
+	// EdgeSeat is Rust discriminant 4 and now carries a Vec<FeedSeat> payload.
 	assert.Equal(t, serviceability.AccessPassTypeEdgeSeat, ap.AccessPassTypeTag)
 	assert.Equal(t, [32]byte{}, ap.AssociatedPubkey)
+	require.Len(t, ap.FeedSeats, 1)
+	assert.Equal(t, byte(0xB2), ap.FeedSeats[0].FeedKey[0])
+	assert.Equal(t, uint16(7), ap.FeedSeats[0].MaxUsers)
+	assert.Equal(t, uint16(3), ap.FeedSeats[0].CurrentUsers)
 	assert.Equal(t, uint8(2), ap.Flags) // ALLOW_MULTIPLE_IP
 	assert.Equal(t, uint16(2), ap.UnicastUserCount)
 	assert.Equal(t, uint16(4), ap.MaxUnicastUsers)
 	assert.Equal(t, uint16(1), ap.MulticastUserCount)
 	assert.Equal(t, uint16(3), ap.MaxMulticastUsers)
+}
+
+func TestFixtureFeed(t *testing.T) {
+	data, meta := loadFixture(t, "feed")
+	require.Equal(t, "Feed", meta.Name)
+
+	var feed serviceability.Feed
+	serviceability.DeserializeFeed(serviceability.NewByteReader(data), &feed)
+
+	assert.Equal(t, serviceability.FeedType, feed.AccountType)
+	assert.Equal(t, byte(0xE0), feed.Owner[0])
+	assert.Equal(t, uint8(239), feed.BumpSeed)
+	assert.Equal(t, "shreds", feed.Code)
+	assert.Equal(t, "Shreds", feed.Name)
+	assert.Equal(t, uint32(4), feed.ReferenceCount)
+	assert.Equal(t, byte(0xE1), feed.Exchange[0])
+	require.Len(t, feed.Groups, 2)
+	assert.Equal(t, byte(0xE2), feed.Groups[0][0])
+	assert.Equal(t, byte(0xE3), feed.Groups[1][0])
 }
 
 // A pre-migration account (lacking the 8 trailing cap bytes) decodes with counts 0 and caps 1,

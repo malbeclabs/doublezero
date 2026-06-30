@@ -60,6 +60,10 @@ pub enum AccessPassType {
     Others(String, String), // (type_name, key)
     /// A metro-gated seat scoped to one or more feeds. Each `FeedSeat` is one SKU (feed_key +
     /// per-feed cap). Provisioned by the oracle via `SetAccessPassFeeds`.
+    ///
+    /// Layout note (#1700): this variant previously carried no payload (#3865). EdgeSeat is new and
+    /// has no production passes, so changing the payload (same discriminant index 4) does not
+    /// orphan any deployed account; no migration is required.
     EdgeSeat(Vec<FeedSeat>),
 }
 

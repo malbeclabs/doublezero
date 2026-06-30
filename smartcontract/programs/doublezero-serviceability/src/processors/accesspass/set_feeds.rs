@@ -94,10 +94,20 @@ pub fn process_set_access_pass_feeds(
     )?;
 
     let mut accesspass = AccessPass::try_from(accesspass_account)?;
+
+    // Only EdgeSeat passes carry feed seats. Require the pass to already be EdgeSeat (the oracle
+    // sets the type via SetAccessPass first) so this instruction can't silently convert a pass of
+    // another type (e.g. SolanaValidator) into an EdgeSeat.
+    if !matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_)) {
+        msg!("SetAccessPassFeeds requires an EdgeSeat access pass");
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
     let prior_seats = accesspass.feed_seats().to_vec();
 
     // Validate each referenced Feed, preserve live counts, and bump reference_count for
-    // newly-referenced feeds.
+    // newly-referenced feeds. NOTE: feeds dropped from the pass are intentionally NOT decremented
+    // here — their accounts are not passed, and an over-count only makes a feed harder to delete
+    // (never unsafe), since reference_count solely guards DeleteFeed.
     let mut new_seats = Vec::with_capacity(value.feeds.len());
     for (seat, feed_account) in value.feeds.iter().zip(feed_accounts.iter()) {
         assert_eq!(

@@ -6,8 +6,9 @@ use doublezero_serviceability::{
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 /// Max link accounts per clear transaction. Solana caps transactions at 32
-/// accounts; with 3 fixed accounts (topology PDA, globalstate, payer) we
-/// stay well under that limit at 16 (same constant as backfill).
+/// accounts; with 2 fixed accounts (topology PDA, globalstate) plus the payer
+/// and system_program appended by the client, we stay well under that limit at
+/// 16 (same constant as backfill).
 pub const CLEAR_BATCH_SIZE: usize = 16;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -24,12 +25,11 @@ impl ClearTopologyCommand {
 
         let (topology_pda, _) = get_topology_pda(&client.get_program_id(), &self.name);
 
-        let payer = client.get_payer();
-
+        // payer and system_program are appended by execute_authorized_transaction
+        // after the variable-length link list, so they are not listed here.
         let fixed_accounts = [
             AccountMeta::new_readonly(topology_pda, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
-            AccountMeta::new(payer, true),
         ];
 
         let mut signatures = Vec::new();
@@ -86,7 +86,6 @@ mod tests {
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
         let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "my-topology");
-        let payer = client.get_payer();
         let link1 = Pubkey::new_unique();
         let link2 = Pubkey::new_unique();
 
@@ -99,7 +98,6 @@ mod tests {
                 predicate::eq(vec![
                     AccountMeta::new_readonly(topology_pda, false),
                     AccountMeta::new_readonly(globalstate_pubkey, false),
-                    AccountMeta::new(payer, true),
                     AccountMeta::new(link1, false),
                     AccountMeta::new(link2, false),
                 ]),
@@ -121,14 +119,12 @@ mod tests {
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
         let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "my-topology");
-        let payer = client.get_payer();
 
         let links: Vec<Pubkey> = (0..33).map(|_| Pubkey::new_unique()).collect();
 
         let fixed_accounts = vec![
             AccountMeta::new_readonly(topology_pda, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
-            AccountMeta::new(payer, true),
         ];
 
         let expected_args = DoubleZeroInstruction::ClearTopology(TopologyClearArgs {

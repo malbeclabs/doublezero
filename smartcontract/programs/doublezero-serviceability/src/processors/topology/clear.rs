@@ -23,13 +23,17 @@ pub struct TopologyClearArgs {
 }
 
 /// Accounts layout:
-/// [0] topology PDA     (writable when account still exists; readonly is accepted when
-///                      the topology has already been closed — clear is tolerant of that)
-/// [1] globalstate      (readonly)
-/// [2] payer            (writable, signer, must hold TOPOLOGY_ADMIN)
-/// [3] system_program
-/// [4+] Link accounts   (writable) — remove topology pubkey from link_topologies on each
-/// [last] permission    (readonly, optional — payer's Permission PDA, after the links)
+/// [0]    topology PDA  (writable when account still exists; readonly is accepted when
+///                       the topology has already been closed — clear is tolerant of that)
+/// [1]    globalstate   (readonly)
+/// [2..n] Link accounts (writable) — remove topology pubkey from link_topologies on each
+/// [n+1]  payer         (writable, signer, must hold TOPOLOGY_ADMIN)
+/// [n+2]  system_program
+/// [n+3]  permission    (readonly, optional — payer's Permission PDA)
+///
+/// Note: payer and system_program are the last two accounts (or the last two
+/// before the optional Permission account). The SDK client always appends them
+/// after the variable-length link list.
 pub fn process_topology_clear(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -39,11 +43,42 @@ pub fn process_topology_clear(
 
     let topology_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
-    let payer_account = next_account_info(accounts_iter)?;
-    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_topology_clear(name={})", value.name);
+
+    // Collect remaining accounts. The SDK client always appends payer and
+    // system_program at the end, after the variable-length Link list, plus an
+    // optional Permission account when one exists for the payer.
+    let all_remaining: Vec<&AccountInfo> = accounts_iter.collect();
+    if all_remaining.len() < 2 {
+        msg!("TopologyClear: expected at least payer and system_program accounts");
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+    let n = all_remaining.len();
+    // Detect an optional trailing Permission account. With it present the layout
+    // is [links.., payer, system, permission]; the payer would then be at n-3,
+    // so the last account is a Permission account iff it matches that payer's PDA.
+    let permission_account = if n >= 3 {
+        let candidate_payer = all_remaining[n - 3];
+        let (perm_pda, _) = get_permission_pda(program_id, candidate_payer.key);
+        (all_remaining[n - 1].key == &perm_pda).then_some(all_remaining[n - 1])
+    } else {
+        None
+    };
+    let (payer_account, _system_program, link_accounts) = if permission_account.is_some() {
+        (
+            all_remaining[n - 3],
+            all_remaining[n - 2],
+            &all_remaining[..n - 3],
+        )
+    } else {
+        (
+            all_remaining[n - 2],
+            all_remaining[n - 1],
+            &all_remaining[..n - 2],
+        )
+    };
 
     // Payer must be a signer
     if !payer_account.is_signer {
@@ -59,22 +94,6 @@ pub fn process_topology_clear(
         pda = &get_globalstate_pda(program_id).0,
         "GlobalState"
     );
-
-    // The remaining accounts are the variable-length Link list, optionally
-    // followed by the payer's Permission account (appended last by the SDK).
-    // Peel it off so it is not mistaken for a Link in the loop below.
-    let remaining: Vec<&AccountInfo> = accounts_iter.collect();
-    let (permission_account, link_accounts) = match remaining.last() {
-        Some(last) => {
-            let (perm_pda, _) = get_permission_pda(program_id, payer_account.key);
-            if last.key == &perm_pda {
-                (Some(*last), &remaining[..remaining.len() - 1])
-            } else {
-                (None, &remaining[..])
-            }
-        }
-        None => (None, &remaining[..]),
-    };
 
     // Authorization: TOPOLOGY_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;

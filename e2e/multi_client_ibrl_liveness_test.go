@@ -131,6 +131,7 @@ func TestE2E_MultiClientIBRL_RouteLiveness(t *testing.T) {
 	client1, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID:       100,
 		RouteLivenessEnableActive: true,
+		RouteLivenessBackoffMax:   3 * time.Second,
 	})
 	require.NoError(t, err)
 	log.Debug("--> Client1 added", "client1Pubkey", client1.Pubkey, "client1IP", client1.CYOANetworkIP)
@@ -140,6 +141,7 @@ func TestE2E_MultiClientIBRL_RouteLiveness(t *testing.T) {
 	client2, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID:        110,
 		RouteLivenessEnablePassive: true, // route liveness in passive mode for this client
+		RouteLivenessBackoffMax:    3 * time.Second,
 	})
 	require.NoError(t, err)
 	log.Debug("--> Client2 added", "client2Pubkey", client2.Pubkey, "client2IP", client2.CYOANetworkIP)
@@ -149,6 +151,7 @@ func TestE2E_MultiClientIBRL_RouteLiveness(t *testing.T) {
 	client3, err := dn.AddClient(t.Context(), devnet.ClientSpec{
 		CYOANetworkIPHostID:       120,
 		RouteLivenessEnableActive: true,
+		RouteLivenessBackoffMax:   3 * time.Second,
 	})
 	require.NoError(t, err)
 	log.Debug("--> Client3 added", "client3Pubkey", client3.Pubkey, "client3IP", client3.CYOANetworkIP)
@@ -324,27 +327,9 @@ func runMultiClientIBRLRouteLivenessTest(t *testing.T, log *slog.Logger, dn *dev
 
 	// Wait for clients to have routes to each other before starting liveness tests.
 	log.Debug("==> Waiting for client routes before liveness testing")
-	require.Eventually(t, func() bool {
-		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client2DZIP) && strings.Contains(string(output), client3DZIP)
-	}, 60*time.Second, 1*time.Second, "client1 should have routes to client2 and client3")
-	require.Eventually(t, func() bool {
-		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client1DZIP)
-	}, 60*time.Second, 5*time.Second, "client2 should have route to client1")
-	require.Eventually(t, func() bool {
-		output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client1DZIP)
-	}, 60*time.Second, 5*time.Second, "client3 should have route to client1")
+	requireClientHasRoutes(t, log, "client1", client1, 60*time.Second, 1*time.Second, client2DZIP, client3DZIP)
+	requireClientHasRoutes(t, log, "client2", client2, 60*time.Second, 5*time.Second, client1DZIP)
+	requireClientHasRoutes(t, log, "client3", client3, 60*time.Second, 5*time.Second, client1DZIP)
 	log.Debug("--> Client routes established")
 
 	// --- Route liveness block matrix ---

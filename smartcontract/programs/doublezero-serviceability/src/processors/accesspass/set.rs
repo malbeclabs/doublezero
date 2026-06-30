@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::*,
     processors::accesspass::airdrop_user_credits,
@@ -8,6 +9,7 @@ use crate::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType, ALLOW_MULTIPLE_IP},
         accounttype::AccountType,
         globalstate::GlobalState,
+        permission::permission_flags,
         tenant::Tenant,
     },
 };
@@ -64,7 +66,19 @@ pub fn process_set_access_pass(
     let globalstate_account = next_account_info(accounts_iter)?;
     let user_payer = next_account_info(accounts_iter)?;
 
-    // Optional tenant accounts for reference counting (backwards compatible)
+    // Optional tenant accounts for reference counting (backwards compatible).
+    //
+    // The account layout is a fixed prefix `[accesspass, globalstate, user_payer]`,
+    // an optional `[tenant_remove, tenant_add]` pair, the fixed `[payer, system]`,
+    // and an optional trailing Permission account appended by the SDK for
+    // `authorize()`. That yields exactly four possible lengths:
+    //   5 = no tenant, no permission        6 = no tenant, permission
+    //   7 = tenant,   no permission         8 = tenant,   permission
+    // so `>= 7` unambiguously selects the tenant-present shapes. The trailing
+    // Permission account never collides with this check because it is read last
+    // by `authorize()`, which independently verifies its PDA address, program
+    // ownership, and `AccountType::Permission` discriminator — a misclassified
+    // account can never be accepted as either a tenant or a permission account.
     let (tenant_remove_account, tenant_add_account) = if accounts.len() >= 7 {
         let remove = next_account_info(accounts_iter)?;
         let add = next_account_info(accounts_iter)?;
@@ -111,16 +125,11 @@ pub fn process_set_access_pass(
         "Invalid System Program Account Owner"
     );
 
-    // Parse the global state account & resolve authorization. A caller is allowed if any of:
-    //   - they are the sentinel authority,
-    //   - they are the feed authority,
-    //   - they are in the foundation allowlist, or
+    // Parse the global state account & resolve authorization. A caller is allowed if either:
+    //   - they pass the ACCESS_PASS_ADMIN permission check (foundation allowlist, sentinel
+    //     authority, feed authority, or a Permission account granting ACCESS_PASS_ADMIN), or
     //   - they are an administrator of the tenant being added (tenant_add_account).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-
-    let is_privileged = globalstate.sentinel_authority_pk == *payer_account.key
-        || globalstate.feed_authority_pk == *payer_account.key
-        || globalstate.foundation_allowlist.contains(payer_account.key);
 
     // Pre-deserialize the tenant_add account when present so we can both authorize the caller
     // and later increment its reference_count without double-reading it.
@@ -137,14 +146,20 @@ pub fn process_set_access_pass(
         .map(|t| t.administrators.contains(payer_account.key))
         .unwrap_or(false);
 
+    // A caller is "privileged" when they pass the ACCESS_PASS_ADMIN permission check
+    // (foundation allowlist, sentinel authority, feed authority, or a Permission account
+    // granting ACCESS_PASS_ADMIN). Privileged callers retain unrestricted authority for the
+    // tenant_remove path below; a tenant administrator is only authorized for their own tenant.
+    let is_privileged = authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::ACCESS_PASS_ADMIN,
+    )
+    .is_ok();
+
     if !is_privileged && !is_tenant_admin {
-        msg!(
-            "sentinel_authority_pk: {} feed_authority_pk: {} payer: {} foundation_allowlist: {:?}",
-            globalstate.sentinel_authority_pk,
-            globalstate.feed_authority_pk,
-            payer_account.key,
-            globalstate.foundation_allowlist
-        );
         return Err(DoubleZeroError::NotAllowed.into());
     }
 

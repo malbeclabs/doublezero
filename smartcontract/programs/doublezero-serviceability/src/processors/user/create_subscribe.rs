@@ -93,6 +93,10 @@ pub fn process_create_subscribe_user(
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
+    // Optional trailing Feed account for the EdgeSeat metro gate: the feed (referenced by the pass)
+    // that covers the device's exchange and lists the target multicast group.
+    let feed_account = accounts_iter.next();
+
     msg!("process_create_subscribe_user({:?})", value);
 
     let core_accounts = CreateUserCoreAccounts {
@@ -120,6 +124,8 @@ pub fn process_create_subscribe_user(
         value.tunnel_endpoint,
         value.publisher,
         owner_override,
+        Some(mgroup_account.key),
+        feed_account,
     )?;
 
     // Subscribe user to multicast group

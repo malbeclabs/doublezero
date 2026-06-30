@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - Serviceability
   - `Feed` account: a catalog mapping `metro(exchange) → group-set`, managed by a catalog admin (`FEED_AUTHORITY` Permission or `FOUNDATION`) via `CreateFeed`/`UpdateFeed`/`DeleteFeed`. A feed with no metros imposes no restriction. (#1700)
   - `SetAccessPassFeeds` provisions feed_keys (SKU seats) onto an EdgeSeat pass; the oracle calls it via its `ACCESS_PASS_ADMIN` Permission. (#1700)
+  - EdgeSeat multicast connect is metro-gated: a device whose exchange is not covered by any of the pass's feeds is rejected with `MetroMismatch`, and the matching feed's per-feed cap is enforced. (#1700)
 
 ### Changes
 

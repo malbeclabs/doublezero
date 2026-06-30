@@ -20,6 +20,20 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteUserCommand {
     pub pubkey: Pubkey,
+    /// Reserved for EdgeSeat feed-seat release. Not appended by this builder — the
+    /// authorized-transaction layout has no slot after the trailing `[payer, system, permission]`;
+    /// seat release is deferred to the oracle lifecycle (#1699).
+    pub feed_pk: Option<Pubkey>,
+}
+
+impl DeleteUserCommand {
+    /// Convenience constructor preserving the previous `{ pubkey }` call sites.
+    pub fn new(pubkey: Pubkey) -> Self {
+        Self {
+            pubkey,
+            feed_pk: None,
+        }
+    }
 }
 
 impl DeleteUserCommand {
@@ -51,6 +65,8 @@ impl DeleteUserCommand {
                     client_ip: user.client_ip,
                     publisher: false,
                     subscriber: false,
+                    device_pk: None,
+                    feed_pk: None,
                 }
                 .execute(client)?;
             }
@@ -120,6 +136,10 @@ impl DeleteUserCommand {
 
         accounts.push(AccountMeta::new(user.owner, false));
 
+        // The on-chain DeleteUser releases the EdgeSeat feed seat from an optional trailing Feed
+        // account, but the authorized-transaction layout (`[..., payer, system, permission]`) has no
+        // slot for it here, so this builder does not append one. Seat release is deferred to the
+        // oracle lifecycle (see malbeclabs/infra#1700 / doublezero #1699).
         client.execute_authorized_transaction(
             DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
                 dz_prefix_count: dz_prefix_count_u8,
@@ -375,6 +395,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            feed_pk: None,
         }
         .execute(&client);
 
@@ -592,6 +613,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            feed_pk: None,
         }
         .execute(&client);
 
@@ -859,6 +881,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            feed_pk: None,
         }
         .execute(&client);
 
@@ -985,6 +1008,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            feed_pk: None,
         }
         .execute(&client);
 

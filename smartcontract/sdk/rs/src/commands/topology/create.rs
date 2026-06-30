@@ -46,7 +46,7 @@ impl CreateTopologyCommand {
             )
         })?;
 
-        let signature = client.execute_transaction(
+        let signature = client.execute_authorized_transaction(
             DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
                 name: self.name.clone(),
                 constraint: self.constraint,
@@ -131,7 +131,7 @@ mod tests {
             .returning(|_| Ok(Account::default()));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
                     name: "unicast-default".to_string(),
@@ -199,7 +199,7 @@ mod tests {
         let mut seq = Sequence::new();
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .times(1)
             .in_sequence(&mut seq)
             .with(
@@ -226,7 +226,7 @@ mod tests {
             });
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .times(1)
             .in_sequence(&mut seq)
             .with(

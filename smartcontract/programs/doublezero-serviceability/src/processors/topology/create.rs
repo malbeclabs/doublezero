@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::{get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
     processors::{resource::allocate_id, validation::validate_program_account},
@@ -8,6 +9,7 @@ use crate::{
     state::{
         accounttype::AccountType,
         globalstate::GlobalState,
+        permission::permission_flags,
         topology::{validate_topology_name, TopologyConstraint, TopologyInfo},
     },
 };
@@ -31,8 +33,9 @@ pub struct TopologyCreateArgs {
 /// [0]  topology PDA        (writable, to be created)
 /// [1]  admin_group_bits    (writable, ResourceExtension)
 /// [2]  globalstate         (readonly)
-/// [3]  payer               (writable, signer, must be in foundation_allowlist)
+/// [3]  payer               (writable, signer, must hold TOPOLOGY_ADMIN)
 /// [4]  system_program
+/// [5]  permission          (readonly, optional — payer's Permission PDA)
 pub fn process_topology_create(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -56,12 +59,15 @@ pub fn process_topology_create(
         "GlobalState"
     );
 
-    // Authorization: foundation keys only
+    // Authorization: TOPOLOGY_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(&globalstate_account.data.borrow()[..])?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        msg!("TopologyCreate: unauthorized — foundation key required");
-        return Err(DoubleZeroError::Unauthorized.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::TOPOLOGY_ADMIN,
+    )?;
 
     // Normalize name to canonical uppercase form and validate format.
     let name = value.name.to_ascii_uppercase();

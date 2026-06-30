@@ -18,7 +18,7 @@ impl DeleteTopologyCommand {
 
         let (topology_pda, _) = get_topology_pda(&client.get_program_id(), &self.name);
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::DeleteTopology(TopologyDeleteArgs {
                 name: self.name.clone(),
             }),
@@ -52,7 +52,7 @@ mod tests {
         let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "unicast-default");
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteTopology(TopologyDeleteArgs {
                     name: "unicast-default".to_string(),

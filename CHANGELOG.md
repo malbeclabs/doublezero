@@ -8,11 +8,14 @@ All notable changes to this project will be documented in this file.
 
 - SDK
   - revdist Python SDK migrated to the async solana-py RPC API (solana-py 0.40.0 removed the sync `Client`). The `Client` read methods (`fetch_config`, `fetch_distribution`, etc.) are now coroutines and must be awaited; `new_rpc_client` returns an `AsyncClient`. (#3945)
+- Serviceability
+  - The `AccessPass` `EdgeSeat` variant now carries a `Vec<FeedSeat>` payload (`feed_key` + per-feed cap) instead of being a bare marker. This changes the `AccessPass` borsh layout for EdgeSeat passes. (#1700)
 
 ### Added
 
 - Serviceability
   - `Feed` account: a catalog mapping `metro(exchange) → group-set`, managed by a catalog admin (`FEED_AUTHORITY` Permission or `FOUNDATION`) via `CreateFeed`/`UpdateFeed`/`DeleteFeed`. A feed with no metros imposes no restriction. (#1700)
+  - `SetAccessPassFeeds` provisions feed_keys (SKU seats) onto an EdgeSeat pass; the oracle calls it via its `ACCESS_PASS_ADMIN` Permission. (#1700)
 
 ### Changes
 

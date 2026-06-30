@@ -141,7 +141,9 @@ fn accesspass_type_short(t: &AccessPassType) -> String {
                 crate::util::abbreviate_prefix(key)
             )
         }
-        AccessPassType::Prepaid | AccessPassType::EdgeSeat => t.to_string(),
+        // Compact form: the discriminant only (feed details are shown in the get/JSON views).
+        AccessPassType::EdgeSeat(_) => t.to_discriminant_string(),
+        AccessPassType::Prepaid => t.to_string(),
     }
 }
 
@@ -212,7 +214,7 @@ impl ListAccessPassCliCommand {
         // Filter access passes by EdgeSeat type
         if self.edge_seat {
             access_passes.retain(|(_, access_pass)| {
-                matches!(access_pass.accesspass_type, AccessPassType::EdgeSeat)
+                matches!(access_pass.accesspass_type, AccessPassType::EdgeSeat(_))
             });
         }
         // Filter access passes by client IP
@@ -640,7 +642,7 @@ mod tests {
             "prepaid"
         );
         assert_eq!(
-            super::accesspass_type_short(&AccessPassType::EdgeSeat),
+            super::accesspass_type_short(&AccessPassType::EdgeSeat(vec![])),
             "edge_seat"
         );
         // Others: type_name kept, embedded key truncated to a copyable prefix.

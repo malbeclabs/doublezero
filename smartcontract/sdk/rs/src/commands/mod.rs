@@ -3,6 +3,7 @@ pub mod allowlist;
 pub mod contributor;
 pub mod device;
 pub mod exchange;
+pub mod feed;
 pub mod globalconfig;
 pub mod globalstate;
 pub mod index;

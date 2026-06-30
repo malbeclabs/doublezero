@@ -15,6 +15,7 @@ pub use command::ServiceabilityCommand;
 pub mod contributor;
 pub mod device;
 pub mod exchange;
+pub mod feed;
 pub mod globalconfig;
 pub mod link;
 pub mod location;

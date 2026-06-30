@@ -38,6 +38,10 @@ use doublezero_sdk::{
             list::ListExchangeCommand, setdevice::SetDeviceExchangeCommand,
             update::UpdateExchangeCommand,
         },
+        feed::{
+            create::CreateFeedCommand, delete::DeleteFeedCommand, get::GetFeedCommand,
+            list::ListFeedCommand, update::UpdateFeedCommand,
+        },
         globalconfig::set::SetGlobalConfigCommand,
         globalstate::{
             init::InitGlobalStateCommand, setairdrop::SetAirdropCommand,
@@ -106,7 +110,7 @@ use doublezero_sdk::{
         },
     },
     telemetry::LinkLatencyStats,
-    DZClient, DZTransaction, Device, DoubleZeroClient, Exchange, GetGlobalConfigCommand,
+    DZClient, DZTransaction, Device, DoubleZeroClient, Exchange, Feed, GetGlobalConfigCommand,
     GetGlobalStateCommand, GlobalConfig, GlobalState, Link, Location, MulticastGroup,
     ResourceExtensionOwned, TopologyInfo, User,
 };
@@ -180,6 +184,12 @@ pub trait CliCommand {
     fn update_exchange(&self, cmd: UpdateExchangeCommand) -> eyre::Result<Signature>;
     fn delete_exchange(&self, cmd: DeleteExchangeCommand) -> eyre::Result<Signature>;
     fn setdevice_exchange(&self, cmd: SetDeviceExchangeCommand) -> eyre::Result<Signature>;
+
+    fn create_feed(&self, cmd: CreateFeedCommand) -> eyre::Result<(Signature, Pubkey)>;
+    fn get_feed(&self, cmd: GetFeedCommand) -> eyre::Result<(Pubkey, Feed)>;
+    fn list_feed(&self, cmd: ListFeedCommand) -> eyre::Result<HashMap<Pubkey, Feed>>;
+    fn update_feed(&self, cmd: UpdateFeedCommand) -> eyre::Result<Signature>;
+    fn delete_feed(&self, cmd: DeleteFeedCommand) -> eyre::Result<Signature>;
 
     fn create_contributor(
         &self,
@@ -494,6 +504,21 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn setdevice_exchange(&self, cmd: SetDeviceExchangeCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn create_feed(&self, cmd: CreateFeedCommand) -> eyre::Result<(Signature, Pubkey)> {
+        cmd.execute(self.client)
+    }
+    fn get_feed(&self, cmd: GetFeedCommand) -> eyre::Result<(Pubkey, Feed)> {
+        cmd.execute(self.client)
+    }
+    fn list_feed(&self, cmd: ListFeedCommand) -> eyre::Result<HashMap<Pubkey, Feed>> {
+        cmd.execute(self.client)
+    }
+    fn update_feed(&self, cmd: UpdateFeedCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn delete_feed(&self, cmd: DeleteFeedCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn create_contributor(

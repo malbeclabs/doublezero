@@ -141,6 +141,10 @@ pub fn process_delete_user(
         )?;
     }
 
+    // Optional trailing Feed account: releases the EdgeSeat feed seat held by this user. Read AFTER
+    // authorize so it does not consume the optional trailing Permission account.
+    let feed_account = accounts_iter.next();
+
     let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
     let (accesspass_dynamic_pda, _) =
         get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
@@ -180,6 +184,13 @@ pub fn process_delete_user(
         accesspass.connection_count = accesspass.connection_count.saturating_sub(1);
         // Release the per-category seat (EdgeSeat only; no-op otherwise).
         accesspass.remove_user(user.user_type);
+        // Release the feed-scoped seat for EdgeSeat multicast users (no-op if no feed supplied or
+        // the feed is not on the pass).
+        if user.user_type == UserType::Multicast {
+            if let Some(feed) = feed_account {
+                accesspass.remove_feed_user(feed.key);
+            }
+        }
         accesspass.status = if accesspass.connection_count > 0 {
             AccessPassStatus::Connected
         } else {

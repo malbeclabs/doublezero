@@ -269,7 +269,17 @@ pub fn process_set_access_pass(
 
         // Update fields. The max caps are overwritten from args; the live counts are left
         // untouched so an in-flight pass keeps its current seat usage.
-        accesspass.accesspass_type = value.accesspass_type.clone();
+        //
+        // EdgeSeat feed seats are owned by SetAccessPassFeeds (the oracle), not this instruction.
+        // SetAccessPassArgs carries no feed payload, so when both the stored and incoming types are
+        // EdgeSeat we preserve the provisioned seat vector instead of clobbering it (and its live
+        // current_users) with the incoming empty vec.
+        accesspass.accesspass_type = match (&accesspass.accesspass_type, &value.accesspass_type) {
+            (AccessPassType::EdgeSeat(existing), AccessPassType::EdgeSeat(_)) => {
+                AccessPassType::EdgeSeat(existing.clone())
+            }
+            _ => value.accesspass_type.clone(),
+        };
         accesspass.last_access_epoch = value.last_access_epoch;
         accesspass.flags = flags;
         accesspass.max_unicast_users = value.max_unicast_users;

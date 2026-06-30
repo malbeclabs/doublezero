@@ -127,6 +127,7 @@ type NetlinkManager struct {
 	bgp              BGPServer
 	pim              services.PIMWriter
 	heartbeat        services.HeartbeatWriter
+	register         services.RegisterWriter
 	mu               sync.Mutex
 
 	// Reconciler fields
@@ -146,7 +147,7 @@ type NetlinkManager struct {
 
 // CreateService creates the appropriate service based on the provisioned
 // user type.
-func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, pim services.PIMWriter, heartbeat services.HeartbeatWriter) (Provisioner, error) {
+func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, pim services.PIMWriter, heartbeat services.HeartbeatWriter, register services.RegisterWriter) (Provisioner, error) {
 	switch u {
 	case api.UserTypeIBRL:
 		return services.NewIBRLService(bgp, nl), nil
@@ -155,18 +156,19 @@ func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netl
 	case api.UserTypeEdgeFiltering:
 		return services.NewEdgeFilteringService(bgp, nl), nil
 	case api.UserTypeMulticast:
-		return services.NewMulticastService(bgp, nl, pim, heartbeat), nil
+		return services.NewMulticastService(bgp, nl, pim, heartbeat, register), nil
 	default:
 		return nil, fmt.Errorf("unsupported user type: %s", u)
 	}
 }
 
-func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, pim services.PIMWriter, heartbeat services.HeartbeatWriter, opts ...Option) *NetlinkManager {
+func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, pim services.PIMWriter, heartbeat services.HeartbeatWriter, register services.RegisterWriter, opts ...Option) *NetlinkManager {
 	n := &NetlinkManager{
 		netlink:        netlink,
 		bgp:            bgp,
 		pim:            pim,
 		heartbeat:      heartbeat,
+		register:       register,
 		pollInterval:   defaultPollInterval,
 		fetchTimeout:   defaultFetchTimeout,
 		enableCh:       make(chan bool, 1),
@@ -189,7 +191,7 @@ func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
 // provisionLocked creates and sets up a service for the given provision request.
 // Caller must hold n.mu.
 func (n *NetlinkManager) provisionLocked(pr api.ProvisionRequest) error {
-	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.pim, n.heartbeat)
+	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.pim, n.heartbeat, n.register)
 	if err != nil {
 		return fmt.Errorf("error creating service: %v", err)
 	}

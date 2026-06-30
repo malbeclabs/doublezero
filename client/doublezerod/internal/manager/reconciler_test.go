@@ -84,6 +84,14 @@ func (m *mockHeartbeatSender) Start(string, net.IP, []net.IP, int, time.Duration
 func (m *mockHeartbeatSender) UpdateGroups([]net.IP) error { return nil }
 func (m *mockHeartbeatSender) Close() error                { return nil }
 
+type mockRegisterSender struct{}
+
+func (m *mockRegisterSender) Start(string, net.IP, net.IP, []net.IP, net.IP, int, []byte, time.Duration) error {
+	return nil
+}
+func (m *mockRegisterSender) UpdateGroups([]net.IP) error { return nil }
+func (m *mockRegisterSender) Close() error                { return nil }
+
 type mockLatencyProvider struct {
 	results []latency.LatencyResult
 }
@@ -99,14 +107,16 @@ func newTestNLM(fetcher Fetcher, opts ...Option) *NetlinkManager {
 	bgpSrv := &mockBgpServer{}
 	pimSrv := &mockPIMServer{}
 	hb := &mockHeartbeatSender{}
-	return NewNetlinkManager(nl, bgpSrv, pimSrv, hb, append([]Option{WithFetcher(fetcher)}, opts...)...)
+	reg := &mockRegisterSender{}
+	return NewNetlinkManager(nl, bgpSrv, pimSrv, hb, reg, append([]Option{WithFetcher(fetcher)}, opts...)...)
 }
 
 func newTestNLMWithNetlink(nl routing.Netlinker, fetcher Fetcher, opts ...Option) *NetlinkManager {
 	bgpSrv := &mockBgpServer{}
 	pimSrv := &mockPIMServer{}
 	hb := &mockHeartbeatSender{}
-	return NewNetlinkManager(nl, bgpSrv, pimSrv, hb, append([]Option{WithFetcher(fetcher)}, opts...)...)
+	reg := &mockRegisterSender{}
+	return NewNetlinkManager(nl, bgpSrv, pimSrv, hb, reg, append([]Option{WithFetcher(fetcher)}, opts...)...)
 }
 
 func testDevice(pk [32]byte, ip [4]uint8, prefixes [][5]uint8) serviceability.Device {

@@ -161,6 +161,7 @@ func testFullProvisionRequest() ProvisionRequest {
 		BgpRemoteAsn:       65001,
 		MulticastPubGroups: []net.IP{net.IPv4(239, 0, 0, 1)},
 		MulticastSubGroups: []net.IP{net.IPv4(239, 0, 0, 2)},
+		MulticastRpAddress: net.IPv4(10, 0, 0, 0),
 	}
 }
 
@@ -196,6 +197,16 @@ func fieldIndex(typ reflect.Type, name string) int {
 		}
 	}
 	return -1
+}
+
+func TestProvisionRequestDefaultsRpAddress(t *testing.T) {
+	p := &ProvisionRequest{}
+	if err := p.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if !p.MulticastRpAddress.Equal(net.IPv4(10, 0, 0, 0)) {
+		t.Fatalf("MulticastRpAddress = %v, want 10.0.0.0", p.MulticastRpAddress)
+	}
 }
 
 func TestIPSetDiff(t *testing.T) {

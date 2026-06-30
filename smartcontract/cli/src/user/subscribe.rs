@@ -99,6 +99,8 @@ impl SubscribeUserCliCommand {
                     client_ip: user.client_ip,
                     publisher,
                     subscriber,
+                    device_pk: None,
+                    feed_pk: None,
                 })?;
             writeln!(out, "Updated roles for {group_pk}: {signature}")?;
         }
@@ -218,6 +220,8 @@ mod tests {
                 client_ip,
                 publisher: false,
                 subscriber: true,
+                device_pk: None,
+                feed_pk: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -436,6 +440,8 @@ mod tests {
                 client_ip,
                 publisher: false,
                 subscriber: true,
+                device_pk: None,
+                feed_pk: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -535,6 +541,8 @@ mod tests {
                 client_ip,
                 publisher: true,
                 subscriber: false,
+                device_pk: None,
+                feed_pk: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));

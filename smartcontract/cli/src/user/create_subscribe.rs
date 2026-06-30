@@ -111,6 +111,7 @@ impl CreateSubscribeUserCliCommand {
                 .ok_or(eyre::eyre!("Subscriber is required if publisher is not"))?,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             owner: owner_pk,
+            feed_pk: None,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -234,6 +235,7 @@ mod tests {
                 mgroup_pk: mgroup_pubkey,
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 owner: None,
+                feed_pk: None,
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));

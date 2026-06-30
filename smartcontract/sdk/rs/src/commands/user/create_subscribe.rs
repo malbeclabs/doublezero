@@ -32,6 +32,10 @@ pub struct CreateSubscribeUserCommand {
     /// Custom owner pubkey (foundation allowlist only). When set, the access pass
     /// is looked up for this owner instead of the payer.
     pub owner: Option<Pubkey>,
+    /// Optional trailing Feed account for the EdgeSeat metro gate: the feed (referenced
+    /// by the pass) covering the device's exchange and listing the target multicast group.
+    /// Appended to the account list only when provided.
+    pub feed_pk: Option<Pubkey>,
 }
 
 impl CreateSubscribeUserCommand {
@@ -113,6 +117,11 @@ impl CreateSubscribeUserCommand {
                 ResourceType::DzPrefixBlock(self.device_pk, idx),
             );
             accounts.push(AccountMeta::new(dz_prefix_ext, false));
+        }
+
+        // Optional trailing Feed account (EdgeSeat metro gate). Appended only when provided.
+        if let Some(feed_pk) = self.feed_pk {
+            accounts.push(AccountMeta::new_readonly(feed_pk, false));
         }
 
         client
@@ -271,6 +280,7 @@ mod tests {
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             owner: None,
+            feed_pk: None,
         }
         .execute(&client);
 

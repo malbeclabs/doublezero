@@ -12,6 +12,7 @@ from serviceability.state import (
     Contributor,
     Device,
     Exchange,
+    Feed,
     GlobalConfig,
     GlobalState,
     Link,
@@ -501,6 +502,16 @@ class TestFixtureAccessPassEdgeSeat:
                 "Owner": ap.owner,
                 "BumpSeed": ap.bump_seed,
                 "AccessPassType": ap.access_pass_type_tag,
+                "EdgeSeatFeedSeatsLen": len(ap.feed_seats),
+                "EdgeSeatFeedSeat0FeedKey": ap.feed_seats[0].feed_key
+                if ap.feed_seats
+                else None,
+                "EdgeSeatFeedSeat0MaxUsers": ap.feed_seats[0].max_users
+                if ap.feed_seats
+                else None,
+                "EdgeSeatFeedSeat0CurrentUsers": ap.feed_seats[0].current_users
+                if ap.feed_seats
+                else None,
                 "UserPayer": ap.user_payer,
                 "ConnectionCount": ap.connection_count,
                 "Status": ap.status,
@@ -511,13 +522,49 @@ class TestFixtureAccessPassEdgeSeat:
                 "MaxMulticastUsers": ap.max_multicast_users,
             },
         )
-        # EdgeSeat is tag 4 and carries no payload; the seat is the user_payer.
+        # EdgeSeat is tag 4 and now carries a Vec<FeedSeat> payload.
         assert ap.access_pass_type_tag == 4
         assert ap.associated_pubkey is None
+        assert len(ap.feed_seats) == 1
+        assert ap.feed_seats[0].max_users == 7
+        assert ap.feed_seats[0].current_users == 3
         assert ap.unicast_user_count == 2
         assert ap.max_unicast_users == 4
         assert ap.multicast_user_count == 1
         assert ap.max_multicast_users == 3
+
+
+class TestFixtureFeed:
+    def test_deserialize(self):
+        data, meta = _load_fixture("feed")
+        feed = Feed.from_bytes(data)
+        _assert_fields(
+            meta["fields"],
+            {
+                "AccountType": feed.account_type,
+                "Owner": feed.owner,
+                "BumpSeed": feed.bump_seed,
+                "Code": feed.code,
+                "Name": feed.name,
+                "ReferenceCount": feed.reference_count,
+                "MetrosLen": len(feed.metros),
+                "Metro0Exchange": feed.metros[0].exchange,
+                "Metro0GroupsLen": len(feed.metros[0].groups),
+                "Metro0Group0": feed.metros[0].groups[0],
+                "Metro0Group1": feed.metros[0].groups[1],
+                "Metro1Exchange": feed.metros[1].exchange,
+                "Metro1GroupsLen": len(feed.metros[1].groups),
+                "Metro1Group0": feed.metros[1].groups[0],
+            },
+        )
+        assert feed.account_type == 18
+        assert feed.bump_seed == 239
+        assert feed.code == "shreds"
+        assert feed.name == "Shreds"
+        assert feed.reference_count == 4
+        assert len(feed.metros) == 2
+        assert len(feed.metros[0].groups) == 2
+        assert len(feed.metros[1].groups) == 1
 
 
 class TestFixtureAccessPassLegacyCapDefaults:

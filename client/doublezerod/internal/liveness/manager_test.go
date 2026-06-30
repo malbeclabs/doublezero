@@ -82,6 +82,46 @@ func TestClient_Liveness_Manager_NewManager_BindsAndLocalAddr(t *testing.T) {
 	require.NotZero(t, la.Port)
 }
 
+// TestClient_Liveness_Manager_RegisterRoute_PropagatesBackoffMax pins the plumbing this
+// change adds: ManagerConfig.BackoffMax (set from the -route-liveness-backoff-max flag)
+// flows into each registered session's backoffMax, which caps the Down-state probe
+// interval. A zero BackoffMax falls back to the 60s default via Validate. This is the
+// seam the e2e harness overrides to a small value to close the Down-state probe gap.
+func TestClient_Liveness_Manager_RegisterRoute_PropagatesBackoffMax(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name       string
+		backoffMax time.Duration
+		want       time.Duration
+	}{
+		{"explicit", 3 * time.Second, 3 * time.Second},
+		{"zero-uses-default", 0, defaultBackoffMax},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			m, err := newTestManager(t, func(cfg *ManagerConfig) {
+				cfg.BackoffMax = tc.backoffMax
+			})
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = m.Close() })
+
+			r := newTestRoute(func(r *Route) {
+				r.Src = net.IPv4(127, 0, 0, 1)
+				r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+			})
+			require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
+
+			peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+			m.mu.Lock()
+			sess := m.sessions[peer]
+			m.mu.Unlock()
+			require.NotNil(t, sess)
+			require.Equal(t, tc.want, sess.backoffMax)
+		})
+	}
+}
+
 func TestClient_Liveness_Manager_RegisterRoute_Deduplicates(t *testing.T) {
 	t.Parallel()
 	m, err := newTestManager(t, nil)

@@ -295,7 +295,7 @@ mod tests {
         let (multicast_publisher_block_ext_unsub, _, _) =
             get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateMulticastGroupRoles(
                     UpdateMulticastGroupRolesArgs {
@@ -512,7 +512,7 @@ mod tests {
         let (multicast_publisher_block_ext_unsub, _, _) =
             get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateMulticastGroupRoles(
                     UpdateMulticastGroupRolesArgs {
@@ -771,7 +771,7 @@ mod tests {
         let (multicast_publisher_block_ext_unsub, _, _) =
             get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateMulticastGroupRoles(
                     UpdateMulticastGroupRolesArgs {

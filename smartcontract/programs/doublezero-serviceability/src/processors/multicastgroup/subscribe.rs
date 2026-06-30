@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::{get_accesspass_pda, get_globalstate_pda, get_resource_extension_pda},
     processors::{
@@ -11,6 +12,7 @@ use crate::{
         accesspass::AccessPass,
         globalstate::GlobalState,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
+        permission::permission_flags,
         user::{User, UserStatus},
     },
 };
@@ -208,16 +210,32 @@ pub fn process_update_multicastgroup_roles(
     );
 
     // The access pass must belong to the payer. If the payer differs, the payer
-    // must be in the foundation allowlist.
+    // must be a foundation member, or — for removal-only cleanup (no roles being
+    // granted) — hold USER_ADMIN. The USER_ADMIN path lets an operator strip a
+    // user's multicast roles as a prerequisite to deleting/request-banning that
+    // user (see DeleteUserCommand / RequestBanUserCommand, which authorize the
+    // final instruction with the same USER_ADMIN flag).
     if accesspass.user_payer != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
-        msg!(
-            "AccessPass user_payer {:?} does not match payer {:?}",
-            accesspass.user_payer,
-            payer_account.key
-        );
-        return Err(DoubleZeroError::Unauthorized.into());
+        let removal_only = !value.publisher && !value.subscriber;
+        if removal_only {
+            // Consumes the trailing Permission account if the SDK appended one.
+            authorize(
+                program_id,
+                accounts_iter,
+                payer_account.key,
+                &globalstate,
+                permission_flags::USER_ADMIN,
+            )?;
+        } else {
+            msg!(
+                "AccessPass user_payer {:?} does not match payer {:?}",
+                accesspass.user_payer,
+                payer_account.key
+            );
+            return Err(DoubleZeroError::Unauthorized.into());
+        }
     }
 
     let result = update_user_multicastgroup_roles(

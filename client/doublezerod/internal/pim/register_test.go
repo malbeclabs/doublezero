@@ -2,10 +2,12 @@ package pim
 
 import (
 	"net"
+	"sync"
 	"testing"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"golang.org/x/net/ipv4"
 )
 
 func TestConstructRegisterMessage(t *testing.T) {
@@ -45,5 +47,66 @@ func TestConstructRegisterMessage(t *testing.T) {
 	}
 	if udp.DstPort != 5765 {
 		t.Fatalf("inner UDP dport = %d, want 5765", udp.DstPort)
+	}
+}
+
+type mockRawConn struct {
+	mu    sync.Mutex
+	calls []writeCall
+}
+
+type writeCall struct {
+	h  *ipv4.Header
+	b  []byte
+	cm *ipv4.ControlMessage
+}
+
+func (m *mockRawConn) WriteTo(h *ipv4.Header, b []byte, cm *ipv4.ControlMessage) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := make([]byte, len(b))
+	copy(cp, b)
+	m.calls = append(m.calls, writeCall{h: h, b: cp, cm: cm})
+	return nil
+}
+func (m *mockRawConn) Close() error                                     { return nil }
+func (m *mockRawConn) SetMulticastInterface(*net.Interface) error       { return nil }
+func (m *mockRawConn) SetControlMessage(ipv4.ControlFlags, bool) error { return nil }
+
+func TestRegisterSenderSendsRegisterToRP(t *testing.T) {
+	mock := &mockRawConn{}
+	s := NewRegisterSender()
+	s.conn = mock
+	s.innerSrc = net.IPv4(148, 51, 122, 203)
+	s.srcOverlay = net.IPv4(169, 254, 4, 58)
+	s.rp = RpAddress
+	s.dport = 5765
+	s.payload = []byte{0x44, 0x5A, 0x00, 0x01}
+
+	intf := &net.Interface{Index: 7, Name: "doublezero1"}
+	group := net.IPv4(233, 84, 178, 5)
+
+	if err := s.sendRegister(intf, group); err != nil {
+		t.Fatalf("sendRegister: %v", err)
+	}
+	if len(mock.calls) != 1 {
+		t.Fatalf("got %d writes, want 1", len(mock.calls))
+	}
+	c := mock.calls[0]
+	if !c.h.Dst.Equal(RpAddress) {
+		t.Fatalf("dst = %s, want RP %s", c.h.Dst, RpAddress)
+	}
+	if c.h.Protocol != 103 {
+		t.Fatalf("proto = %d, want 103", c.h.Protocol)
+	}
+	if c.cm.IfIndex != 7 {
+		t.Fatalf("ifindex = %d, want 7 (egress pinned to tunnel)", c.cm.IfIndex)
+	}
+	if c.b[0] != 0x21 {
+		t.Fatalf("pim byte0 = 0x%02x, want 0x21", c.b[0])
+	}
+	// Checksum is non-zero and computed over the first 8 bytes only.
+	if c.b[2] == 0 && c.b[3] == 0 {
+		t.Fatal("pim checksum not set")
 	}
 }

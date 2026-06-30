@@ -294,11 +294,12 @@ func TestClient_Liveness_Session_BackoffResetsWhenNotDown(t *testing.T) {
 	require.Equal(t, uint32(1), s.backoffFactor)
 }
 
-// TestClient_Liveness_Session_ComputeNextTx_DownIntervalCappedAtBackoffMax pins the
-// cap semantics that fix the #3949 e2e flake: while Down, the effective transmit
-// interval grows via exponential backoff but must never exceed backoffMax (plus the
-// ±10% jitter band). With a small backoffMax the Down probe schedule has no large gap,
-// so the active client's liveness handshake converges promptly once the data path is up.
+// TestClient_Liveness_Session_ComputeNextTx_DownIntervalCappedAtBackoffMax is a guardrail
+// for the cap semantics this fix relies on: while Down, the effective transmit interval
+// grows via exponential backoff but must never exceed backoffMax (plus the ±10% jitter
+// band). The cap logic already exists; pinning a small backoffMax (as the e2e harness now
+// does) keeps the Down probe schedule gap-free so the active client's liveness handshake
+// converges promptly once the data path is up.
 func TestClient_Liveness_Session_ComputeNextTx_DownIntervalCappedAtBackoffMax(t *testing.T) {
 	t.Parallel()
 	for _, backoffMax := range []time.Duration{3 * time.Second, 200 * time.Millisecond, 1 * time.Minute} {

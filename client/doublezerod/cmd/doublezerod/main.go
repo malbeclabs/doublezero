@@ -50,7 +50,7 @@ var (
 	routeLivenessDetectMult  = flag.Uint("route-liveness-detect-mult", defaultRouteLivenessDetectMult, "route liveness detect mult")
 	routeLivenessMinTxFloor  = flag.Duration("route-liveness-min-tx-floor", defaultRouteLivenessMinTxFloor, "route liveness min tx floor")
 	routeLivenessMaxTxCeil   = flag.Duration("route-liveness-max-tx-ceil", defaultRouteLivenessMaxTxCeil, "route liveness max tx ceil")
-	routeLivenessBackoffMax  = flag.Duration("route-liveness-backoff-max", defaultRouteLivenessBackoffMax, "route liveness backoff max (cap on Down-state probe interval)")
+	routeLivenessBackoffMax  = flag.Duration("route-liveness-backoff-max", defaultRouteLivenessBackoffMax, "route liveness backoff max (cap on Down-state probe interval; must be >= route-liveness-min-tx-floor)")
 	routeLivenessPeerMetrics = flag.Bool("route-liveness-peer-metrics", false, "enables per peer metrics for route liveness (high cardinality)")
 	routeLivenessDebug       = flag.Bool("route-liveness-debug", false, "enables debug logging for route liveness")
 

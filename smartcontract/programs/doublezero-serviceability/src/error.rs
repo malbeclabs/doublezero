@@ -186,6 +186,8 @@ pub enum DoubleZeroError {
     AccessPassMaxUnicastUsersExceeded, // variant 89
     #[error("Access pass max multicast users exceeded")]
     AccessPassMaxMulticastUsersExceeded, // variant 90
+    #[error("Device exchange (metro) is not covered by any feed on the access pass")]
+    MetroMismatch, // variant 91
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -282,6 +284,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidDeviceTunnelBlock => ProgramError::Custom(88),
             DoubleZeroError::AccessPassMaxUnicastUsersExceeded => ProgramError::Custom(89),
             DoubleZeroError::AccessPassMaxMulticastUsersExceeded => ProgramError::Custom(90),
+            DoubleZeroError::MetroMismatch => ProgramError::Custom(91),
         }
     }
 }
@@ -379,6 +382,7 @@ impl From<u32> for DoubleZeroError {
             88 => DoubleZeroError::InvalidDeviceTunnelBlock,
             89 => DoubleZeroError::AccessPassMaxUnicastUsersExceeded,
             90 => DoubleZeroError::AccessPassMaxMulticastUsersExceeded,
+            91 => DoubleZeroError::MetroMismatch,
             _ => DoubleZeroError::Custom(e),
         }
     }

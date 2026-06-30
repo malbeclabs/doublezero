@@ -113,6 +113,9 @@ pub fn process_create_user(
         value.tunnel_endpoint,
         false,
         None,
+        // Plain CreateUser is unicast; no multicast group and no feed gate.
+        None,
+        None,
     )?;
 
     // Always allocate resources and activate atomically.

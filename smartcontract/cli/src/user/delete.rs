@@ -27,7 +27,10 @@ impl DeleteUserCliCommand {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
-        let signature = client.delete_user(DeleteUserCommand { pubkey })?;
+        let signature = client.delete_user(DeleteUserCommand {
+            pubkey,
+            feed_pk: None,
+        })?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
@@ -100,7 +103,10 @@ mod tests {
 
         client
             .expect_delete_user()
-            .with(predicate::eq(DeleteUserCommand { pubkey: pda_pubkey }))
+            .with(predicate::eq(DeleteUserCommand {
+                pubkey: pda_pubkey,
+                feed_pk: None,
+            }))
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/

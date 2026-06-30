@@ -35,7 +35,11 @@ impl DeleteTenantCommand {
                 .collect();
 
             for user_pk in &tenant_users {
-                DeleteUserCommand { pubkey: *user_pk }.execute(client)?;
+                DeleteUserCommand {
+                    pubkey: *user_pk,
+                    feed_pk: None,
+                }
+                .execute(client)?;
             }
 
             // 2. Clean up access passes before waiting for reference_count to reach 0

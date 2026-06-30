@@ -307,33 +307,15 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 
 	// Client1 (on DZD1) should have routes to client2 (on DZD2) and client3 (on DZD2).
 	log.Debug("--> Client1 (on DZD1) should have routes to client2 (on DZD2) and client3 (on DZD2)")
-	require.Eventually(t, func() bool {
-		output, err := client1.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client2DZIP) && strings.Contains(string(output), client3DZIP)
-	}, 60*time.Second, 1*time.Second, "client1 should have route to client2")
+	requireClientHasRoutes(t, log, "client1", client1, 60*time.Second, 1*time.Second, client2DZIP, client3DZIP)
 
 	// Client2 (on DZD2) should have routes to client1 (on DZD1) only.
 	log.Debug("--> Client2 (on DZD2) should have routes to client1 (on DZD1) only")
-	require.Eventually(t, func() bool {
-		output, err := client2.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client1DZIP)
-	}, 120*time.Second, 5*time.Second, "client2 should have route to client1")
+	requireClientHasRoutes(t, log, "client2", client2, 120*time.Second, 5*time.Second, client1DZIP)
 
 	// Client3 (on DZD2) should have routes to client1 (on DZD1) only.
 	log.Debug("--> Client3 (on DZD2) should have routes to client1 (on DZD1) only")
-	require.Eventually(t, func() bool {
-		output, err := client3.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client1DZIP)
-	}, 120*time.Second, 5*time.Second, "client3 should have route to client1")
+	requireClientHasRoutes(t, log, "client3", client3, 120*time.Second, 5*time.Second, client1DZIP)
 
 	// Client2 (on DZD2) should not have routes to client3 (on DZD2).
 	log.Debug("--> Client2 (on DZD2) should not have routes to client3 (on DZD2)")
@@ -359,13 +341,7 @@ func runMultiClientIBRLWorkflowTest(t *testing.T, log *slog.Logger, dn *devnet.D
 
 	// Client4 (on DZD2) should have route to client1 (on DZD1).
 	log.Debug("--> Client4 (on DZD2) should have route to client1 (on DZD1)")
-	require.Eventually(t, func() bool {
-		output, err := client4.Exec(t.Context(), []string{"ip", "r", "list", "dev", "doublezero0"})
-		if err != nil {
-			return false
-		}
-		return strings.Contains(string(output), client1DZIP)
-	}, 120*time.Second, 5*time.Second, "client4 should have routes to client1")
+	requireClientHasRoutes(t, log, "client4", client4, 120*time.Second, 5*time.Second, client1DZIP)
 
 	log.Debug("--> Clients have routes to each other")
 

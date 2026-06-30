@@ -758,6 +758,10 @@ type RegisterMessage struct {
 
 func (p *RegisterMessage) LayerType() gopacket.LayerType { return gopacket.LayerTypePayload }
 
+// SerializeTo writes the 4-byte Register flags word followed by the
+// encapsulated datagram (p.Data). b must be a freshly allocated
+// SerializeBuffer: it prepends the flags and appends the data, so any
+// pre-existing buffer contents would corrupt the Register layout.
 func (p *RegisterMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error {
 	flags, err := b.PrependBytes(4)
 	if err != nil {
@@ -793,6 +797,8 @@ func constructRegisterMessage(innerSrc, group net.IP, dport int, payload []byte)
 		SrcIP:    innerSrc.To4(),
 		DstIP:    group.To4(),
 	}
+	// SrcPort mirrors DstPort: the RP reads only the inner source/group IPs to
+	// create (S,G) state, so the encapsulated UDP ports are immaterial.
 	udp := &layers.UDP{
 		SrcPort: layers.UDPPort(dport),
 		DstPort: layers.UDPPort(dport),

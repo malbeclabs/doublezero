@@ -1011,4 +1011,12 @@ func TestMulticastSetupStartsRegisterForPublisher(t *testing.T) {
 	if reg.dport != multicast.HeartbeatPort {
 		t.Fatalf("register dport = %d, want %d", reg.dport, multicast.HeartbeatPort)
 	}
+	if len(reg.groups) != len(p.MulticastPubGroups) {
+		t.Fatalf("register groups len = %d, want %d", len(reg.groups), len(p.MulticastPubGroups))
+	}
+	for i := range reg.groups {
+		if !reg.groups[i].Equal(p.MulticastPubGroups[i]) {
+			t.Fatalf("register group[%d] = %v, want %v", i, reg.groups[i], p.MulticastPubGroups[i])
+		}
+	}
 }

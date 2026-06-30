@@ -36,7 +36,9 @@ use solana_program::{
 ///   NETWORK_ADMIN     → foundation_allowlist
 ///   TENANT_ADMIN      → foundation_allowlist OR sentinel_authority_pk
 ///   MULTICAST_ADMIN   → foundation_allowlist OR sentinel_authority_pk
-///   PERMISSION_ADMIN  → foundation_allowlist (also allowed even when RequirePermissionAccounts is set)
+///   PERMISSION_ADMIN  → foundation_allowlist (always allowed for foundation, even under
+///                       RequirePermissionAccounts or when the payer's own Permission account
+///                       is missing/suspended/under-privileged — see foundation_permission_recovery)
 ///   INFRA_ADMIN       → foundation_allowlist
 ///   GLOBALSTATE_ADMIN → foundation_allowlist
 ///   CONTRIBUTOR_ADMIN → foundation_allowlist
@@ -62,14 +64,23 @@ where
             if permission_account.owner != program_id {
                 return Err(ProgramError::InvalidAccountData);
             }
-            if permission_account.data_is_empty() {
-                return Err(DoubleZeroError::NotAllowed.into());
-            }
-            let permission = Permission::try_from(permission_account)?;
-            if permission.status != PermissionStatus::Activated {
-                return Err(DoubleZeroError::NotAllowed.into());
-            }
-            if permission.permissions & any_of_flags == 0 {
+            // Whether the supplied Permission account itself grants one of the flags.
+            let granted = !permission_account.data_is_empty()
+                && Permission::try_from(permission_account)
+                    .map(|p| {
+                        p.status == PermissionStatus::Activated && p.permissions & any_of_flags != 0
+                    })
+                    .unwrap_or(false);
+            if !granted {
+                // The SDK auto-appends the payer's Permission PDA whenever it exists
+                // on-chain. Without the recovery below, a foundation member whose own
+                // Permission account is suspended, under-privileged, or uninitialized
+                // would be routed through this branch and denied the very PERMISSION_ADMIN
+                // instruction needed to repair it — re-introducing the lockout the
+                // None-branch fallback exists to prevent.
+                if foundation_permission_recovery(globalstate, payer_key, any_of_flags) {
+                    return Ok(());
+                }
                 return Err(DoubleZeroError::NotAllowed.into());
             }
         }
@@ -81,9 +92,7 @@ where
             ) {
                 // Even in strict mode, foundation members can manage permissions to
                 // prevent being locked out of the permission system.
-                if any_of_flags & permission_flags::PERMISSION_ADMIN != 0
-                    && globalstate.foundation_allowlist.contains(payer_key)
-                {
+                if foundation_permission_recovery(globalstate, payer_key, any_of_flags) {
                     return Ok(());
                 }
                 return Err(DoubleZeroError::NotAllowed.into());
@@ -94,6 +103,19 @@ where
         }
     }
     Ok(())
+}
+
+/// Foundation lockout recovery: a foundation member may always exercise
+/// `PERMISSION_ADMIN`, even in strict mode or when their own Permission account is
+/// missing, suspended, or lacks the flag. This guarantees the permission system can
+/// never lock foundation out of managing permissions.
+fn foundation_permission_recovery(
+    globalstate: &GlobalState,
+    payer_key: &Pubkey,
+    any_of_flags: u128,
+) -> bool {
+    any_of_flags & permission_flags::PERMISSION_ADMIN != 0
+        && globalstate.foundation_allowlist.contains(payer_key)
 }
 
 /// Returns true if `payer` satisfies at least one of the requested flags using legacy
@@ -1002,6 +1024,167 @@ mod tests {
             permission_flags::USER_ADMIN
         )
         .is_err());
+    }
+
+    // ── Foundation lockout recovery (Permission account present but unusable) ──
+
+    #[test]
+    fn test_permission_account_foundation_recovery_when_suspended() {
+        // Foundation member whose own Permission account is suspended must still be
+        // able to exercise PERMISSION_ADMIN to repair/resume it, even though the SDK
+        // auto-appends the (unusable) Permission account.
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let (pda, _, mut data) = make_permission_data(
+            &program_id,
+            &payer,
+            PermissionStatus::Suspended,
+            permission_flags::PERMISSION_ADMIN,
+        );
+
+        let mut lamports = 100_000u64;
+        let account = AccountInfo::new(
+            &pda,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &program_id,
+            false,
+            Epoch::default(),
+        );
+        let accounts = [account];
+        let mut iter = accounts.iter();
+        let gs = gs_with_foundation(&payer);
+
+        assert!(authorize(
+            &program_id,
+            &mut iter,
+            &payer,
+            &gs,
+            permission_flags::PERMISSION_ADMIN
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn test_permission_account_foundation_recovery_when_missing_flag() {
+        // Foundation member whose Permission account lacks PERMISSION_ADMIN can still
+        // manage permissions via the recovery fallback.
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let (pda, _, mut data) = make_permission_data(
+            &program_id,
+            &payer,
+            PermissionStatus::Activated,
+            permission_flags::QA, // no PERMISSION_ADMIN
+        );
+
+        let mut lamports = 100_000u64;
+        let account = AccountInfo::new(
+            &pda,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &program_id,
+            false,
+            Epoch::default(),
+        );
+        let accounts = [account];
+        let mut iter = accounts.iter();
+        let gs = gs_with_foundation(&payer);
+
+        assert!(authorize(
+            &program_id,
+            &mut iter,
+            &payer,
+            &gs,
+            permission_flags::PERMISSION_ADMIN
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn test_permission_account_non_foundation_suspended_still_denied() {
+        // The recovery is foundation-only: a non-foundation payer with a suspended
+        // Permission account is still denied.
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let (pda, _, mut data) = make_permission_data(
+            &program_id,
+            &payer,
+            PermissionStatus::Suspended,
+            permission_flags::PERMISSION_ADMIN,
+        );
+
+        let mut lamports = 100_000u64;
+        let account = AccountInfo::new(
+            &pda,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &program_id,
+            false,
+            Epoch::default(),
+        );
+        let accounts = [account];
+        let mut iter = accounts.iter();
+        let gs = GlobalState::default(); // payer not in foundation
+
+        assert_eq!(
+            authorize(
+                &program_id,
+                &mut iter,
+                &payer,
+                &gs,
+                permission_flags::PERMISSION_ADMIN
+            )
+            .unwrap_err(),
+            DoubleZeroError::NotAllowed.into()
+        );
+    }
+
+    #[test]
+    fn test_permission_account_foundation_recovery_only_for_permission_admin() {
+        // Recovery applies only to PERMISSION_ADMIN. A foundation member with a
+        // suspended Permission account cannot use it to satisfy USER_ADMIN.
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let (pda, _, mut data) = make_permission_data(
+            &program_id,
+            &payer,
+            PermissionStatus::Suspended,
+            permission_flags::USER_ADMIN,
+        );
+
+        let mut lamports = 100_000u64;
+        let account = AccountInfo::new(
+            &pda,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &program_id,
+            false,
+            Epoch::default(),
+        );
+        let accounts = [account];
+        let mut iter = accounts.iter();
+        let gs = gs_with_foundation(&payer);
+
+        assert_eq!(
+            authorize(
+                &program_id,
+                &mut iter,
+                &payer,
+                &gs,
+                permission_flags::USER_ADMIN
+            )
+            .unwrap_err(),
+            DoubleZeroError::NotAllowed.into()
+        );
     }
 
     // ── New path overrides feature flag enforcement ───────────────────────────

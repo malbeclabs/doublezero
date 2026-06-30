@@ -10,6 +10,7 @@ use crate::{
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
@@ -23,8 +24,10 @@ use solana_program::{
 /// `any_of_flags` uses OR semantics: the payer is authorized if their Permission account has
 /// at least one of the specified `permission_flags::*` bits set.
 ///
-/// Legacy fallback mapping (used when no Permission account is provided and
-/// `FeatureFlag::RequirePermissionAccounts` is not set):
+/// Legacy fallback mapping (used whenever `FeatureFlag::RequirePermissionAccounts`
+/// is not set — both when no Permission account is provided and when the provided
+/// Permission account exists but does not grant the requested flag, so the SDK
+/// auto-injecting the payer's Permission PDA can never lock out a legacy key):
 ///   FOUNDATION        → foundation_allowlist
 ///   QA                → qa_allowlist
 ///   ACTIVATOR         → activator_authority_pk
@@ -82,6 +85,21 @@ where
                 // instruction needed to repair it — re-introducing the lockout the
                 // None-branch fallback exists to prevent.
                 if foundation_permission_recovery(globalstate, payer_key, any_of_flags) {
+                    return Ok(());
+                }
+                // While strict mode is off, the legacy allowlists/authorities remain
+                // authoritative — exactly as in the None branch. Because the SDK
+                // auto-appends the payer's Permission PDA whenever one exists on-chain,
+                // a present-but-insufficient Permission account must not lock out a key
+                // that legacy authorization would still accept (e.g. a foundation member
+                // who also holds an unrelated, under-privileged Permission account).
+                // Once RequirePermissionAccounts is enabled, only the Permission account
+                // (or the foundation PERMISSION_ADMIN recovery above) authorizes.
+                if !is_feature_enabled(
+                    globalstate.feature_flags,
+                    FeatureFlag::RequirePermissionAccounts,
+                ) && check_legacy_any(payer_key, globalstate, any_of_flags)
+                {
                     return Ok(());
                 }
                 return Err(DoubleZeroError::NotAllowed.into());
@@ -227,6 +245,64 @@ fn check_legacy_any(payer: &Pubkey, globalstate: &GlobalState, any_of: u128) -> 
         return true;
     }
     false
+}
+
+/// Splits the trailing accounts of a variable-length instruction into its
+/// `(payer, system_program, leading, permission)` parts.
+///
+/// Variable-length instructions (e.g. topology clear / assign-node-segments)
+/// place a caller-controlled list of accounts first; the SDK client then
+/// appends `payer`, `system_program`, and — when one exists on-chain — the
+/// payer's Permission PDA. `remaining` is everything left after the
+/// instruction's own fixed leading accounts have been consumed.
+///
+/// With a Permission account present the layout is `[leading.., payer, system,
+/// permission]`, so the payer sits at `n - 3` and the last account is the
+/// Permission account iff it matches that payer's PDA. The returned
+/// `permission` is ready to hand to [`authorize`] (via a single-element
+/// iterator); `leading` is the caller's variable-length list.
+///
+/// Errors when the two mandatory `payer`/`system_program` accounts are absent.
+#[allow(clippy::type_complexity)]
+pub fn split_trailing_permission<'a, 'r, 'info>(
+    program_id: &Pubkey,
+    remaining: &'a [&'r AccountInfo<'info>],
+) -> Result<
+    (
+        &'r AccountInfo<'info>,
+        &'r AccountInfo<'info>,
+        &'a [&'r AccountInfo<'info>],
+        Option<&'r AccountInfo<'info>>,
+    ),
+    ProgramError,
+> {
+    let n = remaining.len();
+    if n < 2 {
+        msg!("expected at least payer and system_program accounts");
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+    let permission = if n >= 3 {
+        let candidate_payer = remaining[n - 3];
+        let (perm_pda, _) = get_permission_pda(program_id, candidate_payer.key);
+        (remaining[n - 1].key == &perm_pda).then_some(remaining[n - 1])
+    } else {
+        None
+    };
+    Ok(if permission.is_some() {
+        (
+            remaining[n - 3],
+            remaining[n - 2],
+            &remaining[..n - 3],
+            permission,
+        )
+    } else {
+        (
+            remaining[n - 2],
+            remaining[n - 1],
+            &remaining[..n - 2],
+            None,
+        )
+    })
 }
 
 #[cfg(test)]
@@ -1225,8 +1301,11 @@ mod tests {
 
     #[test]
     fn test_permission_account_foundation_recovery_only_for_permission_admin() {
-        // Recovery applies only to PERMISSION_ADMIN. A foundation member with a
-        // suspended Permission account cannot use it to satisfy USER_ADMIN.
+        // Recovery applies only to PERMISSION_ADMIN. In strict mode a foundation
+        // member with a suspended Permission account cannot use it to satisfy
+        // USER_ADMIN. Strict mode is required to isolate the recovery semantics:
+        // while RequirePermissionAccounts is off the legacy fallback would accept
+        // the foundation member (see test_permission_account_insufficient_falls_back_to_legacy_when_flag_off).
         let program_id = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
         let (pda, _, mut data) = make_permission_data(
@@ -1249,7 +1328,8 @@ mod tests {
         );
         let accounts = [account];
         let mut iter = accounts.iter();
-        let gs = gs_with_foundation(&payer);
+        let mut gs = gs_with_foundation(&payer);
+        gs.feature_flags = FeatureFlag::RequirePermissionAccounts.to_mask();
 
         assert_eq!(
             authorize(
@@ -1258,6 +1338,91 @@ mod tests {
                 &payer,
                 &gs,
                 permission_flags::USER_ADMIN
+            )
+            .unwrap_err(),
+            DoubleZeroError::NotAllowed.into()
+        );
+    }
+
+    #[test]
+    fn test_permission_account_insufficient_falls_back_to_legacy_when_flag_off() {
+        // While RequirePermissionAccounts is off, a present-but-insufficient
+        // Permission account must not lock out a legacy-authorized key. The SDK
+        // auto-appends the payer's Permission PDA whenever one exists on-chain, so
+        // a foundation member who also holds an unrelated, under-privileged
+        // Permission account must still be authorized for legacy-mapped flags.
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        // Permission account grants only QA, but the instruction needs TOPOLOGY_ADMIN.
+        let (pda, _, mut data) = make_permission_data(
+            &program_id,
+            &payer,
+            PermissionStatus::Activated,
+            permission_flags::QA,
+        );
+
+        let mut lamports = 100_000u64;
+        let account = AccountInfo::new(
+            &pda,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &program_id,
+            false,
+            Epoch::default(),
+        );
+        let accounts = [account];
+        let mut iter = accounts.iter();
+        // Payer is a foundation member; flag is off (default).
+        let gs = gs_with_foundation(&payer);
+
+        assert!(authorize(
+            &program_id,
+            &mut iter,
+            &payer,
+            &gs,
+            permission_flags::TOPOLOGY_ADMIN
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn test_permission_account_insufficient_denied_when_flag_on() {
+        // In strict mode the legacy fallback is disabled: the same foundation
+        // member with a QA-only Permission account is denied TOPOLOGY_ADMIN.
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let (pda, _, mut data) = make_permission_data(
+            &program_id,
+            &payer,
+            PermissionStatus::Activated,
+            permission_flags::QA,
+        );
+
+        let mut lamports = 100_000u64;
+        let account = AccountInfo::new(
+            &pda,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &program_id,
+            false,
+            Epoch::default(),
+        );
+        let accounts = [account];
+        let mut iter = accounts.iter();
+        let mut gs = gs_with_foundation(&payer);
+        gs.feature_flags = FeatureFlag::RequirePermissionAccounts.to_mask();
+
+        assert_eq!(
+            authorize(
+                &program_id,
+                &mut iter,
+                &payer,
+                &gs,
+                permission_flags::TOPOLOGY_ADMIN
             )
             .unwrap_err(),
             DoubleZeroError::NotAllowed.into()

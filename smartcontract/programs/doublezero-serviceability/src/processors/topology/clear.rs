@@ -1,7 +1,7 @@
 use crate::{
-    authorize::authorize,
+    authorize::{authorize, split_trailing_permission},
     error::DoubleZeroError,
-    pda::{get_globalstate_pda, get_link_pda, get_permission_pda, get_topology_pda},
+    pda::{get_globalstate_pda, get_link_pda, get_topology_pda},
     processors::validation::validate_program_account,
     serializer::try_acc_write,
     state::{
@@ -47,38 +47,12 @@ pub fn process_topology_clear(
     #[cfg(test)]
     msg!("process_topology_clear(name={})", value.name);
 
-    // Collect remaining accounts. The SDK client always appends payer and
-    // system_program at the end, after the variable-length Link list, plus an
-    // optional Permission account when one exists for the payer.
+    // The SDK client appends payer and system_program after the variable-length
+    // Link list, plus an optional Permission account when one exists for the
+    // payer. split_trailing_permission peels those off the tail.
     let all_remaining: Vec<&AccountInfo> = accounts_iter.collect();
-    if all_remaining.len() < 2 {
-        msg!("TopologyClear: expected at least payer and system_program accounts");
-        return Err(DoubleZeroError::InvalidArgument.into());
-    }
-    let n = all_remaining.len();
-    // Detect an optional trailing Permission account. With it present the layout
-    // is [links.., payer, system, permission]; the payer would then be at n-3,
-    // so the last account is a Permission account iff it matches that payer's PDA.
-    let permission_account = if n >= 3 {
-        let candidate_payer = all_remaining[n - 3];
-        let (perm_pda, _) = get_permission_pda(program_id, candidate_payer.key);
-        (all_remaining[n - 1].key == &perm_pda).then_some(all_remaining[n - 1])
-    } else {
-        None
-    };
-    let (payer_account, _system_program, link_accounts) = if permission_account.is_some() {
-        (
-            all_remaining[n - 3],
-            all_remaining[n - 2],
-            &all_remaining[..n - 3],
-        )
-    } else {
-        (
-            all_remaining[n - 2],
-            all_remaining[n - 1],
-            &all_remaining[..n - 2],
-        )
-    };
+    let (payer_account, _system_program, link_accounts, permission_account) =
+        split_trailing_permission(program_id, &all_remaining)?;
 
     // Payer must be a signer
     if !payer_account.is_signer {

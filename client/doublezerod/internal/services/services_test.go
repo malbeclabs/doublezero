@@ -1,6 +1,7 @@
 package services_test
 
 import (
+	"fmt"
 	"net"
 	"syscall"
 	"testing"
@@ -10,11 +11,41 @@ import (
 	"github.com/jwhited/corebgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
-	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/multicast"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
 	"golang.org/x/sys/unix"
 )
+
+// Provisioner mirrors the manager.Provisioner interface so we can test
+// services without importing the manager package (which calls
+// NewMulticastService with the old arity while Task 5 is pending).
+type Provisioner interface {
+	Setup(*api.ProvisionRequest) error
+	Teardown() error
+	Status() (*api.StatusResponse, error)
+	ProvisionRequest() *api.ProvisionRequest
+}
+
+// createTestService constructs the appropriate service for the given user type,
+// replacing manager.CreateService so that the test package does not import
+// manager (which currently fails to compile because it calls NewMulticastService
+// with the old arity — that is fixed in Task 5).
+func createTestService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, p services.PIMWriter, hb services.HeartbeatWriter) (Provisioner, error) {
+	switch u {
+	case api.UserTypeIBRL:
+		return services.NewIBRLService(bgp, nl), nil
+	case api.UserTypeIBRLWithAllocatedIP:
+		return services.NewIBRLServiceWithAllocatedAddress(bgp, nl), nil
+	case api.UserTypeEdgeFiltering:
+		return services.NewEdgeFilteringService(bgp, nl), nil
+	case api.UserTypeMulticast:
+		return services.NewMulticastService(bgp, nl, p, hb, &mockRegister{}), nil
+	default:
+		return nil, fmt.Errorf("unsupported user type: %s", u)
+	}
+}
 
 type MockBgpServer struct {
 	deletedPeer net.IP
@@ -149,6 +180,35 @@ func (m *MockHeartbeatSender) UpdateGroups(groups []net.IP) error {
 }
 
 func (m *MockHeartbeatSender) Close() error {
+	m.closed = true
+	return nil
+}
+
+type mockRegister struct {
+	started bool
+	iface   string
+	rp      net.IP
+	groups  []net.IP
+	dport   int
+	closed  bool
+	updated [][]net.IP
+}
+
+func (m *mockRegister) Start(iface string, srcOverlay, innerSrc net.IP, groups []net.IP, rp net.IP, dport int, payload []byte, interval time.Duration) error {
+	m.started = true
+	m.iface = iface
+	m.rp = rp
+	m.groups = groups
+	m.dport = dport
+	return nil
+}
+
+func (m *mockRegister) UpdateGroups(groups []net.IP) error {
+	m.updated = append(m.updated, groups)
+	return nil
+}
+
+func (m *mockRegister) Close() error {
 	m.closed = true
 	return nil
 }
@@ -617,7 +677,7 @@ func TestServices(t *testing.T) {
 			mockPim := &MockPIMServer{}
 			mockHeartbeat := &MockHeartbeatSender{}
 
-			svc, err := manager.CreateService(tt.userType, mockBgp, mockNetlink, mockPim, mockHeartbeat)
+			svc, err := createTestService(tt.userType, mockBgp, mockNetlink, mockPim, mockHeartbeat)
 			if err != nil {
 				t.Fatalf("failed to create service: %v", err)
 			}
@@ -699,10 +759,7 @@ func TestMulticastService_UpdateGroups_AddPubGroup(t *testing.T) {
 	mockPim := &MockPIMServer{}
 	mockHeartbeat := &MockHeartbeatSender{}
 
-	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
-	if err != nil {
-		t.Fatalf("failed to create service: %v", err)
-	}
+	svc := services.NewMulticastService(mockBgp, mockNetlink, mockPim, mockHeartbeat, &mockRegister{})
 
 	pr := &api.ProvisionRequest{
 		UserType:           api.UserTypeMulticast,
@@ -743,13 +800,7 @@ func TestMulticastService_UpdateGroups_AddPubGroup(t *testing.T) {
 		BgpRemoteAsn:       65001,
 	}
 
-	gu, ok := svc.(interface {
-		UpdateGroups(*api.ProvisionRequest) error
-	})
-	if !ok {
-		t.Fatal("service does not implement UpdateGroups")
-	}
-	if err := gu.UpdateGroups(newPR); err != nil {
+	if err := svc.UpdateGroups(newPR); err != nil {
 		t.Fatalf("UpdateGroups failed: %v", err)
 	}
 
@@ -789,10 +840,7 @@ func TestMulticastService_UpdateGroups_RemovePubGroup(t *testing.T) {
 	mockPim := &MockPIMServer{}
 	mockHeartbeat := &MockHeartbeatSender{}
 
-	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
-	if err != nil {
-		t.Fatalf("failed to create service: %v", err)
-	}
+	svc := services.NewMulticastService(mockBgp, mockNetlink, mockPim, mockHeartbeat, &mockRegister{})
 
 	pr := &api.ProvisionRequest{
 		UserType:           api.UserTypeMulticast,
@@ -830,13 +878,7 @@ func TestMulticastService_UpdateGroups_RemovePubGroup(t *testing.T) {
 		BgpRemoteAsn:       65001,
 	}
 
-	gu, ok := svc.(interface {
-		UpdateGroups(*api.ProvisionRequest) error
-	})
-	if !ok {
-		t.Fatal("service does not implement UpdateGroups")
-	}
-	if err := gu.UpdateGroups(newPR); err != nil {
+	if err := svc.UpdateGroups(newPR); err != nil {
 		t.Fatalf("UpdateGroups failed: %v", err)
 	}
 
@@ -855,10 +897,7 @@ func TestMulticastService_UpdateGroups_PublisherRoleTransition(t *testing.T) {
 	mockPim := &MockPIMServer{}
 	mockHeartbeat := &MockHeartbeatSender{}
 
-	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
-	if err != nil {
-		t.Fatalf("failed to create service: %v", err)
-	}
+	svc := services.NewMulticastService(mockBgp, mockNetlink, mockPim, mockHeartbeat, &mockRegister{})
 
 	// Start as subscriber only
 	pr := &api.ProvisionRequest{
@@ -896,13 +935,7 @@ func TestMulticastService_UpdateGroups_PublisherRoleTransition(t *testing.T) {
 		BgpRemoteAsn:       65001,
 	}
 
-	gu, ok := svc.(interface {
-		UpdateGroups(*api.ProvisionRequest) error
-	})
-	if !ok {
-		t.Fatal("service does not implement UpdateGroups")
-	}
-	err = gu.UpdateGroups(newPR)
+	err := svc.UpdateGroups(newPR)
 	if err == nil {
 		t.Fatal("expected error for publisher role transition, got nil")
 	}
@@ -914,10 +947,7 @@ func TestMulticastService_DoubleTeardown(t *testing.T) {
 	mockPim := &MockPIMServer{}
 	mockHeartbeat := &MockHeartbeatSender{}
 
-	svc, err := manager.CreateService(api.UserTypeMulticast, mockBgp, mockNetlink, mockPim, mockHeartbeat)
-	if err != nil {
-		t.Fatalf("failed to create service: %v", err)
-	}
+	svc := services.NewMulticastService(mockBgp, mockNetlink, mockPim, mockHeartbeat, &mockRegister{})
 
 	pr := &api.ProvisionRequest{
 		UserType:           api.UserTypeMulticast,
@@ -946,5 +976,39 @@ func TestMulticastService_DoubleTeardown(t *testing.T) {
 	// Second teardown must not panic (e.g. double close of heartbeat channel).
 	if err := svc.Teardown(); err != nil {
 		t.Fatalf("second Teardown() returned error: %v", err)
+	}
+}
+
+func TestMulticastSetupStartsRegisterForPublisher(t *testing.T) {
+	reg := &mockRegister{}
+	svc := services.NewMulticastService(&MockBgpServer{}, &MockNetlink{}, &MockPIMServer{}, &MockHeartbeatSender{}, reg)
+
+	p := &api.ProvisionRequest{
+		UserType:           api.UserTypeMulticast,
+		TunnelSrc:          net.IPv4(1, 1, 1, 1),
+		TunnelDst:          net.IPv4(2, 2, 2, 2),
+		MulticastPubGroups: []net.IP{net.IPv4(233, 84, 178, 5)},
+		MulticastRpAddress: net.IPv4(10, 0, 0, 0),
+		TunnelNet: &net.IPNet{
+			IP:   net.IPv4(169, 254, 0, 0),
+			Mask: net.IPMask{255, 255, 255, 254},
+		},
+		DoubleZeroIP:       net.IPv4(7, 7, 7, 7),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+	_ = p.Validate()
+	if err := svc.Setup(p); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if !reg.started {
+		t.Fatal("register beacon was not started for a publisher")
+	}
+	if !reg.rp.Equal(net.IPv4(10, 0, 0, 0)) {
+		t.Fatalf("register rp = %v, want 10.0.0.0", reg.rp)
+	}
+	if reg.dport != multicast.HeartbeatPort {
+		t.Fatalf("register dport = %d, want %d", reg.dport, multicast.HeartbeatPort)
 	}
 }

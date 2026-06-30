@@ -27,6 +27,12 @@ type HeartbeatWriter interface {
 	Close() error
 }
 
+type RegisterWriter interface {
+	Start(iface string, srcOverlay, innerSrc net.IP, groups []net.IP, rp net.IP, dport int, payload []byte, interval time.Duration) error
+	UpdateGroups(groups []net.IP) error
+	Close() error
+}
+
 type BGPReaderWriter interface {
 	AddPeer(*bgp.PeerConfig, []bgp.NLRI) error
 	DeletePeer(net.IP) error

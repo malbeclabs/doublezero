@@ -1,0 +1,76 @@
+{
+  "name": "Feed",
+  "account_type": 18,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "18",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "G5QKowXuCHtvVwwEx2f1YZxCyBZf9op5oJ5ukgVvTD6F",
+      "typ": "pubkey"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "239",
+      "typ": "u8"
+    },
+    {
+      "name": "Code",
+      "value": "shreds",
+      "typ": "string"
+    },
+    {
+      "name": "Name",
+      "value": "Shreds",
+      "typ": "string"
+    },
+    {
+      "name": "ReferenceCount",
+      "value": "4",
+      "typ": "u32"
+    },
+    {
+      "name": "MetrosLen",
+      "value": "2",
+      "typ": "u32"
+    },
+    {
+      "name": "Metro0Exchange",
+      "value": "G9JjTSFz68Pdue4DTXvTSVhSEC8RrkuzPAPoFsovB1kb",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Metro0GroupsLen",
+      "value": "2",
+      "typ": "u32"
+    },
+    {
+      "name": "Metro0Group0",
+      "value": "GDD96vz4yxtMKLBBy3BuLRSfVChCZi1ty2hgm57utpQw",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Metro0Group1",
+      "value": "GH7YkRi9soP4j2JAUYTMEMBtkDFyGf7oYu1aGGRucd5H",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Metro1Exchange",
+      "value": "GM1xPvSEmdsn8iR8z3io8Gw81DpjycDi8mKTmTjuLRjd",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Metro1GroupsLen",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "Metro1Group0",
+      "value": "GQvN3RAKfUNVYQY7VYzF2CgMGEPWgZKciddMGf3u4EPy",
+      "typ": "pubkey"
+    }
+  ]
+}

@@ -23,6 +23,26 @@
       "typ": "u8"
     },
     {
+      "name": "EdgeSeatFeedSeatsLen",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "EdgeSeatFeedSeat0FeedKey",
+      "value": "Cyqa5AA25q85i8QRYpQUMwfh4jaCg78NwPu4biE9JCgP",
+      "typ": "pubkey"
+    },
+    {
+      "name": "EdgeSeatFeedSeat0MaxUsers",
+      "value": "7",
+      "typ": "u16"
+    },
+    {
+      "name": "EdgeSeatFeedSeat0CurrentUsers",
+      "value": "3",
+      "typ": "u16"
+    },
+    {
       "name": "ClientIp",
       "value": "0.0.0.0",
       "typ": "ipv4"

@@ -32,6 +32,7 @@ export const ACCOUNT_TYPE_CONTRIBUTOR = 10;
 export const ACCOUNT_TYPE_ACCESS_PASS = 11;
 export const ACCOUNT_TYPE_TENANT = 13;
 export const ACCOUNT_TYPE_PERMISSION = 15;
+export const ACCOUNT_TYPE_FEED = 18;
 
 // ---------------------------------------------------------------------------
 // Enum string mappings
@@ -1043,6 +1044,13 @@ export const ACCESS_PASS_TYPE_SOLANA_RPC = 2;
 export const ACCESS_PASS_TYPE_OTHERS = 3;
 export const ACCESS_PASS_TYPE_EDGE_SEAT = 4;
 
+// One purchased SKU seat on an EdgeSeat access pass.
+export interface FeedSeat {
+  feedKey: PublicKey;
+  maxUsers: number;
+  currentUsers: number;
+}
+
 export interface AccessPass {
   accountType: number;
   owner: PublicKey;
@@ -1051,6 +1059,7 @@ export interface AccessPass {
   associatedPubkey: PublicKey | null; // for SolanaValidator, SolanaRPC
   othersTypeName: string; // for Others variant
   othersKey: string; // for Others variant
+  feedSeats: FeedSeat[]; // for EdgeSeat variant
   clientIp: Uint8Array;
   userPayer: PublicKey;
   lastAccessEpoch: bigint;
@@ -1075,6 +1084,7 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
   let associatedPubkey: PublicKey | null = null;
   let othersTypeName = "";
   let othersKey = "";
+  const feedSeats: FeedSeat[] = [];
   // SolanaValidator and SolanaRPC carry an associated pubkey.
   if (accessPassType === 1 || accessPassType === 2) {
     associatedPubkey = readPubkey(r);
@@ -1084,7 +1094,19 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
     othersTypeName = r.readString();
     othersKey = r.readString();
   }
-  // Prepaid (0) and EdgeSeat (4) carry no associated data.
+  // EdgeSeat carries a Vec<FeedSeat>: u32 count, then each FeedSeat is
+  // feed_key (32) + max_users (u16) + current_users (u16).
+  else if (accessPassType === 4) {
+    const count = r.readU32();
+    for (let i = 0; i < count; i++) {
+      feedSeats.push({
+        feedKey: readPubkey(r),
+        maxUsers: r.readU16(),
+        currentUsers: r.readU16(),
+      });
+    }
+  }
+  // Prepaid (0) carries no associated data.
   const clientIp = r.readIPv4();
   const userPayer = readPubkey(r);
   const lastAccessEpoch = r.readU64();
@@ -1107,6 +1129,7 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
     associatedPubkey,
     othersTypeName,
     othersKey,
+    feedSeats,
     clientIp,
     userPayer,
     lastAccessEpoch,
@@ -1184,5 +1207,53 @@ export function deserializePermission(data: Uint8Array): Permission {
     status,
     userPayer,
     permissions,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Feed
+// ---------------------------------------------------------------------------
+
+// Maps an exchange (metro) pubkey to the multicast groups joinable from it.
+export interface FeedMetro {
+  exchange: PublicKey;
+  groups: PublicKey[];
+}
+
+// Serviceability catalog entry: the metro(exchange) -> group-set map for one SKU.
+// A Feed with an empty metros array imposes no metro restriction.
+export interface Feed {
+  accountType: number;
+  owner: PublicKey;
+  bumpSeed: number;
+  code: string;
+  name: string;
+  referenceCount: number;
+  metros: FeedMetro[];
+}
+
+export function deserializeFeed(data: Uint8Array): Feed {
+  const r = new DefensiveReader(data);
+  const accountType = r.readU8();
+  const owner = readPubkey(r);
+  const bumpSeed = r.readU8();
+  const code = r.readString();
+  const name = r.readString();
+  const referenceCount = r.readU32();
+  // metros is a Vec<(Pubkey, Vec<Pubkey>)>: u32 count, then each entry is an
+  // exchange pubkey followed by a Vec<Pubkey> of joinable groups.
+  const count = r.readU32();
+  const metros: FeedMetro[] = [];
+  for (let i = 0; i < count; i++) {
+    metros.push({ exchange: readPubkey(r), groups: readPubkeyVec(r) });
+  }
+  return {
+    accountType,
+    owner,
+    bumpSeed,
+    code,
+    name,
+    referenceCount,
+    metros,
   };
 }

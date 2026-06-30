@@ -19,6 +19,7 @@ import {
   deserializeContributor,
   deserializeAccessPass,
   deserializeTenant,
+  deserializeFeed,
 } from "../state.js";
 
 const FIXTURES_DIR = join(
@@ -527,6 +528,10 @@ describe("AccessPassEdgeSeat fixture", () => {
       Owner: ap.owner,
       BumpSeed: ap.bumpSeed,
       AccessPassType: ap.accessPassType,
+      EdgeSeatFeedSeatsLen: ap.feedSeats.length,
+      EdgeSeatFeedSeat0FeedKey: ap.feedSeats[0]?.feedKey,
+      EdgeSeatFeedSeat0MaxUsers: ap.feedSeats[0]?.maxUsers,
+      EdgeSeatFeedSeat0CurrentUsers: ap.feedSeats[0]?.currentUsers,
       UserPayer: ap.userPayer,
       ConnectionCount: ap.connectionCount,
       Status: ap.status,
@@ -537,13 +542,48 @@ describe("AccessPassEdgeSeat fixture", () => {
       MaxMulticastUsers: ap.maxMulticastUsers,
     });
 
-    // EdgeSeat is tag 4 and carries no payload; the seat is the user_payer.
+    // EdgeSeat is tag 4 and now carries a Vec<FeedSeat> payload.
     expect(ap.accessPassType).toBe(4);
     expect(ap.associatedPubkey).toBeNull();
+    expect(ap.feedSeats).toHaveLength(1);
+    expect(ap.feedSeats[0].maxUsers).toBe(7);
+    expect(ap.feedSeats[0].currentUsers).toBe(3);
     expect(ap.unicastUserCount).toBe(2);
     expect(ap.maxUnicastUsers).toBe(4);
     expect(ap.multicastUserCount).toBe(1);
     expect(ap.maxMulticastUsers).toBe(3);
+  });
+});
+
+describe("Feed fixture", () => {
+  test("deserialize", () => {
+    const [data, meta] = loadFixture("feed");
+    const feed = deserializeFeed(data);
+    assertFields(meta.fields, {
+      AccountType: feed.accountType,
+      Owner: feed.owner,
+      BumpSeed: feed.bumpSeed,
+      Code: feed.code,
+      Name: feed.name,
+      ReferenceCount: feed.referenceCount,
+      MetrosLen: feed.metros.length,
+      Metro0Exchange: feed.metros[0]?.exchange,
+      Metro0GroupsLen: feed.metros[0]?.groups.length,
+      Metro0Group0: feed.metros[0]?.groups[0],
+      Metro0Group1: feed.metros[0]?.groups[1],
+      Metro1Exchange: feed.metros[1]?.exchange,
+      Metro1GroupsLen: feed.metros[1]?.groups.length,
+      Metro1Group0: feed.metros[1]?.groups[0],
+    });
+
+    expect(feed.accountType).toBe(18);
+    expect(feed.bumpSeed).toBe(239);
+    expect(feed.code).toBe("shreds");
+    expect(feed.name).toBe("Shreds");
+    expect(feed.referenceCount).toBe(4);
+    expect(feed.metros).toHaveLength(2);
+    expect(feed.metros[0].groups).toHaveLength(2);
+    expect(feed.metros[1].groups).toHaveLength(1);
   });
 });
 

@@ -42,6 +42,9 @@ use solana_program::{
 ///   INFRA_ADMIN       → foundation_allowlist
 ///   GLOBALSTATE_ADMIN → foundation_allowlist
 ///   CONTRIBUTOR_ADMIN → foundation_allowlist
+///   TOPOLOGY_ADMIN    → foundation_allowlist
+///   RESOURCE_ADMIN    → foundation_allowlist
+///   INDEX_ADMIN       → foundation_allowlist
 pub fn authorize<'a, 'b: 'a, I>(
     program_id: &Pubkey,
     accounts_iter: &mut I,
@@ -201,6 +204,24 @@ fn check_legacy_any(payer: &Pubkey, globalstate: &GlobalState, any_of: u128) -> 
     }
     // CONTRIBUTOR_ADMIN in legacy = foundation.
     if any_of & permission_flags::CONTRIBUTOR_ADMIN != 0
+        && globalstate.foundation_allowlist.contains(payer)
+    {
+        return true;
+    }
+    // TOPOLOGY_ADMIN in legacy = foundation.
+    if any_of & permission_flags::TOPOLOGY_ADMIN != 0
+        && globalstate.foundation_allowlist.contains(payer)
+    {
+        return true;
+    }
+    // RESOURCE_ADMIN in legacy = foundation.
+    if any_of & permission_flags::RESOURCE_ADMIN != 0
+        && globalstate.foundation_allowlist.contains(payer)
+    {
+        return true;
+    }
+    // INDEX_ADMIN in legacy = foundation.
+    if any_of & permission_flags::INDEX_ADMIN != 0
         && globalstate.foundation_allowlist.contains(payer)
     {
         return true;
@@ -634,6 +655,62 @@ mod tests {
         assert!(
             authorize_legacy(&program_id, &payer, &gs, permission_flags::PERMISSION_ADMIN).is_err()
         );
+    }
+
+    #[test]
+    fn test_legacy_topology_admin_via_foundation() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let gs = gs_with_foundation(&payer);
+        assert!(
+            authorize_legacy(&program_id, &payer, &gs, permission_flags::TOPOLOGY_ADMIN).is_ok()
+        );
+    }
+
+    #[test]
+    fn test_legacy_topology_admin_unauthorized() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let gs = gs_with_activator(&payer); // activator does NOT grant TOPOLOGY_ADMIN
+        assert!(
+            authorize_legacy(&program_id, &payer, &gs, permission_flags::TOPOLOGY_ADMIN).is_err()
+        );
+    }
+
+    #[test]
+    fn test_legacy_resource_admin_via_foundation() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let gs = gs_with_foundation(&payer);
+        assert!(
+            authorize_legacy(&program_id, &payer, &gs, permission_flags::RESOURCE_ADMIN).is_ok()
+        );
+    }
+
+    #[test]
+    fn test_legacy_resource_admin_unauthorized() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let gs = gs_with_sentinel(&payer); // sentinel does NOT grant RESOURCE_ADMIN
+        assert!(
+            authorize_legacy(&program_id, &payer, &gs, permission_flags::RESOURCE_ADMIN).is_err()
+        );
+    }
+
+    #[test]
+    fn test_legacy_index_admin_via_foundation() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let gs = gs_with_foundation(&payer);
+        assert!(authorize_legacy(&program_id, &payer, &gs, permission_flags::INDEX_ADMIN).is_ok());
+    }
+
+    #[test]
+    fn test_legacy_index_admin_unauthorized() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let gs = gs_with_qa(&payer); // QA does NOT grant INDEX_ADMIN
+        assert!(authorize_legacy(&program_id, &payer, &gs, permission_flags::INDEX_ADMIN).is_err());
     }
 
     // ── RequirePermissionAccounts feature flag ────────────────────────────────

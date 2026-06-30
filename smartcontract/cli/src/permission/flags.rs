@@ -19,6 +19,9 @@ pub enum PermissionName {
     AccessPassAdmin,
     HealthOracle,
     Qa,
+    TopologyAdmin,
+    ResourceAdmin,
+    IndexAdmin,
 }
 
 impl PermissionName {
@@ -39,6 +42,9 @@ impl PermissionName {
             Self::AccessPassAdmin => permission_flags::ACCESS_PASS_ADMIN,
             Self::HealthOracle => permission_flags::HEALTH_ORACLE,
             Self::Qa => permission_flags::QA,
+            Self::TopologyAdmin => permission_flags::TOPOLOGY_ADMIN,
+            Self::ResourceAdmin => permission_flags::RESOURCE_ADMIN,
+            Self::IndexAdmin => permission_flags::INDEX_ADMIN,
         }
     }
 
@@ -59,6 +65,9 @@ impl PermissionName {
             Self::AccessPassAdmin => "access-pass-admin",
             Self::HealthOracle => "health-oracle",
             Self::Qa => "qa",
+            Self::TopologyAdmin => "topology-admin",
+            Self::ResourceAdmin => "resource-admin",
+            Self::IndexAdmin => "index-admin",
         }
     }
 }
@@ -87,6 +96,9 @@ impl ValueEnum for PermissionName {
             Self::AccessPassAdmin,
             Self::HealthOracle,
             Self::Qa,
+            Self::TopologyAdmin,
+            Self::ResourceAdmin,
+            Self::IndexAdmin,
         ]
     }
 
@@ -118,6 +130,9 @@ pub fn bitmask_to_names(mask: u128) -> Vec<String> {
         (permission_flags::ACCESS_PASS_ADMIN, "access-pass-admin"),
         (permission_flags::HEALTH_ORACLE, "health-oracle"),
         (permission_flags::QA, "qa"),
+        (permission_flags::TOPOLOGY_ADMIN, "topology-admin"),
+        (permission_flags::RESOURCE_ADMIN, "resource-admin"),
+        (permission_flags::INDEX_ADMIN, "index-admin"),
     ];
     all.iter()
         .filter(|(flag, _)| mask & flag != 0)

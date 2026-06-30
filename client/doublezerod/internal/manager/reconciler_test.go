@@ -84,9 +84,15 @@ func (m *mockHeartbeatSender) Start(string, net.IP, []net.IP, int, time.Duration
 func (m *mockHeartbeatSender) UpdateGroups([]net.IP) error { return nil }
 func (m *mockHeartbeatSender) Close() error                { return nil }
 
-type mockRegisterSender struct{}
+type mockRegisterSender struct {
+	mu          sync.Mutex
+	capturedRPs []net.IP
+}
 
-func (m *mockRegisterSender) Start(string, net.IP, net.IP, []net.IP, net.IP, int, []byte, time.Duration) error {
+func (m *mockRegisterSender) Start(iface string, srcOverlay, innerSrc net.IP, groups []net.IP, rp net.IP, dport int, payload []byte, interval time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.capturedRPs = append(m.capturedRPs, rp)
 	return nil
 }
 func (m *mockRegisterSender) UpdateGroups([]net.IP) error { return nil }
@@ -117,6 +123,18 @@ func newTestNLMWithNetlink(nl routing.Netlinker, fetcher Fetcher, opts ...Option
 	hb := &mockHeartbeatSender{}
 	reg := &mockRegisterSender{}
 	return NewNetlinkManager(nl, bgpSrv, pimSrv, hb, reg, append([]Option{WithFetcher(fetcher)}, opts...)...)
+}
+
+// newTestNLMWithRegisterSender is like newTestNLM but returns the register
+// mock so callers can inspect captured arguments.
+func newTestNLMWithRegisterSender(fetcher Fetcher, opts ...Option) (*NetlinkManager, *mockRegisterSender) {
+	nl := &mockNetlink{}
+	bgpSrv := &mockBgpServer{}
+	pimSrv := &mockPIMServer{}
+	hb := &mockHeartbeatSender{}
+	reg := &mockRegisterSender{}
+	mgr := NewNetlinkManager(nl, bgpSrv, pimSrv, hb, reg, append([]Option{WithFetcher(fetcher)}, opts...)...)
+	return mgr, reg
 }
 
 func testDevice(pk [32]byte, ip [4]uint8, prefixes [][5]uint8) serviceability.Device {
@@ -340,6 +358,60 @@ func TestReconcile_ProvisionMulticast(t *testing.T) {
 	}
 	if !pr.MulticastSubGroups[0].Equal(net.IPv4(239, 0, 0, 1)) {
 		t.Fatalf("expected sub group 239.0.0.1, got %v", pr.MulticastSubGroups[0])
+	}
+}
+
+// TestReconcile_ProvisionMulticast_DefaultsRpAddress verifies that the
+// reconciler path calls Validate() on the built ProvisionRequest so that a
+// nil MulticastRpAddress is defaulted to 10.0.0.0 before the register sender
+// is started.  Without the fix buildProvisionRequest returns a nil
+// MulticastRpAddress, which makes RegisterSender.Start fail with
+// "missing address".
+func TestReconcile_ProvisionMulticast_DefaultsRpAddress(t *testing.T) {
+	devicePK := [32]byte{1}
+	mcastGroupPK := [32]byte{2}
+	clientIP := net.IPv4(1, 2, 3, 4).To4()
+
+	// Publisher user — has publish groups, which triggers register.Start.
+	user := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
+	user.Publishers = [][32]uint8{mcastGroupPK}
+
+	fetcher := &mockFetcher{
+		data: &serviceability.ProgramData{
+			GlobalConfig:    testGlobalConfig(),
+			Devices:         []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, nil)},
+			Users:           []serviceability.User{user},
+			MulticastGroups: []serviceability.MulticastGroup{{PubKey: mcastGroupPK, MulticastIp: [4]uint8{239, 0, 0, 1}}},
+		},
+	}
+
+	n, reg := newTestNLMWithRegisterSender(fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
+
+	if n.MulticastService == nil {
+		t.Fatal("expected multicast service to be provisioned")
+	}
+
+	// The ProvisionRequest stored in the service must have a defaulted RP address.
+	pr := n.MulticastService.ProvisionRequest()
+	if pr.MulticastRpAddress == nil {
+		t.Fatal("MulticastRpAddress is nil on reconciler path; Validate() was not called")
+	}
+	wantRP := net.IPv4(10, 0, 0, 0)
+	if !pr.MulticastRpAddress.Equal(wantRP) {
+		t.Fatalf("expected MulticastRpAddress %v, got %v", wantRP, pr.MulticastRpAddress)
+	}
+
+	// The rp passed to register.Start must also be the defaulted address.
+	reg.mu.Lock()
+	capturedRPs := append([]net.IP(nil), reg.capturedRPs...)
+	reg.mu.Unlock()
+
+	if len(capturedRPs) == 0 {
+		t.Fatal("register.Start was never called for a publisher user")
+	}
+	if !capturedRPs[0].Equal(wantRP) {
+		t.Fatalf("register.Start received rp=%v, want %v", capturedRPs[0], wantRP)
 	}
 }
 

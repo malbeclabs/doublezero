@@ -61,14 +61,16 @@ test-cleanup:
 # -----------------------------------------------------------------------------
 # Solana image build and push.
 #
-# This is not required to run for the e2e tests, because it is expected that
-# the solana image is already built and pushed to the container registry.
+# This is a standalone, multi-arch (amd64 + arm64) agave build pushed to the
+# container registry as `solana:latest`. Rebuild with `buildx-solana` and push
+# with `buildx-solana-push`. It is pinned to the deploy floor (agave 2.2.16) and
+# built from source because Anza ships no aarch64-linux release binary.
 #
-# If you need to rebuild the solana image, you can do that with the `buildx-solana`
-# command, and then push it to the container registry with the
-# `buildx-solana-push` command.
-#
-# The solana image is used by the e2e tests to run the solana validator.
+# Note: the e2e test build path in this repo does NOT consume this image.
+# base.dockerfile builds its own `solana` (SBF build toolchain) and
+# `solana-validator` (pinned runtime) stages; the latter is what lands in the
+# ledger image. Keep this image's agave pin in sync with base.dockerfile's
+# SOLANA_VALIDATOR_VERSION when bumping the deploy floor.
 # -----------------------------------------------------------------------------
 
 .PHONY: .setup-multiplatform

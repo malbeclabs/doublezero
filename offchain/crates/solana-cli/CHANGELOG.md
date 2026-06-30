@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `shreds validator-client-rewards claim`: claim every outstanding holding by default. `--subscription-epoch` is now optional — omit it to discover and drain all holdings for the client and mint (current epoch read from `getEpochInfo`). The 16-epoch cap is replaced by automatic batching into `≤16`-per-tx transactions, and explicit epochs whose holding is missing/wrong-mint/invalid are warned and skipped instead of failing the whole claim (#393)
+
 ## [0.5.8](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.8)
 
 - uptick crate to v0.5.8 (#392)

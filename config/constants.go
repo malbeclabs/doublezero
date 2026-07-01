@@ -19,17 +19,17 @@ const (
 	MainnetUSDCMint                     = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 	// Testnet constants.
-	TestnetLedgerPublicRPCURL            = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
-	TestnetServiceabilityProgramID       = "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb"
-	TestnetTelemetryProgramID            = "3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1"
-	TestnetInternetLatencyCollectorPK    = "HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1"
-	TestnetDeviceLocalASN                = 65342
-	TestnetTwoZOracleURL                 = "https://sol-2z-oracle-api-v1.testnet.doublezero.xyz"
-	TestnetSolanaRPC                     = "https://api.testnet.solana.com"
-	TestnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.testnet.doublezero.xyz"
-	TestnetTelemetryStateIngestURL       = "https://telemetry-state-in-testnet.doublezero.xyz"
-	TestnetGeolocationProgramID          = "3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4"
-	TestnetShredSubscriptionProgramID    = "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE"
+	TestnetLedgerPublicRPCURL         = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
+	TestnetServiceabilityProgramID    = "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb"
+	TestnetTelemetryProgramID         = "3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1"
+	TestnetInternetLatencyCollectorPK = "HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1"
+	TestnetDeviceLocalASN             = 65342
+	TestnetTwoZOracleURL              = "https://sol-2z-oracle-api-v1.testnet.doublezero.xyz"
+	TestnetSolanaRPC                  = "https://api.testnet.solana.com"
+	TestnetTelemetryFlowIngestURL     = "http://telemetry-flow-in.testnet.doublezero.xyz"
+	TestnetTelemetryStateIngestURL    = "https://telemetry-state-in-testnet.doublezero.xyz"
+	TestnetGeolocationProgramID       = "3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4"
+	TestnetShredSubscriptionProgramID = "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE"
 	// Testnet shred-subscription runs on Solana devnet, so settlement uses the
 	// Solana devnet USDC mint (not the DZ ledger testnet mint).
 	TestnetUSDCMint                      = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"

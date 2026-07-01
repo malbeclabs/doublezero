@@ -1,9 +1,13 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::get_index_pda,
     seeds::{SEED_INDEX, SEED_PREFIX},
     serializer::try_acc_create,
-    state::{accounttype::AccountType, globalstate::GlobalState, index::Index},
+    state::{
+        accounttype::AccountType, globalstate::GlobalState, index::Index,
+        permission::permission_flags,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -126,11 +130,15 @@ pub fn process_create_index(
     );
     assert!(index_account.is_writable, "Index Account is not writable");
 
-    // Check foundation allowlist
+    // Authorization: INDEX_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::INDEX_ADMIN,
+    )?;
 
     create_index_account(
         program_id,

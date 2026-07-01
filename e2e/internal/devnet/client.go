@@ -38,6 +38,11 @@ type ClientSpec struct {
 	RouteLivenessEnablePassive bool
 	RouteLivenessEnableActive  bool
 
+	// RouteLivenessBackoffMax caps the Down-state probe interval (exponential backoff).
+	// When zero, the daemon default applies. Pinned to a small value in tests to avoid
+	// a multi-second gap between probes that can outlast the test deadline.
+	RouteLivenessBackoffMax time.Duration
+
 	// RouteLivenessEnable is a flag to enable or disable route liveness. False puts the system in
 	// passive-mode, and true puts it in active-mode.
 	// RouteLivenessEnable bool
@@ -207,6 +212,9 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 	if c.Spec.RouteLivenessDebug {
 		extraArgs = append(extraArgs, "-route-liveness-debug")
+	}
+	if c.Spec.RouteLivenessBackoffMax > 0 {
+		extraArgs = append(extraArgs, fmt.Sprintf("-route-liveness-backoff-max=%s", c.Spec.RouteLivenessBackoffMax))
 	}
 	if c.Spec.LatencyProbeTunnelEndpoints {
 		extraArgs = append(extraArgs, "-latency-probe-tunnel-endpoints")

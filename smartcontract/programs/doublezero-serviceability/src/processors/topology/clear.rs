@@ -1,9 +1,12 @@
 use crate::{
+    authorize::{authorize, split_trailing_permission},
     error::DoubleZeroError,
     pda::{get_globalstate_pda, get_link_pda, get_topology_pda},
     processors::validation::validate_program_account,
     serializer::try_acc_write,
-    state::{globalstate::GlobalState, link::Link, topology::TopologyInfo},
+    state::{
+        globalstate::GlobalState, link::Link, permission::permission_flags, topology::TopologyInfo,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -20,12 +23,17 @@ pub struct TopologyClearArgs {
 }
 
 /// Accounts layout:
-/// [0] topology PDA     (writable when account still exists; readonly is accepted when
-///                      the topology has already been closed — clear is tolerant of that)
-/// [1] globalstate      (readonly)
-/// [2] payer            (writable, signer, must be in foundation_allowlist)
-/// [3] system_program
-/// [4+] Link accounts   (writable) — remove topology pubkey from link_topologies on each
+/// [0]    topology PDA  (writable when account still exists; readonly is accepted when
+///                       the topology has already been closed — clear is tolerant of that)
+/// [1]    globalstate   (readonly)
+/// [2..n] Link accounts (writable) — remove topology pubkey from link_topologies on each
+/// [n+1]  payer         (writable, signer, must hold TOPOLOGY_ADMIN)
+/// [n+2]  system_program
+/// [n+3]  permission    (readonly, optional — payer's Permission PDA)
+///
+/// Note: payer and system_program are the last two accounts (or the last two
+/// before the optional Permission account). The SDK client always appends them
+/// after the variable-length link list.
 pub fn process_topology_clear(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -35,11 +43,16 @@ pub fn process_topology_clear(
 
     let topology_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
-    let payer_account = next_account_info(accounts_iter)?;
-    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_topology_clear(name={})", value.name);
+
+    // The SDK client appends payer and system_program after the variable-length
+    // Link list, plus an optional Permission account when one exists for the
+    // payer. split_trailing_permission peels those off the tail.
+    let all_remaining: Vec<&AccountInfo> = accounts_iter.collect();
+    let (payer_account, _system_program, link_accounts, permission_account) =
+        split_trailing_permission(program_id, &all_remaining)?;
 
     // Payer must be a signer
     if !payer_account.is_signer {
@@ -56,12 +69,15 @@ pub fn process_topology_clear(
         "GlobalState"
     );
 
-    // Authorization: foundation keys only
+    // Authorization: TOPOLOGY_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        msg!("TopologyClear: unauthorized — foundation key required");
-        return Err(DoubleZeroError::Unauthorized.into());
-    }
+    authorize(
+        program_id,
+        &mut permission_account.into_iter(),
+        payer_account.key,
+        &globalstate,
+        permission_flags::TOPOLOGY_ADMIN,
+    )?;
 
     // Validate topology PDA. Clear is tolerant of an already-closed topology,
     // so we cannot call validate_program_account! (it asserts non-empty). If
@@ -83,7 +99,7 @@ pub fn process_topology_clear(
     let mut cleared_count: usize = 0;
 
     // Process remaining Link accounts: remove topology key from link_topologies
-    for link_account in accounts_iter {
+    for link_account in link_accounts.iter().copied() {
         validate_program_account!(link_account, program_id, writable = true, "Link");
         let mut link = Link::try_from(link_account)?;
         assert_eq!(

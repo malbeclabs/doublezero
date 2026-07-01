@@ -22,6 +22,36 @@ RUN echo "$CACHE_BUSTER" > /opt/solana/bin/.cache-buster && \
     find /opt/solana/bin -type f -exec touch {} +
 
 # ----------------------------------------------------------------------------
+# Runtime validator stage with a platform-specific image.
+#
+# The solana-test-validator that runs the e2e ledger is pinned to the deploy
+# floor (testnet runs agave 2.2.16; mainnet 2.3.6 is newer, so 2.2.16 is the
+# binding constraint). Previously the runtime validator was sourced from the
+# solana stage above (SOLANA_VERSION, 2.3.13); it is now decoupled, because that
+# stage is the SBF *build* toolchain and tracks the branch. Pinning the runtime
+# to the production floor makes a green e2e prove a change actually deploys and
+# runs on the cluster runtime. Bump when the deploy floor moves.
+#
+# Only solana-test-validator is taken from this stage. The solana/solana-keygen
+# client CLIs stay on the build-toolchain version: keeping the deploy CLI newer
+# than the cluster mirrors operator tooling and surfaces (rather than masks)
+# deploy-vs-runtime skew, which is the point of the pin.
+#
+# base.dockerfile is built linux/amd64 only (see builder.go), so the amd64
+# release binary suffices here; the multi-arch source build lives in
+# docker/solana/Dockerfile.
+# ----------------------------------------------------------------------------
+FROM ubuntu:24.04 AS solana-validator
+
+RUN apt update -qq && \
+    apt install --no-install-recommends -y ca-certificates curl bzip2
+
+ARG SOLANA_VALIDATOR_VERSION=2.2.16
+RUN bash -c 'set -euo pipefail; curl -fsSL https://release.anza.xyz/v${SOLANA_VALIDATOR_VERSION}/install | sh'
+RUN mkdir -p /opt/solana/bin && \
+    mv /root/.local/share/solana/install/active_release/bin/* /opt/solana/bin/
+
+# ----------------------------------------------------------------------------
 # Builder stage for the doublezero components.
 # ----------------------------------------------------------------------------
 FROM ubuntu:24.04 AS builder-base
@@ -251,7 +281,9 @@ RUN echo "$CACHE_BUSTER" > ${BIN_DIR}/.cache-buster && \
 FROM ubuntu:24.04
 
 # Copy binaries from the builder stage.
-COPY --from=solana /opt/solana/bin/solana-test-validator /usr/local/bin/.
+# The runtime validator is the deploy-floor pin (2.2.16); the solana/solana-keygen
+# client CLIs stay on the build toolchain version (solana stage).
+COPY --from=solana-validator /opt/solana/bin/solana-test-validator /usr/local/bin/.
 COPY --from=solana /opt/solana/bin/solana /usr/local/bin/.
 COPY --from=solana /opt/solana/bin/solana-keygen /usr/local/bin/.
 COPY --from=builder-rust /doublezero/bin/. /doublezero/bin/.

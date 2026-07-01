@@ -75,6 +75,27 @@ func TestRetryOnBindError_GivesUpAfterMaxAttempts(t *testing.T) {
 	assert.Equal(t, int32(senderRetries), calls.Load())
 }
 
+func TestRetryOnBindError_NoBackoffAfterFinalAttempt(t *testing.T) {
+	t.Parallel()
+
+	fn := func() (string, error) {
+		return "", errors.New("bind: invalid argument")
+	}
+
+	start := time.Now()
+	_, err := retryOnBindError(context.Background(), quietLogger(), fn)
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+
+	// Backoff covers only the gaps between attempts: senderRetryMin*(2^0+...+2^(n-2)).
+	// A sleep after the final attempt would add senderRetryMin*2^(n-1) on top.
+	betweenAttempts := senderRetryMin * ((1 << (senderRetries - 1)) - 1)
+	finalSleep := senderRetryMin * (1 << (senderRetries - 1))
+	assert.Less(t, elapsed, betweenAttempts+finalSleep/2,
+		"must not back off after the final attempt before giving up")
+}
+
 func TestRetryOnBindError_HonorsContextCancellation(t *testing.T) {
 	t.Parallel()
 

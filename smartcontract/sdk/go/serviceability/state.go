@@ -1308,6 +1308,9 @@ const (
 	PermissionFlagQA               uint64 = 1 << 12
 	PermissionFlagGlobalstateAdmin uint64 = 1 << 13
 	PermissionFlagContributorAdmin uint64 = 1 << 14
+	PermissionFlagTopologyAdmin    uint64 = 1 << 15
+	PermissionFlagResourceAdmin    uint64 = 1 << 16
+	PermissionFlagIndexAdmin       uint64 = 1 << 17
 )
 
 type Permission struct {

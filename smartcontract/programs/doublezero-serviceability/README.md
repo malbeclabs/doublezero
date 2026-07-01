@@ -21,6 +21,19 @@ The following Rust structures define the on-chain account types that the smart c
 - **MulticastGroup**: Structure and enums for multicast groups, including status.
 - **GlobalConfig**: Structure for global configuration parameters, such as ASNs and network blocks.
 - **GlobalState**: Structure for the global state, including allowlists and global indices.
+- **Permission**: Structure granting named capabilities to a pubkey via a `u128` permission bitmask. See [PERMISSION.md](./PERMISSION.md).
+
+---
+
+## Permissions
+
+Privileged instructions are authorized through the `Permission` system (`src/authorize.rs`), which
+grants fine-grained, per-pubkey capabilities via a `u128` bitmask of `permission_flags::*` and falls
+back to the legacy `GlobalState` allowlists during the transition. The full flag taxonomy,
+authorization model, and instructions are documented in [PERMISSION.md](./PERMISSION.md). The current
+flags include foundation/permission/globalstate/contributor/index admin (Tier 1), infra/network/
+tenant/multicast/feed/topology/resource admin (Tier 2), activator/sentinel/user/access-pass admin
+(Tier 3), and health-oracle/QA (Tier 4).
 
 ---
 

@@ -294,6 +294,42 @@ func TestClient_Liveness_Session_BackoffResetsWhenNotDown(t *testing.T) {
 	require.Equal(t, uint32(1), s.backoffFactor)
 }
 
+// TestClient_Liveness_Session_ComputeNextTx_DownIntervalCappedAtBackoffMax is a guardrail
+// for the cap semantics this fix relies on: while Down, the effective transmit interval
+// grows via exponential backoff but must never exceed backoffMax (plus the ±10% jitter
+// band). The cap logic already exists; pinning a small backoffMax (as the e2e harness now
+// does) keeps the Down probe schedule gap-free so the active client's liveness handshake
+// converges promptly once the data path is up.
+func TestClient_Liveness_Session_ComputeNextTx_DownIntervalCappedAtBackoffMax(t *testing.T) {
+	t.Parallel()
+	for _, backoffMax := range []time.Duration{3 * time.Second, 200 * time.Millisecond, 1 * time.Minute} {
+		backoffMax := backoffMax
+		t.Run(backoffMax.String(), func(t *testing.T) {
+			t.Parallel()
+			s := newSess()
+			s.state = StateDown
+			s.localTxMin = 1 * time.Second
+			s.minTxFloor = 50 * time.Millisecond
+			s.maxTxCeil = 3 * time.Second
+			s.backoffMax = backoffMax
+			s.backoffFactor = 1
+			r := rand.New(rand.NewSource(1))
+
+			// The jitter band is ±10% of the (capped) effective interval, so the
+			// observed interval can sit at most backoffMax/10 above backoffMax.
+			maxInterval := backoffMax + backoffMax/10
+			now := time.Unix(0, 0)
+			for i := 0; i < 20; i++ {
+				next := s.ComputeNextTx(now, r)
+				interval := next.Sub(now)
+				require.LessOrEqual(t, interval, maxInterval,
+					"iteration %d: Down interval %v must be capped at backoffMax %v (+jitter)", i, interval, backoffMax)
+				now = next
+			}
+		})
+	}
+}
+
 func TestClient_Liveness_Session_HandleRxIgnoredWhenAdminDown(t *testing.T) {
 	t.Parallel()
 	s := newSess()

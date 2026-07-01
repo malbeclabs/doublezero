@@ -11,4 +11,4 @@ doublezero-revenue-distribution = { git = "https://github.com/doublezerofoundati
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ruint = "1"
-solana-pubkey = { version = "3", features = ["bytemuck"] }
+solana-pubkey = { version = "4", features = ["bytemuck"] }

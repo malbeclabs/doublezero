@@ -30,7 +30,9 @@ const (
 	TestnetTelemetryStateIngestURL       = "https://telemetry-state-in-testnet.doublezero.xyz"
 	TestnetGeolocationProgramID          = "3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4"
 	TestnetShredSubscriptionProgramID    = "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE"
-	TestnetUSDCMint                      = "uSDZq2RMuxrEf7gqgDjR8wJCtCyaDAQk2e5jLAaoeeM"
+	// Testnet shred-subscription runs on Solana devnet, so settlement uses the
+	// Solana devnet USDC mint (not the DZ ledger testnet mint).
+	TestnetUSDCMint                      = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 	TestnetTelemetryGNMITunnelServerAddr = "gnmic-testnet.doublezero.xyz:443"
 
 	// Devnet constants.

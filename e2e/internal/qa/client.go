@@ -125,7 +125,8 @@ type Client struct {
 
 	// Settlement config passed to doublezero-solana shreds commands.
 	// SolanaRPCURL is the Solana RPC endpoint for settlement transactions (--url).
-	// On testnet this is the DZ ledger URL; on mainnet it's the public Solana RPC.
+	// On testnet this is Solana devnet (via SOLANA_RPC_URL); on mainnet the public
+	// Solana RPC; on devnet the DZ ledger URL.
 	SolanaRPCURL               string
 	ShredSubscriptionProgramID string
 	DZLedgerURL                string
@@ -155,11 +156,14 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 
 	serviceabilityClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 
-	// Settlement transactions on testnet/devnet use the DZ ledger RPC endpoint
-	// (which hosts the settlement programs). Mainnet and localnet use the
+	// Settlement transactions on devnet use the DZ ledger RPC endpoint (which
+	// hosts the settlement programs there). Testnet reads/writes the
+	// shred-subscription program on Solana devnet via networkConfig.SolanaRPCURL
+	// (the SOLANA_RPC_URL override, a Solana devnet RPC endpoint in CI;
+	// defaults to the public Solana endpoint). Mainnet and localnet use the
 	// standard Solana RPC.
 	solanaRPCURL := networkConfig.SolanaRPCURL
-	if networkConfig.Moniker == config.EnvTestnet || networkConfig.Moniker == config.EnvDevnet {
+	if networkConfig.Moniker == config.EnvDevnet {
 		solanaRPCURL = networkConfig.LedgerPublicRPCURL
 	}
 

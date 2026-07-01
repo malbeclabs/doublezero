@@ -70,8 +70,8 @@ func (m *mockRawConn) WriteTo(h *ipv4.Header, b []byte, cm *ipv4.ControlMessage)
 	m.calls = append(m.calls, writeCall{h: h, b: cp, cm: cm})
 	return nil
 }
-func (m *mockRawConn) Close() error                                     { return nil }
-func (m *mockRawConn) SetMulticastInterface(*net.Interface) error       { return nil }
+func (m *mockRawConn) Close() error                                    { return nil }
+func (m *mockRawConn) SetMulticastInterface(*net.Interface) error      { return nil }
 func (m *mockRawConn) SetControlMessage(ipv4.ControlFlags, bool) error { return nil }
 
 func TestRegisterSenderSendsRegisterToRP(t *testing.T) {

@@ -1195,7 +1195,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1233,7 +1232,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1271,7 +1269,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1315,7 +1312,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1361,7 +1357,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1400,7 +1395,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();

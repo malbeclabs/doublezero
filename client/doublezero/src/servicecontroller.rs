@@ -159,7 +159,7 @@ pub struct MulticastGroups {
 /// A single multicast group the user participates in, with the group's onchain
 /// details and the user's role(s). A user that is both publisher and subscriber
 /// of a group appears once with both booleans set.
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct Subscription {
     #[serde(default)]
     pub pubkey: String,

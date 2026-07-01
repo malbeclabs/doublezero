@@ -783,16 +783,27 @@ mod tests {
         assert_eq!(result[0].multicast_groups, "P:solana-lv,S:solana-ams");
 
         // The structured subscriptions list is carried through verbatim.
-        assert_eq!(result[0].subscriptions.len(), 2);
-        assert_eq!(result[0].subscriptions[0].code, "solana-lv");
-        assert_eq!(result[0].subscriptions[0].multicast_ip, "233.84.178.1");
-        assert_eq!(result[0].subscriptions[0].pubkey, "pubLV");
-        assert_eq!(result[0].subscriptions[0].max_bandwidth, 1_000_000_000);
-        assert!(result[0].subscriptions[0].publisher);
-        assert!(!result[0].subscriptions[0].subscriber);
-        assert_eq!(result[0].subscriptions[1].code, "solana-ams");
-        assert!(!result[0].subscriptions[1].publisher);
-        assert!(result[0].subscriptions[1].subscriber);
+        assert_eq!(
+            result[0].subscriptions,
+            vec![
+                Subscription {
+                    pubkey: "pubLV".to_string(),
+                    code: "solana-lv".to_string(),
+                    multicast_ip: "233.84.178.1".to_string(),
+                    max_bandwidth: 1_000_000_000,
+                    publisher: true,
+                    subscriber: false,
+                },
+                Subscription {
+                    pubkey: "pubAMS".to_string(),
+                    code: "solana-ams".to_string(),
+                    multicast_ip: "233.84.178.2".to_string(),
+                    max_bandwidth: 2_000_000_000,
+                    publisher: false,
+                    subscriber: true,
+                },
+            ]
+        );
     }
 
     #[test]

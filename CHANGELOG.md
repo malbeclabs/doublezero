@@ -13,6 +13,9 @@ All notable changes to this project will be documented in this file.
 
 - Client
   - Add a `-route-liveness-backoff-max` daemon flag to cap the Down-state liveness probe interval. Defaults to 60s (production behavior unchanged); the e2e harness pins a small value to avoid a probe gap that flaked the multi-client IBRL tests. (#3949)
+  - Originate a PIM Register beacon for multicast publishers: `doublezerod` periodically sends a PIM Register (encapsulating the publisher heartbeat) unicast to the RP over the tunnel, so the device originates the MSDP SA for the published source even on a dual-role publisher/subscriber tunnel, where `pim ipv4 border-router` source injection is suppressed by the subscriber-side PIM neighbor. (RFC-22)
+- Controller
+  - Permit the unicast PIM Register to the RP (`permit pim any host 10.0.0.0`) on publisher multicast tunnels so the client-originated Register reaches the device; `pim ipv4 border-router` is retained as a backstop. (RFC-22)
 - E2E
   - Pin the e2e ledger `solana-test-validator` to the deploy floor (agave 2.2.16, testnet) so a green e2e proves a change actually deploys and runs on the production cluster runtime. Previously the runtime validator rode the SBF build toolchain version (2.3.13); it is now decoupled and pinned independently. The build toolchain is unchanged. (#3957)
 

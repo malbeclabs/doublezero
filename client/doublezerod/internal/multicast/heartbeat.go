@@ -22,9 +22,9 @@ const (
 	DefaultHeartbeatInterval = 10 * time.Second
 )
 
-// heartbeatPayload is the fixed payload sent in each heartbeat packet.
+// HeartbeatPayload is the fixed payload sent in each heartbeat packet.
 // 0x44, 0x5A = "DZ", followed by a 2-byte version (0x00, 0x01).
-var heartbeatPayload = []byte{0x44, 0x5A, 0x00, 0x01}
+var HeartbeatPayload = []byte{0x44, 0x5A, 0x00, 0x01}
 
 // PacketConner abstracts the UDP multicast connection for testing.
 type PacketConner interface {
@@ -135,7 +135,7 @@ func (h *HeartbeatSender) startWithConn(p PacketConner, intf *net.Interface, gro
 
 func sendHeartbeats(p PacketConner, dsts []*net.UDPAddr) {
 	for _, dst := range dsts {
-		if _, err := p.WriteTo(heartbeatPayload, nil, dst); err != nil {
+		if _, err := p.WriteTo(HeartbeatPayload, nil, dst); err != nil {
 			slog.Error("failed to send heartbeat", "dst", dst, "error", err)
 		}
 	}

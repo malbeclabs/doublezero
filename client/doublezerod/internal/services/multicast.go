@@ -11,6 +11,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/multicast"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
@@ -21,6 +22,7 @@ type MulticastService struct {
 	nl                 routing.Netlinker
 	pim                PIMWriter
 	heartbeat          HeartbeatWriter
+	register           RegisterWriter
 	Tunnel             *routing.Tunnel
 	DoubleZeroAddr     net.IP
 	MulticastPubGroups []net.IP
@@ -31,12 +33,13 @@ type MulticastService struct {
 func (s *MulticastService) UserType() api.UserType   { return api.UserTypeMulticast }
 func (s *MulticastService) ServiceType() ServiceType { return ServiceTypeMulticast }
 
-func NewMulticastService(bgp BGPReaderWriter, nl routing.Netlinker, pim PIMWriter, heartbeat HeartbeatWriter) *MulticastService {
+func NewMulticastService(bgp BGPReaderWriter, nl routing.Netlinker, pim PIMWriter, heartbeat HeartbeatWriter, register RegisterWriter) *MulticastService {
 	return &MulticastService{
 		bgp:       bgp,
 		nl:        nl,
 		pim:       pim,
 		heartbeat: heartbeat,
+		register:  register,
 	}
 }
 
@@ -91,6 +94,9 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 		s.MulticastPubGroups = p.MulticastPubGroups
 		if err := s.heartbeat.Start(tun.Name, p.DoubleZeroIP, p.MulticastPubGroups, multicast.DefaultHeartbeatTTL, multicast.DefaultHeartbeatInterval); err != nil {
 			return fmt.Errorf("error starting heartbeat sender: %v", err)
+		}
+		if err := s.register.Start(tun.Name, s.Tunnel.LocalOverlay, p.DoubleZeroIP, p.MulticastPubGroups, p.MulticastRpAddress, multicast.HeartbeatPort, multicast.HeartbeatPayload, pim.DefaultRegisterInterval); err != nil {
+			return fmt.Errorf("error starting register sender: %v", err)
 		}
 	}
 
@@ -161,6 +167,9 @@ func (s *MulticastService) Teardown() error {
 	if s.isPublisher() {
 		if err := s.heartbeat.Close(); err != nil {
 			slog.Error("error stopping heartbeat sender", "error", err)
+		}
+		if err := s.register.Close(); err != nil {
+			slog.Error("error stopping register sender", "error", err)
 		}
 	}
 
@@ -265,6 +274,9 @@ func (s *MulticastService) UpdateGroups(newPR *api.ProvisionRequest) error {
 	if isPublisher && (len(pubAdded) > 0 || len(pubRemoved) > 0) {
 		if err := s.heartbeat.UpdateGroups(newPR.MulticastPubGroups); err != nil {
 			return fmt.Errorf("error updating heartbeat groups: %v", err)
+		}
+		if err := s.register.UpdateGroups(newPR.MulticastPubGroups); err != nil {
+			return fmt.Errorf("error updating register groups: %v", err)
 		}
 	}
 

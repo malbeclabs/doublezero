@@ -5,6 +5,7 @@ pub mod contributor;
 pub mod device;
 pub mod exchange;
 pub mod feature_flags;
+pub mod feed;
 pub mod globalconfig;
 pub mod globalstate;
 pub mod index;

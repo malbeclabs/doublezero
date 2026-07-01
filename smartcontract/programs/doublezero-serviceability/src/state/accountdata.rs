@@ -2,10 +2,11 @@ use crate::{
     error::DoubleZeroError,
     state::{
         accesspass::AccessPass, accounttype::AccountType, contributor::Contributor, device::Device,
-        exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState, index::Index,
-        link::Link, location::Location, multicastgroup::MulticastGroup, permission::Permission,
-        programconfig::ProgramConfig, resource_extension::ResourceExtensionOwned, tenant::Tenant,
-        topology::TopologyInfo, user::User,
+        exchange::Exchange, feed::Feed, globalconfig::GlobalConfig, globalstate::GlobalState,
+        index::Index, link::Link, location::Location, multicastgroup::MulticastGroup,
+        permission::Permission, programconfig::ProgramConfig,
+        resource_extension::ResourceExtensionOwned, tenant::Tenant, topology::TopologyInfo,
+        user::User,
     },
 };
 use solana_program::program_error::ProgramError;
@@ -31,6 +32,7 @@ pub enum AccountData {
     Permission(Permission),
     Index(Index),
     Topology(TopologyInfo),
+    Feed(Feed),
 }
 
 impl AccountData {
@@ -53,6 +55,7 @@ impl AccountData {
             AccountData::Permission(_) => "Permission",
             AccountData::Index(_) => "Index",
             AccountData::Topology(_) => "Topology",
+            AccountData::Feed(_) => "Feed",
         }
     }
 
@@ -75,6 +78,7 @@ impl AccountData {
             AccountData::Permission(permission) => permission.to_string(),
             AccountData::Index(index) => index.to_string(),
             AccountData::Topology(topology) => topology.to_string(),
+            AccountData::Feed(feed) => feed.to_string(),
         }
     }
 
@@ -205,6 +209,14 @@ impl AccountData {
             Err(DoubleZeroError::InvalidAccountType)
         }
     }
+
+    pub fn get_feed(&self) -> Result<Feed, DoubleZeroError> {
+        if let AccountData::Feed(feed) = self {
+            Ok(feed.clone())
+        } else {
+            Err(DoubleZeroError::InvalidAccountType)
+        }
+    }
 }
 
 impl TryFrom<&[u8]> for AccountData {
@@ -250,6 +262,7 @@ impl TryFrom<&[u8]> for AccountData {
             AccountType::Topology => Ok(AccountData::Topology(TopologyInfo::try_from(
                 bytes as &[u8],
             )?)),
+            AccountType::Feed => Ok(AccountData::Feed(Feed::try_from(bytes as &[u8])?)),
         }
     }
 }

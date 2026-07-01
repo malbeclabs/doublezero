@@ -25,6 +25,7 @@ pub enum AccountType {
     Permission = 15,
     Index = 16,
     Topology = 17,
+    Feed = 18,
 }
 
 pub trait AccountTypeInfo {
@@ -54,6 +55,7 @@ impl From<u8> for AccountType {
             15 => AccountType::Permission,
             16 => AccountType::Index,
             17 => AccountType::Topology,
+            18 => AccountType::Feed,
             _ => AccountType::None,
         }
     }
@@ -79,6 +81,7 @@ impl fmt::Display for AccountType {
             AccountType::Permission => write!(f, "permission"),
             AccountType::Index => write!(f, "index"),
             AccountType::Topology => write!(f, "topology"),
+            AccountType::Feed => write!(f, "feed"),
         }
     }
 }

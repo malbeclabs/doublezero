@@ -20,6 +20,7 @@ use crate::{
         contributor::{ContributorCliCommand, ContributorCommands},
         device::{DeviceCliCommand, DeviceCommands, InterfaceCommands},
         exchange::{ExchangeCliCommand, ExchangeCommands},
+        feed::{FeedCliCommand, FeedCommands},
         globalconfig::{
             AirdropCommands, AuthorityCommands, FeatureFlagsCommands, FoundationAllowlistCommands,
             GlobalConfigCliCommand, GlobalConfigCommands, QaAllowlistCommands,
@@ -62,6 +63,8 @@ pub enum ServiceabilityCommand {
     Location(LocationCliCommand),
     /// Manage exchanges
     Exchange(ExchangeCliCommand),
+    /// Manage feeds (metro→group-set catalog)
+    Feed(FeedCliCommand),
     /// Manage contributors
     Contributor(ContributorCliCommand),
     /// Manage permissions
@@ -169,6 +172,13 @@ impl ServiceabilityCommand {
                 ExchangeCommands::List(args) => args.execute(ctx, client, out).await,
                 ExchangeCommands::Get(args) => args.execute(ctx, client, out).await,
                 ExchangeCommands::Delete(args) => args.execute(ctx, client, out).await,
+            },
+            Self::Feed(cmd) => match cmd.command {
+                FeedCommands::Create(args) => args.execute(ctx, client, out).await,
+                FeedCommands::Update(args) => args.execute(ctx, client, out).await,
+                FeedCommands::List(args) => args.execute(ctx, client, out).await,
+                FeedCommands::Get(args) => args.execute(ctx, client, out).await,
+                FeedCommands::Delete(args) => args.execute(ctx, client, out).await,
             },
             Self::Contributor(cmd) => match cmd.command {
                 ContributorCommands::Create(args) => args.execute(ctx, client, out).await,

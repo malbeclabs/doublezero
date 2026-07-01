@@ -218,23 +218,48 @@ pub fn process_update_multicastgroup_roles(
     if accesspass.user_payer != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
+        // A caller who is neither the pass's user_payer nor a foundation member may still act on
+        // another owner's pass with the right permission, and the two operations require different
+        // grants:
+        //   - Removal-only cleanup (stripping roles as a prerequisite to delete/request-ban) is a
+        //     USER_ADMIN operation, as DeleteUserCommand / RequestBanUserCommand authorize the
+        //     final instruction with the same flag.
+        //   - Granting roles (subscribe/publish) on behalf of another owner manages the pass's
+        //     entitlements, so it is an ACCESS_PASS_ADMIN operation. This is the path the oracle
+        //     uses to subscribe validator-owned users (accesspass.user_payer = validator) once it
+        //     drops out of foundation and operates on its Permission account.
+        // The oracle holds both flags. authorize() reads the optional trailing Permission account
+        // the SDK appends and also honors the corresponding legacy authorities.
         let removal_only = !value.publisher && !value.subscriber;
-        if removal_only {
-            // Consumes the trailing Permission account if the SDK appended one.
-            authorize(
-                program_id,
-                accounts_iter,
-                payer_account.key,
-                &globalstate,
-                permission_flags::USER_ADMIN,
-            )?;
+        let required_flag = if removal_only {
+            permission_flags::USER_ADMIN
         } else {
-            msg!(
-                "AccessPass user_payer {:?} does not match payer {:?}",
-                accesspass.user_payer,
-                payer_account.key
-            );
-            return Err(DoubleZeroError::Unauthorized.into());
+            permission_flags::ACCESS_PASS_ADMIN
+        };
+        let authorized = authorize(
+            program_id,
+            accounts_iter,
+            payer_account.key,
+            &globalstate,
+            required_flag,
+        )
+        .is_ok();
+        if !authorized {
+            if !removal_only {
+                msg!(
+                    "AccessPass user_payer {:?} does not match payer {:?}",
+                    accesspass.user_payer,
+                    payer_account.key
+                );
+            }
+            // Preserve the historical error variants: a removal-only cleanup that fails
+            // authorization returns NotAllowed (as the prior `authorize()?` did), while an
+            // attempt to add roles without authority returns Unauthorized.
+            return Err(if removal_only {
+                DoubleZeroError::NotAllowed.into()
+            } else {
+                DoubleZeroError::Unauthorized.into()
+            });
         }
     }
 

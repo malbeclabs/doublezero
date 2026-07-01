@@ -101,6 +101,9 @@ pub fn process_create_user(
         globalstate_account,
         tenant_account,
         payer_account,
+        // CreateUser never overrides the owner (owner_override is None below), so the
+        // owner-override authorization that consumes this is never reached.
+        permission_account: None,
     };
 
     let mut result = create_user_core(

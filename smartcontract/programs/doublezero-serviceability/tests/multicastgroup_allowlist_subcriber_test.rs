@@ -11,9 +11,10 @@ use doublezero_serviceability::{
             },
             create::MulticastGroupCreateArgs,
         },
+        permission::create::PermissionCreateArgs,
     },
     resource::ResourceType,
-    state::accesspass::AccessPassType,
+    state::{accesspass::AccessPassType, permission::permission_flags},
 };
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Keypair, signer::Signer};
@@ -501,6 +502,163 @@ async fn test_multicast_subscriber_allowlist_sentinel_authority() {
         res.is_err(),
         "Unauthorized keypair should not be able to add subscriber allowlist entry"
     );
+}
+
+/// An ACCESS_PASS_ADMIN Permission holder who is neither the multicast-group owner, the
+/// access-pass owner, nor a foundation/sentinel/feed authority CAN add and remove a subscriber
+/// allowlist entry by appending their Permission PDA as the trailing account. The Permission path
+/// has no owns-it restriction, so it works across owners — the mechanism the oracle relies on to
+/// reconcile allowlists on passes it does not own.
+#[tokio::test]
+async fn test_multicast_subscriber_allowlist_access_pass_admin_permission() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let client_ip = [100, 0, 0, 2].into();
+    let user_payer = payer.pubkey();
+
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    // 1. Initialize global state (payer is the foundation member).
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    // 2. Create and activate a multicast group (owned by payer, NOT the access_pass_admin).
+    let globalstate = get_account_data(&mut banks_client, globalstate_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_global_state()
+        .unwrap();
+    let (multicastgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "perm-test".to_string(),
+            max_bandwidth: 1_000_000_000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    // 3. Set an access pass (owner and user_payer = payer, i.e. not the access_pass_admin).
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 100,
+            allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // 4. Grant ACCESS_PASS_ADMIN to a fresh key (not owner/foundation/sentinel/feed).
+    let access_pass_admin = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &access_pass_admin.pubkey(),
+        10_000_000_000,
+    )
+    .await;
+    let (permission_pda, _) = get_permission_pda(&program_id, &access_pass_admin.pubkey());
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: access_pass_admin.pubkey(),
+            permissions: permission_flags::ACCESS_PASS_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // 5. access_pass_admin adds a subscriber allowlist entry, appending its Permission PDA.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
+            client_ip,
+            user_payer,
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &access_pass_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    )
+    .await
+    .expect("ACCESS_PASS_ADMIN holder should be able to add a subscriber allowlist entry");
+
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_accesspass()
+        .unwrap();
+    assert!(accesspass
+        .mgroup_sub_allowlist
+        .contains(&multicastgroup_pubkey));
+
+    // 6. access_pass_admin removes the subscriber allowlist entry.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(
+            RemoveMulticastGroupSubAllowlistArgs {
+                client_ip,
+                user_payer,
+            },
+        ),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &access_pass_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    )
+    .await
+    .expect("ACCESS_PASS_ADMIN holder should be able to remove a subscriber allowlist entry");
+
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(accesspass.mgroup_sub_allowlist.len(), 0);
 }
 
 #[tokio::test]

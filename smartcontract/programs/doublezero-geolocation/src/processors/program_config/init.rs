@@ -43,7 +43,7 @@ pub fn process_init_program_config(
     // Verify the program data account derives from the program id
     let expected_program_data = Pubkey::find_program_address(
         &[program_id.as_ref()],
-        &solana_program::bpf_loader_upgradeable::id(),
+        &solana_sdk_ids::bpf_loader_upgradeable::id(),
     )
     .0;
     if program_data_account.key != &expected_program_data {

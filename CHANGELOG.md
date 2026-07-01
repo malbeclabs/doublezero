@@ -11,10 +11,18 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Dependencies
+  - Migrate the entire Rust workspace from solana-sdk 2.3.x to the solana 3.0 line plus the granular split crates (`solana-pubkey`, `solana-instruction`, `solana-cpi`, `solana-sdk-ids`, `solana-system-interface`, `solana-commitment-config`, `solana-compute-budget-interface`), aligning with the doublezero-solana programs. Onchain account layouts are unchanged (regenerated fixtures are byte-identical), so the Go, TypeScript, and Python SDKs are unaffected. (#3830)
+- Onchain programs
+  - Adapt to the solana 3.0 APIs: `AccountInfo::realloc` becomes `resize`, system-program and BPF-upgradeable-loader IDs move to `solana-sdk-ids`, `ProgramError::BorshIoError` is now a unit variant, and `AccountInfo::new` drops its `rent_epoch` argument. Bump the programs build toolchain to Rust 1.91.
 - Client
   - Add a `-route-liveness-backoff-max` daemon flag to cap the Down-state liveness probe interval. Defaults to 60s (production behavior unchanged); the e2e harness pins a small value to avoid a probe gap that flaked the multi-client IBRL tests. (#3949)
-- E2E
+- CI
+  - Install agave v3.0.4 and build/test the SBF programs with platform-tools v1.54 (`SBF_TOOLS_VERSION`), required because the solana 3.0 dependency tree pulls edition2024 crates that need Cargo >= 1.85 (agave's default platform-tools v1.51 ships Cargo 1.84.1).
+- E2E tests
+  - Bump the e2e base image to agave v3.0.4 and build the onchain programs with platform-tools v1.54 to match the solana 3.0 migration.
   - Pin the e2e ledger `solana-test-validator` to the deploy floor (agave 2.2.16, testnet) so a green e2e proves a change actually deploys and runs on the production cluster runtime. Previously the runtime validator rode the SBF build toolchain version (2.3.13); it is now decoupled and pinned independently. The build toolchain is unchanged. (#3957)
+  - Fix a `TestE2E_Multicast` flake where the post-connect `doublezero status` check could observe only the first multicast group. After incrementally adding the second group, the test relied on `WaitForTunnelUp`, which returns immediately because the first tunnel is already up, so the single-shot status assertion could race the onchain propagation and the daemon's cached program data. Add an `Eventually` poll on `doublezero user list` for both groups before the post-connect checks.
 
 ## [v0.28.0](https://github.com/malbeclabs/doublezero/compare/client/v0.27.1...client/v0.28.0) - 2026-06-26
 

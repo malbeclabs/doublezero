@@ -14,7 +14,8 @@ use doublezero_serviceability::{
     pda::{
         get_accesspass_pda, get_contributor_pda, get_device_pda, get_exchange_pda,
         get_globalconfig_pda, get_globalstate_pda, get_location_pda, get_multicastgroup_pda,
-        get_program_config_pda, get_resource_extension_pda, get_tenant_pda, get_user_pda,
+        get_permission_pda, get_program_config_pda, get_resource_extension_pda, get_tenant_pda,
+        get_user_pda,
     },
     processors::{
         accesspass::set::SetAccessPassArgs,
@@ -31,6 +32,7 @@ use doublezero_serviceability::{
             subscribe::UpdateMulticastGroupRolesArgs,
             suspend::MulticastGroupSuspendArgs,
         },
+        permission::create::PermissionCreateArgs,
         tenant::create::TenantCreateArgs,
         user::{
             check_access_pass::CheckUserAccessPassArgs, create_subscribe::UserCreateSubscribeArgs,
@@ -41,6 +43,7 @@ use doublezero_serviceability::{
     state::{
         accesspass::AccessPassType,
         device::DeviceType,
+        permission::permission_flags,
         user::{TunnelFlags, UserCYOA, UserStatus, UserType},
     },
 };
@@ -1451,6 +1454,299 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
     );
     assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.publishers, vec![mgroup_pubkey]);
+}
+
+/// A USER_ADMIN Permission holder who is neither a foundation member nor the sentinel CAN set a
+/// custom owner (owner != payer), by appending its Permission PDA as the trailing account. This is
+/// the path the oracle uses to provision validator-owned subscribe-users (owner = validator) once
+/// it operates on its Permission account instead of foundation membership. The Permission path has
+/// no owns-it restriction, so the cross-owner create succeeds.
+#[tokio::test]
+async fn test_create_subscribe_user_user_admin_owner_override() {
+    let client_ip = [100, 0, 0, 33];
+    let program_id = Pubkey::new_unique();
+
+    // user_admin is neither in the foundation allowlist nor the sentinel.
+    let user_admin = solana_sdk::signature::Keypair::new();
+
+    let mut program_test = ProgramTest::new(
+        "doublezero_serviceability",
+        program_id,
+        processor!(process_instruction),
+    );
+    program_test.set_compute_max_units(1_000_000);
+
+    program_test.add_account(
+        user_admin.pubkey(),
+        solana_sdk::account::Account {
+            lamports: 10_000_000_000,
+            data: vec![],
+            owner: solana_sdk::system_program::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+    let (user_tunnel_block, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (multicast_publisher_block, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    // Grant USER_ADMIN to user_admin (foundation payer creates the Permission).
+    let (permission_pda, _) = get_permission_pda(&program_id, &user_admin.pubkey());
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: user_admin.pubkey(),
+            permissions: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Location, Exchange, Contributor.
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
+            code: "test".to_string(),
+            name: "Test Location".to_string(),
+            country: "us".to_string(),
+            lat: 0.0,
+            lng: 0.0,
+            loc_id: 0,
+        }),
+        vec![
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, gs.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+            code: "test".to_string(),
+            name: "Test Exchange".to_string(),
+            lat: 0.0,
+            lng: 0.0,
+            reserved: 0,
+        }),
+        vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) = get_contributor_pda(&program_id, gs.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "test".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Device (atomic create+activate via onchain allocation).
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (device_pubkey, _) = get_device_pda(&program_id, gs.account_index + 1);
+    let (tunnel_ids, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_block, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+            code: "test-dev".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [100, 0, 0, 1].into(),
+            dz_prefixes: "110.1.0.0/24".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: None,
+            resource_count: 2,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_users: Some(128),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Multicast group.
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "group1".to_string(),
+            max_bandwidth: 1000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Access pass + subscriber allowlist for the custom owner (the validator).
+    let custom_owner = Pubkey::new_unique();
+    let user_ip: Ipv4Addr = client_ip.into();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user_ip, &custom_owner);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: user_ip,
+            last_access_epoch: 9999,
+            allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(custom_owner, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
+            client_ip: user_ip,
+            user_payer: custom_owner,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(custom_owner, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // user_admin (USER_ADMIN Permission, not foundation, not sentinel) creates the user with a
+    // custom owner, appending its Permission PDA as the trailing account.
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: custom_owner,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &user_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    )
+    .await;
+
+    // Verify the user was created with the custom owner, not the USER_ADMIN payer.
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(
+        user.owner, custom_owner,
+        "User owner should be the custom owner, not the USER_ADMIN payer"
+    );
+    assert_eq!(user.status, UserStatus::Activated);
+    assert_eq!(user.subscribers, vec![mgroup_pubkey]);
 }
 
 /// Non-foundation member cannot set a custom owner — should fail with NotAllowed.

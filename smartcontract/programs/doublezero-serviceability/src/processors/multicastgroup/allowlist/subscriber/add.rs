@@ -1,4 +1,5 @@
 use crate::{
+    authorize::{authorize, split_trailing_permission},
     error::DoubleZeroError,
     pda::get_accesspass_pda,
     processors::{accesspass::airdrop_user_credits, validation::validate_program_account},
@@ -9,6 +10,7 @@ use crate::{
         accounttype::AccountType,
         globalstate::GlobalState,
         multicastgroup::MulticastGroup,
+        permission::permission_flags,
     },
 };
 use borsh::BorshSerialize;
@@ -52,17 +54,17 @@ pub fn process_add_multicastgroup_sub_allowlist(
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional user_payer account for transferring connect credits (backwards compatible). Clients
-    // that fund the user pass it before payer/system_program; older clients omit it and skip the
-    // airdrop, preserving the previous behavior.
-    let user_payer_account = if accounts.len() >= 6 {
-        Some(next_account_info(accounts_iter)?)
-    } else {
-        None
-    };
-
-    let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    // Trailing layout: [user_payer?, payer, system, permission?]. The optional user_payer
+    // (connect-credit funding, passed by clients that fund the user; older clients omit it and
+    // skip the airdrop) and the optional trailing Permission account both sit at the tail.
+    // split_trailing_permission peels payer/system off the end and identifies the Permission
+    // account by matching the payer's Permission PDA, so a bare length check cannot confuse the
+    // two. Whatever precedes payer/system is the caller's leading list — the single optional
+    // user_payer account here.
+    let all_remaining: Vec<&AccountInfo> = accounts_iter.collect();
+    let (payer_account, system_program, leading, permission_account) =
+        split_trailing_permission(program_id, &all_remaining)?;
+    let user_payer_account = leading.first().copied();
 
     #[cfg(test)]
     msg!("process_add_multicastgroup_sub_allowlist({:?})", value);
@@ -87,11 +89,20 @@ pub fn process_add_multicastgroup_sub_allowlist(
     let mgroup = MulticastGroup::try_from(mgroup_account)?;
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
-    // Check whether mgroup is authorized
+    // A caller is authorized when they own the multicast group, or hold ACCESS_PASS_ADMIN.
+    // authorize() covers the legacy ACCESS_PASS_ADMIN authorities (foundation allowlist,
+    // sentinel authority, feed authority) and the new Permission-account path, reading the
+    // optional trailing Permission account peeled off above. It is OR'd around the mgroup-owner
+    // check, which authorize() does not express.
     let is_authorized = (mgroup.owner == *payer_account.key)
-        || globalstate.sentinel_authority_pk == *payer_account.key
-        || globalstate.feed_authority_pk == *payer_account.key
-        || globalstate.foundation_allowlist.contains(payer_account.key);
+        || authorize(
+            program_id,
+            &mut permission_account.into_iter(),
+            payer_account.key,
+            &globalstate,
+            permission_flags::ACCESS_PASS_ADMIN,
+        )
+        .is_ok();
     if !is_authorized {
         return Err(DoubleZeroError::NotAllowed.into());
     }

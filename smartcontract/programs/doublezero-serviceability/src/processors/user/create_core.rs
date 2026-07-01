@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::{get_accesspass_pda, get_user_old_pda, get_user_pda},
     state::{
@@ -6,6 +7,7 @@ use crate::{
         accounttype::AccountType,
         device::{Device, DeviceStatus},
         globalstate::GlobalState,
+        permission::permission_flags,
         tenant::Tenant,
         user::*,
     },
@@ -33,6 +35,10 @@ pub struct CreateUserCoreAccounts<'a, 'b> {
     pub globalstate_account: &'a AccountInfo<'b>,
     pub tenant_account: Option<&'a AccountInfo<'b>>,
     pub payer_account: &'a AccountInfo<'b>,
+    // Optional trailing Permission PDA for the payer. Present for CreateSubscribeUser, where a
+    // USER_ADMIN holder may set a custom owner; None for CreateUser, which never overrides the
+    // owner. Consumed by authorize() in the owner-override check.
+    pub permission_account: Option<&'a AccountInfo<'b>>,
 }
 
 /// Result returned by `create_user_core` containing mutable state for callers to finish writing.
@@ -100,16 +106,25 @@ pub fn create_user_core(
 
     let mut globalstate = GlobalState::try_from(core.globalstate_account)?;
 
-    // Determine effective owner: foundation allowlist members or sentinel can set a custom owner
+    // Determine effective owner: the sentinel authority or a USER_ADMIN holder can set a custom
+    // owner. authorize() reads the optional trailing Permission account and also honors the legacy
+    // USER_ADMIN authority (foundation allowlist), so only the sentinel needs a separate check.
+    // This is what lets the oracle provision validator-owned subscribe-users (owner = validator)
+    // via its USER_ADMIN grant, without foundation membership.
     let effective_owner = match owner_override {
         Some(pk) if pk != Pubkey::default() => {
-            let is_foundation = globalstate
-                .foundation_allowlist
-                .contains(core.payer_account.key);
             let is_sentinel = globalstate.sentinel_authority_pk == *core.payer_account.key;
-            if !is_foundation && !is_sentinel {
+            let has_user_admin = authorize(
+                program_id,
+                &mut core.permission_account.into_iter(),
+                core.payer_account.key,
+                &globalstate,
+                permission_flags::USER_ADMIN,
+            )
+            .is_ok();
+            if !is_sentinel && !has_user_admin {
                 msg!(
-                    "Only foundation allowlist members or sentinel can set a custom owner, payer: {}",
+                    "Only the sentinel or a USER_ADMIN holder (foundation allowlist or Permission account) can set a custom owner, payer: {}",
                     core.payer_account.key
                 );
                 return Err(DoubleZeroError::NotAllowed.into());

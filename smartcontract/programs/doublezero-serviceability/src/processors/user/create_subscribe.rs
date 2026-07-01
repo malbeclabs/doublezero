@@ -93,6 +93,12 @@ pub fn process_create_subscribe_user(
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
+    // Optional trailing Permission PDA for the payer, appended by the SDK when one exists on
+    // chain. dz_prefix_count fixes the account count deterministically, so anything after
+    // system_program is the Permission account. It authorizes a USER_ADMIN holder to set a custom
+    // owner (owner-override) inside create_user_core.
+    let permission_account = next_account_info(accounts_iter).ok();
+
     msg!("process_create_subscribe_user({:?})", value);
 
     let core_accounts = CreateUserCoreAccounts {
@@ -102,6 +108,7 @@ pub fn process_create_subscribe_user(
         globalstate_account,
         tenant_account: None, // No tenant support for multicast group users
         payer_account,
+        permission_account,
     };
 
     let owner_override = if value.owner != Pubkey::default() {

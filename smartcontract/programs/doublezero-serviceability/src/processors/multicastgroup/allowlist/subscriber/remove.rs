@@ -1,9 +1,13 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::get_accesspass_pda,
     processors::validation::validate_program_account,
     serializer::try_acc_write,
-    state::{accesspass::AccessPass, globalstate::GlobalState, multicastgroup::MulticastGroup},
+    state::{
+        accesspass::AccessPass, globalstate::GlobalState, multicastgroup::MulticastGroup,
+        permission::permission_flags,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -80,11 +84,20 @@ pub fn process_remove_multicast_sub_allowlist(
     let mgroup = MulticastGroup::try_from(mgroup_account)?;
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
-    // Check whether mgroup is authorized
+    // A caller is authorized when they own the multicast group, or hold ACCESS_PASS_ADMIN.
+    // authorize() covers the legacy ACCESS_PASS_ADMIN authorities (foundation allowlist,
+    // sentinel authority, feed authority) and the new Permission-account path, reading the
+    // optional trailing Permission account the SDK appends. It is OR'd around the mgroup-owner
+    // check, which authorize() does not express.
     let is_authorized = (mgroup.owner == *payer_account.key)
-        || globalstate.sentinel_authority_pk == *payer_account.key
-        || globalstate.feed_authority_pk == *payer_account.key
-        || globalstate.foundation_allowlist.contains(payer_account.key);
+        || authorize(
+            program_id,
+            accounts_iter,
+            payer_account.key,
+            &globalstate,
+            permission_flags::ACCESS_PASS_ADMIN,
+        )
+        .is_ok();
     if !is_authorized {
         return Err(DoubleZeroError::NotAllowed.into());
     }

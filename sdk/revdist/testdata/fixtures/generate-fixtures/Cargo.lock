@@ -548,7 +548,7 @@ dependencies = [
  "ruint",
  "serde",
  "serde_json",
- "solana-pubkey 3.0.0",
+ "solana-pubkey 4.0.0",
 ]
 
 [[package]]

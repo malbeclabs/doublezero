@@ -156,6 +156,25 @@ pub struct MulticastGroups {
     pub subscriber: Vec<String>,
 }
 
+/// A single multicast group the user participates in, with the group's onchain
+/// details and the user's role(s). A user that is both publisher and subscriber
+/// of a group appears once with both booleans set.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
+pub struct Subscription {
+    #[serde(default)]
+    pub pubkey: String,
+    #[serde(default)]
+    pub code: String,
+    #[serde(default)]
+    pub multicast_ip: String,
+    #[serde(default)]
+    pub max_bandwidth: u64,
+    #[serde(default)]
+    pub publisher: bool,
+    #[serde(default)]
+    pub subscriber: bool,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct V2ServiceStatus {
     #[serde(flatten)]
@@ -170,6 +189,8 @@ pub struct V2ServiceStatus {
     pub tenant: String,
     #[serde(default)]
     pub multicast_groups: MulticastGroups,
+    #[serde(default)]
+    pub subscriptions: Vec<Subscription>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

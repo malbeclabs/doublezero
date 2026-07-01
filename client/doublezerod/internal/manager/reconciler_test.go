@@ -20,6 +20,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/mr-tron/base58"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
@@ -1217,9 +1218,23 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 	device.Status = serviceability.DeviceStatusActivated
 
 	mcastGroup := serviceability.MulticastGroup{
-		PubKey:      mcastGroupPK,
-		MulticastIp: [4]uint8{239, 0, 0, 1},
-		Code:        "solana-ams",
+		PubKey:       mcastGroupPK,
+		MulticastIp:  [4]uint8{239, 0, 0, 1},
+		MaxBandwidth: 1_000_000_000,
+		Code:         "solana-ams",
+	}
+
+	// wantSub builds the expected structured subscription for mcastGroup with
+	// the given roles.
+	wantSub := func(pub, sub bool) Subscription {
+		return Subscription{
+			Pubkey:       base58.Encode(mcastGroupPK[:]),
+			Code:         "solana-ams",
+			MulticastIp:  "239.0.0.1",
+			MaxBandwidth: 1_000_000_000,
+			Publisher:    pub,
+			Subscriber:   sub,
+		}
 	}
 
 	type wantService struct {
@@ -1230,6 +1245,7 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 		hasDzIP       bool // whether DoubleZeroIP should be non-empty
 		pubGroups     []string
 		subGroups     []string
+		subs          []Subscription
 	}
 
 	tests := []struct {
@@ -1247,7 +1263,7 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 				}(),
 			},
 			want: []wantService{
-				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{}, subGroups: []string{}},
+				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{}, subGroups: []string{}, subs: nil},
 			},
 		},
 		{
@@ -1261,7 +1277,7 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 				}(),
 			},
 			want: []wantService{
-				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{"solana-ams"}, subGroups: []string{}},
+				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{"solana-ams"}, subGroups: []string{}, subs: []Subscription{wantSub(true, false)}},
 			},
 		},
 		{
@@ -1277,7 +1293,7 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 				}(),
 			},
 			want: []wantService{
-				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: false, pubGroups: []string{}, subGroups: []string{"solana-ams"}},
+				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: false, pubGroups: []string{}, subGroups: []string{"solana-ams"}, subs: []Subscription{wantSub(false, true)}},
 			},
 		},
 		{
@@ -1298,8 +1314,8 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 				}(),
 			},
 			want: []wantService{
-				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{}, subGroups: []string{}},
-				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: false, pubGroups: []string{}, subGroups: []string{"solana-ams"}},
+				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{}, subGroups: []string{}, subs: nil},
+				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: false, pubGroups: []string{}, subGroups: []string{"solana-ams"}, subs: []Subscription{wantSub(false, true)}},
 			},
 		},
 		{
@@ -1318,8 +1334,25 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 				}(),
 			},
 			want: []wantService{
-				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{}, subGroups: []string{}},
-				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{"solana-ams"}, subGroups: []string{}},
+				{userType: "IBRL", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{}, subGroups: []string{}, subs: nil},
+				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{"solana-ams"}, subGroups: []string{}, subs: []Subscription{wantSub(true, false)}},
+			},
+		},
+		{
+			name: "multicast_publisher_and_subscriber",
+			users: []serviceability.User{
+				func() serviceability.User {
+					u := testUser(clientIPBytes, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
+					u.TenantPubKey = tenantPK
+					u.Publishers = [][32]byte{mcastGroupPK}
+					u.Subscribers = [][32]byte{mcastGroupPK}
+					return u
+				}(),
+			},
+			// A user that is both publisher and subscriber of the same group
+			// appears once in subscriptions with both booleans set.
+			want: []wantService{
+				{userType: "Multicast", currentDevice: "dz1", metro: "Amsterdam", tenant: "acme", hasDzIP: true, pubGroups: []string{"solana-ams"}, subGroups: []string{"solana-ams"}, subs: []Subscription{wantSub(true, true)}},
 			},
 		},
 	}
@@ -1401,6 +1434,9 @@ func TestServeV2Status_Enrichment(t *testing.T) {
 				}
 				if !slices.Equal(svc.MulticastGroups.Subscriber, w.subGroups) {
 					t.Errorf("[%s] expected sub groups %v, got %v", w.userType, w.subGroups, svc.MulticastGroups.Subscriber)
+				}
+				if !slices.Equal(svc.Subscriptions, w.subs) {
+					t.Errorf("[%s] expected subscriptions %+v, got %+v", w.userType, w.subs, svc.Subscriptions)
 				}
 			}
 		})

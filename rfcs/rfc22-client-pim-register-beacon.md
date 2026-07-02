@@ -2,7 +2,7 @@
 
 ## Summary
 
-**Status: Draft**
+**Status: Implemented** (client + controller in PR #3959; this RFC in #3951)
 
 When a DoubleZero client is both a publisher and a subscriber of the same multicast group over a single GRE tunnel (the simultaneous pub/sub case enabled by RFC-15), the source it publishes is not reliably distributed to the rest of the network. This RFC proposes that the client daemon (`doublezerod`) originate a PIM-SM **Register** for each of its published sources, sent as a periodic *beacon* to the Rendezvous Point (RP). Receiving the Register causes the device (which is the anycast RP) to originate the MSDP Source-Active (SA) message for that source, which is what propagates it across the mesh.
 
@@ -176,7 +176,8 @@ Relationship to prior RFCs: this builds directly on **RFC-15** (simultaneous pub
 
 ## Open Questions
 
-- **Lab confirmation of the core behavior:** that a heartbeat-fed Register makes EOS set `N` and originate the SA on a dual-role tunnel, and keeps it originated while the beacon runs. Arista's lab strongly indicates yes; we will confirm steady state.
-- **EOS tolerance** of a source that never honors Register-Stop (beacon), over long durations and at scale. CoPP headroom is already shown to be ample (see Impact), so this is confirmation rather than a risk: (a) identify which CoPP class the Register actually hits by watching `show cpu counters queue` while registering (there is no dedicated PIM class), for monitoring purposes; (b) lab-confirm zero Register drops and reliable re-origination at 128 / 192 / 500 publishers on one device. The 60s default and per-publisher stagger are the levers if anything surprising appears.
-- **Outer source address** the RP will accept for the Register (tunnel overlay vs DZ IP).
-- **ACL tightness:** whether to ship `permit pim any host 10.0.0.0` or constrain the source per tunnel.- **RFC number** is provisional (`22`) pending assignment.
+- **Core behavior — resolved.** Confirmed end-to-end on cEOS: a heartbeat-fed Register makes the device set `N` and originate the SA on a dual-role tunnel (mroute flags `SNCP`), and it stays originated while the beacon runs. A two-device run shows the SA flooding to the second RP's `sa-cache`. See PR #3959.
+- **Outer source address — resolved.** The Register uses the tunnel's local overlay address as the outer source and EOS accepts it (the `N` flag is set); the captured Register shows outer src = the tunnel overlay, dst = `10.0.0.0`.
+- **ACL tightness — decided.** Shipped as `permit pim any host 10.0.0.0`. Constraining the source per tunnel remains a future hardening option (see Security Considerations).
+- **EOS tolerance at scale — partially open.** Confirmed at devnet scale with no adverse rate-limiting or drops, and CoPP headroom is shown ample (see Impact). Not yet exercised at 128 / 192 / 500 publishers on a single device; the 60s cadence and per-publisher stagger are the levers if anything surprises.
+- **RFC number** assigned: `22`.

@@ -26,16 +26,18 @@ import (
 )
 
 const (
-	disconnectTimeout                = 150 * time.Second
-	waitForStatusUpTimeout           = 90 * time.Second
-	// Multicast (shred-subscription) tunnels come up only after the oracle
-	// subscribes the seat to its shred groups, which is driven by the oracle's
-	// ~60s reconcile loop rather than on seat-allocation ack. Allow more than
-	// one full reconcile cycle (plus tx confirm + client poll) so tunnel-up
-	// doesn't race the cadence. (Remove once the oracle subscribes on grant.)
-	waitForMulticastStatusUpTimeout  = 180 * time.Second
-	waitForStatusDisconnectedTimeout = 90 * time.Second
-	waitForUserDeletionTimeout       = 90 * time.Second
+	disconnectTimeout      = 150 * time.Second
+	waitForStatusUpTimeout = 90 * time.Second
+	// Multicast (shred-subscription) tunnel up/down is driven by the oracle's
+	// ~60s reconcile loop (subscribe once the seat is active; unsubscribe after
+	// withdrawal), NOT on seat-allocation ack / withdrawal — observed latency up
+	// to ~3.5 min on devnet. Generous, dedicated timeouts so up/down don't race
+	// the cadence. TEMPORARY debug padding to surface downstream failures; the
+	// real fix is event-driven subscribe/unsubscribe in the oracle.
+	waitForMulticastStatusUpTimeout           = 360 * time.Second
+	waitForMulticastStatusDisconnectedTimeout = 360 * time.Second
+	waitForStatusDisconnectedTimeout          = 90 * time.Second
+	waitForUserDeletionTimeout                = 90 * time.Second
 
 	// NOTE: This needs to be longer than 1m since BGP can sometimes throttle activity for that
 	// amount of time if too much is happening consecutively for the same peers.
@@ -513,7 +515,7 @@ func (c *Client) WaitForStatusDisconnected(ctx context.Context) error {
 // Prefer this over WaitForStatusDisconnected in multi-tunnel contexts where
 // other tunnel types (e.g. IBRL) remain up after a multicast seat is withdrawn.
 func (c *Client) WaitForMulticastStatusDisconnected(ctx context.Context) error {
-	return c.waitForUserTypeStatusDisconnected(ctx, "Multicast", FindMulticastStatus)
+	return c.waitForUserTypeStatusDisconnected(ctx, "Multicast", FindMulticastStatus, waitForMulticastStatusDisconnectedTimeout)
 }
 
 // WaitForIBRLStatusDisconnected polls until no IBRL (or IBRLWithAllocatedIP)
@@ -547,7 +549,7 @@ func (c *Client) WaitForIBRLStatusDisconnected(ctx context.Context) error {
 
 // waitForUserTypeStatusDisconnected polls until find returns nil or a status
 // whose session is disconnected. userType is used only for log context.
-func (c *Client) waitForUserTypeStatusDisconnected(ctx context.Context, userType string, find func([]*pb.Status) *pb.Status) error {
+func (c *Client) waitForUserTypeStatusDisconnected(ctx context.Context, userType string, find func([]*pb.Status) *pb.Status, timeout time.Duration) error {
 	c.log.Debug("Waiting for status to be disconnected", "host", c.Host, "userType", userType)
 	err := poll.Until(ctx, func() (bool, error) {
 		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
@@ -556,7 +558,7 @@ func (c *Client) waitForUserTypeStatusDisconnected(ctx context.Context, userType
 		}
 		s := find(resp.Status)
 		return s == nil || s.SessionStatus == UserStatusDisconnected, nil
-	}, waitForStatusDisconnectedTimeout, waitInterval)
+	}, timeout, waitInterval)
 	if err != nil {
 		return fmt.Errorf("failed to wait for %s status to be disconnected on host %s: %w", userType, c.Host, err)
 	}

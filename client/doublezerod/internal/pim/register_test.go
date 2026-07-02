@@ -5,6 +5,7 @@ import (
 	"net"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -114,5 +115,100 @@ func TestRegisterSenderSendsRegisterToRP(t *testing.T) {
 	want := Checksum(hdr)
 	if got := binary.BigEndian.Uint16(c.b[2:4]); got != want {
 		t.Fatalf("pim checksum = 0x%04x, want 0x%04x", got, want)
+	}
+}
+
+func (m *mockRawConn) writeCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.calls)
+}
+
+func waitForRegisterWrite(t *testing.T, m *mockRawConn) {
+	t.Helper()
+	deadline := time.After(2 * time.Second)
+	for {
+		if m.writeCount() > 0 {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for a register write")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+func newTestRegisterSender() *RegisterSender {
+	s := NewRegisterSender()
+	s.innerSrc = net.IPv4(148, 51, 122, 203)
+	s.srcOverlay = net.IPv4(169, 254, 4, 58)
+	s.rp = RpAddress
+	s.dport = 5765
+	s.payload = []byte{0x44, 0x5A, 0x00, 0x01}
+	return s
+}
+
+// TestRegisterSenderRestartsAfterClose is a regression test: the RegisterSender
+// is a daemon-lifetime singleton reused across Setup/Teardown. Closing done
+// permanently (the earlier closeOnce+close bug) meant the goroutine spawned by
+// the next Start returned immediately on the already-closed done, silently
+// disabling the beacon after the first disconnect/reconnect. Close must signal,
+// not close, so a later Start still sends.
+func TestRegisterSenderRestartsAfterClose(t *testing.T) {
+	s := newTestRegisterSender()
+	intf := &net.Interface{Index: 7, Name: "doublezero1"}
+	groups := []net.IP{net.IPv4(233, 84, 178, 5)}
+
+	m1 := &mockRawConn{}
+	if err := s.startWithConn(m1, intf, groups, 10*time.Millisecond); err != nil {
+		t.Fatalf("first start: %v", err)
+	}
+	waitForRegisterWrite(t, m1)
+	if err := s.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	m2 := &mockRawConn{}
+	if err := s.startWithConn(m2, intf, groups, 10*time.Millisecond); err != nil {
+		t.Fatalf("second start: %v", err)
+	}
+	waitForRegisterWrite(t, m2)
+	if err := s.Close(); err != nil {
+		t.Fatalf("second close: %v", err)
+	}
+}
+
+// TestRegisterSenderUpdateGroupsDoesNotBlock guards against UpdateGroups
+// stalling its caller (the reconciler). With a long interval the goroutine sits
+// in the startup-jitter window; a channel handoff would block until the jitter
+// expired (up to a full interval), so UpdateGroups must return promptly and
+// apply the new groups in-place.
+func TestRegisterSenderUpdateGroupsDoesNotBlock(t *testing.T) {
+	s := newTestRegisterSender()
+	intf := &net.Interface{Index: 7, Name: "doublezero1"}
+	g2 := net.IPv4(233, 84, 178, 9)
+
+	if err := s.startWithConn(&mockRawConn{}, intf, []net.IP{net.IPv4(233, 84, 178, 5)}, time.Hour); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer s.Close()
+
+	done := make(chan error, 1)
+	go func() { done <- s.UpdateGroups([]net.IP{g2}) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("UpdateGroups: %v", err)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("UpdateGroups blocked; the reconciler would stall up to the beacon interval")
+	}
+
+	s.mu.Lock()
+	got := s.groups
+	s.mu.Unlock()
+	if len(got) != 1 || !got[0].Equal(g2) {
+		t.Fatalf("groups not updated in place: %v", got)
 	}
 }

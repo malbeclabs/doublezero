@@ -17,7 +17,6 @@ import (
 // It ignores Register-Stop: there is no inbound path.
 type RegisterSender struct {
 	done       chan struct{}
-	closeOnce  sync.Once
 	wg         *sync.WaitGroup
 	mu         sync.Mutex
 	conn       RawConner
@@ -28,11 +27,10 @@ type RegisterSender struct {
 	dport      int
 	payload    []byte
 	groups     []net.IP
-	updateCh   chan []net.IP
 }
 
 func NewRegisterSender() *RegisterSender {
-	return &RegisterSender{done: make(chan struct{}), updateCh: make(chan []net.IP)}
+	return &RegisterSender{done: make(chan struct{})}
 }
 
 func (s *RegisterSender) Start(iface string, srcOverlay, innerSrc net.IP, groups []net.IP, rp net.IP, dport int, payload []byte, interval time.Duration) error {
@@ -88,10 +86,6 @@ func (s *RegisterSender) startWithConn(conn RawConner, intf *net.Interface, grou
 			select {
 			case <-ticker.C:
 				s.sendAll(intf)
-			case g := <-s.updateCh:
-				s.mu.Lock()
-				s.groups = g
-				s.mu.Unlock()
 			case <-s.done:
 				return
 			}
@@ -135,18 +129,26 @@ func (s *RegisterSender) sendRegister(intf *net.Interface, group net.IP) error {
 	return s.conn.WriteTo(iph, b, cm)
 }
 
+// UpdateGroups applies a new set of publisher groups in-place; the next beacon
+// tick sends Registers for the updated set. It takes only the mutex, so it
+// never blocks the caller. A channel handoff would stall the reconciler (which
+// calls this) until the sender goroutine is past its startup jitter, up to a
+// full interval.
 func (s *RegisterSender) UpdateGroups(groups []net.IP) error {
-	select {
-	case s.updateCh <- groups:
-	case <-s.done:
-	}
+	s.mu.Lock()
+	s.groups = groups
+	s.mu.Unlock()
 	return nil
 }
 
+// Close stops the sender goroutine. It signals done rather than closing it, so
+// this daemon-lifetime singleton can be restarted by a later Start after a
+// teardown or reconnect. It resets wg so a repeated Close is a no-op.
 func (s *RegisterSender) Close() error {
-	s.closeOnce.Do(func() { close(s.done) })
 	if s.wg != nil {
+		s.done <- struct{}{}
 		s.wg.Wait()
+		s.wg = nil
 	}
 	return nil
 }

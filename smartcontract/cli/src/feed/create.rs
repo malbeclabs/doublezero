@@ -2,7 +2,7 @@ use crate::{doublezerocommand::CliCommand, feed::parse_metro, validators::valida
 use clap::Args;
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::feed::create::CreateFeedCommand;
-use solana_sdk::pubkey::Pubkey;
+use doublezero_serviceability::state::feed::MetroGroups;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -16,7 +16,7 @@ pub struct CreateFeedCliCommand {
     /// Metro mapping `EXCHANGE_PK=GROUP_PK[,GROUP_PK...]` (repeatable). Omit for a feed with no
     /// metro restriction (reachable from any exchange).
     #[arg(long = "metro", value_parser = parse_metro)]
-    pub metros: Vec<(Pubkey, Vec<Pubkey>)>,
+    pub metros: Vec<MetroGroups>,
 }
 
 impl CreateFeedCliCommand {

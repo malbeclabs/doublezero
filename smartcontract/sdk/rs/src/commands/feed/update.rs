@@ -1,6 +1,7 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, processors::feed::update::FeedUpdateArgs,
+    state::feed::MetroGroups,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -9,7 +10,7 @@ pub struct UpdateFeedCommand {
     pub pubkey: Pubkey,
     pub name: Option<String>,
     /// `exchange_pk → group_pks`. `None` leaves the metro map unchanged.
-    pub metros: Option<Vec<(Pubkey, Vec<Pubkey>)>>,
+    pub metros: Option<Vec<MetroGroups>>,
 }
 
 impl UpdateFeedCommand {

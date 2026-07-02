@@ -5,7 +5,9 @@ use crate::{
     seeds::{SEED_FEED, SEED_PREFIX},
     serializer::try_acc_create,
     state::{
-        accounttype::AccountType, feed::Feed, globalstate::GlobalState,
+        accounttype::AccountType,
+        feed::{Feed, MetroGroups},
+        globalstate::GlobalState,
         permission::permission_flags,
     },
 };
@@ -16,6 +18,7 @@ use doublezero_program_common::validate_account_code;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
@@ -25,7 +28,7 @@ pub struct FeedCreateArgs {
     pub code: String,
     pub name: String,
     /// `exchange_pk → group_pks`. Empty ⇒ no metro restriction.
-    pub metros: Vec<(Pubkey, Vec<Pubkey>)>,
+    pub metros: Vec<MetroGroups>,
 }
 
 impl fmt::Debug for FeedCreateArgs {
@@ -57,12 +60,9 @@ pub fn process_create_feed(
         globalstate_account.owner, program_id,
         "Invalid GlobalState Account Owner"
     );
-    assert_eq!(
-        *system_program.unsigned_key(),
-        solana_system_interface::program::ID,
-        "Invalid System Program Account Owner"
-    );
     assert!(feed_account.is_writable, "PDA Account is not writable");
+
+    reject_duplicate_exchanges(&value.metros)?;
 
     let code =
         validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
@@ -103,5 +103,19 @@ pub fn process_create_feed(
         &[SEED_PREFIX, SEED_FEED, code.as_bytes(), &[bump_seed]],
     )?;
 
+    msg!("Created feed: {}", code);
+
+    Ok(())
+}
+
+/// Reject a metro map that lists the same exchange more than once. Callers must not silently
+/// dedupe, since a duplicate implies conflicting group sets and is almost certainly a mistake.
+pub(crate) fn reject_duplicate_exchanges(metros: &[MetroGroups]) -> Result<(), DoubleZeroError> {
+    for (i, m) in metros.iter().enumerate() {
+        if metros[..i].iter().any(|prev| prev.exchange == m.exchange) {
+            msg!("Duplicate exchange in metros: {}", m.exchange);
+            return Err(DoubleZeroError::InvalidArgument);
+        }
+    }
     Ok(())
 }

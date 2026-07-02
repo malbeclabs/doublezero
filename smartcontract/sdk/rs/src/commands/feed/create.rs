@@ -1,7 +1,7 @@
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_feed_pda,
-    processors::feed::create::FeedCreateArgs,
+    processors::feed::create::FeedCreateArgs, state::feed::MetroGroups,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -12,7 +12,7 @@ pub struct CreateFeedCommand {
     pub code: String,
     pub name: String,
     /// `exchange_pk → group_pks`. Empty ⇒ no metro restriction.
-    pub metros: Vec<(Pubkey, Vec<Pubkey>)>,
+    pub metros: Vec<MetroGroups>,
 }
 
 impl CreateFeedCommand {

@@ -39,7 +39,7 @@ impl ListFeedCliCommand {
     ) -> eyre::Result<()> {
         let feeds = client.list_feed(ListFeedCommand)?;
 
-        let mut displays: Vec<FeedDisplay> = feeds
+        let mut displays = feeds
             .into_iter()
             .map(|(pubkey, feed)| FeedDisplay {
                 account: pubkey,
@@ -49,7 +49,7 @@ impl ListFeedCliCommand {
                 reference_count: feed.reference_count,
                 owner: feed.owner,
             })
-            .collect();
+            .collect::<Vec<FeedDisplay>>();
 
         displays.sort_by(|a, b| a.code.cmp(&b.code));
 

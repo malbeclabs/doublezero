@@ -1,7 +1,12 @@
 use crate::{
     authorize::authorize,
+    processors::feed::create::reject_duplicate_exchanges,
     serializer::try_acc_write,
-    state::{feed::Feed, globalstate::GlobalState, permission::permission_flags},
+    state::{
+        feed::{Feed, MetroGroups},
+        globalstate::GlobalState,
+        permission::permission_flags,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -9,6 +14,7 @@ use core::fmt;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 
@@ -16,7 +22,7 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct FeedUpdateArgs {
     pub name: Option<String>,
-    pub metros: Option<Vec<(Pubkey, Vec<Pubkey>)>>,
+    pub metros: Option<Vec<MetroGroups>>,
 }
 
 impl fmt::Debug for FeedUpdateArgs {
@@ -59,6 +65,10 @@ pub fn process_update_feed(
         permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
     )?;
 
+    if let Some(ref metros) = value.metros {
+        reject_duplicate_exchanges(metros)?;
+    }
+
     let mut feed = Feed::try_from(feed_account)?;
     if let Some(ref name) = value.name {
         feed.name = name.clone();
@@ -68,6 +78,8 @@ pub fn process_update_feed(
     }
 
     try_acc_write(&feed, feed_account, payer_account, accounts)?;
+
+    msg!("Updated feed: {}", feed_account.key);
 
     Ok(())
 }

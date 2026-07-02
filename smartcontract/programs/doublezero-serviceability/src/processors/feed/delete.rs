@@ -10,6 +10,7 @@ use core::fmt;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 
@@ -55,6 +56,8 @@ pub fn process_delete_feed(
     if feed.reference_count > 0 {
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }
+
+    msg!("Deleted feed: {}", feed_account.key);
 
     try_acc_close(feed_account, payer_account)?;
 

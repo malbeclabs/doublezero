@@ -1362,14 +1362,20 @@ mod tests {
             DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
                 code: "shreds".to_string(),
                 name: "Shreds".to_string(),
-                metros: vec![(Pubkey::new_unique(), vec![Pubkey::new_unique()])],
+                metros: vec![crate::state::feed::MetroGroups {
+                    exchange: Pubkey::new_unique(),
+                    groups: vec![Pubkey::new_unique()],
+                }],
             }),
             "CreateFeed",
         );
         test_instruction(
             DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
                 name: Some("Shreds".to_string()),
-                metros: Some(vec![(Pubkey::new_unique(), vec![Pubkey::new_unique()])]),
+                metros: Some(vec![crate::state::feed::MetroGroups {
+                    exchange: Pubkey::new_unique(),
+                    groups: vec![Pubkey::new_unique()],
+                }]),
             }),
             "UpdateFeed",
         );

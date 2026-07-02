@@ -14,6 +14,12 @@ on:
       image_tag:
         description: GHCR image tag for this trusted run
         required: true
+  schedule:
+    # Hourly flake gap-filler. Every tick runs only the lightweight schedule-gate
+    # job; the expensive setup + e2e matrix run only when the gate returns
+    # proceed=true (stale main AND idle e2e AND toggle enabled). See schedule-gate
+    # below and malbeclabs/infra docs/plans/2026-07-02-e2e-flake-gap-filler-*.
+    - cron: '0 * * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}

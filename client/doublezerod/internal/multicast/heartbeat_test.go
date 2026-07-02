@@ -100,12 +100,12 @@ func TestHeartbeatSender_SendsImmediately(t *testing.T) {
 		if udpAddr.Port != HeartbeatPort {
 			t.Errorf("expected port %d, got %d", HeartbeatPort, udpAddr.Port)
 		}
-		if len(w.payload) != len(heartbeatPayload) {
-			t.Errorf("expected payload len %d, got %d", len(heartbeatPayload), len(w.payload))
+		if len(w.payload) != len(HeartbeatPayload) {
+			t.Errorf("expected payload len %d, got %d", len(HeartbeatPayload), len(w.payload))
 		}
 		for i, b := range w.payload {
-			if b != heartbeatPayload[i] {
-				t.Errorf("payload[%d] = 0x%02x, want 0x%02x", i, b, heartbeatPayload[i])
+			if b != HeartbeatPayload[i] {
+				t.Errorf("payload[%d] = 0x%02x, want 0x%02x", i, b, HeartbeatPayload[i])
 			}
 		}
 	case <-time.After(2 * time.Second):

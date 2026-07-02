@@ -4,6 +4,7 @@ import (
 	"net"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -161,6 +162,7 @@ func testFullProvisionRequest() ProvisionRequest {
 		BgpRemoteAsn:       65001,
 		MulticastPubGroups: []net.IP{net.IPv4(239, 0, 0, 1)},
 		MulticastSubGroups: []net.IP{net.IPv4(239, 0, 0, 2)},
+		MulticastRpAddress: net.IPv4(10, 0, 0, 0),
 	}
 }
 
@@ -196,6 +198,44 @@ func fieldIndex(typ reflect.Type, name string) int {
 		}
 	}
 	return -1
+}
+
+func TestProvisionRequestDefaultsRpAddress(t *testing.T) {
+	p := &ProvisionRequest{}
+	if err := p.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if !p.MulticastRpAddress.Equal(net.IPv4(10, 0, 0, 0)) {
+		t.Fatalf("MulticastRpAddress = %v, want 10.0.0.0", p.MulticastRpAddress)
+	}
+}
+
+func TestProvisionRequestValidateRejectsNonIPv4Rp(t *testing.T) {
+	// A non-IPv4 RP would produce a malformed Register (innerSrc/rp .To4()),
+	// so Validate must reject it rather than default or pass it through.
+	p := &ProvisionRequest{MulticastRpAddress: net.ParseIP("2001:db8::1")}
+	if err := p.Validate(); err == nil {
+		t.Fatal("Validate accepted a non-IPv4 mcast_rp_address, want error")
+	}
+}
+
+func TestProvisionRequestEqualDetectsRpChange(t *testing.T) {
+	// An RP-only change must be visible to Equal (the reconciler's first gate)
+	// and to Diff; otherwise reconcileService short-circuits as "identical" and
+	// the register destination never updates.
+	a := &ProvisionRequest{MulticastRpAddress: net.IPv4(10, 0, 0, 0)}
+	same := &ProvisionRequest{MulticastRpAddress: net.IPv4(10, 0, 0, 0)}
+	diff := &ProvisionRequest{MulticastRpAddress: net.IPv4(10, 0, 0, 1)}
+
+	if !a.Equal(same) {
+		t.Fatal("Equal returned false for identical RPs")
+	}
+	if a.Equal(diff) {
+		t.Fatal("Equal returned true for a changed RP")
+	}
+	if d := a.Diff(diff); !strings.Contains(d, "MulticastRpAddress") {
+		t.Fatalf("Diff did not report the RP change: %q", d)
+	}
 }
 
 func TestIPSetDiff(t *testing.T) {

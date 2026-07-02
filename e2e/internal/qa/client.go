@@ -26,10 +26,18 @@ import (
 )
 
 const (
-	disconnectTimeout                = 150 * time.Second
-	waitForStatusUpTimeout           = 90 * time.Second
-	waitForStatusDisconnectedTimeout = 90 * time.Second
-	waitForUserDeletionTimeout       = 90 * time.Second
+	disconnectTimeout      = 150 * time.Second
+	waitForStatusUpTimeout = 90 * time.Second
+	// Multicast (shred-subscription) tunnel up/down is driven by the oracle's
+	// ~60s reconcile loop (subscribe once the seat is active; unsubscribe after
+	// withdrawal), NOT on seat-allocation ack / withdrawal — observed latency up
+	// to ~3.5 min on devnet. Generous, dedicated timeouts so up/down don't race
+	// the cadence. TEMPORARY debug padding to surface downstream failures; the
+	// real fix is event-driven subscribe/unsubscribe in the oracle.
+	waitForMulticastStatusUpTimeout           = 360 * time.Second
+	waitForMulticastStatusDisconnectedTimeout = 360 * time.Second
+	waitForStatusDisconnectedTimeout          = 90 * time.Second
+	waitForUserDeletionTimeout                = 90 * time.Second
 
 	// NOTE: This needs to be longer than 1m since BGP can sometimes throttle activity for that
 	// amount of time if too much is happening consecutively for the same peers.
@@ -125,7 +133,8 @@ type Client struct {
 
 	// Settlement config passed to doublezero-solana shreds commands.
 	// SolanaRPCURL is the Solana RPC endpoint for settlement transactions (--url).
-	// On testnet this is the DZ ledger URL; on mainnet it's the public Solana RPC.
+	// On testnet this is Solana devnet (via SOLANA_RPC_URL); on mainnet the public
+	// Solana RPC; on devnet the DZ ledger URL.
 	SolanaRPCURL               string
 	ShredSubscriptionProgramID string
 	DZLedgerURL                string
@@ -155,11 +164,14 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 
 	serviceabilityClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 
-	// Settlement transactions on testnet/devnet use the DZ ledger RPC endpoint
-	// (which hosts the settlement programs). Mainnet and localnet use the
+	// Settlement transactions on devnet use the DZ ledger RPC endpoint (which
+	// hosts the settlement programs there). Testnet reads/writes the
+	// shred-subscription program on Solana devnet via networkConfig.SolanaRPCURL
+	// (the SOLANA_RPC_URL override, a Solana devnet RPC endpoint in CI;
+	// defaults to the public Solana endpoint). Mainnet and localnet use the
 	// standard Solana RPC.
 	solanaRPCURL := networkConfig.SolanaRPCURL
-	if networkConfig.Moniker == config.EnvTestnet || networkConfig.Moniker == config.EnvDevnet {
+	if networkConfig.Moniker == config.EnvDevnet {
 		solanaRPCURL = networkConfig.LedgerPublicRPCURL
 	}
 
@@ -393,19 +405,19 @@ func (c *Client) WaitForStatusUp(ctx context.Context) error {
 // its session is up. Prefer this over WaitForStatusUp in multi-tunnel contexts
 // where other tunnel types may already be present.
 func (c *Client) WaitForUnicastStatusUp(ctx context.Context) error {
-	return c.waitForUserTypeStatusUp(ctx, "IBRL", FindIBRLStatus)
+	return c.waitForUserTypeStatusUp(ctx, "IBRL", FindIBRLStatus, waitForStatusUpTimeout)
 }
 
 // WaitForMulticastStatusUp polls until a Multicast status entry exists and
 // its session is up. Prefer this over WaitForStatusUp in multi-tunnel contexts
 // where other tunnel types may already be present.
 func (c *Client) WaitForMulticastStatusUp(ctx context.Context) error {
-	return c.waitForUserTypeStatusUp(ctx, "Multicast", FindMulticastStatus)
+	return c.waitForUserTypeStatusUp(ctx, "Multicast", FindMulticastStatus, waitForMulticastStatusUpTimeout)
 }
 
 // waitForUserTypeStatusUp polls until find returns a non-nil status whose
 // session is up. userType is used only for log context.
-func (c *Client) waitForUserTypeStatusUp(ctx context.Context, userType string, find func([]*pb.Status) *pb.Status) error {
+func (c *Client) waitForUserTypeStatusUp(ctx context.Context, userType string, find func([]*pb.Status) *pb.Status, timeout time.Duration) error {
 	c.log.Debug("Waiting for status to be up", "host", c.Host, "userType", userType)
 	err := poll.Until(ctx, func() (bool, error) {
 		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
@@ -414,7 +426,7 @@ func (c *Client) waitForUserTypeStatusUp(ctx context.Context, userType string, f
 		}
 		s := find(resp.Status)
 		return s != nil && IsStatusUp(s.SessionStatus), nil
-	}, waitForStatusUpTimeout, waitInterval)
+	}, timeout, waitInterval)
 	if err != nil {
 		return fmt.Errorf("failed to wait for %s status to be up on host %s: %w", userType, c.Host, err)
 	}
@@ -503,7 +515,7 @@ func (c *Client) WaitForStatusDisconnected(ctx context.Context) error {
 // Prefer this over WaitForStatusDisconnected in multi-tunnel contexts where
 // other tunnel types (e.g. IBRL) remain up after a multicast seat is withdrawn.
 func (c *Client) WaitForMulticastStatusDisconnected(ctx context.Context) error {
-	return c.waitForUserTypeStatusDisconnected(ctx, "Multicast", FindMulticastStatus)
+	return c.waitForUserTypeStatusDisconnected(ctx, "Multicast", FindMulticastStatus, waitForMulticastStatusDisconnectedTimeout)
 }
 
 // WaitForIBRLStatusDisconnected polls until no IBRL (or IBRLWithAllocatedIP)
@@ -537,7 +549,7 @@ func (c *Client) WaitForIBRLStatusDisconnected(ctx context.Context) error {
 
 // waitForUserTypeStatusDisconnected polls until find returns nil or a status
 // whose session is disconnected. userType is used only for log context.
-func (c *Client) waitForUserTypeStatusDisconnected(ctx context.Context, userType string, find func([]*pb.Status) *pb.Status) error {
+func (c *Client) waitForUserTypeStatusDisconnected(ctx context.Context, userType string, find func([]*pb.Status) *pb.Status, timeout time.Duration) error {
 	c.log.Debug("Waiting for status to be disconnected", "host", c.Host, "userType", userType)
 	err := poll.Until(ctx, func() (bool, error) {
 		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
@@ -546,7 +558,7 @@ func (c *Client) waitForUserTypeStatusDisconnected(ctx context.Context, userType
 		}
 		s := find(resp.Status)
 		return s == nil || s.SessionStatus == UserStatusDisconnected, nil
-	}, waitForStatusDisconnectedTimeout, waitInterval)
+	}, timeout, waitInterval)
 	if err != nil {
 		return fmt.Errorf("failed to wait for %s status to be disconnected on host %s: %w", userType, c.Host, err)
 	}

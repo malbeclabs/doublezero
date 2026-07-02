@@ -1196,7 +1196,7 @@ fn generate_access_pass_edge_seat(dir: &Path) {
         account_type: AccountType::AccessPass,
         owner,
         bump_seed: 242,
-        accesspass_type: AccessPassType::EdgeSeat,
+        accesspass_type: AccessPassType::EdgeSeat(vec![]),
         client_ip: Ipv4Addr::UNSPECIFIED,
         user_payer,
         last_access_epoch: u64::MAX,

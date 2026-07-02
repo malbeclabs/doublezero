@@ -108,13 +108,24 @@ pub fn process_set_access_pass_feeds(
     // newly-referenced feeds. NOTE: feeds dropped from the pass are intentionally NOT decremented
     // here — their accounts are not passed, and an over-count only makes a feed harder to delete
     // (never unsafe), since reference_count solely guards DeleteFeed.
-    let mut new_seats = Vec::with_capacity(value.feeds.len());
+    let mut new_seats: Vec<FeedSeat> = Vec::with_capacity(value.feeds.len());
     for (seat, feed_account) in value.feeds.iter().zip(feed_accounts.iter()) {
         assert_eq!(
             *feed_account.key, seat.feed_key,
             "Feed account does not match seat feed_key"
         );
         assert_eq!(feed_account.owner, program_id, "Invalid Feed Account Owner");
+
+        // Reject a feed_key listed more than once: it would double-bump reference_count and
+        // write duplicate seats, neither of which is reclaimable.
+        if new_seats.iter().any(|s| s.feed_key == seat.feed_key) {
+            msg!(
+                "Duplicate feed_key in SetAccessPassFeeds: {}",
+                seat.feed_key
+            );
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+
         let mut feed = Feed::try_from(*feed_account)?;
 
         let current_users = prior_seats
@@ -122,6 +133,18 @@ pub fn process_set_access_pass_feeds(
             .find(|s| s.feed_key == seat.feed_key)
             .map(|s| s.current_users)
             .unwrap_or(0);
+
+        // A re-provision must not set a cap below the live count carried over from the prior seat,
+        // or the seat would start over its cap (enforced once connect-time ticking lands).
+        if seat.max_users < current_users {
+            msg!(
+                "max_users {} below current_users {} for feed {}",
+                seat.max_users,
+                current_users,
+                seat.feed_key
+            );
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
 
         if !prior_seats.iter().any(|s| s.feed_key == seat.feed_key) {
             assert!(feed_account.is_writable, "Feed Account is not writable");

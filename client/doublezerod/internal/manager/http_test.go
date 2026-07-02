@@ -109,7 +109,8 @@ func TestHttpStatus(t *testing.T) {
 	b := &MockBgpServer{}
 	pim := &MockPIMServer{}
 	heartbeat := &MockHeartbeatSender{}
-	mgr := manager.NewNetlinkManager(m, b, pim, heartbeat)
+	register := &MockRegisterSender{}
+	mgr := manager.NewNetlinkManager(m, b, pim, heartbeat, register)
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {
@@ -213,7 +214,8 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 	b := &MockBgpServer{}
 	pim := &MockPIMServer{}
 	heartbeat := &MockHeartbeatSender{}
-	mgr := manager.NewNetlinkManager(m, b, pim, heartbeat)
+	register := &MockRegisterSender{}
+	mgr := manager.NewNetlinkManager(m, b, pim, heartbeat, register)
 
 	f, err := os.CreateTemp("/tmp", "doublezero.sock")
 	if err != nil {
@@ -389,7 +391,7 @@ func TestNetlinkManager_HttpEndpoints(t *testing.T) {
 
 func TestNetlinkManager_GetProvisionedServices(t *testing.T) {
 	t.Run("no_services", func(t *testing.T) {
-		mgr := manager.NewNetlinkManager(&MockNetlink{}, &MockBgpServer{}, &MockPIMServer{}, &MockHeartbeatSender{})
+		mgr := manager.NewNetlinkManager(&MockNetlink{}, &MockBgpServer{}, &MockPIMServer{}, &MockHeartbeatSender{}, &MockRegisterSender{})
 		reqs := mgr.GetProvisionedServices()
 		if len(reqs) != 0 {
 			t.Fatalf("expected 0 provisioned services, got %d", len(reqs))
@@ -397,7 +399,7 @@ func TestNetlinkManager_GetProvisionedServices(t *testing.T) {
 	})
 
 	t.Run("unicast_only", func(t *testing.T) {
-		mgr := manager.NewNetlinkManager(&MockNetlink{}, &MockBgpServer{}, &MockPIMServer{}, &MockHeartbeatSender{})
+		mgr := manager.NewNetlinkManager(&MockNetlink{}, &MockBgpServer{}, &MockPIMServer{}, &MockHeartbeatSender{}, &MockRegisterSender{})
 		pr := api.ProvisionRequest{
 			UserType:           api.UserTypeIBRL,
 			TunnelSrc:          net.IPv4(1, 1, 1, 1),
@@ -420,7 +422,7 @@ func TestNetlinkManager_GetProvisionedServices(t *testing.T) {
 	})
 
 	t.Run("after_remove", func(t *testing.T) {
-		mgr := manager.NewNetlinkManager(&MockNetlink{}, &MockBgpServer{}, &MockPIMServer{}, &MockHeartbeatSender{})
+		mgr := manager.NewNetlinkManager(&MockNetlink{}, &MockBgpServer{}, &MockPIMServer{}, &MockHeartbeatSender{}, &MockRegisterSender{})
 		pr := api.ProvisionRequest{
 			UserType:           api.UserTypeIBRL,
 			TunnelSrc:          net.IPv4(1, 1, 1, 1),
@@ -552,4 +554,18 @@ func (m *MockNetlink) RuleDel(n *routing.IPRule) error {
 
 func (m *MockNetlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return m.routes, nil
+}
+
+type MockRegisterSender struct{}
+
+func (m *MockRegisterSender) Start(iface string, srcOverlay, innerSrc net.IP, groups []net.IP, rp net.IP, dport int, payload []byte, interval time.Duration) error {
+	return nil
+}
+
+func (m *MockRegisterSender) UpdateGroups(groups []net.IP) error {
+	return nil
+}
+
+func (m *MockRegisterSender) Close() error {
+	return nil
 }

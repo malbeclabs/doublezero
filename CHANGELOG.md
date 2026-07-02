@@ -11,6 +11,15 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Client
+  - Add a `-route-liveness-backoff-max` daemon flag to cap the Down-state liveness probe interval. Defaults to 60s (production behavior unchanged); the e2e harness pins a small value to avoid a probe gap that flaked the multi-client IBRL tests. (#3949)
+  - Add a structured `subscriptions` array to `doublezero status` (after `multicast_groups`) with per-group detail — group pubkey, code, multicast IP, max bandwidth, and `publisher`/`subscriber` booleans — so consumers no longer have to parse the flattened `P:`/`S:` string. (#3964)
+  - Originate a PIM Register beacon for multicast publishers: `doublezerod` periodically sends a PIM Register (encapsulating the publisher heartbeat) unicast to the RP over the tunnel, so the device originates the MSDP SA for the published source even on a dual-role publisher/subscriber tunnel, where `pim ipv4 border-router` source injection is suppressed by the subscriber-side PIM neighbor. (RFC-22)
+- Controller
+  - Permit the unicast PIM Register to the RP (`permit pim any host 10.0.0.0`) on publisher multicast tunnels so the client-originated Register reaches the device; `pim ipv4 border-router` is retained as a backstop. (RFC-22)
+- E2E
+  - Pin the e2e ledger `solana-test-validator` to the deploy floor (agave 2.2.16, testnet) so a green e2e proves a change actually deploys and runs on the production cluster runtime. Previously the runtime validator rode the SBF build toolchain version (2.3.13); it is now decoupled and pinned independently. The build toolchain is unchanged. (#3957)
+
 ## [v0.28.0](https://github.com/malbeclabs/doublezero/compare/client/v0.27.1...client/v0.28.0) - 2026-06-26
 
 
@@ -565,6 +574,18 @@ All notable changes to this project will be documented in this file.
   - Add onchain parent DZD discovery to geoprobe-agent: periodically queries the Geolocation program for this probe's parent devices and resolves their metrics publisher keys from Serviceability, replacing the need for static `--parent-dzd` CLI flags. Static parents from CLI are merged with onchain parents, with onchain taking precedence for duplicate keys.
   - Optimize inbound probe-measured RTT accuracy: pre-sign both TWAMP probes before network I/O so probe 1 fires immediately after reply 0 with no signing delay, measure Tx-to-Rx interval (reply 0 Tx → probe 1 Rx) instead of Rx-to-Rx to exclude processing overhead on both sides, use kernel `SO_TIMESTAMPNS` receive timestamps on the reflector, and add a 15ms busy-poll window on the sender to avoid scheduler wakeup latency
   - Optimize outbound probe RTT accuracy: send a staggered warmup probe on a separate socket 2ms before the measurement probe to wake the reflector's thread, then take the min RTT of both
+- Onchain Programs
+  - Serviceability: add `Permission` account with `CreatePermission`, `UpdatePermission`, `DeletePermission`, `SuspendPermission`, and `ResumePermission` instructions for managing per-keypair permission bitmasks onchain
+  - Serviceability: add `TOPOLOGY_ADMIN`, `RESOURCE_ADMIN`, and `INDEX_ADMIN` permission flags for delegating management of segment-routing topologies, ResourceExtension accounts, and internal Index accounts (legacy authorization maps each to the foundation allowlist)
+  - Serviceability: enforce `TOPOLOGY_ADMIN`/`RESOURCE_ADMIN`/`INDEX_ADMIN` via `authorize()` in the topology (create/delete/clear/assign-node-segments), resource (create/allocate/deallocate/close), and index (create/delete) instructions, which were previously gated by the foundation allowlist only
+  - Serviceability: fix `ClearTopology` account layout — the processor now parses `payer`/`system_program`/`permission` from the tail of the account list (matching what the SDK client appends after the variable-length link list) instead of reading them at fixed front positions, so `doublezero topology clear` no longer reverts when links are passed
+  - Serviceability: `authorize()` now falls back to the legacy allowlists when a payer's auto-injected Permission account exists but does not grant the requested flag, as long as `RequirePermissionAccounts` is off — so foundation (and other legacy-authorized) keys are not locked out of an instruction merely because they also hold an unrelated, under-privileged Permission account
+- SDK
+  - Add `execute_authorized_transaction` (and its `_quiet` variant) alongside `execute_transaction`. The authorized variants append the payer's Permission PDA (read-only) as the trailing account when it exists on-chain, so `authorize()` can find it. All variants share the same builder, so the protocol-max compute-budget/heap-frame requests, preflight, and error-reporting behavior are identical to `execute_transaction`; the only difference is the optional trailing Permission account. The Permission PDA lookup is retried on transient RPC errors and memoized per client.
+  - Add `TOPOLOGY_ADMIN`/`RESOURCE_ADMIN`/`INDEX_ADMIN` permission-flag constants to the Go, TypeScript, and Python serviceability SDKs
+- CLI
+  - Add `permission get`, `permission list`, and `permission set` commands with table and JSON output; `permission set` supports incremental `--add` / `--remove` flags and creates or updates the account as needed
+  - Add `topology-admin`, `resource-admin`, and `index-admin` to the named permissions accepted by `permission set --add` / `--remove`
 
 ## [v0.11.0](https://github.com/malbeclabs/doublezero/compare/client/v0.10.0...client/v0.11.0) - 2026-03-12
 

@@ -32,7 +32,7 @@ impl CreateIndexCommand {
         ];
 
         client
-            .execute_transaction(
+            .execute_authorized_transaction(
                 DoubleZeroInstruction::CreateIndex(IndexCreateArgs {
                     entity_seed: self.entity_seed.clone(),
                     key,

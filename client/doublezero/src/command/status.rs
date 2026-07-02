@@ -2,7 +2,8 @@ use crate::{
     command::util,
     requirements::check_doublezero,
     servicecontroller::{
-        DoubleZeroStatus, MulticastGroups, ServiceController, ServiceControllerImpl, StatusResponse,
+        DoubleZeroStatus, MulticastGroups, ServiceController, ServiceControllerImpl,
+        StatusResponse, Subscription,
     },
 };
 use backon::{ExponentialBuilder, Retryable};
@@ -37,6 +38,8 @@ struct AppendedStatusResponse {
     network: String,
     #[tabled(rename = "Multicast Groups")]
     multicast_groups: String,
+    #[tabled(skip)]
+    subscriptions: Vec<Subscription>,
 }
 
 fn format_multicast_groups(groups: &MulticastGroups) -> String {
@@ -101,6 +104,7 @@ impl StatusCliCommand {
                     v2_status.network.clone()
                 },
                 multicast_groups: String::new(),
+                subscriptions: Vec::new(),
             }]);
         }
 
@@ -145,6 +149,7 @@ impl StatusCliCommand {
                 network: network.clone(),
                 tenant: svc.tenant.clone(),
                 multicast_groups: format_multicast_groups(&svc.multicast_groups),
+                subscriptions: svc.subscriptions.clone(),
             });
         }
 
@@ -157,7 +162,8 @@ impl StatusCliCommand {
 mod tests {
     use super::*;
     use crate::servicecontroller::{
-        DoubleZeroStatus, MockServiceController, MulticastGroups, V2ServiceStatus, V2StatusResponse,
+        DoubleZeroStatus, MockServiceController, MulticastGroups, Subscription, V2ServiceStatus,
+        V2StatusResponse,
     };
     use doublezero_serviceability_cli::doublezerocommand::MockCliCommand;
     use std::sync::{
@@ -195,6 +201,7 @@ mod tests {
             metro: metro.to_string(),
             tenant: tenant.to_string(),
             multicast_groups: MulticastGroups::default(),
+            subscriptions: Vec::new(),
         }
     }
 
@@ -274,6 +281,7 @@ mod tests {
                     metro: String::new(),
                     tenant: String::new(),
                     multicast_groups: MulticastGroups::default(),
+                    subscriptions: Vec::new(),
                 }],
             })
         });
@@ -365,6 +373,7 @@ mod tests {
                     metro: "metro".to_string(),
                     tenant: String::new(),
                     multicast_groups: MulticastGroups::default(),
+                    subscriptions: Vec::new(),
                 }],
             })
         });
@@ -411,6 +420,14 @@ mod tests {
             network: "Testnet".to_string(),
             tenant: "".to_string(),
             multicast_groups: String::new(),
+            subscriptions: vec![Subscription {
+                pubkey: "pubLV".to_string(),
+                code: "solana-lv".to_string(),
+                multicast_ip: "233.84.178.1".to_string(),
+                max_bandwidth: 1_000_000_000,
+                publisher: true,
+                subscriber: false,
+            }],
         };
 
         // JSON output is an array of status responses
@@ -446,6 +463,17 @@ mod tests {
             "Missing 'multicast_groups' field"
         );
         assert_eq!(status.get("multicast_groups").unwrap(), "");
+        let subscriptions = status
+            .get("subscriptions")
+            .expect("Missing 'subscriptions' field");
+        assert!(subscriptions.is_array(), "subscriptions should be an array");
+        let sub = &subscriptions.as_array().unwrap()[0];
+        assert_eq!(sub.get("pubkey").unwrap(), "pubLV");
+        assert_eq!(sub.get("code").unwrap(), "solana-lv");
+        assert_eq!(sub.get("multicast_ip").unwrap(), "233.84.178.1");
+        assert_eq!(sub.get("max_bandwidth").unwrap(), 1_000_000_000);
+        assert_eq!(sub.get("publisher").unwrap(), true);
+        assert_eq!(sub.get("subscriber").unwrap(), false);
 
         // Validate response nested fields
         let response = status.get("response").unwrap();
@@ -526,6 +554,7 @@ mod tests {
             network: "Testnet".to_string(),
             tenant: "".to_string(),
             multicast_groups: String::new(),
+            subscriptions: Vec::new(),
         };
 
         // JSON output is an array of status responses
@@ -722,6 +751,24 @@ mod tests {
                         publisher: vec!["solana-lv".to_string()],
                         subscriber: vec!["solana-ams".to_string()],
                     },
+                    subscriptions: vec![
+                        Subscription {
+                            pubkey: "pubLV".to_string(),
+                            code: "solana-lv".to_string(),
+                            multicast_ip: "233.84.178.1".to_string(),
+                            max_bandwidth: 1_000_000_000,
+                            publisher: true,
+                            subscriber: false,
+                        },
+                        Subscription {
+                            pubkey: "pubAMS".to_string(),
+                            code: "solana-ams".to_string(),
+                            multicast_ip: "233.84.178.2".to_string(),
+                            max_bandwidth: 2_000_000_000,
+                            publisher: false,
+                            subscriber: true,
+                        },
+                    ],
                 }],
             })
         });
@@ -734,6 +781,29 @@ mod tests {
         let result = result.unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].multicast_groups, "P:solana-lv,S:solana-ams");
+
+        // The structured subscriptions list is carried through verbatim.
+        assert_eq!(
+            result[0].subscriptions,
+            vec![
+                Subscription {
+                    pubkey: "pubLV".to_string(),
+                    code: "solana-lv".to_string(),
+                    multicast_ip: "233.84.178.1".to_string(),
+                    max_bandwidth: 1_000_000_000,
+                    publisher: true,
+                    subscriber: false,
+                },
+                Subscription {
+                    pubkey: "pubAMS".to_string(),
+                    code: "solana-ams".to_string(),
+                    multicast_ip: "233.84.178.2".to_string(),
+                    max_bandwidth: 2_000_000_000,
+                    publisher: false,
+                    subscriber: true,
+                },
+            ]
+        );
     }
 
     #[test]

@@ -32,7 +32,7 @@ impl DeallocateResourceCommand {
             _ => Pubkey::default(),
         };
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::DeallocateResource(resource_deallocate_args),
             vec![
                 AccountMeta::new(resource_pubkey, false),

@@ -1143,6 +1143,9 @@ export const PERMISSION_FLAG_USER_ADMIN = 1n << 9n;
 export const PERMISSION_FLAG_ACCESS_PASS_ADMIN = 1n << 10n;
 export const PERMISSION_FLAG_HEALTH_ORACLE = 1n << 11n;
 export const PERMISSION_FLAG_QA = 1n << 12n;
+export const PERMISSION_FLAG_TOPOLOGY_ADMIN = 1n << 15n;
+export const PERMISSION_FLAG_RESOURCE_ADMIN = 1n << 16n;
+export const PERMISSION_FLAG_INDEX_ADMIN = 1n << 17n;
 
 const PERMISSION_STATUS_NAMES: Record<number, string> = {
   0: "none",

@@ -44,6 +44,70 @@ env:
   DZ_VALIDATOR_METADATA_SERVICE_MOCK_IMAGE: ghcr.io/malbeclabs/dz-e2e/validator-metadata-service-mock:${{ github.event.inputs.image_tag || github.sha }}
 
 jobs:
+  schedule-gate:
+    # Flake gap-filler gate. Runs only on the hourly schedule, on a GitHub-hosted
+    # runner so the hourly no-op never consumes a self-hosted e2e slot. Emits
+    # outputs.proceed='true' only when the gap-filler is enabled AND main is stale
+    # AND no e2e run is in flight. setup (and thus the matrix) stays gated on this
+    # for schedule events. Cheap: a few API reads.
+    name: Flake gap-filler gate
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      proceed: ${{ steps.gate.outputs.proceed }}
+    env:
+      # Default-off master switch. Set repo variable E2E_GAP_FILLER_ENABLED='true'
+      # to activate (Settings -> Secrets and variables -> Actions -> Variables).
+      GAP_FILLER_ENABLED: ${{ vars.E2E_GAP_FILLER_ENABLED }}
+    steps:
+      - name: Decide whether to run the gap-filler
+        id: gate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const STALE_HOURS = 6;
+            const enabled = process.env.GAP_FILLER_ENABLED === 'true';
+            const selfId = context.runId;
+            const { owner, repo } = context.repo;
+
+            // Stale check: newest e2e run against main HEAD (push or schedule),
+            // excluding this run. Missing => Infinity => stale.
+            const mainRuns = await github.rest.actions.listWorkflowRuns({
+              owner, repo, workflow_id: 'e2e.yml', branch: 'main', per_page: 30,
+            });
+            const newestMain = mainRuns.data.workflow_runs
+              .filter(r => r.id !== selfId)
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+            const ageHours = newestMain
+              ? (Date.now() - new Date(newestMain.created_at).getTime()) / 3.6e6
+              : Infinity;
+            const stale = ageHours >= STALE_HOURS;
+
+            // Idle check: any e2e run not yet completed, on ANY branch, excluding
+            // this run. These GitHub run statuses precede 'completed'.
+            const active = [];
+            for (const status of ['queued', 'in_progress', 'requested', 'waiting', 'pending']) {
+              const res = await github.rest.actions.listWorkflowRuns({
+                owner, repo, workflow_id: 'e2e.yml', status, per_page: 100,
+              });
+              active.push(...res.data.workflow_runs.filter(r => r.id !== selfId));
+            }
+            const idle = active.length === 0;
+
+            const proceed = enabled && stale && idle;
+            const ageStr = Number.isFinite(ageHours) ? ageHours.toFixed(1) + 'h' : 'none';
+            core.info(`enabled=${enabled} stale=${stale} (newest main age=${ageStr}, threshold=${STALE_HOURS}h) idle=${idle} (active=${active.length}) => proceed=${proceed}`);
+            core.setOutput('proceed', String(proceed));
+            await core.summary.addRaw(
+              `### e2e flake gap-filler gate\n` +
+              `- enabled: **${enabled}**\n` +
+              `- stale: **${stale}** (newest main run age ${ageStr} / ${STALE_HOURS}h)\n` +
+              `- idle: **${idle}** (in-flight e2e runs excluding self: ${active.length})\n` +
+              `- **proceed: ${proceed}**\n`
+            ).write();
+
   setup:
     runs-on: self-hosted
     permissions:

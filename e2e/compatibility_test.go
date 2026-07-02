@@ -40,8 +40,8 @@ import (
 // self-reports its embedded version as 0.14.0 in the startup version check —
 // v0.15.0 is the first release whose embedded version is actually ≥ 0.14.1.
 var globalMinVersions = map[string]string{
-	"mainnet-beta": "0.15.0",
-	"testnet":      "0.15.0",
+	"mainnet-beta": "0.21.0",
+	"testnet":      "0.21.0",
 }
 
 // =============================================================================

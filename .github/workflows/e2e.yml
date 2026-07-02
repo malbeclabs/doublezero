@@ -109,6 +109,15 @@ jobs:
             ).write();
 
   setup:
+    needs: [schedule-gate]
+    # Non-schedule events (push/PR/dispatch) run setup as before. Schedule events
+    # run it only when the gap-filler gate passed. always() is required because
+    # schedule-gate is skipped for non-schedule events, and a skipped need would
+    # otherwise skip setup too.
+    if: >-
+      ${{ always() &&
+          (github.event_name != 'schedule' ||
+           needs.schedule-gate.outputs.proceed == 'true') }}
     runs-on: self-hosted
     permissions:
       packages: write

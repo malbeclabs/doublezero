@@ -684,7 +684,7 @@ async fn try_create_user(
 
 /// EdgeSeat passes admit at most `max_unicast_users` unicast users; the (N+1)th is rejected with
 /// the per-category error. Multicast is feed-scoped (supersede): with no feeds provisioned on the
-/// pass, a multicast connect is rejected with `MetroMismatch`. The pass lives at the UNSPECIFIED PDA
+/// pass, a multicast connect is rejected with `FeedAccountRequired`. The pass lives at the UNSPECIFIED PDA
 /// so distinct client IPs all map to the same seat.
 #[tokio::test]
 async fn test_edge_seat_user_caps_enforced() {
@@ -740,8 +740,8 @@ async fn test_edge_seat_user_caps_enforced() {
         "expected AccessPassMaxUnicastUsersExceeded (Custom(89)), got: {err:?}"
     );
 
-    // Multicast is feed-scoped under supersede. With no feeds provisioned on the pass, a multicast
-    // connect is rejected with MetroMismatch (Custom(91)) rather than the legacy multicast cap.
+    // Multicast is feed-scoped under supersede. With no Feed account supplied, a multicast
+    // connect is rejected with FeedAccountRequired (Custom(92)) rather than the legacy multicast cap.
     let err = try_create_user(
         &mut env,
         [100, 0, 0, 12].into(),
@@ -751,8 +751,8 @@ async fn test_edge_seat_user_caps_enforced() {
     .await
     .expect_err("multicast on a feedless EdgeSeat pass should be rejected");
     assert!(
-        format!("{err:?}").contains("Custom(91)"),
-        "expected MetroMismatch (Custom(91)), got: {err:?}"
+        format!("{err:?}").contains("Custom(92)"),
+        "expected FeedAccountRequired (Custom(92)), got: {err:?}"
     );
 
     // Only the unicast connection was admitted.

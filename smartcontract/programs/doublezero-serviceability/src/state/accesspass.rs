@@ -346,7 +346,7 @@ impl AccessPass {
     }
 
     /// Tick the matching feed seat's `current_users` against its `max_users`. Returns
-    /// `MetroMismatch` if the pass carries no seat for `feed_key`, or
+    /// `FeedNotOnAccessPass` if the pass carries no seat for `feed_key`, or
     /// `AccessPassMaxMulticastUsersExceeded` if the feed cap is full.
     pub fn try_add_feed_user(&mut self, feed_key: &Pubkey) -> Result<(), DoubleZeroError> {
         match self.feed_seat_mut(feed_key) {
@@ -357,7 +357,7 @@ impl AccessPass {
                 seat.current_users += 1;
                 Ok(())
             }
-            None => Err(DoubleZeroError::MetroMismatch),
+            None => Err(DoubleZeroError::FeedNotOnAccessPass),
         }
     }
 
@@ -597,10 +597,10 @@ mod tests {
         ap.try_add_feed_user(&feed_b).unwrap();
         assert_eq!(ap.feed_seats()[1].current_users, 1);
 
-        // Unknown feed → MetroMismatch.
+        // Unknown feed → FeedNotOnAccessPass.
         assert_eq!(
             ap.try_add_feed_user(&Pubkey::new_unique()).unwrap_err(),
-            DoubleZeroError::MetroMismatch
+            DoubleZeroError::FeedNotOnAccessPass
         );
 
         // Release frees a seat; saturating.

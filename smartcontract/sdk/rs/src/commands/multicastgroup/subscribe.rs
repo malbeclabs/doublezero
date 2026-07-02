@@ -70,7 +70,7 @@ impl UpdateMulticastGroupRolesCommand {
             &client.get_program_id(),
             ResourceType::MulticastPublisherBlock,
         );
-        let mut accounts = vec![
+        let accounts = vec![
             AccountMeta::new(self.group_pk, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(self.user_pk, false),

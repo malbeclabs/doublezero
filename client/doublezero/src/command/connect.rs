@@ -683,6 +683,7 @@ impl ProvisioningCliCommand {
                     subscriber: sub_group_pks.contains(first_group_pk),
                     tunnel_endpoint,
                     owner: None,
+                    feed_pk: None,
                 });
 
                 let user_pk = match res {
@@ -711,6 +712,8 @@ impl ProvisioningCliCommand {
                         client_ip: *client_ip,
                         publisher: pub_group_pks.contains(group_pk),
                         subscriber: sub_group_pks.contains(group_pk),
+                        device_pk: None,
+                        feed_pk: None,
                     })?;
                 }
 
@@ -737,6 +740,8 @@ impl ProvisioningCliCommand {
                                 client_ip: *client_ip,
                                 publisher: true,
                                 subscriber: false,
+                                device_pk: None,
+                                feed_pk: None,
                             });
 
                         match res {
@@ -768,6 +773,8 @@ impl ProvisioningCliCommand {
                                 client_ip: *client_ip,
                                 publisher: false,
                                 subscriber: true,
+                                device_pk: None,
+                                feed_pk: None,
                             });
 
                         match res {
@@ -821,6 +828,7 @@ impl ProvisioningCliCommand {
                     subscriber: sub_group_pks.contains(first_group_pk),
                     tunnel_endpoint,
                     owner: None,
+                    feed_pk: None,
                 });
 
                 let user_pk = match res {
@@ -849,6 +857,8 @@ impl ProvisioningCliCommand {
                         client_ip: *client_ip,
                         publisher: pub_group_pks.contains(group_pk),
                         subscriber: sub_group_pks.contains(group_pk),
+                        device_pk: None,
+                        feed_pk: None,
                     })?;
                 }
 
@@ -1566,6 +1576,7 @@ mod tests {
                 subscriber,
                 tunnel_endpoint: user.tunnel_endpoint,
                 owner: None,
+                feed_pk: None,
             };
 
             let users = self.users.clone();
@@ -1605,6 +1616,8 @@ mod tests {
                 client_ip,
                 publisher,
                 subscriber,
+                device_pk: None,
+                feed_pk: None,
             };
 
             let users = self.users.clone();

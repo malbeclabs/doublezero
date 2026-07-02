@@ -4,18 +4,15 @@ pub mod update;
 
 use crate::{
     error::DoubleZeroError,
-    state::{
-        accesspass::AccessPass,
-        feed::{Feed, FeedMetroMatch},
-    },
+    state::{accesspass::AccessPass, feed::Feed},
 };
 use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, msg, pubkey::Pubkey};
 
 /// Validate the EdgeSeat feed metro gate without mutating the pass.
 ///
-/// For the device's `device_exchange`, the joinable groups are the matching feed's group set; a
-/// device in an exchange not covered by any of the pass's feeds is rejected with `MetroMismatch`. A
-/// feed with no metros imposes no restriction (reachable from any exchange, any group).
+/// A feed serves exactly one metro. The passed feed must be provisioned on the pass and must serve
+/// the device's `device_exchange` (else `MetroMismatch`); the joinable multicast groups are then
+/// that feed's group set (a `target_mgroup` outside it is rejected with `GroupNotInFeed`).
 ///
 /// `feed_account` must be the `Feed` referenced by one of the pass's seats. `target_mgroup` is the
 /// multicast group being joined (None requires only metro coverage).
@@ -26,7 +23,7 @@ pub fn check_feed_metro_coverage(
     target_mgroup: Option<&Pubkey>,
     feed_account: Option<&AccountInfo>,
 ) -> ProgramResult {
-    let feed_account = feed_account.ok_or(DoubleZeroError::MetroMismatch)?;
+    let feed_account = feed_account.ok_or(DoubleZeroError::FeedAccountRequired)?;
     if feed_account.owner != program_id {
         return Err(DoubleZeroError::InvalidAccountOwner.into());
     }
@@ -42,31 +39,29 @@ pub fn check_feed_metro_coverage(
             "Feed {} is not provisioned on the access pass",
             feed_account.key
         );
+        return Err(DoubleZeroError::FeedNotOnAccessPass.into());
+    }
+
+    // The feed serves exactly one metro; it must be the device's exchange.
+    if feed.exchange != *device_exchange {
+        msg!(
+            "Device exchange {} not served by feed {} (serves {})",
+            device_exchange,
+            feed_account.key,
+            feed.exchange
+        );
         return Err(DoubleZeroError::MetroMismatch.into());
     }
 
-    match feed.groups_for(device_exchange) {
-        FeedMetroMatch::Unrestricted => {}
-        FeedMetroMatch::Groups(groups) => {
-            if let Some(group) = target_mgroup {
-                if !groups.contains(group) {
-                    msg!(
-                        "Group {} not joinable for exchange {} via feed {}",
-                        group,
-                        device_exchange,
-                        feed_account.key
-                    );
-                    return Err(DoubleZeroError::MetroMismatch.into());
-                }
-            }
-        }
-        FeedMetroMatch::NotCovered => {
+    if let Some(group) = target_mgroup {
+        if !feed.groups.contains(group) {
             msg!(
-                "Device exchange {} not covered by feed {}",
+                "Group {} not joinable for exchange {} via feed {}",
+                group,
                 device_exchange,
                 feed_account.key
             );
-            return Err(DoubleZeroError::MetroMismatch.into());
+            return Err(DoubleZeroError::GroupNotInFeed.into());
         }
     }
 

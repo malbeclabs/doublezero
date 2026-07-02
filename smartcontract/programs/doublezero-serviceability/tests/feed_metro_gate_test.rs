@@ -15,7 +15,10 @@ use doublezero_serviceability::{
         get_resource_extension_pda, get_user_pda,
     },
     processors::{
-        accesspass::{set::SetAccessPassArgs, set_feeds::SetAccessPassFeedsArgs},
+        accesspass::{
+            set::SetAccessPassArgs,
+            set_feeds::{FeedSeatConfig, SetAccessPassFeedsArgs},
+        },
         contributor::create::ContributorCreateArgs,
         device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
         exchange::create::ExchangeCreateArgs,
@@ -259,9 +262,10 @@ async fn setup_feed_fixture(client_ip: [u8; 4]) -> FeedFixture {
 async fn create_feed(
     f: &mut FeedFixture,
     code: &str,
-    metros: Vec<(Pubkey, Vec<Pubkey>)>,
+    exchange: Pubkey,
+    groups: Vec<Pubkey>,
 ) -> Pubkey {
-    let (feed_pubkey, _) = get_feed_pda(&f.program_id, code);
+    let (feed_pubkey, _) = get_feed_pda(&f.program_id, code, &exchange);
     let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
     execute_transaction(
         &mut f.banks_client,
@@ -270,7 +274,8 @@ async fn create_feed(
         DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
             code: code.to_string(),
             name: code.to_string(),
-            metros,
+            exchange,
+            groups,
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -285,26 +290,30 @@ async fn create_feed(
 /// Provision the given feed seats onto the access pass via SetAccessPassFeeds.
 async fn set_pass_feeds(f: &mut FeedFixture, seats: Vec<FeedSeat>) {
     let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
-    let accounts = vec![
+    // Account layout: [accesspass, globalstate, feed_0..feed_N, payer, system]. The feed accounts
+    // (writable for the reference_count bump) are part of the base list, before the trailing
+    // payer/system appended by create_transaction.
+    let mut accounts = vec![
         AccountMeta::new(f.accesspass_pubkey, false),
         AccountMeta::new(f.globalstate_pubkey, false),
     ];
-    // Feed accounts (writable for reference_count bump) follow payer + system; they are passed as
-    // extra accounts.
-    let extra: Vec<AccountMeta> = seats
-        .iter()
-        .map(|s| AccountMeta::new(s.feed_key, false))
-        .collect();
-    let mut tx = create_transaction_with_extra_accounts(
+    for s in &seats {
+        accounts.push(AccountMeta::new(s.feed_key, false));
+    }
+    let mut tx = create_transaction(
         f.program_id,
         &DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
             client_ip: f.user_ip,
             user_payer: f.payer.pubkey(),
-            feeds: seats,
+            feeds: seats
+                .iter()
+                .map(|s| FeedSeatConfig {
+                    max_users: s.max_users,
+                })
+                .collect(),
         }),
         &accounts,
         &f.payer,
-        &extra,
     );
     tx.try_sign(&[&f.payer], recent_blockhash).unwrap();
     f.banks_client.process_transaction(tx).await.unwrap();
@@ -352,8 +361,8 @@ async fn try_subscribe_with_feed(
 async fn test_right_metro_joins_group_set() {
     let mut f = setup_feed_fixture([100, 0, 0, 20]).await;
     let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
-    // Feed maps the device's exchange → [mgroup].
-    let feed = create_feed(&mut f, "shreds", vec![(exchange, vec![mgroup])]).await;
+    // Feed serves the device's exchange with [mgroup].
+    let feed = create_feed(&mut f, "shreds", exchange, vec![mgroup]).await;
     set_pass_feeds(
         &mut f,
         vec![FeedSeat {
@@ -390,9 +399,9 @@ async fn test_right_metro_joins_group_set() {
 async fn test_wrong_metro_device_rejected() {
     let mut f = setup_feed_fixture([100, 0, 0, 21]).await;
     let mgroup = f.mgroup_pubkey;
-    // Feed covers a DIFFERENT exchange, so the device's metro is not covered.
+    // Feed serves a DIFFERENT exchange, so the device's metro is not covered.
     let other_exchange = Pubkey::new_unique();
-    let feed = create_feed(&mut f, "shreds", vec![(other_exchange, vec![mgroup])]).await;
+    let feed = create_feed(&mut f, "shreds", other_exchange, vec![mgroup]).await;
     set_pass_feeds(
         &mut f,
         vec![FeedSeat {
@@ -416,9 +425,9 @@ async fn test_wrong_metro_device_rejected() {
 async fn test_multi_feed_seat_matching_admits() {
     let mut f = setup_feed_fixture([100, 0, 0, 22]).await;
     let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
-    // Two feeds: one covering a bogus metro, one covering the device's metro.
-    let feed_other = create_feed(&mut f, "tokyo", vec![(Pubkey::new_unique(), vec![mgroup])]).await;
-    let feed_match = create_feed(&mut f, "fra", vec![(exchange, vec![mgroup])]).await;
+    // Two feeds: one serving a bogus metro, one serving the device's metro.
+    let feed_other = create_feed(&mut f, "tokyo", Pubkey::new_unique(), vec![mgroup]).await;
+    let feed_match = create_feed(&mut f, "fra", exchange, vec![mgroup]).await;
     set_pass_feeds(
         &mut f,
         vec![
@@ -455,10 +464,13 @@ async fn test_multi_feed_seat_matching_admits() {
 }
 
 #[tokio::test]
-async fn test_no_metro_feed_reachable_from_anywhere() {
+async fn test_group_not_in_feed_rejected() {
     let mut f = setup_feed_fixture([100, 0, 0, 23]).await;
-    // Feed with no metros: no restriction, reachable from any exchange and any group.
-    let feed = create_feed(&mut f, "global", vec![]).await;
+    let exchange = f.exchange_pubkey;
+    // Feed serves the device's metro but with a different group set, so the target mgroup is not
+    // joinable.
+    let other_group = Pubkey::new_unique();
+    let feed = create_feed(&mut f, "shreds", exchange, vec![other_group]).await;
     set_pass_feeds(
         &mut f,
         vec![FeedSeat {
@@ -469,15 +481,11 @@ async fn test_no_metro_feed_reachable_from_anywhere() {
     )
     .await;
 
-    try_subscribe_with_feed(&mut f, feed)
+    let err = try_subscribe_with_feed(&mut f, feed)
         .await
-        .expect("no-metro feed should be reachable");
-
-    let (user_pubkey, _) = get_user_pda(&f.program_id, &f.user_ip, UserType::Multicast);
-    let user = get_account_data(&mut f.banks_client, user_pubkey)
-        .await
-        .expect("user exists")
-        .get_user()
-        .unwrap();
-    assert_eq!(user.status, UserStatus::Activated);
+        .expect_err("group outside the feed should be rejected");
+    assert!(
+        format!("{err:?}").contains("Custom(94)"),
+        "expected GroupNotInFeed (Custom(94)), got: {err:?}"
+    );
 }

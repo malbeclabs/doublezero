@@ -188,6 +188,12 @@ pub enum DoubleZeroError {
     AccessPassMaxMulticastUsersExceeded, // variant 90
     #[error("Device exchange (metro) is not covered by any feed on the access pass")]
     MetroMismatch, // variant 91
+    #[error("A Feed account is required for this EdgeSeat access pass")]
+    FeedAccountRequired, // variant 92
+    #[error("Feed is not provisioned on the access pass")]
+    FeedNotOnAccessPass, // variant 93
+    #[error("Target multicast group is not joinable via the feed for this exchange")]
+    GroupNotInFeed, // variant 94
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -285,6 +291,9 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::AccessPassMaxUnicastUsersExceeded => ProgramError::Custom(89),
             DoubleZeroError::AccessPassMaxMulticastUsersExceeded => ProgramError::Custom(90),
             DoubleZeroError::MetroMismatch => ProgramError::Custom(91),
+            DoubleZeroError::FeedAccountRequired => ProgramError::Custom(92),
+            DoubleZeroError::FeedNotOnAccessPass => ProgramError::Custom(93),
+            DoubleZeroError::GroupNotInFeed => ProgramError::Custom(94),
         }
     }
 }
@@ -383,6 +392,9 @@ impl From<u32> for DoubleZeroError {
             89 => DoubleZeroError::AccessPassMaxUnicastUsersExceeded,
             90 => DoubleZeroError::AccessPassMaxMulticastUsersExceeded,
             91 => DoubleZeroError::MetroMismatch,
+            92 => DoubleZeroError::FeedAccountRequired,
+            93 => DoubleZeroError::FeedNotOnAccessPass,
+            94 => DoubleZeroError::GroupNotInFeed,
             _ => DoubleZeroError::Custom(e),
         }
     }

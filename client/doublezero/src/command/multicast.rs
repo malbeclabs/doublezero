@@ -95,6 +95,8 @@ impl MulticastUnsubscribeCliCommand {
                 client_ip,
                 publisher: carry_pub,
                 subscriber: false,
+                device_pk: None,
+                feed_pk: None,
             }) {
                 Ok(_) => spinner.println(format!("    unsubscribed from {code}")),
                 Err(e) => {
@@ -219,6 +221,8 @@ impl MulticastUnpublishCliCommand {
                 client_ip,
                 publisher: false,
                 subscriber: carry_sub,
+                device_pk: None,
+                feed_pk: None,
             }) {
                 Ok(_) => spinner.println(format!("    unpublished from {code}")),
                 Err(e) => {
@@ -261,6 +265,8 @@ impl MulticastSubscribeCliCommand {
                 client_ip,
                 publisher: carry_pub,
                 subscriber: true,
+                device_pk: None,
+                feed_pk: None,
             }) {
                 Ok(_) => spinner.println(format!("    subscribed to {code}")),
                 Err(e) => {
@@ -303,6 +309,8 @@ impl MulticastPublishCliCommand {
                 client_ip,
                 publisher: true,
                 subscriber: carry_sub,
+                device_pk: None,
+                feed_pk: None,
             }) {
                 Ok(_) => spinner.println(format!("    publishing to {code}")),
                 Err(e) => {

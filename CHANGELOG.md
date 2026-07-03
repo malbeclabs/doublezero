@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- SDK
+  - Give the shreds SDK RPC client a bounded per-request timeout (15s) and a sized connection pool instead of the unbounded `http.DefaultClient`, so a slow or degraded RPC endpoint fails fast rather than blocking until a transaction's blockhash expires and its send fails preflight with `BlockhashNotFound`.
 - E2E
   - Fix the multicast settlement QA test's seat-allocation ack wait. It read the reused client seat at finalized commitment and could accept the previous run's already-acked state, then withdraw while the current request was still pending. It now waits to observe the request pending before treating a cleared flag as the ack. (#3972)
 

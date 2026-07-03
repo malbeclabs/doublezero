@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- E2E
+  - Fix the multicast settlement QA test's seat-allocation ack wait. It read the reused client seat at finalized commitment and could accept the previous run's already-acked state, then withdraw while the current request was still pending. It now waits to observe the request pending before treating a cleared flag as the ack. (#3972)
+
 ## [v0.29.0](https://github.com/malbeclabs/doublezero/compare/client/v0.28.0...client/v0.29.0) - 2026-07-02
 
 ### Breaking

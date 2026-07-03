@@ -52,6 +52,7 @@ type BufferedLedgerExporterConfig struct {
 	MaxAttempts                   int
 	BackoffFunc                   func(attempt int) time.Duration
 	EpochFinder                   epoch.Finder
+	AttemptTimeout                time.Duration
 }
 
 func (c *BufferedLedgerExporterConfig) Validate() error {
@@ -100,6 +101,7 @@ func NewBufferedLedgerExporter(cfg BufferedLedgerExporterConfig) (*BufferedLedge
 		MaxAttempts:                   cfg.MaxAttempts,
 		BackoffFunc:                   cfg.BackoffFunc,
 		EpochFinder:                   cfg.EpochFinder,
+		AttemptTimeout:                cfg.AttemptTimeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create submitter: %w", err)

@@ -340,11 +340,18 @@ func (c *Client) IsProgramPaused(ctx context.Context) (bool, error) {
 	return cfg.IsPaused(), nil
 }
 
-// WaitForSeatAllocationAcked polls the onchain client seat until the pending
-// instant-allocation flag clears (the oracle has acked the request). Withdraw
-// is blocked onchain while the flag is set, so callers should wait between
-// FeedSeatPay and FeedSeatWithdraw. On timeout the error includes the current
-// program-paused state to surface migration windows as the likely cause.
+// WaitForSeatAllocationAcked waits for the oracle to ack this run's instant
+// allocation request. Withdraw is blocked onchain while the pending flag is set,
+// so callers should wait between FeedSeatPay and FeedSeatWithdraw.
+//
+// The client seat account is reused across runs and FetchClientSeat reads at the
+// default (finalized) commitment, so a read taken right after FeedSeatPay can
+// return the previous run's already-acked (pending=false) state and short-circuit
+// before this run's request is even visible. To avoid mistaking stale state for
+// an ack, we require observing the pending flag set first, then wait for the
+// oracle to clear it. On timeout the error includes whether the request was ever
+// observed and the current program-paused state, to surface a slow oracle or a
+// migration window as the likely cause.
 func (c *Client) WaitForSeatAllocationAcked(ctx context.Context, devicePubkey string, timeout time.Duration) error {
 	deviceKey, err := solana.PublicKeyFromBase58(devicePubkey)
 	if err != nil {
@@ -360,23 +367,28 @@ func (c *Client) WaitForSeatAllocationAcked(ctx context.Context, devicePubkey st
 	c.log.Debug("Waiting for seat allocation ack", "host", c.Host, "device", devicePubkey, "timeout", timeout)
 	deadline := time.Now().Add(timeout)
 	var lastErr error
+	sawPending := false
 	for {
 		seat, err := shredsClient.FetchClientSeat(ctx, deviceKey, clientIPBits)
-		if err == nil && !seat.HasPendingInstantRequest() {
-			c.log.Debug("Seat allocation acked", "host", c.Host, "device", devicePubkey)
-			return nil
+		if err == nil {
+			if seat.HasPendingInstantRequest() {
+				sawPending = true
+			} else if sawPending {
+				c.log.Debug("Seat allocation acked", "host", c.Host, "device", devicePubkey)
+				return nil
+			}
 		}
 		lastErr = err
 		if time.Now().After(deadline) {
 			cfg, cfgErr := shredsClient.FetchProgramConfig(ctx)
 			paused := cfgErr == nil && cfg.IsPaused()
-			return fmt.Errorf("seat allocation not acked within %s on host %s (program_paused=%t, last_fetch_err=%v)",
-				timeout, c.Host, paused, lastErr)
+			return fmt.Errorf("seat allocation not acked within %s on host %s (saw_pending=%t, program_paused=%t, last_fetch_err=%v)",
+				timeout, c.Host, sawPending, paused, lastErr)
 		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(1 * time.Second):
 		}
 	}
 }

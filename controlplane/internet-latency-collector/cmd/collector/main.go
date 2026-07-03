@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -13,6 +15,8 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/gagliardetto/solana-go/rpc/jsonrpc"
+	"github.com/klauspost/compress/gzhttp"
 	"github.com/spf13/cobra"
 
 	"github.com/malbeclabs/doublezero/config"
@@ -36,6 +40,20 @@ const (
 	defaultLedgerSubmissionInterval     = 1 * time.Minute
 	defaultWheresitupStateFile          = "wheresitup_jobs_to_process.json"
 	defaultLogLevel                     = "info"
+
+	// defaultLedgerRPCTimeout bounds each individual ledger RPC request. The default solana-go
+	// client uses a 5-minute timeout, which lets a request block long enough for a fetched
+	// (finalized) blockhash to expire before the send's preflight runs, surfacing as
+	// BlockhashNotFound. A short timeout fails fast so the submitter retries with a fresh
+	// blockhash. It is set above the observed slow-but-healthy latency (~12s) yet well under the
+	// blockhash validity window (~56s).
+	defaultLedgerRPCTimeout = 15 * time.Second
+
+	// defaultLedgerRPCMaxConns caps concurrent connections to the ledger RPC host. The solana-go
+	// default of 9 is far below the submitter's concurrency (100), so submissions queue for a
+	// connection and their blockhashes go stale in flight. Size the pool above the submitter
+	// concurrency to avoid that bottleneck.
+	defaultLedgerRPCMaxConns = 128
 )
 
 var (
@@ -49,6 +67,8 @@ var (
 	ripeatlasProbesPerLocation   int
 	ripeatlasMeasurementInterval time.Duration
 	ledgerSubmissionInterval     time.Duration
+	ledgerRPCTimeout             time.Duration
+	ledgerRPCMaxConns            int
 	metricsAddr                  string
 
 	version = "dev"
@@ -77,7 +97,7 @@ and Wheresitup services for the DoubleZero network.`,
 			os.Exit(1)
 		}
 
-		solanaRPCClient = solanarpc.New(networkConfig.LedgerPublicRPCURL)
+		solanaRPCClient = newLedgerRPCClient(networkConfig.LedgerPublicRPCURL, ledgerRPCTimeout, ledgerRPCMaxConns)
 		serviceabilityClient = serviceability.New(solanaRPCClient, networkConfig.ServiceabilityProgramID)
 	},
 }
@@ -137,7 +157,8 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results periodically.`,
 				exporter.DataProviderNameWheresitup: defaultWheresitupSamplingInterval,
 				exporter.DataProviderNameRIPEAtlas:  defaultRipeAtlasSamplingInterval,
 			},
-			EpochFinder: epochFinder,
+			EpochFinder:    epochFinder,
+			AttemptTimeout: 2 * ledgerRPCTimeout,
 		})
 		if err != nil {
 			log.Error("failed to create exporter", "error", err)
@@ -386,8 +407,35 @@ func loadLocations(ctx context.Context, logger *slog.Logger, serviceabilityClien
 	}
 }
 
+// newLedgerRPCClient builds a Solana RPC client with a bounded per-request timeout and a
+// connection pool sized for the submitter's concurrency. The solana-go default client uses a
+// 5-minute timeout and caps connections per host at 9, which under concurrent submission lets a
+// fetched finalized blockhash (valid only ~56s) expire while the send is queued or in flight,
+// surfacing as a BlockhashNotFound preflight failure.
+func newLedgerRPCClient(url string, timeout time.Duration, maxConns int) *solanarpc.Client {
+	transport := &http.Transport{
+		MaxConnsPerHost:     maxConns,
+		MaxIdleConns:        maxConns,
+		MaxIdleConnsPerHost: maxConns,
+		IdleConnTimeout:     90 * time.Second,
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}
+	httpClient := &http.Client{
+		Timeout:   timeout,
+		Transport: gzhttp.Transport(transport),
+	}
+	rpcClient := jsonrpc.NewClientWithOpts(url, &jsonrpc.RPCClientOpts{HTTPClient: httpClient})
+	return solanarpc.NewWithCustomRPCClient(rpcClient)
+}
+
 func init() {
 	rootCmd.PersistentFlags().StringVar(&env, "env", "", "Environment to run in (devnet, testnet, mainnet-beta)")
+	rootCmd.PersistentFlags().DurationVar(&ledgerRPCTimeout, "ledger-rpc-timeout", defaultLedgerRPCTimeout, "Per-request timeout for ledger RPC calls; bounds how long a request may block so a stale blockhash fails fast and retries")
+	rootCmd.PersistentFlags().IntVar(&ledgerRPCMaxConns, "ledger-rpc-max-conns", defaultLedgerRPCMaxConns, "Maximum concurrent connections to the ledger RPC host")
 	rootCmd.PersistentFlags().StringVar(&keypairPath, "keypair", "", "Path to keypair for publishing metrics")
 	rootCmd.PersistentFlags().StringVar(&stateDir, "state-dir", defaultStateDir, "Directory to store state files (timestamps, processed job IDs)")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", defaultLogLevel, "Log level (debug, info, warn, error)")

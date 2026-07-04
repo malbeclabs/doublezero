@@ -50,5 +50,9 @@
 
 1. **Keep `doublezero resource verify` in sync**: Anytime a processor allocates from or deallocates against a `ResourceExtension` (any field that pulls from `SegmentRoutingIds`, `TunnelIds`, `LinkIds`, `UserTunnelBlock`, `DeviceTunnelBlock`, `DzPrefixBlock`, `MulticastGroupBlock`, `MulticastPublisherBlock`, etc.), update the corresponding `verify_*` function in `smartcontract/cli/src/resource/verify.rs` so that field is counted as "in use." Otherwise the verifier will report the allocation as `AllocatedButNotUsed` (or miss a leak when a deallocation is dropped). Add coverage in the verify test module for the new field.
 
+### Permissions
+
+1. **Keep `doublezero permission audit` in sync with `authorize::check_legacy_any`**: The audit's `legacy_keys_for_flag` (in `smartcontract/cli/src/permission/audit.rs`) mirrors the flag→legacy-key mapping in `authorize.rs::check_legacy_any` for the migrated flags. If you change that mapping (or migrate a new instruction to `authorize()`), update `legacy_keys_for_flag` and the `MIGRATED_FLAGS` / `NON_MIGRATED_SUBSYSTEMS` lists — otherwise the audit reports wrong gaps and understates lockout risk before enabling `RequirePermissionAccounts`.
+
 ### Pull Requests
 - Make sure `make rust-lint` and `make rust-test` both pass before posting pull requests

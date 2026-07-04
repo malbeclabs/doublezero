@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod delete;
 pub mod flags;
 pub mod get;

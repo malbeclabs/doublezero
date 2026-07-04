@@ -139,6 +139,39 @@ fn foundation_permission_recovery(
         && globalstate.foundation_allowlist.contains(payer_key)
 }
 
+/// Whether `payer_key` may GRANT the `FOUNDATION` flag on a Permission account.
+///
+/// Granting `FOUNDATION` is privileged beyond ordinary `PERMISSION_ADMIN`: a plain
+/// `PERMISSION_ADMIN` holder must NOT be able to escalate anyone (including
+/// themselves) to `FOUNDATION`. Only a `foundation_allowlist` member, or an existing
+/// holder of the `FOUNDATION` flag via their own Activated Permission account, may do
+/// so. This is independent of `RequirePermissionAccounts` — foundation members remain
+/// authoritative in both modes.
+///
+/// `permission_account` is the caller's own trailing Permission account (the one the
+/// SDK auto-appends), if present. It is bound to `payer_key` by re-deriving the PDA,
+/// so a caller cannot pass someone else's FOUNDATION permission.
+pub fn can_grant_foundation(
+    program_id: &Pubkey,
+    permission_account: Option<&AccountInfo>,
+    payer_key: &Pubkey,
+    globalstate: &GlobalState,
+) -> bool {
+    if globalstate.foundation_allowlist.contains(payer_key) {
+        return true;
+    }
+    if let Some(acc) = permission_account {
+        let (expected_pda, _) = get_permission_pda(program_id, payer_key);
+        if acc.key == &expected_pda && acc.owner == program_id && !acc.data_is_empty() {
+            if let Ok(p) = Permission::try_from(acc) {
+                return p.status == PermissionStatus::Activated
+                    && p.permissions & permission_flags::FOUNDATION != 0;
+            }
+        }
+    }
+    false
+}
+
 /// Returns true if `payer` satisfies at least one of the requested flags using legacy
 /// GlobalState fields.
 fn check_legacy_any(payer: &Pubkey, globalstate: &GlobalState, any_of: u128) -> bool {
@@ -1619,5 +1652,113 @@ mod tests {
         assert_eq!(leading[0].key, &keys[0]);
         assert_eq!(leading[1].key, &keys[1]);
         assert_eq!(permission.map(|p| p.key), Some(&perm_pda));
+    }
+
+    // ── can_grant_foundation ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_can_grant_foundation_allowlist_member() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let gs = gs_with_foundation(&payer);
+        // Foundation members may grant FOUNDATION even without a Permission account.
+        assert!(can_grant_foundation(&program_id, None, &payer, &gs));
+    }
+
+    #[test]
+    fn test_can_grant_foundation_none_denied() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let gs = GlobalState::default();
+        assert!(!can_grant_foundation(&program_id, None, &payer, &gs));
+    }
+
+    #[test]
+    fn test_can_grant_foundation_flag_holder_allowed() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let (pda, _, mut data) = make_permission_data(
+            &program_id,
+            &payer,
+            PermissionStatus::Activated,
+            permission_flags::FOUNDATION | permission_flags::PERMISSION_ADMIN,
+        );
+        let mut lamports = 100_000u64;
+        let account = AccountInfo::new(
+            &pda,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &program_id,
+            false,
+        );
+        let gs = GlobalState::default();
+        assert!(can_grant_foundation(
+            &program_id,
+            Some(&account),
+            &payer,
+            &gs
+        ));
+    }
+
+    #[test]
+    fn test_can_grant_foundation_permission_admin_only_denied() {
+        // A plain PERMISSION_ADMIN holder (no FOUNDATION flag, not in the allowlist)
+        // must NOT be able to grant FOUNDATION.
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let (pda, _, mut data) = make_permission_data(
+            &program_id,
+            &payer,
+            PermissionStatus::Activated,
+            permission_flags::PERMISSION_ADMIN,
+        );
+        let mut lamports = 100_000u64;
+        let account = AccountInfo::new(
+            &pda,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &program_id,
+            false,
+        );
+        let gs = GlobalState::default();
+        assert!(!can_grant_foundation(
+            &program_id,
+            Some(&account),
+            &payer,
+            &gs
+        ));
+    }
+
+    #[test]
+    fn test_can_grant_foundation_suspended_flag_holder_denied() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let (pda, _, mut data) = make_permission_data(
+            &program_id,
+            &payer,
+            PermissionStatus::Suspended,
+            permission_flags::FOUNDATION,
+        );
+        let mut lamports = 100_000u64;
+        let account = AccountInfo::new(
+            &pda,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &program_id,
+            false,
+        );
+        let gs = GlobalState::default();
+        assert!(!can_grant_foundation(
+            &program_id,
+            Some(&account),
+            &payer,
+            &gs
+        ));
     }
 }

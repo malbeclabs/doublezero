@@ -697,3 +697,217 @@ async fn test_delete_self_removal_rejected() {
         "Caller should not be able to delete their own permission"
     );
 }
+
+// Grants admin a plain PERMISSION_ADMIN permission and returns (admin keypair, its PDA).
+async fn grant_permission_admin(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    flags: u128,
+) -> (Keypair, Pubkey) {
+    let admin = Keypair::new();
+    transfer(banks_client, payer, &admin.pubkey(), 100_000_000).await;
+    let (admin_perm_pda, _) = get_permission_pda(&program_id, &admin.pubkey());
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: admin.pubkey(),
+            permissions: flags,
+        }),
+        vec![
+            AccountMeta::new(admin_perm_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+    (admin, admin_perm_pda)
+}
+
+#[tokio::test]
+async fn test_permission_admin_cannot_grant_foundation_on_create() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    // Foundation grants `admin` a plain PERMISSION_ADMIN (no FOUNDATION flag).
+    let (admin, admin_perm_pda) = grant_permission_admin(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        permission_flags::PERMISSION_ADMIN,
+    )
+    .await;
+
+    let target = Pubkey::new_unique();
+    let (target_pda, _) = get_permission_pda(&program_id, &target);
+
+    // admin (PERMISSION_ADMIN only, not foundation) tries to grant FOUNDATION -> denied.
+    let rb = banks_client.get_latest_blockhash().await.unwrap();
+    let denied = try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        rb,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: target,
+            permissions: permission_flags::FOUNDATION,
+        }),
+        vec![
+            AccountMeta::new(target_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &admin,
+        &[AccountMeta::new_readonly(admin_perm_pda, false)],
+    )
+    .await;
+    assert!(
+        denied.is_err(),
+        "PERMISSION_ADMIN holder must not be able to grant FOUNDATION"
+    );
+
+    // Control: the same admin CAN grant a non-FOUNDATION flag on the same PDA.
+    let rb2 = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        rb2,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: target,
+            permissions: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(target_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &admin,
+        &[AccountMeta::new_readonly(admin_perm_pda, false)],
+    )
+    .await;
+    let perm = get_permission(&mut banks_client, program_id, &target).await;
+    assert_eq!(perm.permissions, permission_flags::USER_ADMIN);
+}
+
+#[tokio::test]
+async fn test_permission_admin_cannot_add_foundation_on_update() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    let (admin, admin_perm_pda) = grant_permission_admin(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        permission_flags::PERMISSION_ADMIN,
+    )
+    .await;
+
+    // Foundation creates a target permission with USER_ADMIN.
+    let target = Pubkey::new_unique();
+    let (target_pda, _) = get_permission_pda(&program_id, &target);
+    let rb = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        rb,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: target,
+            permissions: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(target_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // admin tries to ADD FOUNDATION via update -> denied.
+    let rb2 = banks_client.get_latest_blockhash().await.unwrap();
+    let denied = try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        rb2,
+        program_id,
+        DoubleZeroInstruction::UpdatePermission(PermissionUpdateArgs {
+            add: permission_flags::FOUNDATION,
+            remove: 0,
+        }),
+        vec![
+            AccountMeta::new(target_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &admin,
+        &[AccountMeta::new_readonly(admin_perm_pda, false)],
+    )
+    .await;
+    assert!(
+        denied.is_err(),
+        "PERMISSION_ADMIN holder must not be able to add FOUNDATION via update"
+    );
+
+    // Control: admin CAN add a non-FOUNDATION flag.
+    let rb3 = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        rb3,
+        program_id,
+        DoubleZeroInstruction::UpdatePermission(PermissionUpdateArgs {
+            add: permission_flags::NETWORK_ADMIN,
+            remove: 0,
+        }),
+        vec![
+            AccountMeta::new(target_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &admin,
+        &[AccountMeta::new_readonly(admin_perm_pda, false)],
+    )
+    .await;
+    let perm = get_permission(&mut banks_client, program_id, &target).await;
+    assert_eq!(
+        perm.permissions,
+        permission_flags::USER_ADMIN | permission_flags::NETWORK_ADMIN
+    );
+}
+
+#[tokio::test]
+async fn test_foundation_flag_holder_can_grant_foundation() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    // Only foundation can bootstrap a FOUNDATION-flag holder.
+    let (admin, admin_perm_pda) = grant_permission_admin(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        permission_flags::FOUNDATION | permission_flags::PERMISSION_ADMIN,
+    )
+    .await;
+
+    // admin holds the FOUNDATION flag, so it CAN grant FOUNDATION to a target.
+    let target = Pubkey::new_unique();
+    let (target_pda, _) = get_permission_pda(&program_id, &target);
+    let rb = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        rb,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: target,
+            permissions: permission_flags::FOUNDATION,
+        }),
+        vec![
+            AccountMeta::new(target_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &admin,
+        &[AccountMeta::new_readonly(admin_perm_pda, false)],
+    )
+    .await;
+    let perm = get_permission(&mut banks_client, program_id, &target).await;
+    assert_eq!(perm.permissions, permission_flags::FOUNDATION);
+}

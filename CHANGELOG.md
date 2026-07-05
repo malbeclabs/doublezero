@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Serviceability
+  - Gate UpdateUser on `USER_ADMIN`, CheckAccessPass on `ACTIVATOR`, and accesspass CheckStatus on `ACTIVATOR|USER_ADMIN` via `authorize()`; user create and set_bgp_status remain owner-authorized (not part of the admin Permission system). (#3984)
 - Collector
   - Harden ledger writes against a slow/degraded RPC endpoint: bound each RPC request (default 15s, `--ledger-rpc-timeout`), size the connection pool above the submitter concurrency (default 128, `--ledger-rpc-max-conns`), and deadline each submission attempt so it fails fast and retries with a fresh blockhash instead of sending an expired one and failing preflight with `BlockhashNotFound`. (#3973)
 - E2E

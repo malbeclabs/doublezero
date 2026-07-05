@@ -1,4 +1,5 @@
 use crate::{
+    authorize::{authorize, split_trailing_permission},
     error::DoubleZeroError,
     format_option,
     helper::format_option_displayable,
@@ -9,7 +10,7 @@ use crate::{
     },
     resource::ResourceType,
     serializer::try_acc_write,
-    state::{globalstate::GlobalState, tenant::Tenant, user::*},
+    state::{globalstate::GlobalState, permission::permission_flags, tenant::Tenant, user::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -97,23 +98,19 @@ pub fn process_update_user(
         dz_prefix_accounts.push(next_account_info(accounts_iter)?);
     }
 
-    // Tenant accounts are optional — present when tenant_pk is being updated.
-    // We compute the expected count of remaining accounts to detect their presence.
-    // Remaining accounts: [old_tenant?, new_tenant?, payer, system]
-    // With tenants: 4 remaining. Without tenants: 2 remaining.
-    let remaining: Vec<_> = accounts_iter.collect();
-    let has_tenant_accounts = remaining.len() >= 4;
-    let (old_tenant_account, new_tenant_account, payer_account, _system_program) =
-        if has_tenant_accounts {
-            (
-                Some(remaining[0]),
-                Some(remaining[1]),
-                remaining[2],
-                remaining[3],
-            )
-        } else {
-            (None, None, remaining[0], remaining[1])
-        };
+    // Remaining tail: [old_tenant?, new_tenant?, payer, system, permission?]. The
+    // optional tenant pair is present when tenant_pk is being updated.
+    // split_trailing_permission peels payer/system — and the optional payer
+    // Permission PDA the SDK appends when it exists — off the tail by PDA match, so
+    // the tenant accounts are detected unambiguously via what's left (`leading`).
+    let remaining: Vec<&AccountInfo> = accounts_iter.collect();
+    let (payer_account, _system_program, leading, permission_account) =
+        split_trailing_permission(program_id, &remaining)?;
+    let (old_tenant_account, new_tenant_account) = if leading.len() >= 2 {
+        (Some(leading[0]), Some(leading[1]))
+    } else {
+        (None, None)
+    };
 
     #[cfg(test)]
     msg!("process_update_user({:?})", value);
@@ -130,10 +127,16 @@ pub fn process_update_user(
         "GlobalState"
     );
 
+    // Authorization: USER_ADMIN (Permission account) or foundation (legacy). This is
+    // an administrative operation — the User owner does not update via this path.
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        &mut permission_account.into_iter(),
+        payer_account.key,
+        &globalstate,
+        permission_flags::USER_ADMIN,
+    )?;
 
     let mut user: User = User::try_from(user_account)?;
 

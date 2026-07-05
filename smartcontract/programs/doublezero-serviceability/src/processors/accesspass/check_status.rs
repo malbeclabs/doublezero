@@ -1,16 +1,18 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     serializer::try_acc_write,
-    state::{accesspass::AccessPass, globalstate::GlobalState},
+    state::{accesspass::AccessPass, globalstate::GlobalState, permission::permission_flags},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 
+#[cfg(test)]
+use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
-    msg,
     pubkey::Pubkey,
 };
 
@@ -63,19 +65,17 @@ pub fn process_check_status_access_pass(
         "PDA Account is not writable"
     );
 
-    // Parse the global state account & check if the payer is in the allowlist
+    // Authorization: ACTIVATOR or foundation, via a Permission account or the legacy
+    // activator_authority_pk / foundation_allowlist (ACTIVATOR covers the activator
+    // authority, USER_ADMIN covers foundation).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if globalstate.activator_authority_pk != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
-        msg!(
-            "activator_authority_pk: {} payer: {} foundation_allowlist: {:?}",
-            globalstate.activator_authority_pk,
-            payer_account.key,
-            globalstate.foundation_allowlist
-        );
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::ACTIVATOR | permission_flags::USER_ADMIN,
+    )?;
 
     let mut accesspass = AccessPass::try_from(accesspass_account)?;
     // Update status

@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Serviceability
+  - Require a Permission account (or the legacy foundation authority) for GlobalState, GlobalConfig, and foundation/QA allowlist admin instructions, gated on `GLOBALSTATE_ADMIN` via `authorize()`. (#3977)
 - Collector
   - Harden ledger writes against a slow/degraded RPC endpoint: bound each RPC request (default 15s, `--ledger-rpc-timeout`), size the connection pool above the submitter concurrency (default 128, `--ledger-rpc-max-conns`), and deadline each submission attempt so it fails fast and retries with a fresh blockhash instead of sending an expired one and failing preflight with `BlockhashNotFound`. (#3973)
 - E2E

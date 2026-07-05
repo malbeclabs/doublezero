@@ -49,7 +49,7 @@ impl SetGlobalConfigCommand {
         let (admin_group_bits_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::AdminGroupBits);
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::SetGlobalConfig(set_config_args),
             vec![
                 AccountMeta::new(pda_pubkey, false),
@@ -142,7 +142,7 @@ mod tests {
             .returning(|_| Err(eyre::eyre!("not initialized")));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .times(1)
             .returning(|_, _| Ok(Signature::new_unique()));
 

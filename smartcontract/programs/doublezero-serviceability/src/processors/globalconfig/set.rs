@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     helper::is_private_or_link_local,
     pda::*,
@@ -8,7 +9,7 @@ use crate::{
     serializer::{try_acc_create, try_acc_write},
     state::{
         accounttype::AccountType, exchange::BGP_COMMUNITY_MIN, globalconfig::GlobalConfig,
-        globalstate::GlobalState,
+        globalstate::GlobalState, permission::permission_flags,
     },
 };
 use borsh::BorshSerialize;
@@ -86,10 +87,15 @@ pub fn process_set_globalconfig(
         "Invalid System Program"
     );
 
+    // Authorization: GLOBALSTATE_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::GLOBALSTATE_ADMIN,
+    )?;
 
     let (expected_pda_account, bump_seed) = get_globalconfig_pda(program_id);
     assert_eq!(

@@ -53,7 +53,7 @@ impl AcceptLinkCommand {
             AccountMeta::new(link_ids_ext, false),
         ];
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
                 side_z_iface_name: self.side_z_iface_name.clone(),
                 use_onchain_allocation: true,
@@ -140,7 +140,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Device(device_z.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
                     side_z_iface_name: "Ethernet1".to_string(),

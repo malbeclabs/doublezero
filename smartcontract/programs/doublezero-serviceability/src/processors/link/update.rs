@@ -1,4 +1,5 @@
 use crate::{
+    authorize::{authorize, split_trailing_permission},
     error::{DoubleZeroError, Validate},
     pda::{get_globalstate_pda, get_resource_extension_pda},
     processors::{
@@ -9,7 +10,7 @@ use crate::{
     serializer::try_acc_write,
     state::{
         contributor::Contributor, device::Device, globalstate::GlobalState, link::*,
-        topology::TopologyInfo,
+        permission::permission_flags, topology::TopologyInfo,
     },
 };
 use borsh::BorshSerialize;
@@ -158,14 +159,13 @@ pub fn process_update_link(
         }
     }
 
-    // Remaining accounts are the topology union followed by payer and system_program.
+    // Remaining accounts: [topology_union.., payer, system, permission?].
+    // split_trailing_permission peels payer/system — and the optional payer
+    // Permission PDA the SDK appends when it exists — off the tail, leaving the
+    // caller's topology union as `topology_accounts`.
     let rest: Vec<&AccountInfo> = accounts_iter.collect();
-    if rest.len() < 2 {
-        return Err(solana_program::program_error::ProgramError::NotEnoughAccountKeys);
-    }
-    let (topology_accounts, tail) = rest.split_at(rest.len() - 2);
-    let payer_account = tail[0];
-    let system_program = tail[1];
+    let (payer_account, system_program, topology_accounts, permission_account) =
+        split_trailing_permission(program_id, &rest)?;
 
     #[cfg(test)]
     msg!("process_update_link({:?})", value);
@@ -194,9 +194,18 @@ pub fn process_update_link(
     let globalstate = GlobalState::try_from(globalstate_account)?;
     let contributor = Contributor::try_from(contributor_account)?;
 
-    if contributor.owner != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
+    // Authorization: the contributor owner, or NETWORK_ADMIN (Permission account) /
+    // foundation (legacy). Privileged callers bypass the per-link contributor binding
+    // and the foundation-only field gates below.
+    let is_privileged = authorize(
+        program_id,
+        &mut permission_account.into_iter(),
+        payer_account.key,
+        &globalstate,
+        permission_flags::NETWORK_ADMIN,
+    )
+    .is_ok();
+    if contributor.owner != *payer_account.key && !is_privileged {
         msg!("contributor owner: {:?}", contributor.owner);
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -275,8 +284,8 @@ pub fn process_update_link(
     // Handle tunnel_id/tunnel_net reallocation (foundation-only).
     // The earlier check guarantees `resource_accounts` is `Some` when either field is set.
     if value.tunnel_id.is_some() || value.tunnel_net.is_some() {
-        if !globalstate.foundation_allowlist.contains(payer_account.key) {
-            msg!("tunnel field updates require foundation allowlist");
+        if !is_privileged {
+            msg!("tunnel field updates require foundation or network-admin authority");
             return Err(DoubleZeroError::NotAllowed.into());
         }
 
@@ -371,8 +380,8 @@ pub fn process_update_link(
     // link_topologies as writable accounts; the processor diffs on-chain and
     // increments/decrements each topology's reference_count accordingly.
     if let Some(new_topologies) = &value.link_topologies {
-        if !globalstate.foundation_allowlist.contains(payer_account.key) {
-            msg!("link_topologies update requires foundation allowlist");
+        if !is_privileged {
+            msg!("link_topologies update requires foundation or network-admin authority");
             return Err(DoubleZeroError::NotAllowed.into());
         }
 
@@ -426,10 +435,8 @@ pub fn process_update_link(
 
     // unicast_drained (LINK_FLAG_UNICAST_DRAINED bit 0): contributor A or foundation
     if let Some(unicast_drained) = value.unicast_drained {
-        if link.contributor_pk != *contributor_account.key
-            && !globalstate.foundation_allowlist.contains(payer_account.key)
-        {
-            msg!("unicast_drained update requires contributor A or foundation allowlist");
+        if link.contributor_pk != *contributor_account.key && !is_privileged {
+            msg!("unicast_drained update requires contributor A or foundation/network-admin authority");
             return Err(DoubleZeroError::NotAllowed.into());
         }
         if unicast_drained {

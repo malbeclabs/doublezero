@@ -1,8 +1,11 @@
 use doublezero_serviceability::{
     instructions::*,
     pda::*,
-    processors::contributor::{create::*, delete::*, resume::*, suspend::*, update::*},
-    state::{accounttype::AccountType, contributor::*},
+    processors::{
+        contributor::{create::*, delete::*, resume::*, suspend::*, update::*},
+        permission::create::PermissionCreateArgs,
+    },
+    state::{accounttype::AccountType, contributor::*, permission::permission_flags},
 };
 use solana_program_test::*;
 use solana_sdk::{
@@ -475,4 +478,91 @@ async fn test_contributor_delete_from_suspended() {
 
     let contributor_la = get_account_data(&mut banks_client, contributor_pubkey).await;
     assert_eq!(contributor_la, None);
+}
+
+/// A non-foundation key holding a CONTRIBUTOR_ADMIN Permission account can create a
+/// contributor — exercises the new Permission-account authorization path.
+#[tokio::test]
+async fn test_contributor_create_with_permission_account_allowed() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // A key that is NOT in the foundation allowlist, granted CONTRIBUTOR_ADMIN.
+    let contrib_admin = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &contrib_admin.pubkey(),
+        2_000_000_000,
+    )
+    .await;
+
+    let (permission_pda, _) = get_permission_pda(&program_id, &contrib_admin.pubkey());
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: contrib_admin.pubkey(),
+            permissions: permission_flags::CONTRIBUTOR_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // contrib_admin creates a contributor, passing its Permission PDA as the
+    // optional trailing account that authorize() reads.
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) = get_contributor_pda(&program_id, globalstate.account_index + 1);
+    let owner = Pubkey::new_unique();
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx = create_transaction_with_extra_accounts(
+        program_id,
+        &DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "permctrb".to_string(),
+        }),
+        &vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(owner, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &contrib_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    );
+    tx.try_sign(&[&contrib_admin], recent_blockhash).unwrap();
+    banks_client
+        .process_transaction(tx)
+        .await
+        .expect("CONTRIBUTOR_ADMIN permission holder should be able to create a contributor");
+
+    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+        .await
+        .expect("contributor")
+        .get_contributor()
+        .unwrap();
+    assert_eq!(contributor.account_type, AccountType::Contributor);
+    assert_eq!(contributor.owner, owner);
+    assert_eq!(contributor.code, "permctrb".to_string());
+
+    println!("✅ CreateContributor with CONTRIBUTOR_ADMIN permission succeeded");
 }

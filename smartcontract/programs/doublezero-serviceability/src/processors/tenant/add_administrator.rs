@@ -1,7 +1,8 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     serializer::try_acc_write,
-    state::{globalstate::GlobalState, tenant::*},
+    state::{globalstate::GlobalState, permission::permission_flags, tenant::*},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -59,9 +60,14 @@ pub fn process_add_administrator_tenant(
     let mut tenant = Tenant::try_from(tenant_account)?;
 
     // Check authorization: only foundation allowlist members can add administrators
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    // Authorization: TENANT_ADMIN (Permission account) or foundation/sentinel (legacy).
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::TENANT_ADMIN,
+    )?;
 
     // Check if administrator already exists
     if tenant.administrators.contains(&value.administrator) {

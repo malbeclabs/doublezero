@@ -1,8 +1,10 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     serializer::try_acc_write,
     state::{
         globalstate::GlobalState,
+        permission::permission_flags,
         tenant::{Tenant, TenantBillingConfig},
     },
 };
@@ -51,17 +53,14 @@ pub fn process_update_payment_status(
     // Parse the global state account & check if the payer is sentinel or foundation
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
-    if globalstate.sentinel_authority_pk != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
-        msg!(
-            "sentinel_authority_pk: {} payer: {} foundation_allowlist: {:?}",
-            globalstate.sentinel_authority_pk,
-            payer_account.key,
-            globalstate.foundation_allowlist
-        );
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    // Authorization: TENANT_ADMIN (Permission account) or foundation/sentinel (legacy).
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::TENANT_ADMIN,
+    )?;
 
     // Validate payment status range
     if value.payment_status > 1 {

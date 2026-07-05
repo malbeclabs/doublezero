@@ -37,7 +37,7 @@ impl DeleteDeviceInterfaceCommand {
             AccountMeta::new(segment_routing_ids_ext, false),
         ];
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
                 name: self.name.clone(),
                 use_onchain_deallocation: true,
@@ -115,7 +115,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteDeviceInterface(
                     DeviceInterfaceDeleteArgs {

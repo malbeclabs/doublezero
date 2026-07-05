@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
     processors::resource::create_resource,
@@ -6,7 +7,8 @@ use crate::{
     serializer::{try_acc_close, try_acc_write},
     state::{
         accounttype::AccountType, contributor::Contributor, device::*, globalstate::GlobalState,
-        location::Location, resource_extension::ResourceExtensionBorrowed,
+        location::Location, permission::permission_flags,
+        resource_extension::ResourceExtensionBorrowed,
     },
 };
 use borsh::BorshSerialize;
@@ -218,24 +220,32 @@ pub fn process_update_device(
 
     let contributor = Contributor::try_from(contributor_account)?;
 
-    if contributor.owner != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
+    // Authorization: the contributor owner, or NETWORK_ADMIN (Permission account) /
+    // foundation (legacy). The permission is the optional trailing account (payer and
+    // system_program were already consumed above). Privileged callers bypass the
+    // contributor binding and may edit the privileged fields / set any status below.
+    let is_privileged = authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::NETWORK_ADMIN,
+    )
+    .is_ok();
+    if contributor.owner != *payer_account.key && !is_privileged {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
     let mut device: Device = Device::try_from(device_account)?;
 
-    // The supplied contributor must be the one the device belongs to,
-    // unless the payer is on the foundation allowlist.
-    if !globalstate.foundation_allowlist.contains(payer_account.key)
-        && device.contributor_pk != *contributor_account.key
-    {
+    // The supplied contributor must be the one the device belongs to, unless the
+    // caller is privileged (foundation or NETWORK_ADMIN).
+    if !is_privileged && device.contributor_pk != *contributor_account.key {
         return Err(DoubleZeroError::InvalidContributorPubkey.into());
     }
 
-    // Only allow updates from the foundation allowlist
-    if globalstate.foundation_allowlist.contains(payer_account.key) {
+    // Only allow these updates from privileged callers (foundation or NETWORK_ADMIN)
+    if is_privileged {
         if let Some(contributor_pk) = value.contributor_pk {
             device.contributor_pk = contributor_pk;
         }
@@ -356,8 +366,8 @@ pub fn process_update_device(
     }
 
     if let Some(status) = value.status {
-        // Foundation members can set any status
-        if globalstate.foundation_allowlist.contains(payer_account.key) {
+        // Privileged callers (foundation or NETWORK_ADMIN) can set any status
+        if is_privileged {
             device.status = status;
         } else {
             // Contributors can only transition between Activated <-> Drained states,

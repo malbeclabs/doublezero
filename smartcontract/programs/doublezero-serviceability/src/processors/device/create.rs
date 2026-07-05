@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::get_device_pda,
     processors::resource::create_resource,
@@ -7,7 +8,7 @@ use crate::{
     serializer::{try_acc_create, try_acc_write},
     state::{
         accounttype::AccountType, contributor::Contributor, device::*, exchange::Exchange,
-        globalstate::GlobalState, location::Location,
+        globalstate::GlobalState, location::Location, permission::permission_flags,
     },
 };
 use borsh::BorshSerialize;
@@ -127,8 +128,17 @@ pub fn process_create_device(
 
     let mut contributor = Contributor::try_from(contributor_account)?;
 
+    // Authorization: the contributor owner, or NETWORK_ADMIN (Permission account) /
+    // foundation (legacy).
     if contributor.owner != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
+        && authorize(
+            program_id,
+            accounts_iter,
+            payer_account.key,
+            &globalstate,
+            permission_flags::NETWORK_ADMIN,
+        )
+        .is_err()
     {
         return Err(DoubleZeroError::InvalidOwnerPubkey.into());
     }

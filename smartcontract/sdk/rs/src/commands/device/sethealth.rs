@@ -17,7 +17,7 @@ impl SetDeviceHealthCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
                 health: self.health,
             }),
@@ -112,7 +112,7 @@ mod tests {
             });
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                     code: Some("test_device".to_string()),

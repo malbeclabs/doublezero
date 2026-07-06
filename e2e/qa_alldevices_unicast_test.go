@@ -164,11 +164,22 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		getStatus := func(hostname string) (string, error) {
 			for _, c := range clients {
 				if c.Host == hostname {
-					status, err := c.GetUserStatus(ctx)
+					statuses, err := c.GetUserStatuses(ctx)
 					if err != nil {
 						return "", err
 					}
-					return status.SessionStatus, nil
+					if len(statuses) > 1 {
+						log.Warn("Host reported multiple tunnel statuses", "client", c.Host, "count", len(statuses))
+					}
+					// A host may report multiple tunnel statuses (an IBRL and
+					// a Multicast tunnel). Select the IBRL status, or the sole
+					// status on single-tunnel hosts. A nil result means no IBRL
+					// tunnel, reported as empty so the client reconnects.
+					ibrl := qa.FindIBRLStatus(statuses)
+					if ibrl == nil {
+						return "", nil
+					}
+					return ibrl.SessionStatus, nil
 				}
 			}
 			return "", fmt.Errorf("client %s not found", hostname)
@@ -389,14 +400,26 @@ func connectClientsAndWaitForRoutes(
 		if _, ok := batch[c.Host]; !ok {
 			continue
 		}
-		status, err := c.GetUserStatus(ctx)
+		userStatuses, err := c.GetUserStatuses(ctx)
 		if err != nil {
 			log.Error("Failed to get user status", "client", c.Host, "error", err)
 			continue
 		}
-		statuses[c.Host] = status.SessionStatus
-		if !qa.IsStatusUp(status.SessionStatus) {
-			log.Warn("Client not up", "client", c.Host, "status", status.SessionStatus)
+		if len(userStatuses) > 1 {
+			log.Warn("Host reported multiple tunnel statuses", "client", c.Host, "count", len(userStatuses))
+		}
+		// A host may report multiple tunnel statuses (an IBRL and a
+		// Multicast tunnel). Select the IBRL status, or the sole status
+		// on single-tunnel hosts. A nil result means no IBRL tunnel, so
+		// the host is excluded from routing.
+		ibrl := qa.FindIBRLStatus(userStatuses)
+		if ibrl == nil {
+			log.Warn("Client has no IBRL status", "client", c.Host)
+			continue
+		}
+		statuses[c.Host] = ibrl.SessionStatus
+		if !qa.IsStatusUp(ibrl.SessionStatus) {
+			log.Warn("Client not up", "client", c.Host, "status", ibrl.SessionStatus)
 		}
 	}
 	connectedClients := qa.FilterStatusUpClients(allClients, batch, statuses)

@@ -362,6 +362,13 @@ func (q *QAAgent) FeedSeatPrice(ctx context.Context, req *pb.FeedSeatPriceReques
 	if req.GetSolanaRpcUrl() != "" {
 		args = append(args, "--url", req.GetSolanaRpcUrl())
 	}
+	// Query a single device by pubkey rather than listing all. The list path
+	// resolves device codes via serviceability, which the CLI refuses when it
+	// can't classify the cluster (e.g. a private Solana devnet RPC URL, seen as
+	// localnet); passing --device sidesteps code resolution entirely.
+	if req.GetDevicePubkey() != "" {
+		args = append(args, "--device", req.GetDevicePubkey())
+	}
 
 	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()

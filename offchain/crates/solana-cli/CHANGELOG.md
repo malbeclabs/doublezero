@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.10](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.10)
+
+- uptick crate to v0.5.10 (#395)
+- `shreds withdraw`: compare the seat's shred-subscription `active_epoch` against the program's `last_settled_epoch` (from the `ExecutionController`), mirroring the on-chain withdrawal guard (reject when `active_epoch < last_settled_epoch`), instead of the Solana cluster epoch (`getEpochInfo`). On clusters where the cluster epoch exceeds the subscription epoch (e.g. Solana devnet) the previous comparison was always false, so the instant seat withdrawal was silently skipped and the command only closed the payment escrow — leaving the seat active and its multicast subscription up (#395)
+
 ## [0.5.9](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.9)
 
 - uptick crate to v0.5.9 (#394)

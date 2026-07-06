@@ -82,8 +82,11 @@ impl WithdrawCommand {
         let (allocation_request_key, _) =
             state::find_instant_allocation_request_address(&device, client_ip_bits);
 
-        // Fetch client seat, payment escrow, program config, and any in-flight
-        // instant seat allocation request in a single RPC.
+        let (execution_controller_key, _) = state::find_execution_controller_address();
+
+        // Fetch client seat, payment escrow, program config, any in-flight
+        // instant seat allocation request, and the execution controller in a
+        // single RPC.
         let mut accounts = wallet
             .connection
             .get_multiple_accounts(&[
@@ -91,10 +94,19 @@ impl WithdrawCommand {
                 escrow_key,
                 program_config_key,
                 allocation_request_key,
+                execution_controller_key,
             ])
             .await?;
 
-        // Pop in reverse order: allocation_request (3), program_config (2), escrow (1), seat (0).
+        // Pop in reverse order: execution_controller (4), allocation_request (3),
+        // program_config (2), escrow (1), seat (0).
+        let last_settled_epoch = accounts
+            .pop()
+            .flatten()
+            .and_then(|a| state::parse_execution_controller_last_settled_epoch(&a.data))
+            .with_context(|| {
+                format!("Execution controller {execution_controller_key} missing or unparseable")
+            })?;
         let allocation_request_in_flight = accounts.pop().flatten().is_some();
         let prorated_service_enabled = accounts
             .pop()
@@ -122,8 +134,17 @@ impl WithdrawCommand {
         let seat_has_recorded_price =
             state::parse_client_seat_last_usdc_price_dollars(&seat_data.data)
                 .is_some_and(|price| price > 0);
-        let current_epoch = wallet.connection.get_epoch_info().await?.epoch;
-        let has_active_service = active_epoch >= current_epoch;
+        // Mirror the on-chain withdrawal guard exactly: a seat is withdrawable
+        // iff `active_epoch >= last_settled_epoch` (the on-chain
+        // request_(prorated_)instant_seat_withdrawal handlers reject when
+        // `active_epoch < last_settled_epoch`). A fresh instant allocation sets
+        // `active_epoch = last_settled_epoch`, so the seat is withdrawable
+        // immediately. Comparing against `current_subscription_epoch` (always
+        // `last_settled_epoch + 1` — the *next* epoch) is off by one and skips
+        // the withdrawal for every just-allocated seat; comparing against the
+        // Solana cluster epoch (pre-0.5.10) is also wrong whenever the cluster
+        // epoch exceeds the subscription epoch.
+        let has_active_service = active_epoch >= last_settled_epoch;
 
         // Only request instant withdrawal when the seat is active. Stale seats
         // (or --funds-only) skip the request and just close the payment escrow.

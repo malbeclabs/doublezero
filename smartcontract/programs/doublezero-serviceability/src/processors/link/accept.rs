@@ -58,7 +58,9 @@ pub fn process_accept_link(
     let accounts_iter = &mut accounts.iter();
 
     // Account layout: [link, contributor, side_z_dev, globalstate, side_a_dev,
-    //                  device_tunnel_block, link_ids, payer, system]
+    //                  device_tunnel_block, link_ids, payer, system, permission?]
+    // The trailing optional permission account (the payer's Permission PDA, appended
+    // by the SDK when it exists on-chain) is consumed by authorize() below.
     let link_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let side_z_account = next_account_info(accounts_iter)?;

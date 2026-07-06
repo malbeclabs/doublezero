@@ -84,6 +84,7 @@ type ProvisionRequest struct {
 	DoubleZeroPrefixes []*net.IPNet `json:"doublezero_prefixes"`
 	MulticastSubGroups []net.IP     `json:"mcast_sub_groups"`
 	MulticastPubGroups []net.IP     `json:"mcast_pub_groups"`
+	MulticastRpAddress net.IP       `json:"mcast_rp_address"`
 	BgpLocalAsn        uint32       `json:"bgp_local_asn"`
 	BgpRemoteAsn       uint32       `json:"bgp_remote_asn"`
 }
@@ -112,6 +113,9 @@ func (p *ProvisionRequest) Equal(other *ProvisionRequest) bool {
 		return false
 	}
 	if !ipSlicesEqual(p.MulticastSubGroups, other.MulticastSubGroups) {
+		return false
+	}
+	if !p.MulticastRpAddress.Equal(other.MulticastRpAddress) {
 		return false
 	}
 	return ipNetSlicesEqual(p.DoubleZeroPrefixes, other.DoubleZeroPrefixes)
@@ -158,6 +162,9 @@ func (p *ProvisionRequest) Diff(other *ProvisionRequest) string {
 	if !ipSlicesEqual(p.MulticastSubGroups, other.MulticastSubGroups) {
 		diffs = append(diffs, fmt.Sprintf("MulticastSubGroups: %v -> %v", p.MulticastSubGroups, other.MulticastSubGroups))
 	}
+	if !p.MulticastRpAddress.Equal(other.MulticastRpAddress) {
+		diffs = append(diffs, fmt.Sprintf("MulticastRpAddress: %s -> %s", p.MulticastRpAddress, other.MulticastRpAddress))
+	}
 	if !ipNetSlicesEqual(p.DoubleZeroPrefixes, other.DoubleZeroPrefixes) {
 		diffs = append(diffs, fmt.Sprintf("DoubleZeroPrefixes: count %d -> %d", len(p.DoubleZeroPrefixes), len(other.DoubleZeroPrefixes)))
 	}
@@ -189,6 +196,9 @@ func (p *ProvisionRequest) InfraEqual(other *ProvisionRequest) bool {
 		return false
 	}
 	if p.BgpLocalAsn != other.BgpLocalAsn || p.BgpRemoteAsn != other.BgpRemoteAsn {
+		return false
+	}
+	if !p.MulticastRpAddress.Equal(other.MulticastRpAddress) {
 		return false
 	}
 	return ipNetSlicesEqual(p.DoubleZeroPrefixes, other.DoubleZeroPrefixes)
@@ -269,6 +279,11 @@ func (p *ProvisionRequest) Validate() error {
 	}
 	if p.BgpRemoteAsn == 0 {
 		p.BgpRemoteAsn = 65001
+	}
+	if p.MulticastRpAddress == nil {
+		p.MulticastRpAddress = net.IPv4(10, 0, 0, 0)
+	} else if p.MulticastRpAddress.To4() == nil {
+		return fmt.Errorf("mcast_rp_address must be an IPv4 address, got %q", p.MulticastRpAddress)
 	}
 	return nil
 }

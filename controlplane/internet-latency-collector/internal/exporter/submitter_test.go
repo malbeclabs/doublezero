@@ -199,6 +199,64 @@ func TestInternetLatency_Submitter(t *testing.T) {
 		assert.Equal(t, int32(3), attempts, "should have retried exactly MaxAttempts times")
 	})
 
+	t.Run("bounds_each_attempt_with_attempt_timeout", func(t *testing.T) {
+		t.Parallel()
+
+		log := logger.With("test", t.Name())
+
+		key := newTestPartitionKey()
+		sample := newTestSample()
+
+		var attempts int32
+		var sawCancel int32
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteInternetLatencySamplesFunc: func(ctx context.Context, config sdktelemetry.WriteInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				atomic.AddInt32(&attempts, 1)
+				// Emulate a slow/degraded RPC that never returns; the per-attempt deadline must
+				// abandon the attempt so the submitter retries with a fresh blockhash.
+				<-ctx.Done()
+				atomic.AddInt32(&sawCancel, 1)
+				return solana.Signature{}, nil, ctx.Err()
+			},
+		}
+
+		buffer := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](128)
+		buffer.Add(key, sample)
+
+		submitter, err := exporter.NewSubmitter(log, &exporter.SubmitterConfig{
+			OracleAgentPK:  solana.NewWallet().PublicKey(),
+			Interval:       time.Hour,
+			Buffer:         buffer,
+			Telemetry:      telemetryProgram,
+			MaxAttempts:    3,
+			AttemptTimeout: 20 * time.Millisecond,
+			BackoffFunc:    func(_ int) time.Duration { return 0 },
+			EpochFinder: &mockEpochFinder{ApproximateAtTimeFunc: func(ctx context.Context, target time.Time) (uint64, error) {
+				return 0, nil
+			}},
+		})
+		require.NoError(t, err)
+
+		done := make(chan struct{})
+		go func() {
+			submitter.Tick(t.Context())
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("Tick did not return; per-attempt timeout is not bounding a hung submission")
+		}
+
+		assert.Equal(t, int32(3), atomic.LoadInt32(&attempts), "each attempt should time out and retry MaxAttempts times")
+		assert.Equal(t, int32(3), atomic.LoadInt32(&sawCancel), "each attempt's context should be cancelled by the attempt timeout")
+
+		samplesAfter := buffer.CopyAndReset(key)
+		require.Len(t, samplesAfter, 1, "samples should be preserved after all attempts time out")
+		assert.Equal(t, sample.RTT, samplesAfter[0].RTT)
+	})
+
 	t.Run("drops_samples_after_successful_submission", func(t *testing.T) {
 		t.Parallel()
 

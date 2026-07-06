@@ -30,7 +30,7 @@ impl CreateExchangeCommand {
         let (pda_pubkey, _) =
             get_exchange_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
-            .execute_transaction(
+            .execute_authorized_transaction(
                 DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
                     code,
                     name: self.name.clone(),
@@ -71,7 +71,7 @@ mod tests {
         let (pda_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
                     code: "test_exchange".to_string(),

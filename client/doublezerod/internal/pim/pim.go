@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -739,4 +740,86 @@ func bytesFromNetIP(ip net.IP, addrFamily uint8) (bytes []byte, addrLen uint8) {
 		bytes = ip.To16()
 	}
 	return bytes, addrLen
+}
+
+// DefaultRegisterInterval is the default PIM Register beacon interval. It is
+// well under the RP's register keepalive (~210s) so the source stays
+// originated, and slow enough to keep control-plane (CoPP) load negligible.
+const DefaultRegisterInterval = 60 * time.Second
+
+// RegisterMessage is a PIM-SM Register (type 1): 4 bytes of flags (Border,
+// Null, reserved) followed by the encapsulated original multicast IP datagram.
+type RegisterMessage struct {
+	layers.BaseLayer
+	Border bool
+	Null   bool
+	Data   []byte // the full encapsulated IP datagram
+}
+
+func (p *RegisterMessage) LayerType() gopacket.LayerType { return gopacket.LayerTypePayload }
+
+// SerializeTo writes the 4-byte Register flags word followed by the
+// encapsulated datagram (p.Data). b must be a freshly allocated
+// SerializeBuffer: it prepends the flags and appends the data, so any
+// pre-existing buffer contents would corrupt the Register layout.
+func (p *RegisterMessage) SerializeTo(b gopacket.SerializeBuffer, opts gopacket.SerializeOptions) error {
+	flags, err := b.PrependBytes(4)
+	if err != nil {
+		return err
+	}
+	var word uint32
+	if p.Border {
+		word |= 1 << 31
+	}
+	if p.Null {
+		word |= 1 << 30
+	}
+	binary.BigEndian.PutUint32(flags, word)
+
+	data, err := b.AppendBytes(len(p.Data))
+	if err != nil {
+		return err
+	}
+	copy(data, p.Data)
+	return nil
+}
+
+// constructRegisterMessage builds a PIM Register encapsulating a UDP datagram
+// from innerSrc to group on dport carrying payload. The checksum field is left
+// zero; the sender fills it over the first 8 bytes only (RFC 7761 4.9.1).
+func constructRegisterMessage(innerSrc, group net.IP, dport int, payload []byte) (gopacket.SerializeBuffer, error) {
+	inner := gopacket.NewSerializeBuffer()
+	ip := &layers.IPv4{
+		Version:  4,
+		IHL:      5,
+		TTL:      32,
+		Protocol: layers.IPProtocolUDP,
+		SrcIP:    innerSrc.To4(),
+		DstIP:    group.To4(),
+	}
+	// SrcPort mirrors DstPort: the RP reads only the inner source/group IPs to
+	// create (S,G) state, so the encapsulated UDP ports are immaterial.
+	udp := &layers.UDP{
+		SrcPort: layers.UDPPort(dport),
+		DstPort: layers.UDPPort(dport),
+	}
+	if err := udp.SetNetworkLayerForChecksum(ip); err != nil {
+		return nil, err
+	}
+	if err := gopacket.SerializeLayers(inner,
+		gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true},
+		ip, udp, gopacket.Payload(payload)); err != nil {
+		return nil, err
+	}
+
+	buf := gopacket.NewSerializeBuffer()
+	reg := &RegisterMessage{Data: inner.Bytes()}
+	if err := reg.SerializeTo(buf, gopacket.SerializeOptions{}); err != nil {
+		return nil, err
+	}
+	pimHeader := &PIMMessage{Header: PIMHeader{Version: 2, Type: Register, Checksum: 0x0000}}
+	if err := pimHeader.SerializeTo(buf, gopacket.SerializeOptions{}); err != nil {
+		return nil, err
+	}
+	return buf, nil
 }

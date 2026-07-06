@@ -67,6 +67,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		return fmt.Errorf("error creating bgp server: %v", err)
 	}
 
+	register := pim.NewRegisterSender()
 	pim := pim.NewPIMServer()
 	heartbeat := multicast.NewHeartbeatSender()
 
@@ -126,7 +127,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	if latencyManager != nil {
 		nlmOpts = append(nlmOpts, manager.WithLatencyProvider(latencyManager))
 	}
-	nlm := manager.NewNetlinkManager(nlr, bgp, pim, heartbeat, nlmOpts...)
+	nlm := manager.NewNetlinkManager(nlr, bgp, pim, heartbeat, register, nlmOpts...)
 
 	errCh := make(chan error)
 

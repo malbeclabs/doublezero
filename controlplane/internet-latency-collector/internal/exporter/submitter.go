@@ -19,6 +19,13 @@ import (
 
 const (
 	defaultMaxConcurrency = 100
+
+	// defaultAttemptTimeout bounds how long a single submission attempt may run before it is
+	// abandoned and retried. Without a per-attempt deadline, a slow or degraded ledger RPC can
+	// leave an attempt blocked long enough for its (finalized) blockhash to expire, causing the
+	// send to fail preflight with BlockhashNotFound. Failing fast and retrying re-fetches a fresh
+	// blockhash on the next attempt.
+	defaultAttemptTimeout = 30 * time.Second
 )
 
 type SubmitterConfig struct {
@@ -30,7 +37,8 @@ type SubmitterConfig struct {
 	BackoffFunc                   func(attempt int) time.Duration // optional, defaults to exponential backoff
 	MaxAttempts                   int                             // optional, defaults to 5
 	EpochFinder                   epoch.Finder
-	MaxConcurrency                int // optional, defaults to 100
+	MaxConcurrency                int           // optional, defaults to 100
+	AttemptTimeout                time.Duration // optional, defaults to defaultAttemptTimeout
 }
 
 func (c *SubmitterConfig) Validate() error {
@@ -177,6 +185,11 @@ func (s *Submitter) Tick(ctx context.Context) {
 		maxAttempts = 5
 	}
 
+	attemptTimeout := s.cfg.AttemptTimeout
+	if attemptTimeout <= 0 {
+		attemptTimeout = defaultAttemptTimeout
+	}
+
 	partitions := s.cfg.Buffer.FlushWithoutReset()
 
 	if len(partitions) == 0 {
@@ -221,7 +234,12 @@ func (s *Submitter) Tick(ctx context.Context) {
 
 			success := false
 			for attempt := 1; attempt <= maxAttempts; attempt++ {
-				err := s.SubmitSamples(ctx, partitionKey, tmp)
+				// Bound each attempt so a slow/degraded ledger RPC can't leave the submission
+				// blocked past its blockhash's validity window; the next attempt re-fetches a
+				// fresh blockhash.
+				attemptCtx, cancel := context.WithTimeout(ctx, attemptTimeout)
+				err := s.SubmitSamples(attemptCtx, partitionKey, tmp)
+				cancel()
 				if err == nil {
 					log.Debug("Submitted samples", "count", len(tmp), "attempt", attempt)
 					success = true

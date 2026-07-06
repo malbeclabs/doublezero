@@ -6,6 +6,22 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+- Serviceability
+  - Require a Permission account (or the legacy foundation authority) for GlobalState, GlobalConfig, and foundation/QA allowlist admin instructions, gated on `GLOBALSTATE_ADMIN` via `authorize()`. (#3977)
+  - Gate Contributor instructions (create/update/suspend/resume/delete) on `CONTRIBUTOR_ADMIN` or foundation; the contributor owner retains the ops-manager-only update path. (#3978)
+  - Gate Location and Exchange instructions (create/update/suspend/resume/delete, exchange setdevice) on `INFRA_ADMIN` or foundation via `authorize()`. (#3979)
+- Collector
+  - Harden ledger writes against a slow/degraded RPC endpoint: bound each RPC request (default 15s, `--ledger-rpc-timeout`), size the connection pool above the submitter concurrency (default 128, `--ledger-rpc-max-conns`), and deadline each submission attempt so it fails fast and retries with a fresh blockhash instead of sending an expired one and failing preflight with `BlockhashNotFound`. (#3973)
+- E2E
+  - Fix the multicast settlement QA test's seat-allocation ack wait. It read the reused client seat at finalized commitment and could accept the previous run's already-acked state, then withdraw while the current request was still pending. It now waits to observe the request pending before treating a cleared flag as the ack. (#3972)
+  - Make the all-devices unicast QA test tolerate a host reporting multiple tunnel statuses. It now selects the IBRL status via `GetUserStatuses`/`FindIBRLStatus` instead of erroring on a lingering Multicast tunnel and dropping the host, and logs a warning when a host reports more than one status. (#3976)
+
+## [v0.29.0](https://github.com/malbeclabs/doublezero/compare/client/v0.28.0...client/v0.29.0) - 2026-07-02
+
+### Breaking
+
 - SDK
   - revdist Python SDK migrated to the async solana-py RPC API (solana-py 0.40.0 removed the sync `Client`). The `Client` read methods (`fetch_config`, `fetch_distribution`, etc.) are now coroutines and must be awaited; `new_rpc_client` returns an `AsyncClient`. (#3945)
 
@@ -17,8 +33,12 @@ All notable changes to this project will be documented in this file.
   - Adapt to the solana 3.0 APIs: `AccountInfo::realloc` becomes `resize`, system-program and BPF-upgradeable-loader IDs move to `solana-sdk-ids`, `ProgramError::BorshIoError` is now a unit variant, and `AccountInfo::new` drops its `rent_epoch` argument. Bump the programs build toolchain to Rust 1.91.
 - Client
   - Add a `-route-liveness-backoff-max` daemon flag to cap the Down-state liveness probe interval. Defaults to 60s (production behavior unchanged); the e2e harness pins a small value to avoid a probe gap that flaked the multi-client IBRL tests. (#3949)
+  - Add a structured `subscriptions` array to `doublezero status` (after `multicast_groups`) with per-group detail — group pubkey, code, multicast IP, max bandwidth, and `publisher`/`subscriber` booleans — so consumers no longer have to parse the flattened `P:`/`S:` string. (#3964)
+  - Originate a PIM Register beacon for multicast publishers: `doublezerod` periodically sends a PIM Register (encapsulating the publisher heartbeat) unicast to the RP over the tunnel, so the device originates the MSDP SA for the published source even on a dual-role publisher/subscriber tunnel, where `pim ipv4 border-router` source injection is suppressed by the subscriber-side PIM neighbor. (RFC-22)
 - CI
   - Install agave v3.0.4 and build/test the SBF programs with platform-tools v1.54 (`SBF_TOOLS_VERSION`), required because the solana 3.0 dependency tree pulls edition2024 crates that need Cargo >= 1.85 (agave's default platform-tools v1.51 ships Cargo 1.84.1).
+- Controller
+  - Permit the unicast PIM Register to the RP (`permit pim any host 10.0.0.0`) on publisher multicast tunnels so the client-originated Register reaches the device; `pim ipv4 border-router` is retained as a backstop. (RFC-22)
 - E2E tests
   - Bump the e2e base image to agave v3.0.4 and build the onchain programs with platform-tools v1.54 to match the solana 3.0 migration.
   - Pin the e2e ledger `solana-test-validator` to the deploy floor (agave 2.2.16, testnet) so a green e2e proves a change actually deploys and runs on the production cluster runtime. Previously the runtime validator rode the SBF build toolchain version (2.3.13); it is now decoupled and pinned independently. The build toolchain is unchanged. (#3957)

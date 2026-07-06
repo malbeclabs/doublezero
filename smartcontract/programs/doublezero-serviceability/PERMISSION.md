@@ -94,11 +94,11 @@ Falls back to `GlobalState` fields:
 | `SENTINEL`          | `sentinel_authority_pk == payer`                                                   |
 | `HEALTH_ORACLE`     | `health_oracle_pk == payer`                                                        |
 | `FEED_AUTHORITY`    | `feed_authority_pk == payer`                                                       |
-| `USER_ADMIN`        | `foundation_allowlist` OR `activator_authority_pk`                                 |
-| `ACCESS_PASS_ADMIN` | `foundation_allowlist` OR `sentinel_authority_pk`                                  |
-| `NETWORK_ADMIN`     | `foundation_allowlist` OR `activator_authority_pk`                                 |
+| `USER_ADMIN`        | `foundation_allowlist`                                                             |
+| `ACCESS_PASS_ADMIN` | `foundation_allowlist` OR `sentinel_authority_pk` OR `feed_authority_pk`           |
+| `NETWORK_ADMIN`     | `foundation_allowlist`                                                             |
 | `TENANT_ADMIN`      | `foundation_allowlist` OR `sentinel_authority_pk`                                  |
-| `MULTICAST_ADMIN`   | `foundation_allowlist` OR `activator_authority_pk` OR `sentinel_authority_pk`      |
+| `MULTICAST_ADMIN`   | `foundation_allowlist` OR `sentinel_authority_pk`                                  |
 | `PERMISSION_ADMIN`  | `foundation_allowlist`                                                             |
 | `INFRA_ADMIN`       | `foundation_allowlist`                                                             |
 | `GLOBALSTATE_ADMIN` | `foundation_allowlist`                                                             |

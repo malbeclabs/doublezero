@@ -106,11 +106,13 @@ func (c *Client) ClosestDevice(ctx context.Context) (*Device, error) {
 	return device, nil
 }
 
-// FeedSeatPrice calls the FeedSeatPrice RPC to query device seat prices.
-// This is an idempotent read, so on RPC failure it fails over to the next
-// endpoint and retries.
-func (c *Client) FeedSeatPrice(ctx context.Context) ([]*pb.DevicePrice, error) {
-	c.log.Debug("Querying seat prices", "host", c.Host)
+// FeedSeatPrice calls the FeedSeatPrice RPC to query seat pricing for a single
+// device (by pubkey). Querying by pubkey avoids device-code resolution, which
+// the CLI refuses when it can't classify the cluster (e.g. a private Solana
+// devnet RPC URL). This is an idempotent read, so on RPC failure it fails over
+// to the next endpoint and retries.
+func (c *Client) FeedSeatPrice(ctx context.Context, devicePubkey string) ([]*pb.DevicePrice, error) {
+	c.log.Debug("Querying seat prices", "host", c.Host, "device", devicePubkey)
 	var prices []*pb.DevicePrice
 	err := c.withReadFailover(func(rpcURL string) error {
 		resp, err := c.grpcClient.FeedSeatPrice(ctx, &pb.FeedSeatPriceRequest{
@@ -119,6 +121,7 @@ func (c *Client) FeedSeatPrice(ctx context.Context) ([]*pb.DevicePrice, error) {
 			UsdcMint:                   c.USDCMint,
 			Keypair:                    c.Keypair,
 			ShredSubscriptionProgramId: c.ShredSubscriptionProgramID,
+			DevicePubkey:               devicePubkey,
 		})
 		if err != nil {
 			return err

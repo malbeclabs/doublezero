@@ -31,7 +31,7 @@ impl DeleteExchangeCommand {
             ));
         }
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {}),
             vec![
                 AccountMeta::new(self.pubkey, false),
@@ -89,7 +89,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {})),
                 predicate::eq(vec![

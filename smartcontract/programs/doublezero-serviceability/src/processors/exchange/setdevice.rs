@@ -1,7 +1,8 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     serializer::try_acc_write,
-    state::{device::Device, exchange::*, globalstate::GlobalState},
+    state::{device::Device, exchange::*, globalstate::GlobalState, permission::permission_flags},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use borsh_incremental::BorshDeserializeIncremental;
@@ -85,9 +86,14 @@ pub fn process_setdevice_exchange(
 
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    // Authorization: INFRA_ADMIN (Permission account) or foundation (legacy).
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::INFRA_ADMIN,
+    )?;
 
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
     let mut device: Device = Device::try_from(device_account)?;

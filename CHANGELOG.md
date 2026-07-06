@@ -10,10 +10,13 @@ All notable changes to this project will be documented in this file.
 
 - Serviceability
   - Gate Device and device-interface instructions on `NETWORK_ADMIN` (and `HEALTH_ORACLE` for sethealth) or the contributor owner via `authorize()`; internal foundation-only sub-gates now also accept NETWORK_ADMIN holders. (#3980)
+  - Gate Contributor instructions (create/update/suspend/resume/delete) on `CONTRIBUTOR_ADMIN` or foundation; the contributor owner retains the ops-manager-only update path. (#3978)
+  - Gate Location and Exchange instructions (create/update/suspend/resume/delete, exchange setdevice) on `INFRA_ADMIN` or foundation via `authorize()`. (#3979)
 - Collector
   - Harden ledger writes against a slow/degraded RPC endpoint: bound each RPC request (default 15s, `--ledger-rpc-timeout`), size the connection pool above the submitter concurrency (default 128, `--ledger-rpc-max-conns`), and deadline each submission attempt so it fails fast and retries with a fresh blockhash instead of sending an expired one and failing preflight with `BlockhashNotFound`. (#3973)
 - E2E
   - Fix the multicast settlement QA test's seat-allocation ack wait. It read the reused client seat at finalized commitment and could accept the previous run's already-acked state, then withdraw while the current request was still pending. It now waits to observe the request pending before treating a cleared flag as the ack. (#3972)
+  - Make the all-devices unicast QA test tolerate a host reporting multiple tunnel statuses. It now selects the IBRL status via `GetUserStatuses`/`FindIBRLStatus` instead of erroring on a lingering Multicast tunnel and dropping the host, and logs a warning when a host reports more than one status. (#3976)
 
 ## [v0.29.0](https://github.com/malbeclabs/doublezero/compare/client/v0.28.0...client/v0.29.0) - 2026-07-02
 

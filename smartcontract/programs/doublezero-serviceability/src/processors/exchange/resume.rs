@@ -1,9 +1,11 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     serializer::try_acc_write,
     state::{
         exchange::{Exchange, ExchangeStatus},
         globalstate::GlobalState,
+        permission::permission_flags,
     },
 };
 use borsh::BorshSerialize;
@@ -72,9 +74,14 @@ pub fn process_resume_exchange(
 
     // Authorization:
     //  - Only accounts in the foundation_allowlist may resume the exchange.
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    // Authorization: INFRA_ADMIN (Permission account) or foundation (legacy).
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::INFRA_ADMIN,
+    )?;
 
     // Only resume exchanges that are currently Suspended
     if exchange.status != ExchangeStatus::Suspended {

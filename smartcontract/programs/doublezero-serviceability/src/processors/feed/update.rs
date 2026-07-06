@@ -1,6 +1,7 @@
 use crate::{
     authorize::authorize,
-    processors::feed::create::reject_duplicate_exchanges,
+    error::DoubleZeroError,
+    processors::feed::create::validate_feed_inputs,
     serializer::try_acc_write,
     state::{
         feed::{Feed, MetroGroups},
@@ -10,7 +11,6 @@ use crate::{
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
-use core::fmt;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -19,21 +19,10 @@ use solana_program::{
 };
 
 /// `code` is the PDA seed and therefore immutable; only `name` and the metro map are mutable.
-#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Debug, Clone, Default)]
 pub struct FeedUpdateArgs {
     pub name: Option<String>,
     pub metros: Option<Vec<MetroGroups>>,
-}
-
-impl fmt::Debug for FeedUpdateArgs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "name: {:?}, metros: {:?}",
-            self.name,
-            self.metros.as_ref().map(|m| m.len())
-        )
-    }
 }
 
 pub fn process_update_feed(
@@ -41,6 +30,11 @@ pub fn process_update_feed(
     accounts: &[AccountInfo],
     value: &FeedUpdateArgs,
 ) -> ProgramResult {
+    if value == &FeedUpdateArgs::default() {
+        msg!("UpdateFeed with no fields set");
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let feed_account = next_account_info(accounts_iter)?;
@@ -65,9 +59,10 @@ pub fn process_update_feed(
         permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
     )?;
 
-    if let Some(ref metros) = value.metros {
-        reject_duplicate_exchanges(metros)?;
-    }
+    validate_feed_inputs(
+        value.name.as_deref().unwrap_or_default(),
+        value.metros.as_deref().unwrap_or_default(),
+    )?;
 
     let mut feed = Feed::try_from(feed_account)?;
     if let Some(ref name) = value.name {

@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Added
+
+- Serviceability
+  - `Feed` account: a catalog mapping `metro(exchange) → group-set`, managed by a catalog admin (`FEED_AUTHORITY` Permission or `FOUNDATION`) via `CreateFeed`/`UpdateFeed`/`DeleteFeed`. A feed with no metros imposes no restriction. (#3953)
+
 ### Changes
 
 - Serviceability
@@ -28,11 +33,6 @@ All notable changes to this project will be documented in this file.
 
 - SDK
   - revdist Python SDK migrated to the async solana-py RPC API (solana-py 0.40.0 removed the sync `Client`). The `Client` read methods (`fetch_config`, `fetch_distribution`, etc.) are now coroutines and must be awaited; `new_rpc_client` returns an `AsyncClient`. (#3945)
-
-### Added
-
-- Serviceability
-  - `Feed` account: a catalog mapping `metro(exchange) → group-set`, managed by a catalog admin (`FEED_AUTHORITY` Permission or `FOUNDATION`) via `CreateFeed`/`UpdateFeed`/`DeleteFeed`. A feed with no metros imposes no restriction. (#1700)
 
 ### Changes
 

@@ -6,7 +6,6 @@ use crate::{
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
-use core::fmt;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -14,14 +13,8 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Debug, Clone, Default)]
 pub struct FeedDeleteArgs {}
-
-impl fmt::Debug for FeedDeleteArgs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "")
-    }
-}
 
 pub fn process_delete_feed(
     program_id: &Pubkey,
@@ -54,6 +47,10 @@ pub fn process_delete_feed(
 
     let feed = Feed::try_from(feed_account)?;
     if feed.reference_count > 0 {
+        msg!(
+            "Cannot delete feed: reference_count of {} > 0",
+            feed.reference_count
+        );
         return Err(DoubleZeroError::ReferenceCountNotZero.into());
     }
 

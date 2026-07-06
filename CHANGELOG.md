@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Serviceability
+  - Require a Permission account (or the legacy foundation authority) for GlobalState, GlobalConfig, and foundation/QA allowlist admin instructions, gated on `GLOBALSTATE_ADMIN` via `authorize()`. (#3977)
   - Gate Contributor instructions (create/update/suspend/resume/delete) on `CONTRIBUTOR_ADMIN` or foundation; the contributor owner retains the ops-manager-only update path. (#3978)
   - Gate Location and Exchange instructions (create/update/suspend/resume/delete, exchange setdevice) on `INFRA_ADMIN` or foundation via `authorize()`. (#3979)
 - Collector

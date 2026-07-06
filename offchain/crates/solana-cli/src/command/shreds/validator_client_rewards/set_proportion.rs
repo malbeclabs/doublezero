@@ -33,12 +33,7 @@ impl SetProportionCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         let proportion_bps = percentage_to_bps(self.proportion)?;
 
-        let dz_connection = self
-            .solana_payer_options
-            .connection_options
-            .clone()
-            .into_shred_subscription_connection();
-        let wallet = Wallet::try_new(self.solana_payer_options, Some(dz_connection))?;
+        let wallet = Wallet::try_new(self.solana_payer_options, None)?;
         let wallet_key = wallet.pubkey();
 
         println!("Shred subscription - Set Validator Client Rewards Proportion");

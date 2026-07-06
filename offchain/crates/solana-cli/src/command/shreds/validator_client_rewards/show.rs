@@ -131,12 +131,7 @@ impl ShowCommand {
             bail!("--subscription-epoch requires --rewards-token-mint");
         }
 
-        let dz_connection = self
-            .solana_payer_options
-            .connection_options
-            .clone()
-            .into_shred_subscription_connection();
-        let wallet = Wallet::try_new(self.solana_payer_options, Some(dz_connection))?;
+        let wallet = Wallet::try_new(self.solana_payer_options, None)?;
 
         let vcr_key = find_validator_client_rewards_address(self.client_id).0;
         let vcr_account = wallet

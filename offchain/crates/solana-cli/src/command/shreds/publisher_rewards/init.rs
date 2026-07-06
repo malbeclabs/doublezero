@@ -32,12 +32,7 @@ impl InitCommand {
             bail!("--node-id must not be the default pubkey");
         }
 
-        let dz_connection = self
-            .solana_payer_options
-            .connection_options
-            .clone()
-            .into_shred_subscription_connection();
-        let wallet = Wallet::try_new(self.solana_payer_options, Some(dz_connection))?;
+        let wallet = Wallet::try_new(self.solana_payer_options, None)?;
         let wallet_key = wallet.pubkey();
 
         println!("Shred subscription - Initialize Validator Publisher Rewards");

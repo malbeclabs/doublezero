@@ -107,12 +107,7 @@ fn holding_balance(account: Option<&Account>, mint: &Pubkey) -> Option<u64> {
 
 impl ClaimCommand {
     pub async fn try_into_execute(self) -> Result<()> {
-        let dz_connection = self
-            .solana_payer_options
-            .connection_options
-            .clone()
-            .into_shred_subscription_connection();
-        let wallet = Wallet::try_new(self.solana_payer_options, Some(dz_connection))?;
+        let wallet = Wallet::try_new(self.solana_payer_options, None)?;
         let wallet_key = wallet.pubkey();
 
         let validator_client_rewards_key = find_validator_client_rewards_address(self.client_id).0;

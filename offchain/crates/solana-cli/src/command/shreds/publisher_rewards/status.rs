@@ -147,12 +147,11 @@ enum EpochOutcome {
 
 impl StatusCommand {
     pub async fn try_into_execute(self) -> Result<()> {
-        let solana_connection = SolanaConnection::from(self.connection_options.clone());
-        let dz_connection = self.connection_options.into_shred_subscription_connection();
-        let commitment = dz_connection.0.commitment();
+        let connection = SolanaConnection::from(self.connection_options);
+        let commitment = connection.0.commitment();
 
         let vpr_pda = find_validator_publisher_rewards_address(&self.node_id).0;
-        let vpr = dz_connection
+        let vpr = connection
             .try_fetch_zero_copy_data_with_commitment::<ValidatorPublisherRewards>(
                 &vpr_pda, commitment,
             )
@@ -165,7 +164,7 @@ impl StatusCommand {
                 )
             })?;
 
-        let network_env = dz_connection
+        let network_env = connection
             .try_network_environment()
             .await
             .context("detecting network environment")?;
@@ -183,10 +182,9 @@ impl StatusCommand {
             mint_symbol(&vpr.rewards_token_mint_key, &mints)
         );
 
-        // Subscription epoch == Solana epoch, so resolve the window against a
-        // Solana RPC (the DZ-Ledger RPC hosting the program has its own
-        // unrelated epoch on testnet/localnet). Same reasoning as distribute.
-        let current_epoch = solana_connection
+        // Subscription epoch == Solana epoch; resolve the window against the
+        // Solana RPC the program lives on. Same reasoning as distribute.
+        let current_epoch = connection
             .0
             .get_epoch_info()
             .await
@@ -197,7 +195,7 @@ impl StatusCommand {
         println!("\nScanning epochs {from_epoch}..={current_epoch}.");
 
         let rows = scan_epoch_status(
-            &dz_connection,
+            &connection,
             &self.node_id,
             &vpr_pda,
             &vpr.rewards_token_owner_key,

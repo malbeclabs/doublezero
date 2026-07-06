@@ -82,11 +82,10 @@ pub struct Wallet {
 }
 
 impl Wallet {
-    /// Build a `Wallet` from CLI options, optionally overriding the default
-    /// `SolanaConnection` derived from `opts.connection_options`. Pass
-    /// `Some(connection)` when the wallet talks to a non-Solana endpoint such
-    /// as the DZ Ledger (`into_shred_subscription_connection()`) so callers
-    /// cannot forget the override after construction.
+    /// Build a `Wallet` from CLI options. Pass `None` to derive the
+    /// `SolanaConnection` from `opts.connection_options` (the `-u`/`--url`
+    /// option); pass `Some(connection)` when the connection is built from a
+    /// different source, such as a URL carried in a separate CLI context.
     pub fn try_new(opts: SolanaPayerOptions, connection: Option<SolanaConnection>) -> Result<Self> {
         let SolanaPayerOptions {
             connection_options,

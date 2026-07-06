@@ -63,13 +63,8 @@ impl PrepareOffchainMessageCommand {
             bail!("--rewards-token-owner must not be the default pubkey");
         }
 
-        let solana_connection = SolanaConnection::from(self.connection_options.clone());
-        let rewards_token_mint = self.rewards_token_mint.resolve(&solana_connection).await?;
-
-        let connection = self
-            .connection_options
-            .clone()
-            .into_shred_subscription_connection();
+        let connection = SolanaConnection::from(self.connection_options);
+        let rewards_token_mint = self.rewards_token_mint.resolve(&connection).await?;
 
         // Pre-flight: the on-chain `configure` rejects unregistered/disabled
         // mints. Catching it here saves a full offline round-trip (hex →

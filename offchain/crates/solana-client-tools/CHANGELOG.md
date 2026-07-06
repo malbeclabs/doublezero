@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- remove the testnet shred-subscription DZ Ledger special-case: drop `NetworkEnvironment::shred_subscription_url()` and `SolanaConnectionOptions::into_shred_subscription_connection()`. The testnet shred-subscription program now lives on Solana devnet, so callers build a `SolanaConnection` from `-u`/`--url` via the existing `From<SolanaConnectionOptions>` impl (`Wallet::try_new(opts, None)` for signing paths). The `Option<SolanaConnection>` override on `Wallet::try_new` remains for callers that source the connection elsewhere ([infra #1763](https://github.com/malbeclabs/infra/issues/1763))
 - add `Wallet::build_memo_instruction`, `Wallet::build_memo_instruction_with_compute_units`, and `Wallet::memo_compute_units` for building spl-memo instructions and estimating their compute units from the memo byte length, calibrated against the spl-memo v3 program in `solana-program-test` (relocated from `solana-sdk`)
 - add `Wallet::create_ata_compute_units` and `Wallet::ata_address_and_create_compute_units` helpers for estimating create-ATA compute units ([#386](https://github.com/doublezerofoundation/doublezero-offchain/pull/386))
 - add `Devnet` to `NetworkEnvironment`: `-ud`/`devnet` moniker, Solana devnet RPC URL, and genesis-hash detection ([#384](https://github.com/doublezerofoundation/doublezero-offchain/pull/384))

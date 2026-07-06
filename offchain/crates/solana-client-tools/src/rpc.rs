@@ -60,18 +60,6 @@ impl NetworkEnvironment {
         }
     }
 
-    /// URL where the shred subscription program lives: Solana mainnet for
-    /// production, DZ Ledger for testnet/localnet. On mainnet this returns the
-    /// same URL as `solana_public_url()`.
-    pub const fn shred_subscription_url(&self) -> &'static str {
-        match self {
-            NetworkEnvironment::MainnetBeta => Self::PUBLIC_SOLANA_MAINNET_BETA_URL,
-            NetworkEnvironment::Testnet => Self::PUBLIC_DOUBLEZERO_LEDGER_TESTNET_URL,
-            NetworkEnvironment::Devnet => Self::PUBLIC_SOLANA_DEVNET_URL,
-            NetworkEnvironment::Localnet => Self::DEFAULT_LOCALNET_URL,
-        }
-    }
-
     pub const fn solana_public_url(&self) -> &'static str {
         match self {
             NetworkEnvironment::MainnetBeta => Self::PUBLIC_SOLANA_MAINNET_BETA_URL,
@@ -139,23 +127,6 @@ impl SolanaConnectionOptions {
             .as_deref()
             .unwrap_or(Self::DEFAULT_MONIKER);
         <NetworkEnvironment as FromStr>::from_str(url_or_moniker).ok()
-    }
-
-    /// Build a `SolanaConnection` for the shred subscription program.
-    ///
-    /// On mainnet the program lives on Solana proper; on testnet/localnet it
-    /// lives on the DZ Ledger. Raw URLs are passed through as-is.
-    pub fn into_shred_subscription_connection(self) -> SolanaConnection {
-        let url_or_moniker = self
-            .solana_url_or_moniker
-            .as_deref()
-            .unwrap_or(Self::DEFAULT_MONIKER);
-
-        let url = <NetworkEnvironment as FromStr>::from_str(url_or_moniker)
-            .as_ref()
-            .map(NetworkEnvironment::shred_subscription_url)
-            .unwrap_or(url_or_moniker);
-        SolanaConnection::new(url.to_string())
     }
 }
 

@@ -10,6 +10,13 @@ pub const ENV_TESTNET_SHORT_NAME: &str = "t";
 pub const ENV_DEVNET_SHORT_NAME: &str = "d";
 pub const ENV_LOCALNET_SHORT_NAME: &str = "l";
 
+// The shred-subscription program is deployed on Solana mainnet-beta and Solana
+// devnet under this same ID. Which cluster a DoubleZero environment queries is
+// captured by the `*_SHRED_SOLANA_RPC_URL` constants (DZ mainnet-beta -> Solana
+// mainnet-beta, DZ testnet -> Solana devnet).
+pub const SHRED_SUBSCRIPTION_PROGRAM_ID: Pubkey =
+    Pubkey::from_str_const("dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE");
+
 // Constants related to DoubleZero mainnet-beta configuration
 pub const ENV_MAINNET_BETA_DOUBLEZERO_LEDGER_RPC_URL: &str =
     "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab";
@@ -24,6 +31,8 @@ pub const ENV_MAINNET_BETA_INTERNET_LATENCY_COLLECTOR_PUBKEY: Pubkey =
     Pubkey::from_str_const("8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH");
 pub const ENV_MAINNET_BETA_GEOLOCATION_PUBKEY: Pubkey =
     Pubkey::from_str_const("8H7nS6eZiuf7rGQtz3PPz2q9m4eJRL37PPM678KHnspG");
+// The shred-subscription program for mainnet-beta runs on Solana mainnet-beta.
+pub const ENV_MAINNET_BETA_SHRED_SOLANA_RPC_URL: &str = "https://api.mainnet-beta.solana.com";
 
 // Constants related to DoubleZero testnet configuration
 pub const ENV_TESTNET_DOUBLEZERO_LEDGER_RPC_URL: &str =
@@ -39,6 +48,10 @@ pub const ENV_TESTNET_INTERNET_LATENCY_COLLECTOR_PUBKEY: Pubkey =
     Pubkey::from_str_const("HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1");
 pub const ENV_TESTNET_GEOLOCATION_PUBKEY: Pubkey =
     Pubkey::from_str_const("3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4");
+// The shred-subscription program for DZ testnet runs on Solana devnet, so the
+// DeviceHistory guard must query Solana devnet — not Solana testnet, where
+// ENV_TESTNET_SOLANA_L1_RPC_URL points.
+pub const ENV_TESTNET_SHRED_SOLANA_RPC_URL: &str = "https://api.devnet.solana.com";
 
 // Constants related to DoubleZero devnet configuration
 //

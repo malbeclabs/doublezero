@@ -1,4 +1,5 @@
 use crate::{
+    device::shred_guard::ensure_device_not_enabled_in_shred_subscription,
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::validate_pubkey_or_code,
@@ -18,7 +19,7 @@ pub struct DeleteDeviceCliCommand {
 impl DeleteDeviceCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -30,6 +31,8 @@ impl DeleteDeviceCliCommand {
                 pubkey_or_code: self.pubkey,
             })
             .map_err(|_| eyre::eyre!("Device not found"))?;
+
+        ensure_device_not_enabled_in_shred_subscription(ctx.env, &pubkey).await?;
 
         let signature = client.delete_device(DeleteDeviceCommand { pubkey })?;
         writeln!(out, "Signature: {signature}",)?;

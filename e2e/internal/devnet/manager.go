@@ -191,6 +191,7 @@ func (m *Manager) Start(ctx context.Context) error {
 			"DZ_LEDGER_WS":                           m.dn.Ledger.InternalRPCWSURL,
 			"DZ_SERVICEABILITY_PROGRAM_KEYPAIR_PATH": serviceabilityProgramContainerKeypairPath,
 			"DZ_TELEMETRY_PROGRAM_KEYPAIR_PATH":      telemetryProgramContainerKeypairPath,
+			"DZ_SHRED_SOLANA_RPC_URL":                m.dn.Ledger.InternalRPCURL,
 		},
 		Files: []testcontainers.ContainerFile{
 			{

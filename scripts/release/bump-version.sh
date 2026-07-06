@@ -15,6 +15,8 @@ sed -i "s/^version = \"$PREV\"\$/version = \"$NEW\"/" Cargo.toml
 cargo update --workspace
 
 grep -q '^## Unreleased$' CHANGELOG.md || { echo "CHANGELOG.md has no '## Unreleased' section" >&2; exit 1; }
+BODY=$(awk '/^## Unreleased$/{f=1; next} /^## /{f=0} f' CHANGELOG.md | grep -v '^###' | grep -cv '^[[:space:]]*$' || true)
+[ "$BODY" -gt 0 ] || echo "warning: '## Unreleased' has no entries; promoting an empty v$NEW section" >&2
 DATE=$(date -u +%Y-%m-%d)
 export NEW PREV DATE
 perl -0pi -e 's{^## Unreleased\n}{## Unreleased\n\n### Breaking\n\n### Changes\n\n## [v$ENV{NEW}](https://github.com/malbeclabs/doublezero/compare/client/v$ENV{PREV}...client/v$ENV{NEW}) - $ENV{DATE}\n}m' CHANGELOG.md

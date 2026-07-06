@@ -56,6 +56,9 @@ Any failed job triggers a Slack alert via `notify-failure`.
   version to exercise the CloudSmith query logic.
 - Programs are still built and staged, but `verify-onchain` is skipped, and the infra
   deploy workflows are dispatched in their check mode (`mode=dry-run`).
+- The approval prompts are **not** skipped: gate 1, gate 2, the `testnet` environment
+  on this repo, and infra's `testnet` environment all still require approval even
+  though nothing is deployed.
 
 Cleanup after a dry run: close both draft PRs and delete their branches
 (`release/vX.Y.Z` in doublezero, `release/testnet-vX.Y.Z` in infra).

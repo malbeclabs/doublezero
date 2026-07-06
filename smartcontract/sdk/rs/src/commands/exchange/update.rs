@@ -30,7 +30,7 @@ impl UpdateExchangeCommand {
 
         let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
                 code,
                 name: self.name.to_owned(),
@@ -70,7 +70,7 @@ mod tests {
         let (pda_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
                     code: Some("test_exchange".to_string()),

@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     helper::assign_bgp_community,
     pda::*,
@@ -9,6 +10,7 @@ use crate::{
         exchange::{Exchange, ExchangeStatus},
         globalconfig::GlobalConfig,
         globalstate::GlobalState,
+        permission::permission_flags,
     },
 };
 use borsh::BorshSerialize;
@@ -92,9 +94,14 @@ pub fn process_create_exchange(
     let mut globalstate = GlobalState::try_from(globalstate_account)?;
     globalstate.account_index += 1;
 
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    // Authorization: INFRA_ADMIN (Permission account) or foundation (legacy).
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::INFRA_ADMIN,
+    )?;
 
     // We need to access globalconfig in order to assign BGP community
     let mut globalconfig = GlobalConfig::try_from(globalconfig_account)?;

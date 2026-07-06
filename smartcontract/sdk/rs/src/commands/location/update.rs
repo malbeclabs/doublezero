@@ -28,7 +28,7 @@ impl UpdateLocationCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
                 code,
                 name: self.name.to_owned(),
@@ -67,7 +67,7 @@ mod tests {
         let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
                     code: Some("test_location".to_string()),

@@ -27,6 +27,7 @@ doublezero-serviceability.workspace = true
 [dev-dependencies]
 bincode.workspace = true
 ctor.workspace = true
+solana-commitment-config.workspace = true
 env_logger.workspace = true
 log.workspace = true
 solana-sdk.workspace = true

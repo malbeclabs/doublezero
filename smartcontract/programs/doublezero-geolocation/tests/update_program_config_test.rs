@@ -7,8 +7,6 @@ use doublezero_geolocation::{
     state::program_config::GeolocationProgramConfig,
 };
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
-#[allow(deprecated)]
-use solana_program::bpf_loader_upgradeable;
 use solana_program_test::*;
 use solana_sdk::{
     account::AccountSharedData,
@@ -17,6 +15,8 @@ use solana_sdk::{
     signature::Signer,
     transaction::{Transaction, TransactionError},
 };
+#[allow(deprecated)]
+use solana_sdk_ids::bpf_loader_upgradeable;
 
 /// Builds a bincode-serialized UpgradeableLoaderState::ProgramData account
 /// with the given upgrade authority. This is needed because ProgramTest with
@@ -45,7 +45,7 @@ fn build_accounts(program_id: &Pubkey, payer: &Pubkey) -> Vec<AccountMeta> {
         AccountMeta::new(program_config_pda, false),
         AccountMeta::new_readonly(program_data_pda, false),
         AccountMeta::new(*payer, true),
-        AccountMeta::new_readonly(solana_program::system_program::id(), false),
+        AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
     ]
 }
 

@@ -7,7 +7,7 @@ RUN apt update -qq && \
     apt install --no-install-recommends -y ca-certificates curl bzip2
 
 # Install agave/solana tools
-ARG SOLANA_VERSION=2.3.13
+ARG SOLANA_VERSION=3.0.4
 RUN bash -c 'set -euo pipefail; curl -fsSL https://release.anza.xyz/v${SOLANA_VERSION}/install | sh'
 RUN mkdir -p /opt/solana/bin && \
     mv /root/.local/share/solana/install/active_release/bin/* /opt/solana/bin/
@@ -141,7 +141,7 @@ FROM builder-base AS builder-rust-sbf
 # when the Solana SDK version changes, we get a fresh cache instead of using potentially
 # corrupted or incompatible cached platform-tools. This must match SOLANA_VERSION in the
 # solana stage above.
-ARG SOLANA_VERSION=2.3.13
+ARG SOLANA_VERSION=3.0.4
 
 # Hash of Cargo.lock for cache isolation (same as builder-rust stage).
 ARG CARGO_LOCK_HASH=default
@@ -189,21 +189,21 @@ RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=
     --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-serviceability && \
-    cargo build-sbf && \
+    cargo build-sbf --tools-version v1.54 && \
     cp /target-sbf/deploy/doublezero_serviceability.so ${BIN_DIR}/doublezero_serviceability.so
 
 RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
     --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-telemetry && \
-    cargo build-sbf --features localnet && \
+    cargo build-sbf --tools-version v1.54 --features localnet && \
     cp /target-sbf/deploy/doublezero_telemetry.so ${BIN_DIR}/doublezero_telemetry.so
 
 RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
     --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-geolocation && \
-    cargo build-sbf && \
+    cargo build-sbf --tools-version v1.54 && \
     cp /target-sbf/deploy/doublezero_geolocation.so ${BIN_DIR}/doublezero_geolocation.so
 
 # Force COPY in later stages to always copy the programs, even if they appear to be the same.

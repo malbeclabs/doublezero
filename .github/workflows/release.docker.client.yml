@@ -39,6 +39,11 @@ jobs:
   publish:
     if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    # Serialize testnet publishes so two closely-spaced releases don't race the
+    # mutable :testnet tag.
+    concurrency:
+      group: release-docker-client-testnet
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:
@@ -112,7 +117,12 @@ jobs:
       # base image we just published (event-driven; its daily poll is the fallback).
       - name: Notify edge-connect to rebuild (testnet)
         if: steps.v.outputs.publish == 'true'
+        # A failed cross-repo dispatch must not fail an already-successful publish;
+        # edge-connect's daily poll is the fallback.
+        continue-on-error: true
         uses: actions/github-script@v7
+        env:
+          DZ_VERSION: ${{ steps.v.outputs.version }}
         with:
           github-token: ${{ secrets.EDGE_CONNECT_DISPATCH_TOKEN }}
           script: |
@@ -120,7 +130,7 @@ jobs:
               owner: context.repo.owner,
               repo: 'doublezero-edge-connect',
               event_type: 'doublezero-base-published',
-              client_payload: { env: 'testnet', version: '${{ steps.v.outputs.version }}' },
+              client_payload: { env: 'testnet', version: process.env.DZ_VERSION },
             });
 
   # mainnet-beta image publish: manual (workflow_dispatch) or automatic (schedule).
@@ -129,24 +139,39 @@ jobs:
   publish-mainnet-beta:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    # Serialize mainnet-beta publishes so a scheduled run and a manual dispatch
+    # don't race the mutable :mainnet-beta / :latest tags.
+    concurrency:
+      group: release-docker-client-mainnet-beta
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
       - name: Resolve mainnet-beta version
         id: v
         shell: bash
+        # Pass the operator-supplied input via env rather than interpolating it
+        # directly into the bash script.
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          VERSION="${{ github.event.inputs.version }}"
+          VERSION="$INPUT_VERSION"
           if [[ -z "$VERSION" ]]; then
+            # Resolve the newest version from the stable `doublezero` channel.
+            # Exclude Debian pre-release markers (~) defensively so an RC/pre-release
+            # is never auto-promoted to :mainnet-beta/:latest; the channel is
+            # otherwise expected to hold only promoted stable releases.
             VERSION="$(docker run --rm --entrypoint bash ubuntu:24.04 -c '
               apt-get update -qq >/dev/null 2>&1
               apt-get install -y -qq --no-install-recommends ca-certificates curl >/dev/null 2>&1
               curl -1sLf "https://dl.cloudsmith.io/public/malbeclabs/doublezero/setup.deb.sh" | bash >/dev/null 2>&1
               apt-get update -qq >/dev/null 2>&1
-              apt-cache madison doublezero | head -1 | awk "{print \$3}"')"
+              apt-cache madison doublezero | awk "{print \$3}" | grep -v "~" | head -1')"
           fi
           [[ -n "$VERSION" ]] || { echo "could not resolve mainnet-beta version"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # Docker tags can't contain ~ or :, so sanitize them for the immutable
+          # version-suffixed tag only; the label and dispatch payload keep the raw version.
           echo "tag=$(printf '%s' "$VERSION" | tr '~:' '--')" >> "$GITHUB_OUTPUT"
           echo "Resolved mainnet-beta version: $VERSION"
 
@@ -204,7 +229,12 @@ jobs:
       # the base image we just published (event-driven; poll is the fallback).
       - name: Notify edge-connect to rebuild (mainnet-beta)
         if: steps.gate.outputs.changed == 'true'
+        # A failed cross-repo dispatch must not fail an already-successful publish;
+        # edge-connect's daily poll is the fallback.
+        continue-on-error: true
         uses: actions/github-script@v7
+        env:
+          DZ_VERSION: ${{ steps.v.outputs.version }}
         with:
           github-token: ${{ secrets.EDGE_CONNECT_DISPATCH_TOKEN }}
           script: |
@@ -212,7 +242,7 @@ jobs:
               owner: context.repo.owner,
               repo: 'doublezero-edge-connect',
               event_type: 'doublezero-base-published',
-              client_payload: { env: 'mainnet-beta', version: '${{ steps.v.outputs.version }}' },
+              client_payload: { env: 'mainnet-beta', version: process.env.DZ_VERSION },
             });
 
   # Validation path: on PRs touching the image, build all three variants for

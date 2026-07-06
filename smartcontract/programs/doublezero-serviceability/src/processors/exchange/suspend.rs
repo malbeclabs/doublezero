@@ -1,7 +1,8 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     serializer::try_acc_write,
-    state::{exchange::*, globalstate::GlobalState},
+    state::{exchange::*, globalstate::GlobalState, permission::permission_flags},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -69,9 +70,14 @@ pub fn process_suspend_exchange(
 
     // Authorization:
     //  - Only accounts in the foundation_allowlist may suspend the exchange.
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    // Authorization: INFRA_ADMIN (Permission account) or foundation (legacy).
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::INFRA_ADMIN,
+    )?;
 
     if exchange.status != ExchangeStatus::Activated {
         #[cfg(test)]

@@ -130,12 +130,14 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("query_seat_price", func(t *testing.T) {
-		prices, err := client.FeedSeatPrice(ctx)
+		prices, err := client.FeedSeatPrice(ctx, device.PubKey)
 		require.NoError(t, err, "failed to get seat prices")
 
+		// Match by pubkey, not code: querying by --device skips code resolution,
+		// so the returned rows may not carry a device_code.
 		var price *pb.DevicePrice
 		for _, p := range prices {
-			if p.DeviceCode == device.Code {
+			if p.DevicePubkey == device.PubKey {
 				price = p
 				break
 			}

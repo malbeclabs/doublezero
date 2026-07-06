@@ -169,7 +169,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 						return "", err
 					}
 					if len(statuses) > 1 {
-						log.Warn("Host reported multiple tunnel statuses; selecting IBRL", "client", c.Host, "count", len(statuses))
+						log.Warn("Host reported multiple tunnel statuses", "client", c.Host, "count", len(statuses))
 					}
 					// A host may report multiple tunnel statuses (an IBRL and
 					// a Multicast tunnel). Select the IBRL status, or the sole
@@ -406,7 +406,7 @@ func connectClientsAndWaitForRoutes(
 			continue
 		}
 		if len(userStatuses) > 1 {
-			log.Warn("Host reported multiple tunnel statuses; selecting IBRL", "client", c.Host, "count", len(userStatuses))
+			log.Warn("Host reported multiple tunnel statuses", "client", c.Host, "count", len(userStatuses))
 		}
 		// A host may report multiple tunnel statuses (an IBRL and a
 		// Multicast tunnel). Select the IBRL status, or the sole status

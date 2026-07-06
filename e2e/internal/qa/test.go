@@ -173,12 +173,21 @@ func getProgramDataWithRetry(ctx context.Context, serviceabilityClient *servicea
 		return nil
 	}
 
+	// GetProgramData does a heavy getProgramAccounts against the DZ-ledger RPC,
+	// which rate-limits it ("429 Too many requests from your IP") under load. The
+	// throttle can persist longer than the previous ~6.5s / 5-retry budget, which
+	// flaked multicast setup ("failed to cleanup stale test groups"). Ride it out
+	// with a patient exponential backoff bounded by total elapsed time instead of
+	// a small fixed retry count.
 	exp := backoff.NewExponentialBackOff()
-	retryPolicy := backoff.WithMaxRetries(exp, 5)
-	retryPolicy = backoff.WithContext(retryPolicy, ctx)
+	exp.InitialInterval = 1 * time.Second
+	exp.Multiplier = 2
+	exp.MaxInterval = 20 * time.Second
+	exp.MaxElapsedTime = 2 * time.Minute
+	retryPolicy := backoff.WithContext(exp, ctx)
 
 	if err := backoff.Retry(operation, retryPolicy); err != nil {
-		return nil, fmt.Errorf("failed to get program data after retries: %v", err)
+		return nil, fmt.Errorf("failed to get program data after retries: %w", err)
 	}
 
 	return result, nil

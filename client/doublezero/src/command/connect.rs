@@ -583,7 +583,7 @@ impl ProvisioningCliCommand {
                         spinner.println("❌ Error creating user");
                         spinner.println(format!("\n{}: {:?}\n", "Error", e));
 
-                        Err(eyre::eyre!("Error creating user"))
+                        Err(eyre::eyre!("Error creating user: {e:?}"))
                     }
                 }
             }?,
@@ -829,7 +829,7 @@ impl ProvisioningCliCommand {
                     Err(e) => {
                         spinner.println("❌ Error creating user");
                         spinner.println(format!("\n{}: {:?}\n", "Error", e));
-                        return Err(eyre::eyre!("Error creating user"));
+                        return Err(eyre::eyre!("Error creating user: {e:?}"));
                     }
                 };
 

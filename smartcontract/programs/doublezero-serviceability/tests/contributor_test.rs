@@ -566,3 +566,222 @@ async fn test_contributor_create_with_permission_account_allowed() {
 
     println!("✅ CreateContributor with CONTRIBUTOR_ADMIN permission succeeded");
 }
+
+/// A non-foundation key holding a CONTRIBUTOR_ADMIN Permission account can perform a
+/// FULL update (code + owner + ops_manager_pk) — exercises the `else` arm of
+/// process_update_contributor where authorization requires `is_privileged`, a path the
+/// create/suspend/resume/delete tests don't reach.
+#[tokio::test]
+async fn test_contributor_update_full_with_permission_account_allowed() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create a contributor via the foundation payer (legacy path).
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) = get_contributor_pda(&program_id, globalstate.account_index + 1);
+    let original_owner = Pubkey::new_unique();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "ctrb".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(original_owner, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // A key that is NOT in the foundation allowlist, granted CONTRIBUTOR_ADMIN.
+    let contrib_admin = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &contrib_admin.pubkey(),
+        2_000_000_000,
+    )
+    .await;
+
+    let (permission_pda, _) = get_permission_pda(&program_id, &contrib_admin.pubkey());
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: contrib_admin.pubkey(),
+            permissions: permission_flags::CONTRIBUTOR_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // contrib_admin performs a FULL update (code + owner + ops_manager_pk), passing its
+    // Permission PDA as the trailing account authorize() reads. On-wire layout:
+    // [contributor, globalstate, payer, system, permission].
+    let new_owner = Pubkey::new_unique();
+    let new_ops_manager = Pubkey::new_unique();
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx = create_transaction_with_extra_accounts(
+        program_id,
+        &DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
+            code: Some("ctrb2".to_string()),
+            owner: Some(new_owner),
+            ops_manager_pk: Some(new_ops_manager),
+        }),
+        &vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &contrib_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    );
+    tx.try_sign(&[&contrib_admin], recent_blockhash).unwrap();
+    banks_client
+        .process_transaction(tx)
+        .await
+        .expect("CONTRIBUTOR_ADMIN permission holder should be able to fully update a contributor");
+
+    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+        .await
+        .expect("contributor")
+        .get_contributor()
+        .unwrap();
+    assert_eq!(contributor.code, "ctrb2".to_string());
+    assert_eq!(contributor.owner, new_owner);
+    assert_eq!(contributor.ops_manager_pk, new_ops_manager);
+
+    println!("✅ Full UpdateContributor with CONTRIBUTOR_ADMIN permission succeeded");
+}
+
+/// A non-foundation key whose Permission account holds an unrelated flag (not
+/// CONTRIBUTOR_ADMIN) cannot perform a full update. Pins the update call site's flag
+/// gate against being wired to the wrong flag in a way the positive test can't catch.
+#[tokio::test]
+async fn test_contributor_update_full_with_wrong_permission_denied() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (contributor_pubkey, _) = get_contributor_pda(&program_id, globalstate.account_index + 1);
+    let original_owner = Pubkey::new_unique();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+            code: "ctrb".to_string(),
+        }),
+        vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(original_owner, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // A non-foundation key granted an UNRELATED flag (USER_ADMIN), not CONTRIBUTOR_ADMIN.
+    let wrong_admin = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &wrong_admin.pubkey(),
+        2_000_000_000,
+    )
+    .await;
+
+    let (permission_pda, _) = get_permission_pda(&program_id, &wrong_admin.pubkey());
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: wrong_admin.pubkey(),
+            permissions: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Full update must be rejected: USER_ADMIN does not satisfy CONTRIBUTOR_ADMIN, and
+    // wrong_admin is not in the foundation allowlist, so the legacy fallback denies too.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx = create_transaction_with_extra_accounts(
+        program_id,
+        &DoubleZeroInstruction::UpdateContributor(ContributorUpdateArgs {
+            code: Some("ctrb2".to_string()),
+            owner: Some(Pubkey::new_unique()),
+            ops_manager_pk: Some(Pubkey::new_unique()),
+        }),
+        &vec![
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &wrong_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    );
+    tx.try_sign(&[&wrong_admin], recent_blockhash).unwrap();
+    let result = banks_client.process_transaction(tx).await;
+
+    let error_string = format!("{:?}", result.unwrap_err());
+    assert!(
+        error_string.contains("Custom(8)"),
+        "Expected error to contain 'Custom(8)' (NotAllowed), but got: {}",
+        error_string
+    );
+
+    // Contributor must be unchanged.
+    let contributor = get_account_data(&mut banks_client, contributor_pubkey)
+        .await
+        .expect("contributor")
+        .get_contributor()
+        .unwrap();
+    assert_eq!(contributor.code, "ctrb".to_string());
+    assert_eq!(contributor.owner, original_owner);
+
+    println!("✅ Full UpdateContributor without CONTRIBUTOR_ADMIN correctly denied");
+}

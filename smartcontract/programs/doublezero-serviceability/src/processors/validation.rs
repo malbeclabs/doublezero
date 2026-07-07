@@ -30,7 +30,7 @@ pub(crate) use validate_program_account;
 
 #[cfg(test)]
 mod tests {
-    use solana_program::{account_info::AccountInfo, clock::Epoch, pubkey::Pubkey};
+    use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
     fn make_account_info<'a>(
         key: &'a Pubkey,
@@ -39,16 +39,7 @@ mod tests {
         data: &'a mut [u8],
         owner: &'a Pubkey,
     ) -> AccountInfo<'a> {
-        AccountInfo::new(
-            key,
-            false,
-            is_writable,
-            lamports,
-            data,
-            owner,
-            false,
-            Epoch::default(),
-        )
+        AccountInfo::new(key, false, is_writable, lamports, data, owner, false)
     }
 
     #[test]

@@ -10,8 +10,6 @@ use doublezero_serviceability::state::{
     globalstate::GlobalState,
 };
 use solana_loader_v3_interface::state::UpgradeableLoaderState;
-#[allow(deprecated)]
-use solana_program::bpf_loader_upgradeable;
 use solana_program_test::*;
 use solana_sdk::{
     account::AccountSharedData,
@@ -20,6 +18,8 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::Transaction,
 };
+#[allow(deprecated)]
+use solana_sdk_ids::bpf_loader_upgradeable;
 
 /// Builds a bincode-serialized UpgradeableLoaderState::ProgramData account
 pub fn build_program_data_account(upgrade_authority: &Pubkey) -> AccountSharedData {
@@ -139,7 +139,7 @@ pub async fn setup_test_with_exchange(
             AccountMeta::new(program_config_pda, false),
             AccountMeta::new_readonly(program_data_pda, false),
             AccountMeta::new(payer_pubkey, true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
         ],
     );
 

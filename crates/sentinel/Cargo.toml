@@ -24,12 +24,14 @@ metrics.workspace = true
 # this crate with default-features = false, doesn't link it. Any future daemon-only dep must go
 # here too, or the CLI bloat returns.
 metrics-exporter-prometheus = { workspace = true, optional = true }
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["json"] }
 serde.workspace = true
 serde_json.workspace = true
 solana-account-decoder.workspace = true
 solana-client.workspace = true
+solana-commitment-config.workspace = true
 solana-sdk.workspace = true
+solana-sdk-ids.workspace = true
 strum.workspace = true
 strum_macros.workspace = true
 tabled.workspace = true

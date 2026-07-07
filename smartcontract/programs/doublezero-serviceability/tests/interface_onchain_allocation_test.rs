@@ -2076,7 +2076,7 @@ async fn test_update_topologies_allowed_for_contributor() {
 
     // Fund the new owner so it can pay tx fees.
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    let transfer_ix = solana_sdk::system_instruction::transfer(
+    let transfer_ix = solana_system_interface::instruction::transfer(
         &payer.pubkey(),
         &contributor_owner.pubkey(),
         1_000_000_000,

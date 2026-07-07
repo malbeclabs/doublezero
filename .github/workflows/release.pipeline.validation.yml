@@ -56,11 +56,13 @@ jobs:
       - name: Install rust toolchain
         uses: dtolnay/rust-toolchain@1.90.0
         if: contains(matrix.languages, 'rust')
+        with:
+          targets: x86_64-unknown-linux-musl
 
       - name: Install dependencies for rpm packaging
         run: |
           sudo apt update
-          sudo apt-get install build-essential pkg-config libssl-dev squashfs-tools rpm -y
+          sudo apt-get install build-essential pkg-config libssl-dev squashfs-tools rpm musl-tools -y
 
       - name: Set env vars
         run: ./scripts/env.sh >> $GITHUB_ENV

@@ -16,7 +16,7 @@ impl SetVersionCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::SetMinVersion(SetVersionArgs {
                 min_compatible_version: self.min_compatible_version.clone(),
             }),
@@ -45,7 +45,7 @@ mod tests {
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SetMinVersion(SetVersionArgs {
                     min_compatible_version: "1.0.0".parse().unwrap(),

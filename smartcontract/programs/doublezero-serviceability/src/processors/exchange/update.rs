@@ -1,9 +1,13 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     helper::assign_bgp_community,
     pda::get_globalconfig_pda,
     serializer::try_acc_write,
-    state::{exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState},
+    state::{
+        exchange::Exchange, globalconfig::GlobalConfig, globalstate::GlobalState,
+        permission::permission_flags,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -83,9 +87,14 @@ pub fn process_update_exchange(
 
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    // Authorization: INFRA_ADMIN (Permission account) or foundation (legacy).
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::INFRA_ADMIN,
+    )?;
 
     // We need to access globalconfig in order to assign BGP community
     let mut globalconfig = GlobalConfig::try_from(globalconfig_account)?;

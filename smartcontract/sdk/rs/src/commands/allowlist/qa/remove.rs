@@ -15,7 +15,7 @@ impl RemoveQaAllowlistCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (pda_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::RemoveQaAllowlist(RemoveQaAllowlistArgs {
                 pubkey: self.pubkey,
             }),

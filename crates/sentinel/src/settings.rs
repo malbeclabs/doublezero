@@ -64,7 +64,7 @@ impl AppArgs {
         let file_content = fs::read_to_string(&self.keypair).expect("invalid keypair file path");
         let secret_key_bytes: Vec<u8> =
             serde_json::from_str(&file_content).expect("invalid keypair file contents");
-        Arc::new(Keypair::from_bytes(&secret_key_bytes).expect("invalid keypair"))
+        Arc::new(Keypair::try_from(secret_key_bytes.as_slice()).expect("invalid keypair"))
     }
 
     pub fn dz_rpc_url(&self) -> Url {

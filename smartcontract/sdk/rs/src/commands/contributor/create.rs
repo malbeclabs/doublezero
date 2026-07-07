@@ -24,7 +24,7 @@ impl CreateContributorCommand {
         let (pda_pubkey, _) =
             get_contributor_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
-            .execute_transaction(
+            .execute_authorized_transaction(
                 DoubleZeroInstruction::CreateContributor(ContributorCreateArgs { code }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -54,7 +54,7 @@ mod tests {
         let owner = Pubkey::new_unique();
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateContributor(
                     ContributorCreateArgs {

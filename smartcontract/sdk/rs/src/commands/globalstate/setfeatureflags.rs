@@ -16,7 +16,7 @@ impl SetFeatureFlagsCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("GlobalState not initialized"))?;
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
                 feature_flags: self.feature_flags,
             }),
@@ -47,7 +47,7 @@ mod tests {
         let feature_flags = 1u128;
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SetFeatureFlags(
                     SetFeatureFlagsArgs { feature_flags },

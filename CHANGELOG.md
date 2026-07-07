@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- SDK
+  - Rename serviceability permission-flag bit 6 from `PERMISSION_FLAG_RESERVATION` to `PERMISSION_FLAG_FEED_AUTHORITY` in the TypeScript and Python SDKs, matching the on-chain program and Go SDK (bit value unchanged). (#3985)
 - Serviceability
   - Gate Device and device-interface instructions on `NETWORK_ADMIN` (and `HEALTH_ORACLE` for sethealth) or the contributor owner via `authorize()`; internal foundation-only sub-gates now also accept NETWORK_ADMIN holders. (#3980)
   - Gate UpdateUser on `USER_ADMIN`, CheckAccessPass on `ACTIVATOR`, and accesspass CheckStatus on `ACTIVATOR|USER_ADMIN` via `authorize()`; user create and set_bgp_status remain owner-authorized (not part of the admin Permission system). (#3984)
@@ -25,6 +27,8 @@ All notable changes to this project will be documented in this file.
   - Add `doublezero permission audit` to check legacy→Permission parity before enabling `require-permission-accounts`: it reports which legacy keys would lose access to migrated instructions (coverage gaps, non-zero exit), super-admin holders, and the non-migrated subsystems that still depend on the GlobalState allowlists.
 - E2E
   - Fix the multicast settlement QA test's seat-allocation ack wait. It read the reused client seat at finalized commitment and could accept the previous run's already-acked state, then withdraw while the current request was still pending. It now waits to observe the request pending before treating a cleared flag as the ack. (#3972)
+- Sentinel
+  - Enable the `reqwest` `json` feature explicitly for the sentinel crate, which relies on `Response::json()` in the validator metadata reader and multicast publisher after the workspace dependency stopped enabling it by default. (#3986)
   - Make the all-devices unicast QA test tolerate a host reporting multiple tunnel statuses. It now selects the IBRL status via `GetUserStatuses`/`FindIBRLStatus` instead of erroring on a lingering Multicast tunnel and dropping the host, and logs a warning when a host reports more than one status. (#3976)
 - CI
   - Auto-publish the mainnet-beta client base image daily when the stable Cloudsmith channel advances (idempotency-gated so a run with no new version is a no-op), and notify `doublezero-edge-connect` to rebuild its testnet and mainnet-beta variants when a new base image is published. Serialize publishes with per-job concurrency groups, keep the notify steps non-fatal to the publish, and skip Debian pre-release versions when resolving the mainnet-beta tag. (#3990)

@@ -1,11 +1,15 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::{get_multicastgroup_pda, get_resource_extension_pda},
     processors::{resource::allocate_ip, validation::validate_program_account},
     resource::ResourceType,
     seeds::{SEED_MULTICAST_GROUP, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
-    state::{accounttype::AccountType, globalstate::GlobalState, multicastgroup::*},
+    state::{
+        accounttype::AccountType, globalstate::GlobalState, multicastgroup::*,
+        permission::permission_flags,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -96,9 +100,14 @@ pub fn process_create_multicastgroup(
         mgroup_account.key, &expected_pda_account,
         "Invalid MulticastGroup Pubkey"
     );
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    // Authorization: MULTICAST_ADMIN (Permission account) or foundation/sentinel (legacy).
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::MULTICAST_ADMIN,
+    )?;
 
     // Check if the account is already initialized
     if !mgroup_account.data_is_empty() {

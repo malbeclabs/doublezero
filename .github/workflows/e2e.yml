@@ -45,13 +45,13 @@ env:
 
 jobs:
   schedule-gate:
-    # Flake gap-filler gate. Runs only on the hourly schedule, on a GitHub-hosted
-    # runner so the hourly no-op never consumes a self-hosted e2e slot. Emits
-    # outputs.proceed='true' only when the gap-filler is enabled AND main is stale
-    # AND no e2e run is in flight. setup (and thus the matrix) stays gated on this
-    # for schedule events. Cheap: a few API reads.
+    # Flake gap-filler gate. Runs on EVERY event so it is never skipped: a skipped
+    # job would transitively skip the downstream e2e matrix (whose `if` has no
+    # status-check function). On non-schedule events the script short-circuits to
+    # proceed=true so setup and the matrix run exactly as on main; only the hourly
+    # schedule path does the real gating (enabled AND stale AND idle). GitHub-hosted
+    # so the hourly no-op never consumes a self-hosted e2e slot.
     name: Flake gap-filler gate
-    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -67,6 +67,14 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            // Only the hourly schedule triggers gap-filler gating. For every other
+            // event (push/PR/dispatch) proceed unconditionally so nothing downstream
+            // is skipped and the e2e matrix expands exactly as on main.
+            if (context.eventName !== 'schedule') {
+              core.info(`event=${context.eventName}: not the scheduled gap-filler; proceeding`);
+              core.setOutput('proceed', 'true');
+              return;
+            }
             const STALE_HOURS = 6;
             const enabled = process.env.GAP_FILLER_ENABLED === 'true';
             const selfId = context.runId;
@@ -110,14 +118,11 @@ jobs:
 
   setup:
     needs: [schedule-gate]
-    # Non-schedule events (push/PR/dispatch) run setup as before. Schedule events
-    # run it only when the gap-filler gate passed. always() is required because
-    # schedule-gate is skipped for non-schedule events, and a skipped need would
-    # otherwise skip setup too.
-    if: >-
-      ${{ always() &&
-          (github.event_name != 'schedule' ||
-           needs.schedule-gate.outputs.proceed == 'true') }}
+    # schedule-gate runs on every event and never skips, so no always() is needed
+    # here and nothing downstream (the e2e matrix) is transitively skipped. On
+    # non-schedule events proceed is always 'true'; on the hourly schedule it is
+    # 'true' only when the gap-filler is enabled AND main is stale AND e2e is idle.
+    if: needs.schedule-gate.outputs.proceed == 'true'
     runs-on: self-hosted
     permissions:
       packages: write

@@ -1,13 +1,16 @@
 use doublezero_serviceability::{
     instructions::*,
     pda::*,
-    processors::tenant::{
-        add_administrator::TenantAddAdministratorArgs, create::TenantCreateArgs,
-        delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
-        update::TenantUpdateArgs, update_payment_status::UpdatePaymentStatusArgs,
+    processors::{
+        permission::create::PermissionCreateArgs,
+        tenant::{
+            add_administrator::TenantAddAdministratorArgs, create::TenantCreateArgs,
+            delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
+            update::TenantUpdateArgs, update_payment_status::UpdatePaymentStatusArgs,
+        },
     },
     resource::ResourceType,
-    state::{accounttype::AccountType, tenant::*},
+    state::{accounttype::AccountType, permission::permission_flags, tenant::*},
 };
 use solana_program::instruction::InstructionError;
 use solana_program_test::*;
@@ -843,4 +846,81 @@ async fn test_tenant_include_topologies_reset_to_empty() {
     assert_eq!(tenant.include_topologies, Vec::<Pubkey>::new());
 
     println!("✅ include_topologies can be reset to empty");
+}
+
+/// A non-foundation key holding a TENANT_ADMIN Permission account can create a
+/// tenant — exercises the new Permission-account authorization path.
+#[tokio::test]
+async fn test_tenant_create_with_permission_account_allowed() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+
+    // A key that is NOT in the foundation allowlist, granted TENANT_ADMIN.
+    let tenant_admin = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &tenant_admin.pubkey(),
+        2_000_000_000,
+    )
+    .await;
+
+    let (permission_pda, _) = get_permission_pda(&program_id, &tenant_admin.pubkey());
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: tenant_admin.pubkey(),
+            permissions: permission_flags::TENANT_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // tenant_admin creates a tenant, passing its Permission PDA as the optional
+    // trailing account that authorize() reads.
+    let tenant_code = "perm-tenant";
+    let (tenant_pubkey, _) = get_tenant_pda(&program_id, tenant_code);
+    let administrator = Pubkey::new_unique();
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx = create_transaction_with_extra_accounts(
+        program_id,
+        &DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: tenant_code.to_string(),
+            administrator,
+            token_account: None,
+            metro_routing: true,
+            route_liveness: false,
+        }),
+        &vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &tenant_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    );
+    tx.try_sign(&[&tenant_admin], recent_blockhash).unwrap();
+    banks_client
+        .process_transaction(tx)
+        .await
+        .expect("TENANT_ADMIN permission holder should be able to create a tenant");
+
+    let tenant = get_account_data(&mut banks_client, tenant_pubkey)
+        .await
+        .expect("tenant")
+        .get_tenant()
+        .unwrap();
+    assert_eq!(tenant.account_type, AccountType::Tenant);
+    assert_eq!(tenant.code, tenant_code.to_string());
+
+    println!("✅ CreateTenant with TENANT_ADMIN permission succeeded");
 }

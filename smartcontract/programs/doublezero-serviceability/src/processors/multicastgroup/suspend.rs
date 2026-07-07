@@ -1,7 +1,8 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     serializer::try_acc_write,
-    state::{globalstate::GlobalState, multicastgroup::*},
+    state::{globalstate::GlobalState, multicastgroup::*, permission::permission_flags},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -62,9 +63,14 @@ pub fn process_suspend_multicastgroup(
 
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    // Authorization: MULTICAST_ADMIN (Permission account) or foundation/sentinel (legacy).
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::MULTICAST_ADMIN,
+    )?;
 
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
 

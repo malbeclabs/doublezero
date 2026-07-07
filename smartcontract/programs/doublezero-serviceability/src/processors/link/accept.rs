@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     processors::{
         link::resource_onchain_helpers::validate_and_allocate_link_resources,
@@ -8,8 +9,10 @@ use crate::{
     state::{
         contributor::Contributor,
         device::Device,
+        globalstate::GlobalState,
         interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus},
         link::*,
+        permission::permission_flags,
     },
 };
 use borsh::BorshSerialize;
@@ -55,11 +58,13 @@ pub fn process_accept_link(
     let accounts_iter = &mut accounts.iter();
 
     // Account layout: [link, contributor, side_z_dev, globalstate, side_a_dev,
-    //                  device_tunnel_block, link_ids, payer, system]
+    //                  device_tunnel_block, link_ids, payer, system, permission?]
+    // The trailing optional permission account (the payer's Permission PDA, appended
+    // by the SDK when it exists on-chain) is consumed by authorize() below.
     let link_account = next_account_info(accounts_iter)?;
     let contributor_account = next_account_info(accounts_iter)?;
     let side_z_account = next_account_info(accounts_iter)?;
-    let _globalstate_account = next_account_info(accounts_iter)?;
+    let globalstate_account = next_account_info(accounts_iter)?;
 
     let side_a_device_account = next_account_info(accounts_iter)?;
     let device_tunnel_block_ext = next_account_info(accounts_iter)?;
@@ -86,7 +91,19 @@ pub fn process_accept_link(
 
     // Validate Contributor Owner
     let contributor = Contributor::try_from(contributor_account)?;
-    if contributor.owner != *payer_account.key {
+    let globalstate = GlobalState::try_from(globalstate_account)?;
+    // Authorization: the contributor owner, or NETWORK_ADMIN (Permission account) /
+    // foundation (legacy) as an additional bypass.
+    if contributor.owner != *payer_account.key
+        && authorize(
+            program_id,
+            accounts_iter,
+            payer_account.key,
+            &globalstate,
+            permission_flags::NETWORK_ADMIN,
+        )
+        .is_err()
+    {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 

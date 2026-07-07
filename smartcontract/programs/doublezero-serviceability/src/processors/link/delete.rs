@@ -1,4 +1,5 @@
 use crate::{
+    authorize::{authorize, split_trailing_permission},
     error::DoubleZeroError,
     processors::validation::validate_program_account,
     serializer::{try_acc_close, try_acc_write},
@@ -9,6 +10,7 @@ use crate::{
         globalstate::GlobalState,
         interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType},
         link::*,
+        permission::permission_flags,
         topology::TopologyInfo,
     },
 };
@@ -71,14 +73,13 @@ pub fn process_delete_link(
     let link_ids_ext = next_account_info(accounts_iter)?;
     let owner_account = next_account_info(accounts_iter)?;
 
-    // Remaining accounts: topology union + payer + system.
+    // Remaining accounts: [topology_union.., payer, system, permission?].
+    // split_trailing_permission peels payer/system — and the optional payer
+    // Permission PDA the SDK appends when it exists — off the tail, leaving the
+    // caller's topology union as `topology_accounts`.
     let rest: Vec<&AccountInfo> = accounts_iter.collect();
-    if rest.len() < 2 {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    }
-    let (topology_accounts, tail) = rest.split_at(rest.len() - 2);
-    let payer_account = tail[0];
-    let system_program = tail[1];
+    let (payer_account, system_program, topology_accounts, permission_account) =
+        split_trailing_permission(program_id, &rest)?;
 
     #[cfg(test)]
     msg!("process_delete_link({:?})", value);
@@ -111,9 +112,18 @@ pub fn process_delete_link(
 
     let mut contributor = Contributor::try_from(contributor_account)?;
 
-    let payer_in_foundation = globalstate.foundation_allowlist.contains(payer_account.key);
+    // Authorization: the contributor owner, or NETWORK_ADMIN (Permission account) /
+    // foundation (legacy). Privileged callers bypass the per-link contributor binding.
+    let is_privileged = authorize(
+        program_id,
+        &mut permission_account.into_iter(),
+        payer_account.key,
+        &globalstate,
+        permission_flags::NETWORK_ADMIN,
+    )
+    .is_ok();
 
-    if contributor.owner != *payer_account.key && !payer_in_foundation {
+    if contributor.owner != *payer_account.key && !is_privileged {
         return Err(DoubleZeroError::InvalidOwnerPubkey.into());
     }
 
@@ -124,7 +134,7 @@ pub fn process_delete_link(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    if !payer_in_foundation && link.contributor_pk != *contributor_account.key {
+    if !is_privileged && link.contributor_pk != *contributor_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 

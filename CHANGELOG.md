@@ -10,9 +10,13 @@ All notable changes to this project will be documented in this file.
 
 - Serviceability
   - Gate Device and device-interface instructions on `NETWORK_ADMIN` (and `HEALTH_ORACLE` for sethealth) or the contributor owner via `authorize()`; internal foundation-only sub-gates now also accept NETWORK_ADMIN holders. (#3980)
+  - Gate UpdateUser on `USER_ADMIN`, CheckAccessPass on `ACTIVATOR`, and accesspass CheckStatus on `ACTIVATOR|USER_ADMIN` via `authorize()`; user create and set_bgp_status remain owner-authorized (not part of the admin Permission system). (#3984)
+  - Gate Tenant instructions (create/update/delete/add_administrator/remove_administrator/update_payment_status) on `TENANT_ADMIN` or foundation/sentinel via `authorize()`. (#3983)
+  - Gate MulticastGroup CRUD on `MULTICAST_ADMIN` and publisher/subscriber allowlist add/remove on `mgroup.owner OR MULTICAST_ADMIN`/`ACCESS_PASS_ADMIN` via `authorize()`; add handlers use split_trailing_permission. (#3982)
   - Require a Permission account (or the legacy foundation authority) for GlobalState, GlobalConfig, and foundation/QA allowlist admin instructions, gated on `GLOBALSTATE_ADMIN` via `authorize()`. (#3977)
   - Gate Contributor instructions (create/update/suspend/resume/delete) on `CONTRIBUTOR_ADMIN` or foundation; the contributor owner retains the ops-manager-only update path. (#3978)
   - Gate Location and Exchange instructions (create/update/suspend/resume/delete, exchange setdevice) on `INFRA_ADMIN` or foundation via `authorize()`. (#3979)
+  - Gate Link instructions (create/update/delete/suspend/resume/accept/sethealth) on `NETWORK_ADMIN` (and `HEALTH_ORACLE` for sethealth) or the contributor owner via `authorize()`; variable-length delete/update use split_trailing_permission. (#3981)
 - Collector
   - Harden ledger writes against a slow/degraded RPC endpoint: bound each RPC request (default 15s, `--ledger-rpc-timeout`), size the connection pool above the submitter concurrency (default 128, `--ledger-rpc-max-conns`), and deadline each submission attempt so it fails fast and retries with a fresh blockhash instead of sending an expired one and failing preflight with `BlockhashNotFound`. (#3973)
 - E2E

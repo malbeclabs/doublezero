@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::get_accesspass_pda,
     processors::validation::validate_program_account,
@@ -6,6 +7,7 @@ use crate::{
     state::{
         accesspass::AccessPass,
         globalstate::GlobalState,
+        permission::permission_flags,
         user::{User, UserStatus},
     },
 };
@@ -71,10 +73,15 @@ pub fn process_check_access_pass_user(
         "Invalid System Program Account Owner"
     );
 
+    // Authorization: ACTIVATOR (Permission account) or activator authority (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if globalstate.activator_authority_pk != *payer_account.key {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::ACTIVATOR,
+    )?;
 
     let mut user: User = User::try_from(user_account)?;
 

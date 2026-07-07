@@ -45,7 +45,7 @@ impl DeleteLinkCommand {
             accounts.push(AccountMeta::new(*topology_pk, false));
         }
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
                 use_onchain_deallocation: true,
             }),
@@ -124,7 +124,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Link(link.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
                     use_onchain_deallocation: true,

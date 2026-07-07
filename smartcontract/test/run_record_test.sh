@@ -14,7 +14,10 @@ SMARTCONTRACT_DIR=$(cd "$(dirname "$0")/.."; pwd)
 
 echo "Build DoubleZero Record program"
 cd $SMARTCONTRACT_DIR/programs/doublezero-record
-cargo build-sbf
+# Pin platform-tools >= v1.52 (Cargo >= 1.85); the solana 3.0 dependency tree
+# pulls edition2024 crates that the default platform-tools (v1.51 / Cargo
+# 1.84.x) cannot parse.
+cargo build-sbf --tools-version "${SBF_TOOLS_VERSION:-v1.54}"
 
 ROOT_DIR=$SMARTCONTRACT_DIR/..
 

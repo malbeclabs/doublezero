@@ -30,7 +30,7 @@ impl DeleteLocationCommand {
             ));
         }
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {}),
             vec![
                 AccountMeta::new(self.pubkey, false),
@@ -86,7 +86,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Location(location.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteLocation(LocationDeleteArgs {})),
                 predicate::eq(vec![

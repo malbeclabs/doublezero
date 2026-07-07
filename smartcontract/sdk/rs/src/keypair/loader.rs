@@ -32,8 +32,10 @@ pub fn parse_keypair_json(json_str: &str, source_desc: &str) -> Result<Keypair, 
             message: e.to_string(),
         })?;
 
-    Keypair::from_bytes(&secret_key_bytes).map_err(|_| KeypairLoadError::InvalidKeypairBytes {
-        origin: source_desc.to_string(),
+    Keypair::try_from(secret_key_bytes.as_slice()).map_err(|_| {
+        KeypairLoadError::InvalidKeypairBytes {
+            origin: source_desc.to_string(),
+        }
     })
 }
 

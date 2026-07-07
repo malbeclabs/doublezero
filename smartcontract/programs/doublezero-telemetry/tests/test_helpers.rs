@@ -45,10 +45,10 @@ use doublezero_telemetry::{
 
 #[cfg(not(feature = "no-entrypoint"))]
 use doublezero_telemetry::entrypoint::process_instruction as telemetry_process_instruction;
+use solana_commitment_config::CommitmentLevel;
 use solana_program_test::*;
 use solana_sdk::{
     account::Account,
-    commitment_config::CommitmentLevel,
     hash::Hash,
     instruction::{AccountMeta, Instruction, InstructionError},
     message::{v0::Message, VersionedMessage},
@@ -59,7 +59,7 @@ use solana_sdk::{
 
 use std::sync::{Arc, Mutex};
 
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn init_logger() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {

@@ -238,6 +238,7 @@ message FeedSeatPriceRequest {
   string usdc_mint = 3;
   string keypair = 4;
   string shred_subscription_program_id = 5;
+  string device_pubkey = 6;
 }
 
 message DevicePrice {

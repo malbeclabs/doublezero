@@ -29,7 +29,7 @@ impl RemoveMulticastGroupPubAllowlistCommand {
 
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::RemoveMulticastGroupPubAllowlist(
                 RemoveMulticastGroupPubAllowlistArgs {
                     client_ip: self.client_ip,
@@ -101,7 +101,7 @@ mod tests {
                 Ok(map)
             });
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::RemoveMulticastGroupPubAllowlist(
                     RemoveMulticastGroupPubAllowlistArgs {

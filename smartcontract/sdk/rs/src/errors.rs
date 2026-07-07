@@ -6,6 +6,11 @@ use std::io;
 use thiserror::Error as ThisError;
 
 #[derive(ThisError, Debug)]
+// The `RpcError` / `ClientError` variants wrap large external error types
+// (~384 bytes under solana 3.0). Boxing them would break the `#[from]`
+// ergonomics and the match sites that rely on the inner type; the size
+// disparity is inherent to the upstream error types, so allow it.
+#[allow(clippy::large_enum_variant)]
 pub enum ErrorKind {
     #[error(transparent)]
     Io(#[from] io::Error),
@@ -34,7 +39,7 @@ impl ErrorKind {
                         },
                     ),
                 ..
-            }) => Some(tx_err.clone()),
+            }) => Some(tx_err.clone().into()),
             Self::TransactionError(tx_err) => Some(tx_err.clone()),
             _ => None,
         }

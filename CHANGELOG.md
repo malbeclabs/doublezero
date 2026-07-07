@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- SDK
+  - Rename serviceability permission-flag bit 6 from `PERMISSION_FLAG_RESERVATION` to `PERMISSION_FLAG_FEED_AUTHORITY` in the TypeScript and Python SDKs, matching the on-chain program and Go SDK (bit value unchanged). (#3985)
 - Serviceability
   - Gate Device and device-interface instructions on `NETWORK_ADMIN` (and `HEALTH_ORACLE` for sethealth) or the contributor owner via `authorize()`; internal foundation-only sub-gates now also accept NETWORK_ADMIN holders. (#3980)
   - Gate UpdateUser on `USER_ADMIN`, CheckAccessPass on `ACTIVATOR`, and accesspass CheckStatus on `ACTIVATOR|USER_ADMIN` via `authorize()`; user create and set_bgp_status remain owner-authorized (not part of the admin Permission system). (#3984)

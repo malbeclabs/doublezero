@@ -1,3 +1,3 @@
 [toolchain]
 # version supported by solana can be found with "cargo build-sbf --version"
-channel = "1.84.1"
+channel = "1.91"

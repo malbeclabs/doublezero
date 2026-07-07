@@ -72,7 +72,7 @@ impl CreateDeviceInterfaceCommand {
         }
 
         client
-            .execute_transaction(
+            .execute_authorized_transaction(
                 DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
                     name: self.name.clone(),
                     loopback_type: self.loopback_type,
@@ -162,7 +162,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateDeviceInterface(
                     DeviceInterfaceCreateArgs {

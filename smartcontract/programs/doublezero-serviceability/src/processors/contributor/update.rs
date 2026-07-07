@@ -1,7 +1,8 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     serializer::try_acc_write,
-    state::{contributor::*, globalstate::GlobalState},
+    state::{contributor::*, globalstate::GlobalState, permission::permission_flags},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -79,13 +80,21 @@ pub fn process_update_contributor(
     let only_ops_manager_update =
         value.code.is_none() && value.owner.is_none() && value.ops_manager_pk.is_some();
 
-    // If only ops_manager_pk is being updated, allow contributor owner or foundation allowlist
-    // Otherwise, only allow foundation allowlist
+    // Authorization: CONTRIBUTOR_ADMIN (Permission account) or foundation (legacy).
+    // When only ops_manager_pk is being updated, the contributor owner may also
+    // perform the update without holding CONTRIBUTOR_ADMIN.
+    let is_privileged = authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::CONTRIBUTOR_ADMIN,
+    )
+    .is_ok();
     let is_authorized = if only_ops_manager_update {
-        globalstate.foundation_allowlist.contains(payer_account.key)
-            || contributor.owner == *payer_account.key
+        is_privileged || contributor.owner == *payer_account.key
     } else {
-        globalstate.foundation_allowlist.contains(payer_account.key)
+        is_privileged
     };
 
     if !is_authorized {

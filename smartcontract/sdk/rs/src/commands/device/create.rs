@@ -65,7 +65,7 @@ impl CreateDeviceCommand {
         })?;
 
         client
-            .execute_transaction(
+            .execute_authorized_transaction(
                 DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                     code,
                     device_type: self.device_type,
@@ -167,7 +167,7 @@ mod tests {
         let pubmetrics_publisher = Pubkey::default();
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
                     code: "test_device".to_string(),

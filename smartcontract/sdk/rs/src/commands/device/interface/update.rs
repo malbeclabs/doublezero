@@ -77,7 +77,7 @@ impl UpdateDeviceInterfaceCommand {
             }
         }
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
                 name: self.name.clone(),
                 loopback_type: self.loopback_type,
@@ -163,7 +163,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateDeviceInterface(
                     DeviceInterfaceUpdateArgs {
@@ -222,7 +222,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateDeviceInterface(
                     DeviceInterfaceUpdateArgs {
@@ -285,7 +285,7 @@ mod tests {
         let (topo_b, _) = get_topology_pda(&program_id, "TOPO-B");
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateDeviceInterface(
                     DeviceInterfaceUpdateArgs {

@@ -20,7 +20,7 @@ impl UpdateTenantCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::UpdateTenant(TenantUpdateArgs {
                 vrf_id: self.vrf_id,
                 token_account: self.token_account,

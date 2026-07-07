@@ -52,7 +52,7 @@ impl DeleteDeviceCommand {
 
         if resource_accounts.is_empty() {
             // Legacy path
-            client.execute_transaction(
+            client.execute_authorized_transaction(
                 DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs::default()),
                 vec![
                     AccountMeta::new(self.pubkey, false),
@@ -74,7 +74,7 @@ impl DeleteDeviceCommand {
             accounts.extend(owner_accounts);
             accounts.push(AccountMeta::new(device.owner, false));
 
-            client.execute_transaction(
+            client.execute_authorized_transaction(
                 DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs { resource_count }),
                 accounts,
             )
@@ -171,7 +171,7 @@ mod tests {
             .returning(|_| Err(eyre::eyre!("not found")));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteDevice(
                     DeviceDeleteArgs::default(),
@@ -272,7 +272,7 @@ mod tests {
             });
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {
                     resource_count: 2,

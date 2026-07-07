@@ -31,7 +31,7 @@ impl DeleteContributorCommand {
             ));
         }
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::DeleteContributor(ContributorDeleteArgs {}),
             vec![
                 AccountMeta::new(self.pubkey, false),
@@ -83,7 +83,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Contributor(contributor.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteContributor(
                     ContributorDeleteArgs {},

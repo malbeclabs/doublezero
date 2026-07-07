@@ -66,7 +66,7 @@ pub fn build_create_multicast_publisher_instructions(
             AccountMeta::new_readonly(globalstate_pda, false),
             AccountMeta::new(*owner, false),
             AccountMeta::new(*payer, true),
-            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::ID, false),
         ],
     )?;
 
@@ -82,7 +82,7 @@ pub fn build_create_multicast_publisher_instructions(
             AccountMeta::new(accesspass_pda, false),
             AccountMeta::new_readonly(globalstate_pda, false),
             AccountMeta::new(*payer, true),
-            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::ID, false),
         ],
     )?;
 
@@ -124,7 +124,7 @@ pub fn build_create_multicast_publisher_instructions(
 
     create_user_accounts.push(AccountMeta::new(*payer, true));
     create_user_accounts.push(AccountMeta::new_readonly(
-        solana_sdk::system_program::ID,
+        solana_sdk_ids::system_program::ID,
         false,
     ));
 

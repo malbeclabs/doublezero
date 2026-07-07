@@ -1,4 +1,5 @@
 use crate::{
+    authorize::{authorize, split_trailing_permission},
     error::{DoubleZeroError, Validate},
     format_option,
     helper::format_option_displayable,
@@ -18,6 +19,7 @@ use crate::{
             InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
             CYOA_DIA_INTERFACE_MTU, INTERFACE_MTU,
         },
+        permission::permission_flags,
         topology::FlexAlgoNodeSegment,
     },
 };
@@ -110,21 +112,25 @@ pub fn process_update_device_interface(
     // The presence of update_topologies forces seg_ext consumption; otherwise
     // fall back to the legacy account-count heuristic so callers that set
     // node_segment_idx without onchain allocation enabled still work.
-    let segment_routing_ids_ext = if value.update_topologies || accounts.len() > 5 {
-        Some(next_account_info(accounts_iter)?)
+    // Remaining tail: [segment_routing_ids?, topology_0..N?, payer, system, permission?].
+    // split_trailing_permission peels payer/system — and the optional payer Permission
+    // PDA the SDK appends when it exists — off the tail by PDA match, so it never
+    // inflates the optional-account detection. What's left (`mid`) is the optional
+    // SegmentRoutingIds account followed by the optional topology union.
+    let rest: Vec<&AccountInfo> = accounts_iter.collect();
+    let (payer_account, _system_program, mid, permission_account) =
+        split_trailing_permission(program_id, &rest)?;
+    let seg_ext_present = value.update_topologies || !mid.is_empty();
+    let segment_routing_ids_ext = if seg_ext_present {
+        mid.first().copied()
     } else {
         None
     };
-
-    let mut topology_accounts = Vec::new();
-    if value.update_topologies {
-        for _ in 0..value.topology_count {
-            topology_accounts.push(next_account_info(accounts_iter)?);
-        }
-    }
-
-    let payer_account = next_account_info(accounts_iter)?;
-    let _system_program = next_account_info(accounts_iter)?;
+    let topology_accounts: Vec<&AccountInfo> = if seg_ext_present {
+        mid.get(1..).unwrap_or(&[]).to_vec()
+    } else {
+        Vec::new()
+    };
 
     #[cfg(test)]
     msg!("process_update_device_interface({:?})", value);
@@ -152,19 +158,26 @@ pub fn process_update_device_interface(
 
     let contributor = Contributor::try_from(contributor_account)?;
 
-    if contributor.owner != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
+    // Authorization: the contributor owner, or NETWORK_ADMIN (Permission account) /
+    // foundation (legacy). Privileged callers also bypass the device-contributor
+    // binding and the foundation-only gates below.
+    let is_privileged = authorize(
+        program_id,
+        &mut permission_account.into_iter(),
+        payer_account.key,
+        &globalstate,
+        permission_flags::NETWORK_ADMIN,
+    )
+    .is_ok();
+    if contributor.owner != *payer_account.key && !is_privileged {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
     let mut device: Device = Device::try_from(device_account)?;
 
-    // The supplied contributor must be the one the device belongs to,
-    // unless the payer is on the foundation allowlist.
-    if !globalstate.foundation_allowlist.contains(payer_account.key)
-        && device.contributor_pk != *contributor_account.key
-    {
+    // The supplied contributor must be the one the device belongs to, unless the
+    // caller is privileged (foundation or NETWORK_ADMIN).
+    if !is_privileged && device.contributor_pk != *contributor_account.key {
         return Err(DoubleZeroError::InvalidContributorPubkey.into());
     }
 
@@ -229,7 +242,7 @@ pub fn process_update_device_interface(
         iface.ip_net = ip_net;
     }
     if let Some(node_segment_idx) = value.node_segment_idx {
-        if !globalstate.foundation_allowlist.contains(payer_account.key) {
+        if !is_privileged {
             return Err(DoubleZeroError::NotAllowed.into());
         }
 
@@ -263,9 +276,7 @@ pub fn process_update_device_interface(
     // for removed topologies have their SR ID deallocated; new topologies get a
     // freshly allocated SR ID.
     if value.update_topologies {
-        if contributor.owner != *payer_account.key
-            && !globalstate.foundation_allowlist.contains(payer_account.key)
-        {
+        if contributor.owner != *payer_account.key && !is_privileged {
             return Err(DoubleZeroError::NotAllowed.into());
         }
 

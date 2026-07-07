@@ -1,9 +1,13 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::get_accesspass_pda,
     processors::validation::validate_program_account,
     serializer::try_acc_write,
-    state::{accesspass::AccessPass, globalstate::GlobalState, multicastgroup::MulticastGroup},
+    state::{
+        accesspass::AccessPass, globalstate::GlobalState, multicastgroup::MulticastGroup,
+        permission::permission_flags,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -81,10 +85,17 @@ pub fn process_remove_multicast_sub_allowlist(
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
     // Check whether mgroup is authorized
-    let is_authorized = (mgroup.owner == *payer_account.key)
-        || globalstate.sentinel_authority_pk == *payer_account.key
-        || globalstate.feed_authority_pk == *payer_account.key
-        || globalstate.foundation_allowlist.contains(payer_account.key);
+    // Authorization: the multicast group owner, or ACCESS_PASS_ADMIN (Permission
+    // account) / foundation-sentinel-feed (legacy).
+    let is_authorized = mgroup.owner == *payer_account.key
+        || authorize(
+            program_id,
+            accounts_iter,
+            payer_account.key,
+            &globalstate,
+            permission_flags::ACCESS_PASS_ADMIN,
+        )
+        .is_ok();
     if !is_authorized {
         return Err(DoubleZeroError::NotAllowed.into());
     }

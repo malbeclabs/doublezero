@@ -30,6 +30,8 @@ bitflags.workspace = true
 
 [dev-dependencies]
 solana-sdk.workspace = true
+solana-sdk-ids.workspace = true
+solana-system-interface.workspace = true
 solana-program-test.workspace = true
 base64.workspace = true
 strum = { workspace = true }

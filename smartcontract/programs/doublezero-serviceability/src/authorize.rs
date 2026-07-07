@@ -316,7 +316,7 @@ mod tests {
             permission::{Permission, PermissionStatus},
         },
     };
-    use solana_program::{account_info::AccountInfo, clock::Epoch, pubkey::Pubkey};
+    use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -867,7 +867,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -904,7 +903,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -946,7 +944,6 @@ mod tests {
                 &mut data,
                 &program_id,
                 false,
-                Epoch::default(),
             );
             let accounts = [account];
             let mut iter = accounts.iter();
@@ -978,7 +975,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1010,7 +1006,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1046,7 +1041,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1086,7 +1080,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1126,7 +1119,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1163,7 +1155,6 @@ mod tests {
             &mut data,
             &wrong_owner,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1204,7 +1195,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1242,7 +1232,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1280,7 +1269,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1324,7 +1312,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1370,7 +1357,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1409,7 +1395,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1451,7 +1436,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1467,5 +1451,173 @@ mod tests {
             permission_flags::FOUNDATION
         )
         .is_ok());
+    }
+
+    // ── split_trailing_permission ─────────────────────────────────────────────
+    //
+    // The peeling dispatches purely on the account keys, so the backing
+    // lamports/data/owner are irrelevant here — only the key at `n - 1` (matched
+    // against the payer-at-`n - 3` Permission PDA) decides the split.
+
+    /// Build AccountInfos from `keys`, borrowing per-account lamports/data so the
+    /// returned Vec can be collected into the `&[&AccountInfo]` slice the peeler
+    /// takes.
+    fn accounts_from_keys<'a>(
+        keys: &'a [Pubkey],
+        lamports: &'a mut [u64],
+        data: &'a mut [Vec<u8>],
+        owner: &'a Pubkey,
+    ) -> Vec<AccountInfo<'a>> {
+        keys.iter()
+            .zip(lamports.iter_mut())
+            .zip(data.iter_mut())
+            .map(|((k, l), d)| AccountInfo::new(k, false, false, l, d, owner, false))
+            .collect()
+    }
+
+    #[test]
+    fn test_split_trailing_permission_too_short_errors() {
+        let program_id = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+        for len in [0usize, 1] {
+            let keys: Vec<Pubkey> = (0..len).map(|_| Pubkey::new_unique()).collect();
+            let mut lamports = vec![0u64; len];
+            let mut data = vec![Vec::<u8>::new(); len];
+            let accounts = accounts_from_keys(&keys, &mut lamports, &mut data, &owner);
+            let remaining: Vec<&AccountInfo> = accounts.iter().collect();
+            assert_eq!(
+                split_trailing_permission(&program_id, &remaining).unwrap_err(),
+                DoubleZeroError::InvalidArgument.into(),
+                "len {len} must error"
+            );
+        }
+    }
+
+    #[test]
+    fn test_split_trailing_permission_tail2_payer_system_only() {
+        // [payer, system] — no leading accounts, no Permission PDA.
+        let program_id = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+        let keys = vec![Pubkey::new_unique(), Pubkey::new_unique()];
+        let mut lamports = vec![0u64; keys.len()];
+        let mut data = vec![Vec::<u8>::new(); keys.len()];
+        let accounts = accounts_from_keys(&keys, &mut lamports, &mut data, &owner);
+        let remaining: Vec<&AccountInfo> = accounts.iter().collect();
+
+        let (payer, system, leading, permission) =
+            split_trailing_permission(&program_id, &remaining).unwrap();
+        assert_eq!(payer.key, &keys[0]);
+        assert_eq!(system.key, &keys[1]);
+        assert!(leading.is_empty());
+        assert!(permission.is_none());
+    }
+
+    #[test]
+    fn test_split_trailing_permission_tail3_permission_no_leading() {
+        // [payer, system, permission] — the tail the SDK appends when the payer
+        // has a Permission PDA and the instruction supplies no leading accounts.
+        let program_id = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+        let payer_key = Pubkey::new_unique();
+        let (perm_pda, _) = get_permission_pda(&program_id, &payer_key);
+        let keys = vec![payer_key, Pubkey::new_unique(), perm_pda];
+        let mut lamports = vec![0u64; keys.len()];
+        let mut data = vec![Vec::<u8>::new(); keys.len()];
+        let accounts = accounts_from_keys(&keys, &mut lamports, &mut data, &owner);
+        let remaining: Vec<&AccountInfo> = accounts.iter().collect();
+
+        let (payer, system, leading, permission) =
+            split_trailing_permission(&program_id, &remaining).unwrap();
+        assert_eq!(payer.key, &payer_key);
+        assert_eq!(system.key, &keys[1]);
+        assert!(leading.is_empty());
+        assert_eq!(permission.map(|p| p.key), Some(&perm_pda));
+    }
+
+    #[test]
+    fn test_split_trailing_permission_tail3_single_leading_no_permission() {
+        // [x, payer, system] where the last account is NOT the payer's Permission
+        // PDA — the trailing account must be read as system, leaving one leading
+        // account, not misdetected as a Permission account.
+        let program_id = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+        let keys = vec![
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+        ];
+        let mut lamports = vec![0u64; keys.len()];
+        let mut data = vec![Vec::<u8>::new(); keys.len()];
+        let accounts = accounts_from_keys(&keys, &mut lamports, &mut data, &owner);
+        let remaining: Vec<&AccountInfo> = accounts.iter().collect();
+
+        let (payer, system, leading, permission) =
+            split_trailing_permission(&program_id, &remaining).unwrap();
+        assert_eq!(payer.key, &keys[1]);
+        assert_eq!(system.key, &keys[2]);
+        assert_eq!(leading.len(), 1);
+        assert_eq!(leading[0].key, &keys[0]);
+        assert!(permission.is_none());
+    }
+
+    #[test]
+    fn test_split_trailing_permission_tail4_tenant_pair_no_permission() {
+        // [old_tenant, new_tenant, payer, system] — UpdateUser's tenant-update
+        // variant without a Permission account. The peeler must recover both
+        // tenants as leading and detect no permission.
+        let program_id = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+        let keys = vec![
+            Pubkey::new_unique(), // old_tenant
+            Pubkey::new_unique(), // new_tenant
+            Pubkey::new_unique(), // payer
+            Pubkey::new_unique(), // system
+        ];
+        let mut lamports = vec![0u64; keys.len()];
+        let mut data = vec![Vec::<u8>::new(); keys.len()];
+        let accounts = accounts_from_keys(&keys, &mut lamports, &mut data, &owner);
+        let remaining: Vec<&AccountInfo> = accounts.iter().collect();
+
+        let (payer, system, leading, permission) =
+            split_trailing_permission(&program_id, &remaining).unwrap();
+        assert_eq!(payer.key, &keys[2]);
+        assert_eq!(system.key, &keys[3]);
+        assert_eq!(leading.len(), 2);
+        assert_eq!(leading[0].key, &keys[0]);
+        assert_eq!(leading[1].key, &keys[1]);
+        assert!(permission.is_none());
+    }
+
+    #[test]
+    fn test_split_trailing_permission_tail5_tenant_pair_plus_permission() {
+        // [old_tenant, new_tenant, payer, system, permission] — the highest-risk
+        // combination: UpdateUser's tenant-update variant WITH the payer's
+        // auto-appended Permission PDA (tail length 5). The payer sits at n-3, so
+        // the peeler must match the last account against that payer's PDA and
+        // still recover both leading tenant accounts.
+        let program_id = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+        let payer_key = Pubkey::new_unique();
+        let (perm_pda, _) = get_permission_pda(&program_id, &payer_key);
+        let keys = vec![
+            Pubkey::new_unique(), // old_tenant
+            Pubkey::new_unique(), // new_tenant
+            payer_key,            // payer (n-3)
+            Pubkey::new_unique(), // system
+            perm_pda,             // permission
+        ];
+        let mut lamports = vec![0u64; keys.len()];
+        let mut data = vec![Vec::<u8>::new(); keys.len()];
+        let accounts = accounts_from_keys(&keys, &mut lamports, &mut data, &owner);
+        let remaining: Vec<&AccountInfo> = accounts.iter().collect();
+
+        let (payer, system, leading, permission) =
+            split_trailing_permission(&program_id, &remaining).unwrap();
+        assert_eq!(payer.key, &payer_key);
+        assert_eq!(system.key, &keys[3]);
+        assert_eq!(leading.len(), 2);
+        assert_eq!(leading[0].key, &keys[0]);
+        assert_eq!(leading[1].key, &keys[1]);
+        assert_eq!(permission.map(|p| p.key), Some(&perm_pda));
     }
 }

@@ -1,10 +1,11 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
     processors::resource::deallocate_id,
     resource::ResourceType,
     serializer::try_acc_close,
-    state::{globalstate::GlobalState, tenant::Tenant},
+    state::{globalstate::GlobalState, permission::permission_flags, tenant::Tenant},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -81,9 +82,14 @@ pub fn process_delete_tenant(
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    // Authorization: TENANT_ADMIN (Permission account) or foundation/sentinel (legacy).
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::TENANT_ADMIN,
+    )?;
 
     // Parse the tenant account
     let tenant = Tenant::try_from(tenant_account)?;

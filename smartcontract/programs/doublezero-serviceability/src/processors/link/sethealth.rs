@@ -1,8 +1,8 @@
 use crate::{
-    error::DoubleZeroError,
+    authorize::authorize,
     processors::validation::validate_program_account,
     serializer::try_acc_write,
-    state::{globalstate::GlobalState, link::*},
+    state::{globalstate::GlobalState, link::*, permission::permission_flags},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -59,11 +59,16 @@ pub fn process_set_health_link(
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
-    if globalstate.health_oracle_pk != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    // Authorization: HEALTH_ORACLE or foundation, via a Permission account or the
+    // legacy health_oracle_pk / foundation_allowlist (HEALTH_ORACLE covers the
+    // oracle key, NETWORK_ADMIN covers foundation).
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::HEALTH_ORACLE | permission_flags::NETWORK_ADMIN,
+    )?;
 
     let mut link: Link = Link::try_from(link_account)?;
 

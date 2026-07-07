@@ -77,7 +77,7 @@ fn build_create_user_ix(
         vec![
             AccountMeta::new(user_pda, false),
             AccountMeta::new(*payer, true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
         ],
     )
 }
@@ -134,7 +134,7 @@ async fn test_create_geolocation_user_invalid_code() {
         vec![
             AccountMeta::new(user_pda, false),
             AccountMeta::new(payer.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
         ],
     );
 
@@ -252,7 +252,7 @@ async fn test_update_geolocation_user_not_owner() {
     // Try to update with a different signer
     let other_signer = Keypair::new();
     // Fund the other signer
-    let transfer_ix = solana_sdk::system_instruction::transfer(
+    let transfer_ix = solana_system_interface::instruction::transfer(
         &payer.pubkey(),
         &other_signer.pubkey(),
         1_000_000_000,
@@ -311,7 +311,7 @@ async fn test_delete_geolocation_user_not_owner_not_foundation() {
     banks_client.process_transaction(tx).await.unwrap();
 
     let other_signer = Keypair::new();
-    let transfer_ix = solana_sdk::system_instruction::transfer(
+    let transfer_ix = solana_system_interface::instruction::transfer(
         &payer.pubkey(),
         &other_signer.pubkey(),
         1_000_000_000,
@@ -408,7 +408,7 @@ async fn test_delete_geolocation_user_by_foundation() {
 
     // Create a user owned by a different keypair.
     let user_owner = Keypair::new();
-    let transfer_ix = solana_sdk::system_instruction::transfer(
+    let transfer_ix = solana_system_interface::instruction::transfer(
         &payer.pubkey(),
         &user_owner.pubkey(),
         2_000_000_000,
@@ -492,7 +492,7 @@ async fn create_geo_probe(
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
             AccountMeta::new(payer.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
         ],
     );
 
@@ -520,7 +520,7 @@ fn build_add_target_ix(
             AccountMeta::new(*user_pda, false),
             AccountMeta::new(*probe_pda, false),
             AccountMeta::new(*payer, true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
         ],
     )
 }
@@ -545,7 +545,7 @@ fn build_remove_target_ix(
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
             AccountMeta::new(*payer, true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
         ],
     )
 }
@@ -1166,7 +1166,7 @@ async fn test_remove_target_foundation_can_remove() {
 
     // Create a user owned by a different keypair.
     let user_owner = Keypair::new();
-    let transfer_ix = solana_sdk::system_instruction::transfer(
+    let transfer_ix = solana_system_interface::instruction::transfer(
         &payer.pubkey(),
         &user_owner.pubkey(),
         2_000_000_000,
@@ -1314,7 +1314,7 @@ async fn test_remove_target_unauthorized_non_owner() {
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
             AccountMeta::new(random_signer.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
         ],
     );
     let tx = Transaction::new_signed_with_payer(
@@ -1469,7 +1469,7 @@ fn build_set_result_destination_ix(
     }
     accounts.push(AccountMeta::new(*payer, true));
     accounts.push(AccountMeta::new_readonly(
-        solana_program::system_program::id(),
+        solana_sdk_ids::system_program::id(),
         false,
     ));
     Instruction::new_with_borsh(
@@ -1679,7 +1679,7 @@ async fn test_set_result_destination_unauthorized() {
 
     // Fund a wrong signer
     let wrong_signer = Keypair::new();
-    let transfer_ix = solana_program::system_instruction::transfer(
+    let transfer_ix = solana_system_interface::instruction::transfer(
         &payer.pubkey(),
         &wrong_signer.pubkey(),
         1_000_000_000,

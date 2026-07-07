@@ -30,7 +30,7 @@ impl CreateTenantCommand {
         let (vrf_ids_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
         client
-            .execute_transaction(
+            .execute_authorized_transaction(
                 DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
                     code,
                     administrator: self.administrator,
@@ -64,7 +64,7 @@ mod tests {
         let administrator = Pubkey::new_unique();
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
                     code: "test".to_string(),

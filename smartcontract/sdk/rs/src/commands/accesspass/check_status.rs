@@ -21,7 +21,7 @@ impl CheckStatusAccessPassCommand {
         let (pda_pubkey, _) =
             get_accesspass_pda(&client.get_program_id(), &self.client_ip, &self.user_payer);
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::CheckStatusAccessPass(CheckStatusAccessPassArgs {}),
             vec![
                 AccountMeta::new(pda_pubkey, false),
@@ -56,7 +56,7 @@ mod tests {
         let (pda_pubkey, _) = get_accesspass_pda(&client.get_program_id(), &client_ip, &payer);
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CheckStatusAccessPass(
                     CheckStatusAccessPassArgs {},

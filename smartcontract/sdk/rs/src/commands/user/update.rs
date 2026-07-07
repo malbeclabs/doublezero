@@ -109,7 +109,7 @@ impl UpdateUserCommand {
             accounts.push(AccountMeta::new(new_tenant_pk, false));
         }
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
                 user_type: self.user_type,
                 cyoa_type: self.cyoa_type,
@@ -211,7 +211,7 @@ mod tests {
             get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
                     user_type: None,

@@ -8,7 +8,8 @@ use doublezero_sdk::record::{
     state::{read_record_data, RecordData},
 };
 use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcSendTransactionConfig};
-use solana_sdk::{commitment_config::CommitmentConfig, signature::Keypair, signer::Signer};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::{signature::Keypair, signer::Signer};
 
 #[tokio::test]
 async fn test_record_client() {

@@ -37,27 +37,29 @@ builds:
     tool: cargo
     binary: doublezero
     targets:
-      - x86_64-unknown-linux-gnu
+      - x86_64-unknown-linux-musl
     command: build
     flags:
       - --package=doublezero
       - --release
     env:
-      - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
+      - CC_x86_64_unknown_linux_musl=musl-gcc
+      - CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
       - BUILD_VERSION={{.Version}}
   - id: doublezero-cli-mainnet-beta       # default env = mainnet-beta
     builder: rust
     tool: cargo
     binary: doublezero
     targets:
-      - x86_64-unknown-linux-gnu
+      - x86_64-unknown-linux-musl
     command: build
     flags:
       - --package=doublezero
       - --release
       - --features=default-mainnet-beta
     env:
-      - RUSTFLAGS=-C linker=x86_64-linux-gnu-gcc
+      - CC_x86_64_unknown_linux_musl=musl-gcc
+      - CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
       - BUILD_VERSION={{.Version}}
 
 archives:

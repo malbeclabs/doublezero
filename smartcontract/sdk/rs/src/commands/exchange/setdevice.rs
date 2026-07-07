@@ -37,7 +37,7 @@ impl SetDeviceExchangeCommand {
         if (exchange.device1_pk == Pubkey::default() && self.device1_pubkey.is_some())
             || (exchange.device1_pk != Pubkey::default() && self.device1_pubkey.is_none())
         {
-            signature = client.execute_transaction(
+            signature = client.execute_authorized_transaction(
                 DoubleZeroInstruction::SetDeviceExchange(ExchangeSetDeviceArgs {
                     index: 1,
                     set: if self.device1_pubkey.is_some() {
@@ -57,7 +57,7 @@ impl SetDeviceExchangeCommand {
         if (exchange.device2_pk == Pubkey::default() && self.device2_pubkey.is_some())
             || (exchange.device2_pk != Pubkey::default() && self.device2_pubkey.is_none())
         {
-            signature = client.execute_transaction(
+            signature = client.execute_authorized_transaction(
                 DoubleZeroInstruction::SetDeviceExchange(ExchangeSetDeviceArgs {
                     index: 2,
                     set: if self.device2_pubkey.is_some() {
@@ -131,7 +131,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .times(1)
             .in_sequence(&mut seq)
             .with(
@@ -193,7 +193,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .times(1)
             .in_sequence(&mut seq)
             .with(
@@ -257,7 +257,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .times(1)
             .in_sequence(&mut seq)
             .with(
@@ -276,7 +276,7 @@ mod tests {
             .returning(|_, _| Ok(Signature::new_unique()));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .times(1)
             .in_sequence(&mut seq)
             .with(
@@ -340,7 +340,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SetDeviceExchange(
                     ExchangeSetDeviceArgs {
@@ -357,7 +357,7 @@ mod tests {
             .returning(|_, _| Ok(Signature::new_unique()));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .times(1)
             .in_sequence(&mut seq)
             .with(

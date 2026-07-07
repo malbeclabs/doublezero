@@ -1,9 +1,13 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::*,
     seeds::{SEED_CONTRIBUTOR, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
-    state::{accounttype::AccountType, contributor::*, globalstate::GlobalState},
+    state::{
+        accounttype::AccountType, contributor::*, globalstate::GlobalState,
+        permission::permission_flags,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -82,9 +86,14 @@ pub fn process_create_contributor(
     let mut globalstate = GlobalState::try_from(globalstate_account)?;
     globalstate.account_index += 1;
 
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    // Authorization: CONTRIBUTOR_ADMIN (Permission account) or foundation (legacy).
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::CONTRIBUTOR_ADMIN,
+    )?;
     // get the PDA pubkey and bump seed for the account contributor & check if it matches the account
     let (expected_pda_account, bump_seed) =
         get_contributor_pda(program_id, globalstate.account_index);

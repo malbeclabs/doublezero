@@ -28,7 +28,7 @@ impl CreateLocationCommand {
         let (pda_pubkey, _) =
             get_location_pda(&client.get_program_id(), globalstate.account_index + 1);
         client
-            .execute_transaction(
+            .execute_authorized_transaction(
                 DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
                     code,
                     name: self.name.clone(),
@@ -65,7 +65,7 @@ mod tests {
         let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
                     code: "test_location".to_string(),

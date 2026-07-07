@@ -1387,17 +1387,11 @@ mod tests {
             DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
                 client_ip: Ipv4Addr::UNSPECIFIED,
                 user_payer: Pubkey::new_unique(),
-                feeds: vec![doublezero_serviceability_feed_seat()],
+                feeds: vec![crate::processors::accesspass::set_feeds::FeedSeatConfig {
+                    max_users: 4,
+                }],
             }),
             "SetAccessPassFeeds",
         );
-    }
-
-    fn doublezero_serviceability_feed_seat() -> crate::state::accesspass::FeedSeat {
-        crate::state::accesspass::FeedSeat {
-            feed_key: Pubkey::new_unique(),
-            max_users: 4,
-            current_users: 0,
-        }
     }
 }

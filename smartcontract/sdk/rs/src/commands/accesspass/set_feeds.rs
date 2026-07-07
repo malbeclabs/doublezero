@@ -1,26 +1,35 @@
 use std::net::Ipv4Addr;
 
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_accesspass_pda,
-    processors::accesspass::set_feeds::SetAccessPassFeedsArgs, state::accesspass::FeedSeat,
+    instructions::DoubleZeroInstruction,
+    pda::get_accesspass_pda,
+    processors::accesspass::set_feeds::{FeedSeatConfig, SetAccessPassFeedsArgs},
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
+/// One feed seat (SKU) to provision: the `Feed` account to reference and its per-feed cap.
+#[derive(Debug, PartialEq, Clone)]
+pub struct FeedSeatProvision {
+    pub feed_key: Pubkey,
+    pub max_users: u16,
+}
+
 /// Provision feed seats (SKUs) onto an EdgeSeat access pass.
 ///
 /// On-chain account layout (see `process_set_access_pass_feeds`):
-///   `[accesspass, globalstate, payer, system, feed_0 .. feed_{N-1}, (optional permission)]`
+///   `[accesspass, globalstate, feed_0 .. feed_{N-1}, payer, system, permission]`
 ///
-/// `DoubleZeroClient::execute_transaction` appends `[payer, system]` after the base accounts
-/// supplied here, so the base list is `[accesspass, globalstate]` followed by one writable `Feed`
-/// account per seat, in the same order as `feeds`.
+/// `DoubleZeroClient::execute_authorized_transaction` appends `[payer, system, permission]` after
+/// the base accounts supplied here, so the base list is `[accesspass, globalstate]` followed by one
+/// writable `Feed` account per seat, in the same order as `feeds`. The provisioning actor is
+/// authorized via its `ACCESS_PASS_ADMIN` Permission, so the authorized variant is required.
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetAccessPassFeedsCommand {
     pub client_ip: Ipv4Addr,
     pub user_payer: Pubkey,
-    pub feeds: Vec<FeedSeat>,
+    pub feeds: Vec<FeedSeatProvision>,
 }
 
 impl SetAccessPassFeedsCommand {
@@ -42,11 +51,17 @@ impl SetAccessPassFeedsCommand {
             accounts.push(AccountMeta::new(seat.feed_key, false));
         }
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
                 client_ip: self.client_ip,
                 user_payer: self.user_payer,
-                feeds: self.feeds.clone(),
+                feeds: self
+                    .feeds
+                    .iter()
+                    .map(|seat| FeedSeatConfig {
+                        max_users: seat.max_users,
+                    })
+                    .collect(),
             }),
             accounts,
         )
@@ -56,14 +71,14 @@ impl SetAccessPassFeedsCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::accesspass::set_feeds::SetAccessPassFeedsCommand,
-        tests::utils::create_test_client, DoubleZeroClient,
+        commands::accesspass::set_feeds::{FeedSeatProvision, SetAccessPassFeedsCommand},
+        tests::utils::create_test_client,
+        DoubleZeroClient,
     };
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
         pda::{get_accesspass_pda, get_globalstate_pda},
-        processors::accesspass::set_feeds::SetAccessPassFeedsArgs,
-        state::accesspass::FeedSeat,
+        processors::accesspass::set_feeds::{FeedSeatConfig, SetAccessPassFeedsArgs},
     };
     use mockall::predicate;
     use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
@@ -80,20 +95,14 @@ mod tests {
         let (accesspass_pubkey, _) =
             get_accesspass_pda(&client.get_program_id(), &client_ip, &payer);
 
-        let seats = vec![FeedSeat {
-            feed_key,
-            max_users: 5,
-            current_users: 0,
-        }];
-
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SetAccessPassFeeds(
                     SetAccessPassFeedsArgs {
                         client_ip,
                         user_payer: payer,
-                        feeds: seats.clone(),
+                        feeds: vec![FeedSeatConfig { max_users: 5 }],
                     },
                 )),
                 predicate::eq(vec![
@@ -107,7 +116,10 @@ mod tests {
         let res = SetAccessPassFeedsCommand {
             client_ip,
             user_payer: payer,
-            feeds: seats,
+            feeds: vec![FeedSeatProvision {
+                feed_key,
+                max_users: 5,
+            }],
         }
         .execute(&client);
         assert!(res.is_ok());

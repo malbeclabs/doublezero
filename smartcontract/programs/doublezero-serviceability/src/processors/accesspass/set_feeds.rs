@@ -10,9 +10,8 @@ use crate::{
         permission::permission_flags,
     },
 };
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use borsh_incremental::BorshDeserializeIncremental;
-use core::fmt;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -21,28 +20,31 @@ use solana_program::{
 };
 use std::net::Ipv4Addr;
 
+/// Upper bound on the number of feed seats provisioned in a single call. Bounds the AccessPass
+/// account growth and the duplicate scan below; mirrors the catalog-side feed limits.
+pub const MAX_ACCESS_PASS_FEEDS: usize = 64;
+
+/// Per-feed provisioning input paired by position with the passed `Feed` accounts. The `feed_key`
+/// is read from the account (not duplicated here) and `current_users` is maintained server-side,
+/// so the only caller-supplied value is the cap.
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
+pub struct FeedSeatConfig {
+    pub max_users: u16,
+}
+
 /// Provision the feed_keys (SKU seats) onto an EdgeSeat access pass. The provisioning actor is the
 /// oracle, authorized via its `ACCESS_PASS_ADMIN` Permission — not the deprecated `feed_authority`
 /// slot. `current_users` is preserved for feeds already present on the pass; caps come from the
 /// caller (seeded from the coupon).
-#[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
+///
+/// Each entry in `feeds` is paired by position with a `Feed` account (see
+/// `process_set_access_pass_feeds` for the account layout).
+#[derive(BorshSerialize, BorshDeserializeIncremental, Debug, PartialEq, Clone)]
 pub struct SetAccessPassFeedsArgs {
     #[incremental(default = Ipv4Addr::UNSPECIFIED)]
     pub client_ip: Ipv4Addr,
     pub user_payer: Pubkey,
-    pub feeds: Vec<FeedSeat>,
-}
-
-impl fmt::Debug for SetAccessPassFeedsArgs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "client_ip: {}, user_payer: {}, feeds: {}",
-            self.client_ip,
-            self.user_payer,
-            self.feeds.len()
-        )
-    }
+    pub feeds: Vec<FeedSeatConfig>,
 }
 
 pub fn process_set_access_pass_feeds(
@@ -50,18 +52,30 @@ pub fn process_set_access_pass_feeds(
     accounts: &[AccountInfo],
     value: &SetAccessPassFeedsArgs,
 ) -> ProgramResult {
+    if value.feeds.len() > MAX_ACCESS_PASS_FEEDS {
+        msg!(
+            "SetAccessPassFeeds accepts at most {} feeds, got {}",
+            MAX_ACCESS_PASS_FEEDS,
+            value.feeds.len()
+        );
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
+    // Account layout: [accesspass, globalstate, feed_0 .. feed_{N-1}, payer, system, (permission)].
+    // The trailing [payer, system, permission] convention matches the sibling accesspass handlers.
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
-    let payer_account = next_account_info(accounts_iter)?;
-    let _system_program = next_account_info(accounts_iter)?;
 
     // One Feed account per requested seat, in the same order as `value.feeds`.
     let mut feed_accounts = Vec::with_capacity(value.feeds.len());
     for _ in 0..value.feeds.len() {
         feed_accounts.push(next_account_info(accounts_iter)?);
     }
+
+    let payer_account = next_account_info(accounts_iter)?;
+    let _system_program = next_account_info(accounts_iter)?;
 
     assert!(payer_account.is_signer, "Payer must be a signer");
     assert_eq!(
@@ -109,20 +123,14 @@ pub fn process_set_access_pass_feeds(
     // here — their accounts are not passed, and an over-count only makes a feed harder to delete
     // (never unsafe), since reference_count solely guards DeleteFeed.
     let mut new_seats: Vec<FeedSeat> = Vec::with_capacity(value.feeds.len());
-    for (seat, feed_account) in value.feeds.iter().zip(feed_accounts.iter()) {
-        assert_eq!(
-            *feed_account.key, seat.feed_key,
-            "Feed account does not match seat feed_key"
-        );
+    for (config, feed_account) in value.feeds.iter().zip(feed_accounts.iter()) {
         assert_eq!(feed_account.owner, program_id, "Invalid Feed Account Owner");
+        let feed_key = *feed_account.key;
 
         // Reject a feed_key listed more than once: it would double-bump reference_count and
         // write duplicate seats, neither of which is reclaimable.
-        if new_seats.iter().any(|s| s.feed_key == seat.feed_key) {
-            msg!(
-                "Duplicate feed_key in SetAccessPassFeeds: {}",
-                seat.feed_key
-            );
+        if new_seats.iter().any(|s| s.feed_key == feed_key) {
+            msg!("Duplicate feed_key in SetAccessPassFeeds: {}", feed_key);
             return Err(DoubleZeroError::InvalidArgument.into());
         }
 
@@ -130,34 +138,34 @@ pub fn process_set_access_pass_feeds(
 
         let current_users = prior_seats
             .iter()
-            .find(|s| s.feed_key == seat.feed_key)
+            .find(|s| s.feed_key == feed_key)
             .map(|s| s.current_users)
             .unwrap_or(0);
 
         // A re-provision must not set a cap below the live count carried over from the prior seat,
         // or the seat would start over its cap (enforced once connect-time ticking lands).
-        if seat.max_users < current_users {
+        if config.max_users < current_users {
             msg!(
                 "max_users {} below current_users {} for feed {}",
-                seat.max_users,
+                config.max_users,
                 current_users,
-                seat.feed_key
+                feed_key
             );
             return Err(DoubleZeroError::InvalidArgument.into());
         }
 
-        if !prior_seats.iter().any(|s| s.feed_key == seat.feed_key) {
+        if !prior_seats.iter().any(|s| s.feed_key == feed_key) {
             assert!(feed_account.is_writable, "Feed Account is not writable");
             feed.reference_count = feed
                 .reference_count
                 .checked_add(1)
-                .ok_or(DoubleZeroError::InvalidIndex)?;
+                .ok_or(DoubleZeroError::ArithmeticOverflow)?;
             try_acc_write(&feed, feed_account, payer_account, accounts)?;
         }
 
         new_seats.push(FeedSeat {
-            feed_key: seat.feed_key,
-            max_users: seat.max_users,
+            feed_key,
+            max_users: config.max_users,
             current_users,
         });
     }

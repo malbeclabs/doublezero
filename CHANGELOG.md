@@ -21,6 +21,10 @@ All notable changes to this project will be documented in this file.
   - Gate Link instructions (create/update/delete/suspend/resume/accept/sethealth) on `NETWORK_ADMIN` (and `HEALTH_ORACLE` for sethealth) or the contributor owner via `authorize()`; variable-length delete/update use split_trailing_permission. (#3981)
 - Collector
   - Harden ledger writes against a slow/degraded RPC endpoint: bound each RPC request (default 15s, `--ledger-rpc-timeout`), size the connection pool above the submitter concurrency (default 128, `--ledger-rpc-max-conns`), and deadline each submission attempt so it fails fast and retries with a fresh blockhash instead of sending an expired one and failing preflight with `BlockhashNotFound`. (#3973)
+- Onchain programs
+  - Restrict granting the `FOUNDATION` permission flag: a plain `PERMISSION_ADMIN` holder can no longer grant `FOUNDATION` (a privilege escalation). Only a `foundation_allowlist` member or an existing `FOUNDATION` holder may grant it, enforced independently of `RequirePermissionAccounts` so foundation members are never locked out.
+- CLI
+  - Add `doublezero permission audit` to check legacy→Permission parity before enabling `require-permission-accounts`: it reports which legacy keys would lose access to migrated instructions (coverage gaps, non-zero exit), super-admin holders, and the non-migrated subsystems that still depend on the GlobalState allowlists.
 - E2E
   - Fix the multicast settlement QA test's seat-allocation ack wait. It read the reused client seat at finalized commitment and could accept the previous run's already-acked state, then withdraw while the current request was still pending. It now waits to observe the request pending before treating a cleared flag as the ack. (#3972)
 - Sentinel

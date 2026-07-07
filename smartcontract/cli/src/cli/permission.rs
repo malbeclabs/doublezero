@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand};
 
-use crate::permission::{delete::*, get::*, list::*, resume::*, set::*, suspend::*};
+use crate::permission::{audit::*, delete::*, get::*, list::*, resume::*, set::*, suspend::*};
 
 #[derive(Args, Debug)]
 pub struct PermissionCliCommand {
@@ -28,4 +28,7 @@ pub enum PermissionCommands {
     /// List all permission accounts
     #[clap()]
     List(ListPermissionCliCommand),
+    /// Audit legacy→Permission parity before enabling require-permission-accounts
+    #[clap()]
+    Audit(AuditPermissionCliCommand),
 }

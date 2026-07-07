@@ -4,9 +4,7 @@
 use borsh::BorshDeserialize;
 use doublezero_config::{Environment, ShredSubscriptionConfig};
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{
-    account::Account, commitment_config::CommitmentConfig, hash::hash, pubkey::Pubkey,
-};
+use solana_sdk::{account::Account, hash::hash, pubkey::Pubkey};
 use std::{future::Future, sync::LazyLock, time::Duration};
 
 /// PDA seed for DeviceHistory accounts (see `sdk/shreds/go/pda.go`).
@@ -73,7 +71,7 @@ pub async fn ensure_device_not_enabled_in_shred_subscription(
 
     check_device_history(&cfg, device_pubkey, move |history_pda| async move {
         fetch_with_retry(SHRED_RPC_ATTEMPTS, SHRED_RPC_RETRY_DELAY, || async {
-            rpc.get_account_with_commitment(&history_pda, CommitmentConfig::confirmed())
+            rpc.get_account_with_commitment(&history_pda, rpc.commitment())
                 .await
                 .map(|response| response.value)
         })

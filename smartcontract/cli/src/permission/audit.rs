@@ -2,76 +2,30 @@ use crate::{doublezerocommand::CliCommand, permission::flags::bitmask_to_names};
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::{commands::permission::list::ListPermissionCommand, GetGlobalStateCommand};
-use doublezero_serviceability::state::{
-    feature_flags::{is_feature_enabled, FeatureFlag},
-    globalstate::GlobalState,
-    permission::{permission_flags, Permission, PermissionStatus},
+use doublezero_serviceability::{
+    authorize::{legacy_keys_for_flags, AUTHORIZE_GATED_FLAGS},
+    state::{
+        feature_flags::{is_feature_enabled, FeatureFlag},
+        globalstate::GlobalState,
+        permission::{permission_flags, Permission, PermissionStatus},
+    },
 };
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, io::Write};
 
-/// Permission flags whose instructions call `authorize()`. Enabling
-/// `RequirePermissionAccounts` only changes authorization for these flags — every
-/// other flag's instructions still gate on `GlobalState` directly, so a Permission
-/// account grants nothing there. Keep in sync with the migrated processors (see
-/// `PERMISSION.md`).
-const MIGRATED_FLAGS: &[(u128, &str)] = &[
-    (permission_flags::PERMISSION_ADMIN, "permission-admin"),
-    (permission_flags::ACCESS_PASS_ADMIN, "access-pass-admin"),
-    (permission_flags::USER_ADMIN, "user-admin"),
-    (permission_flags::TOPOLOGY_ADMIN, "topology-admin"),
-    (permission_flags::RESOURCE_ADMIN, "resource-admin"),
-    (permission_flags::INDEX_ADMIN, "index-admin"),
-];
-
-/// Subsystems still gated on `GlobalState` allowlists/authorities (NOT migrated to
-/// `authorize()`). A Permission account grants NOTHING for these — removing a key
-/// from `foundation_allowlist`/authorities breaks them with no Permission fallback.
-/// Static because the enforcement surface lives in the on-chain program, not the CLI.
-const NON_MIGRATED_SUBSYSTEMS: &[&str] = &[
-    "device (create/update/delete/resume/sethealth, interface/*)",
-    "link (create/update/delete/suspend/resume/sethealth)",
-    "exchange (create/update/delete/suspend/resume/setdevice)",
-    "location (create/update/delete/suspend/resume)",
-    "contributor (create/update/delete/suspend/resume)",
-    "tenant (create/update/delete/add|remove_administrator/update_payment_status)",
-    "multicastgroup (create/update/delete/suspend/reactivate, allowlist publisher|subscriber add/remove)",
-    "user (create_core/update)",
-    "governance (globalstate/*, globalconfig/set, allowlist/foundation|qa/*)",
-];
-
-/// Legacy keys that authorize `flag` today, mirroring
-/// `doublezero_serviceability::authorize::check_legacy_any` for the migrated flags.
+/// Subsystems still gated on `GlobalState` allowlists/authorities WITHOUT routing
+/// through `authorize()`. A Permission account grants NOTHING for these — removing a
+/// key from `foundation_allowlist`/`qa_allowlist`/authorities breaks them with no
+/// Permission fallback, and enabling `RequirePermissionAccounts` does not affect them.
 ///
-/// IMPORTANT: this MUST stay in sync with `check_legacy_any` (authorize.rs). If the
-/// on-chain legacy mapping changes and this does not, the audit will report wrong
-/// gaps. See the maintenance note in `smartcontract/programs/CLAUDE.md`.
-fn legacy_keys_for_flag(gs: &GlobalState, flag: u128) -> Vec<(Pubkey, &'static str)> {
-    let mut keys = Vec::new();
-    // Foundation authorizes every migrated flag in legacy mode.
-    let foundation_flags = permission_flags::PERMISSION_ADMIN
-        | permission_flags::ACCESS_PASS_ADMIN
-        | permission_flags::USER_ADMIN
-        | permission_flags::TOPOLOGY_ADMIN
-        | permission_flags::RESOURCE_ADMIN
-        | permission_flags::INDEX_ADMIN;
-    if flag & foundation_flags != 0 {
-        for pk in &gs.foundation_allowlist {
-            keys.push((*pk, "foundation-allowlist"));
-        }
-    }
-    // ACCESS_PASS_ADMIN also honors the sentinel and feed authorities.
-    if flag & permission_flags::ACCESS_PASS_ADMIN != 0 {
-        if gs.sentinel_authority_pk != Pubkey::default() {
-            keys.push((gs.sentinel_authority_pk, "sentinel-authority"));
-        }
-        if gs.feed_authority_pk != Pubkey::default() {
-            keys.push((gs.feed_authority_pk, "feed-authority"));
-        }
-    }
-    keys
-}
+/// The set of instructions that DO route through `authorize()` is derived from
+/// `AUTHORIZE_GATED_FLAGS` (the serviceability crate owns that list); this const only
+/// records the residual GlobalState-gated privileges that no flag covers.
+const NON_MIGRATED_SUBSYSTEMS: &[&str] = &[
+    "user create (custom owner override requires foundation_allowlist or sentinel_authority; \
+     qa_allowlist/foundation_allowlist bypass device status & seat limits)",
+];
 
 /// A legacy key that authorizes a migrated instruction today but lacks an equivalent
 /// Permission account — i.e. it would lose access if strict mode were enabled.
@@ -102,13 +56,16 @@ fn build_report(gs: &GlobalState, permissions: &HashMap<Pubkey, Permission>) -> 
     let strict_mode_enabled =
         is_feature_enabled(gs.feature_flags, FeatureFlag::RequirePermissionAccounts);
 
-    // Coverage gaps for migrated flags.
+    // Coverage gaps for every flag routed through `authorize()`. The set of gated
+    // flags and the legacy→key mapping both come from the serviceability crate, so
+    // this can never drift from the on-chain authorization.
     let mut gaps = Vec::new();
-    for (flag, flag_name) in MIGRATED_FLAGS {
-        for (key, source) in legacy_keys_for_flag(gs, *flag) {
+    for &flag in AUTHORIZE_GATED_FLAGS {
+        let flag_name = bitmask_to_names(flag).join("|");
+        for (key, source) in legacy_keys_for_flags(gs, flag) {
             // Foundation members can always exercise PERMISSION_ADMIN via the
             // foundation recovery path, so they are never at risk for that flag.
-            if *flag == permission_flags::PERMISSION_ADMIN && gs.foundation_allowlist.contains(&key)
+            if flag == permission_flags::PERMISSION_ADMIN && gs.foundation_allowlist.contains(&key)
             {
                 continue;
             }
@@ -118,7 +75,7 @@ fn build_report(gs: &GlobalState, permissions: &HashMap<Pubkey, Permission>) -> 
             if !covered {
                 gaps.push(Gap {
                     key: key.to_string(),
-                    flag: (*flag_name).to_string(),
+                    flag: flag_name.clone(),
                     legacy_source: source.to_string(),
                 });
             }
@@ -351,6 +308,22 @@ mod tests {
     use doublezero_sdk::AccountType;
     use mockall::predicate;
 
+    /// Every authorize()-gated flag that falls back to the foundation allowlist (i.e.
+    /// a lone foundation member is a gap for each), excluding permission-admin's
+    /// recovery carve-out. Granting all of these to a foundation member clears every
+    /// foundation-backed gap.
+    const ALL_FOUNDATION_GATED_FLAGS: u128 = permission_flags::ACCESS_PASS_ADMIN
+        | permission_flags::USER_ADMIN
+        | permission_flags::NETWORK_ADMIN
+        | permission_flags::INFRA_ADMIN
+        | permission_flags::TENANT_ADMIN
+        | permission_flags::MULTICAST_ADMIN
+        | permission_flags::CONTRIBUTOR_ADMIN
+        | permission_flags::GLOBALSTATE_ADMIN
+        | permission_flags::TOPOLOGY_ADMIN
+        | permission_flags::RESOURCE_ADMIN
+        | permission_flags::INDEX_ADMIN;
+
     fn globalstate_with_foundation(members: Vec<Pubkey>, feature_flags: u128) -> GlobalState {
         GlobalState {
             foundation_allowlist: members,
@@ -379,7 +352,7 @@ mod tests {
         gs.sentinel_authority_pk = sentinel;
         gs.feed_authority_pk = feed;
 
-        let keys = legacy_keys_for_flag(&gs, permission_flags::ACCESS_PASS_ADMIN);
+        let keys = legacy_keys_for_flags(&gs, permission_flags::ACCESS_PASS_ADMIN);
         let pks: Vec<Pubkey> = keys.iter().map(|(k, _)| *k).collect();
         assert!(pks.contains(&foundation));
         assert!(pks.contains(&sentinel));
@@ -396,20 +369,61 @@ mod tests {
 
         let report = build_report(&gs, &permissions);
         assert!(!report.gaps.iter().any(|g| g.flag == "permission-admin"));
-        // user-admin, topology-admin, resource-admin, index-admin, access-pass-admin
-        assert_eq!(report.gaps.len(), 5);
+        // Every foundation-backed authorize()-gated flag except permission-admin
+        // (recovery carve-out): access-pass-admin, user-admin, network-admin,
+        // infra-admin, tenant-admin, multicast-admin, contributor-admin,
+        // globalstate-admin, topology-admin, resource-admin, index-admin.
+        // activator/health-oracle authorities are unset, so no gap for those.
+        assert_eq!(report.gaps.len(), 11);
+    }
+
+    #[test]
+    fn test_infra_network_and_authority_flags_are_audited() {
+        // Regression: the audit previously only checked a handful of flags, silently
+        // missing NETWORK_ADMIN/INFRA_ADMIN/... and the activator/health-oracle
+        // authorities. A foundation member plus those authorities, with no Permission
+        // accounts, must surface a gap for every one of them.
+        let foundation = Pubkey::new_unique();
+        let activator = Pubkey::new_unique();
+        let health_oracle = Pubkey::new_unique();
+        let mut gs = globalstate_with_foundation(vec![foundation], 0);
+        gs.activator_authority_pk = activator;
+        gs.health_oracle_pk = health_oracle;
+
+        let report = build_report(&gs, &HashMap::new());
+
+        for flag in [
+            "network-admin",
+            "infra-admin",
+            "tenant-admin",
+            "multicast-admin",
+            "contributor-admin",
+            "globalstate-admin",
+        ] {
+            assert!(
+                report
+                    .gaps
+                    .iter()
+                    .any(|g| g.flag == flag && g.key == foundation.to_string()),
+                "expected foundation gap for {flag}"
+            );
+        }
+        assert!(report
+            .gaps
+            .iter()
+            .any(|g| g.flag == "activator" && g.key == activator.to_string()));
+        assert!(report
+            .gaps
+            .iter()
+            .any(|g| g.flag == "health-oracle" && g.key == health_oracle.to_string()));
     }
 
     #[test]
     fn test_no_gaps_when_foundation_fully_provisioned() {
         let foundation = Pubkey::new_unique();
         let gs = globalstate_with_foundation(vec![foundation], 0);
-        // Grant every migrated non-recovery flag.
-        let mask = permission_flags::USER_ADMIN
-            | permission_flags::TOPOLOGY_ADMIN
-            | permission_flags::RESOURCE_ADMIN
-            | permission_flags::INDEX_ADMIN
-            | permission_flags::ACCESS_PASS_ADMIN;
+        // Grant every foundation-backed authorize()-gated flag.
+        let mask = ALL_FOUNDATION_GATED_FLAGS;
         let pda = Pubkey::new_unique();
         let permissions = HashMap::from([(
             pda,
@@ -424,11 +438,7 @@ mod tests {
     fn test_suspended_permission_does_not_cover() {
         let foundation = Pubkey::new_unique();
         let gs = globalstate_with_foundation(vec![foundation], 0);
-        let mask = permission_flags::USER_ADMIN
-            | permission_flags::TOPOLOGY_ADMIN
-            | permission_flags::RESOURCE_ADMIN
-            | permission_flags::INDEX_ADMIN
-            | permission_flags::ACCESS_PASS_ADMIN;
+        let mask = ALL_FOUNDATION_GATED_FLAGS;
         let pda = Pubkey::new_unique();
         let permissions = HashMap::from([(
             pda,
@@ -436,8 +446,8 @@ mod tests {
         )]);
 
         let report = build_report(&gs, &permissions);
-        // Suspended → still a gap for all 5 non-recovery flags.
-        assert_eq!(report.gaps.len(), 5);
+        // Suspended → still a gap for all 11 non-recovery foundation-backed flags.
+        assert_eq!(report.gaps.len(), 11);
         assert_eq!(report.suspended, vec![foundation.to_string()]);
     }
 
@@ -482,7 +492,7 @@ mod tests {
 
         assert!(res.is_err(), "expected non-zero exit on gaps");
         let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains("Legacy keys missing Permission coverage: 5"));
+        assert!(output_str.contains("Legacy keys missing Permission coverage: 11"));
         assert!(output_str.contains("DO NOT remove these keys yet"));
     }
 }

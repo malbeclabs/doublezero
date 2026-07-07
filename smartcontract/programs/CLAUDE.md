@@ -52,7 +52,7 @@
 
 ### Permissions
 
-1. **Keep `doublezero permission audit` in sync with `authorize::check_legacy_any`**: The audit's `legacy_keys_for_flag` (in `smartcontract/cli/src/permission/audit.rs`) mirrors the flag→legacy-key mapping in `authorize.rs::check_legacy_any` for the migrated flags. If you change that mapping (or migrate a new instruction to `authorize()`), update `legacy_keys_for_flag` and the `MIGRATED_FLAGS` / `NON_MIGRATED_SUBSYSTEMS` lists — otherwise the audit reports wrong gaps and understates lockout risk before enabling `RequirePermissionAccounts`.
+1. **When migrating an instruction to `authorize()`, update `authorize.rs`'s shared lists**: `doublezero permission audit` derives everything from two items the serviceability crate owns — `AUTHORIZE_GATED_FLAGS` (the flags routed through `authorize()`) and `legacy_keys_for_flags` (the flag→legacy-key mapping, the enumerating inverse of `check_legacy_any`). When you migrate a new instruction to `authorize()` or change the legacy mapping, update `AUTHORIZE_GATED_FLAGS`, `legacy_keys_for_flags`, and `check_legacy_any` together (a `#[cfg(test)]` test asserts `legacy_keys_for_flags` and `check_legacy_any` agree). If a gated flag is missing from `AUTHORIZE_GATED_FLAGS`, the audit silently understates lockout risk before enabling `RequirePermissionAccounts`. Also revisit `NON_MIGRATED_SUBSYSTEMS` in `smartcontract/cli/src/permission/audit.rs` (residual GlobalState-gated privileges no flag covers, e.g. the user-create owner override).
 
 ### Pull Requests
 - Make sure `make rust-lint` and `make rust-test` both pass before posting pull requests

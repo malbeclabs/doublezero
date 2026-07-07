@@ -280,6 +280,113 @@ fn check_legacy_any(payer: &Pubkey, globalstate: &GlobalState, any_of: u128) -> 
     false
 }
 
+/// Every permission flag that some processor passes to [`authorize`], i.e. the flags
+/// whose instructions honor Permission accounts. Enabling
+/// `FeatureFlag::RequirePermissionAccounts` changes authorization ONLY for these
+/// flags; instructions that still gate on `GlobalState` directly (e.g. the
+/// user-create owner override) are unaffected.
+///
+/// This is the canonical list the `doublezero permission audit` command consumes to
+/// detect coverage gaps before strict mode is enabled. A flag omitted here is a silent
+/// lockout hazard, so this MUST list every flag any processor hands to [`authorize`].
+/// When a new instruction is migrated to [`authorize`], add its flag here.
+pub const AUTHORIZE_GATED_FLAGS: &[u128] = &[
+    permission_flags::PERMISSION_ADMIN,
+    permission_flags::ACCESS_PASS_ADMIN,
+    permission_flags::USER_ADMIN,
+    permission_flags::NETWORK_ADMIN,
+    permission_flags::INFRA_ADMIN,
+    permission_flags::TENANT_ADMIN,
+    permission_flags::MULTICAST_ADMIN,
+    permission_flags::CONTRIBUTOR_ADMIN,
+    permission_flags::GLOBALSTATE_ADMIN,
+    permission_flags::TOPOLOGY_ADMIN,
+    permission_flags::RESOURCE_ADMIN,
+    permission_flags::INDEX_ADMIN,
+    permission_flags::ACTIVATOR,
+    permission_flags::HEALTH_ORACLE,
+];
+
+/// Enumerates the legacy `GlobalState` keys that authorize `any_of_flags` today, each
+/// paired with a static label naming its source. This is the enumerating inverse of
+/// [`check_legacy_any`]: that function answers "is this payer authorized?", this one
+/// answers "which keys are authorized?".
+///
+/// The two MUST agree; a `#[cfg(test)]` equivalence test keeps them in sync. This
+/// function exists so off-chain tooling (`doublezero permission audit`) can share a
+/// single source of truth with the on-chain authorization instead of hand-mirroring
+/// the mapping. It is not used on the [`authorize`] hot path (which stays
+/// allocation-free via [`check_legacy_any`]).
+///
+/// Default (unset, all-zero) authority keys are omitted: an unset authority authorizes
+/// no one, and a signer can never be the default pubkey.
+pub fn legacy_keys_for_flags(
+    globalstate: &GlobalState,
+    any_of_flags: u128,
+) -> Vec<(Pubkey, &'static str)> {
+    let mut keys: Vec<(Pubkey, &'static str)> = Vec::new();
+
+    // Flags that fall back to the foundation allowlist in legacy mode.
+    const FOUNDATION_FLAGS: u128 = permission_flags::FOUNDATION
+        | permission_flags::USER_ADMIN
+        | permission_flags::ACCESS_PASS_ADMIN
+        | permission_flags::NETWORK_ADMIN
+        | permission_flags::TENANT_ADMIN
+        | permission_flags::MULTICAST_ADMIN
+        | permission_flags::PERMISSION_ADMIN
+        | permission_flags::INFRA_ADMIN
+        | permission_flags::GLOBALSTATE_ADMIN
+        | permission_flags::CONTRIBUTOR_ADMIN
+        | permission_flags::TOPOLOGY_ADMIN
+        | permission_flags::RESOURCE_ADMIN
+        | permission_flags::INDEX_ADMIN;
+    if any_of_flags & FOUNDATION_FLAGS != 0 {
+        for pk in &globalstate.foundation_allowlist {
+            if *pk != Pubkey::default() {
+                keys.push((*pk, "foundation-allowlist"));
+            }
+        }
+    }
+
+    if any_of_flags & permission_flags::QA != 0 {
+        for pk in &globalstate.qa_allowlist {
+            if *pk != Pubkey::default() {
+                keys.push((*pk, "qa-allowlist"));
+            }
+        }
+    }
+
+    // Sentinel authorizes ACCESS_PASS_ADMIN, TENANT_ADMIN, MULTICAST_ADMIN (and SENTINEL).
+    const SENTINEL_FLAGS: u128 = permission_flags::SENTINEL
+        | permission_flags::ACCESS_PASS_ADMIN
+        | permission_flags::TENANT_ADMIN
+        | permission_flags::MULTICAST_ADMIN;
+    if any_of_flags & SENTINEL_FLAGS != 0 && globalstate.sentinel_authority_pk != Pubkey::default()
+    {
+        keys.push((globalstate.sentinel_authority_pk, "sentinel-authority"));
+    }
+
+    // Feed authority authorizes ACCESS_PASS_ADMIN (and FEED_AUTHORITY).
+    const FEED_FLAGS: u128 = permission_flags::FEED_AUTHORITY | permission_flags::ACCESS_PASS_ADMIN;
+    if any_of_flags & FEED_FLAGS != 0 && globalstate.feed_authority_pk != Pubkey::default() {
+        keys.push((globalstate.feed_authority_pk, "feed-authority"));
+    }
+
+    if any_of_flags & permission_flags::ACTIVATOR != 0
+        && globalstate.activator_authority_pk != Pubkey::default()
+    {
+        keys.push((globalstate.activator_authority_pk, "activator-authority"));
+    }
+
+    if any_of_flags & permission_flags::HEALTH_ORACLE != 0
+        && globalstate.health_oracle_pk != Pubkey::default()
+    {
+        keys.push((globalstate.health_oracle_pk, "health-oracle"));
+    }
+
+    keys
+}
+
 /// Splits the trailing accounts of a variable-length instruction into its
 /// `(payer, system_program, leading, permission)` parts.
 ///
@@ -392,6 +499,85 @@ mod tests {
         GlobalState {
             feed_authority_pk: *authority,
             ..GlobalState::default()
+        }
+    }
+
+    /// `legacy_keys_for_flags` MUST enumerate exactly the keys that
+    /// `check_legacy_any` accepts, or `permission audit` (which relies on the former)
+    /// would understate lockout risk relative to the on-chain check (the latter). This
+    /// guards the two from drifting apart.
+    #[test]
+    fn test_legacy_keys_for_flags_matches_check_legacy_any() {
+        // A GlobalState with every authority/allowlist populated by a distinct key.
+        let foundation = Pubkey::new_unique();
+        let qa = Pubkey::new_unique();
+        let activator = Pubkey::new_unique();
+        let sentinel = Pubkey::new_unique();
+        let health_oracle = Pubkey::new_unique();
+        let feed = Pubkey::new_unique();
+        let outsider = Pubkey::new_unique();
+        let gs = GlobalState {
+            foundation_allowlist: vec![foundation],
+            qa_allowlist: vec![qa],
+            activator_authority_pk: activator,
+            sentinel_authority_pk: sentinel,
+            health_oracle_pk: health_oracle,
+            feed_authority_pk: feed,
+            ..GlobalState::default()
+        };
+
+        let all_flags = [
+            permission_flags::FOUNDATION,
+            permission_flags::PERMISSION_ADMIN,
+            permission_flags::GLOBALSTATE_ADMIN,
+            permission_flags::CONTRIBUTOR_ADMIN,
+            permission_flags::INDEX_ADMIN,
+            permission_flags::INFRA_ADMIN,
+            permission_flags::NETWORK_ADMIN,
+            permission_flags::TOPOLOGY_ADMIN,
+            permission_flags::RESOURCE_ADMIN,
+            permission_flags::TENANT_ADMIN,
+            permission_flags::MULTICAST_ADMIN,
+            permission_flags::FEED_AUTHORITY,
+            permission_flags::ACTIVATOR,
+            permission_flags::SENTINEL,
+            permission_flags::USER_ADMIN,
+            permission_flags::ACCESS_PASS_ADMIN,
+            permission_flags::HEALTH_ORACLE,
+            permission_flags::QA,
+        ];
+        let candidates = [
+            foundation,
+            qa,
+            activator,
+            sentinel,
+            health_oracle,
+            feed,
+            outsider,
+        ];
+
+        for &flag in &all_flags {
+            let enumerated: Vec<Pubkey> = legacy_keys_for_flags(&gs, flag)
+                .into_iter()
+                .map(|(k, _)| k)
+                .collect();
+            for &key in &candidates {
+                assert_eq!(
+                    enumerated.contains(&key),
+                    check_legacy_any(&key, &gs, flag),
+                    "mismatch for flag {flag:#x} key {key}"
+                );
+            }
+        }
+
+        // Every authorize-gated flag must resolve to at least one legacy key with this
+        // fully-populated GlobalState — otherwise the audit could never surface a gap
+        // for it.
+        for &flag in AUTHORIZE_GATED_FLAGS {
+            assert!(
+                !legacy_keys_for_flags(&gs, flag).is_empty(),
+                "no legacy keys enumerated for gated flag {flag:#x}"
+            );
         }
     }
 

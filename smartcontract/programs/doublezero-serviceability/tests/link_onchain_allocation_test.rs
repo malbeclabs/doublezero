@@ -19,6 +19,8 @@ use doublezero_serviceability::{
         device::{DeviceDesiredStatus, DeviceType},
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
         link::*,
+        permission::permission_flags,
+        topology::TopologyConstraint,
     },
 };
 use solana_program_test::*;
@@ -1276,4 +1278,327 @@ async fn test_accept_link_with_onchain_allocation() {
         link.tunnel_id, link.tunnel_net
     );
     println!("test_accept_link_with_onchain_allocation PASSED");
+}
+
+/// A `NETWORK_ADMIN` Permission holder — who is neither the contributor owner nor
+/// a foundation member — can delete a link whose topology union is non-empty.
+///
+/// This drives the variable-length `delete` path end-to-end through an appended
+/// Permission account, exercising `split_trailing_permission`: the payer's
+/// Permission PDA must be peeled off the *tail* past the caller-controlled
+/// topology accounts (`[topology_union.., payer, system, permission]`). The
+/// negative half proves the disambiguation isn't a blanket allow — with no
+/// Permission account appended, the same non-owner caller is denied because the
+/// legacy `NETWORK_ADMIN` mapping is foundation-only.
+#[tokio::test]
+async fn test_delete_link_via_network_admin_permission_with_topology_union() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    let (
+        device_a_pubkey,
+        device_z_pubkey,
+        contributor_pubkey,
+        device_tunnel_block_pda,
+        link_ids_pda,
+    ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    // Create + activate the link (tagged into the unicast-default topology).
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
+            code: "wan1".to_string(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 9000,
+            delay_ns: 500_000,
+            jitter_ns: 50000,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: Some("Ethernet1".to_string()),
+            desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Drain the link (delete rejects Activated) — done by the contributor owner.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            status: Some(LinkStatus::SoftDrained),
+            use_onchain_allocation: true,
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let link = get_account_data(&mut banks_client, link_pubkey)
+        .await
+        .expect("Link not found")
+        .get_tunnel()
+        .unwrap();
+    let owner = link.owner;
+    assert_eq!(
+        link.link_topologies,
+        vec![unicast_default_pda],
+        "link should be tagged into exactly the unicast-default topology"
+    );
+
+    // A network admin that is neither the contributor owner nor a foundation member.
+    let admin = solana_sdk::signer::keypair::Keypair::new();
+    transfer(&mut banks_client, &payer, &admin.pubkey(), 1_000_000_000).await;
+    let (admin_permission_pda, _) = get_permission_pda(&program_id, &admin.pubkey());
+
+    // Grant NETWORK_ADMIN to the admin (the foundation payer authorizes the create).
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(permission::create::PermissionCreateArgs {
+            user_payer: admin.pubkey(),
+            permissions: permission_flags::NETWORK_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(admin_permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let delete_ix = DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+        use_onchain_deallocation: true,
+    });
+    // The topology union (unicast-default) trails the fixed accounts; payer/system/
+    // permission are appended after it, matching the on-wire layout the SDK emits.
+    let delete_accounts = vec![
+        AccountMeta::new(link_pubkey, false),
+        AccountMeta::new(contributor_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+        AccountMeta::new(device_a_pubkey, false),
+        AccountMeta::new(device_z_pubkey, false),
+        AccountMeta::new(device_tunnel_block_pda, false),
+        AccountMeta::new(link_ids_pda, false),
+        AccountMeta::new(owner, false),
+        AccountMeta::new(unicast_default_pda, false),
+    ];
+
+    // Negative: without the Permission account on the tail, the non-owner admin is
+    // denied (legacy NETWORK_ADMIN = foundation only).
+    let blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx =
+        create_authorized_transaction(program_id, &delete_ix, &delete_accounts, &admin, None);
+    tx.try_sign(&[&admin], blockhash).unwrap();
+    let result = banks_client.process_transaction(tx).await;
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(1),
+        ))) => {} // InvalidOwnerPubkey
+        _ => panic!("Expected InvalidOwnerPubkey (Custom(1)) without permission, got {result:?}"),
+    }
+    assert!(
+        get_account_data(&mut banks_client, link_pubkey)
+            .await
+            .is_some(),
+        "link must survive the unauthorized delete"
+    );
+
+    // Positive: with the Permission account appended after the topology union, the
+    // network admin can delete the link.
+    let blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx = create_authorized_transaction(
+        program_id,
+        &delete_ix,
+        &delete_accounts,
+        &admin,
+        Some(AccountMeta::new_readonly(admin_permission_pda, false)),
+    );
+    tx.try_sign(&[&admin], blockhash).unwrap();
+    banks_client.process_transaction(tx).await.unwrap();
+
+    assert!(
+        get_account_data(&mut banks_client, link_pubkey)
+            .await
+            .is_none(),
+        "link should be closed by the network admin"
+    );
+
+    println!("test_delete_link_via_network_admin_permission_with_topology_union PASSED");
+}
+
+/// A `NETWORK_ADMIN` Permission holder can update a link's `link_topologies` — a
+/// foundation/network-admin-only field — while a non-empty topology union rides in
+/// the same account tail as the appended Permission account. This is the `update`
+/// counterpart to the delete test above: it proves `split_trailing_permission`
+/// disambiguates the Permission PDA from the caller-controlled topology accounts on
+/// the update path too.
+#[tokio::test]
+async fn test_update_link_topologies_via_network_admin_permission() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    let (
+        device_a_pubkey,
+        device_z_pubkey,
+        contributor_pubkey,
+        device_tunnel_block_pda,
+        link_ids_pda,
+    ) = setup_wan_link_infra(&mut banks_client, &payer, program_id, globalstate_pubkey).await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+
+    let unicast_default_pda = create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
+            code: "wan1".to_string(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 9000,
+            delay_ns: 500_000,
+            jitter_ns: 50000,
+            side_a_iface_name: "Ethernet0".to_string(),
+            side_z_iface_name: Some("Ethernet1".to_string()),
+            desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Create a second topology to add to the link's topology set.
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+    let (second_topology_pda, _) = get_topology_pda(&program_id, "unicast-alt");
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTopology(topology::create::TopologyCreateArgs {
+            name: "unicast-alt".to_string(),
+            constraint: TopologyConstraint::IncludeAny,
+        }),
+        vec![
+            AccountMeta::new(second_topology_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // A network admin that is neither the contributor owner nor a foundation member.
+    let admin = solana_sdk::signer::keypair::Keypair::new();
+    transfer(&mut banks_client, &payer, &admin.pubkey(), 1_000_000_000).await;
+    let (admin_permission_pda, _) = get_permission_pda(&program_id, &admin.pubkey());
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(permission::create::PermissionCreateArgs {
+            user_payer: admin.pubkey(),
+            permissions: permission_flags::NETWORK_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(admin_permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Add the second topology via UpdateLink. The caller passes the union of old ∪ new
+    // link_topologies (both PDAs) as writable accounts; they trail the fixed accounts,
+    // and payer/system/permission are appended after them.
+    let update_ix = DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+        link_topologies: Some(vec![unicast_default_pda, second_topology_pda]),
+        ..Default::default()
+    });
+    let update_accounts = vec![
+        AccountMeta::new(link_pubkey, false),
+        AccountMeta::new(contributor_pubkey, false),
+        AccountMeta::new_readonly(globalstate_pubkey, false),
+        AccountMeta::new(unicast_default_pda, false),
+        AccountMeta::new(second_topology_pda, false),
+    ];
+    let blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx = create_authorized_transaction(
+        program_id,
+        &update_ix,
+        &update_accounts,
+        &admin,
+        Some(AccountMeta::new_readonly(admin_permission_pda, false)),
+    );
+    tx.try_sign(&[&admin], blockhash).unwrap();
+    banks_client.process_transaction(tx).await.unwrap();
+
+    let link = get_account_data(&mut banks_client, link_pubkey)
+        .await
+        .expect("Link not found")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(
+        link.link_topologies,
+        vec![unicast_default_pda, second_topology_pda],
+        "network admin should have added the second topology to link_topologies"
+    );
+
+    println!("test_update_link_topologies_via_network_admin_permission PASSED");
 }

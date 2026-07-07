@@ -1,8 +1,11 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     processors::validation::validate_program_account,
     serializer::try_acc_write,
-    state::{contributor::Contributor, globalstate::GlobalState, link::*},
+    state::{
+        contributor::Contributor, globalstate::GlobalState, link::*, permission::permission_flags,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -55,15 +58,24 @@ pub fn process_resume_link(
     let globalstate = GlobalState::try_from(globalstate_account)?;
     let contributor = Contributor::try_from(contributor_account)?;
 
-    let payer_in_foundation = globalstate.foundation_allowlist.contains(payer_account.key);
+    // Authorization: the contributor owner, or NETWORK_ADMIN (Permission account) /
+    // foundation (legacy). Privileged callers bypass the per-link contributor binding.
+    let is_privileged = authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::NETWORK_ADMIN,
+    )
+    .is_ok();
 
-    if contributor.owner != *payer_account.key && !payer_in_foundation {
+    if contributor.owner != *payer_account.key && !is_privileged {
         return Err(DoubleZeroError::InvalidOwnerPubkey.into());
     }
 
     let mut link: Link = Link::try_from(link_account)?;
 
-    if !payer_in_foundation && link.contributor_pk != *contributor_account.key {
+    if !is_privileged && link.contributor_pk != *contributor_account.key {
         return Err(DoubleZeroError::NotAllowed.into());
     }
 

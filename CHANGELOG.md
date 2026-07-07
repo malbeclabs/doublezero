@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Serviceability
+  - Gate Device and device-interface instructions on `NETWORK_ADMIN` (and `HEALTH_ORACLE` for sethealth) or the contributor owner via `authorize()`; internal foundation-only sub-gates now also accept NETWORK_ADMIN holders. (#3980)
   - Gate UpdateUser on `USER_ADMIN`, CheckAccessPass on `ACTIVATOR`, and accesspass CheckStatus on `ACTIVATOR|USER_ADMIN` via `authorize()`; user create and set_bgp_status remain owner-authorized (not part of the admin Permission system). (#3984)
   - Gate Tenant instructions (create/update/delete/add_administrator/remove_administrator/update_payment_status) on `TENANT_ADMIN` or foundation/sentinel via `authorize()`. (#3983)
   - Gate MulticastGroup CRUD on `MULTICAST_ADMIN` and publisher/subscriber allowlist add/remove on `mgroup.owner OR MULTICAST_ADMIN`/`ACCESS_PASS_ADMIN` via `authorize()`; add handlers use split_trailing_permission. (#3982)

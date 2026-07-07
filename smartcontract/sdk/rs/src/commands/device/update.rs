@@ -86,7 +86,7 @@ impl UpdateDeviceCommand {
             resource_count += max_count + 1;
         }
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                 code,
                 contributor_pk: self.contributor_pk,
@@ -206,7 +206,7 @@ mod tests {
             .with(predicate::eq(device_pubkey))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
                     code: Some("test_device".to_string()),

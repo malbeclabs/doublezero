@@ -5,6 +5,7 @@ use doublezero_serviceability::{
         accesspass::set::SetAccessPassArgs,
         contributor::create::ContributorCreateArgs,
         device::update::DeviceUpdateArgs,
+        permission::create::PermissionCreateArgs,
         tenant::create::TenantCreateArgs,
         user::{check_access_pass, create::*, delete::*, requestban::*, update::*},
         *,
@@ -15,6 +16,7 @@ use doublezero_serviceability::{
         accounttype::AccountType,
         contributor::ContributorStatus,
         device::*,
+        permission::permission_flags,
         user::{UserCYOA, UserStatus, UserType},
     },
 };
@@ -527,6 +529,91 @@ async fn test_user() {
     assert_eq!(tenant_2.reference_count, 1);
 
     println!("✅ Tenant reassignment succeeded");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 10c. Testing tenant reassignment via a USER_ADMIN Permission account (length-5 tail)...");
+
+    // Blocks 10a/10b drove UpdateUser through the legacy foundation path. This
+    // block exercises the new Permission-account authorization path AND the
+    // highest-risk account layout: the optional tenant pair as *leading*
+    // accounts plus the payer's auto-appended Permission PDA on the tail
+    // ([old_tenant, new_tenant, payer, system, permission] — length 5), which
+    // `split_trailing_permission` must disambiguate. A non-foundation key
+    // holding USER_ADMIN reassigns the user from tenant_2 back to tenant_1.
+    let user_admin = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &user_admin.pubkey(),
+        2_000_000_000,
+    )
+    .await;
+
+    let (permission_pda, _) = get_permission_pda(&program_id, &user_admin.pubkey());
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: user_admin.pubkey(),
+            permissions: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx = create_authorized_transaction(
+        program_id,
+        &DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
+            tenant_pk: Some(tenant_1_pubkey),
+            dz_prefix_count: 1,
+            ..UserUpdateArgs::default()
+        }),
+        &[
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+            // Leading tenant pair: old_tenant = tenant_2 (current), new_tenant = tenant_1.
+            AccountMeta::new(tenant_2_pubkey, false),
+            AccountMeta::new(tenant_1_pubkey, false),
+        ],
+        &user_admin,
+        Some(AccountMeta::new_readonly(permission_pda, false)),
+    );
+    tx.try_sign(&[&user_admin], recent_blockhash).unwrap();
+    banks_client
+        .process_transaction(tx)
+        .await
+        .expect("USER_ADMIN permission holder should be able to reassign the user's tenant");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.tenant_pk, tenant_1_pubkey);
+
+    let tenant_1 = get_account_data(&mut banks_client, tenant_1_pubkey)
+        .await
+        .expect("Unable to get Tenant")
+        .get_tenant()
+        .unwrap();
+    let tenant_2 = get_account_data(&mut banks_client, tenant_2_pubkey)
+        .await
+        .expect("Unable to get Tenant")
+        .get_tenant()
+        .unwrap();
+    assert_eq!(tenant_1.reference_count, 1);
+    assert_eq!(tenant_2.reference_count, 0);
+
+    println!("✅ Tenant reassignment via USER_ADMIN Permission account succeeded");
     /*****************************************************************************************************************************************************/
     println!("🟢 11. Testing User deletion (atomic)...");
     // DeleteUser is atomic: deallocates resources + closes the account in one call.

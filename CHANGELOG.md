@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - Serviceability
   - Gate UpdateUser on `USER_ADMIN`, CheckAccessPass on `ACTIVATOR`, and accesspass CheckStatus on `ACTIVATOR|USER_ADMIN` via `authorize()`; user create and set_bgp_status remain owner-authorized (not part of the admin Permission system). (#3984)
+  - Gate Tenant instructions (create/update/delete/add_administrator/remove_administrator/update_payment_status) on `TENANT_ADMIN` or foundation/sentinel via `authorize()`. (#3983)
   - Gate MulticastGroup CRUD on `MULTICAST_ADMIN` and publisher/subscriber allowlist add/remove on `mgroup.owner OR MULTICAST_ADMIN`/`ACCESS_PASS_ADMIN` via `authorize()`; add handlers use split_trailing_permission. (#3982)
   - Require a Permission account (or the legacy foundation authority) for GlobalState, GlobalConfig, and foundation/QA allowlist admin instructions, gated on `GLOBALSTATE_ADMIN` via `authorize()`. (#3977)
   - Gate Contributor instructions (create/update/suspend/resume/delete) on `CONTRIBUTOR_ADMIN` or foundation; the contributor owner retains the ops-manager-only update path. (#3978)

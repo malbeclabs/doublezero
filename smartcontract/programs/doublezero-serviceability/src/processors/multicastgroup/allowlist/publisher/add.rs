@@ -1,4 +1,5 @@
 use crate::{
+    authorize::{authorize, split_trailing_permission},
     error::DoubleZeroError,
     pda::get_accesspass_pda,
     processors::{accesspass::airdrop_user_credits, validation::validate_program_account},
@@ -9,6 +10,7 @@ use crate::{
         accounttype::AccountType,
         globalstate::GlobalState,
         multicastgroup::MulticastGroup,
+        permission::permission_flags,
     },
 };
 use borsh::BorshSerialize;
@@ -51,17 +53,16 @@ pub fn process_add_multicastgroup_pub_allowlist(
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
 
-    // Optional user_payer account for transferring connect credits (backwards compatible). Clients
-    // that fund the user pass it before payer/system_program; older clients omit it and skip the
-    // airdrop, preserving the previous behavior.
-    let user_payer_account = if accounts.len() >= 6 {
-        Some(next_account_info(accounts_iter)?)
-    } else {
-        None
-    };
-
-    let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    // Remaining tail: [user_payer?, payer, system, permission?]. The optional
+    // user_payer account (connect-credit funding, backwards compatible) precedes
+    // payer/system; the optional payer Permission PDA (appended by the SDK when it
+    // exists on-chain) is last. split_trailing_permission tells them apart by PDA
+    // match, so the two optional accounts are unambiguous regardless of the total
+    // account count.
+    let remaining: Vec<&AccountInfo> = accounts_iter.collect();
+    let (payer_account, system_program, leading, permission_account) =
+        split_trailing_permission(program_id, &remaining)?;
+    let user_payer_account = leading.first().copied();
 
     #[cfg(test)]
     msg!("process_add_multicastgroup_pub_allowlist({:?})", value);
@@ -86,10 +87,17 @@ pub fn process_add_multicastgroup_pub_allowlist(
     let mgroup = MulticastGroup::try_from(mgroup_account)?;
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
-    // Check whether mgroup is authorized
-    let is_authorized = (mgroup.owner == *payer_account.key)
-        || globalstate.sentinel_authority_pk == *payer_account.key
-        || globalstate.foundation_allowlist.contains(payer_account.key);
+    // Authorization: the multicast group owner, or MULTICAST_ADMIN (Permission
+    // account) / foundation-or-sentinel (legacy).
+    let is_authorized = mgroup.owner == *payer_account.key
+        || authorize(
+            program_id,
+            &mut permission_account.into_iter(),
+            payer_account.key,
+            &globalstate,
+            permission_flags::MULTICAST_ADMIN,
+        )
+        .is_ok();
     if !is_authorized {
         return Err(DoubleZeroError::NotAllowed.into());
     }

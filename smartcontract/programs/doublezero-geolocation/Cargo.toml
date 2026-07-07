@@ -23,6 +23,8 @@ serde_bytes = { workspace = true, optional = true }
 solana-bincode.workspace = true
 solana-loader-v3-interface.workspace = true
 solana-program.workspace = true
+solana-sdk-ids.workspace = true
+solana-system-interface.workspace = true
 doublezero-program-common.workspace = true
 doublezero-serviceability.workspace = true
 thiserror.workspace = true
@@ -30,6 +32,8 @@ thiserror.workspace = true
 [dev-dependencies]
 bincode.workspace = true
 solana-sdk.workspace = true
+solana-sdk-ids.workspace = true
+solana-compute-budget-interface.workspace = true
 solana-program-test.workspace = true
 
 [build-dependencies]

@@ -17,7 +17,7 @@ fi
 
 # Build the program
 echo "Build the program"
-cargo build-sbf --manifest-path ../programs/doublezero-serviceability/Cargo.toml -- -Znext-lockfile-bump --target-dir ${CARGO_TARGET_DIR}
+cargo build-sbf --tools-version "${SBF_TOOLS_VERSION:-v1.54}" --manifest-path ../programs/doublezero-serviceability/Cargo.toml -- -Znext-lockfile-bump --target-dir ${CARGO_TARGET_DIR}
 cp ${CARGO_TARGET_DIR}/deploy/doublezero_serviceability.so ./target/doublezero_serviceability.so
 
 echo "Build the client"

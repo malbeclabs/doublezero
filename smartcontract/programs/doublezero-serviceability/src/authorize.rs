@@ -316,7 +316,7 @@ mod tests {
             permission::{Permission, PermissionStatus},
         },
     };
-    use solana_program::{account_info::AccountInfo, clock::Epoch, pubkey::Pubkey};
+    use solana_program::{account_info::AccountInfo, pubkey::Pubkey};
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -867,7 +867,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -904,7 +903,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -946,7 +944,6 @@ mod tests {
                 &mut data,
                 &program_id,
                 false,
-                Epoch::default(),
             );
             let accounts = [account];
             let mut iter = accounts.iter();
@@ -978,7 +975,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1010,7 +1006,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1046,7 +1041,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1086,7 +1080,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1126,7 +1119,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1163,7 +1155,6 @@ mod tests {
             &mut data,
             &wrong_owner,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1204,7 +1195,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1242,7 +1232,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1280,7 +1269,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1324,7 +1312,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1370,7 +1357,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1409,7 +1395,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();
@@ -1451,7 +1436,6 @@ mod tests {
             &mut data,
             &program_id,
             false,
-            Epoch::default(),
         );
         let accounts = [account];
         let mut iter = accounts.iter();

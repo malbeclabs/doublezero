@@ -1043,7 +1043,7 @@ mod tests {
         TMPDIR.get_or_init(|| create_temp_config().expect("Failed to create temp config"))
     }
 
-    #[ctor::ctor]
+    #[ctor::ctor(unsafe)]
     fn setup() {
         let temp_dir = get_temp_dir();
         println!("Using TMPDIR = {}", temp_dir.path().display());

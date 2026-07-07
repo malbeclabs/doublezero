@@ -27,10 +27,10 @@ use doublezero_geolocation::{
         },
     },
 };
+use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_program_test::*;
 use solana_sdk::{
     account::AccountSharedData,
-    compute_budget::ComputeBudgetInstruction,
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     rent::Rent,
@@ -149,7 +149,7 @@ async fn measure_add_target(target_count: usize) -> Measurement {
                 AccountMeta::new(user_pda, false),
                 AccountMeta::new(probe_pda, false),
                 AccountMeta::new(payer_pubkey, true),
-                AccountMeta::new_readonly(solana_program::system_program::id(), false),
+                AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
             ],
         ),
     ];

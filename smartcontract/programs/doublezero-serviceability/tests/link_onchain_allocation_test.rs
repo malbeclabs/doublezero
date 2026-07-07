@@ -873,7 +873,7 @@ async fn test_update_link_tunnel_reallocation_rejects_non_foundation() {
     let non_foundation_payer = solana_sdk::signer::keypair::Keypair::new();
 
     // Fund the non-foundation payer
-    let transfer_ix = solana_sdk::system_instruction::transfer(
+    let transfer_ix = solana_system_interface::instruction::transfer(
         &payer.pubkey(),
         &non_foundation_payer.pubkey(),
         1_000_000_000,

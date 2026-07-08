@@ -225,9 +225,22 @@ impl DZClient {
         ]
     }
 
+    /// Whether landing `instruction` can change whether the payer's Permission PDA
+    /// exists on-chain, so the memoized lookup must be dropped. `CreatePermission` and
+    /// `DeletePermission` flip existence; `UpdatePermission` only changes the flags
+    /// bitmask (the cached value is just the PDA address, so it is unaffected).
+    fn instruction_invalidates_permission_cache(instruction: &DoubleZeroInstruction) -> bool {
+        matches!(
+            instruction,
+            DoubleZeroInstruction::CreatePermission(_) | DoubleZeroInstruction::DeletePermission(_)
+        )
+    }
+
     /// Resolve the payer's Permission PDA as a read-only [`AccountMeta`], or
     /// `None` when no Permission account exists on-chain. The lookup is retried
-    /// on transient RPC errors and memoized for the client's lifetime.
+    /// on transient RPC errors and memoized until a `CreatePermission` /
+    /// `DeletePermission` this client lands invalidates it (see
+    /// [`Self::instruction_invalidates_permission_cache`]).
     fn resolve_permission_account(&self, payer: &Pubkey) -> Option<AccountMeta> {
         let mut cache = self.permission_account_cache.lock().unwrap();
         if let Some(cached) = cache.as_ref() {
@@ -288,7 +301,17 @@ impl DZClient {
                 self.client.commitment(),
                 send_config,
             ) {
-            Ok(sig) => Ok(sig),
+            Ok(sig) => {
+                // A CreatePermission/DeletePermission this client just landed can flip
+                // whether the payer's Permission PDA exists on-chain. Drop the memoized
+                // lookup so the next authorized transaction re-resolves it — covering the
+                // bootstrap case where a long-lived client creates its own Permission
+                // account and then performs another gated action in the same session.
+                if Self::instruction_invalidates_permission_cache(&instruction) {
+                    *self.permission_account_cache.lock().unwrap() = None;
+                }
+                Ok(sig)
+            }
             Err(client_err) => {
                 let tx_err = match client_err.kind.as_ref() {
                     ClientErrorKind::TransactionError(e) => Some(e.clone()),
@@ -905,6 +928,33 @@ mod assemble_instructions_tests {
         let perm = &metas[base.len() + 2];
         assert_eq!(perm.pubkey, permission_pda);
         assert!(!perm.is_signer && !perm.is_writable);
+    }
+
+    /// The permission-account cache must be dropped exactly when an instruction can
+    /// change whether the payer's Permission PDA exists — otherwise a client that
+    /// bootstraps its own Permission account keeps serving the stale "does not exist"
+    /// result for the rest of its lifetime.
+    #[test]
+    fn permission_cache_invalidated_only_by_create_and_delete() {
+        use doublezero_serviceability::processors::permission::{
+            create::PermissionCreateArgs, delete::PermissionDeleteArgs,
+            update::PermissionUpdateArgs,
+        };
+
+        assert!(DZClient::instruction_invalidates_permission_cache(
+            &DoubleZeroInstruction::CreatePermission(PermissionCreateArgs::default())
+        ));
+        assert!(DZClient::instruction_invalidates_permission_cache(
+            &DoubleZeroInstruction::DeletePermission(PermissionDeleteArgs {})
+        ));
+        // UpdatePermission only changes the flags bitmask, not existence.
+        assert!(!DZClient::instruction_invalidates_permission_cache(
+            &DoubleZeroInstruction::UpdatePermission(PermissionUpdateArgs::default())
+        ));
+        // Unrelated instructions never invalidate.
+        assert!(!DZClient::instruction_invalidates_permission_cache(
+            &DoubleZeroInstruction::InitGlobalState()
+        ));
     }
 }
 

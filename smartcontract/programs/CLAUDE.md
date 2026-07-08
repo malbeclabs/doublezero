@@ -50,5 +50,9 @@
 
 1. **Keep `doublezero resource verify` in sync**: Anytime a processor allocates from or deallocates against a `ResourceExtension` (any field that pulls from `SegmentRoutingIds`, `TunnelIds`, `LinkIds`, `UserTunnelBlock`, `DeviceTunnelBlock`, `DzPrefixBlock`, `MulticastGroupBlock`, `MulticastPublisherBlock`, etc.), update the corresponding `verify_*` function in `smartcontract/cli/src/resource/verify.rs` so that field is counted as "in use." Otherwise the verifier will report the allocation as `AllocatedButNotUsed` (or miss a leak when a deallocation is dropped). Add coverage in the verify test module for the new field.
 
+### Permissions
+
+1. **When migrating an instruction to `authorize()`, update `authorize.rs`'s shared lists**: `doublezero permission audit` derives everything from two items the serviceability crate owns — `AUTHORIZE_GATED_FLAGS` (the flags routed through `authorize()`) and `legacy_keys_for_flags` (the flag→legacy-key mapping, the enumerating inverse of `check_legacy_any`). When you migrate a new instruction to `authorize()` or change the legacy mapping, update `AUTHORIZE_GATED_FLAGS`, `legacy_keys_for_flags`, and `check_legacy_any` together (a `#[cfg(test)]` test asserts `legacy_keys_for_flags` and `check_legacy_any` agree). If a gated flag is missing from `AUTHORIZE_GATED_FLAGS`, the audit silently understates lockout risk before enabling `RequirePermissionAccounts`. Also revisit `NON_MIGRATED_SUBSYSTEMS` in `smartcontract/cli/src/permission/audit.rs` (residual GlobalState-gated privileges no flag covers, e.g. the user-create owner override).
+
 ### Pull Requests
 - Make sure `make rust-lint` and `make rust-test` both pass before posting pull requests

@@ -16,7 +16,7 @@ impl SetAirdropCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("GlobalState not initialized"))?;
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::SetAirdrop(SetAirdropArgs {
                 contributor_airdrop_lamports: self.contributor_airdrop_lamports,
                 user_airdrop_lamports: self.user_airdrop_lamports,
@@ -49,7 +49,7 @@ mod tests {
         let user_airdrop_lamports = Some(40_000);
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SetAirdrop(SetAirdropArgs {
                     contributor_airdrop_lamports,

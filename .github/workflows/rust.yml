@@ -13,7 +13,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install agave solana tools
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.13/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - run: make rust-build
   rust-lint:
@@ -33,7 +33,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install agave solana tools
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.13/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - run: make rust-test
   rust-validator-test:
@@ -44,24 +44,33 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install agave solana tools
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.13/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - run: make rust-validator-test
-  # The doublezero CLI must not link aws-lc-sys (raises the glibc floor to 2.38, breaks
-  # installs on Ubuntu 22.04). It reaches the CLI only via
-  # sentinel's server-only deps, which are feature-gated off. cargo tree -i exits non-zero
-  # when the package is absent (the wanted state); exit 0 means it crept back in.
-  rust-cli-no-aws-lc:
+  # The doublezero CLI ships as a static musl binary so it loads on any Linux
+  # regardless of the host glibc version. Build it for the musl target and assert
+  # the result is fully static.
+  rust-cli-static:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.90.0
+        with:
+          targets: x86_64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
-      - name: Assert aws-lc-sys absent from doublezero CLI
+      - name: Install musl toolchain
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build CLI for musl and assert it is statically linked
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
         run: |
-          if cargo tree -p doublezero -e normal -i aws-lc-sys >/dev/null 2>&1; then
-            echo "::error::aws-lc-sys is linked into the doublezero CLI"
-            cargo tree -p doublezero -e normal -i aws-lc-sys
+          cargo build --release -p doublezero --target x86_64-unknown-linux-musl
+          bin=target/x86_64-unknown-linux-musl/release/doublezero
+          file "$bin"
+          if file "$bin" | grep -qE "statically linked|static-pie linked"; then
+            echo "OK: $bin is statically linked"
+          else
+            echo "::error::doublezero CLI is not statically linked"
             exit 1
           fi
-          echo "OK: aws-lc-sys not in the doublezero CLI dependency tree"

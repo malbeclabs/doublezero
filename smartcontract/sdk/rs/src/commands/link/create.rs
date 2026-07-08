@@ -57,7 +57,7 @@ impl CreateLinkCommand {
         ];
 
         client
-            .execute_transaction(
+            .execute_authorized_transaction(
                 DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                     code,
                     link_type: self.link_type,
@@ -107,7 +107,7 @@ mod tests {
         let side_z_pk = Pubkey::new_unique();
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateLink(LinkCreateArgs {
                     code: "test".to_string(),

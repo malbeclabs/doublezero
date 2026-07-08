@@ -46,7 +46,7 @@ impl UpdateMulticastGroupCommand {
             accounts.push(AccountMeta::new(multicast_group_block_ext, false));
         }
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
                 code,
                 multicast_ip: self.multicast_ip,
@@ -87,7 +87,7 @@ mod tests {
             get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateMulticastGroup(
                     MulticastGroupUpdateArgs {
@@ -139,7 +139,7 @@ mod tests {
         let (pda_pubkey, _) = get_location_pda(&program_id, 1);
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateMulticastGroup(
                     MulticastGroupUpdateArgs {

@@ -1,15 +1,22 @@
 use doublezero_serviceability::{
     instructions::*,
     pda::*,
-    processors::multicastgroup::{
-        create::*, delete::*, reactivate::MulticastGroupReactivateArgs,
-        suspend::MulticastGroupSuspendArgs, update::*,
+    processors::{
+        multicastgroup::{
+            create::*, delete::*, reactivate::MulticastGroupReactivateArgs,
+            suspend::MulticastGroupSuspendArgs, update::*,
+        },
+        permission::create::PermissionCreateArgs,
     },
     resource::ResourceType,
-    state::multicastgroup::*,
+    state::{multicastgroup::*, permission::permission_flags},
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
+use solana_sdk::{
+    instruction::AccountMeta,
+    pubkey::Pubkey,
+    signature::{Keypair, Signer},
+};
 
 mod test_helpers;
 use test_helpers::*;
@@ -521,4 +528,83 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
     // Atomic delete closes the account (no Deleting status to observe).
     let mgroup = get_account_data(&mut banks_client, multicastgroup_pubkey).await;
     assert!(mgroup.is_none(), "MulticastGroup account should be closed");
+}
+
+/// A non-foundation key holding a MULTICAST_ADMIN Permission account can create a
+/// multicast group — exercises the new Permission-account authorization path.
+#[tokio::test]
+async fn test_multicastgroup_create_with_permission_account_allowed() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    // A key that is NOT in the foundation allowlist, granted MULTICAST_ADMIN.
+    let mcast_admin = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &mcast_admin.pubkey(),
+        1_000_000_000,
+    )
+    .await;
+
+    let (permission_pda, _) = get_permission_pda(&program_id, &mcast_admin.pubkey());
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: mcast_admin.pubkey(),
+            permissions: permission_flags::MULTICAST_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // mcast_admin creates a multicast group, passing its Permission PDA as the
+    // optional trailing account that authorize() reads.
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+    let group_owner = Pubkey::new_unique();
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx = create_transaction_with_extra_accounts(
+        program_id,
+        &DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "permmg".to_string(),
+            max_bandwidth: 1000,
+            owner: group_owner,
+            use_onchain_allocation: true,
+        }),
+        &vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
+        ],
+        &mcast_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    );
+    tx.try_sign(&[&mcast_admin], recent_blockhash).unwrap();
+    banks_client
+        .process_transaction(tx)
+        .await
+        .expect("MULTICAST_ADMIN permission holder should be able to create a multicast group");
+
+    let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
+        .await
+        .expect("mgroup")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup.code, "permmg".to_string());
+    assert_eq!(mgroup.owner, group_owner);
+
+    println!("✅ CreateMulticastGroup with MULTICAST_ADMIN permission succeeded");
 }

@@ -1,11 +1,14 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::*,
     processors::resource::allocate_id,
     resource::ResourceType,
     seeds::{SEED_PREFIX, SEED_TENANT},
     serializer::try_acc_create,
-    state::{accounttype::AccountType, globalstate::GlobalState, tenant::*},
+    state::{
+        accounttype::AccountType, globalstate::GlobalState, permission::permission_flags, tenant::*,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -108,9 +111,14 @@ pub fn process_create_tenant(
     // Parse the global state account & check if the payer is in the allowlist
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    // Authorization: TENANT_ADMIN (Permission account) or foundation/sentinel (legacy).
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::TENANT_ADMIN,
+    )?;
     // get the PDA pubkey and bump seed for the account tenant & check if it matches the account
     let (expected_pda_account, bump_seed) = get_tenant_pda(program_id, &code);
     assert_eq!(

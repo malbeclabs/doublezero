@@ -27,7 +27,7 @@ impl CheckUserAccessPassCommand {
         let (accesspass_pk, _) =
             get_accesspass_pda(&client.get_program_id(), &user.client_ip, &user.owner);
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::CheckUserAccessPass(CheckUserAccessPassArgs {}),
             vec![
                 AccountMeta::new(self.user_pubkey, false),

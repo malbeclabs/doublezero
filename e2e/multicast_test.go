@@ -213,6 +213,32 @@ func TestE2E_Multicast(t *testing.T) {
 		err = subscriberClient.WaitForTunnelUp(t.Context(), 90*time.Second)
 		require.NoError(t, err)
 
+		// WaitForTunnelUp returns as soon as the (already-up) first tunnel is up, so it
+		// does not wait for the incrementally-added second group to propagate onchain and
+		// into the daemon's cached program data (which backs the doublezero status
+		// "Multicast Groups" column). Poll user list until both roles show both groups
+		// before the single-shot post-connect status checks below.
+		require.Eventually(t, func() bool {
+			out, err := dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "list"})
+			if err != nil {
+				return false
+			}
+			var pubGroups, subGroups string
+			for _, row := range fixtures.ParseCLITable(out) {
+				if row["user_type"] != "Multicast" {
+					continue
+				}
+				switch row["client_ip"] {
+				case publisherClient.CYOANetworkIP:
+					pubGroups = row["groups"]
+				case subscriberClient.CYOANetworkIP:
+					subGroups = row["groups"]
+				}
+			}
+			return strings.Contains(pubGroups, "P:mg01") && strings.Contains(pubGroups, "P:mg02") &&
+				strings.Contains(subGroups, "S:mg01") && strings.Contains(subGroups, "S:mg02")
+		}, 60*time.Second, 2*time.Second, "both clients should show both multicast groups before post-connect checks")
+
 		// Check agent config with both users.
 		checkMulticastBothUsersAgentConfig(t, tdn, device, publisherClient, subscriberClient)
 

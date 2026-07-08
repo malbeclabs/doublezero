@@ -6,12 +6,17 @@ use doublezero_serviceability::{
         allowlist::foundation::add::AddFoundationAllowlistArgs,
         exchange::{create::*, delete::*, resume::*, suspend::*, update::*},
         globalconfig::set::SetGlobalConfigArgs,
+        permission::create::PermissionCreateArgs,
     },
     resource::ResourceType,
-    state::{accounttype::AccountType, exchange::*},
+    state::{accounttype::AccountType, exchange::*, permission::permission_flags},
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
+use solana_sdk::{
+    instruction::AccountMeta,
+    pubkey::Pubkey,
+    signature::{Keypair, Signer},
+};
 
 mod test_helpers;
 use test_helpers::*;
@@ -985,4 +990,78 @@ async fn test_suspend_exchange_from_suspended_fails() {
         error_string
     );
     println!("✅ Suspending already-suspended exchange correctly fails with InvalidStatus");
+}
+
+/// A non-foundation key holding an INFRA_ADMIN Permission account can create an
+/// exchange — exercises the new Permission-account authorization path.
+#[tokio::test]
+async fn test_exchange_create_with_permission_account_allowed() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    // A key that is NOT in the foundation allowlist, granted INFRA_ADMIN.
+    let infra_admin = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &infra_admin.pubkey(),
+        1_000_000_000,
+    )
+    .await;
+
+    let (permission_pda, _) = get_permission_pda(&program_id, &infra_admin.pubkey());
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: infra_admin.pubkey(),
+            permissions: permission_flags::INFRA_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // infra_admin creates an exchange, passing its Permission PDA as the optional
+    // trailing account that authorize() reads.
+    let globalstate = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, globalstate.account_index + 1);
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx = create_transaction_with_extra_accounts(
+        program_id,
+        &DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
+            code: "permxch".to_string(),
+            name: "Permissioned Exchange".to_string(),
+            lat: 1.0,
+            lng: 2.0,
+            reserved: 0,
+        }),
+        &vec![
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalconfig_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &infra_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    );
+    tx.try_sign(&[&infra_admin], recent_blockhash).unwrap();
+    banks_client
+        .process_transaction(tx)
+        .await
+        .expect("INFRA_ADMIN permission holder should be able to create an exchange");
+
+    let exchange = get_account_data(&mut banks_client, exchange_pubkey)
+        .await
+        .expect("exchange")
+        .get_exchange()
+        .unwrap();
+    assert_eq!(exchange.account_type, AccountType::Exchange);
+    assert_eq!(exchange.code, "permxch".to_string());
+
+    println!("✅ CreateExchange with INFRA_ADMIN permission succeeded");
 }

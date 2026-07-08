@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::{get_link_pda, get_topology_pda},
     processors::validation::validate_program_account,
@@ -11,6 +12,7 @@ use crate::{
         globalstate::GlobalState,
         interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LINK_MTU},
         link::*,
+        permission::permission_flags,
         topology::TopologyInfo,
     },
 };
@@ -121,8 +123,17 @@ pub fn process_create_link(
 
     let mut contributor = Contributor::try_from(contributor_account)?;
 
+    // Authorization: the contributor owner, or NETWORK_ADMIN (Permission account) /
+    // foundation (legacy).
     if contributor.owner != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
+        && authorize(
+            program_id,
+            accounts_iter,
+            payer_account.key,
+            &globalstate,
+            permission_flags::NETWORK_ADMIN,
+        )
+        .is_err()
     {
         return Err(DoubleZeroError::InvalidOwnerPubkey.into());
     }

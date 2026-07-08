@@ -584,18 +584,32 @@ mod tests {
         let json_response = vec![appended_response];
         let json_output = serde_json::to_value(&json_response).expect("Failed to serialize");
 
-        assert!(json_output.is_array());
+        assert!(json_output.is_array(), "Response should be an array");
         assert_eq!(json_output.as_array().unwrap().len(), 1);
 
+        // Validate status entry fields
         let status = &json_output.as_array().unwrap()[0];
-        assert!(status.get("response").is_some());
-        assert!(status.get("reconciler_enabled").is_some());
-        assert!(status.get("current_device").is_some());
-        assert!(status.get("lowest_latency_device").is_some());
-        assert!(status.get("metro").is_some());
-        assert!(status.get("network").is_some());
-        assert!(status.get("tenant").is_some());
-        assert!(status.get("multicast_groups").is_some());
+        assert!(status.get("response").is_some(), "Missing 'response' field");
+        assert!(
+            status.get("reconciler_enabled").is_some(),
+            "Missing 'reconciler_enabled' field"
+        );
+        assert!(
+            status.get("current_device").is_some(),
+            "Missing 'current_device' field"
+        );
+        assert!(
+            status.get("lowest_latency_device").is_some(),
+            "Missing 'lowest_latency_device' field"
+        );
+        assert!(status.get("metro").is_some(), "Missing 'metro' field");
+        assert!(status.get("network").is_some(), "Missing 'network' field");
+        assert!(status.get("tenant").is_some(), "Missing 'tenant' field");
+        assert!(
+            status.get("multicast_groups").is_some(),
+            "Missing 'multicast_groups' field"
+        );
+        assert_eq!(status.get("multicast_groups").unwrap(), "");
         let subscriptions = status
             .get("subscriptions")
             .expect("Missing 'subscriptions' field");
@@ -608,15 +622,56 @@ mod tests {
         assert_eq!(sub.get("publisher").unwrap(), true);
         assert_eq!(sub.get("subscriber").unwrap(), false);
 
+        // Validate response nested fields
         let response = status.get("response").unwrap();
-        assert!(response.get("doublezero_status").is_some());
-        assert!(response.get("tunnel_name").is_some());
+        assert!(
+            response.get("doublezero_status").is_some(),
+            "Missing 'doublezero_status' field"
+        );
+        assert!(
+            response.get("tunnel_name").is_some(),
+            "Missing 'tunnel_name' field"
+        );
+        assert!(
+            response.get("tunnel_src").is_some(),
+            "Missing 'tunnel_src' field"
+        );
+        assert!(
+            response.get("tunnel_dst").is_some(),
+            "Missing 'tunnel_dst' field"
+        );
+        assert!(
+            response.get("doublezero_ip").is_some(),
+            "Missing 'doublezero_ip' field"
+        );
+        assert!(
+            response.get("user_type").is_some(),
+            "Missing 'user_type' field"
+        );
 
+        // Validate doublezero_status nested fields
         let dz_status = response.get("doublezero_status").unwrap();
+        assert!(
+            dz_status.get("session_status").is_some(),
+            "Missing 'session_status' field"
+        );
+        assert!(
+            dz_status.get("last_session_update").is_some(),
+            "Missing 'last_session_update' field"
+        );
+
+        // Validate field values
+        assert_eq!(status.get("current_device").unwrap(), "device1");
+        assert_eq!(status.get("lowest_latency_device").unwrap(), "device1");
+        assert_eq!(status.get("metro").unwrap(), "amsterdam");
+        assert_eq!(status.get("network").unwrap(), "Testnet");
+        assert_eq!(response.get("tunnel_name").unwrap(), "doublezero1");
+        assert_eq!(response.get("tunnel_src").unwrap(), "10.0.0.1");
+        assert_eq!(response.get("tunnel_dst").unwrap(), "5.6.7.8");
+        assert_eq!(response.get("doublezero_ip").unwrap(), "10.1.2.3");
+        assert_eq!(response.get("user_type").unwrap(), "IBRL");
         assert_eq!(dz_status.get("session_status").unwrap(), "BGP Session Up");
         assert_eq!(dz_status.get("last_session_update").unwrap(), 1_625_247_600);
-        assert_eq!(status.get("current_device").unwrap(), "device1");
-        assert_eq!(status.get("metro").unwrap(), "amsterdam");
     }
 
     /// Test JSON output format with null/missing optional fields.
@@ -655,6 +710,7 @@ mod tests {
         let dz_status = response.get("doublezero_status").unwrap();
         assert!(dz_status.get("last_session_update").unwrap().is_null());
         assert_eq!(response.get("user_type").unwrap(), "Multicast");
+        assert_eq!(status.get("multicast_groups").unwrap(), "");
     }
 
     /// Test lowest_latency_device display formatting: json=true returns raw, json=false adds emoji.

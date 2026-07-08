@@ -5,7 +5,7 @@ use solana_program::pubkey::Pubkey;
 use crate::{
     seeds::{
         SEED_ACCESS_PASS, SEED_ADMIN_GROUP_BITS, SEED_CONFIG, SEED_CONTRIBUTOR, SEED_DEVICE,
-        SEED_DEVICE_TUNNEL_BLOCK, SEED_DZ_PREFIX_BLOCK, SEED_EXCHANGE, SEED_GLOBALSTATE,
+        SEED_DEVICE_TUNNEL_BLOCK, SEED_DZ_PREFIX_BLOCK, SEED_EXCHANGE, SEED_FEED, SEED_GLOBALSTATE,
         SEED_INDEX, SEED_LINK, SEED_LINK_IDS, SEED_LOCATION, SEED_MULTICASTGROUP_BLOCK,
         SEED_MULTICAST_GROUP, SEED_MULTICAST_PUBLISHER_BLOCK, SEED_PERMISSION, SEED_PREFIX,
         SEED_PROGRAM_CONFIG, SEED_SEGMENT_ROUTING_IDS, SEED_TENANT, SEED_TOPOLOGY, SEED_TUNNEL_IDS,
@@ -99,6 +99,16 @@ pub fn get_accesspass_pda(
             &client_ip.octets(),
             &user_payer.to_bytes(),
         ],
+        program_id,
+    )
+}
+
+/// A Feed PDA is seeded by its human `code` and its `exchange` (metro), so both are immutable (they
+/// are the key) and `feed_key` == this PDA. One `(code, exchange)` is one feed in one metro; a
+/// different metro is a different feed account. No global index is consumed.
+pub fn get_feed_pda(program_id: &Pubkey, code: &str, exchange: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[SEED_PREFIX, SEED_FEED, code.as_bytes(), exchange.as_ref()],
         program_id,
     )
 }

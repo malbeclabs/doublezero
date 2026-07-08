@@ -25,6 +25,7 @@ use crate::processors::{
         create::ExchangeCreateArgs, delete::ExchangeDeleteArgs, resume::ExchangeResumeArgs,
         setdevice::ExchangeSetDeviceArgs, suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
     },
+    feed::{create::FeedCreateArgs, delete::FeedDeleteArgs, update::FeedUpdateArgs},
     globalconfig::set::SetGlobalConfigArgs,
     globalstate::{
         setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs,
@@ -244,6 +245,10 @@ pub enum DoubleZeroInstruction {
     AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs), // variant 110
 
     Deprecated111(), // variant 111, (was MigrateDeviceInterfaces)
+
+    CreateFeed(FeedCreateArgs), // variant 112
+    UpdateFeed(FeedUpdateArgs), // variant 113
+    DeleteFeed(FeedDeleteArgs), // variant 114
 }
 
 impl DoubleZeroInstruction {
@@ -385,6 +390,10 @@ impl DoubleZeroInstruction {
             109 => Ok(Self::ClearTopology(TopologyClearArgs::try_from(rest).unwrap())),
             110 => Ok(Self::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs::try_from(rest).unwrap())),
             111 => Ok(Self::Deprecated111()),
+
+            112 => Ok(Self::CreateFeed(FeedCreateArgs::try_from(rest).unwrap())),
+            113 => Ok(Self::UpdateFeed(FeedUpdateArgs::try_from(rest).unwrap())),
+            114 => Ok(Self::DeleteFeed(FeedDeleteArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -529,6 +538,10 @@ impl DoubleZeroInstruction {
             Self::ClearTopology(_) => "ClearTopology".to_string(),   // variant 109
             Self::AssignTopologyNodeSegments(_) => "AssignTopologyNodeSegments".to_string(), // variant 110
             Self::Deprecated111() => "Deprecated111".to_string(), // variant 111
+
+            Self::CreateFeed(_) => "CreateFeed".to_string(), // variant 112
+            Self::UpdateFeed(_) => "UpdateFeed".to_string(), // variant 113
+            Self::DeleteFeed(_) => "DeleteFeed".to_string(), // variant 114
         }
     }
 
@@ -665,6 +678,10 @@ impl DoubleZeroInstruction {
             Self::ClearTopology(args) => format!("{args:?}"),  // variant 109
             Self::AssignTopologyNodeSegments(args) => format!("{args:?}"), // variant 110
             Self::Deprecated111() => String::new(),            // variant 111
+
+            Self::CreateFeed(args) => format!("{args:?}"), // variant 112
+            Self::UpdateFeed(args) => format!("{args:?}"), // variant 113
+            Self::DeleteFeed(args) => format!("{args:?}"), // variant 114
         }
     }
 }
@@ -1340,6 +1357,26 @@ mod tests {
                 name: "unicast-default".to_string(),
             }),
             "AssignTopologyNodeSegments",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+                code: "shreds".to_string(),
+                name: "Shreds".to_string(),
+                exchange: Pubkey::new_unique(),
+                groups: vec![Pubkey::new_unique()],
+            }),
+            "CreateFeed",
+        );
+        test_instruction(
+            DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+                name: Some("Shreds".to_string()),
+                groups: Some(vec![Pubkey::new_unique()]),
+            }),
+            "UpdateFeed",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteFeed(FeedDeleteArgs {}),
+            "DeleteFeed",
         );
     }
 }

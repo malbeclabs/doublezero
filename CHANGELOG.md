@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Added
+
+- Serviceability
+  - `Feed` account: a catalog entry for one metro's multicast group set, keyed by `(code, exchange)` (one `feed_key` is one feed in one metro), managed by a catalog admin (`FEED_AUTHORITY` Permission or `FOUNDATION`) via `CreateFeed`/`UpdateFeed`/`DeleteFeed`. (#3953)
+
 ### Changes
 
 - SDK

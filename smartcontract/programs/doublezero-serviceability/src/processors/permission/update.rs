@@ -66,6 +66,13 @@ pub fn process_update_permission(
         return Err(ProgramError::InvalidArgument);
     }
 
+    // Prevent self-modification: a caller with PERMISSION_ADMIN cannot modify their own
+    // permission, since removing their own flags would lock them out (recovery is
+    // foundation-only). Mirrors the self-removal guard in delete.
+    if &permission.user_payer == payer_account.key {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     if value.add & value.remove != 0 {
         return Err(DoubleZeroError::InvalidArgument.into());
     }
@@ -103,6 +110,14 @@ pub fn process_update_permission(
     }
 
     permission.permissions = (permission.permissions | value.add) & !value.remove;
+
+    // A Permission account must always grant at least one flag. `create` enforces this
+    // with `!= 0`; `update` must preserve it, as an Activated permission that grants
+    // nothing is meaningless (and would masquerade as a privileged account in audits).
+    if permission.permissions == 0 {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     try_acc_write(&permission, permission_account, payer_account, accounts)?;
 
     Ok(())

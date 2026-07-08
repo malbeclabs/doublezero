@@ -66,6 +66,18 @@ pub fn process_update_permission(
         return Err(ProgramError::InvalidArgument);
     }
 
+    // No caller may modify their own Permission account. This fires for any signer whose
+    // key equals `user_payer`, before authorize() and regardless of the flags held, so it
+    // also blocks self-*adding* flags — intentional: self-mutation is the lockout vector
+    // and recovery is foundation-only. Mirrors the guards in suspend and delete.
+    //
+    // Operational note: a lone foundation key cannot edit its own Permission this way; it
+    // must bootstrap a second admin key via `create` (which has no self-guard) and use
+    // that. Deployments should keep at least two PERMISSION_ADMIN keys.
+    if &permission.user_payer == payer_account.key {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     if value.add & value.remove != 0 {
         return Err(DoubleZeroError::InvalidArgument.into());
     }
@@ -103,6 +115,16 @@ pub fn process_update_permission(
     }
 
     permission.permissions = (permission.permissions | value.add) & !value.remove;
+
+    // A Permission account must always grant at least one *defined* flag. `create`
+    // enforces this on the initial value; `update` must preserve it, as an Activated
+    // permission that grants nothing is meaningless (and would masquerade as a privileged
+    // account in audits). Mask against ALL_FLAGS so a value made only of undefined bits
+    // (which no authorize() check can match) is also rejected.
+    if permission.permissions & permission_flags::ALL_FLAGS == 0 {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     try_acc_write(&permission, permission_account, payer_account, accounts)?;
 
     Ok(())

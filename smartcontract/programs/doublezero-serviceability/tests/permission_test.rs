@@ -12,13 +12,30 @@ use doublezero_serviceability::{
 };
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::AccountMeta,
+    instruction::{AccountMeta, InstructionError},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
+    transaction::TransactionError,
 };
 
 mod test_helpers;
 use test_helpers::*;
+
+// DoubleZeroError::InvalidArgument maps to ProgramError::Custom(65).
+const INVALID_ARGUMENT: u32 = 65;
+
+/// Assert that a failed transaction reverted with the expected program error code.
+/// Repo convention (programs/CLAUDE.md): assert the specific error, not just `is_err()`,
+/// so a regression that fails for the wrong reason is caught.
+fn assert_custom_error(result: Result<(), BanksClientError>, expected_code: u32) {
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code),
+        ))) if code == expected_code => {}
+        other => panic!("expected Custom({expected_code}), got {other:?}"),
+    }
+}
 
 async fn get_permission(
     banks_client: &mut BanksClient,
@@ -696,6 +713,251 @@ async fn test_delete_self_removal_rejected() {
         result.is_err(),
         "Caller should not be able to delete their own permission"
     );
+}
+
+#[tokio::test]
+async fn test_suspend_self_rejected() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Create a permission for the payer itself (the foundation key).
+    let (permission_pda, _) = get_permission_pda(&program_id, &payer.pubkey());
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: payer.pubkey(),
+            permissions: permission_flags::PERMISSION_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash2 = banks_client.get_latest_blockhash().await.unwrap();
+
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash2,
+        program_id,
+        DoubleZeroInstruction::SuspendPermission(PermissionSuspendArgs {}),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Only the self-suspension guard can reject here (the permission is Activated and the
+    // caller is otherwise authorized), so the specific error pins that guard.
+    assert_custom_error(result, INVALID_ARGUMENT);
+}
+
+#[tokio::test]
+async fn test_suspend_self_rejected_non_foundation_admin() {
+    // Realistic #3996 scenario: a non-foundation PERMISSION_ADMIN whose authorization
+    // comes purely from its own Permission PDA (the SDK appends it as the trailing
+    // account) tries to suspend itself. `authorize()` WOULD accept it — so this pins that
+    // the self-guard runs *before* authorize() and its placement is load-bearing.
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    let (admin, admin_perm_pda) = grant_permission_admin(
+        &mut banks_client,
+        &payer,
+        program_id,
+        globalstate_pubkey,
+        permission_flags::PERMISSION_ADMIN,
+    )
+    .await;
+
+    let rb = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        rb,
+        program_id,
+        DoubleZeroInstruction::SuspendPermission(PermissionSuspendArgs {}),
+        vec![
+            AccountMeta::new(admin_perm_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &admin,
+        &[AccountMeta::new_readonly(admin_perm_pda, false)],
+    )
+    .await;
+
+    assert_custom_error(result, INVALID_ARGUMENT);
+}
+
+#[tokio::test]
+async fn test_update_self_rejected() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Create a permission for the payer itself (the foundation key) with TWO flags. This
+    // isolates the self-modification guard from the `permissions == 0` guard: removing a
+    // single non-critical flag leaves PERMISSION_ADMIN set (permissions != 0), so if the
+    // self-guard were removed the update would SUCCEED. A single-flag setup would instead
+    // be caught by the `permissions == 0` guard with the identical error, making the test
+    // unable to detect regression of the guard it is meant to cover.
+    let (permission_pda, _) = get_permission_pda(&program_id, &payer.pubkey());
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: payer.pubkey(),
+            permissions: permission_flags::PERMISSION_ADMIN | permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash2 = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Removing only USER_ADMIN from one's own permission (PERMISSION_ADMIN stays set, so
+    // permissions != 0) must still be rejected by the blanket self-modification guard.
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash2,
+        program_id,
+        DoubleZeroInstruction::UpdatePermission(PermissionUpdateArgs {
+            add: 0,
+            remove: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert_custom_error(result, INVALID_ARGUMENT);
+}
+
+#[tokio::test]
+async fn test_update_permission_to_zero_rejected() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Permission for a third party (not the signer), so the self-modification guard
+    // does not fire and we isolate the "must grant at least one flag" invariant.
+    let user_payer = Pubkey::new_unique();
+    let (permission_pda, _) = get_permission_pda(&program_id, &user_payer);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer,
+            permissions: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash2 = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Removing the only flag would leave an Activated permission granting nothing.
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash2,
+        program_id,
+        DoubleZeroInstruction::UpdatePermission(PermissionUpdateArgs {
+            add: 0,
+            remove: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // The third-party target dodges the self-modification guard, so the only rejection
+    // path is the "must grant at least one defined flag" invariant — the specific error
+    // pins it, and the account must be left untouched.
+    assert_custom_error(result, INVALID_ARGUMENT);
+    let perm = get_permission(&mut banks_client, program_id, &user_payer).await;
+    assert_eq!(perm.permissions, permission_flags::USER_ADMIN);
+}
+
+#[tokio::test]
+async fn test_update_permission_undefined_bits_only_rejected() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Third-party target (avoids the self-modification guard) so we isolate the
+    // ALL_FLAGS mask: a value made only of undefined bits grants nothing real.
+    let user_payer = Pubkey::new_unique();
+    let (permission_pda, _) = get_permission_pda(&program_id, &user_payer);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer,
+            permissions: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash2 = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Add an undefined bit (1 << 127) while removing the only defined flag: `permissions`
+    // is non-zero afterward, so a bare `!= 0` check would accept it, but `& ALL_FLAGS`
+    // must reject it since no authorize() check could ever match.
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash2,
+        program_id,
+        DoubleZeroInstruction::UpdatePermission(PermissionUpdateArgs {
+            add: 1 << 127,
+            remove: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert_custom_error(result, INVALID_ARGUMENT);
+    let perm = get_permission(&mut banks_client, program_id, &user_payer).await;
+    assert_eq!(perm.permissions, permission_flags::USER_ADMIN);
 }
 
 // Grants admin a plain PERMISSION_ADMIN permission and returns (admin keypair, its PDA).

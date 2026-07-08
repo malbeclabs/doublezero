@@ -61,6 +61,9 @@ pub fn process_resume_permission(
         return Err(ProgramError::InvalidArgument);
     }
 
+    // Unlike update/suspend/delete, resume has no self-guard by design: restoring one's
+    // own access can never cause a lockout.
+
     if permission.status != PermissionStatus::Suspended {
         return Err(DoubleZeroError::InvalidStatus.into());
     }

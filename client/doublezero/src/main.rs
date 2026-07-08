@@ -21,18 +21,57 @@ use doublezero_serviceability_cli::{
     checkversion::check_version,
     cli::ServiceabilityCommand,
     doublezerocommand::{CliCommand, CliCommandImpl},
+    requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
 };
 use servicecontroller::ServiceControllerImpl;
 
 /// Adapter bridging the binary's `CliCommand` to the daemon-cli crate's
-/// `LedgerClient` trait.
-struct LedgerAdapter {
+/// `LedgerClient` trait. Holds the client so ledger-backed reads/writes (e.g.
+/// the user teardown used by `disconnect`) route through the SDK.
+struct LedgerAdapter<'a, C: CliCommand> {
     env: Environment,
+    client: &'a C,
 }
 
-impl doublezero_daemon_cli::LedgerClient for LedgerAdapter {
+impl<C: CliCommand + Sync> doublezero_daemon_cli::LedgerClient for LedgerAdapter<'_, C> {
     fn get_environment(&self) -> Environment {
         self.env
+    }
+
+    fn get_payer(&self) -> solana_sdk::pubkey::Pubkey {
+        self.client.get_payer()
+    }
+
+    fn check_requirements(&self) -> eyre::Result<()> {
+        check_requirements(self.client, None, CHECK_ID_JSON | CHECK_BALANCE)
+    }
+
+    fn get_globalstate(&self) -> eyre::Result<doublezero_sdk::GlobalState> {
+        let (_, gstate) = self
+            .client
+            .get_globalstate(doublezero_sdk::GetGlobalStateCommand)?;
+        Ok(gstate)
+    }
+
+    fn list_user(
+        &self,
+    ) -> eyre::Result<std::collections::HashMap<solana_sdk::pubkey::Pubkey, doublezero_sdk::User>>
+    {
+        self.client
+            .list_user(doublezero_sdk::commands::user::list::ListUserCommand)
+    }
+
+    fn delete_user(&self, pubkey: solana_sdk::pubkey::Pubkey) -> eyre::Result<()> {
+        self.client
+            .delete_user(doublezero_sdk::commands::user::delete::DeleteUserCommand { pubkey })?;
+        Ok(())
+    }
+
+    fn get_user(&self, pubkey: solana_sdk::pubkey::Pubkey) -> eyre::Result<doublezero_sdk::User> {
+        let (_, user) = self
+            .client
+            .get_user(doublezero_sdk::commands::user::get::GetUserCommand { pubkey })?;
+        Ok(user)
     }
 }
 
@@ -308,11 +347,11 @@ async fn main() -> eyre::Result<()> {
             );
             let ledger = LedgerAdapter {
                 env: client.get_environment(),
+                client: &client,
             };
             cmd.execute(&ctx, &daemon, &ledger, &mut handle).await
         }
 
-        Command::Disconnect(args) => args.execute(&client).await,
         Command::Latency(args) => args.execute(&client).await,
         Command::Routes(args) => args.execute(&client).await,
 

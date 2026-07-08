@@ -9,7 +9,8 @@ use doublezero_cli_core::CliContext;
 use std::io::Write;
 
 use crate::{
-    client::DaemonClient, disable::Disable, enable::Enable, ledger::LedgerClient, status::Status,
+    client::DaemonClient, disable::Disable, disconnect::Disconnect, enable::Enable,
+    ledger::LedgerClient, status::Status,
 };
 
 /// Daemon-control verbs hoisted to the binary's top level.
@@ -23,6 +24,8 @@ pub enum DaemonCommand {
     Disable(Disable),
     /// Get the status of your service
     Status(Status),
+    /// Disconnect your server from the doublezero network
+    Disconnect(Disconnect),
 }
 
 impl DaemonCommand {
@@ -37,6 +40,7 @@ impl DaemonCommand {
             Self::Enable(cmd) => cmd.execute(ctx, daemon, ledger, out).await,
             Self::Disable(cmd) => cmd.execute(ctx, daemon, ledger, out).await,
             Self::Status(cmd) => cmd.execute(ctx, daemon, ledger, out).await,
+            Self::Disconnect(cmd) => cmd.execute(ctx, daemon, ledger, out).await,
         }
     }
 }

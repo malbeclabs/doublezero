@@ -61,9 +61,10 @@ pub fn process_suspend_permission(
         return Err(ProgramError::InvalidArgument);
     }
 
-    // Prevent self-suspension: a caller with PERMISSION_ADMIN cannot suspend their own
-    // permission, as that would lock them out (recovery is foundation-only). Mirrors the
-    // self-removal guard in delete.
+    // No caller may suspend their own Permission account. This fires for any signer whose
+    // key equals `user_payer`, before authorize() and regardless of the flags held, since
+    // self-suspension is a lockout vector and recovery is foundation-only. Mirrors the
+    // guards in update and delete; see update.rs for the foundation-key runbook note.
     if &permission.user_payer == payer_account.key {
         return Err(DoubleZeroError::InvalidArgument.into());
     }

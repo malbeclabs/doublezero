@@ -11,13 +11,27 @@ use doublezero_serviceability::{
 };
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::AccountMeta,
+    instruction::{AccountMeta, InstructionError},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
+    transaction::TransactionError,
 };
 
 mod test_helpers;
 use test_helpers::*;
+
+// DoubleZeroError::InvalidFoundationAllowlist maps to ProgramError::Custom(66).
+const INVALID_FOUNDATION_ALLOWLIST: u32 = 66;
+
+fn assert_custom_error(result: Result<(), BanksClientError>, expected_code: u32) {
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code),
+        ))) if code == expected_code => {}
+        other => panic!("expected Custom({expected_code}), got {other:?}"),
+    }
+}
 
 #[tokio::test]
 async fn foundation_allowlist_test() {
@@ -221,4 +235,136 @@ async fn test_foundation_allowlist_add_with_permission_account_allowed() {
     assert!(state.foundation_allowlist.contains(&new_member));
 
     println!("✅ AddFoundationAllowlist with GLOBALSTATE_ADMIN permission succeeded");
+}
+
+#[tokio::test]
+async fn test_remove_last_foundation_member_rejected() {
+    // Isolates the "cannot remove the last member" guard from the self-removal guard: the
+    // signer is a GLOBALSTATE_ADMIN who is NOT in the allowlist, so removing the sole
+    // member (the init payer) does not trip the self-guard. An empty allowlist would
+    // permanently break foundation-only Permission recovery, so it must be rejected.
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // A GLOBALSTATE_ADMIN key outside the allowlist (allowlist is just [payer], len 1).
+    let gs_admin = Keypair::new();
+    transfer(&mut banks_client, &payer, &gs_admin.pubkey(), 10_000_000).await;
+    let (permission_pda, _) = get_permission_pda(&program_id, &gs_admin.pubkey());
+    let rb = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        rb,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: gs_admin.pubkey(),
+            permissions: permission_flags::GLOBALSTATE_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // gs_admin tries to remove the only member (the init payer) -> rejected.
+    let rb = wait_for_new_blockhash(&mut banks_client).await;
+    let result = try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        rb,
+        program_id,
+        DoubleZeroInstruction::RemoveFoundationAllowlist(RemoveFoundationAllowlistArgs {
+            pubkey: payer.pubkey(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &gs_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    )
+    .await;
+
+    assert_custom_error(result, INVALID_FOUNDATION_ALLOWLIST);
+
+    let state = get_account_data(&mut banks_client, globalstate_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_global_state()
+        .unwrap();
+    assert_eq!(state.foundation_allowlist.len(), 1);
+    assert!(state.foundation_allowlist.contains(&payer.pubkey()));
+}
+
+#[tokio::test]
+async fn test_remove_self_from_foundation_allowlist_rejected() {
+    // Isolates the self-removal guard from the last-member guard: with two members the
+    // len>1 check would pass, so only the self-guard can reject the payer removing itself.
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Add a second member so the allowlist has len 2 (the last-member guard won't fire).
+    let other = Pubkey::new_unique();
+    let rb = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        rb,
+        program_id,
+        DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs { pubkey: other }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    // payer (a foundation member) tries to remove itself -> rejected by the self-guard.
+    let rb = wait_for_new_blockhash(&mut banks_client).await;
+    let result = try_execute_transaction(
+        &mut banks_client,
+        rb,
+        program_id,
+        DoubleZeroInstruction::RemoveFoundationAllowlist(RemoveFoundationAllowlistArgs {
+            pubkey: payer.pubkey(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    assert_custom_error(result, INVALID_FOUNDATION_ALLOWLIST);
+
+    let state = get_account_data(&mut banks_client, globalstate_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_global_state()
+        .unwrap();
+    assert_eq!(state.foundation_allowlist.len(), 2);
+    assert!(state.foundation_allowlist.contains(&payer.pubkey()));
+    assert!(state.foundation_allowlist.contains(&other));
 }

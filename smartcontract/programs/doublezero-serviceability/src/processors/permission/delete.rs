@@ -61,8 +61,10 @@ pub fn process_delete_permission(
         return Err(ProgramError::InvalidArgument);
     }
 
-    // Prevent self-removal: a caller with PERMISSION_ADMIN cannot delete their own
-    // permission, as that would lock them out.
+    // No caller may delete their own Permission account. This fires for any signer whose
+    // key equals `user_payer`, before authorize() and regardless of the flags held, since
+    // self-deletion is a lockout vector and recovery is foundation-only. Mirrors the
+    // guards in update and suspend; see update.rs for the foundation-key runbook note.
     if &permission.user_payer == payer_account.key {
         return Err(DoubleZeroError::InvalidArgument.into());
     }

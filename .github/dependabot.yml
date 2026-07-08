@@ -16,6 +16,13 @@ updates:
       - "skip-changelog"
       - "dependencies"
       - "go"
+    ignore:
+      # testcontainers >=0.41 switched docker/docker types to moby/moby, which
+      # breaks e2e/internal/devnet. Remove after migrating the e2e harness.
+      - dependency-name: "github.com/testcontainers/testcontainers-go*"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
     groups:
       go-minor-patch:
         update-types:
@@ -37,6 +44,15 @@ updates:
       - "skip-changelog"
       - "dependencies"
       - "rust"
+    ignore:
+      # Solana major bumps are deliberate migrations (e.g. #3830), not
+      # dependabot fodder.
+      - dependency-name: "solana-*"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "spl-*"
+        update-types:
+          - "version-update:semver-major"
     groups:
       rust-minor-patch:
         update-types:

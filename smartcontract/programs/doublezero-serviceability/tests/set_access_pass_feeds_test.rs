@@ -6,7 +6,7 @@ use doublezero_serviceability::{
     processors::{
         accesspass::{
             set::SetAccessPassArgs,
-            set_feeds::{FeedSeatConfig, SetAccessPassFeedsArgs},
+            set_feeds::{FeedSeatConfig, SetAccessPassFeedsArgs, MAX_ACCESS_PASS_FEEDS},
         },
         feed::create::FeedCreateArgs,
     },
@@ -353,6 +353,101 @@ async fn test_cannot_set_feeds_on_non_edge_seat() {
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
             AccountMeta::new(feed_a, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+}
+
+#[tokio::test]
+async fn test_cannot_set_feeds_unauthorized_caller() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let feed_a = create_feed(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        "feda",
+    )
+    .await;
+
+    let client_ip = Ipv4Addr::new(100, 0, 0, 5);
+    let user_payer = Pubkey::new_unique();
+    let accesspass_pubkey = create_edge_seat_pass(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        client_ip,
+        user_payer,
+        AccessPassType::EdgeSeat(vec![]),
+    )
+    .await;
+
+    // test_payer() is funded but not on the foundation allowlist and holds no ACCESS_PASS_ADMIN
+    // Permission, so it is not authorized to provision feeds.
+    let unauthorized = test_payer();
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip,
+            user_payer,
+            feeds: vec![FeedSeatConfig { max_users: 5 }],
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(feed_a, false),
+        ],
+        &unauthorized,
+    )
+    .await;
+
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+}
+
+#[tokio::test]
+async fn test_cannot_set_feeds_exceeds_max() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let client_ip = Ipv4Addr::new(100, 0, 0, 6);
+    let user_payer = Pubkey::new_unique();
+    let accesspass_pubkey = create_edge_seat_pass(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        client_ip,
+        user_payer,
+        AccessPassType::EdgeSeat(vec![]),
+    )
+    .await;
+
+    // MAX_ACCESS_PASS_FEEDS + 1 configs is rejected by the cap check before any Feed account is
+    // read, so no Feed accounts are passed.
+    let too_many = vec![FeedSeatConfig { max_users: 1 }; MAX_ACCESS_PASS_FEEDS + 1];
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip,
+            user_payer,
+            feeds: too_many,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
     )

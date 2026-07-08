@@ -698,6 +698,157 @@ async fn test_delete_self_removal_rejected() {
     );
 }
 
+#[tokio::test]
+async fn test_suspend_self_rejected() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Create a permission for the payer itself (the foundation key).
+    let (permission_pda, _) = get_permission_pda(&program_id, &payer.pubkey());
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: payer.pubkey(),
+            permissions: permission_flags::PERMISSION_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash2 = banks_client.get_latest_blockhash().await.unwrap();
+
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash2,
+        program_id,
+        DoubleZeroInstruction::SuspendPermission(PermissionSuspendArgs {}),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "Caller should not be able to suspend their own permission"
+    );
+}
+
+#[tokio::test]
+async fn test_update_self_rejected() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Create a permission for the payer itself (the foundation key).
+    let (permission_pda, _) = get_permission_pda(&program_id, &payer.pubkey());
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: payer.pubkey(),
+            permissions: permission_flags::PERMISSION_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash2 = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Attempting to remove one's own PERMISSION_ADMIN (a self-lockout) must be rejected.
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash2,
+        program_id,
+        DoubleZeroInstruction::UpdatePermission(PermissionUpdateArgs {
+            add: 0,
+            remove: permission_flags::PERMISSION_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "Caller should not be able to modify their own permission"
+    );
+}
+
+#[tokio::test]
+async fn test_update_permission_to_zero_rejected() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Permission for a third party (not the signer), so the self-modification guard
+    // does not fire and we isolate the "must grant at least one flag" invariant.
+    let user_payer = Pubkey::new_unique();
+    let (permission_pda, _) = get_permission_pda(&program_id, &user_payer);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer,
+            permissions: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash2 = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Removing the only flag would leave an Activated permission granting nothing.
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash2,
+        program_id,
+        DoubleZeroInstruction::UpdatePermission(PermissionUpdateArgs {
+            add: 0,
+            remove: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "Update that clears the last flag (permissions == 0) should be rejected"
+    );
+}
+
 // Grants admin a plain PERMISSION_ADMIN permission and returns (admin keypair, its PDA).
 async fn grant_permission_admin(
     banks_client: &mut BanksClient,

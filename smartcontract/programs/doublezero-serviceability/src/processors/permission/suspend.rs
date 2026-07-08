@@ -61,6 +61,13 @@ pub fn process_suspend_permission(
         return Err(ProgramError::InvalidArgument);
     }
 
+    // Prevent self-suspension: a caller with PERMISSION_ADMIN cannot suspend their own
+    // permission, as that would lock them out (recovery is foundation-only). Mirrors the
+    // self-removal guard in delete.
+    if &permission.user_payer == payer_account.key {
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
     if permission.status != PermissionStatus::Activated {
         return Err(DoubleZeroError::InvalidStatus.into());
     }

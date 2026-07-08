@@ -699,7 +699,7 @@ async fn test_edge_seat_user_caps_enforced() {
         recent_blockhash,
         env.program_id,
         DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-            accesspass_type: AccessPassType::EdgeSeat,
+            accesspass_type: AccessPassType::EdgeSeat(vec![]),
             client_ip: Ipv4Addr::UNSPECIFIED,
             last_access_epoch: 9999,
             allow_multiple_ip: false,

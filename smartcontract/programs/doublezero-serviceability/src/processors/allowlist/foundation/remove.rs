@@ -1,5 +1,6 @@
 use crate::{
     authorize::authorize,
+    error::DoubleZeroError,
     pda::*,
     serializer::try_acc_write,
     state::{globalstate::GlobalState, permission::permission_flags},
@@ -7,11 +8,10 @@ use crate::{
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 
@@ -83,14 +83,18 @@ pub fn process_remove_foundation_allowlist_globalconfig(
         permission_flags::GLOBALSTATE_ADMIN,
     )?;
 
-    assert_ne!(
-        value.pubkey, *payer_account.key,
-        "Unable to remove the payer from the foundation allowlist"
-    );
-    assert!(
-        globalstate.foundation_allowlist.len() > 1,
-        "Unable to remove the last pubkey from the foundation allowlist"
-    );
+    // Keep the foundation allowlist non-empty and self-removal-proof: an empty allowlist
+    // would break the foundation-only recovery path for Permission accounts (a
+    // permanently locked-out program). A member cannot remove itself, and the last member
+    // cannot be removed at all.
+    if value.pubkey == *payer_account.key {
+        msg!("Cannot remove the payer from the foundation allowlist");
+        return Err(DoubleZeroError::InvalidFoundationAllowlist.into());
+    }
+    if globalstate.foundation_allowlist.len() <= 1 {
+        msg!("Cannot remove the last pubkey from the foundation allowlist");
+        return Err(DoubleZeroError::InvalidFoundationAllowlist.into());
+    }
 
     globalstate
         .foundation_allowlist

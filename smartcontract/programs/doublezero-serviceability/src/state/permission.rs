@@ -52,6 +52,29 @@ pub mod permission_flags {
     pub const HEALTH_ORACLE: u128 = 1 << 11;
     /// QA operations.
     pub const QA: u128 = 1 << 12;
+
+    /// Bitmask of every defined flag. Use to reject a Permission that grants nothing
+    /// *real* — `permissions != 0` alone would accept a value made only of undefined
+    /// bits (e.g. `1 << 127`), which no `authorize()` check (`permissions & flag`) can
+    /// ever match. Keep this in sync when adding a flag above.
+    pub const ALL_FLAGS: u128 = FOUNDATION
+        | PERMISSION_ADMIN
+        | GLOBALSTATE_ADMIN
+        | CONTRIBUTOR_ADMIN
+        | INDEX_ADMIN
+        | INFRA_ADMIN
+        | NETWORK_ADMIN
+        | TOPOLOGY_ADMIN
+        | RESOURCE_ADMIN
+        | TENANT_ADMIN
+        | MULTICAST_ADMIN
+        | FEED_AUTHORITY
+        | ACTIVATOR
+        | SENTINEL
+        | USER_ADMIN
+        | ACCESS_PASS_ADMIN
+        | HEALTH_ORACLE
+        | QA;
 }
 
 #[repr(u8)]

@@ -6,8 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Serviceability
+  - The `AccessPass` `EdgeSeat` variant now carries a `Vec<FeedSeat>` payload (`feed_key` + per-feed cap) instead of being a bare marker. This changes the `AccessPass` borsh layout for EdgeSeat passes. (#3954)
+
+### Added
+
+- Serviceability
+  - `Feed` account: a catalog entry for one metro's multicast group set, keyed by `(code, exchange)` (one `feed_key` is one feed in one metro), managed by a catalog admin (`FEED_AUTHORITY` Permission or `FOUNDATION`) via `CreateFeed`/`UpdateFeed`/`DeleteFeed`. (#3953)
+  - `SetAccessPassFeeds` provisions feed_keys (SKU seats) onto an EdgeSeat pass; the oracle calls it via its `ACCESS_PASS_ADMIN` Permission. (#3954)
+
 ### Changes
 
+- SDK
+  - Give the shreds SDK RPC client a bounded per-request timeout (15s) and a sized connection pool instead of the unbounded `http.DefaultClient`, so a slow or degraded RPC endpoint fails fast rather than blocking until a transaction's blockhash expires and its send fails preflight with `BlockhashNotFound`.
 - Serviceability
   - Gate Device and device-interface instructions on `NETWORK_ADMIN` (and `HEALTH_ORACLE` for sethealth) or the contributor owner via `authorize()`; internal foundation-only sub-gates now also accept NETWORK_ADMIN holders. (#3980)
   - Gate UpdateUser on `USER_ADMIN`, CheckAccessPass on `ACTIVATOR`, and accesspass CheckStatus on `ACTIVATOR|USER_ADMIN` via `authorize()`; user create and set_bgp_status remain owner-authorized (not part of the admin Permission system). (#3984)
@@ -22,6 +33,8 @@ All notable changes to this project will be documented in this file.
 - Onchain programs
   - Restrict granting the `FOUNDATION` permission flag: a plain `PERMISSION_ADMIN` holder can no longer grant `FOUNDATION` (a privilege escalation). Only a `foundation_allowlist` member or an existing `FOUNDATION` holder may grant it, enforced independently of `RequirePermissionAccounts` so foundation members are never locked out.
 - CLI
+  - Move the `disconnect` verb into the `doublezero-daemon-cli` crate per RFC-20. It now takes `&CliContext` + generic `&D: DaemonClient` + `&L: LedgerClient` + `&mut W` writer; informational/result lines route through the shared writer, spinners stay on stderr, and diagnostics route through `tracing`. Behavior (flags, output, `--verbose`, `--no-wait`, version-check) is unchanged. (#4008)
+  - Move the `latency` and `routes` verbs, plus the device-selection/latency-polling utilities and `resolve_client_ip`, into the `doublezero-daemon-cli` crate per RFC-20. Both verbs now take `&CliContext` + generic `&D: DaemonClient` + `&L: LedgerClient` + `&mut W` writer; diagnostics route through `tracing` and output through the shared writer helper. Behavior (flags, output, `--json`, version-check) is unchanged. (#3995)
   - Add `doublezero permission audit` to check legacy→Permission parity before enabling `require-permission-accounts`: it reports which legacy keys would lose access to migrated instructions (coverage gaps, non-zero exit), super-admin holders, and the non-migrated subsystems that still depend on the GlobalState allowlists.
   - Block `doublezero device delete` when the device is still enabled in the shred-subscription program (checked via its `DeviceHistory` account on Solana L1), preventing an orphaned device that deadlocks shred oracle epoch settlement. (#3989)
 - E2E

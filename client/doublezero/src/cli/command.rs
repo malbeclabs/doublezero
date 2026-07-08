@@ -6,18 +6,16 @@ use doublezero_serviceability_cli::cli::ServiceabilityCommand;
 
 use crate::{
     cli::{multicast::MulticastCliCommand, sentinel::SentinelCliCommand},
-    command::{
-        connect::ProvisioningCliCommand, disconnect::DecommissioningCliCommand,
-        latency::LatencyCliCommand, routes::RoutesCliCommand,
-    },
+    command::connect::ProvisioningCliCommand,
 };
 
 /// Top-level command tree for the unified `doublezero` binary.
 ///
 /// Per RFC-20 §Module contract item 2, module-crate verbs are hoisted to the
 /// top level via `#[command(flatten)]`: serviceability verbs from
-/// `doublezero_serviceability_cli`, daemon-control verbs (`enable`, `disable`)
-/// from `doublezero_daemon_cli`. The binary retains the not-yet-migrated
+/// `doublezero_serviceability_cli`, daemon-control verbs (`enable`, `disable`,
+/// `status`, `disconnect`, `latency`, `routes`) from `doublezero_daemon_cli`.
+/// The binary retains the not-yet-migrated
 /// daemon-control verbs, the `doublezero-geolocation-cli` module crate's
 /// geolocation subtree (via `GeolocationArgs`), the binary-only `Completion`
 /// generator, and `Multicast` (whose `Subscribe`/`Unsubscribe`/`Publish`/
@@ -31,13 +29,6 @@ pub enum Command {
     /// Hoisted to top-level via `#[command(flatten)]`.
     #[command(flatten)]
     Daemon(DaemonCommand),
-
-    /// Disconnect your server from the doublezero network
-    Disconnect(DecommissioningCliCommand),
-    /// Get device latencies
-    Latency(LatencyCliCommand),
-    /// View your installed routes
-    Routes(RoutesCliCommand),
 
     /// Sentinel admin commands
     #[command(hide = true)]

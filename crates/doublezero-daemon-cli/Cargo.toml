@@ -22,15 +22,21 @@ http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 hyperlocal.workspace = true
+indicatif.workspace = true
 mockall.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+solana-sdk.workspace = true
 tabled.workspace = true
+tokio = { workspace = true, features = ["time"] }
 tracing.workspace = true
 
 doublezero-cli-core.workspace = true
 doublezero-config.workspace = true
+doublezero_sdk.workspace = true
 
 [dev-dependencies]
 doublezero-cli-core = { workspace = true, features = ["testing"] }
+doublezero-program-common.workspace = true
+doublezero-serviceability.workspace = true
 tokio.workspace = true

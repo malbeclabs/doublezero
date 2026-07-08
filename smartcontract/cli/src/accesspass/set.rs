@@ -100,7 +100,7 @@ impl SetAccessPassCliCommand {
                     "Others access pass type requires --others-name <STRING> and --others-key <STRING>"
                 ),
             },
-            CliAccessPassType::EdgeSeat => AccessPassType::EdgeSeat,
+            CliAccessPassType::EdgeSeat => AccessPassType::EdgeSeat(vec![]),
         };
 
         // Convert tenant code to PDA if provided
@@ -941,7 +941,7 @@ mod tests {
         client
             .expect_set_accesspass()
             .with(predicate::eq(SetAccessPassCommand {
-                accesspass_type: AccessPassType::EdgeSeat,
+                accesspass_type: AccessPassType::EdgeSeat(vec![]),
                 client_ip,
                 user_payer: payer,
                 last_access_epoch: 11,

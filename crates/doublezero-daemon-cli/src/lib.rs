@@ -6,10 +6,13 @@
 pub mod cli;
 pub mod client;
 pub mod disable;
+pub mod disconnect;
 pub mod enable;
 pub mod helpers;
+pub mod latency;
 pub mod ledger;
 mod requirements;
+pub mod routes;
 pub mod status;
 
 pub use cli::DaemonCommand;

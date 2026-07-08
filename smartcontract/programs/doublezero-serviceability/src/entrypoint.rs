@@ -4,7 +4,7 @@ use crate::{
     processors::{
         accesspass::{
             check_status::process_check_status_access_pass, close::process_close_access_pass,
-            set::process_set_access_pass,
+            set::process_set_access_pass, set_feeds::process_set_access_pass_feeds,
         },
         allowlist::{
             foundation::{
@@ -35,6 +35,9 @@ use crate::{
             create::process_create_exchange, delete::process_delete_exchange,
             resume::process_resume_exchange, setdevice::process_setdevice_exchange,
             suspend::process_suspend_exchange, update::process_update_exchange,
+        },
+        feed::{
+            create::process_create_feed, delete::process_delete_feed, update::process_update_feed,
         },
         globalconfig::set::process_set_globalconfig,
         globalstate::{
@@ -408,6 +411,18 @@ pub fn process_instruction(
             process_assign_topology_node_segments(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::Deprecated111() => (),
+        DoubleZeroInstruction::CreateFeed(value) => {
+            process_create_feed(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::UpdateFeed(value) => {
+            process_update_feed(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::DeleteFeed(value) => {
+            process_delete_feed(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetAccessPassFeeds(value) => {
+            process_set_access_pass_feeds(program_id, accounts, &value)?
+        }
     };
     Ok(())
 }

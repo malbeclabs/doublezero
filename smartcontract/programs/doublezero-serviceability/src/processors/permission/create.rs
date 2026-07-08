@@ -107,8 +107,10 @@ pub fn process_create_permission(
         permissions: value.permissions,
     };
 
-    // Validate that at least one known flag is set
-    if value.permissions == 0 {
+    // Validate that at least one *defined* flag is set. Masking against ALL_FLAGS (not a
+    // bare `!= 0`) rejects a permission built only from undefined bits, which would grant
+    // nothing since every authorize() check is `permissions & flag`.
+    if value.permissions & permission_flags::ALL_FLAGS == 0 {
         return Err(DoubleZeroError::InvalidArgument.into());
     }
 

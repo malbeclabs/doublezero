@@ -69,6 +69,18 @@ impl SetPermissionCliCommand {
                 (sig, permissions)
             }
             Some(_) => {
+                // The program blocks any self-modification of an existing Permission
+                // account (recovery is foundation-only). Surface that as an actionable
+                // CLI error instead of an opaque on-chain revert. The create path (None
+                // arm) is intentionally exempt: there is no account to lock yourself out
+                // of yet, so bootstrapping your own key is allowed.
+                if user_payer == client.get_payer() {
+                    return Err(eyre::eyre!(
+                        "cannot modify your own permission account: self-lockout is \
+                         blocked and recovery is foundation-only — have another \
+                         PERMISSION_ADMIN key make this change"
+                    ));
+                }
                 let add = names_to_bitmask(&self.add);
                 let remove = names_to_bitmask(&self.remove);
                 let sig = client.update_permission(UpdatePermissionCommand {
@@ -359,6 +371,49 @@ mod tests {
         );
 
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_set_self_modification_rejected() {
+        // The signer targets its own key on the update path (account exists): the CLI
+        // must reject early with an actionable message rather than emit an on-chain tx.
+        let mut client = create_test_client();
+        // Matches the payer wired into create_test_client().
+        let self_payer = Pubkey::from_str_const("DDddB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt");
+        let (permission_pda, _) = get_permission_pda(&TEST_PROGRAM_ID, &self_payer);
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_permission()
+            .with(predicate::eq(GetPermissionCommand {
+                pubkey: permission_pda.to_string(),
+            }))
+            .returning(move |_| {
+                Ok((
+                    permission_pda,
+                    make_permission(permission_flags::PERMISSION_ADMIN),
+                ))
+            });
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            SetPermissionCliCommand {
+                user_payer: self_payer.to_string(),
+                add: vec![],
+                remove: vec![PermissionName::PermissionAdmin],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+
+        assert!(res.is_err());
+        assert!(res
+            .unwrap_err()
+            .to_string()
+            .contains("cannot modify your own permission account"));
     }
 
     #[test]

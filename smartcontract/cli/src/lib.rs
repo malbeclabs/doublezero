@@ -12,6 +12,7 @@ pub mod device;
 pub mod doublezerocommand;
 pub mod exchange;
 pub mod export;
+pub mod feed;
 pub mod formatters;
 pub mod globalconfig;
 pub mod helpers;

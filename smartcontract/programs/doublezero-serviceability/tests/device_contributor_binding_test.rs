@@ -389,6 +389,55 @@ async fn test_update_device_network_admin_minimal_shape_with_permission_account(
 }
 
 #[tokio::test]
+async fn test_update_device_rejects_malformed_account_count() {
+    // A no-location update carrying a single stray leading account produces the shape
+    // [device, contributor, <stray>, globalstate] = 4 leading accounts, which matches
+    // neither the no-location count (3) nor the location-pair count (5). The
+    // split_trailing_permission-based parser must fail closed with a clear
+    // DoubleZeroError::InvalidArgument (Custom(65)) rather than silently misparsing the
+    // stray account as a location. Locks in the "error clearly on any other shape" contract.
+    let mut s = setup_device_with_two_contributors().await;
+
+    let recent_blockhash = s.banks_client.get_latest_blockhash().await.unwrap();
+    let result = execute_transaction_expect_failure(
+        &mut s.banks_client,
+        recent_blockhash,
+        s.program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_users: Some(64),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(s.device_pubkey, false),
+            AccountMeta::new(s.other_contributor_pubkey, false),
+            // Single stray account where the parser expects either zero or the
+            // (location_old, location_new) pair.
+            AccountMeta::new_readonly(Pubkey::new_unique(), false),
+            AccountMeta::new(s.globalstate_pubkey, false),
+        ],
+        &s.payer,
+    )
+    .await;
+
+    // DoubleZeroError::InvalidArgument = Custom(65)
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(65),
+        ))) => {}
+        _ => panic!(
+            "Expected InvalidArgument error (Custom(65)), got {:?}",
+            result
+        ),
+    }
+
+    let device = get_device(&mut s.banks_client, s.device_pubkey)
+        .await
+        .unwrap();
+    assert_ne!(device.max_users, 64, "device must be unchanged");
+}
+
+#[tokio::test]
 async fn test_create_device_interface_requires_matching_contributor() {
     let mut s = setup_device_with_two_contributors().await;
 

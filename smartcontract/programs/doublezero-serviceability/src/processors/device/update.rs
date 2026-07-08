@@ -1,5 +1,5 @@
 use crate::{
-    authorize::authorize,
+    authorize::{authorize, split_trailing_permission},
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
     processors::resource::create_resource,
@@ -132,28 +132,60 @@ pub fn process_update_device(
     accounts: &[AccountInfo],
     value: &DeviceUpdateArgs,
 ) -> ProgramResult {
-    let accounts_iter = &mut accounts.iter();
+    // Account layout:
+    //   [device, contributor, (location_old, location_new)?, globalstate,
+    //    (globalconfig)?, resource_0..resource_n, payer, system, (permission)?]
+    //
+    // Peel [payer, system, permission] off the tail FIRST. The SDK appends the payer's
+    // Permission PDA whenever one exists on-chain; peeling it here means its presence
+    // can never be mistaken for a leading account. (The previous `accounts.len() > 5`
+    // heuristic counted the whole slice — including that trailing Permission account —
+    // and would misparse the minimal no-location update.)
+    let remaining: Vec<&AccountInfo> = accounts.iter().collect();
+    let (payer_account, system_program, leading, permission_account) =
+        split_trailing_permission(program_id, &remaining)?;
 
-    let device_account = next_account_info(accounts_iter)?;
-    let contributor_account = next_account_info(accounts_iter)?;
+    // Whether the optional (location_old, location_new) pair is present, derived from the
+    // leading length — now independent of the Permission account. The non-location prefix
+    // is [device, contributor, globalstate, globalconfig?, resources..]; the location pair
+    // adds exactly two accounts.
+    let leading_without_locations =
+        3 + usize::from(value.resource_count > 0) + value.resource_count;
+    let has_locations = if leading.len() == leading_without_locations {
+        false
+    } else if leading.len() == leading_without_locations + 2 {
+        true
+    } else {
+        msg!(
+            "Unexpected account count: {} leading accounts, expected {} or {}",
+            leading.len(),
+            leading_without_locations,
+            leading_without_locations + 2
+        );
+        return Err(DoubleZeroError::InvalidArgument.into());
+    };
+
+    let leading_iter = &mut leading.iter().copied();
+
+    let device_account = next_account_info(leading_iter)?;
+    let contributor_account = next_account_info(leading_iter)?;
     // Update location accounts (old and new)
-
-    let (location_old_account, location_new_account) = if accounts.len() > 5 {
+    let (location_old_account, location_new_account) = if has_locations {
         (
-            Some(next_account_info(accounts_iter)?),
-            Some(next_account_info(accounts_iter)?),
+            Some(next_account_info(leading_iter)?),
+            Some(next_account_info(leading_iter)?),
         )
     } else {
         (None, None)
     };
 
-    let globalstate_account = next_account_info(accounts_iter)?;
+    let globalstate_account = next_account_info(leading_iter)?;
     let globalconfig_account = if value.resource_count > 0 {
         assert!(
             value.resource_count >= 2,
             "Resource count must be at least 2 (TunnelIds and at least one DzPrefixBlock)"
         );
-        let account = next_account_info(accounts_iter)?;
+        let account = next_account_info(leading_iter)?;
         assert_eq!(
             account.owner, program_id,
             "Invalid GlobalConfig Account Owner"
@@ -165,7 +197,7 @@ pub fn process_update_device(
     let mut resource_accounts = vec![];
     for idx in 0..value.resource_count {
         // first resource account is the TunnelIds resource, followed by DzPrefixBlock resources
-        let resource_account = next_account_info(accounts_iter)?;
+        let resource_account = next_account_info(leading_iter)?;
         assert!(
             resource_account.data_is_empty() || resource_account.owner == program_id,
             "Invalid Resource Account Owner"
@@ -180,8 +212,6 @@ pub fn process_update_device(
         );
         assert_eq!(pda, *resource_account.key, "Invalid Resource Account PDA");
     }
-    let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_update_device({:?})", value);
@@ -221,12 +251,12 @@ pub fn process_update_device(
     let contributor = Contributor::try_from(contributor_account)?;
 
     // Authorization: the contributor owner, or NETWORK_ADMIN (Permission account) /
-    // foundation (legacy). The permission is the optional trailing account (payer and
-    // system_program were already consumed above). Privileged callers bypass the
-    // contributor binding and may edit the privileged fields / set any status below.
+    // foundation (legacy). `permission_account` is the optional trailing account peeled
+    // off by split_trailing_permission above. Privileged callers bypass the contributor
+    // binding and may edit the privileged fields / set any status below.
     let is_privileged = authorize(
         program_id,
-        accounts_iter,
+        &mut permission_account.into_iter(),
         payer_account.key,
         &globalstate,
         permission_flags::NETWORK_ADMIN,

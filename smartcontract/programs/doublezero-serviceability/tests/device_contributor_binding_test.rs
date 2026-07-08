@@ -16,12 +16,14 @@ use doublezero_serviceability::{
             },
             update::DeviceUpdateArgs,
         },
+        permission::create::PermissionCreateArgs,
         *,
     },
     resource::ResourceType,
     state::{
         device::*,
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode, INTERFACE_MTU},
+        permission::permission_flags,
     },
 };
 use solana_program_test::*;
@@ -323,6 +325,67 @@ async fn test_update_device_foundation_may_use_any_contributor() {
         .await
         .unwrap();
     assert_eq!(device.max_users, 64);
+}
+
+#[tokio::test]
+async fn test_update_device_network_admin_minimal_shape_with_permission_account() {
+    // Regression: a minimal no-location device update (leading accounts
+    // [device, contributor, globalstate]) by a NETWORK_ADMIN Permission holder who is
+    // NOT the device's contributor owner. The SDK appends the caller's Permission PDA as
+    // the trailing account, so the full list is [device, contributor, globalstate, payer,
+    // system, permission] = 6. The previous `accounts.len() > 5` heuristic misparsed that
+    // 6th (Permission) account as a location account and reverted; the
+    // split_trailing_permission-based parsing must handle it.
+    let mut s = setup_device_with_two_contributors().await;
+
+    // Foundation grants the non-owner `other_payer` a NETWORK_ADMIN permission.
+    let (other_perm_pda, _) = get_permission_pda(&s.program_id, &s.other_payer.pubkey());
+    let rb = s.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut s.banks_client,
+        rb,
+        s.program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: s.other_payer.pubkey(),
+            permissions: permission_flags::NETWORK_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(other_perm_pda, false),
+            AccountMeta::new_readonly(s.globalstate_pubkey, false),
+        ],
+        &s.payer,
+    )
+    .await;
+
+    // other_payer updates a device it does NOT own, in the minimal no-location shape,
+    // with its Permission PDA appended as the trailing account. NETWORK_ADMIN bypasses
+    // the contributor binding, so this must succeed.
+    let rb2 = s.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction_with_extra_accounts(
+        &mut s.banks_client,
+        rb2,
+        s.program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_users: Some(64),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(s.device_pubkey, false),
+            AccountMeta::new(s.other_contributor_pubkey, false),
+            AccountMeta::new(s.globalstate_pubkey, false),
+        ],
+        &s.other_payer,
+        &[AccountMeta::new_readonly(other_perm_pda, false)],
+    )
+    .await;
+
+    let device = get_device(&mut s.banks_client, s.device_pubkey)
+        .await
+        .unwrap();
+    assert_eq!(
+        device.max_users, 64,
+        "NETWORK_ADMIN permission holder must update in the minimal (no-location) shape"
+    );
 }
 
 #[tokio::test]

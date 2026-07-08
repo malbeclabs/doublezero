@@ -416,10 +416,13 @@ impl DaemonClient for DaemonClientImpl {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
+    /// Catches breaking changes to LatencyRecord's JSON API contract.
     #[test]
-    fn test_latency_record_serde_roundtrip() {
+    fn test_latency_record_json_output_format() {
         let record = LatencyRecord {
             device_pk: "DevicePubkey123".to_string(),
             device_code: "device1".to_string(),
@@ -429,15 +432,25 @@ mod tests {
             avg_latency_ns: 3_000_000,
             reachable: true,
         };
-        let json = serde_json::to_string(&record).unwrap();
-        let deserialized: LatencyRecord = serde_json::from_str(&json).unwrap();
+        let expected = json!({
+            "device_pk": "DevicePubkey123",
+            "device_code": "device1",
+            "device_ip": "5.6.7.8",
+            "min_latency_ns": 1_000_000,
+            "max_latency_ns": 5_000_000,
+            "avg_latency_ns": 3_000_000,
+            "reachable": true,
+        });
+        assert_eq!(serde_json::to_value(&record).unwrap(), expected);
+        let deserialized: LatencyRecord = serde_json::from_value(expected).unwrap();
         assert_eq!(deserialized.device_pk, "DevicePubkey123");
         assert_eq!(deserialized.min_latency_ns, 1_000_000);
         assert!(deserialized.reachable);
     }
 
+    /// Catches breaking changes to RouteRecord's JSON API contract.
     #[test]
-    fn test_route_record_serde_roundtrip() {
+    fn test_route_record_json_output_format() {
         let route = RouteRecord {
             network: "10.0.0.0/24".to_string(),
             local_ip: "10.1.2.3".to_string(),
@@ -448,14 +461,24 @@ mod tests {
             liveness_state_reason: Some("healthy".to_string()),
             peer_client_version: Some("0.8.6".to_string()),
         };
-        let json = serde_json::to_string(&route).unwrap();
-        let deserialized: RouteRecord = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.network, "10.0.0.0/24");
-        assert_eq!(deserialized.peer_client_version.as_deref(), Some("0.8.6"));
+        let expected = json!({
+            "network": "10.0.0.0/24",
+            "local_ip": "10.1.2.3",
+            "peer_ip": "10.1.2.4",
+            "kernel_state": "active",
+            "liveness_last_updated": "2024-01-15T12:00:00Z",
+            "liveness_state": "up",
+            "liveness_state_reason": "healthy",
+            "peer_client_version": "0.8.6",
+        });
+        assert_eq!(serde_json::to_value(&route).unwrap(), expected);
+        let deserialized: RouteRecord = serde_json::from_value(expected).unwrap();
+        assert_eq!(deserialized, route);
     }
 
+    /// Optional RouteRecord fields serialize as explicit nulls, not omitted keys.
     #[test]
-    fn test_route_record_serde_with_nulls() {
+    fn test_route_record_json_output_format_with_nulls() {
         let route = RouteRecord {
             network: "10.0.0.0/24".to_string(),
             local_ip: "10.1.2.3".to_string(),
@@ -466,12 +489,23 @@ mod tests {
             liveness_state_reason: None,
             peer_client_version: None,
         };
-        let json = serde_json::to_value(&route).unwrap();
-        assert!(json.get("liveness_state").unwrap().is_null());
+        let expected = json!({
+            "network": "10.0.0.0/24",
+            "local_ip": "10.1.2.3",
+            "peer_ip": "10.1.2.4",
+            "kernel_state": "active",
+            "liveness_last_updated": null,
+            "liveness_state": null,
+            "liveness_state_reason": null,
+            "peer_client_version": null,
+        });
+        assert_eq!(serde_json::to_value(&route).unwrap(), expected);
     }
 
+    /// Catches breaking changes to StatusResponse's JSON API contract,
+    /// including nested DoubleZeroStatus fields.
     #[test]
-    fn test_status_response_serde_roundtrip() {
+    fn test_status_response_json_output_format() {
         let status = StatusResponse {
             doublezero_status: DoubleZeroStatus {
                 session_status: "BGP Session Up".to_string(),
@@ -483,8 +517,19 @@ mod tests {
             doublezero_ip: Some("10.1.2.3".to_string()),
             user_type: Some("IBRL".to_string()),
         };
-        let json = serde_json::to_string(&status).unwrap();
-        let deserialized: StatusResponse = serde_json::from_str(&json).unwrap();
+        let expected = json!({
+            "doublezero_status": {
+                "session_status": "BGP Session Up",
+                "last_session_update": 1_625_247_600,
+            },
+            "tunnel_name": "doublezero1",
+            "tunnel_src": "10.0.0.1",
+            "tunnel_dst": "5.6.7.8",
+            "doublezero_ip": "10.1.2.3",
+            "user_type": "IBRL",
+        });
+        assert_eq!(serde_json::to_value(&status).unwrap(), expected);
+        let deserialized: StatusResponse = serde_json::from_value(expected).unwrap();
         assert_eq!(
             deserialized.doublezero_status.session_status,
             "BGP Session Up"

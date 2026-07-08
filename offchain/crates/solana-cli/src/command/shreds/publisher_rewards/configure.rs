@@ -1,11 +1,9 @@
-use std::str::FromStr;
+use std::{io::Write, str::FromStr};
 
 use anyhow::{Context, Result, bail};
 use clap::Args;
-use doublezero_solana_client_tools::{
-    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
-    rpc::SolanaConnection,
-};
+use doublezero_cli_core::CliContext;
+use doublezero_solana_client_tools::payer::{TransactionOutcome, Wallet};
 use doublezero_solana_sdk::{
     Pubkey,
     shred_subscription::{
@@ -69,7 +67,7 @@ pub struct ConfigureCommand {
     pub deadline_slot: Option<u64>,
 
     #[command(flatten)]
-    pub solana_payer_options: SolanaPayerOptions,
+    pub write_opts: crate::command::WriteVerbOptions,
 }
 
 /// Resolved auth path after CLI parsing. The variant maps 1:1 to which auth
@@ -144,7 +142,7 @@ pub(crate) fn resolve_auth(
 }
 
 impl ConfigureCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         if self.node_id == Pubkey::default() {
             bail!("--node-id must not be the default pubkey");
         }
@@ -152,11 +150,8 @@ impl ConfigureCommand {
             bail!("--rewards-token-owner must not be the default pubkey");
         }
 
-        let solana_connection =
-            SolanaConnection::from(self.solana_payer_options.connection_options.clone());
-        let rewards_token_mint = self.rewards_token_mint.resolve(&solana_connection).await?;
-
-        let wallet = Wallet::try_new(self.solana_payer_options, None)?;
+        let wallet = crate::command::build_wallet(ctx, self.write_opts)?;
+        let rewards_token_mint = self.rewards_token_mint.resolve(&wallet.connection).await?;
         let wallet_key = wallet.pubkey();
         // When `--fee-payer` is set, the ATA rent must come from the fee
         // payer, not the signer. Otherwise an operator who passed
@@ -184,15 +179,19 @@ impl ConfigureCommand {
                 &rewards_token_mint,
             );
 
-        println!("Shred subscription - Configure Validator Publisher Rewards");
-        println!("Node ID:           {}", self.node_id);
-        println!("Rewards owner:     {}", self.rewards_token_owner);
-        println!("Rewards mint:      {rewards_token_mint}");
-        println!("Rewards ATA:       {rewards_token_ata}");
-        println!(
+        writeln!(
+            out,
+            "Shred subscription - Configure Validator Publisher Rewards"
+        )?;
+        writeln!(out, "Node ID:           {}", self.node_id)?;
+        writeln!(out, "Rewards owner:     {}", self.rewards_token_owner)?;
+        writeln!(out, "Rewards mint:      {rewards_token_mint}")?;
+        writeln!(out, "Rewards ATA:       {rewards_token_ata}")?;
+        writeln!(
+            out,
             "Auth path:         {}",
             if is_node_signer { "direct" } else { "offchain" }
-        );
+        )?;
 
         // Pre-flight: shred_reward_token must exist + be enabled; auto-init
         // validator publisher rewards if it doesn't exist yet; only push the
@@ -222,9 +221,10 @@ impl ConfigureCommand {
         let mut instructions = vec![super::super::build_check_cli_version_instruction()?];
 
         if !vpr_exists {
-            println!(
+            writeln!(
+                out,
                 "Validator publisher rewards account missing; will initialize as part of this transaction."
-            );
+            )?;
             let init_ix = try_build_instruction(
                 &ID,
                 InitializeValidatorPublisherRewardsAccounts::new(&wallet_key, &self.node_id),
@@ -270,7 +270,10 @@ impl ConfigureCommand {
         // signer, if no `--fee-payer` is set) pays the rent; the account is
         // owned by --rewards-token-owner.
         if !ata_exists {
-            println!("Rewards ATA missing; will create as part of this transaction.");
+            writeln!(
+                out,
+                "Rewards ATA missing; will create as part of this transaction."
+            )?;
             instructions.push(create_associated_token_account_idempotent(
                 &funding_key,
                 &self.rewards_token_owner,
@@ -297,8 +300,8 @@ impl ConfigureCommand {
         let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
         let configure_executed = matches!(tx_outcome, TransactionOutcome::Executed(_));
         if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
-            println!("Configured validator publisher rewards: {tx_sig}");
-            wallet.print_verbose_output(&[tx_sig]).await?;
+            writeln!(out, "Configured validator publisher rewards: {tx_sig}")?;
+            wallet.write_verbose_output(out, &[tx_sig]).await?;
         }
 
         // Post-configure: distribute this validator's pending rewards for
@@ -315,20 +318,22 @@ impl ConfigureCommand {
                     .context("detecting network environment")?;
                 super::distribute::try_distribute_pending(
                     &wallet,
-                    &solana_connection,
+                    &wallet.connection,
                     &self.node_id,
                     &self.rewards_token_owner,
                     network_env,
+                    out,
                 )
                 .await
             }
             .await;
             match distribute_result {
                 Ok(outcome) => {
-                    println!(
+                    writeln!(
+                        out,
                         "\nDistribute pass complete: {} distributed, {} failed.",
                         outcome.distributed, outcome.failed,
-                    );
+                    )?;
                 }
                 Err(error) => {
                     eprintln!(

@@ -98,117 +98,133 @@ echo "doublezero-solana revenue-distribution fetch -h"
 $CLI_BIN revenue-distribution fetch -h
 echo
 
-echo "doublezero-solana revenue-distribution fetch config -ul"
+echo "doublezero-solana -ul revenue-distribution fetch config"
+$CLI_BIN -ul revenue-distribution fetch config
+echo
+
+echo "doublezero-solana -ul revenue-distribution fetch validator-deposits"
+$CLI_BIN -ul revenue-distribution fetch validator-deposits
+echo
+
+### Backwards compatibility: the legacy per-verb (trailing) flag form must keep
+### working. These mirror the global-flag invocations above but pass --url/-u and
+### the hidden --dz-env AFTER the subcommand, the way pre-RFC-20 scripts did. The
+### output must match the equivalent global-flag invocation. (-k coverage: see the
+### publisher-rewards init below, which uses the trailing form.)
+
+echo "[back-compat] doublezero-solana revenue-distribution fetch config -ul"
 $CLI_BIN revenue-distribution fetch config -ul
 echo
 
-echo "doublezero-solana revenue-distribution fetch validator-deposits -ul"
+echo "[back-compat] doublezero-solana revenue-distribution fetch validator-deposits -ul"
 $CLI_BIN revenue-distribution fetch validator-deposits -ul
+echo
+
+echo "[back-compat] doublezero-solana revenue-distribution fetch distribution -ul --dz-env mainnet-beta"
+$CLI_BIN revenue-distribution fetch distribution -ul --dz-env mainnet-beta
 echo
 
 echo "doublezero-solana revenue-distribution contributor-rewards -h"
 $CLI_BIN revenue-distribution contributor-rewards -h
 echo
 
-echo "doublezero-solana revenue-distribution contributor-rewards -ul --initialize -v $(solana address -k service_key_1.json)"
-$CLI_BIN revenue-distribution contributor-rewards \
-    -ul \
+echo "doublezero-solana -ul revenue-distribution contributor-rewards --initialize -v $(solana address -k service_key_1.json)"
+$CLI_BIN -ul revenue-distribution contributor-rewards \
     --initialize \
     -v \
     $(solana address -k service_key_1.json)
 echo
 
-echo "doublezero-solana revenue-distribution validator-deposit --fund 4.2069 -ul -v --node-id $DUMMY_KEY"
-$CLI_BIN revenue-distribution validator-deposit \
+echo "doublezero-solana -ul revenue-distribution validator-deposit --fund 4.2069 -v --node-id $DUMMY_KEY"
+$CLI_BIN -ul revenue-distribution validator-deposit \
     --fund 4.2069 \
-    -ul \
     -v \
     --node-id $DUMMY_KEY
 echo
 
-echo "doublezero-solana revenue-distribution validator-deposit --fund 69.420 -ul -v --node-id $DUMMY_KEY"
-$CLI_BIN revenue-distribution validator-deposit \
+echo "doublezero-solana -ul revenue-distribution validator-deposit --fund 69.420 -v --node-id $DUMMY_KEY"
+$CLI_BIN -ul revenue-distribution validator-deposit \
     --fund 69.420 \
-    -ul \
     -v \
     --node-id $DUMMY_KEY
 echo
 
-echo "doublezero-solana revenue-distribution fetch validator-deposits -ul --node-id $DUMMY_KEY"
-$CLI_BIN revenue-distribution fetch validator-deposits -ul --node-id $DUMMY_KEY
+echo "doublezero-solana -ul revenue-distribution fetch validator-deposits --node-id $DUMMY_KEY"
+$CLI_BIN -ul revenue-distribution fetch validator-deposits --node-id $DUMMY_KEY
 echo
 
-echo "doublezero-solana revenue-distribution fetch validator-deposits -ul --node-id $DUMMY_KEY --balance-only"
-$CLI_BIN revenue-distribution fetch validator-deposits -ul --node-id $DUMMY_KEY --balance-only
+echo "doublezero-solana -ul revenue-distribution fetch validator-deposits --node-id $DUMMY_KEY --balance-only"
+$CLI_BIN -ul revenue-distribution fetch validator-deposits --node-id $DUMMY_KEY --balance-only
 echo
 
-echo "doublezero-solana revenue-distribution fetch validator-deposits -ul"
-$CLI_BIN revenue-distribution fetch validator-deposits -ul
+echo "doublezero-solana -ul revenue-distribution fetch validator-deposits"
+$CLI_BIN -ul revenue-distribution fetch validator-deposits
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -ul --dz-env mainnet-beta"
-$CLI_BIN revenue-distribution fetch distribution -ul --dz-env mainnet-beta
+echo "doublezero-solana -ul revenue-distribution fetch distribution"
+$CLI_BIN -ul revenue-distribution fetch distribution
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -um --dz-epoch $GENESIS_DZ_EPOCH"
-$CLI_BIN revenue-distribution fetch distribution -um --dz-epoch $GENESIS_DZ_EPOCH
+echo "doublezero-solana -um revenue-distribution fetch distribution --dz-epoch $GENESIS_DZ_EPOCH"
+$CLI_BIN -um revenue-distribution fetch distribution --dz-epoch $GENESIS_DZ_EPOCH
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH"
-$CLI_BIN revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH
+echo "doublezero-solana -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH"
+$CLI_BIN -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view summary"
-$CLI_BIN revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view summary
+echo "doublezero-solana -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view summary"
+$CLI_BIN -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view summary
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view validator-debt"
-$CLI_BIN revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view validator-debt
+echo "doublezero-solana -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view validator-debt"
+$CLI_BIN -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view validator-debt
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view unprocessed-validator-debt"
-$CLI_BIN revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view unprocessed-validator-debt
+echo "doublezero-solana -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view unprocessed-validator-debt"
+$CLI_BIN -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view unprocessed-validator-debt
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view written-off-validator-debt"
-$CLI_BIN revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view written-off-validator-debt
+echo "doublezero-solana -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view written-off-validator-debt"
+$CLI_BIN -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view written-off-validator-debt
 echo
 
-echo "doublezero-solana revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view rewards"
-$CLI_BIN revenue-distribution fetch distribution -um -e $GENESIS_DZ_EPOCH --view rewards
+echo "doublezero-solana -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view rewards"
+$CLI_BIN -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view rewards
 echo
 
 ### Pay outstanding debt for a random validator.
 NODE_ID=12i8gndWWWMTRzJBFhnYkobNgZB3XMUUJq75HeUrshrk
 
-echo "doublezero-solana revenue-distribution fetch validator-deposits -ul --node-id $NODE_ID"
-$CLI_BIN revenue-distribution fetch validator-deposits -ul --node-id $NODE_ID
+echo "doublezero-solana -ul revenue-distribution fetch validator-deposits --node-id $NODE_ID"
+$CLI_BIN -ul revenue-distribution fetch validator-deposits --node-id $NODE_ID
 echo
 
-echo "doublezero-solana revenue-distribution fetch validator-debts -ul --node-id $NODE_ID --dz-env mainnet-beta"
-$CLI_BIN revenue-distribution fetch validator-debts -ul --node-id $NODE_ID --dz-env mainnet-beta
+# --dz-env pins the DZ Ledger environment (debt records live there): the
+# fork's genesis hash is unknown, so detection would fall back to localnet.
+# Same flag main's pre-RFC-20 script passes on these invocations.
+echo "doublezero-solana -ul revenue-distribution fetch validator-debts --node-id $NODE_ID --dz-env mainnet-beta"
+$CLI_BIN -ul revenue-distribution fetch validator-debts --node-id $NODE_ID --dz-env mainnet-beta
 echo
 
-echo "doublezero-solana revenue-distribution validator-deposit --node-id $NODE_ID -ul --fund-outstanding-debt --dz-env mainnet-beta"
-$CLI_BIN revenue-distribution validator-deposit \
+echo "doublezero-solana -ul revenue-distribution validator-deposit --node-id $NODE_ID --fund-outstanding-debt --dz-env mainnet-beta"
+$CLI_BIN -ul revenue-distribution validator-deposit \
     --node-id $NODE_ID \
-    -ul \
     --fund-outstanding-debt \
     --dz-env mainnet-beta
 echo
 
-echo "doublezero-solana revenue-distribution fetch validator-deposits -ul --node-id $NODE_ID"
-$CLI_BIN revenue-distribution fetch validator-deposits -ul --node-id $NODE_ID
+echo "doublezero-solana -ul revenue-distribution fetch validator-deposits --node-id $NODE_ID"
+$CLI_BIN -ul revenue-distribution fetch validator-deposits --node-id $NODE_ID
 echo
 
-echo "doublezero-solana revenue-distribution fetch validator-debts -ul --node-id $NODE_ID --dz-env mainnet-beta"
-$CLI_BIN revenue-distribution fetch validator-debts -ul --node-id $NODE_ID --dz-env mainnet-beta
+echo "doublezero-solana -ul revenue-distribution fetch validator-debts --node-id $NODE_ID --dz-env mainnet-beta"
+$CLI_BIN -ul revenue-distribution fetch validator-debts --node-id $NODE_ID --dz-env mainnet-beta
 echo
 
-echo "doublezero-solana revenue-distribution validator-deposit --withdraw-excess-balance -ul -v --node-id $DUMMY_KEY"
-$CLI_BIN revenue-distribution validator-deposit \
+echo "doublezero-solana -ul revenue-distribution validator-deposit --withdraw-excess-balance -v --node-id $DUMMY_KEY"
+$CLI_BIN -ul revenue-distribution validator-deposit \
     --withdraw-excess-balance \
-    -ul \
     -v \
     --node-id $DUMMY_KEY
 echo
@@ -255,39 +271,33 @@ if [ -f "$MANAGER_KEY_PATH" ]; then
         --fee-payer claim_payer.json
     echo
 
-    echo "doublezero-solana shreds validator-client-rewards show --client-id $CLIENT_ID -ul"
-    $CLI_BIN shreds validator-client-rewards show --client-id $CLIENT_ID -ul
+    echo "doublezero-solana -ul shreds validator-client-rewards show --client-id $CLIENT_ID"
+    $CLI_BIN -ul shreds validator-client-rewards show --client-id $CLIENT_ID
     echo
 
-    echo "doublezero-solana shreds validator-client-rewards init-holding -ul --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH -k claim_payer.json"
-    $CLI_BIN shreds validator-client-rewards init-holding \
-        -ul \
-        --client-id $CLIENT_ID \
-        --rewards-token-mint $DOUBLEZERO_MINT \
-        --subscription-epoch $TEST_EPOCH \
-        -k claim_payer.json
-    echo
-
-    echo "doublezero-solana shreds validator-client-rewards show -ul --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH"
-    $CLI_BIN shreds validator-client-rewards show \
-        -ul \
+    echo "doublezero-solana -ul -k claim_payer.json shreds validator-client-rewards init-holding --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH"
+    $CLI_BIN -ul -k claim_payer.json shreds validator-client-rewards init-holding \
         --client-id $CLIENT_ID \
         --rewards-token-mint $DOUBLEZERO_MINT \
         --subscription-epoch $TEST_EPOCH
     echo
 
-    echo "doublezero-solana shreds validator-client-rewards claim -ul --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH -k $MANAGER_KEY_PATH"
-    $CLI_BIN shreds validator-client-rewards claim \
-        -ul \
+    echo "doublezero-solana -ul shreds validator-client-rewards show --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH"
+    $CLI_BIN -ul shreds validator-client-rewards show \
         --client-id $CLIENT_ID \
         --rewards-token-mint $DOUBLEZERO_MINT \
-        --subscription-epoch $TEST_EPOCH \
-        -k $MANAGER_KEY_PATH
+        --subscription-epoch $TEST_EPOCH
     echo
 
-    echo "doublezero-solana shreds validator-client-rewards show -ul --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH"
-    $CLI_BIN shreds validator-client-rewards show \
-        -ul \
+    echo "doublezero-solana -ul -k $MANAGER_KEY_PATH shreds validator-client-rewards claim --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH"
+    $CLI_BIN -ul -k $MANAGER_KEY_PATH shreds validator-client-rewards claim \
+        --client-id $CLIENT_ID \
+        --rewards-token-mint $DOUBLEZERO_MINT \
+        --subscription-epoch $TEST_EPOCH
+    echo
+
+    echo "doublezero-solana -ul shreds validator-client-rewards show --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH"
+    $CLI_BIN -ul shreds validator-client-rewards show \
         --client-id $CLIENT_ID \
         --rewards-token-mint $DOUBLEZERO_MINT \
         --subscription-epoch $TEST_EPOCH
@@ -322,25 +332,26 @@ echo
 # owner/mint pair, so no separate `spl-token create-account` step is needed.
 # The 2Z mint is forked from mainnet.
 
-# Init (paid by dummy)
-echo "doublezero-solana shreds publisher-rewards init -ul -k dummy.json --node-id $NODE_ID"
-$CLI_BIN shreds publisher-rewards init -ul -k dummy.json --node-id $NODE_ID
+# Init (paid by dummy). Uses the legacy trailing-flag form (-ul/-k AFTER the
+# subcommand) to exercise backwards compatibility of a write verb end-to-end.
+echo "[back-compat] doublezero-solana shreds publisher-rewards init --node-id $NODE_ID -ul -k dummy.json"
+$CLI_BIN shreds publisher-rewards init --node-id $NODE_ID -ul -k dummy.json
 echo
 
 # Direct path: fee-payer keypair (-k) doubles as the validator identity, so we
 # pass the validator-keypair as the fee-payer and --node-id matches its pubkey.
-echo "doublezero-solana shreds publisher-rewards configure -ul (direct path)"
-$CLI_BIN shreds publisher-rewards configure -ul -k test-ledger/validator-keypair.json \
+echo "doublezero-solana -ul -k test-ledger/validator-keypair.json shreds publisher-rewards configure (direct path)"
+$CLI_BIN -ul -k test-ledger/validator-keypair.json shreds publisher-rewards configure \
     --node-id $NODE_ID --rewards-token-mint $DZ_MINT --rewards-token-owner $DUMMY_KEY
 echo
 
-echo "doublezero-solana shreds publisher-rewards show -ul --node-id $NODE_ID"
-$CLI_BIN shreds publisher-rewards show -ul --node-id $NODE_ID
+echo "doublezero-solana -ul shreds publisher-rewards show --node-id $NODE_ID"
+$CLI_BIN -ul shreds publisher-rewards show --node-id $NODE_ID
 echo
 
-# Offchain path: prepare → solana sign-offchain-message → configure
+# Offchain path: prepare -> solana sign-offchain-message -> configure
 echo "Preparing offchain authorization message..."
-PREPARED=$($CLI_BIN shreds publisher-rewards prepare-offchain-message -ul \
+PREPARED=$($CLI_BIN -ul shreds publisher-rewards prepare-offchain-message \
     --node-id $NODE_ID --rewards-token-mint $DZ_MINT \
     --rewards-token-owner $ANOTHER_PAYER_KEY --valid-for 1h --json)
 HEX=$(echo "$PREPARED" | jq -r .hex)
@@ -349,15 +360,15 @@ DEADLINE=$(echo "$PREPARED" | jq -r .deadline_slot)
 echo "Signing message with validator identity..."
 SIG=$(solana sign-offchain-message -k test-ledger/validator-keypair.json "$HEX")
 
-echo "doublezero-solana shreds publisher-rewards configure -ul (offchain path)"
-$CLI_BIN shreds publisher-rewards configure -ul -k another_payer.json \
+echo "doublezero-solana -ul -k another_payer.json shreds publisher-rewards configure (offchain path)"
+$CLI_BIN -ul -k another_payer.json shreds publisher-rewards configure \
     --node-id $NODE_ID --rewards-token-mint $DZ_MINT \
     --rewards-token-owner $ANOTHER_PAYER_KEY \
     --signature "$SIG" --deadline-slot "$DEADLINE"
 echo
 
-echo "doublezero-solana shreds publisher-rewards show -ul --node-id $NODE_ID"
-$CLI_BIN shreds publisher-rewards show -ul --node-id $NODE_ID
+echo "doublezero-solana -ul shreds publisher-rewards show --node-id $NODE_ID"
+$CLI_BIN -ul shreds publisher-rewards show --node-id $NODE_ID
 echo
 
 ### Clean up.

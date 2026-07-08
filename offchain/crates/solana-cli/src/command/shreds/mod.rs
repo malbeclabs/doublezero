@@ -6,8 +6,11 @@ pub mod publisher_rewards;
 pub mod validator_client_rewards;
 pub mod withdraw;
 
+use std::io::Write;
+
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
+use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::rpc::{DoubleZeroLedgerConnection, NetworkEnvironment};
 use doublezero_solana_sdk::shred_subscription::{
     ID as SHRED_SUBSCRIPTION_PROGRAM_ID,
@@ -26,16 +29,18 @@ pub struct ShredsCommand {
     /// the Solana network environment. Required for e2e / Docker environments
     /// where the DZ Ledger runs on the same validator as the shred-subscription
     /// program.
+    // `pub` so the binary can fill this slot from the global --dz-ledger-url
+    // when it is not given here (the subcommand-level flag wins).
     #[arg(long, env)]
-    dz_ledger_url: Option<String>,
+    pub dz_ledger_url: Option<String>,
 
     #[command(subcommand)]
     pub command: ShredsSubcommand,
 }
 
 impl ShredsCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
-        self.command.try_into_execute(self.dz_ledger_url).await
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
+        self.command.execute(self.dz_ledger_url, ctx, out).await
     }
 }
 
@@ -58,15 +63,20 @@ pub enum ShredsSubcommand {
 }
 
 impl ShredsSubcommand {
-    pub async fn try_into_execute(self, dz_ledger_url: Option<String>) -> Result<()> {
+    pub async fn execute(
+        self,
+        dz_ledger_url: Option<String>,
+        ctx: &CliContext,
+        out: &mut impl Write,
+    ) -> Result<()> {
         match self {
-            Self::Pay(command) => command.try_into_execute(dz_ledger_url).await,
-            Self::Withdraw(command) => command.try_into_execute(dz_ledger_url).await,
-            Self::List(command) => command.try_into_execute(dz_ledger_url).await,
-            Self::Payments(command) => command.try_into_execute(dz_ledger_url).await,
-            Self::Price(command) => command.try_into_execute(dz_ledger_url).await,
-            Self::ValidatorClientRewards(command) => command.try_into_execute().await,
-            Self::PublisherRewards(command) => command.try_into_execute().await,
+            Self::Pay(command) => command.execute(dz_ledger_url, ctx, out).await,
+            Self::Withdraw(command) => command.execute(dz_ledger_url, ctx, out).await,
+            Self::List(command) => command.execute(dz_ledger_url, ctx, out).await,
+            Self::Payments(command) => command.execute(dz_ledger_url, ctx, out).await,
+            Self::Price(command) => command.execute(dz_ledger_url, ctx, out).await,
+            Self::ValidatorClientRewards(command) => command.execute(ctx, out).await,
+            Self::PublisherRewards(command) => command.execute(ctx, out).await,
         }
     }
 }

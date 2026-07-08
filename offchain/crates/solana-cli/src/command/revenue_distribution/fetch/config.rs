@@ -1,6 +1,9 @@
+use std::io::Write;
+
 use anyhow::Result;
 use clap::Args;
-use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_cli_core::CliContext;
+use doublezero_solana_client_tools::rpc::SolanaConnectionOptions;
 use doublezero_solana_sdk::{
     environment_2z_token_mint_key,
     revenue_distribution::{
@@ -24,18 +27,19 @@ struct ConfigTableRow {
 }
 
 impl ConfigCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         let Self { connection_options } = self;
-
-        let connection = SolanaConnection::from(connection_options);
+        let connection = crate::command::solana_connection(ctx, &connection_options);
         let (config_key, config) = try_fetch_config(&connection).await?;
 
         if config.is_paused() {
-            println!("⚠️  Warning: Program is paused");
-            println!();
+            writeln!(out, "⚠️  Warning: Program is paused")?;
+            writeln!(out)?;
         }
 
-        let network_env = connection.try_network_environment().await?;
+        let network_env =
+            crate::command::resolve_network_env(&connection, connection_options.moniker_env())
+                .await?;
         let dz_mint_key = environment_2z_token_mint_key(network_env);
 
         let (journal_key, _) = Journal::find_address();
@@ -242,12 +246,13 @@ impl ConfigCommand {
             note: write_off_note,
         });
 
-        super::print_table(
+        super::write_table(
+            out,
             value_rows,
             super::TableOptions {
                 columns_aligned_right: Some(&[1]),
             },
-        );
+        )?;
 
         Ok(())
     }
@@ -273,9 +278,9 @@ pub struct ValidatorFeesCommand {
 }
 
 impl ValidatorFeesCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         let Self { connection_options } = self;
-        let connection = SolanaConnection::from(connection_options);
+        let connection = crate::command::solana_connection(ctx, &connection_options);
         let (_, config) = try_fetch_config(&connection).await?;
 
         let mut value_rows = Vec::new();
@@ -329,11 +334,14 @@ impl ValidatorFeesCommand {
         }
 
         if value_rows.is_empty() {
-            println!("... Solana validator fee parameters not configured yet");
+            writeln!(
+                out,
+                "... Solana validator fee parameters not configured yet"
+            )?;
             return Ok(());
         }
 
-        super::print_table(value_rows, Default::default());
+        super::write_table(out, value_rows, Default::default())?;
 
         Ok(())
     }

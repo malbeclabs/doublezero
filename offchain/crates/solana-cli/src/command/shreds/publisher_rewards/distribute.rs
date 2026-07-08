@@ -4,7 +4,10 @@
 // not the DZ-Ledger RPC that hosts the program (on testnet/localnet those are
 // distinct chains with independent epoch numbers).
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Write,
+};
 
 use anyhow::{Context, Result};
 use doublezero_solana_client_tools::{
@@ -86,6 +89,7 @@ pub async fn try_distribute_pending(
     node_id: &Pubkey,
     rewards_token_owner_key: &Pubkey,
     network_env: NetworkEnvironment,
+    out: &mut impl Write,
 ) -> Result<DistributeOutcome> {
     let mut outcome = DistributeOutcome::default();
 
@@ -99,9 +103,10 @@ pub async fn try_distribute_pending(
         .first()
         .is_some_and(|account| is_distribute_validator_rewards_enabled(&account.data));
     if !distribute_enabled {
-        println!(
+        writeln!(
+            out,
             "\nDistribute is not enabled on this cluster yet; skipping pending-rewards distribution."
-        );
+        )?;
         return Ok(outcome);
     }
 
@@ -117,7 +122,10 @@ pub async fn try_distribute_pending(
         .epoch;
     let from_epoch = current_epoch.saturating_sub(DISTRIBUTE_LOOKBACK_EPOCHS);
 
-    println!("\nScanning epochs {from_epoch}..={current_epoch} for unsettled validator rewards.");
+    writeln!(
+        out,
+        "\nScanning epochs {from_epoch}..={current_epoch} for unsettled validator rewards."
+    )?;
 
     // Mints we probe each epoch. We don't assume the validator's current
     // VPR mint matches what they were configured against historically;
@@ -157,7 +165,10 @@ pub async fn try_distribute_pending(
             .collect();
 
     if accumulated.is_empty() {
-        println!("No accumulated epochs in the window; nothing to distribute.");
+        writeln!(
+            out,
+            "No accumulated epochs in the window; nothing to distribute."
+        )?;
         return Ok(outcome);
     }
 
@@ -243,7 +254,10 @@ pub async fn try_distribute_pending(
     }
 
     if candidates.is_empty() {
-        println!("No candidate epochs with this validator as a leaf; nothing to distribute.");
+        writeln!(
+            out,
+            "No candidate epochs with this validator as a leaf; nothing to distribute."
+        )?;
         return Ok(outcome);
     }
 
@@ -353,28 +367,31 @@ pub async fn try_distribute_pending(
         let parent_index = parent_index_for_dz_epoch[&candidate.associated_dz_epoch];
         let parent_account = &parent_accounts[parent_index];
         if parent_account.data.is_empty() {
-            println!(
+            writeln!(
+                out,
                 "  epoch {}: skipped — parent distribution missing",
                 candidate.subscription_epoch
-            );
+            )?;
             continue;
         }
         let parent_distribution: ZeroCopyAccountOwnedData<ParentDistribution> =
             match parent_account.clone().try_into() {
                 Ok(data) => data,
                 Err(_) => {
-                    println!(
+                    writeln!(
+                        out,
                         "  epoch {}: skipped — parent distribution malformed",
                         candidate.subscription_epoch
-                    );
+                    )?;
                     continue;
                 }
             };
         if !parent_distribution.is_rewards_calculation_finalized() {
-            println!(
+            writeln!(
+                out,
                 "  epoch {}: skipped — parent rewards not finalized",
                 candidate.subscription_epoch
-            );
+            )?;
             continue;
         }
 
@@ -426,6 +443,7 @@ pub async fn try_distribute_pending(
                 &dz_mint_key,
                 needs_init,
                 needs_ata_create,
+                out,
             )
             .await
             {
@@ -472,6 +490,7 @@ async fn submit_distribute_tx(
     dz_mint_key: &Pubkey,
     needs_init: bool,
     needs_ata_create: bool,
+    out: &mut impl Write,
 ) -> Result<()> {
     let mut instructions: Vec<Instruction> = Vec::new();
 
@@ -544,11 +563,12 @@ async fn submit_distribute_tx(
     let transaction = wallet.new_transaction(&instructions).await?;
     let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
     if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
-        println!(
+        writeln!(
+            out,
             "  epoch {} mint {publisher_mint_key}: distributed ({tx_sig})",
             candidate.subscription_epoch
-        );
-        wallet.print_verbose_output(&[tx_sig]).await?;
+        )?;
+        wallet.write_verbose_output(out, &[tx_sig]).await?;
     }
 
     Ok(())

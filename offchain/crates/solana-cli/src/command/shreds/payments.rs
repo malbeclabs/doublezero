@@ -1,9 +1,10 @@
-use std::net::Ipv4Addr;
+use std::{io::Write, net::Ipv4Addr};
 
 use anyhow::Result;
 use borsh::BorshDeserialize;
 use clap::Args;
-use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_cli_core::CliContext;
+use doublezero_solana_client_tools::rpc::SolanaConnectionOptions;
 use doublezero_solana_sdk::shred_subscription::{
     self as shred_subscription, instruction::ShredSubscriptionInstructionData, state,
 };
@@ -83,13 +84,16 @@ impl std::fmt::Display for EventType {
 }
 
 impl PaymentsCommand {
-    pub async fn try_into_execute(self, dz_ledger_url: Option<String>) -> Result<()> {
-        let moniker_env = self.connection_options.moniker_env();
-        let connection = SolanaConnection::from(self.connection_options);
-        let network_env = match moniker_env {
-            Some(env) => env,
-            None => connection.try_network_environment().await?,
-        };
+    pub async fn execute(
+        self,
+        dz_ledger_url: Option<String>,
+        ctx: &CliContext,
+        out: &mut impl Write,
+    ) -> Result<()> {
+        let connection = crate::command::solana_connection(ctx, &self.connection_options);
+        let network_env =
+            crate::command::resolve_network_env(&connection, self.connection_options.moniker_env())
+                .await?;
 
         let device = self
             .device_args
@@ -122,7 +126,7 @@ impl PaymentsCommand {
             .await?;
 
         if escrow_accounts.is_empty() {
-            println!("No payment escrows found for this seat.");
+            writeln!(out, "No payment escrows found for this seat.")?;
             return Ok(());
         }
 
@@ -244,9 +248,9 @@ impl PaymentsCommand {
 
         if events.is_empty() {
             if self.json {
-                println!("[]");
+                writeln!(out, "[]")?;
             } else {
-                println!("No payment events found.");
+                writeln!(out, "No payment events found.")?;
             }
             return Ok(());
         }
@@ -288,16 +292,17 @@ impl PaymentsCommand {
         rows.reverse();
 
         if self.json {
-            println!("{}", serde_json::to_string_pretty(&rows)?);
+            writeln!(out, "{}", serde_json::to_string_pretty(&rows)?)?;
         } else {
-            println!(
+            writeln!(
+                out,
                 "Payment history for seat {} (client IP {}):\n",
                 client_seat_key, self.client_ip
-            );
+            )?;
 
             let mut table = Table::new(rows);
             table.with(Style::markdown());
-            println!("{table}");
+            writeln!(out, "{table}")?;
         }
 
         Ok(())

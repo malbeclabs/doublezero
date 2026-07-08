@@ -1,8 +1,11 @@
+use std::io::Write;
+
 use anyhow::{Context, Result, ensure};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
     instruction::take_instruction,
-    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
+    payer::{TransactionOutcome, Wallet},
     rpc::{DoubleZeroLedgerEnvironmentOverride, SolanaConnection},
 };
 use doublezero_solana_sdk::{
@@ -73,7 +76,7 @@ pub struct ValidatorDepositCommand {
     source_2z_account: Option<Pubkey>,
 
     #[command(flatten)]
-    solana_payer_options: SolanaPayerOptions,
+    write_opts: crate::command::WriteVerbOptions,
 
     #[arg(hide = true, long)]
     debt_accountant: Option<Pubkey>,
@@ -83,7 +86,7 @@ pub struct ValidatorDepositCommand {
 }
 
 impl ValidatorDepositCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         let ValidatorDepositCommand {
             node_id,
             initialize: mut should_initialize,
@@ -93,12 +96,12 @@ impl ValidatorDepositCommand {
             excess_balance_beneficiary: excess_balance_beneficiary_key,
             convert_2z_limit_price: convert_2z_limit_price_str,
             source_2z_account: source_2z_account_key,
-            solana_payer_options,
+            write_opts,
             debt_accountant: debt_accountant_key,
             dz_env,
         } = self;
 
-        let wallet = Wallet::try_from(solana_payer_options)?;
+        let wallet = crate::command::build_wallet(ctx, write_opts)?;
         let wallet_key = wallet.pubkey();
 
         let exclusive_flag_count = u8::from(should_withdraw_excess_balance)
@@ -111,6 +114,7 @@ impl ValidatorDepositCommand {
 
         if should_withdraw_excess_balance {
             return try_withdraw_excess_balance(
+                out,
                 &wallet,
                 &node_id,
                 excess_balance_beneficiary_key.as_ref(),
@@ -147,7 +151,7 @@ impl ValidatorDepositCommand {
             .await?;
 
             if outstanding_debt_amount == 0 {
-                println!("No outstanding debt found. Nothing to do");
+                writeln!(out, "No outstanding debt found. Nothing to do")?;
                 return Ok(());
             }
 
@@ -198,11 +202,12 @@ impl ValidatorDepositCommand {
 
         let convert_2z_context_items = if let Some(limit_price_str) = convert_2z_limit_price_str {
             try_prompt_proceed_confirmation(
-                format!(
+                out,
+                &format!(
                     "By specifying --convert-2z-limit-price, you are funding {:0.9} SOL to your deposit account",
                     fund_lamports as f64 * 1e-9,
                 ),
-                "Aborting command with --convert-2z-limit-price".to_string(),
+                "Aborting command with --convert-2z-limit-price",
             )?;
 
             let sol_conversion_state = SolConversionState::try_fetch(&wallet.connection).await?;
@@ -220,10 +225,11 @@ impl ValidatorDepositCommand {
             let token_balance_before = convert_2z_context
                 .try_token_balance(&wallet.connection)
                 .await?;
-            println!(
+            writeln!(
+                out,
                 "2Z token balance: {:.8}",
                 token_balance_before as f64 * 1e-8
-            );
+            )?;
 
             instructions.push(buy_sol_ix);
             compute_unit_limit += Convert2zContext::BUY_SOL_COMPUTE_UNIT_LIMIT;
@@ -273,14 +279,14 @@ impl ValidatorDepositCommand {
 
         // TODO: Add simulation result handling with state changes.
         if let TransactionOutcome::Executed(tx_sig) = tx_sig {
-            println!("Solana validator deposit: {deposit_key}");
+            writeln!(out, "Solana validator deposit: {deposit_key}")?;
             if should_initialize {
-                println!("Funded and initialized: {tx_sig}");
+                writeln!(out, "Funded and initialized: {tx_sig}")?;
             } else {
-                println!("Funded: {tx_sig}");
+                writeln!(out, "Funded: {tx_sig}")?;
             }
-            println!("Node ID: {node_id}");
-            println!("Balance: {:.9} SOL", deposit_balance as f64 * 1e-9);
+            writeln!(out, "Node ID: {node_id}")?;
+            writeln!(out, "Balance: {:.9} SOL", deposit_balance as f64 * 1e-9)?;
 
             if let Some(Convert2zContextItems {
                 context: convert_2z_context,
@@ -291,14 +297,15 @@ impl ValidatorDepositCommand {
                 let token_balance_after = convert_2z_context
                     .try_token_balance(&wallet.connection)
                     .await?;
-                println!(
+                writeln!(
+                    out,
                     "Converted {:.8} 2Z tokens to fund deposit with {:.9} SOL",
                     (token_balance_before - token_balance_after) as f64 * 1e-8,
                     (required_lamports as f64 * 1e-9)
-                );
+                )?;
             }
 
-            wallet.print_verbose_output(&[tx_sig]).await?;
+            wallet.write_verbose_output(out, &[tx_sig]).await?;
         }
 
         Ok(())
@@ -366,6 +373,7 @@ async fn try_compute_outstanding_debt(
 }
 
 async fn try_withdraw_excess_balance(
+    out: &mut impl Write,
     wallet: &Wallet,
     node_id: &Pubkey,
     excess_balance_beneficiary_key: Option<&Pubkey>,
@@ -403,10 +411,10 @@ async fn try_withdraw_excess_balance(
     let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
     if let TransactionOutcome::Executed(tx_sig) = tx_sig {
-        println!("Solana validator deposit: {deposit_key}");
-        println!("Withdrawn excess balance: {tx_sig}");
-        println!("Node ID: {node_id}");
-        println!("Withdrawn {:.9} SOL", deposit_balance as f64 * 1e-9);
+        writeln!(out, "Solana validator deposit: {deposit_key}")?;
+        writeln!(out, "Withdrawn excess balance: {tx_sig}")?;
+        writeln!(out, "Node ID: {node_id}")?;
+        writeln!(out, "Withdrawn {:.9} SOL", deposit_balance as f64 * 1e-9)?;
     }
 
     Ok(())

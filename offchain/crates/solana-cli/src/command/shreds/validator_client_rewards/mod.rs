@@ -3,8 +3,11 @@ mod init_holding;
 mod set_proportion;
 mod show;
 
+use std::io::Write;
+
 use anyhow::Result;
 use clap::{Args, Subcommand};
+use doublezero_cli_core::CliContext;
 
 #[derive(Debug, Args)]
 pub struct ValidatorClientRewardsCommand {
@@ -13,8 +16,8 @@ pub struct ValidatorClientRewardsCommand {
 }
 
 impl ValidatorClientRewardsCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
-        self.command.try_into_execute().await
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
+        self.command.execute(ctx, out).await
     }
 }
 
@@ -32,12 +35,12 @@ pub enum ValidatorClientRewardsSubcommand {
 }
 
 impl ValidatorClientRewardsSubcommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         match self {
-            Self::SetProportion(command) => command.try_into_execute().await,
-            Self::InitHolding(command) => command.try_into_execute().await,
-            Self::Claim(command) => command.try_into_execute().await,
-            Self::Show(command) => command.try_into_execute().await,
+            Self::SetProportion(command) => command.execute(ctx, out).await,
+            Self::InitHolding(command) => command.execute(ctx, out).await,
+            Self::Claim(command) => command.execute(ctx, out).await,
+            Self::Show(command) => command.execute(ctx, out).await,
         }
     }
 }

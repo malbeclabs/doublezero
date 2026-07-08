@@ -55,15 +55,22 @@ echo "Revenue Distribution Program Config"
 echo "-----------------------------------"
 echo
 
-$DZ_SOLANA_CLI_BIN revenue-distribution fetch config -ul
+$DZ_SOLANA_CLI_BIN -ul revenue-distribution fetch config
 echo
 
 echo "Current distribution"
 echo "--------------------"
 echo
 
-$DZ_SOLANA_CLI_BIN revenue-distribution fetch distribution \
-    -ul \
+$DZ_SOLANA_CLI_BIN -ul revenue-distribution fetch distribution \
+    --debt-accountant $MAINNET_BETA_DEBT_ACCOUNTANT_KEY
+echo
+
+### Backwards compatibility: the legacy per-verb (trailing) flag form must keep
+### working. Mirrors the fetch above but passes --url/-u and the hidden --dz-env
+### AFTER the subcommand; output must match the global-flag form.
+echo "[back-compat] doublezero-solana revenue-distribution fetch distribution -ul --dz-env mainnet-beta --debt-accountant ..."
+$DZ_SOLANA_CLI_BIN revenue-distribution fetch distribution -ul \
     --dz-env mainnet-beta \
     --debt-accountant $MAINNET_BETA_DEBT_ACCOUNTANT_KEY
 echo
@@ -88,16 +95,14 @@ echo "Revenue Distribution Program Config"
 echo "-----------------------------------"
 echo
 
-$DZ_SOLANA_CLI_BIN revenue-distribution fetch config -ul
+$DZ_SOLANA_CLI_BIN -ul revenue-distribution fetch config
 echo
 
 echo "Current distribution"
 echo "--------------------"
 echo
 
-$DZ_SOLANA_CLI_BIN revenue-distribution fetch distribution \
-    -ul \
-    --dz-env mainnet-beta \
+$DZ_SOLANA_CLI_BIN -ul revenue-distribution fetch distribution \
     --debt-accountant $MAINNET_BETA_DEBT_ACCOUNTANT_KEY
 echo
 
@@ -120,15 +125,13 @@ echo "Revenue Distribution Program Config"
 echo "-----------------------------------"
 echo
 
-$DZ_SOLANA_CLI_BIN revenue-distribution fetch config -ul
+$DZ_SOLANA_CLI_BIN -ul revenue-distribution fetch config
 echo
 
 echo "Current distribution"
 echo "--------------------"
 echo
 
-$DZ_SOLANA_CLI_BIN revenue-distribution fetch distribution \
-    -ul \
-    --dz-env mainnet-beta \
+$DZ_SOLANA_CLI_BIN -ul revenue-distribution fetch distribution \
     --debt-accountant $MAINNET_BETA_DEBT_ACCOUNTANT_KEY
 echo

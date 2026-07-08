@@ -25,7 +25,7 @@ pub struct FinalizeDistributionRewards {
     schedule: ScheduleOption,
 
     #[command(flatten)]
-    solana_payer_options: SolanaPayerOptions,
+    pub(crate) solana_payer_options: SolanaPayerOptions,
 }
 
 #[async_trait::async_trait]

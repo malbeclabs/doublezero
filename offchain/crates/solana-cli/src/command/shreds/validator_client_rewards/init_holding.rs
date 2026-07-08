@@ -1,6 +1,9 @@
+use std::io::Write;
+
 use anyhow::{Context, Result, bail};
 use clap::Args;
-use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
+use doublezero_cli_core::CliContext;
+use doublezero_solana_client_tools::payer::TransactionOutcome;
 use doublezero_solana_sdk::{
     shred_subscription::{
         ID,
@@ -41,11 +44,11 @@ pub struct InitHoldingCommand {
     #[arg(long = "subscription-epoch", required = true, num_args = 1..)]
     pub subscription_epochs: Vec<u64>,
     #[command(flatten)]
-    pub solana_payer_options: SolanaPayerOptions,
+    pub write_opts: crate::command::WriteVerbOptions,
 }
 
 impl InitHoldingCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         if self.subscription_epochs.len() > MAX_INIT_HOLDING_EPOCHS_PER_TX {
             bail!(
                 "too many --subscription-epoch values ({}); max {} per tx. Split into multiple `init-holding` calls.",
@@ -54,7 +57,7 @@ impl InitHoldingCommand {
             );
         }
 
-        let wallet = Wallet::try_new(self.solana_payer_options, None)?;
+        let wallet = crate::command::build_wallet(ctx, self.write_opts)?;
         let wallet_key = wallet.pubkey();
 
         let vcr_key = find_validator_client_rewards_address(self.client_id).0;
@@ -100,18 +103,22 @@ impl InitHoldingCommand {
             .zip(holding_accounts.into_iter())
         {
             if maybe_acct.is_some() {
-                println!("epoch {epoch}: holding {key} already exists; skipping init");
+                writeln!(
+                    out,
+                    "epoch {epoch}: holding {key} already exists; skipping init"
+                )?;
             } else {
                 to_init.push((*epoch, *key));
             }
         }
 
         if to_init.is_empty() {
-            println!("All requested claim holdings already initialized.");
+            writeln!(out, "All requested claim holdings already initialized.")?;
             return Ok(());
         }
 
-        println!(
+        writeln!(
+            out,
             "Shred subscription - Initialize Claim Holding Account (client_id={}, mint={}, epochs={})",
             self.client_id,
             self.rewards_token_mint,
@@ -120,7 +127,7 @@ impl InitHoldingCommand {
                 .map(|(e, _)| e.to_string())
                 .collect::<Vec<_>>()
                 .join(",")
-        );
+        )?;
 
         let mut instructions = vec![super::super::build_check_cli_version_instruction()?];
         for (epoch, _) in &to_init {
@@ -149,11 +156,11 @@ impl InitHoldingCommand {
         let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
         if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
-            println!("Initialize claim holdings: {tx_sig}");
+            writeln!(out, "Initialize claim holdings: {tx_sig}")?;
             for (epoch, key) in &to_init {
-                println!("  epoch {epoch}: {key}");
+                writeln!(out, "  epoch {epoch}: {key}")?;
             }
-            wallet.print_verbose_output(&[tx_sig]).await?;
+            wallet.write_verbose_output(out, &[tx_sig]).await?;
         }
 
         Ok(())

@@ -205,24 +205,37 @@ impl Wallet {
             .await
     }
 
-    pub async fn print_verbose_output(&self, tx_sigs: &[Signature]) -> Result<()> {
+    pub async fn write_verbose_output(
+        &self,
+        out: &mut impl std::io::Write,
+        tx_sigs: &[Signature],
+    ) -> Result<()> {
         if self.verbose {
-            println!();
-            println!("Url: {}", self.connection.url());
-            println!("Signer: {}", self.signer.pubkey());
+            writeln!(out)?;
+            writeln!(out, "Url: {}", self.connection.url())?;
+            writeln!(out, "Signer: {}", self.signer.pubkey())?;
             if let Some(fee_payer) = &self.fee_payer {
-                println!("Fee payer: {}", fee_payer.pubkey());
+                writeln!(out, "Fee payer: {}", fee_payer.pubkey())?;
             }
 
             for tx_sig in tx_sigs {
-                self.print_transaction_details(tx_sig).await?;
+                self.write_transaction_details(out, tx_sig).await?;
             }
         }
 
         Ok(())
     }
 
-    async fn print_transaction_details(&self, tx_sig: &Signature) -> Result<()> {
+    pub async fn print_verbose_output(&self, tx_sigs: &[Signature]) -> Result<()> {
+        self.write_verbose_output(&mut std::io::stdout(), tx_sigs)
+            .await
+    }
+
+    async fn write_transaction_details(
+        &self,
+        out: &mut impl std::io::Write,
+        tx_sig: &Signature,
+    ) -> Result<()> {
         let tx_response = self
             .connection
             .get_transaction_with_config(
@@ -240,18 +253,19 @@ impl Wallet {
             .meta
             .context("Transaction meta not found")?;
 
-        println!("\nTransaction details for {tx_sig}");
-        println!("  Fee (lamports): {}", tx_meta.fee);
-        println!(
+        writeln!(out, "\nTransaction details for {tx_sig}")?;
+        writeln!(out, "  Fee (lamports): {}", tx_meta.fee)?;
+        writeln!(
+            out,
             "  Compute units: {}",
             tx_meta.compute_units_consumed.unwrap()
-        );
-        println!("  Cost units: {}", tx_meta.cost_units.unwrap());
+        )?;
+        writeln!(out, "  Cost units: {}", tx_meta.cost_units.unwrap())?;
 
-        println!("\n  Program logs:");
-        tx_meta.log_messages.unwrap().iter().for_each(|log| {
-            println!("    {log}");
-        });
+        writeln!(out, "\n  Program logs:")?;
+        for log in tx_meta.log_messages.unwrap() {
+            writeln!(out, "    {log}")?;
+        }
 
         Ok(())
     }

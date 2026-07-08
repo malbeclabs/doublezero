@@ -8,8 +8,11 @@ mod validator_deposit;
 
 //
 
+use std::io::Write;
+
 use anyhow::{Context, Result, ensure};
 use clap::{Args, Subcommand};
+use doublezero_cli_core::CliContext;
 use doublezero_contributor_rewards::calculator::proof::ShapleyOutputStorage;
 use doublezero_solana_client_tools::{
     account::zero_copy::ZeroCopyAccountOwnedData,
@@ -69,15 +72,15 @@ pub enum RevenueDistributionSubcommand {
 }
 
 impl RevenueDistributionSubcommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         match self {
-            Self::Fetch(command) => command.try_into_execute().await,
-            Self::ContributorRewards(command) => command.try_into_execute().await,
-            Self::ConfigureContributorRewards(command) => command.try_into_execute().await,
-            Self::Convert2z(command) => command.try_into_execute().await,
-            Self::Harvest2z(command) => command.try_into_execute().await,
-            Self::ValidatorDeposit(command) => command.try_into_execute().await,
-            Self::Relay(command) => command.inner.try_into_execute().await,
+            Self::Fetch(command) => command.execute(ctx, out).await,
+            Self::ContributorRewards(command) => command.execute(ctx, out).await,
+            Self::ConfigureContributorRewards(command) => command.execute(ctx, out).await,
+            Self::Convert2z(command) => command.execute(ctx, out).await,
+            Self::Harvest2z(command) => command.execute(ctx, out).await,
+            Self::ValidatorDeposit(command) => command.execute(ctx, out).await,
+            Self::Relay(command) => command.inner.execute(ctx, out).await,
         }
     }
 }

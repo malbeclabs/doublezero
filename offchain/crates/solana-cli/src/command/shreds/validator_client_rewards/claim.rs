@@ -1,7 +1,10 @@
+use std::io::Write;
+
 use anyhow::{Context, Result, bail, ensure};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
-    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
+    payer::{TransactionOutcome, Wallet},
     rpc::try_fetch_multiple_accounts,
 };
 use doublezero_solana_sdk::{
@@ -51,7 +54,7 @@ pub struct ClaimCommand {
     #[arg(long)]
     pub destination_token_account: Option<Pubkey>,
     #[command(flatten)]
-    pub solana_payer_options: SolanaPayerOptions,
+    pub write_opts: crate::command::WriteVerbOptions,
 }
 
 pub(crate) fn resolve_destination(
@@ -104,8 +107,8 @@ fn holding_balance(account: Option<&Account>, mint: &Pubkey) -> Option<u64> {
 }
 
 impl ClaimCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
-        let wallet = Wallet::try_new(self.solana_payer_options, None)?;
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
+        let wallet = crate::command::build_wallet(ctx, self.write_opts)?;
         let wallet_key = wallet.pubkey();
 
         let validator_client_rewards_key = find_validator_client_rewards_address(self.client_id).0;
@@ -146,10 +149,11 @@ impl ClaimCommand {
         let holdings = if self.subscription_epochs.is_empty() {
             let target = validator_client_rewards_info.claim_holding_count as usize;
             if target == 0 {
-                println!(
+                writeln!(
+                    out,
                     "No outstanding claim holdings for client_id {} (claim_holding_count is 0).",
                     self.client_id
-                );
+                )?;
                 return Ok(());
             }
             // The shred-subscription program stamps `current_subscription_epoch`
@@ -170,10 +174,11 @@ impl ClaimCommand {
             )
             .await?;
             if discovered.is_empty() {
-                println!(
+                writeln!(
+                    out,
                     "No claim holdings for client_id {} found for mint {} within the last {MAX_DISCOVERY_LOOKBACK} epochs.",
                     self.client_id, self.rewards_token_mint,
-                );
+                )?;
                 return Ok(());
             }
             if discovered.len() < target {
@@ -185,12 +190,13 @@ impl ClaimCommand {
                     self.rewards_token_mint,
                 );
             }
-            println!(
+            writeln!(
+                out,
                 "Discovered {} outstanding holding(s) for client_id {} (mint {}).",
                 discovered.len(),
                 self.client_id,
                 self.rewards_token_mint,
-            );
+            )?;
             discovered
         } else {
             validate_explicit_holdings(
@@ -203,10 +209,11 @@ impl ClaimCommand {
         };
 
         if holdings.is_empty() {
-            println!(
+            writeln!(
+                out,
                 "Nothing to claim for client_id {} (mint {}); no valid holdings.",
                 self.client_id, self.rewards_token_mint,
-            );
+            )?;
             return Ok(());
         }
 
@@ -253,14 +260,15 @@ impl ClaimCommand {
         let batches = holdings.chunks(MAX_CLAIM_EPOCHS_PER_TX).collect::<Vec<_>>();
         let batch_count = batches.len();
 
-        println!(
+        writeln!(
+            out,
             "Shred subscription - Claim Validator Client Rewards \
              (client_id={}, mint={}, holdings={total_holdings}, transactions={batch_count})",
             self.client_id, self.rewards_token_mint,
-        );
-        println!("  manager       : {wallet_key}");
-        println!("  destination   : {destination}");
-        println!("  rent recovers : {rent_beneficiary}");
+        )?;
+        writeln!(out, "  manager       : {wallet_key}")?;
+        writeln!(out, "  destination   : {destination}")?;
+        writeln!(out, "  rent recovers : {rent_beneficiary}")?;
 
         // Submit one transaction per batch of up to MAX_CLAIM_EPOCHS_PER_TX
         // holdings. Batches are independent, so a later failure does not undo an
@@ -307,11 +315,12 @@ impl ClaimCommand {
             }
 
             if batch_count > 1 {
-                println!(
+                writeln!(
+                    out,
                     "\nTransaction {}/{batch_count}: {} holding(s), epochs {epochs:?}",
                     batch_index + 1,
                     batch.len(),
-                );
+                )?;
             }
 
             let transaction = wallet.new_transaction(&instructions).await?;
@@ -320,26 +329,28 @@ impl ClaimCommand {
             if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
                 executed_holdings += batch.len();
                 last_executed = true;
-                println!("Claimed: {tx_sig}");
+                writeln!(out, "Claimed: {tx_sig}")?;
                 // The on-chain handler transfers the full balance of each
                 // holding, but these balances were read pre-tx — a top-up
                 // between the read and the claim makes the actual drained amount
                 // higher. Diff the destination balance before/after for the
                 // authoritative number.
                 for holding in batch {
-                    println!(
+                    writeln!(
+                        out,
                         "  epoch {}: {} from {} (pre-claim)",
                         holding.epoch, holding.pre_balance, holding.holding_pda,
-                    );
+                    )?;
                 }
-                wallet.print_verbose_output(&[tx_sig]).await?;
+                wallet.write_verbose_output(out, &[tx_sig]).await?;
             }
         }
 
         if last_executed {
-            println!(
+            writeln!(
+                out,
                 "\nPre-claim total: {total_pre_balance} ({executed_holdings}/{total_holdings} holding(s) claimed across {batch_count} transaction(s))."
-            );
+            )?;
 
             // Re-fetch the validator client rewards account to report the
             // post-tx claim_holding_count.
@@ -363,8 +374,8 @@ impl ClaimCommand {
                 }
             };
             match post_count {
-                Some(count) => println!("Remaining claim holding count: {count}"),
-                None => println!("Remaining claim holding count: (unavailable)"),
+                Some(count) => writeln!(out, "Remaining claim holding count: {count}")?,
+                None => writeln!(out, "Remaining claim holding count: (unavailable)")?,
             }
         }
 

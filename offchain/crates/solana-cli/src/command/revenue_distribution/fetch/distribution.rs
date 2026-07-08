@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Write};
 
 use anyhow::{Context, Result, ensure};
 use clap::{Args, ValueEnum};
+use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
     account::zero_copy::ZeroCopyAccountOwnedData,
     rpc::{
@@ -25,7 +26,7 @@ use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey};
 use tabled::Tabled;
 
 use crate::command::revenue_distribution::{
-    fetch::{TableOptions, print_table},
+    fetch::{TableOptions, write_table},
     try_distribution_rewards_iter, try_distribution_solana_validator_debt_iter,
     try_fetch_shapley_record,
 };
@@ -47,14 +48,14 @@ pub struct DistributionCommand {
     #[arg(long, value_enum, default_value = "summary")]
     view: DistributionViewMode,
 
-    #[command(flatten)]
-    solana_connection_options: SolanaConnectionOptions,
-
     #[arg(hide = true, long)]
     debt_accountant: Option<Pubkey>,
 
     #[arg(hide = true, long)]
     rewards_accountant: Option<Pubkey>,
+
+    #[command(flatten)]
+    connection_options: SolanaConnectionOptions,
 
     #[command(flatten)]
     dz_env: DoubleZeroLedgerEnvironmentOverride,
@@ -91,21 +92,22 @@ struct DistributionRewardsTableRow {
 }
 
 impl DistributionCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         let Self {
             dz_epoch,
             view: view_mode,
-            solana_connection_options,
             debt_accountant: debt_accountant_key,
             rewards_accountant: rewards_accountant_key,
+            connection_options,
             dz_env,
         } = self;
 
-        let solana_connection = SolanaConnection::from(solana_connection_options);
+        let solana_connection = crate::command::solana_connection(ctx, &connection_options);
 
-        let network_env = solana_connection.try_network_environment().await?;
-        let dz_env = dz_env.dz_env.unwrap_or(network_env);
-        let dz_connection = DoubleZeroLedgerConnection::from(dz_env);
+        let dz_connection = match dz_env.dz_env {
+            Some(e) => DoubleZeroLedgerConnection::from(e),
+            None => DoubleZeroLedgerConnection::new(ctx.ledger_rpc_url.clone()),
+        };
 
         let (_, config) = try_fetch_config(&solana_connection).await?;
 
@@ -121,7 +123,8 @@ impl DistributionCommand {
 
         match view_mode {
             DistributionViewMode::Summary => {
-                try_print_distribution_summary_table(
+                try_write_distribution_summary_table(
+                    out,
                     &dz_connection,
                     &distribution_key,
                     &distribution,
@@ -137,7 +140,8 @@ impl DistributionCommand {
                     "Debt calculation is not finalized yet"
                 );
 
-                try_print_distribution_debt_table(
+                try_write_distribution_debt_table(
+                    out,
                     &solana_connection,
                     &dz_connection,
                     &debt_accountant_key,
@@ -152,7 +156,8 @@ impl DistributionCommand {
                     "Rewards calculation is not finalized yet"
                 );
 
-                try_print_distribution_rewards_table(
+                try_write_distribution_rewards_table(
+                    out,
                     &dz_connection,
                     &rewards_accountant_key.unwrap_or(config.rewards_accountant_key),
                     &distribution,
@@ -165,7 +170,8 @@ impl DistributionCommand {
 
 //
 
-async fn try_print_distribution_summary_table(
+async fn try_write_distribution_summary_table(
+    out: &mut impl Write,
     dz_connection: &DoubleZeroLedgerConnection,
     distribution_key: &Pubkey,
     distribution: &Distribution,
@@ -434,17 +440,19 @@ async fn try_print_distribution_summary_table(
         });
     }
 
-    print_table(
+    write_table(
+        out,
         value_rows,
         TableOptions {
             columns_aligned_right: Some(&[1]),
         },
-    );
+    )?;
 
     Ok(())
 }
 
-async fn try_print_distribution_debt_table(
+async fn try_write_distribution_debt_table(
+    out: &mut impl Write,
     solana_connection: &SolanaConnection,
     dz_connection: &DoubleZeroLedgerConnection,
     debt_accountant_key: &Pubkey,
@@ -462,7 +470,7 @@ async fn try_print_distribution_debt_table(
     .await?;
 
     if computed_debt.debts.is_empty() {
-        println!("No debts found for DZ epoch {dz_epoch}");
+        writeln!(out, "No debts found for DZ epoch {dz_epoch}")?;
         return Ok(());
     }
 
@@ -548,17 +556,19 @@ async fn try_print_distribution_debt_table(
         }
     }
 
-    print_table(
+    write_table(
+        out,
         outputs,
         TableOptions {
             columns_aligned_right: Some(&[0, 1, 2, 4, 5, 6, 7]),
         },
-    );
+    )?;
 
     Ok(())
 }
 
-async fn try_print_distribution_rewards_table(
+async fn try_write_distribution_rewards_table(
+    out: &mut impl Write,
     dz_connection: &DoubleZeroLedgerConnection,
     rewards_accountant_key: &Pubkey,
     distribution: &ZeroCopyAccountOwnedData<Distribution>,
@@ -623,12 +633,13 @@ async fn try_print_distribution_rewards_table(
         });
     }
 
-    print_table(
+    write_table(
+        out,
         rewards_rows,
         TableOptions {
             columns_aligned_right: Some(&[0, 1, 3, 4, 5]),
         },
-    );
+    )?;
 
     Ok(())
 }

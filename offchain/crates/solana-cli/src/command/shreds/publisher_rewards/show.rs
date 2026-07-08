@@ -1,6 +1,9 @@
+use std::io::Write;
+
 use anyhow::{Context, Result};
 use clap::Args;
-use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_cli_core::CliContext;
+use doublezero_solana_client_tools::rpc::SolanaConnectionOptions;
 use doublezero_solana_sdk::{
     Pubkey,
     shred_subscription::state::{
@@ -19,12 +22,12 @@ pub struct ShowCommand {
     pub node_id: Pubkey,
 
     #[command(flatten)]
-    pub connection_options: SolanaConnectionOptions,
+    connection_options: SolanaConnectionOptions,
 }
 
 impl ShowCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
-        let connection: SolanaConnection = self.connection_options.into();
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
+        let connection = crate::command::solana_connection(ctx, &self.connection_options);
         let commitment = connection.0.commitment();
         let pda = find_validator_publisher_rewards_address(&self.node_id).0;
 
@@ -43,10 +46,10 @@ impl ShowCommand {
         let mint = vpr.rewards_token_mint_key;
         let ata = get_associated_token_address(&owner, &mint);
 
-        println!("Node ID:        {}", vpr.node_id);
-        println!("Rewards owner:  {owner}");
-        println!("Rewards mint:   {mint}");
-        println!("Resolved ATA:   {ata}");
+        writeln!(out, "Node ID:        {}", vpr.node_id)?;
+        writeln!(out, "Rewards owner:  {owner}")?;
+        writeln!(out, "Rewards mint:   {mint}")?;
+        writeln!(out, "Resolved ATA:   {ata}")?;
 
         // Rewards won't be distributed unless the ATA exists. `configure`
         // creates it idempotently, so this is a status line (None) rather
@@ -59,12 +62,13 @@ impl ShowCommand {
             .with_context(|| format!("failed to query ATA {ata} status"))?
             .value;
         match ata_account {
-            Some(_) => println!("ATA status:     exists"),
-            None => println!(
+            Some(_) => writeln!(out, "ATA status:     exists")?,
+            None => writeln!(
+                out,
                 "ATA status:     missing — rewards won't be distributed until it's created. \
                  Re-run `doublezero-solana shreds publisher-rewards configure` to create it, \
                  or run `spl-token create-account {mint} --owner {owner}` manually."
-            ),
+            )?,
         }
         Ok(())
     }

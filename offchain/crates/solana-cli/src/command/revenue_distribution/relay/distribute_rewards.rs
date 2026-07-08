@@ -39,7 +39,7 @@ pub struct DistributeRewards {
     schedule: ScheduleOption,
 
     #[command(flatten)]
-    solana_payer_options: SolanaPayerOptions,
+    pub(crate) solana_payer_options: SolanaPayerOptions,
 
     #[command(flatten)]
     dz_env: DoubleZeroLedgerEnvironmentOverride,

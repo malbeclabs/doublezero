@@ -1,9 +1,10 @@
-use std::net::Ipv4Addr;
+use std::{io::Write, net::Ipv4Addr};
 
 use anyhow::{Result, bail};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_serviceability::{pda::get_user_pda, state::user::UserType};
-use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
+use doublezero_solana_client_tools::payer::{TransactionOutcome, Wallet};
 use doublezero_solana_sdk::{
     environment_usdc_token_mint_key,
     shred_subscription::{
@@ -30,7 +31,6 @@ use solana_sdk::pubkey::Pubkey;
 use spl_associated_token_account_interface::address::get_associated_token_address;
 
 use super::{make_dz_connection, serviceability_program_id};
-use crate::command::try_prompt_proceed_confirmation;
 
 /// Warn if less than 10% of the current Solana epoch remains.
 const EPOCH_REMAINING_WARNING_THRESHOLD: f64 = 0.10;
@@ -173,22 +173,25 @@ pub struct PayCommand {
     serviceability_program_id: Option<Pubkey>,
 
     #[command(flatten)]
-    solana_payer_options: SolanaPayerOptions,
+    write_opts: crate::command::WriteVerbOptions,
 }
 
 impl PayCommand {
-    pub async fn try_into_execute(self, dz_ledger_url: Option<String>) -> Result<()> {
-        let moniker_env = self.solana_payer_options.connection_options.moniker_env();
-        let wallet = Wallet::try_new(self.solana_payer_options, None)?;
+    pub async fn execute(
+        self,
+        dz_ledger_url: Option<String>,
+        ctx: &CliContext,
+        out: &mut impl Write,
+    ) -> Result<()> {
+        let moniker_env = self.write_opts.connection_options.moniker_env();
+        let wallet = crate::command::build_wallet(ctx, self.write_opts)?;
         let wallet_key = wallet.pubkey();
 
-        println!("Shred subscription - Pay");
+        writeln!(out, "Shred subscription - Pay")?;
 
-        let network_env = match moniker_env {
-            Some(env) => env,
-            None => wallet.connection.try_network_environment().await?,
-        };
-        println!("Connected to Solana: {network_env:?}");
+        let network_env =
+            crate::command::resolve_network_env(&wallet.connection, moniker_env).await?;
+        writeln!(out, "Connected to Solana: {network_env:?}")?;
 
         let device = self
             .device_args
@@ -329,9 +332,10 @@ impl PayCommand {
                 };
 
                 if let Some(prompt) = epoch_warning_prompt(&input) {
-                    try_prompt_proceed_confirmation(
-                        prompt,
-                        "Aborted. Consider waiting for the next epoch to start to get a full epoch of service.".to_string(),
+                    crate::command::try_prompt_proceed_confirmation(
+                        out,
+                        &prompt,
+                        "Aborted. Consider waiting for the next epoch to start to get a full epoch of service.",
                     )?;
                 }
             }
@@ -465,8 +469,8 @@ impl PayCommand {
         let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
         if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
-            println!("Fund escrow ({} USDC): {tx_sig}", self.amount);
-            wallet.print_verbose_output(&[tx_sig]).await?;
+            writeln!(out, "Fund escrow ({} USDC): {tx_sig}", self.amount)?;
+            wallet.write_verbose_output(out, &[tx_sig]).await?;
         }
 
         Ok(())

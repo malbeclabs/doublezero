@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- add `Wallet::write_verbose_output` and `write_transaction_details` methods that write to an arbitrary `impl Write` instead of stdout, for testability (#383)
 - remove the testnet shred-subscription DZ Ledger special-case: drop `NetworkEnvironment::shred_subscription_url()` and `SolanaConnectionOptions::into_shred_subscription_connection()`. The testnet shred-subscription program now lives on Solana devnet, so callers build a `SolanaConnection` from `-u`/`--url` via the existing `From<SolanaConnectionOptions>` impl (`Wallet::try_new(opts, None)` for signing paths). The `Option<SolanaConnection>` override on `Wallet::try_new` remains for callers that source the connection elsewhere ([infra #1763](https://github.com/malbeclabs/infra/issues/1763))
 - migrate to Solana 3.0: workspace `solana-*` crates and `solana-sdk` move to the 3.0 line, `solana-program-test` to 3.0.12, and the doublezero SDK git-deps repin from `client/v0.27.1` to the malbeclabs/doublezero#3830 merge revision (malbeclabs/infra#1853)
 - (breaking) `try_fetch_sysvar` now bounds on `SysvarSerialize` instead of `Sysvar` (the Solana 3.0 trait split moved `id()` and account deserialization out of `Sysvar`) (malbeclabs/infra#1853)

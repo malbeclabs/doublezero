@@ -1,8 +1,9 @@
-use std::net::Ipv4Addr;
+use std::{io::Write, net::Ipv4Addr};
 
 use anyhow::{Context, Result, bail};
 use clap::Args;
-use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
+use doublezero_cli_core::CliContext;
+use doublezero_solana_client_tools::payer::TransactionOutcome;
 use doublezero_solana_sdk::{
     environment_usdc_token_mint_key,
     shred_subscription::{
@@ -45,22 +46,25 @@ pub struct WithdrawCommand {
     #[arg(long)]
     refund_token_account: Option<Pubkey>,
     #[command(flatten)]
-    solana_payer_options: SolanaPayerOptions,
+    write_opts: crate::command::WriteVerbOptions,
 }
 
 impl WithdrawCommand {
-    pub async fn try_into_execute(self, dz_ledger_url: Option<String>) -> Result<()> {
-        let moniker_env = self.solana_payer_options.connection_options.moniker_env();
-        let wallet = Wallet::try_new(self.solana_payer_options, None)?;
+    pub async fn execute(
+        self,
+        dz_ledger_url: Option<String>,
+        ctx: &CliContext,
+        out: &mut impl Write,
+    ) -> Result<()> {
+        let moniker_env = self.write_opts.connection_options.moniker_env();
+        let wallet = crate::command::build_wallet(ctx, self.write_opts)?;
         let wallet_key = wallet.pubkey();
 
-        println!("Shred subscription - Withdraw (Close Payment Escrow)");
+        writeln!(out, "Shred subscription - Withdraw (Close Payment Escrow)")?;
 
-        let network_env = match moniker_env {
-            Some(env) => env,
-            None => wallet.connection.try_network_environment().await?,
-        };
-        println!("Connected to Solana: {network_env:?}");
+        let network_env =
+            crate::command::resolve_network_env(&wallet.connection, moniker_env).await?;
+        writeln!(out, "Connected to Solana: {network_env:?}")?;
 
         let device = self
             .device_args
@@ -205,8 +209,8 @@ impl WithdrawCommand {
         let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
         if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
-            println!("Withdraw: {tx_sig}");
-            wallet.print_verbose_output(&[tx_sig]).await?;
+            writeln!(out, "Withdraw: {tx_sig}")?;
+            wallet.write_verbose_output(out, &[tx_sig]).await?;
         }
 
         Ok(())

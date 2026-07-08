@@ -1,11 +1,11 @@
 mod jupiter;
 
+use std::io::Write;
+
 use anyhow::{Context, Result, bail, ensure};
 use clap::Args;
-use doublezero_solana_client_tools::{
-    instruction::take_instruction,
-    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
-};
+use doublezero_cli_core::CliContext;
+use doublezero_solana_client_tools::{instruction::take_instruction, payer::TransactionOutcome};
 use doublezero_solana_sdk::revenue_distribution::{
     env::mainnet::DOUBLEZERO_MINT_KEY, fetch::SolConversionState,
 };
@@ -36,20 +36,20 @@ pub struct Harvest2zCommand {
     jupiter_api_key: Option<String>,
 
     #[command(flatten)]
-    solana_payer_options: SolanaPayerOptions,
+    write_opts: crate::command::WriteVerbOptions,
 }
 
 impl Harvest2zCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         let Self {
             specific_dex,
             jupiter_api_key,
-            solana_payer_options,
+            write_opts,
         } = self;
 
         let jupiter_client = JupiterClient::new(jupiter_api_key.as_deref())?;
 
-        let wallet = Wallet::try_from(solana_payer_options)?;
+        let wallet = crate::command::build_wallet(ctx, write_opts)?;
         ensure!(
             wallet.compute_unit_price_ix.is_none(),
             "Compute unit price is not supported for harvest-2z command"
@@ -171,18 +171,19 @@ impl Harvest2zCommand {
 
         match tx_outcome {
             TransactionOutcome::Executed(tx_sig) => {
-                println!("Harvested 2Z tokens: {tx_sig}");
+                writeln!(out, "Harvested 2Z tokens: {tx_sig}")?;
 
                 let token_balance_after = convert_2z_context
                     .try_token_balance(&wallet.connection)
                     .await?;
-                println!(
+                writeln!(
+                    out,
                     "Harvested {:.8} 2Z tokens with {:.9} SOL",
                     (token_balance_after - token_balance_before) as f64 * 1e-8,
                     (fixed_fill_quantity as f64 * 1e-9)
-                );
+                )?;
 
-                wallet.print_verbose_output(&[tx_sig]).await?;
+                wallet.write_verbose_output(out, &[tx_sig]).await?;
             }
             TransactionOutcome::Simulated(simulation_response) => {
                 let mut post_simulation_account_infos = simulation_response
@@ -211,11 +212,12 @@ impl Harvest2zCommand {
                     token_balance_after >= token_balance_before,
                     "Simulated harvesting 2Z tokens failed"
                 );
-                println!(
+                writeln!(
+                    out,
                     "Simulated harvesting {:.8} 2Z tokens with {:.9} SOL",
                     (token_balance_after - token_balance_before) as f64 * 1e-8,
                     (fixed_fill_quantity as f64 * 1e-9)
-                );
+                )?;
 
                 let lamports_balance_after = post_simulation_account_infos.pop().unwrap().lamports;
                 ensure!(

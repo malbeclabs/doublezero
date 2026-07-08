@@ -7,8 +7,11 @@ mod validator_deposits;
 
 //
 
+use std::io::Write;
+
 use anyhow::Result;
 use clap::{Args, Subcommand};
+use doublezero_cli_core::CliContext;
 use tabled::{
     Table, Tabled,
     settings::{Alignment, Style, object::Columns},
@@ -48,15 +51,15 @@ pub enum FetchSubcommand {
 }
 
 impl FetchCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         match self.cmd {
-            FetchSubcommand::Config(command) => command.try_into_execute().await,
-            FetchSubcommand::ContributorRewards(command) => command.try_into_execute().await,
-            FetchSubcommand::Distribution(command) => command.try_into_execute().await,
-            FetchSubcommand::SolConversion(command) => command.try_into_execute().await,
-            FetchSubcommand::ValidatorDebts(command) => command.try_into_execute().await,
-            FetchSubcommand::ValidatorDeposits(command) => command.try_into_execute().await,
-            FetchSubcommand::ValidatorFees(command) => command.try_into_execute().await,
+            FetchSubcommand::Config(command) => command.execute(ctx, out).await,
+            FetchSubcommand::ContributorRewards(command) => command.execute(ctx, out).await,
+            FetchSubcommand::Distribution(command) => command.execute(ctx, out).await,
+            FetchSubcommand::SolConversion(command) => command.execute(ctx, out).await,
+            FetchSubcommand::ValidatorDebts(command) => command.execute(ctx, out).await,
+            FetchSubcommand::ValidatorDeposits(command) => command.execute(ctx, out).await,
+            FetchSubcommand::ValidatorFees(command) => command.execute(ctx, out).await,
         }
     }
 }
@@ -68,7 +71,11 @@ struct TableOptions<'a> {
     columns_aligned_right: Option<&'a [usize]>,
 }
 
-fn print_table(value_rows: Vec<impl Tabled>, options: TableOptions) {
+fn write_table(
+    out: &mut impl Write,
+    value_rows: Vec<impl Tabled>,
+    options: TableOptions,
+) -> Result<()> {
     let mut table = Table::new(value_rows);
     table.with(Style::markdown());
 
@@ -77,5 +84,6 @@ fn print_table(value_rows: Vec<impl Tabled>, options: TableOptions) {
             table.modify(Columns::one(*column_index), Alignment::right());
         }
     }
-    println!("{table}");
+    writeln!(out, "{table}")?;
+    Ok(())
 }

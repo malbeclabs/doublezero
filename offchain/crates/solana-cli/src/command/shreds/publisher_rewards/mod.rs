@@ -7,8 +7,11 @@ pub mod s3;
 pub mod show;
 pub mod status;
 
+use std::io::Write;
+
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
+use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::account::zero_copy::ZeroCopyAccountOwnedData;
 use doublezero_solana_sdk::{Pubkey, shred_subscription::state::ShredRewardToken};
 use solana_sdk::account::Account;
@@ -34,13 +37,13 @@ pub enum PublisherRewardsSubcommand {
 }
 
 impl PublisherRewardsCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         match self.command {
-            PublisherRewardsSubcommand::Init(c) => c.try_into_execute().await,
-            PublisherRewardsSubcommand::PrepareOffchainMessage(c) => c.try_into_execute().await,
-            PublisherRewardsSubcommand::Configure(c) => c.try_into_execute().await,
-            PublisherRewardsSubcommand::Show(c) => c.try_into_execute().await,
-            PublisherRewardsSubcommand::Status(c) => c.try_into_execute().await,
+            PublisherRewardsSubcommand::Init(c) => c.execute(ctx, out).await,
+            PublisherRewardsSubcommand::PrepareOffchainMessage(c) => c.execute(ctx, out).await,
+            PublisherRewardsSubcommand::Configure(c) => c.execute(ctx, out).await,
+            PublisherRewardsSubcommand::Show(c) => c.execute(ctx, out).await,
+            PublisherRewardsSubcommand::Status(c) => c.execute(ctx, out).await,
         }
     }
 }

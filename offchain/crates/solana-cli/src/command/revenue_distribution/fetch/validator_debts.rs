@@ -1,7 +1,8 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, io::Write};
 
 use anyhow::{Context, Result};
 use clap::{Args, ValueEnum};
+use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
     account::{record::BorshRecordAccountData, zero_copy::ZeroCopyAccountOwnedData},
     rpc::{DoubleZeroLedgerEnvironmentOverride, SolanaConnection, SolanaConnectionOptions},
@@ -30,11 +31,11 @@ pub struct ValidatorDebtsCommand {
     #[arg(long, value_enum, default_value = "outstanding")]
     view: ValidatorDebtsViewMode,
 
-    #[command(flatten)]
-    solana_connection_options: SolanaConnectionOptions,
-
     #[arg(hide = true, long)]
     debt_accountant: Option<Pubkey>,
+
+    #[command(flatten)]
+    connection_options: SolanaConnectionOptions,
 
     #[command(flatten)]
     dz_env: DoubleZeroLedgerEnvironmentOverride,
@@ -58,16 +59,16 @@ struct ValidatorDebtsNodeTableRow {
 }
 
 impl ValidatorDebtsCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         let Self {
             node_id,
             view,
-            solana_connection_options,
             debt_accountant: debt_accountant_key,
+            connection_options,
             dz_env,
         } = self;
 
-        let solana_connection = SolanaConnection::from(solana_connection_options);
+        let solana_connection = crate::command::solana_connection(ctx, &connection_options);
 
         let (debt_records, distributions) = try_fetch_debt_records_and_distributions(
             &solana_connection,
@@ -80,7 +81,8 @@ impl ValidatorDebtsCommand {
 
         match view {
             ValidatorDebtsViewMode::Outstanding | ValidatorDebtsViewMode::ExcessBalance => {
-                try_print_validator_debts_outstanding_table(
+                try_write_validator_debts_outstanding_table(
+                    out,
                     &solana_connection,
                     &debt_records,
                     &distributions,
@@ -91,7 +93,7 @@ impl ValidatorDebtsCommand {
             }
             ValidatorDebtsViewMode::Node => {
                 let node_id = node_id.context("--node-id is required for --view node")?;
-                try_print_validator_debts_node_table(&debt_records, &distributions, &node_id)
+                try_write_validator_debts_node_table(out, &debt_records, &distributions, &node_id)
             }
         }
     }
@@ -99,7 +101,8 @@ impl ValidatorDebtsCommand {
 
 //
 
-async fn try_print_validator_debts_outstanding_table(
+async fn try_write_validator_debts_outstanding_table(
+    out: &mut impl Write,
     solana_connection: &SolanaConnection,
     debt_records: &[BorshRecordAccountData<ComputedSolanaValidatorDebts>],
     distributions: &[ZeroCopyAccountOwnedData<Distribution>],
@@ -205,20 +208,22 @@ async fn try_print_validator_debts_outstanding_table(
     outputs.sort_by_key(|row| row.node_id.to_string());
 
     if outputs.is_empty() {
-        println!("No outstanding debts found");
+        writeln!(out, "No outstanding debts found")?;
     } else {
-        super::print_table(
+        super::write_table(
+            out,
             outputs,
             super::TableOptions {
                 columns_aligned_right: Some(&[1, 2]),
             },
-        );
+        )?;
     }
 
     Ok(())
 }
 
-fn try_print_validator_debts_node_table(
+fn try_write_validator_debts_node_table(
+    out: &mut impl Write,
     debt_records: &[BorshRecordAccountData<ComputedSolanaValidatorDebts>],
     distributions: &[ZeroCopyAccountOwnedData<Distribution>],
     node_id: &Pubkey,
@@ -280,12 +285,13 @@ fn try_print_validator_debts_node_table(
 
     outputs.sort_by_key(|row| row.dz_epoch);
 
-    super::print_table(
+    super::write_table(
+        out,
         outputs,
         super::TableOptions {
             columns_aligned_right: Some(&[1, 2, 3, 4]),
         },
-    );
+    )?;
 
     Ok(())
 }

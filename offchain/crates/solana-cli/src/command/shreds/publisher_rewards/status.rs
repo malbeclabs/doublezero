@@ -1,8 +1,12 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Write,
+};
 
 use anyhow::{Context, Result};
 use borsh::BorshDeserialize;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
     account::zero_copy::ZeroCopyAccountOwnedData,
     rpc::{SolanaConnection, SolanaConnectionOptions},
@@ -146,8 +150,8 @@ enum EpochOutcome {
 }
 
 impl StatusCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
-        let connection = SolanaConnection::from(self.connection_options);
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
+        let connection = crate::command::solana_connection(ctx, &self.connection_options);
         let commitment = connection.0.commitment();
 
         let vpr_pda = find_validator_publisher_rewards_address(&self.node_id).0;
@@ -175,12 +179,13 @@ impl StatusCommand {
             spl_token_interface::native_mint::ID,
         ];
 
-        println!("Node ID:       {}", vpr.node_id);
-        println!("Rewards owner: {}", vpr.rewards_token_owner_key);
-        println!(
+        writeln!(out, "Node ID:       {}", vpr.node_id)?;
+        writeln!(out, "Rewards owner: {}", vpr.rewards_token_owner_key)?;
+        writeln!(
+            out,
             "Rewards mint:  {}",
             mint_symbol(&vpr.rewards_token_mint_key, &mints)
-        );
+        )?;
 
         // Subscription epoch == Solana epoch; resolve the window against the
         // Solana RPC the program lives on. Same reasoning as distribute.
@@ -192,7 +197,7 @@ impl StatusCommand {
             .epoch;
         let from_epoch = current_epoch.saturating_sub(self.num_epochs);
 
-        println!("\nScanning epochs {from_epoch}..={current_epoch}.");
+        writeln!(out, "\nScanning epochs {from_epoch}..={current_epoch}.")?;
 
         let rows = scan_epoch_status(
             &connection,
@@ -206,10 +211,11 @@ impl StatusCommand {
         .await?;
 
         if rows.is_empty() {
-            println!(
+            writeln!(
+                out,
                 "\nNo shred distributions found in epochs {from_epoch}..={current_epoch}. \
                  Widen the window with --num-epochs if you expected older rewards."
-            );
+            )?;
             return Ok(());
         }
 
@@ -217,9 +223,10 @@ impl StatusCommand {
         table.with(Style::markdown());
         table.modify(Columns::one(1), Alignment::right());
         table.modify(Columns::one(3), Alignment::right());
-        println!("\n{table}");
+        writeln!(out, "\n{table}")?;
 
-        println!(
+        writeln!(
+            out,
             "\nStatus:\n  \
              ready       reward is accumulated and waiting to be distributed to your ATA\n  \
              not ready   reward for this epoch isn't distributable yet (still being collected, \
@@ -227,7 +234,7 @@ impl StatusCommand {
              claimed     reward has already been distributed to your ATA\n  \
              no rewards  you published no shreds this epoch, so there's nothing to distribute\n  \
              no data     this epoch's leader-slot export isn't available yet"
-        );
+        )?;
 
         Ok(())
     }

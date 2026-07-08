@@ -1,5 +1,8 @@
+use std::io::Write;
+
 use anyhow::{Context, Result, bail};
 use clap::{Args, ValueEnum};
+use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
     account::zero_copy::ZeroCopyAccountOwnedData,
     rpc::{SolanaConnection, SolanaConnectionOptions},
@@ -56,7 +59,7 @@ struct ContributorRewardsRecipientRow {
 }
 
 impl ContributorRewardsCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         let Self {
             service_key,
             manager,
@@ -74,20 +77,21 @@ impl ContributorRewardsCommand {
             bail!("--view recipients requires --service-key to be specified");
         }
 
-        let connection = SolanaConnection::from(connection_options);
+        let connection = crate::command::solana_connection(ctx, &connection_options);
 
         match view {
             ContributorRewardsViewMode::Summary => {
-                try_print_summary_view(&connection, service_key, manager).await
+                try_write_summary_view(out, &connection, service_key, manager).await
             }
             ContributorRewardsViewMode::Recipients => {
-                try_print_recipients_view(&connection, service_key.unwrap()).await
+                try_write_recipients_view(out, &connection, service_key.unwrap()).await
             }
         }
     }
 }
 
-async fn try_print_summary_view(
+async fn try_write_summary_view(
+    out: &mut impl Write,
     connection: &SolanaConnection,
     service_key: Option<Pubkey>,
     manager_filter: Option<Pubkey>,
@@ -170,17 +174,19 @@ async fn try_print_summary_view(
     // Sort by service_key for consistent output
     rows.sort_by_key(|row| row.service_key.to_string());
 
-    super::print_table(
+    super::write_table(
+        out,
         rows,
         super::TableOptions {
             columns_aligned_right: Some(&[2, 3]),
         },
-    );
+    )?;
 
     Ok(())
 }
 
-async fn try_print_recipients_view(
+async fn try_write_recipients_view(
+    out: &mut impl Write,
     connection: &SolanaConnection,
     service_key: Pubkey,
 ) -> Result<()> {
@@ -221,20 +227,19 @@ async fn try_print_recipients_view(
         bail!("No recipients configured for service key {service_key}");
     }
 
-    super::print_table(
+    super::write_table(
+        out,
         rows,
         super::TableOptions {
             columns_aligned_right: Some(&[0, 3]),
         },
-    );
+    )?;
 
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use doublezero_solana_client_tools::rpc::SolanaConnectionOptions;
-
     use super::*;
 
     const UNIT_SHARE16_MAX: u16 = 10_000;
@@ -277,8 +282,11 @@ mod tests {
             connection_options: SolanaConnectionOptions::default(),
         };
 
+        let ctx = doublezero_cli_core::testing::cli_context_default_for_tests();
+        let mut out = Vec::new();
+
         // Call the real execute method - validation happens before any RPC calls
-        let result = cmd.try_into_execute().await;
+        let result = cmd.execute(&ctx, &mut out).await;
 
         // Must be an error
         assert!(
@@ -308,8 +316,11 @@ mod tests {
             connection_options: SolanaConnectionOptions::default(),
         };
 
+        let ctx = doublezero_cli_core::testing::cli_context_default_for_tests();
+        let mut out = Vec::new();
+
         // Call the real execute method - validation happens before any RPC calls
-        let result = cmd.try_into_execute().await;
+        let result = cmd.execute(&ctx, &mut out).await;
 
         assert!(
             result.is_err(),

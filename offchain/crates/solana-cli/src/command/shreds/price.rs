@@ -1,9 +1,10 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Write};
 
 use anyhow::Result;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_serviceability::state::{device::Device, exchange::Exchange};
-use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_solana_client_tools::rpc::SolanaConnectionOptions;
 use doublezero_solana_sdk::shred_subscription::state;
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
@@ -73,13 +74,16 @@ struct PriceRow {
 }
 
 impl PriceCommand {
-    pub async fn try_into_execute(self, dz_ledger_url: Option<String>) -> Result<()> {
-        let moniker_env = self.connection_options.moniker_env();
-        let connection = SolanaConnection::from(self.connection_options);
-        let network_env = match moniker_env {
-            Some(env) => env,
-            None => connection.try_network_environment().await?,
-        };
+    pub async fn execute(
+        self,
+        dz_ledger_url: Option<String>,
+        ctx: &CliContext,
+        out: &mut impl Write,
+    ) -> Result<()> {
+        let connection = crate::command::solana_connection(ctx, &self.connection_options);
+        let network_env =
+            crate::command::resolve_network_env(&connection, self.connection_options.moniker_env())
+                .await?;
 
         let dz_connection = make_dz_connection(&dz_ledger_url, network_env);
 
@@ -142,9 +146,9 @@ impl PriceCommand {
 
         if device_keys.is_empty() {
             if self.json {
-                println!("[]");
+                writeln!(out, "[]")?;
             } else {
-                println!("No devices found.");
+                writeln!(out, "No devices found.")?;
             }
             return Ok(());
         }
@@ -203,9 +207,9 @@ impl PriceCommand {
 
         if device_infos.is_empty() {
             if self.json {
-                println!("[]");
+                writeln!(out, "[]")?;
             } else {
-                println!("No devices found.");
+                writeln!(out, "No devices found.")?;
             }
             return Ok(());
         }
@@ -259,13 +263,14 @@ impl PriceCommand {
 
         if rows.is_empty() {
             if self.json {
-                println!("[]");
+                writeln!(out, "[]")?;
             } else if hidden_count > 0 {
-                println!(
+                writeln!(
+                    out,
                     "No devices with remaining seats found ({hidden_count} device(s) hidden, use --all to show)."
-                );
+                )?;
             } else {
-                println!("No devices found.");
+                writeln!(out, "No devices found.")?;
             }
             return Ok(());
         }
@@ -277,16 +282,17 @@ impl PriceCommand {
         });
 
         if self.json {
-            println!("{}", serde_json::to_string_pretty(&rows)?);
+            writeln!(out, "{}", serde_json::to_string_pretty(&rows)?)?;
         } else {
             if hidden_count > 0 {
-                println!(
+                writeln!(
+                    out,
                     "{} device(s) found ({} with no remaining seats hidden, use --all to show):\n",
                     rows.len(),
                     hidden_count,
-                );
+                )?;
             } else {
-                println!("{} device(s) found:\n", rows.len());
+                writeln!(out, "{} device(s) found:\n", rows.len())?;
             }
 
             let mut table = Table::new(rows);
@@ -296,7 +302,7 @@ impl PriceCommand {
                     .with(Remove::column(ByColumnName::new("Metro Pubkey")));
             }
             table.with(Style::markdown());
-            println!("{table}");
+            writeln!(out, "{table}")?;
         }
 
         Ok(())

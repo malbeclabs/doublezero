@@ -1,8 +1,9 @@
-use std::time::Duration;
+use std::{io::Write, time::Duration};
 
 use anyhow::{Context, Result, bail};
 use clap::Args;
-use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_cli_core::CliContext;
+use doublezero_solana_client_tools::rpc::SolanaConnectionOptions;
 use doublezero_solana_sdk::{
     Pubkey,
     shred_subscription::{
@@ -51,11 +52,11 @@ pub struct PrepareOffchainMessageCommand {
     pub json: bool,
 
     #[command(flatten)]
-    pub connection_options: SolanaConnectionOptions,
+    connection_options: SolanaConnectionOptions,
 }
 
 impl PrepareOffchainMessageCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         if self.node_id == Pubkey::default() {
             bail!("--node-id must not be the default pubkey");
         }
@@ -63,7 +64,7 @@ impl PrepareOffchainMessageCommand {
             bail!("--rewards-token-owner must not be the default pubkey");
         }
 
-        let connection = SolanaConnection::from(self.connection_options);
+        let connection = crate::command::solana_connection(ctx, &self.connection_options);
         let rewards_token_mint = self.rewards_token_mint.resolve(&connection).await?;
 
         // Pre-flight: the on-chain `configure` rejects unregistered/disabled
@@ -102,27 +103,32 @@ impl PrepareOffchainMessageCommand {
             .to_owned();
 
         if self.json {
-            println!(
+            writeln!(
+                out,
                 "{}",
                 serde_json::json!({
                     "hex": hex,
                     "deadline_slot": deadline_slot,
                 })
-            );
+            )?;
         } else {
-            println!("Hex message:    {hex}");
-            println!("Deadline slot:  {deadline_slot}");
-            println!();
-            println!("Sign with:");
-            println!("  solana sign-offchain-message {hex} --keypair <validator-identity>");
-            println!();
-            println!("Then submit:");
-            println!(
+            writeln!(out, "Hex message:    {hex}")?;
+            writeln!(out, "Deadline slot:  {deadline_slot}")?;
+            writeln!(out)?;
+            writeln!(out, "Sign with:")?;
+            writeln!(
+                out,
+                "  solana sign-offchain-message {hex} --keypair <validator-identity>"
+            )?;
+            writeln!(out)?;
+            writeln!(out, "Then submit:")?;
+            writeln!(
+                out,
                 "  doublezero-solana shreds publisher-rewards configure \\
     --node-id {} --rewards-token-mint {rewards_token_mint} --rewards-token-owner {} \\
     --deadline-slot {deadline_slot} --signature <BASE58>",
                 self.node_id, self.rewards_token_owner
-            );
+            )?;
         }
 
         Ok(())

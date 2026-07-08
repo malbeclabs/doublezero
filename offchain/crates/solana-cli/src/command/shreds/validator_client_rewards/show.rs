@@ -1,6 +1,9 @@
+use std::io::Write;
+
 use anyhow::{Context, Result, bail};
 use clap::Args;
-use doublezero_solana_client_tools::payer::{SolanaPayerOptions, Wallet};
+use doublezero_cli_core::CliContext;
+use doublezero_solana_client_tools::rpc::SolanaConnectionOptions;
 use doublezero_solana_sdk::shred_subscription::state::{
     ValidatorClientRewardsInfo, find_claim_holding_address, find_validator_client_rewards_address,
     parse_validator_client_rewards,
@@ -26,8 +29,9 @@ pub struct ShowCommand {
     /// One or more subscription epochs to inspect. Requires --rewards-token-mint.
     #[arg(long = "subscription-epoch", num_args = 0..)]
     pub subscription_epochs: Vec<u64>,
+
     #[command(flatten)]
-    pub solana_payer_options: SolanaPayerOptions,
+    connection_options: SolanaConnectionOptions,
 }
 
 pub(crate) fn render_vcr_summary(
@@ -127,16 +131,15 @@ pub(crate) fn render_manager_ata_row(
 }
 
 impl ShowCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         if !self.subscription_epochs.is_empty() && self.rewards_token_mint.is_none() {
             bail!("--subscription-epoch requires --rewards-token-mint");
         }
 
-        let wallet = Wallet::try_new(self.solana_payer_options, None)?;
+        let connection = crate::command::solana_connection(ctx, &self.connection_options);
 
         let vcr_key = find_validator_client_rewards_address(self.client_id).0;
-        let vcr_account = wallet
-            .connection
+        let vcr_account = connection
             .get_account_with_commitment(&vcr_key, CommitmentConfig::confirmed())
             .await
             .with_context(|| format!("fetching VCR PDA {vcr_key}"))?
@@ -144,34 +147,39 @@ impl ShowCommand {
         let vcr_data = match vcr_account {
             Some(acct) => acct.data,
             None => {
-                println!(
+                writeln!(
+                    out,
                     "Validator client rewards not initialized for client-id {} (PDA {vcr_key})",
                     self.client_id
-                );
+                )?;
                 return Ok(());
             }
         };
         let info = parse_validator_client_rewards(&vcr_data)
             .with_context(|| format!("failed to parse ValidatorClientRewards at {vcr_key}"))?;
-        print!("{}", render_vcr_summary(self.client_id, &vcr_key, &info));
+        write!(
+            out,
+            "{}",
+            render_vcr_summary(self.client_id, &vcr_key, &info)
+        )?;
 
         // When a mint is supplied, always print the manager's ATA address and
         // balance. Per-epoch holding rows are only listed when the user also
         // supplies one or more `--subscription-epoch` values.
         if let Some(mint) = self.rewards_token_mint {
-            println!("Claim holdings for mint {mint}:");
+            writeln!(out, "Claim holdings for mint {mint}:")?;
             let manager_ata = get_associated_token_address(&info.manager_key, &mint);
-            let ata_account = wallet
-                .connection
+            let ata_account = connection
                 .get_account_with_commitment(&manager_ata, CommitmentConfig::confirmed())
                 .await
                 .with_context(|| format!("fetching manager ATA {manager_ata}"))?
                 .value;
             let ata_status = classify_token_account(ata_account.as_ref(), Some(&mint));
-            println!(
+            writeln!(
+                out,
                 "{}",
                 render_manager_ata_row(&manager_ata, &ata_status, Some(&mint))
-            );
+            )?;
 
             if !self.subscription_epochs.is_empty() {
                 let holding_keys: Vec<Pubkey> = self
@@ -179,8 +187,7 @@ impl ShowCommand {
                     .iter()
                     .map(|e| find_claim_holding_address(&vcr_key, *e, &mint).0)
                     .collect();
-                let holding_accounts = wallet
-                    .connection
+                let holding_accounts = connection
                     .get_multiple_accounts(&holding_keys)
                     .await
                     .with_context(|| "fetching claim holdings")?;
@@ -191,7 +198,11 @@ impl ShowCommand {
                     .zip(holding_accounts.into_iter())
                 {
                     let status = classify_token_account(maybe_acct.as_ref(), Some(&mint));
-                    println!("{}", render_holding_row(*epoch, key, &status, Some(&mint)));
+                    writeln!(
+                        out,
+                        "{}",
+                        render_holding_row(*epoch, key, &status, Some(&mint))
+                    )?;
                 }
             }
         }

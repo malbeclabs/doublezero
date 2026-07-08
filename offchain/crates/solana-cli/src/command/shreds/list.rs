@@ -1,7 +1,8 @@
-use std::{collections::HashMap, net::Ipv4Addr};
+use std::{collections::HashMap, io::Write, net::Ipv4Addr};
 
 use anyhow::Result;
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_serviceability::state::device::Device;
 use doublezero_solana_client_tools::{
     payer::try_load_keypair,
@@ -66,9 +67,13 @@ struct SeatRow {
 }
 
 impl ListCommand {
-    pub async fn try_into_execute(self, dz_ledger_url: Option<String>) -> Result<()> {
-        let moniker_env = self.connection_options.moniker_env();
-        let connection = SolanaConnection::from(self.connection_options);
+    pub async fn execute(
+        self,
+        dz_ledger_url: Option<String>,
+        ctx: &CliContext,
+        out: &mut impl Write,
+    ) -> Result<()> {
+        let connection = crate::command::solana_connection(ctx, &self.connection_options);
 
         let discriminator_bytes =
             borsh::to_vec(&state::CLIENT_SEAT_DISCRIMINATOR).expect("discriminator serialization");
@@ -79,10 +84,9 @@ impl ListCommand {
         ))];
 
         // Resolve device filter.
-        let network_env = match moniker_env {
-            Some(env) => env,
-            None => connection.try_network_environment().await?,
-        };
+        let network_env =
+            crate::command::resolve_network_env(&connection, self.connection_options.moniker_env())
+                .await?;
         if self.device_args.device.is_some() || self.device_args.device_code.is_some() {
             let device = self
                 .device_args
@@ -116,7 +120,7 @@ impl ListCommand {
             .await?;
 
         if accounts.is_empty() {
-            println!("No client seats found.");
+            writeln!(out, "No client seats found.")?;
             return Ok(());
         }
 
@@ -201,14 +205,14 @@ impl ListCommand {
 
         let filtered_seats = if self.all {
             let current_epoch = connection.get_epoch_info().await?.epoch;
-            println!("Active subscription epoch: {current_epoch}\n");
+            writeln!(out, "Active subscription epoch: {current_epoch}\n")?;
             active_seats(filtered_seats, &active_epoch_by_seat, current_epoch)
         } else {
             filtered_seats
         };
 
         if filtered_seats.is_empty() {
-            println!("No client seats found.");
+            writeln!(out, "No client seats found.")?;
             return Ok(());
         }
 
@@ -273,11 +277,11 @@ impl ListCommand {
                 .then(a.client_ip.cmp(&b.client_ip))
         });
 
-        println!("{} seat(s) found:\n", rows.len());
+        writeln!(out, "{} seat(s) found:\n", rows.len())?;
 
         let mut table = Table::new(rows);
         table.with(Style::markdown());
-        println!("{table}");
+        writeln!(out, "{table}")?;
 
         Ok(())
     }

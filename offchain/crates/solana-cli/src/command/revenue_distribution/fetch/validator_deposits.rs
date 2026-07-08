@@ -1,8 +1,10 @@
+use std::io::Write;
+
 use anyhow::{Result, bail};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
-    account::zero_copy::ZeroCopyAccountOwnedData,
-    rpc::{SolanaConnection, SolanaConnectionOptions},
+    account::zero_copy::ZeroCopyAccountOwnedData, rpc::SolanaConnectionOptions,
 };
 use doublezero_solana_sdk::{
     PrecomputedDiscriminator,
@@ -39,14 +41,14 @@ struct ValidatorDepositsTableRow {
 }
 
 impl ValidatorDepositsCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         let Self {
             node_id,
             balance_only,
             connection_options,
         } = self;
 
-        let connection = SolanaConnection::from(connection_options);
+        let connection = crate::command::solana_connection(ctx, &connection_options);
 
         let (outputs, fund_warning_message) = if let Some(node_id) = node_id {
             let (deposit_key, deposit, deposit_balance) =
@@ -54,7 +56,7 @@ impl ValidatorDepositsCommand {
 
             if let Some(deposit) = deposit {
                 if balance_only {
-                    println!("{:.9}", deposit_balance as f64 * 1e-9);
+                    writeln!(out, "{:.9}", deposit_balance as f64 * 1e-9)?;
 
                     return Ok(());
                 }
@@ -78,7 +80,7 @@ impl ValidatorDepositsCommand {
                 );
 
                 if balance_only {
-                    println!("{:.9}", deposit_balance as f64 * 1e-9);
+                    writeln!(out, "{:.9}", deposit_balance as f64 * 1e-9)?;
                     eprintln!();
                     eprintln!("{warning_message}");
 
@@ -156,16 +158,17 @@ impl ValidatorDepositsCommand {
             (outputs, None)
         };
 
-        super::print_table(
+        super::write_table(
+            out,
             outputs,
             super::TableOptions {
                 columns_aligned_right: Some(&[2, 3]),
             },
-        );
+        )?;
 
         if let Some(fund_warning_message) = fund_warning_message {
-            println!("{fund_warning_message}");
-            println!();
+            writeln!(out, "{fund_warning_message}")?;
+            writeln!(out)?;
         }
 
         Ok(())

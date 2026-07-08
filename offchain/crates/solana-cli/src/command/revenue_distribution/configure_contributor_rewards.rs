@@ -1,10 +1,11 @@
-use std::str::FromStr;
+use std::{io::Write, str::FromStr};
 
 use anyhow::{Result, bail, ensure};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
     account::zero_copy::ZeroCopyAccountOwnedData,
-    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
+    payer::{TransactionOutcome, Wallet},
 };
 use doublezero_solana_sdk::{
     revenue_distribution::{
@@ -53,7 +54,7 @@ pub struct ConfigureContributorRewardsCommand {
     allow_protocol_management: bool,
 
     #[command(flatten)]
-    solana_payer_options: SolanaPayerOptions,
+    write_opts: crate::command::WriteVerbOptions,
 }
 
 #[derive(Debug, Clone)]
@@ -166,19 +167,19 @@ pub fn build_configure_contributor_rewards_instructions(
 }
 
 impl ConfigureContributorRewardsCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         let ConfigureContributorRewardsCommand {
             service_key,
             recipients,
             block_protocol_management,
             allow_protocol_management,
-            solana_payer_options,
+            write_opts,
         } = self;
 
         // Parse recipients from CLI strings (human percent -> basis points).
         let parsed_recipients = parse_recipients(&recipients)?;
 
-        let wallet = Wallet::try_from(solana_payer_options)?;
+        let wallet = crate::command::build_wallet(ctx, write_opts)?;
         let wallet_key = wallet.pubkey();
 
         // Preflight check: verify the signer is the rewards manager.
@@ -200,8 +201,8 @@ impl ConfigureContributorRewardsCommand {
         let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
         if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
-            println!("Configured contributor rewards: {tx_sig}");
-            wallet.print_verbose_output(&[tx_sig]).await?;
+            writeln!(out, "Configured contributor rewards: {tx_sig}")?;
+            wallet.write_verbose_output(out, &[tx_sig]).await?;
         }
 
         Ok(())

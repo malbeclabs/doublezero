@@ -1,8 +1,11 @@
+use std::io::Write;
+
 use anyhow::{Context, Result, ensure};
 use clap::Args;
+use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
     instruction::take_instruction,
-    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
+    payer::{TransactionOutcome, Wallet},
     rpc::SolanaConnection,
 };
 use doublezero_solana_sdk::{
@@ -38,19 +41,19 @@ pub struct Convert2zCommand {
     checked_sol_amount: Option<String>,
 
     #[command(flatten)]
-    solana_payer_options: SolanaPayerOptions,
+    write_opts: crate::command::WriteVerbOptions,
 }
 
 impl Convert2zCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         let Self {
             limit_price: limit_price_str,
             source_2z_account: source_token_account_key,
             checked_sol_amount: checked_sol_amount_str,
-            solana_payer_options,
+            write_opts,
         } = self;
 
-        let mut wallet = Wallet::try_from(solana_payer_options)?;
+        let mut wallet = crate::command::build_wallet(ctx, write_opts)?;
 
         let checked_lamports = match checked_sol_amount_str {
             Some(checked_sol_amount_str) => {
@@ -58,11 +61,12 @@ impl Convert2zCommand {
                     crate::utils::parse_sol_amount_to_lamports(checked_sol_amount_str)?;
 
                 try_prompt_proceed_confirmation(
-                    format!(
+                    out,
+                    &format!(
                         "You are converting 2Z to exactly {:0.9} SOL",
                         checked_lamports as f64 * 1e-9
                     ),
-                    "Aborting command with --checked-sol-amount".to_string(),
+                    "Aborting command with --checked-sol-amount",
                 )?;
 
                 Some(checked_lamports)
@@ -86,7 +90,7 @@ impl Convert2zCommand {
         let balance_before = convert_2z_context
             .try_token_balance(&wallet.connection)
             .await?;
-        println!("2Z token balance: {:.8}", balance_before as f64 * 1e-8);
+        writeln!(out, "2Z token balance: {:.8}", balance_before as f64 * 1e-8)?;
 
         let mut instructions = vec![
             buy_sol_ix,
@@ -103,18 +107,19 @@ impl Convert2zCommand {
         let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
 
         if let TransactionOutcome::Executed(tx_sig) = tx_sig {
-            println!("Converted 2Z to SOL: {tx_sig}");
+            writeln!(out, "Converted 2Z to SOL: {tx_sig}")?;
 
             let balance_after = convert_2z_context
                 .try_token_balance(&wallet.connection)
                 .await?;
-            println!(
+            writeln!(
+                out,
                 "Converted {:.8} 2Z tokens to {:.9} SOL",
                 (balance_before - balance_after) as f64 * 1e-8,
                 (fixed_fill_quantity as f64 * 1e-9)
-            );
+            )?;
 
-            wallet.print_verbose_output(&[tx_sig]).await?;
+            wallet.write_verbose_output(out, &[tx_sig]).await?;
         }
 
         Ok(())

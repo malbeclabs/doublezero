@@ -1,6 +1,9 @@
+use std::io::Write;
+
 use anyhow::{Context, Result};
 use clap::Args;
-use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
+use doublezero_cli_core::CliContext;
+use doublezero_solana_client_tools::rpc::SolanaConnectionOptions;
 use doublezero_solana_sdk::{
     revenue_distribution::fetch::SolConversionState, sol_conversion::oracle::DiscountParameters,
 };
@@ -22,10 +25,9 @@ struct SolConversionTableRow {
 }
 
 impl SolConversionCommand {
-    pub async fn try_into_execute(self) -> Result<()> {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         let Self { connection_options } = self;
-
-        let connection = SolanaConnection::from(connection_options);
+        let connection = crate::command::solana_connection(ctx, &connection_options);
 
         let SolConversionState {
             program_state: (_, program_state),
@@ -76,7 +78,7 @@ impl SolConversionCommand {
             },
         ];
 
-        super::print_table(value_rows, Default::default());
+        super::write_table(out, value_rows, Default::default())?;
 
         Ok(())
     }

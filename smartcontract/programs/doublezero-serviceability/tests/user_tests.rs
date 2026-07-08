@@ -22,7 +22,13 @@ use doublezero_serviceability::{
 };
 use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Keypair, signer::Signer};
+use solana_sdk::{
+    instruction::{AccountMeta, InstructionError},
+    pubkey::Pubkey,
+    signature::Keypair,
+    signer::Signer,
+    transaction::TransactionError,
+};
 use std::net::Ipv4Addr;
 
 mod test_helpers;
@@ -529,6 +535,58 @@ async fn test_user() {
     assert_eq!(tenant_2.reference_count, 1);
 
     println!("✅ Tenant reassignment succeeded");
+    /*****************************************************************************************************************************************************/
+    println!("🟢 10b'. Testing malformed tenant slot (single tenant account) is rejected...");
+
+    // Same shape as 10b but with only ONE tenant account in the leading slot instead of
+    // the (old_tenant, new_tenant) pair. After split_trailing_permission peels payer/system,
+    // `leading` has length 1 — neither 0 (no tenant change) nor 2 — so the exact-match check
+    // must reject it with DoubleZeroError::InvalidArgument (Custom(65)) rather than silently
+    // ignoring the stray account. The failed tx does not mutate state, so 10c proceeds
+    // against the tenant_2 assignment established above.
+    let malformed = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
+            tenant_pk: Some(tenant_1_pubkey),
+            dz_prefix_count: 1,
+            ..UserUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+            AccountMeta::new(tenant_2_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    // DoubleZeroError::InvalidArgument = Custom(65)
+    match malformed {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(65),
+        ))) => {}
+        _ => panic!(
+            "Expected InvalidArgument error (Custom(65)) for single-tenant shape, got {:?}",
+            malformed
+        ),
+    }
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(
+        user.tenant_pk, tenant_2_pubkey,
+        "rejected update must not change tenant assignment"
+    );
+
+    println!("✅ Malformed tenant slot rejected");
     /*****************************************************************************************************************************************************/
     println!("🟢 10c. Testing tenant reassignment via a USER_ADMIN Permission account (length-5 tail)...");
 

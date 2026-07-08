@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- SDK
+  - Give the shreds SDK RPC client a bounded per-request timeout (15s) and a sized connection pool instead of the unbounded `http.DefaultClient`, so a slow or degraded RPC endpoint fails fast rather than blocking until a transaction's blockhash expires and its send fails preflight with `BlockhashNotFound`.
 - Serviceability
   - Gate Device and device-interface instructions on `NETWORK_ADMIN` (and `HEALTH_ORACLE` for sethealth) or the contributor owner via `authorize()`; internal foundation-only sub-gates now also accept NETWORK_ADMIN holders. (#3980)
   - Gate UpdateUser on `USER_ADMIN`, CheckAccessPass on `ACTIVATOR`, and accesspass CheckStatus on `ACTIVATOR|USER_ADMIN` via `authorize()`; user create and set_bgp_status remain owner-authorized (not part of the admin Permission system). (#3984)

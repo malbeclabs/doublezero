@@ -6,10 +6,17 @@
 //! daemon-control verbs actually call. It will be expanded as verbs migrate
 //! into this crate.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, net::Ipv4Addr};
 
 use doublezero_config::Environment;
-use doublezero_sdk::{Device, GlobalState, User};
+use doublezero_sdk::{
+    commands::{
+        multicastgroup::subscribe::UpdateMulticastGroupRolesCommand,
+        user::{create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand},
+    },
+    Device, GlobalState, MulticastGroup, Tenant, User,
+};
+use doublezero_serviceability::state::accesspass::AccessPass;
 use mockall::automock;
 use solana_sdk::pubkey::Pubkey;
 
@@ -44,7 +51,39 @@ pub trait LedgerClient: Send + Sync {
     fn get_user(&self, pubkey: Pubkey) -> eyre::Result<User>;
 
     /// List all devices known to the ledger, keyed by pubkey. Used by
-    /// `latency` (and, once migrated, `connect`) to map latency records to
-    /// onchain device state.
+    /// `latency` and `connect` to map latency records to onchain device state.
     fn list_device(&self) -> eyre::Result<HashMap<Pubkey, Device>>;
+
+    /// The current DZ ledger epoch (used for AccessPass expiry enforcement).
+    fn get_epoch(&self) -> eyre::Result<u64>;
+
+    /// Fetch the AccessPass for `(client_ip, user_payer)`, or `None` if no
+    /// such pass exists.
+    fn get_accesspass(
+        &self,
+        client_ip: Ipv4Addr,
+        user_payer: Pubkey,
+    ) -> eyre::Result<Option<AccessPass>>;
+
+    /// Fetch a device by pubkey or code.
+    fn get_device(&self, pubkey_or_code: String) -> eyre::Result<Device>;
+
+    /// Fetch a tenant by pubkey or code, returning its pubkey and account.
+    fn get_tenant(&self, pubkey_or_code: String) -> eyre::Result<(Pubkey, Tenant)>;
+
+    /// List all multicast groups on the ledger, keyed by pubkey.
+    fn list_multicastgroup(&self) -> eyre::Result<HashMap<Pubkey, MulticastGroup>>;
+
+    /// Create a unicast user account; returns the new user's pubkey.
+    fn create_user(&self, cmd: CreateUserCommand) -> eyre::Result<Pubkey>;
+
+    /// Create a multicast user account subscribed to its first group; returns
+    /// the new user's pubkey.
+    fn create_subscribe_user(&self, cmd: CreateSubscribeUserCommand) -> eyre::Result<Pubkey>;
+
+    /// Add or update a user's publisher/subscriber roles on a multicast group.
+    fn update_multicastgroup_roles(
+        &self,
+        cmd: UpdateMulticastGroupRolesCommand,
+    ) -> eyre::Result<()>;
 }

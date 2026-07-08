@@ -4,7 +4,7 @@ use crate::{
     processors::{
         accesspass::{
             check_status::process_check_status_access_pass, close::process_close_access_pass,
-            set::process_set_access_pass,
+            set::process_set_access_pass, set_feeds::process_set_access_pass_feeds,
         },
         allowlist::{
             foundation::{
@@ -419,6 +419,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::DeleteFeed(value) => {
             process_delete_feed(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetAccessPassFeeds(value) => {
+            process_set_access_pass_feeds(program_id, accounts, &value)?
         }
     };
     Ok(())

@@ -27,7 +27,6 @@ pub struct FeedDisplay {
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub exchange: Pubkey,
     pub groups: usize,
-    pub reference_count: u32,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
@@ -49,7 +48,6 @@ impl ListFeedCliCommand {
                 name: feed.name,
                 exchange: feed.exchange,
                 groups: feed.groups.len(),
-                reference_count: feed.reference_count,
                 owner: feed.owner,
             })
             .collect::<Vec<FeedDisplay>>();

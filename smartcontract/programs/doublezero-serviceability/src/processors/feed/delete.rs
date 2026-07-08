@@ -1,6 +1,5 @@
 use crate::{
     authorize::authorize,
-    error::DoubleZeroError,
     serializer::try_acc_close,
     state::{feed::Feed, globalstate::GlobalState, permission::permission_flags},
 };
@@ -45,14 +44,11 @@ pub fn process_delete_feed(
         permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
     )?;
 
-    let feed = Feed::try_from(feed_account)?;
-    if feed.reference_count > 0 {
-        msg!(
-            "Cannot delete feed: reference_count of {} > 0",
-            feed.reference_count
-        );
-        return Err(DoubleZeroError::ReferenceCountNotZero.into());
-    }
+    // Validate the account really is a Feed before closing it (guards against closing an unrelated
+    // program-owned account). Feeds are not reference-counted: a still-referenced feed_key that is
+    // deleted simply fails closed at connect (the metro gate can't load the deleted Feed), so
+    // deletion is safe and the oracle owns keeping feeds and passes in sync.
+    Feed::try_from(feed_account)?;
 
     msg!("Deleted feed: {}", feed_account.key);
 

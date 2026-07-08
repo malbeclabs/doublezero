@@ -1973,7 +1973,7 @@ async fn test_set_accesspass_refills_depleted_user_payer() {
         get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &user_payer.pubkey());
 
     let set_access_pass_args = SetAccessPassArgs {
-        accesspass_type: AccessPassType::EdgeSeat,
+        accesspass_type: AccessPassType::EdgeSeat(vec![]),
         client_ip: Ipv4Addr::UNSPECIFIED,
         last_access_epoch: u64::MAX,
         allow_multiple_ip: false,

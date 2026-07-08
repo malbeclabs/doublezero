@@ -32,7 +32,6 @@ struct FeedDisplay {
     pub exchange: String,
     /// Number of multicast groups joinable in this metro.
     pub groups: usize,
-    pub reference_count: u32,
     pub owner: String,
 }
 
@@ -59,7 +58,6 @@ impl GetFeedCliCommand {
             name: feed.name,
             exchange: feed.exchange.to_string(),
             groups: feed.groups.len(),
-            reference_count: feed.reference_count,
             owner: feed.owner.to_string(),
         };
 

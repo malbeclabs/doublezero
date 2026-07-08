@@ -1,18 +1,15 @@
 use doublezero_serviceability::{
-    entrypoint::process_instruction,
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
     pda::{get_feed_pda, get_globalstate_pda, get_program_config_pda},
     processors::feed::{create::FeedCreateArgs, delete::FeedDeleteArgs, update::FeedUpdateArgs},
-    state::{accounttype::AccountType, feed::Feed, globalstate::GlobalState},
+    state::accounttype::AccountType,
 };
 use solana_program_test::*;
 use solana_sdk::{
-    account::Account,
     instruction::{AccountMeta, InstructionError},
     program_error::ProgramError,
     pubkey::Pubkey,
-    rent::Rent,
     signature::Signer,
     transaction::TransactionError,
 };
@@ -129,7 +126,6 @@ async fn test_feed_create_get_update_delete() {
     assert_eq!(feed.account_type, AccountType::Feed);
     assert_eq!(feed.code, "shreds".to_string());
     assert_eq!(feed.name, "Shreds".to_string());
-    assert_eq!(feed.reference_count, 0);
     assert_eq!(feed.owner, payer.pubkey());
     assert_eq!(feed.exchange, exchange);
     assert_eq!(feed.groups, groups);
@@ -392,83 +388,4 @@ async fn test_feed_create_unauthorized_caller_rejected() {
     .await;
 
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
-}
-
-fn serialized_account(program_id: Pubkey, data: Vec<u8>) -> Account {
-    Account {
-        lamports: Rent::default().minimum_balance(data.len()).max(1),
-        data,
-        owner: program_id,
-        executable: false,
-        rent_epoch: 0,
-    }
-}
-
-#[tokio::test]
-async fn test_feed_delete_with_reference_count_rejected() {
-    // No instruction in this PR bumps a feed's reference_count (SetAccessPassFeeds is a later PR),
-    // so the referenced Feed and its authorizing GlobalState are seeded directly before start.
-    let program_id = Pubkey::new_unique();
-    let authority = test_payer();
-
-    let mut program_test = ProgramTest::new(
-        "doublezero_serviceability",
-        program_id,
-        processor!(process_instruction),
-    );
-
-    let (globalstate_pubkey, globalstate_bump) = get_globalstate_pda(&program_id);
-    let globalstate = GlobalState {
-        bump_seed: globalstate_bump,
-        foundation_allowlist: vec![authority.pubkey()],
-        ..GlobalState::default()
-    };
-    program_test.add_account(
-        globalstate_pubkey,
-        serialized_account(program_id, borsh::to_vec(&globalstate).unwrap()),
-    );
-
-    let exchange = Pubkey::new_unique();
-    let (feed_pubkey, feed_bump) = get_feed_pda(&program_id, "refd", &exchange);
-    let feed = Feed {
-        account_type: AccountType::Feed,
-        owner: authority.pubkey(),
-        bump_seed: feed_bump,
-        code: "refd".to_string(),
-        name: "Referenced".to_string(),
-        reference_count: 1,
-        exchange,
-        groups: vec![Pubkey::new_unique()],
-    };
-    program_test.add_account(
-        feed_pubkey,
-        serialized_account(program_id, borsh::to_vec(&feed).unwrap()),
-    );
-
-    program_test.add_account(
-        authority.pubkey(),
-        Account {
-            lamports: 100_000_000,
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-
-    let (mut banks_client, _payer, _recent_blockhash) = program_test.start().await;
-
-    let result = try_execute_and_get_error(
-        &mut banks_client,
-        program_id,
-        DoubleZeroInstruction::DeleteFeed(FeedDeleteArgs {}),
-        vec![
-            AccountMeta::new(feed_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &authority,
-    )
-    .await;
-
-    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::ReferenceCountNotZero));
 }

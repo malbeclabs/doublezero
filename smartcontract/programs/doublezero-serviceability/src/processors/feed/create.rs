@@ -90,7 +90,6 @@ pub fn process_create_feed(
         bump_seed,
         code: code.clone(),
         name: value.name.clone(),
-        reference_count: 0,
         exchange: value.exchange,
         groups: value.groups.clone(),
     };

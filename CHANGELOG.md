@@ -6,10 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Serviceability
+  - The `AccessPass` `EdgeSeat` variant now carries a `Vec<FeedSeat>` payload (`feed_key` + per-feed cap) instead of being a bare marker. This changes the `AccessPass` borsh layout for EdgeSeat passes. (#3954)
+
 ### Added
 
 - Serviceability
   - `Feed` account: a catalog entry for one metro's multicast group set, keyed by `(code, exchange)` (one `feed_key` is one feed in one metro), managed by a catalog admin (`FEED_AUTHORITY` Permission or `FOUNDATION`) via `CreateFeed`/`UpdateFeed`/`DeleteFeed`. (#3953)
+  - `SetAccessPassFeeds` provisions feed_keys (SKU seats) onto an EdgeSeat pass; the oracle calls it via its `ACCESS_PASS_ADMIN` Permission. (#3954)
 
 ### Changes
 

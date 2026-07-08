@@ -1227,7 +1227,6 @@ class Feed:
     bump_seed: int = 0
     code: str = ""
     name: str = ""
-    reference_count: int = 0
     exchange: Pubkey = Pubkey.default()
     groups: list[Pubkey] = field(default_factory=list)
     pub_key: Pubkey = Pubkey.default()  # set from account address after deserialization
@@ -1241,7 +1240,6 @@ class Feed:
         f.bump_seed = r.read_u8()
         f.code = r.read_string()
         f.name = r.read_string()
-        f.reference_count = r.read_u32()
         # A feed serves one metro: an exchange pubkey followed by a Vec<Pubkey> of joinable groups.
         f.exchange = _read_pubkey(r)
         f.groups = _read_pubkey_vec(r)

@@ -496,7 +496,6 @@ func DeserializeFeed(reader *ByteReader, feed *Feed) {
 	feed.BumpSeed = reader.ReadU8()
 	feed.Code = reader.ReadString()
 	feed.Name = reader.ReadString()
-	feed.ReferenceCount = reader.ReadU32()
 	// A feed serves one metro: an exchange pubkey followed by a borsh Vec<Pubkey> of joinable
 	// groups.
 	feed.Exchange = reader.ReadPubkey()

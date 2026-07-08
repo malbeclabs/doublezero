@@ -548,7 +548,6 @@ class TestFixtureFeed:
                 "BumpSeed": feed.bump_seed,
                 "Code": feed.code,
                 "Name": feed.name,
-                "ReferenceCount": feed.reference_count,
                 "Exchange": feed.exchange,
                 "GroupsLen": len(feed.groups),
                 "Group0": feed.groups[0],
@@ -559,7 +558,6 @@ class TestFixtureFeed:
         assert feed.bump_seed == 239
         assert feed.code == "shreds"
         assert feed.name == "Shreds"
-        assert feed.reference_count == 4
         assert len(feed.groups) == 2
 
 

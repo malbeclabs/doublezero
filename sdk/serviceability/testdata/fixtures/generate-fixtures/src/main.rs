@@ -1257,8 +1257,7 @@ fn generate_access_pass_edge_seat(dir: &Path) {
 }
 
 /// Borsh-encoded `Feed` account. Field order: account_type, owner, bump_seed, code, name,
-/// reference_count, exchange (Pubkey), groups (Vec<Pubkey>). Two groups, so the vec decoding is
-/// exercised.
+/// exchange (Pubkey), groups (Vec<Pubkey>). Two groups, so the vec decoding is exercised.
 fn generate_feed(dir: &Path) {
     let owner = pubkey_from_byte(0xE0);
     let exchange = pubkey_from_byte(0xE1);
@@ -1271,7 +1270,6 @@ fn generate_feed(dir: &Path) {
         bump_seed: 239,
         code: "shreds".into(),
         name: "Shreds".into(),
-        reference_count: 4,
         exchange,
         groups: vec![group0, group1],
     };
@@ -1287,7 +1285,6 @@ fn generate_feed(dir: &Path) {
             FieldValue { name: "BumpSeed".into(), value: "239".into(), typ: "u8".into() },
             FieldValue { name: "Code".into(), value: "shreds".into(), typ: "string".into() },
             FieldValue { name: "Name".into(), value: "Shreds".into(), typ: "string".into() },
-            FieldValue { name: "ReferenceCount".into(), value: "4".into(), typ: "u32".into() },
             FieldValue { name: "Exchange".into(), value: pubkey_bs58(&exchange), typ: "pubkey".into() },
             FieldValue { name: "GroupsLen".into(), value: "2".into(), typ: "u32".into() },
             FieldValue { name: "Group0".into(), value: pubkey_bs58(&group0), typ: "pubkey".into() },

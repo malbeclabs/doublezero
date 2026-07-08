@@ -231,7 +231,6 @@ func TestFixtureFeed(t *testing.T) {
 	assert.Equal(t, uint8(239), feed.BumpSeed)
 	assert.Equal(t, "shreds", feed.Code)
 	assert.Equal(t, "Shreds", feed.Name)
-	assert.Equal(t, uint32(4), feed.ReferenceCount)
 	assert.Equal(t, byte(0xE1), feed.Exchange[0])
 	require.Len(t, feed.Groups, 2)
 	assert.Equal(t, byte(0xE2), feed.Groups[0][0])

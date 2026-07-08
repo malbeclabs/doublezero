@@ -28,11 +28,6 @@
       "typ": "string"
     },
     {
-      "name": "ReferenceCount",
-      "value": "4",
-      "typ": "u32"
-    },
-    {
       "name": "Exchange",
       "value": "G9JjTSFz68Pdue4DTXvTSVhSEC8RrkuzPAPoFsovB1kb",
       "typ": "pubkey"

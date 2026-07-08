@@ -1421,13 +1421,12 @@ type TopologyInfo struct {
 // Feed is a serviceability catalog entry: one SKU scoped to a single metro (Exchange), holding the
 // multicast groups joinable there. One feed_key is one feed in one metro.
 type Feed struct {
-	AccountType    AccountType
-	Owner          [32]byte
-	BumpSeed       uint8
-	Code           string
-	Name           string
-	ReferenceCount uint32
-	Exchange       [32]byte
-	Groups         [][32]byte
-	PubKey         [32]byte
+	AccountType AccountType
+	Owner       [32]byte
+	BumpSeed    uint8
+	Code        string
+	Name        string
+	Exchange    [32]byte
+	Groups      [][32]byte
+	PubKey      [32]byte
 }

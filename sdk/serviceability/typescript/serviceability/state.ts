@@ -1226,7 +1226,6 @@ export interface Feed {
   bumpSeed: number;
   code: string;
   name: string;
-  referenceCount: number;
   exchange: PublicKey;
   groups: PublicKey[];
 }
@@ -1238,7 +1237,6 @@ export function deserializeFeed(data: Uint8Array): Feed {
   const bumpSeed = r.readU8();
   const code = r.readString();
   const name = r.readString();
-  const referenceCount = r.readU32();
   // A feed serves one metro: an exchange pubkey followed by a Vec<Pubkey> of joinable groups.
   const exchange = readPubkey(r);
   const groups = readPubkeyVec(r);
@@ -1248,7 +1246,6 @@ export function deserializeFeed(data: Uint8Array): Feed {
     bumpSeed,
     code,
     name,
-    referenceCount,
     exchange,
     groups,
   };

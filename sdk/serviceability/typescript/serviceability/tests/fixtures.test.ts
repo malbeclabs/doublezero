@@ -567,7 +567,6 @@ describe("Feed fixture", () => {
       BumpSeed: feed.bumpSeed,
       Code: feed.code,
       Name: feed.name,
-      ReferenceCount: feed.referenceCount,
       Exchange: feed.exchange,
       GroupsLen: feed.groups.length,
       Group0: feed.groups[0],
@@ -578,7 +577,6 @@ describe("Feed fixture", () => {
     expect(feed.bumpSeed).toBe(239);
     expect(feed.code).toBe("shreds");
     expect(feed.name).toBe("Shreds");
-    expect(feed.referenceCount).toBe(4);
     expect(feed.groups).toHaveLength(2);
   });
 });

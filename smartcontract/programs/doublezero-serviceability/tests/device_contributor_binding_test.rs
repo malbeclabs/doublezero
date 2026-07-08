@@ -44,6 +44,8 @@ struct BindingTestSetup {
     payer: Keypair,
     globalstate_pubkey: Pubkey,
     device_pubkey: Pubkey,
+    /// The device's current location ("la"), usable as `location_old` in an update.
+    location_pubkey: Pubkey,
     /// Contributor owned by `other_payer`, NOT linked to the device.
     other_contributor_pubkey: Pubkey,
     /// Non-foundation keypair that owns `other_contributor_pubkey`.
@@ -210,6 +212,7 @@ async fn setup_device_with_two_contributors() -> BindingTestSetup {
         payer,
         globalstate_pubkey,
         device_pubkey,
+        location_pubkey,
         other_contributor_pubkey,
         other_payer,
     }
@@ -435,6 +438,93 @@ async fn test_update_device_rejects_malformed_account_count() {
         .await
         .unwrap();
     assert_ne!(device.max_users, 64, "device must be unchanged");
+}
+
+#[tokio::test]
+async fn test_update_device_network_admin_locations_shape_with_permission_account() {
+    // Regression for the SDK's most common production shape: an update WITH a location
+    // change by a NETWORK_ADMIN Permission holder. The leading accounts are
+    // [device, contributor, location_old, location_new, globalstate] (5), and the SDK
+    // appends the caller's Permission PDA, so the full list is 8 accounts. The parser must
+    // detect the location pair via the leading length (5 = 3 + 2) with the trailing
+    // Permission peeled off first — never mistaking the Permission account for a location.
+    let mut s = setup_device_with_two_contributors().await;
+
+    // Foundation grants the non-owner `other_payer` a NETWORK_ADMIN permission.
+    let (other_perm_pda, _) = get_permission_pda(&s.program_id, &s.other_payer.pubkey());
+    let rb = s.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut s.banks_client,
+        rb,
+        s.program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: s.other_payer.pubkey(),
+            permissions: permission_flags::NETWORK_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(other_perm_pda, false),
+            AccountMeta::new_readonly(s.globalstate_pubkey, false),
+        ],
+        &s.payer,
+    )
+    .await;
+
+    // Foundation creates a second location ("ny") to move the device to.
+    let globalstate = get_globalstate(&mut s.banks_client, s.globalstate_pubkey).await;
+    let (location_ny_pubkey, _) = get_location_pda(&s.program_id, globalstate.account_index + 1);
+    let rb2 = s.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut s.banks_client,
+        rb2,
+        s.program_id,
+        DoubleZeroInstruction::CreateLocation(location::create::LocationCreateArgs {
+            code: "ny".to_string(),
+            name: "New York".to_string(),
+            country: "us".to_string(),
+            lat: 40.7,
+            lng: -74.0,
+            loc_id: 0,
+        }),
+        vec![
+            AccountMeta::new(location_ny_pubkey, false),
+            AccountMeta::new(s.globalstate_pubkey, false),
+        ],
+        &s.payer,
+    )
+    .await;
+
+    // other_payer updates a device it does NOT own, in the locations shape (old + new),
+    // with its Permission PDA appended as the trailing account. NETWORK_ADMIN bypasses the
+    // contributor binding, so the location change must apply.
+    let rb3 = s.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction_with_extra_accounts(
+        &mut s.banks_client,
+        rb3,
+        s.program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_users: Some(64),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(s.device_pubkey, false),
+            AccountMeta::new(s.other_contributor_pubkey, false),
+            AccountMeta::new(s.location_pubkey, false),
+            AccountMeta::new(location_ny_pubkey, false),
+            AccountMeta::new(s.globalstate_pubkey, false),
+        ],
+        &s.other_payer,
+        &[AccountMeta::new_readonly(other_perm_pda, false)],
+    )
+    .await;
+
+    let device = get_device(&mut s.banks_client, s.device_pubkey)
+        .await
+        .unwrap();
+    assert_eq!(device.max_users, 64);
+    assert_eq!(
+        device.location_pk, location_ny_pubkey,
+        "location change must apply in the locations+permission shape"
+    );
 }
 
 #[tokio::test]

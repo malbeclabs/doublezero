@@ -134,7 +134,7 @@ pub fn process_update_device(
 ) -> ProgramResult {
     // Account layout:
     //   [device, contributor, (location_old, location_new)?, globalstate,
-    //    (globalconfig)?, resource_0..resource_n, payer, system, (permission)?]
+    //    (globalconfig)?, resource_0..resource_{n-1}, payer, system, (permission)?]
     //
     // Peel [payer, system, permission] off the tail FIRST. The SDK appends the payer's
     // Permission PDA whenever one exists on-chain; peeling it here means its presence
@@ -157,8 +157,15 @@ pub fn process_update_device(
         true
     } else {
         msg!(
-            "Unexpected account count: {} leading accounts, expected {} or {}",
+            "Unexpected account count: {} total metas ({} leading + payer/system{}), \
+             expected {} leading (no locations) or {} (with location_old/location_new)",
+            accounts.len(),
             leading.len(),
+            if permission_account.is_some() {
+                "/permission"
+            } else {
+                ""
+            },
             leading_without_locations,
             leading_without_locations + 2
         );

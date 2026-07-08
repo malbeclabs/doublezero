@@ -1733,6 +1733,8 @@ dependencies = [
  "clap",
  "doublezero-cli-core",
  "doublezero-config",
+ "doublezero-program-common",
+ "doublezero-serviceability",
  "doublezero_sdk",
  "eyre",
  "http 1.4.2",

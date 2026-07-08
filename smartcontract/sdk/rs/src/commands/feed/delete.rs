@@ -20,6 +20,7 @@ impl DeleteFeedCommand {
 
         let (_, feed) = GetFeedCommand {
             pubkey_or_code: self.pubkey.to_string(),
+            exchange: None,
         }
         .execute(client)
         .map_err(|_err| eyre::eyre!("Feed not found"))?;

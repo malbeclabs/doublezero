@@ -63,7 +63,7 @@ pub enum ServiceabilityCommand {
     Location(LocationCliCommand),
     /// Manage exchanges
     Exchange(ExchangeCliCommand),
-    /// Manage feeds (metro→group-set catalog)
+    /// Manage feeds (per-metro multicast group-set catalog)
     Feed(FeedCliCommand),
     /// Manage contributors
     Contributor(ContributorCliCommand),

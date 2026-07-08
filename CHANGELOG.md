@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Serviceability
-  - `Feed` account: a catalog mapping `metro(exchange) → group-set`, managed by a catalog admin (`FEED_AUTHORITY` Permission or `FOUNDATION`) via `CreateFeed`/`UpdateFeed`/`DeleteFeed`. A feed with no metros imposes no restriction. (#3953)
+  - `Feed` account: a catalog entry for one metro's multicast group set, keyed by `(code, exchange)` (one `feed_key` is one feed in one metro), managed by a catalog admin (`FEED_AUTHORITY` Permission or `FOUNDATION`) via `CreateFeed`/`UpdateFeed`/`DeleteFeed`. (#3953)
 
 ### Changes
 

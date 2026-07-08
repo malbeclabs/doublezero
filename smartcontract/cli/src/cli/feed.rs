@@ -10,10 +10,10 @@ pub struct FeedCliCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum FeedCommands {
-    /// Create a new feed (catalog entry)
+    /// Create a new feed (a metro's multicast group set)
     #[clap()]
     Create(CreateFeedCliCommand),
-    /// Update a feed's name or metro map
+    /// Update a feed's name or group set
     #[clap()]
     Update(UpdateFeedCliCommand),
     /// List all feeds

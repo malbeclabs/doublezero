@@ -13,6 +13,9 @@ pub struct UpdateFeedCliCommand {
     /// Feed pubkey or code to update
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub pubkey: String,
+    /// Metro (exchange) pubkey to disambiguate a code that exists in multiple metros
+    #[arg(long, value_parser = validate_pubkey)]
+    pub exchange: Option<String>,
     /// Updated name for the feed
     #[arg(long)]
     pub name: Option<String>,
@@ -34,8 +37,14 @@ impl UpdateFeedCliCommand {
             RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
         );
 
+        let exchange = self
+            .exchange
+            .as_deref()
+            .map(|e| parse_pubkey(e).ok_or_else(|| eyre::eyre!("Invalid exchange pubkey")))
+            .transpose()?;
         let (pubkey, _feed) = client.get_feed(GetFeedCommand {
             pubkey_or_code: self.pubkey,
+            exchange,
         })?;
 
         // An empty `--group` list leaves the groups unchanged; otherwise replace them.

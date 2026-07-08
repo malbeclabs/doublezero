@@ -54,6 +54,18 @@ pub fn process_create_feed(
     );
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
+    // Authorize before any input validation or existence probing so an unauthorized caller gets
+    // NotAllowed rather than being able to trip validation errors or probe whether a feed exists.
+    // Catalog admin: FEED_AUTHORITY (Permission PDA) or FOUNDATION.
+    let globalstate = GlobalState::try_from(globalstate_account)?;
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
+    )?;
+
     validate_feed_name(&value.name)?;
     validate_feed_groups(&value.groups)?;
     // Every feed is scoped to a real metro; there is no metro-agnostic feed.
@@ -71,16 +83,6 @@ pub fn process_create_feed(
     if !feed_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
-
-    // Catalog admin: FEED_AUTHORITY (Permission PDA) or FOUNDATION.
-    let globalstate = GlobalState::try_from(globalstate_account)?;
-    authorize(
-        program_id,
-        accounts_iter,
-        payer_account.key,
-        &globalstate,
-        permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
-    )?;
 
     let feed = Feed {
         account_type: AccountType::Feed,

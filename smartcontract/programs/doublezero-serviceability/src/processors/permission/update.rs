@@ -88,9 +88,12 @@ pub fn process_update_permission(
         permission_flags::PERMISSION_ADMIN,
     )?;
 
-    // Adding FOUNDATION is more privileged than PERMISSION_ADMIN: a plain
-    // PERMISSION_ADMIN holder must not be able to escalate a Permission to FOUNDATION.
-    // Only a foundation_allowlist member or an existing FOUNDATION-flag holder may.
+    // Adding FOUNDATION *directly* is gated beyond PERMISSION_ADMIN: only a
+    // foundation_allowlist member or an existing FOUNDATION-flag holder may. NOTE this
+    // blocks only the direct grant — a plain PERMISSION_ADMIN can still grant itself
+    // GLOBALSTATE_ADMIN and then edit foundation_allowlist, so it is not a hard
+    // privilege boundary. FOUNDATION is transitional and slated for deprecation in
+    // favor of the granular per-flag permissions.
     if value.add & permission_flags::FOUNDATION != 0
         && !can_grant_foundation(
             program_id,

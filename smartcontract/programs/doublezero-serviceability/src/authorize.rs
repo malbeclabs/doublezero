@@ -141,12 +141,15 @@ fn foundation_permission_recovery(
 
 /// Whether `payer_key` may GRANT the `FOUNDATION` flag on a Permission account.
 ///
-/// Granting `FOUNDATION` is privileged beyond ordinary `PERMISSION_ADMIN`: a plain
-/// `PERMISSION_ADMIN` holder must NOT be able to escalate anyone (including
-/// themselves) to `FOUNDATION`. Only a `foundation_allowlist` member, or an existing
-/// holder of the `FOUNDATION` flag via their own Activated Permission account, may do
-/// so. This is independent of `RequirePermissionAccounts` — foundation members remain
-/// authoritative in both modes.
+/// Granting `FOUNDATION` directly is gated beyond ordinary `PERMISSION_ADMIN`: only a
+/// `foundation_allowlist` member, or an existing holder of the `FOUNDATION` flag via
+/// their own Activated Permission account, may do so. This is independent of
+/// `RequirePermissionAccounts` — foundation members remain authoritative in both modes.
+///
+/// NOTE: this blocks only the *direct* grant. It is not a hard privilege boundary: a
+/// plain `PERMISSION_ADMIN` can grant itself `GLOBALSTATE_ADMIN` and then add itself to
+/// `foundation_allowlist`. That is accepted — `FOUNDATION` is transitional and slated
+/// for deprecation in favor of the granular per-flag permissions.
 ///
 /// `permission_account` is the caller's own trailing Permission account (the one the
 /// SDK auto-appends), if present. It is bound to `payer_key` by re-deriving the PDA,

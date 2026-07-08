@@ -25,6 +25,31 @@ pub enum PermissionName {
 }
 
 impl PermissionName {
+    /// The canonical list of every named permission, in display order. This is the
+    /// single source `value_variants` and [`bitmask_to_names`] derive from; combined
+    /// with the exhaustive (compiler-checked) `to_flag`/`as_static_str` matches, adding
+    /// a variant cannot silently drop it from CLI enumeration or display.
+    pub const ALL: &'static [PermissionName] = &[
+        Self::Foundation,
+        Self::PermissionAdmin,
+        Self::GlobalstateAdmin,
+        Self::ContributorAdmin,
+        Self::InfraAdmin,
+        Self::NetworkAdmin,
+        Self::TenantAdmin,
+        Self::MulticastAdmin,
+        Self::FeedAuthority,
+        Self::Activator,
+        Self::Sentinel,
+        Self::UserAdmin,
+        Self::AccessPassAdmin,
+        Self::HealthOracle,
+        Self::Qa,
+        Self::TopologyAdmin,
+        Self::ResourceAdmin,
+        Self::IndexAdmin,
+    ];
+
     pub fn to_flag(self) -> u128 {
         match self {
             Self::Foundation => permission_flags::FOUNDATION,
@@ -80,26 +105,7 @@ impl std::fmt::Display for PermissionName {
 
 impl ValueEnum for PermissionName {
     fn value_variants<'a>() -> &'a [Self] {
-        &[
-            Self::Foundation,
-            Self::PermissionAdmin,
-            Self::GlobalstateAdmin,
-            Self::ContributorAdmin,
-            Self::InfraAdmin,
-            Self::NetworkAdmin,
-            Self::TenantAdmin,
-            Self::MulticastAdmin,
-            Self::FeedAuthority,
-            Self::Activator,
-            Self::Sentinel,
-            Self::UserAdmin,
-            Self::AccessPassAdmin,
-            Self::HealthOracle,
-            Self::Qa,
-            Self::TopologyAdmin,
-            Self::ResourceAdmin,
-            Self::IndexAdmin,
-        ]
+        PermissionName::ALL
     }
 
     fn to_possible_value(&self) -> Option<PossibleValue> {
@@ -112,32 +118,28 @@ pub fn names_to_bitmask(names: &[PermissionName]) -> u128 {
     names.iter().fold(0u128, |acc, n| acc | n.to_flag())
 }
 
-/// Return a list of permission names set in `mask`.
+/// Return the permission names set in `mask`, in canonical order. Any set bit that
+/// maps to no known permission is surfaced as `unknown(bit N)` rather than dropped, so
+/// display paths (`permission get`/`list`) never understate an account's privileges —
+/// e.g. a reserved bit written via a raw SDK `u128` call.
 pub fn bitmask_to_names(mask: u128) -> Vec<String> {
-    let all = [
-        (permission_flags::FOUNDATION, "foundation"),
-        (permission_flags::PERMISSION_ADMIN, "permission-admin"),
-        (permission_flags::GLOBALSTATE_ADMIN, "globalstate-admin"),
-        (permission_flags::CONTRIBUTOR_ADMIN, "contributor-admin"),
-        (permission_flags::INFRA_ADMIN, "infra-admin"),
-        (permission_flags::NETWORK_ADMIN, "network-admin"),
-        (permission_flags::TENANT_ADMIN, "tenant-admin"),
-        (permission_flags::MULTICAST_ADMIN, "multicast-admin"),
-        (permission_flags::FEED_AUTHORITY, "feed-authority"),
-        (permission_flags::ACTIVATOR, "activator"),
-        (permission_flags::SENTINEL, "sentinel"),
-        (permission_flags::USER_ADMIN, "user-admin"),
-        (permission_flags::ACCESS_PASS_ADMIN, "access-pass-admin"),
-        (permission_flags::HEALTH_ORACLE, "health-oracle"),
-        (permission_flags::QA, "qa"),
-        (permission_flags::TOPOLOGY_ADMIN, "topology-admin"),
-        (permission_flags::RESOURCE_ADMIN, "resource-admin"),
-        (permission_flags::INDEX_ADMIN, "index-admin"),
-    ];
-    all.iter()
-        .filter(|(flag, _)| mask & flag != 0)
-        .map(|(_, name)| name.to_string())
-        .collect()
+    let mut names: Vec<String> = PermissionName::ALL
+        .iter()
+        .filter(|p| mask & p.to_flag() != 0)
+        .map(|p| p.as_static_str().to_string())
+        .collect();
+
+    let known: u128 = PermissionName::ALL
+        .iter()
+        .fold(0u128, |acc, p| acc | p.to_flag());
+    let unknown = mask & !known;
+    for bit in 0..u128::BITS {
+        if unknown & (1u128 << bit) != 0 {
+            names.push(format!("unknown(bit {bit})"));
+        }
+    }
+
+    names
 }
 
 #[cfg(test)]
@@ -202,6 +204,51 @@ mod tests {
                 "sentinel".to_string(),
                 "qa".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn test_bitmask_to_names_unknown_bit_surfaced() {
+        // A reserved/undefined bit (not settable via the CLI, but reachable via a raw
+        // SDK u128 call) must be shown, not silently dropped.
+        assert_eq!(
+            bitmask_to_names(1u128 << 100),
+            vec!["unknown(bit 100)".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_bitmask_to_names_known_plus_unknown() {
+        let mask = permission_flags::NETWORK_ADMIN | (1u128 << 63);
+        assert_eq!(
+            bitmask_to_names(mask),
+            vec!["network-admin".to_string(), "unknown(bit 63)".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_all_flags_distinct_nonzero_and_named() {
+        // Every entry maps to a distinct, non-zero bit and a distinct name, and the
+        // list round-trips 1:1 with the flag bitmask — guarding against a variant added
+        // to the enum but omitted from `ALL`.
+        let mut seen_flags = 0u128;
+        let mut seen_names = std::collections::HashSet::new();
+        for p in PermissionName::ALL {
+            let flag = p.to_flag();
+            assert_ne!(flag, 0, "{p} maps to a zero flag");
+            assert_eq!(flag.count_ones(), 1, "{p} must map to a single bit");
+            assert_eq!(seen_flags & flag, 0, "{p} duplicates an already-seen bit");
+            seen_flags |= flag;
+            assert!(
+                seen_names.insert(p.as_static_str()),
+                "duplicate name for {p}"
+            );
+        }
+        assert_eq!(PermissionName::ALL.len(), 18);
+        // Reconstructing names from the combined mask yields every name, none unknown.
+        assert_eq!(
+            bitmask_to_names(seen_flags).len(),
+            PermissionName::ALL.len()
         );
     }
 }

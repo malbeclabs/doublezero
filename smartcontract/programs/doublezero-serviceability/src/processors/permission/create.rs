@@ -84,9 +84,12 @@ pub fn process_create_permission(
         permission_flags::PERMISSION_ADMIN,
     )?;
 
-    // Granting FOUNDATION is more privileged than PERMISSION_ADMIN: a plain
-    // PERMISSION_ADMIN holder must not be able to escalate to FOUNDATION. Only a
-    // foundation_allowlist member or an existing FOUNDATION-flag holder may grant it.
+    // Granting FOUNDATION *directly* is gated beyond PERMISSION_ADMIN: only a
+    // foundation_allowlist member or an existing FOUNDATION-flag holder may. NOTE this
+    // blocks only the direct grant — a plain PERMISSION_ADMIN can still grant itself
+    // GLOBALSTATE_ADMIN and then edit foundation_allowlist, so it is not a hard
+    // privilege boundary. FOUNDATION is transitional and slated for deprecation in
+    // favor of the granular per-flag permissions.
     if value.permissions & permission_flags::FOUNDATION != 0
         && !can_grant_foundation(
             program_id,
@@ -107,7 +110,9 @@ pub fn process_create_permission(
         permissions: value.permissions,
     };
 
-    // Validate that at least one known flag is set
+    // A Permission account must grant at least one flag (the bitmask must be non-zero).
+    // Unknown/reserved bits are permitted but inert; the CLI only ever sets defined
+    // flags, and `permission audit` reports any account carrying unknown bits.
     if value.permissions == 0 {
         return Err(DoubleZeroError::InvalidArgument.into());
     }

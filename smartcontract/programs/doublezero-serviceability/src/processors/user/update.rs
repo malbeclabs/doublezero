@@ -15,11 +15,10 @@ use crate::{
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::types::NetworkV4;
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 use std::{fmt, net::Ipv4Addr};
@@ -106,10 +105,21 @@ pub fn process_update_user(
     let remaining: Vec<&AccountInfo> = accounts_iter.collect();
     let (payer_account, _system_program, leading, permission_account) =
         split_trailing_permission(program_id, &remaining)?;
-    let (old_tenant_account, new_tenant_account) = if leading.len() >= 2 {
-        (Some(leading[0]), Some(leading[1]))
-    } else {
-        (None, None)
+    // Exact-match the tenant slot: after peeling payer/system/permission and consuming
+    // the fixed/variable prefix above, `leading` is either empty (no tenant change) or
+    // exactly [old_tenant, new_tenant]. Reject any other count rather than silently
+    // ignoring stray accounts.
+    let (old_tenant_account, new_tenant_account) = match leading.len() {
+        0 => (None, None),
+        2 => (Some(leading[0]), Some(leading[1])),
+        n => {
+            msg!(
+                "Unexpected account count: {} tenant accounts, expected 0 (no tenant change) \
+                 or 2 (old_tenant/new_tenant)",
+                n
+            );
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
     };
 
     #[cfg(test)]

@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use doublezero_config::Environment;
-use doublezero_sdk::{GlobalState, User};
+use doublezero_sdk::{Device, GlobalState, User};
 use mockall::automock;
 use solana_sdk::pubkey::Pubkey;
 
@@ -42,4 +42,9 @@ pub trait LedgerClient: Send + Sync {
 
     /// Fetch the user account at `pubkey` (used to poll for deletion).
     fn get_user(&self, pubkey: Pubkey) -> eyre::Result<User>;
+
+    /// List all devices known to the ledger, keyed by pubkey. Used by
+    /// `latency` (and, once migrated, `connect`) to map latency records to
+    /// onchain device state.
+    fn list_device(&self) -> eyre::Result<HashMap<Pubkey, Device>>;
 }

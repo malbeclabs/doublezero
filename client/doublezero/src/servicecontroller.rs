@@ -88,33 +88,6 @@ pub struct DoubleZeroStatus {
     pub last_session_update: Option<i64>,
 }
 
-#[derive(Clone, Tabled, Deserialize, Serialize, Debug, PartialEq)]
-#[tabled(display(Option, "display::option", ""))]
-pub struct RouteRecord {
-    #[tabled(rename = "Network")]
-    pub network: String,
-    #[tabled(rename = "Local IP")]
-    pub local_ip: String,
-    #[tabled(rename = "Peer IP")]
-    pub peer_ip: String,
-    #[tabled(rename = "Kernel State")]
-    pub kernel_state: String,
-    #[tabled(rename = "Liveness Last Updated")]
-    pub liveness_last_updated: Option<String>,
-    #[tabled(rename = "Liveness State")]
-    pub liveness_state: Option<String>,
-    #[tabled(rename = "Liveness State Reason")]
-    pub liveness_state_reason: Option<String>,
-    #[tabled(rename = "Peer Client Version")]
-    pub peer_client_version: Option<String>,
-}
-
-impl fmt::Display for RouteRecord {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "local_ip: {}, peer_ip: {}", self.local_ip, self.peer_ip)
-    }
-}
-
 fn maybe_i64_to_dt_str(maybe_i64_dt: &Option<i64>) -> String {
     maybe_i64_dt.as_ref().map_or_else(
         || "no session data".to_string(),
@@ -213,7 +186,6 @@ pub trait ServiceController {
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
     async fn v2_status(&self) -> eyre::Result<V2StatusResponse>;
     async fn enable(&self) -> eyre::Result<()>;
-    async fn routes(&self) -> eyre::Result<Vec<RouteRecord>>;
 }
 
 pub struct ServiceControllerImpl {
@@ -359,18 +331,6 @@ impl ServiceController for ServiceControllerImpl {
         }
         Ok(())
     }
-
-    async fn routes(&self) -> eyre::Result<Vec<RouteRecord>> {
-        let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
-        let req = Request::builder()
-            .method(Method::GET)
-            .uri(Uri::new(&self.socket_path, "/routes"))
-            .body(Empty::<Bytes>::new())?;
-        let res = client.request(req).await?;
-        let data = res.into_body().collect().await?.to_bytes();
-        let response = serde_json::from_slice::<Vec<RouteRecord>>(&data)?;
-        Ok(response)
-    }
 }
 
 #[cfg(test)]
@@ -450,110 +410,6 @@ mod tests {
         assert_eq!(json_output.get("max_latency_ns").unwrap(), 5_000_000);
         assert_eq!(json_output.get("avg_latency_ns").unwrap(), 3_000_000);
         assert_eq!(json_output.get("reachable").unwrap(), true);
-    }
-
-    /// Test that validates the JSON output format for RouteRecord.
-    /// This test catches breaking changes to the JSON API contract.
-    #[test]
-    fn test_route_record_json_output_format() {
-        let route = RouteRecord {
-            network: "10.0.0.0/24".to_string(),
-            local_ip: "10.1.2.3".to_string(),
-            peer_ip: "10.1.2.4".to_string(),
-            kernel_state: "active".to_string(),
-            liveness_last_updated: Some("2024-01-15T12:00:00Z".to_string()),
-            liveness_state: Some("up".to_string()),
-            liveness_state_reason: Some("healthy".to_string()),
-            peer_client_version: Some("0.8.6".to_string()),
-        };
-
-        let json_output = serde_json::to_value(&route).expect("Failed to serialize");
-
-        // Validate all fields are present
-        assert!(
-            json_output.get("network").is_some(),
-            "Missing 'network' field"
-        );
-        assert!(
-            json_output.get("local_ip").is_some(),
-            "Missing 'local_ip' field"
-        );
-        assert!(
-            json_output.get("peer_ip").is_some(),
-            "Missing 'peer_ip' field"
-        );
-        assert!(
-            json_output.get("kernel_state").is_some(),
-            "Missing 'kernel_state' field"
-        );
-        assert!(
-            json_output.get("liveness_last_updated").is_some(),
-            "Missing 'liveness_last_updated' field"
-        );
-        assert!(
-            json_output.get("liveness_state").is_some(),
-            "Missing 'liveness_state' field"
-        );
-        assert!(
-            json_output.get("liveness_state_reason").is_some(),
-            "Missing 'liveness_state_reason' field"
-        );
-        assert!(
-            json_output.get("peer_client_version").is_some(),
-            "Missing 'peer_client_version' field"
-        );
-
-        // Validate field values
-        assert_eq!(json_output.get("network").unwrap(), "10.0.0.0/24");
-        assert_eq!(json_output.get("local_ip").unwrap(), "10.1.2.3");
-        assert_eq!(json_output.get("peer_ip").unwrap(), "10.1.2.4");
-        assert_eq!(json_output.get("kernel_state").unwrap(), "active");
-        assert_eq!(
-            json_output.get("liveness_last_updated").unwrap(),
-            "2024-01-15T12:00:00Z"
-        );
-        assert_eq!(json_output.get("liveness_state").unwrap(), "up");
-        assert_eq!(json_output.get("liveness_state_reason").unwrap(), "healthy");
-        assert_eq!(json_output.get("peer_client_version").unwrap(), "0.8.6");
-    }
-
-    /// Test RouteRecord JSON output with null optional fields
-    #[test]
-    fn test_route_record_json_output_format_with_nulls() {
-        let route = RouteRecord {
-            network: "10.0.0.0/24".to_string(),
-            local_ip: "10.1.2.3".to_string(),
-            peer_ip: "10.1.2.4".to_string(),
-            kernel_state: "active".to_string(),
-            liveness_last_updated: None,
-            liveness_state: None,
-            liveness_state_reason: None,
-            peer_client_version: None,
-        };
-
-        let json_output = serde_json::to_value(&route).expect("Failed to serialize");
-
-        // Validate optional fields are null
-        assert!(
-            json_output.get("liveness_last_updated").unwrap().is_null(),
-            "liveness_last_updated should be null"
-        );
-        assert!(
-            json_output.get("liveness_state").unwrap().is_null(),
-            "liveness_state should be null"
-        );
-        assert!(
-            json_output.get("liveness_state_reason").unwrap().is_null(),
-            "liveness_state_reason should be null"
-        );
-        assert!(
-            json_output.get("peer_client_version").unwrap().is_null(),
-            "peer_client_version should be null"
-        );
-
-        // Required fields should still be present
-        assert_eq!(json_output.get("network").unwrap(), "10.0.0.0/24");
-        assert_eq!(json_output.get("local_ip").unwrap(), "10.1.2.3");
     }
 
     /// Test StatusResponse JSON output format

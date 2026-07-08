@@ -15,6 +15,8 @@ All notable changes to this project will be documented in this file.
   - `Feed` account: a catalog entry for one metro's multicast group set, keyed by `(code, exchange)` (one `feed_key` is one feed in one metro), managed by a catalog admin (`FEED_AUTHORITY` Permission or `FOUNDATION`) via `CreateFeed`/`UpdateFeed`/`DeleteFeed`. (#3953)
   - `SetAccessPassFeeds` provisions feed_keys (SKU seats) onto an EdgeSeat pass; the oracle calls it via its `ACCESS_PASS_ADMIN` Permission. (#3954)
   - EdgeSeat multicast connect is metro-gated: a device whose exchange is not covered by any of the pass's feeds is rejected with `MetroMismatch`, and the matching feed's per-feed cap is enforced. (#3955)
+- SDK
+  - Go, TypeScript, and Python deserialization for the `Feed` account and the `EdgeSeat` `FeedSeat` payload. (#3956)
 
 ### Changes
 

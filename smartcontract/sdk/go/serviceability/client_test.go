@@ -200,6 +200,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
 				Topologies:         []TopologyInfo{},
+				Feeds:              []Feed{},
 			},
 		},
 		{
@@ -242,6 +243,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
 				Topologies:         []TopologyInfo{},
+				Feeds:              []Feed{},
 			},
 		},
 		{
@@ -333,6 +335,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
 				Topologies:         []TopologyInfo{},
+				Feeds:              []Feed{},
 			},
 		},
 		{
@@ -368,6 +371,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
 				Topologies:         []TopologyInfo{},
+				Feeds:              []Feed{},
 			},
 		},
 		{
@@ -405,6 +409,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
 				Topologies:         []TopologyInfo{},
+				Feeds:              []Feed{},
 			},
 		},
 		{
@@ -449,6 +454,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
 				Topologies:         []TopologyInfo{},
+				Feeds:              []Feed{},
 			},
 		},
 		{
@@ -483,6 +489,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
 				Topologies:         []TopologyInfo{},
+				Feeds:              []Feed{},
 			},
 		},
 		{
@@ -522,6 +529,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
 				Topologies:         []TopologyInfo{},
+				Feeds:              []Feed{},
 			},
 		},
 		{
@@ -550,6 +558,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 				ResourceExtensions: []ResourceExtension{},
 				Permissions:        []Permission{},
 				Topologies:         []TopologyInfo{},
+				Feeds:              []Feed{},
 			},
 		},
 	}

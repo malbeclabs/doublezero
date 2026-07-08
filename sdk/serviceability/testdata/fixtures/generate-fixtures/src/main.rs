@@ -22,9 +22,10 @@ use doublezero_serviceability::processors::user::{
 };
 use doublezero_serviceability::programversion::ProgramVersion;
 use doublezero_serviceability::state::{
-    accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+    accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat},
     accounttype::AccountType,
     contributor::{Contributor, ContributorStatus},
+    feed::Feed,
     device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
     exchange::{Exchange, ExchangeStatus},
     globalconfig::GlobalConfig,
@@ -96,6 +97,7 @@ fn main() {
     generate_access_pass(&fixtures_dir);
     generate_access_pass_validator(&fixtures_dir);
     generate_access_pass_edge_seat(&fixtures_dir);
+    generate_feed(&fixtures_dir);
     generate_tenant(&fixtures_dir);
     generate_resource_extension_id(&fixtures_dir);
     generate_resource_extension_ip(&fixtures_dir);
@@ -901,6 +903,7 @@ fn generate_user(dir: &Path) {
     let publisher_pk = pubkey_from_byte(0x63);
     let subscriber_pk = pubkey_from_byte(0x64);
     let validator_pubkey = pubkey_from_byte(0x65);
+    let feed_pk = pubkey_from_byte(0x66);
 
     let val = User {
         account_type: AccountType::User,
@@ -925,6 +928,7 @@ fn generate_user(dir: &Path) {
         last_bgp_up_at: 1_700_000_000,
         last_bgp_reported_at: 1_700_000_100,
         bgp_rtt_ns: 5_500_000,
+        feed_pk,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -957,6 +961,7 @@ fn generate_user(dir: &Path) {
             FieldValue { name: "LastBgpUpAt".into(), value: "1700000000".into(), typ: "u64".into() },
             FieldValue { name: "LastBgpReportedAt".into(), value: "1700000100".into(), typ: "u64".into() },
             FieldValue { name: "BgpRttNs".into(), value: "5500000".into(), typ: "u64".into() },
+            FieldValue { name: "FeedPk".into(), value: pubkey_bs58(&feed_pk), typ: "pubkey".into() },
         ],
     };
 
@@ -1190,13 +1195,19 @@ fn generate_access_pass_validator(dir: &Path) {
 fn generate_access_pass_edge_seat(dir: &Path) {
     let owner = pubkey_from_byte(0xB0);
     let user_payer = pubkey_from_byte(0xB1);
+    let feed_key = pubkey_from_byte(0xB2);
 
     // EdgeSeat pass with allow_multiple_ip set and per-category caps populated.
+    // The EdgeSeat carries one FeedSeat (feed_key + max_users + current_users).
     let val = AccessPass {
         account_type: AccountType::AccessPass,
         owner,
         bump_seed: 242,
-        accesspass_type: AccessPassType::EdgeSeat(vec![]),
+        accesspass_type: AccessPassType::EdgeSeat(vec![FeedSeat {
+            feed_key,
+            max_users: 7,
+            current_users: 3,
+        }]),
         client_ip: Ipv4Addr::UNSPECIFIED,
         user_payer,
         last_access_epoch: u64::MAX,
@@ -1222,6 +1233,10 @@ fn generate_access_pass_edge_seat(dir: &Path) {
             FieldValue { name: "Owner".into(), value: pubkey_bs58(&owner), typ: "pubkey".into() },
             FieldValue { name: "BumpSeed".into(), value: "242".into(), typ: "u8".into() },
             FieldValue { name: "AccessPassType".into(), value: "4".into(), typ: "u8".into() },
+            FieldValue { name: "EdgeSeatFeedSeatsLen".into(), value: "1".into(), typ: "u32".into() },
+            FieldValue { name: "EdgeSeatFeedSeat0FeedKey".into(), value: pubkey_bs58(&feed_key), typ: "pubkey".into() },
+            FieldValue { name: "EdgeSeatFeedSeat0MaxUsers".into(), value: "7".into(), typ: "u16".into() },
+            FieldValue { name: "EdgeSeatFeedSeat0CurrentUsers".into(), value: "3".into(), typ: "u16".into() },
             FieldValue { name: "ClientIp".into(), value: "0.0.0.0".into(), typ: "ipv4".into() },
             FieldValue { name: "UserPayer".into(), value: pubkey_bs58(&user_payer), typ: "pubkey".into() },
             FieldValue { name: "LastAccessEpoch".into(), value: "18446744073709551615".into(), typ: "u64".into() },
@@ -1239,6 +1254,45 @@ fn generate_access_pass_edge_seat(dir: &Path) {
     };
 
     write_fixture(dir, "access_pass_edge_seat", &data, &meta);
+}
+
+/// Borsh-encoded `Feed` account. Field order: account_type, owner, bump_seed, code, name,
+/// exchange (Pubkey), groups (Vec<Pubkey>). Two groups, so the vec decoding is exercised.
+fn generate_feed(dir: &Path) {
+    let owner = pubkey_from_byte(0xE0);
+    let exchange = pubkey_from_byte(0xE1);
+    let group0 = pubkey_from_byte(0xE2);
+    let group1 = pubkey_from_byte(0xE3);
+
+    let val = Feed {
+        account_type: AccountType::Feed,
+        owner,
+        bump_seed: 239,
+        code: "shreds".into(),
+        name: "Shreds".into(),
+        exchange,
+        groups: vec![group0, group1],
+    };
+
+    let data = borsh::to_vec(&val).unwrap();
+
+    let meta = FixtureMeta {
+        name: "Feed".into(),
+        account_type: 18,
+        fields: vec![
+            FieldValue { name: "AccountType".into(), value: "18".into(), typ: "u8".into() },
+            FieldValue { name: "Owner".into(), value: pubkey_bs58(&owner), typ: "pubkey".into() },
+            FieldValue { name: "BumpSeed".into(), value: "239".into(), typ: "u8".into() },
+            FieldValue { name: "Code".into(), value: "shreds".into(), typ: "string".into() },
+            FieldValue { name: "Name".into(), value: "Shreds".into(), typ: "string".into() },
+            FieldValue { name: "Exchange".into(), value: pubkey_bs58(&exchange), typ: "pubkey".into() },
+            FieldValue { name: "GroupsLen".into(), value: "2".into(), typ: "u32".into() },
+            FieldValue { name: "Group0".into(), value: pubkey_bs58(&group0), typ: "pubkey".into() },
+            FieldValue { name: "Group1".into(), value: pubkey_bs58(&group1), typ: "pubkey".into() },
+        ],
+    };
+
+    write_fixture(dir, "feed", &data, &meta);
 }
 
 fn generate_tenant(dir: &Path) {

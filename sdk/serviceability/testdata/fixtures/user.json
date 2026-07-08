@@ -121,6 +121,11 @@
       "name": "BgpRttNs",
       "value": "5500000",
       "typ": "u64"
+    },
+    {
+      "name": "FeedPk",
+      "value": "7sAawX1cAHVpfZGNtUAYKX2KPzdd1uPUZUTaLteWX4SB",
+      "typ": "pubkey"
     }
   ]
 }

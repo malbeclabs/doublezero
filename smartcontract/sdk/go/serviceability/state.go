@@ -28,6 +28,7 @@ const (
 	PermissionType AccountType = 15
 	IndexType      AccountType = 16
 	TopologyType   AccountType = 17
+	FeedType       AccountType = 18
 )
 
 type LocationStatus uint8
@@ -981,7 +982,10 @@ type User struct {
 	// BgpRttNs is the smoothed BGP TCP RTT in nanoseconds, as last reported by the
 	// device agent. 0 means no sample has been observed yet. Same unit as Link.DelayNs.
 	BgpRttNs uint64
-	PubKey   [32]byte
+	// FeedPk is the EdgeSeat Feed whose per-feed seat this user consumed at connect (multicast
+	// only); the zero pubkey for non-EdgeSeat/unicast users.
+	FeedPk [32]byte
+	PubKey [32]byte
 }
 
 func (u User) MarshalJSON() ([]byte, error) {
@@ -1013,6 +1017,7 @@ func (u User) MarshalJSON() ([]byte, error) {
 		CyoaType        string   `json:"CyoaType"`
 		UserType        string   `json:"UserType"`
 		PubKey          string   `json:"PubKey"`
+		FeedPk          string   `json:"FeedPk"`
 	}{
 		UserAlias:       UserAlias(u),
 		Owner:           base58.Encode(u.Owner[:]),
@@ -1029,6 +1034,7 @@ func (u User) MarshalJSON() ([]byte, error) {
 		CyoaType:        u.CyoaType.String(),
 		UserType:        u.UserType.String(),
 		PubKey:          base58.Encode(u.PubKey[:]),
+		FeedPk:          base58.Encode(u.FeedPk[:]),
 	}
 
 	return json.Marshal(jsonUser)
@@ -1123,14 +1129,24 @@ func (s AccessPassStatus) String() string {
 	}
 }
 
+// FeedSeat is one purchased SKU seat on an EdgeSeat access pass. FeedKey is the pubkey of
+// the serviceability Feed account; MaxUsers is the per-feed concurrent-user cap; CurrentUsers
+// is the live count.
+type FeedSeat struct {
+	FeedKey      [32]byte
+	MaxUsers     uint16
+	CurrentUsers uint16
+}
+
 type AccessPass struct {
 	AccountType        AccountType
 	Owner              [32]byte
 	BumpSeed           uint8
 	AccessPassTypeTag  AccessPassTypeTag
-	AssociatedPubkey   [32]byte // for SolanaValidator, SolanaRPC
-	OthersTypeName     string   // for Others variant
-	OthersKey          string   // for Others variant
+	AssociatedPubkey   [32]byte   // for SolanaValidator, SolanaRPC
+	OthersTypeName     string     // for Others variant
+	OthersKey          string     // for Others variant
+	FeedSeats          []FeedSeat // for EdgeSeat variant
 	ClientIp           [4]uint8
 	UserPayer          [32]byte
 	LastAccessEpoch    uint64
@@ -1400,4 +1416,17 @@ type TopologyInfo struct {
 	Constraint     TopologyConstraint
 	ReferenceCount uint32
 	PubKey         [32]byte
+}
+
+// Feed is a serviceability catalog entry: one SKU scoped to a single metro (Exchange), holding the
+// multicast groups joinable there. One feed_key is one feed in one metro.
+type Feed struct {
+	AccountType AccountType
+	Owner       [32]byte
+	BumpSeed    uint8
+	Code        string
+	Name        string
+	Exchange    [32]byte
+	Groups      [][32]byte
+	PubKey      [32]byte
 }

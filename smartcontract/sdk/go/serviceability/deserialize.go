@@ -310,6 +310,9 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	// ReadU64 returns 0 on EOF, so old accounts that predate BgpRttNs deserialize
 	// with the field defaulted to 0 — matches the Rust append-only contract.
 	user.BgpRttNs = reader.ReadU64()
+	// ReadPubkey returns the zero pubkey on EOF, so old accounts that predate FeedPk deserialize
+	// with it defaulted — matches the Rust append-only contract.
+	user.FeedPk = reader.ReadPubkey()
 	// Note: user.PubKey is set separately in client.go after deserialization
 }
 
@@ -373,8 +376,22 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 		// Others carries two strings (type_name, key).
 		ap.OthersTypeName = reader.ReadString()
 		ap.OthersKey = reader.ReadString()
+	case AccessPassTypeEdgeSeat:
+		// EdgeSeat carries a borsh Vec<FeedSeat>: u32 count, then each FeedSeat is
+		// feed_key (32) + max_users (u16) + current_users (u16).
+		count := reader.ReadU32()
+		if count > 0 && (count*36) <= reader.Remaining() {
+			ap.FeedSeats = make([]FeedSeat, count)
+			for i := uint32(0); i < count; i++ {
+				ap.FeedSeats[i] = FeedSeat{
+					FeedKey:      reader.ReadPubkey(),
+					MaxUsers:     reader.ReadU16(),
+					CurrentUsers: reader.ReadU16(),
+				}
+			}
+		}
 	}
-	// Prepaid and EdgeSeat carry no associated data.
+	// Prepaid carries no associated data.
 	ap.ClientIp = reader.ReadIPv4()
 	ap.UserPayer = reader.ReadPubkey()
 	ap.LastAccessEpoch = reader.ReadU64()
@@ -471,4 +488,17 @@ func DeserializeTopologyInfo(reader *ByteReader, t *TopologyInfo) {
 	t.Constraint = TopologyConstraint(reader.ReadU8())
 	t.ReferenceCount = reader.ReadU32()
 	// Note: t.PubKey is set from the account address in client.go after deserialization
+}
+
+func DeserializeFeed(reader *ByteReader, feed *Feed) {
+	feed.AccountType = AccountType(reader.ReadU8())
+	feed.Owner = reader.ReadPubkey()
+	feed.BumpSeed = reader.ReadU8()
+	feed.Code = reader.ReadString()
+	feed.Name = reader.ReadString()
+	// A feed serves one metro: an exchange pubkey followed by a borsh Vec<Pubkey> of joinable
+	// groups.
+	feed.Exchange = reader.ReadPubkey()
+	feed.Groups = reader.ReadPubkeySlice()
+	// Note: feed.PubKey is set from the account address in client.go after deserialization
 }

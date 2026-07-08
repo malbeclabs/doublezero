@@ -380,7 +380,8 @@ func TestCustomJSONMarshal(t *testing.T) {
 				"LastBgpUpAt": 0,
 				"LastBgpReportedAt": 0,
 				"BgpRttNs": 0,
-				"PubKey": "` + dummyPubKeyB58 + `"
+				"PubKey": "` + dummyPubKeyB58 + `",
+				"FeedPk": "11111111111111111111111111111111"
 			}`,
 			expectErr: false,
 		},

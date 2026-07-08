@@ -759,7 +759,7 @@ func (c *Client) WaitForLatencyReady(ctx context.Context, timeout time.Duration)
 //
 // This makes a device-selection precondition explicit and deterministic: the client
 // picks a device by min_latency_ns within a small tolerance window (see
-// LATENCY_TOLERANCE_NS in client/doublezero/src/dzd_latency.rs). Waiting only for one
+// LATENCY_TOLERANCE_NS in crates/doublezero-daemon-cli/src/latency.rs). Waiting only for one
 // device to have a reachable sample (WaitForLatencyResults) is not enough — if the
 // other device's measurement has not converged below the tolerance yet, selection is
 // effectively a tie and can pick either device. Pass a margin >= the client's 5ms

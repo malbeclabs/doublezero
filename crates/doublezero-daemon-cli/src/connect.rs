@@ -112,6 +112,9 @@ fn init_spinner(len: u64) -> ProgressBar {
 /// AccessPass pre-flight: `Ok(false)` when no pass exists for
 /// `(client_ip, payer)` so the caller can render its own diagnostic before
 /// bailing. With `enforce_epoch`, the pass must also cover the current epoch.
+///
+/// Mirrors `check_accesspass` in `smartcontract/cli/src/requirements.rs` —
+/// keep the two in sync if AccessPass validity semantics change.
 fn check_accesspass<L: LedgerClient>(
     ledger: &L,
     client_ip: Ipv4Addr,
@@ -562,6 +565,10 @@ impl Connect {
                     })?;
 
                 // Determine tenant: 1) from CLI argument, 2) from config file, 3) from access pass allowlist
+                // TODO(RFC-20 §Module contract): the config-file read below is a
+                // parity-preserving carryover from the binary; module crates
+                // should read resolved values from `CliContext`. Move tenant
+                // resolution into the binary/`CliContext` in a follow-up.
                 let tenant_with_source: Option<(String, &str)> = if let Some(t) = tenant {
                     Some((t, "CLI argument"))
                 } else {

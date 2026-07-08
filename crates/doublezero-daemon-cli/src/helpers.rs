@@ -1,9 +1,11 @@
-// TODO: remove once latency/routes migrate to doublezero-daemon-cli;
-// the writer-based equivalent lives in doublezero_daemon_cli::helpers.
-use eyre::Result;
+//! Shared output helpers for daemon-control verbs.
+
+use std::io::Write;
+
 use tabled::{settings::Style, Table, Tabled};
 
-pub fn show_output<T>(data: Vec<T>, is_output_json: bool) -> Result<()>
+/// Render a list of records as either pretty-printed JSON or a psql-style table.
+pub fn show_output<T, W: Write>(data: Vec<T>, is_output_json: bool, out: &mut W) -> eyre::Result<()>
 where
     T: serde::Serialize + Tabled,
 {
@@ -14,6 +16,6 @@ where
             .with(Style::psql().remove_horizontals())
             .to_string()
     };
-    println!("{output}");
+    writeln!(out, "{output}")?;
     Ok(())
 }

@@ -1728,6 +1728,7 @@ dependencies = [
 name = "doublezero-daemon-cli"
 version = "0.29.0"
 dependencies = [
+ "backon",
  "chrono",
  "clap",
  "doublezero-cli-core",

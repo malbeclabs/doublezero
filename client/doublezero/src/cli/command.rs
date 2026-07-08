@@ -8,7 +8,7 @@ use crate::{
     cli::{multicast::MulticastCliCommand, sentinel::SentinelCliCommand},
     command::{
         connect::ProvisioningCliCommand, disconnect::DecommissioningCliCommand,
-        latency::LatencyCliCommand, routes::RoutesCliCommand, status::StatusCliCommand,
+        latency::LatencyCliCommand, routes::RoutesCliCommand,
     },
 };
 
@@ -32,8 +32,6 @@ pub enum Command {
     #[command(flatten)]
     Daemon(DaemonCommand),
 
-    /// Get the status of your service
-    Status(StatusCliCommand),
     /// Disconnect your server from the doublezero network
     Disconnect(DecommissioningCliCommand),
     /// Get device latencies

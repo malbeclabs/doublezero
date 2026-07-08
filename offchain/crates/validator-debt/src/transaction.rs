@@ -455,16 +455,15 @@ impl Transaction {
             }
             Err(err) => {
                 if let Some(client_error) = err.downcast_ref::<ClientError>() {
-                    match &client_error.kind {
+                    match client_error.kind() {
                         ClientErrorKind::RpcError(RpcError::RpcResponseError {
                             data: RpcResponseErrorData::SendTransactionPreflightFailure(sim_result),
                             ..
                         }) => {
-                            if let Some(TransactionError::InstructionError(
-                                _instruction_code,
-                                _instruction_error,
-                            )) = &sim_result.err
-                            {
+                            if matches!(
+                                sim_result.err.clone().map(TransactionError::from),
+                                Some(TransactionError::InstructionError(_, _))
+                            ) {
                                 let payment_result = DebtCollectionResult {
                                     amount: debt.amount,
                                     validator_id: debt.node_id.to_string(),

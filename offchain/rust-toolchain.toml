@@ -1,3 +1,6 @@
 [toolchain]
 channel = "1.92.0"
 components = ["clippy", "rust-analyzer", "rustfmt"]
+# The CLI and daemons release as static musl binaries; provision the target
+# everywhere (CI, the release container, local dev) via rustup.
+targets = ["x86_64-unknown-linux-musl"]

@@ -10,8 +10,8 @@ use solana_client::{
     client_error::ClientError as SolanaClientError, nonblocking::rpc_client::RpcClient,
     rpc_config::RpcSendTransactionConfig,
 };
+use solana_commitment_config::{CommitmentConfig, CommitmentLevel};
 use solana_sdk::{
-    commitment_config::{CommitmentConfig, CommitmentLevel},
     hash::hashv,
     instruction::Instruction,
     message::{VersionedMessage, v0::Message},

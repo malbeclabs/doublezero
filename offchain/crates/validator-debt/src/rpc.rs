@@ -13,7 +13,7 @@ use doublezero_solana_sdk::{
 };
 use leaky_bucket::RateLimiter;
 use solana_client::{
-    client_error::{ClientError, ClientErrorKind},
+    client_error::ClientErrorKind,
     nonblocking::rpc_client::RpcClient,
     rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
     rpc_custom_error::{
@@ -21,7 +21,7 @@ use solana_client::{
     },
     rpc_request::RpcError,
 };
-use solana_sdk::commitment_config::CommitmentConfig;
+use solana_commitment_config::CommitmentConfig;
 use solana_transaction_status_client_types::{TransactionDetails, UiTransactionEncoding};
 use url::Url;
 
@@ -170,28 +170,26 @@ impl JoinedSolanaEpochs {
 
         match solana_client.get_block_time(slot).await {
             Ok(block_time) => Ok(block_time),
-            Err(e) => match e {
-                ClientError {
-                    request: _,
-                    kind:
-                        ClientErrorKind::RpcError(RpcError::RpcResponseError {
-                            code:
-                                JSON_RPC_SERVER_ERROR_SLOT_SKIPPED
-                                | JSON_RPC_SERVER_ERROR_LONG_TERM_STORAGE_SLOT_SKIPPED,
-                            message: _,
-                            data: _,
-                        }),
-                } => {
-                    Self::estimate_block_time_for_skipped_slot(
-                        solana_client,
-                        rate_limiter,
-                        slot,
-                        current_epoch,
-                    )
-                    .await
+            Err(e) => {
+                let slot_skipped = matches!(
+                    e.kind(),
+                    ClientErrorKind::RpcError(RpcError::RpcResponseError {
+                        code: JSON_RPC_SERVER_ERROR_SLOT_SKIPPED
+                            | JSON_RPC_SERVER_ERROR_LONG_TERM_STORAGE_SLOT_SKIPPED,
+                        ..
+                    })
+                );
+                if !slot_skipped {
+                    bail!(e);
                 }
-                e => bail!(e),
-            },
+                Self::estimate_block_time_for_skipped_slot(
+                    solana_client,
+                    rate_limiter,
+                    slot,
+                    current_epoch,
+                )
+                .await
+            }
         }
     }
 

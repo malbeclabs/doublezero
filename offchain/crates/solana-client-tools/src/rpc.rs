@@ -8,7 +8,7 @@ use doublezero_program_tools::PrecomputedDiscriminator;
 use doublezero_sdk::record::pubkey::create_record_key;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
-use solana_sdk::{account::Account, pubkey, pubkey::Pubkey, sysvar::Sysvar};
+use solana_sdk::{account::Account, pubkey, pubkey::Pubkey, sysvar::SysvarSerialize};
 
 use crate::account::{record::BorshRecordAccountData, zero_copy::ZeroCopyAccountOwnedData};
 
@@ -163,7 +163,7 @@ impl SolanaConnection {
         }
     }
 
-    pub async fn try_fetch_sysvar<T: Sysvar>(&self) -> Result<T> {
+    pub async fn try_fetch_sysvar<T: SysvarSerialize>(&self) -> Result<T> {
         try_fetch_sysvar(&self.0).await
     }
 
@@ -287,7 +287,7 @@ impl Deref for DoubleZeroLedgerConnection {
     }
 }
 
-pub async fn try_fetch_sysvar<T: Sysvar>(rpc_client: &RpcClient) -> Result<T> {
+pub async fn try_fetch_sysvar<T: SysvarSerialize>(rpc_client: &RpcClient) -> Result<T> {
     let sysvar_account_info = rpc_client.get_account(&T::id()).await?;
     solana_sdk::account::from_account(&sysvar_account_info).context("Failed to deserialize sysvar")
 }

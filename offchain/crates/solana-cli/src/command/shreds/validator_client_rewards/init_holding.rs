@@ -12,9 +12,9 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
-use solana_sdk::{
-    commitment_config::CommitmentConfig, compute_budget::ComputeBudgetInstruction, pubkey::Pubkey,
-};
+use solana_commitment_config::CommitmentConfig;
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::pubkey::Pubkey;
 
 /*
    doublezero-solana shreds validator-client-rewards init-holding \

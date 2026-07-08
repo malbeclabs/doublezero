@@ -18,8 +18,8 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
+use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_sdk::{
-    compute_budget::ComputeBudgetInstruction,
     offchain_message::OffchainMessage,
     signature::{Keypair, Signature},
 };

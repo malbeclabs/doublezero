@@ -1,8 +1,8 @@
 pub const MAX_TRANSACTION_SIZE: usize = 1_232;
 
 use anyhow::{Context, Result};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_sdk::{
-    compute_budget::ComputeBudgetInstruction,
     hash::Hash,
     instruction::Instruction,
     message::{AddressLookupTableAccount, VersionedMessage, v0::Message},

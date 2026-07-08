@@ -13,7 +13,8 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
-use solana_sdk::{compute_budget::ComputeBudgetInstruction, instruction::Instruction};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::instruction::Instruction;
 
 #[derive(Debug, Args, Clone)]
 pub struct FinalizeDistributionRewards {

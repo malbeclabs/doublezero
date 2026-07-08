@@ -13,6 +13,7 @@ anyhow.workspace = true
 clap.workspace = true
 doublezero-solana-client-tools.workspace = true
 doublezero-solana-sdk.workspace = true
+solana-compute-budget-interface.workspace = true
 solana-sdk.workspace = true
 tokio.workspace = true
 

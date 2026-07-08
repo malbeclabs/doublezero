@@ -14,10 +14,8 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
-use solana_sdk::{
-    compute_budget::ComputeBudgetInstruction, instruction::Instruction, program_pack::Pack,
-    pubkey::Pubkey,
-};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::{instruction::Instruction, program_pack::Pack, pubkey::Pubkey};
 
 use crate::command::{
     revenue_distribution::try_request_oracle_conversion_price, try_prompt_proceed_confirmation,

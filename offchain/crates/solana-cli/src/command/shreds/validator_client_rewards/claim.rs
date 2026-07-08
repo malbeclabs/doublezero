@@ -19,11 +19,9 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
-use solana_sdk::{
-    account::Account, commitment_config::CommitmentConfig,
-    compute_budget::ComputeBudgetInstruction, instruction::AccountMeta, program_pack::Pack,
-    pubkey::Pubkey,
-};
+use solana_commitment_config::CommitmentConfig;
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::{account::Account, instruction::AccountMeta, program_pack::Pack, pubkey::Pubkey};
 use spl_associated_token_account_interface::address::get_associated_token_address;
 
 /*

@@ -28,11 +28,16 @@ metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 mockall.workspace = true
 retainer.workspace = true
+# Direct dependency so the workspace TLS root features (rustls-tls-native-roots)
+# unify into this binary; sentinel otherwise reaches reqwest only through
+# solana-client, which enables webpki roots alone.
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 solana-account-decoder-client-types.workspace = true
 solana-client.workspace = true
 solana-commitment-config.workspace = true
+solana-compute-budget-interface.workspace = true
 solana-sanitize.workspace = true
 solana-sdk.workspace = true
 solana-transaction-status-client-types.workspace = true

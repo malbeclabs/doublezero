@@ -18,7 +18,8 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
-use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::pubkey::Pubkey;
 use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 use tracing::{debug, info, warn};
 

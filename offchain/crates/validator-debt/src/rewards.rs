@@ -125,7 +125,8 @@ mod tests {
     use solana_client::rpc_response::{
         RpcInflationReward, RpcVoteAccountInfo, RpcVoteAccountStatus,
     };
-    use solana_sdk::{epoch_info::EpochInfo, reward_type::RewardType::Fee};
+    use solana_reward_info::RewardType::Fee;
+    use solana_sdk::epoch_info::EpochInfo;
     use solana_transaction_status_client_types::UiConfirmedBlock;
 
     use super::*;

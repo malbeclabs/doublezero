@@ -35,7 +35,8 @@ use doublezero_solana_sdk::{
     try_build_instruction,
 };
 use futures::stream::{self, StreamExt};
-use solana_sdk::{compute_budget::ComputeBudgetInstruction, instruction::Instruction};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::instruction::Instruction;
 use spl_associated_token_account_interface::{
     address::get_associated_token_address, instruction::create_associated_token_account_idempotent,
 };

@@ -26,7 +26,8 @@ use slack_notifier::contributor_rewards::{
     DistributionRewardRow, WriteResultInfo, post_contributor_rewards, post_distribution_rewards,
 };
 use solana_client::client_error::ClientError as SolanaClientError;
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey::Pubkey;
 use svm_hash::sha2::Hash;
 use tempfile::NamedTempFile;
 use tokio::{

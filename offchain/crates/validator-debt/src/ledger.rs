@@ -3,9 +3,9 @@ use doublezero_record::state::RecordData;
 use doublezero_sdk::record as doublezero_record;
 use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
 use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcSendTransactionConfig};
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
     clock::Epoch,
-    commitment_config::CommitmentConfig,
     hash::Hash,
     pubkey::Pubkey,
     signer::{Signer, keypair::Keypair},

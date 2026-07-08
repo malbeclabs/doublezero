@@ -10,7 +10,8 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
-use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::pubkey::Pubkey;
 
 /*
    doublezero-solana shreds publisher-rewards init --node-id <PUBKEY>

@@ -10,7 +10,7 @@ use solana_client::{
     },
     rpc_request::RpcError,
 };
-use solana_sdk::reward_type::RewardType;
+use solana_reward_info::RewardType;
 
 use crate::solana_debt_calculator::ValidatorRewards;
 

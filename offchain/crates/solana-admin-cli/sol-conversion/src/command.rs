@@ -14,9 +14,8 @@ use doublezero_sol_conversion_interface::{
     state::FillsRegistry,
 };
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
-use solana_sdk::{
-    compute_budget::ComputeBudgetInstruction, pubkey::Pubkey, signature::Keypair, signer::Signer,
-};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 
 #[derive(Debug, Subcommand)]
 pub enum SolConversionAdminSubcommand {

@@ -5,7 +5,7 @@ use clap::Parser;
 use doublezero_solana_client_tools::rpc::{SolanaConnection, SolanaConnectionOptions};
 use leaky_bucket::RateLimiter;
 use solana_client::{
-    client_error::{ClientError, ClientErrorKind},
+    client_error::ClientErrorKind,
     rpc_config::RpcBlockConfig,
     rpc_custom_error::{
         JSON_RPC_SERVER_ERROR_LONG_TERM_STORAGE_SLOT_SKIPPED, JSON_RPC_SERVER_ERROR_SLOT_SKIPPED,
@@ -119,39 +119,34 @@ impl GetBlocksExampleApp {
                         Ok(confirmed_block) => {
                             block.replace(confirmed_block);
                         }
-                        Err(ClientError {
-                            request: _,
-                            kind:
-                                ClientErrorKind::RpcError(RpcError::RpcResponseError {
-                                    code:
-                                        JSON_RPC_SERVER_ERROR_SLOT_SKIPPED
-                                        | JSON_RPC_SERVER_ERROR_LONG_TERM_STORAGE_SLOT_SKIPPED,
-                                    message: _,
-                                    data: _,
-                                }),
-                        }) => {
-                            return Some(BlockInfo {
-                                i,
-                                slot,
-                                rewards: 0,
-                            });
-                        }
-                        Err(ClientError {
-                            request: _,
-                            kind: ClientErrorKind::Reqwest(_),
-                        }) => {
-                            if debug {
-                                tracing::warn!(
-                                    "Reqwest error at slot={slot}: Retry after 1 second"
-                                );
+                        Err(e) => match e.kind() {
+                            ClientErrorKind::RpcError(RpcError::RpcResponseError {
+                                code:
+                                    JSON_RPC_SERVER_ERROR_SLOT_SKIPPED
+                                    | JSON_RPC_SERVER_ERROR_LONG_TERM_STORAGE_SLOT_SKIPPED,
+                                message: _,
+                                data: _,
+                            }) => {
+                                return Some(BlockInfo {
+                                    i,
+                                    slot,
+                                    rewards: 0,
+                                });
                             }
-                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                            rate_limiter.acquire_one().await;
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to get block {slot}: {e:?}");
-                            return None;
-                        }
+                            ClientErrorKind::Reqwest(_) => {
+                                if debug {
+                                    tracing::warn!(
+                                        "Reqwest error at slot={slot}: Retry after 1 second"
+                                    );
+                                }
+                                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                                rate_limiter.acquire_one().await;
+                            }
+                            _ => {
+                                tracing::error!("Failed to get block {slot}: {e:?}");
+                                return None;
+                            }
+                        },
                     };
                 }
 

@@ -11,7 +11,8 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
-use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, Args)]
 pub struct ContributorRewardsCommand {

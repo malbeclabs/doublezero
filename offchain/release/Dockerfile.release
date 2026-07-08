@@ -1,7 +1,9 @@
+# The base tag supplies rustup and system deps; rust-toolchain.toml pins the
+# toolchain that actually builds releases (rustup fetches it on first use).
 FROM rust:1.94.0
 
 RUN apt-get update -qq \
-    && apt-get install -y -qq rpm > /dev/null 2>&1 \
+    && apt-get install -y -qq rpm musl-tools cmake > /dev/null 2>&1 \
     && echo "deb [trusted=yes] https://repo.goreleaser.com/apt/ /" \
         > /etc/apt/sources.list.d/goreleaser.list \
     && apt-get update -qq \

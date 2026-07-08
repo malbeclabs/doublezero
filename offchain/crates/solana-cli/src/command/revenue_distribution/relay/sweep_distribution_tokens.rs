@@ -15,7 +15,8 @@ use doublezero_solana_sdk::{
     sol_conversion::state::MAX_FILLS_QUEUE_SIZE,
     try_build_instruction,
 };
-use solana_sdk::{compute_budget::ComputeBudgetInstruction, instruction::Instruction};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::instruction::Instruction;
 
 #[derive(Debug, Args, Clone)]
 pub struct SweepDistributionTokens {

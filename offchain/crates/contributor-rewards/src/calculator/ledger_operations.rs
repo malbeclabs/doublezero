@@ -16,9 +16,9 @@ use solana_client::{
     rpc_config::RpcProgramAccountsConfig,
     rpc_filter::{Memcmp, RpcFilterType},
 };
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    commitment_config::CommitmentConfig, message::Message, pubkey::Pubkey, signature::Keypair,
-    signer::Signer, transaction::Transaction,
+    message::Message, pubkey::Pubkey, signature::Keypair, signer::Signer, transaction::Transaction,
 };
 use tabled::{Table, Tabled, settings::Style};
 use tracing::{debug, info, warn};

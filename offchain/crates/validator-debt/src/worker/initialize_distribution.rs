@@ -25,7 +25,8 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
-use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey, signer::Signer};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::{pubkey::Pubkey, signer::Signer};
 
 pub async fn try_initialize_distribution(
     wallet: &Wallet,

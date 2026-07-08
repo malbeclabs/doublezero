@@ -22,7 +22,8 @@ use doublezero_solana_sdk::{
     try_build_instruction,
 };
 use doublezero_solana_validator_debt::rpc::try_fetch_debt_records_and_distributions;
-use solana_sdk::{compute_budget::ComputeBudgetInstruction, pubkey::Pubkey};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::pubkey::Pubkey;
 
 use crate::command::{
     revenue_distribution::convert_2z::Convert2zContext, try_prompt_proceed_confirmation,

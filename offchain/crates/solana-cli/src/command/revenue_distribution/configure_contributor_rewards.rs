@@ -17,9 +17,8 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
-use solana_sdk::{
-    compute_budget::ComputeBudgetInstruction, instruction::Instruction, pubkey::Pubkey,
-};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
 
 pub const BASIS_POINTS_SCALE: u16 = 10_000;
 pub const HUMAN_PERCENT_SCALE: u8 = 100;
@@ -540,7 +539,7 @@ mod tests {
 
         assert_eq!(
             result.instructions[0].program_id,
-            solana_sdk::compute_budget::id()
+            solana_sdk_ids::compute_budget::id()
         );
     }
 
@@ -560,7 +559,7 @@ mod tests {
 
         assert_eq!(
             result.instructions[0].program_id,
-            solana_sdk::compute_budget::id()
+            solana_sdk_ids::compute_budget::id()
         );
     }
 
@@ -597,11 +596,11 @@ mod tests {
 
         assert_eq!(
             result.instructions[0].program_id,
-            solana_sdk::compute_budget::id()
+            solana_sdk_ids::compute_budget::id()
         );
         assert_eq!(
             result.instructions[1].program_id,
-            solana_sdk::compute_budget::id()
+            solana_sdk_ids::compute_budget::id()
         );
     }
 
@@ -623,12 +622,12 @@ mod tests {
 
         assert_eq!(
             result.instructions[0].program_id,
-            solana_sdk::compute_budget::id(),
+            solana_sdk_ids::compute_budget::id(),
             "First instruction must be ComputeBudget"
         );
         assert_eq!(
             result.instructions[1].program_id,
-            solana_sdk::compute_budget::id(),
+            solana_sdk_ids::compute_budget::id(),
             "Second instruction must be ComputeBudget"
         );
 

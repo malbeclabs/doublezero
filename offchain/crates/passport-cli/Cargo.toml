@@ -20,6 +20,7 @@ name = "doublezero_passport_cli"
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+solana-compute-budget-interface.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 url.workspace = true

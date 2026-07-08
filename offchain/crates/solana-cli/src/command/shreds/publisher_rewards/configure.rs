@@ -21,7 +21,8 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
-use solana_sdk::{compute_budget::ComputeBudgetInstruction, signature::Signature, signer::Signer};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::{signature::Signature, signer::Signer};
 use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 
 use super::rewards_mint_arg::RewardsMintArg;

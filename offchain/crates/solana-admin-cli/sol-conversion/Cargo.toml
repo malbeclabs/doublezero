@@ -15,6 +15,7 @@ doublezero-program-tools.workspace = true
 doublezero-revenue-distribution.workspace = true
 doublezero-sol-conversion-interface.workspace = true
 doublezero-solana-client-tools.workspace = true
+solana-compute-budget-interface.workspace = true
 solana-sdk.workspace = true
 solana-system-interface.workspace = true
 tokio.workspace = true

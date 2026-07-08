@@ -11,7 +11,8 @@ use solana_client::{
     rpc_config::{RpcBlockConfig, RpcGetVoteAccountsConfig},
     rpc_response::{RpcInflationReward, RpcVoteAccountStatus},
 };
-use solana_sdk::{commitment_config::CommitmentConfig, epoch_info::EpochInfo, pubkey::Pubkey};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::{epoch_info::EpochInfo, pubkey::Pubkey};
 use solana_transaction_status_client_types::UiConfirmedBlock;
 
 const DEFAULT_LEDGER_URL: &str = "http://localhost:8899";

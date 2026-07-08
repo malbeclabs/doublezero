@@ -29,9 +29,9 @@ use solana_client::{
     rpc_filter::{Memcmp, RpcFilterType},
 };
 use solana_commitment_config::{CommitmentConfig, CommitmentLevel};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_sdk::{
-    compute_budget::ComputeBudgetInstruction,
-    instruction::CompiledInstruction,
+    message::compiled_instruction::CompiledInstruction,
     program_pack::Pack,
     pubkey::Pubkey,
     signature::{Keypair, Signature},

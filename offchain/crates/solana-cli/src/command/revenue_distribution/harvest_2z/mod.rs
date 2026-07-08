@@ -13,10 +13,8 @@ use jupiter::{JupiterClient, quote::JupiterLegacyQuoteResponse};
 use solana_client::rpc_config::{
     RpcSimulateTransactionAccountsConfig, RpcSimulateTransactionConfig,
 };
-use solana_sdk::{
-    compute_budget::ComputeBudgetInstruction, native_token::LAMPORTS_PER_SOL, program_pack::Pack,
-    pubkey::Pubkey,
-};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::{native_token::LAMPORTS_PER_SOL, program_pack::Pack, pubkey::Pubkey};
 
 use crate::command::revenue_distribution::convert_2z::Convert2zContext;
 

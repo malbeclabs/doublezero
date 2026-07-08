@@ -33,7 +33,7 @@ impl From<InitializeClientSeatAccounts> for Vec<AccountMeta> {
             AccountMeta::new_readonly(accounts.device_history_key, false),
             AccountMeta::new(accounts.payer_key, true),
             AccountMeta::new(accounts.new_client_seat_key, false),
-            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::ID, false),
         ]
     }
 }
@@ -69,7 +69,7 @@ impl From<InitializePaymentEscrowAccounts> for Vec<AccountMeta> {
             AccountMeta::new(accounts.client_seat_key, false),
             AccountMeta::new(accounts.withdraw_authority_key, true),
             AccountMeta::new(accounts.new_payment_escrow_key, false),
-            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::ID, false),
         ]
     }
 }
@@ -191,7 +191,7 @@ impl From<RequestInstantSeatAllocationAccounts> for Vec<AccountMeta> {
             AccountMeta::new(accounts.payment_escrow_key, false),
             AccountMeta::new(accounts.payer_key, true),
             AccountMeta::new(accounts.new_instant_allocation_request_key, false),
-            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::ID, false),
         ]
     }
 }
@@ -231,7 +231,7 @@ impl From<RequestInstantSeatWithdrawalAccounts> for Vec<AccountMeta> {
             AccountMeta::new(accounts.device_history_key, false),
             AccountMeta::new(accounts.payer_key, true),
             AccountMeta::new(accounts.withdraw_seat_request_key, false),
-            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::ID, false),
         ]
     }
 }
@@ -304,7 +304,7 @@ impl From<RequestProratedInstantSeatWithdrawalAccounts> for Vec<AccountMeta> {
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new(accounts.payer_key, true),
             AccountMeta::new(accounts.withdraw_seat_request_key, false),
-            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::ID, false),
         ]
     }
 }
@@ -467,7 +467,7 @@ impl From<InitializeClaimHoldingAccounts> for Vec<AccountMeta> {
             AccountMeta::new(accounts.new_claim_holding_key, false),
             AccountMeta::new_readonly(accounts.mint_key, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
-            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::ID, false),
         ]
     }
 }
@@ -556,7 +556,7 @@ impl From<InitializeValidatorPublisherRewardsAccounts> for Vec<AccountMeta> {
         vec![
             AccountMeta::new(accounts.payer_key, true),
             AccountMeta::new(accounts.new_validator_publisher_rewards_key, false),
-            AccountMeta::new_readonly(solana_sdk::system_program::ID, false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::ID, false),
         ]
     }
 }
@@ -801,7 +801,7 @@ mod tests {
         assert_eq!(metas[4].pubkey, spl_token_interface::ID);
         assert!(!metas[4].is_writable && !metas[4].is_signer);
         // 5: system program (readonly, not signer)
-        assert_eq!(metas[5].pubkey, solana_sdk::system_program::ID);
+        assert_eq!(metas[5].pubkey, solana_sdk_ids::system_program::ID);
         assert!(!metas[5].is_writable && !metas[5].is_signer);
     }
 
@@ -900,7 +900,7 @@ mod tests {
         // 2: system program (ro)
         assert!(!metas[2].is_signer);
         assert!(!metas[2].is_writable);
-        assert_eq!(metas[2].pubkey, solana_sdk::system_program::ID);
+        assert_eq!(metas[2].pubkey, solana_sdk_ids::system_program::ID);
     }
 
     #[test]

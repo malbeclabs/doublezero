@@ -10,7 +10,7 @@ use doublezero_solana_sdk::{
     },
     try_build_instruction,
 };
-use solana_sdk::compute_budget::ComputeBudgetInstruction;
+use solana_compute_budget_interface::ComputeBudgetInstruction;
 
 /*
    doublezero-solana shreds validator-client-rewards set-proportion \

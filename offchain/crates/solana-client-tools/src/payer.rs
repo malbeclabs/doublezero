@@ -2,14 +2,14 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, ensure};
 use clap::Args;
+use solana_address_lookup_table_interface::state::AddressLookupTable;
 use solana_client::{
     rpc_config::{RpcSendTransactionConfig, RpcSimulateTransactionConfig, RpcTransactionConfig},
     rpc_response::RpcSimulateTransactionResult,
 };
 use solana_commitment_config::CommitmentConfig;
+use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_sdk::{
-    address_lookup_table::state::AddressLookupTable,
-    compute_budget::ComputeBudgetInstruction,
     instruction::Instruction,
     message::AddressLookupTableAccount,
     pubkey::Pubkey,
@@ -66,9 +66,9 @@ pub struct SolanaSignerOptions {
     pub dry_run: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TransactionOutcome {
-    Simulated(RpcSimulateTransactionResult),
+    Simulated(Box<RpcSimulateTransactionResult>),
     Executed(Signature),
 }
 
@@ -284,7 +284,10 @@ impl Wallet {
             let has_instruction_error = match &simulation_response.err {
                 Some(tx_err) => {
                     ensure!(
-                        matches!(tx_err, TransactionError::InstructionError(_, _)),
+                        matches!(
+                            TransactionError::from(tx_err.clone()),
+                            TransactionError::InstructionError(_, _)
+                        ),
                         "Simulation failed: {tx_err}"
                     );
                     true
@@ -307,7 +310,7 @@ impl Wallet {
                 });
 
             ensure!(!has_instruction_error, "Simulation failed");
-            Ok(TransactionOutcome::Simulated(simulation_response))
+            Ok(TransactionOutcome::Simulated(Box::new(simulation_response)))
         } else {
             let tx_sig = self
                 .connection

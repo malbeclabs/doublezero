@@ -32,10 +32,8 @@ use reqwest::Client;
 use serde::Serialize;
 use slack_notifier;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{
-    clock::Clock, compute_budget::ComputeBudgetInstruction, pubkey::Pubkey, signer::Signer,
-    sysvar::clock,
-};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::{clock::Clock, pubkey::Pubkey, signer::Signer, sysvar::clock};
 use tabled::Tabled;
 
 use crate::{

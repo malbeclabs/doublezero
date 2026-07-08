@@ -5,7 +5,8 @@ use doublezero_solana_sdk::shred_subscription::state::{
     ValidatorClientRewardsInfo, find_claim_holding_address, find_validator_client_rewards_address,
     parse_validator_client_rewards,
 };
-use solana_sdk::{commitment_config::CommitmentConfig, program_pack::Pack, pubkey::Pubkey};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::{program_pack::Pack, pubkey::Pubkey};
 use spl_associated_token_account_interface::address::get_associated_token_address;
 
 /*

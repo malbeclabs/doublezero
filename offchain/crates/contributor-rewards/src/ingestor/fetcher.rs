@@ -5,7 +5,7 @@ use chrono::Utc;
 use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
 use doublezero_solana_sdk::shred_subscription::ID as SHRED_SUBSCRIPTION_PROGRAM_ID;
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::commitment_config::CommitmentConfig;
+use solana_commitment_config::CommitmentConfig;
 use tracing::info;
 
 use crate::{

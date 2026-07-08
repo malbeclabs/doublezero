@@ -10,9 +10,8 @@ use doublezero_passport::{
 };
 use doublezero_program_tools::{get_program_data_address, instruction::try_build_instruction};
 use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
-use solana_sdk::{
-    compute_budget::ComputeBudgetInstruction, instruction::Instruction, pubkey::Pubkey,
-};
+use solana_compute_budget_interface::ComputeBudgetInstruction;
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
 
 #[derive(Debug, Subcommand)]
 pub enum PassportAdminSubcommand {

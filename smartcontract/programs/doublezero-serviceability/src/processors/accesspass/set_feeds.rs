@@ -118,23 +118,22 @@ pub fn process_set_access_pass_feeds(
     }
     let prior_seats = accesspass.feed_seats().to_vec();
 
-    // Validate each referenced Feed, preserve live counts, and bump reference_count for
-    // newly-referenced feeds. NOTE: feeds dropped from the pass are intentionally NOT decremented
-    // here — their accounts are not passed, and an over-count only makes a feed harder to delete
-    // (never unsafe), since reference_count solely guards DeleteFeed.
+    // Validate each referenced Feed and preserve live counts. Feeds are not reference-counted, so
+    // this only reads the Feed accounts (to bind feed_key and confirm the feed exists) and never
+    // writes them; dropping a feed from a pass needs nothing here.
     let mut new_seats: Vec<FeedSeat> = Vec::with_capacity(value.feeds.len());
     for (config, feed_account) in value.feeds.iter().zip(feed_accounts.iter()) {
         assert_eq!(feed_account.owner, program_id, "Invalid Feed Account Owner");
         let feed_key = *feed_account.key;
 
-        // Reject a feed_key listed more than once: it would double-bump reference_count and
-        // write duplicate seats, neither of which is reclaimable.
+        // Reject a feed_key listed more than once: it would write duplicate seats.
         if new_seats.iter().any(|s| s.feed_key == feed_key) {
             msg!("Duplicate feed_key in SetAccessPassFeeds: {}", feed_key);
             return Err(DoubleZeroError::InvalidArgument.into());
         }
 
-        let mut feed = Feed::try_from(*feed_account)?;
+        // Confirm the account really is a Feed (owner checked above, discriminator here).
+        Feed::try_from(*feed_account)?;
 
         let current_users = prior_seats
             .iter()
@@ -152,15 +151,6 @@ pub fn process_set_access_pass_feeds(
                 feed_key
             );
             return Err(DoubleZeroError::InvalidArgument.into());
-        }
-
-        if !prior_seats.iter().any(|s| s.feed_key == feed_key) {
-            assert!(feed_account.is_writable, "Feed Account is not writable");
-            feed.reference_count = feed
-                .reference_count
-                .checked_add(1)
-                .ok_or(DoubleZeroError::ArithmeticOverflow)?;
-            try_acc_write(&feed, feed_account, payer_account, accounts)?;
         }
 
         new_seats.push(FeedSeat {

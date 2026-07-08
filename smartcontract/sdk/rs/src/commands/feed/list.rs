@@ -48,7 +48,6 @@ mod tests {
             bump_seed: 0,
             code: "feed1_code".to_string(),
             name: "feed1_name".to_string(),
-            reference_count: 0,
             exchange: Pubkey::new_unique(),
             groups: vec![Pubkey::new_unique()],
         };
@@ -60,7 +59,6 @@ mod tests {
             bump_seed: 0,
             code: "feed2_code".to_string(),
             name: "feed2_name".to_string(),
-            reference_count: 0,
             exchange: Pubkey::new_unique(),
             groups: vec![Pubkey::new_unique()],
         };

@@ -28,7 +28,6 @@ pub struct Feed {
     pub bump_seed: u8,             // 1
     pub code: String,              // 4 + len (PDA seed, immutable)
     pub name: String,              // 4 + len
-    pub reference_count: u32,      // 4 - number of access passes referencing this feed
     pub exchange: Pubkey,          // 32 (PDA seed, immutable) - the metro this feed serves
     pub groups: Vec<Pubkey>,       // 4 + 32*len - multicast groups joinable in this metro
 }
@@ -49,13 +48,12 @@ impl fmt::Display for Feed {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, bump_seed: {}, code: {}, name: {}, reference_count: {}, exchange: {}, groups: {}",
+            "account_type: {}, owner: {}, bump_seed: {}, code: {}, name: {}, exchange: {}, groups: {}",
             self.account_type,
             self.owner,
             self.bump_seed,
             self.code,
             self.name,
-            self.reference_count,
             self.exchange,
             self.groups.len()
         )
@@ -72,7 +70,6 @@ impl TryFrom<&[u8]> for Feed {
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            reference_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             exchange: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             groups: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
@@ -119,7 +116,6 @@ mod tests {
             bump_seed: 1,
             code: "shreds".to_string(),
             name: "Shreds".to_string(),
-            reference_count: 0,
             exchange,
             groups,
         }

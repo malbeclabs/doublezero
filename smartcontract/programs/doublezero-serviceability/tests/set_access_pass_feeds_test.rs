@@ -183,11 +183,6 @@ async fn read_accesspass(banks_client: &mut BanksClient, pubkey: Pubkey) -> Acce
         .unwrap()
 }
 
-async fn read_feed_reference_count(banks_client: &mut BanksClient, pubkey: Pubkey) -> u32 {
-    let account = banks_client.get_account(pubkey).await.unwrap().unwrap();
-    Feed::try_from(&account.data[..]).unwrap().reference_count
-}
-
 #[tokio::test]
 async fn test_set_access_pass_feeds() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
@@ -266,17 +261,9 @@ async fn test_set_access_pass_feeds() {
             },
         ])
     );
-    assert_eq!(
-        read_feed_reference_count(&mut banks_client, feed_a).await,
-        1
-    );
-    assert_eq!(
-        read_feed_reference_count(&mut banks_client, feed_b).await,
-        1
-    );
 
-    // Re-provision with only feed_a at a higher cap: reference_count must not double-bump, feed_b is
-    // dropped from the pass (its reference_count intentionally stays 1), and the seat cap updates.
+    // Re-provision with only feed_a at a higher cap: feed_b is dropped from the pass and the seat
+    // cap updates.
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
@@ -303,11 +290,6 @@ async fn test_set_access_pass_feeds() {
             max_users: 7,
             current_users: 0,
         }])
-    );
-    // feed_a already referenced: still 1, not 2.
-    assert_eq!(
-        read_feed_reference_count(&mut banks_client, feed_a).await,
-        1
     );
 }
 
@@ -543,7 +525,6 @@ async fn test_cannot_set_max_users_below_current_users() {
         bump_seed: feed_bump,
         code: "livd".to_string(),
         name: "Live".to_string(),
-        reference_count: 1,
         exchange: feed_exchange,
         groups: vec![Pubkey::new_unique()],
     };

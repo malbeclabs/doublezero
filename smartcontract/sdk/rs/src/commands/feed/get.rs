@@ -83,7 +83,6 @@ mod tests {
             bump_seed: 0,
             code: code.to_string(),
             name: code.to_string(),
-            reference_count: 0,
             exchange,
             groups: vec![Pubkey::new_unique()],
         }

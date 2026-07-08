@@ -23,7 +23,7 @@ pub struct FeedSeatProvision {
 ///
 /// `DoubleZeroClient::execute_authorized_transaction` appends `[payer, system, permission]` after
 /// the base accounts supplied here, so the base list is `[accesspass, globalstate]` followed by one
-/// writable `Feed` account per seat, in the same order as `feeds`. The provisioning actor is
+/// read-only `Feed` account per seat, in the same order as `feeds`. The provisioning actor is
 /// authorized via its `ACCESS_PASS_ADMIN` Permission, so the authorized variant is required.
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetAccessPassFeedsCommand {
@@ -46,9 +46,10 @@ impl SetAccessPassFeedsCommand {
             AccountMeta::new_readonly(globalstate_pubkey, false),
         ];
 
-        // One writable Feed account per seat, in the same order as `feeds`.
+        // One read-only Feed account per seat, in the same order as `feeds` (feeds are read to bind
+        // feed_key and confirm existence; they are not mutated).
         for seat in &self.feeds {
-            accounts.push(AccountMeta::new(seat.feed_key, false));
+            accounts.push(AccountMeta::new_readonly(seat.feed_key, false));
         }
 
         client.execute_authorized_transaction(
@@ -108,7 +109,7 @@ mod tests {
                 predicate::eq(vec![
                     AccountMeta::new(accesspass_pubkey, false),
                     AccountMeta::new_readonly(globalstate_pubkey, false),
-                    AccountMeta::new(feed_key, false),
+                    AccountMeta::new_readonly(feed_key, false),
                 ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));

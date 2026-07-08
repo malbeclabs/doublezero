@@ -5,9 +5,7 @@ use crate::{
     seeds::{SEED_FEED, SEED_PREFIX},
     serializer::try_acc_create,
     state::{
-        accounttype::AccountType,
-        feed::{Feed, MetroGroups},
-        globalstate::GlobalState,
+        accounttype::AccountType, feed::Feed, globalstate::GlobalState,
         permission::permission_flags,
     },
 };
@@ -24,17 +22,17 @@ use solana_program::{
 
 /// Maximum `name` length, matching the Exchange/Location `name` cap.
 pub const MAX_FEED_NAME_LEN: usize = 64;
-/// Maximum number of metro entries in a feed's metro map.
-pub const MAX_FEED_METROS: usize = 64;
-/// Maximum number of groups within a single metro entry.
-pub const MAX_FEED_GROUPS_PER_METRO: usize = 64;
+/// Maximum number of multicast groups in a feed.
+pub const MAX_FEED_GROUPS: usize = 64;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Debug, Clone, Default)]
 pub struct FeedCreateArgs {
     pub code: String,
     pub name: String,
-    /// `exchange_pk → group_pks`. Empty ⇒ no metro restriction.
-    pub metros: Vec<MetroGroups>,
+    /// The metro (exchange) this feed serves; part of the PDA seed.
+    pub exchange: Pubkey,
+    /// Multicast groups joinable in this metro.
+    pub groups: Vec<Pubkey>,
 }
 
 pub fn process_create_feed(
@@ -56,12 +54,18 @@ pub fn process_create_feed(
     );
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
-    validate_feed_inputs(&value.name, &value.metros)?;
+    validate_feed_name(&value.name)?;
+    validate_feed_groups(&value.groups)?;
+    // Every feed is scoped to a real metro; there is no metro-agnostic feed.
+    if value.exchange == Pubkey::default() {
+        msg!("Feed exchange must be a real metro, not the default pubkey");
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
 
     let code =
         validate_account_code(&value.code).map_err(|_| DoubleZeroError::InvalidAccountCode)?;
 
-    let (expected_pda, bump_seed) = get_feed_pda(program_id, &code);
+    let (expected_pda, bump_seed) = get_feed_pda(program_id, &code, &value.exchange);
     assert_eq!(feed_account.key, &expected_pda, "Invalid Feed PubKey");
 
     if !feed_account.data_is_empty() {
@@ -85,7 +89,8 @@ pub fn process_create_feed(
         code: code.clone(),
         name: value.name.clone(),
         reference_count: 0,
-        metros: value.metros.clone(),
+        exchange: value.exchange,
+        groups: value.groups.clone(),
     };
 
     try_acc_create(
@@ -94,48 +99,44 @@ pub fn process_create_feed(
         payer_account,
         system_program,
         program_id,
-        &[SEED_PREFIX, SEED_FEED, code.as_bytes(), &[bump_seed]],
+        &[
+            SEED_PREFIX,
+            SEED_FEED,
+            code.as_bytes(),
+            value.exchange.as_ref(),
+            &[bump_seed],
+        ],
     )?;
 
-    msg!("Created feed: {}", code);
+    msg!("Created feed: {} @ {}", code, value.exchange);
 
     Ok(())
 }
 
-/// Validate the mutable feed inputs (`name` and the metro map) shared by create and update.
-///
-/// A duplicate exchange is rejected outright rather than silently deduped, since it implies
-/// conflicting group sets and is almost certainly a mistake. A top-level empty `metros` vec is
-/// valid (it means "no metro restriction"); only an empty `groups` vec *within* a metro is
-/// degenerate (a covered metro with nothing joinable) and is rejected.
-pub(crate) fn validate_feed_inputs(
-    name: &str,
-    metros: &[MetroGroups],
-) -> Result<(), DoubleZeroError> {
+/// Validate a feed `name`, shared by create and update.
+pub(crate) fn validate_feed_name(name: &str) -> Result<(), DoubleZeroError> {
     if name.len() > MAX_FEED_NAME_LEN {
         msg!("Feed name too long: {} > {}", name.len(), MAX_FEED_NAME_LEN);
         return Err(DoubleZeroError::NameTooLong);
     }
-    if metros.len() > MAX_FEED_METROS {
-        msg!("Too many metros: {} > {}", metros.len(), MAX_FEED_METROS);
+    Ok(())
+}
+
+/// Validate a feed's multicast `groups`, shared by create and update. A feed must join at least one
+/// group (an empty set is degenerate — nothing to connect to), stay within the size cap, and carry
+/// no duplicate group.
+pub(crate) fn validate_feed_groups(groups: &[Pubkey]) -> Result<(), DoubleZeroError> {
+    if groups.is_empty() {
+        msg!("Feed must have at least one group");
         return Err(DoubleZeroError::InvalidArgument);
     }
-    for (i, m) in metros.iter().enumerate() {
-        if m.groups.is_empty() {
-            msg!("Metro {} has no groups", m.exchange);
-            return Err(DoubleZeroError::InvalidArgument);
-        }
-        if m.groups.len() > MAX_FEED_GROUPS_PER_METRO {
-            msg!(
-                "Metro {} has too many groups: {} > {}",
-                m.exchange,
-                m.groups.len(),
-                MAX_FEED_GROUPS_PER_METRO
-            );
-            return Err(DoubleZeroError::InvalidArgument);
-        }
-        if metros[..i].iter().any(|prev| prev.exchange == m.exchange) {
-            msg!("Duplicate exchange in metros: {}", m.exchange);
+    if groups.len() > MAX_FEED_GROUPS {
+        msg!("Too many groups: {} > {}", groups.len(), MAX_FEED_GROUPS);
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+    for (i, g) in groups.iter().enumerate() {
+        if groups[..i].contains(g) {
+            msg!("Duplicate group in feed: {}", g);
             return Err(DoubleZeroError::InvalidArgument);
         }
     }

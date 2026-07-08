@@ -62,7 +62,8 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_feed_pda(&client.get_program_id(), "test_feed");
+        let (pda_pubkey, _) =
+            get_feed_pda(&client.get_program_id(), "test_feed", &Pubkey::new_unique());
         let feed = Feed {
             account_type: AccountType::Feed,
             owner: Pubkey::default(),
@@ -70,7 +71,8 @@ mod tests {
             code: "test_feed".to_string(),
             name: "Test Feed".to_string(),
             reference_count: 0,
-            metros: vec![],
+            exchange: Pubkey::new_unique(),
+            groups: vec![Pubkey::new_unique()],
         };
 
         client

@@ -1,22 +1,27 @@
-use crate::{doublezerocommand::CliCommand, feed::parse_metro, validators::validate_code};
+use crate::{
+    doublezerocommand::CliCommand,
+    helpers::parse_pubkey,
+    validators::{validate_code, validate_pubkey},
+};
 use clap::Args;
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::feed::create::CreateFeedCommand;
-use doublezero_serviceability::state::feed::MetroGroups;
 use std::io::Write;
 
 #[derive(Args, Debug)]
 pub struct CreateFeedCliCommand {
-    /// Unique code for the feed (immutable; used as the PDA seed)
+    /// Unique code for the feed (immutable; part of the PDA seed)
     #[arg(long, value_parser = validate_code)]
     pub code: String,
     /// Human-readable name for the feed
     #[arg(long)]
     pub name: String,
-    /// Metro mapping `EXCHANGE_PK=GROUP_PK[,GROUP_PK...]` (repeatable). Omit for a feed with no
-    /// metro restriction (reachable from any exchange).
-    #[arg(long = "metro", value_parser = parse_metro)]
-    pub metros: Vec<MetroGroups>,
+    /// Metro (exchange) pubkey this feed serves (immutable; part of the PDA seed)
+    #[arg(long, value_parser = validate_pubkey)]
+    pub exchange: String,
+    /// Multicast group pubkey joinable in this metro (repeatable)
+    #[arg(long = "group", value_parser = validate_pubkey, num_args = 1..)]
+    pub groups: Vec<String>,
 }
 
 impl CreateFeedCliCommand {
@@ -31,10 +36,19 @@ impl CreateFeedCliCommand {
             RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
         );
 
+        let exchange =
+            parse_pubkey(&self.exchange).ok_or_else(|| eyre::eyre!("Invalid exchange pubkey"))?;
+        let groups = self
+            .groups
+            .iter()
+            .map(|g| parse_pubkey(g).ok_or_else(|| eyre::eyre!("Invalid group pubkey: {g}")))
+            .collect::<eyre::Result<Vec<_>>>()?;
+
         let (signature, _pubkey) = client.create_feed(CreateFeedCommand {
             code: self.code,
             name: self.name,
-            metros: self.metros,
+            exchange,
+            groups,
         })?;
 
         print_signature(out, &signature)

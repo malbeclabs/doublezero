@@ -1,7 +1,7 @@
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, pda::get_feed_pda,
-    processors::feed::create::FeedCreateArgs, state::feed::MetroGroups,
+    processors::feed::create::FeedCreateArgs,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -11,8 +11,10 @@ use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient}
 pub struct CreateFeedCommand {
     pub code: String,
     pub name: String,
-    /// `exchange_pk → group_pks`. Empty ⇒ no metro restriction.
-    pub metros: Vec<MetroGroups>,
+    /// The metro (exchange) this feed serves; part of the PDA seed.
+    pub exchange: Pubkey,
+    /// Multicast groups joinable in this metro.
+    pub groups: Vec<Pubkey>,
 }
 
 impl CreateFeedCommand {
@@ -24,7 +26,7 @@ impl CreateFeedCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) = get_feed_pda(&client.get_program_id(), &code);
+        let (pda_pubkey, _) = get_feed_pda(&client.get_program_id(), &code, &self.exchange);
 
         // Accounts: [feed, globalstate, (payer, system appended by client)].
         client
@@ -32,7 +34,8 @@ impl CreateFeedCommand {
                 DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
                     code,
                     name: self.name.clone(),
-                    metros: self.metros.clone(),
+                    exchange: self.exchange,
+                    groups: self.groups.clone(),
                 }),
                 vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -55,14 +58,16 @@ mod tests {
         processors::feed::create::FeedCreateArgs,
     };
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_feed_create_command() {
         let mut client = create_test_client();
 
+        let exchange = Pubkey::new_unique();
+        let group = Pubkey::new_unique();
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_feed_pda(&client.get_program_id(), "test_feed");
+        let (pda_pubkey, _) = get_feed_pda(&client.get_program_id(), "test_feed", &exchange);
 
         client
             .expect_execute_transaction()
@@ -70,7 +75,8 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
                     code: "test_feed".to_string(),
                     name: "Test Feed".to_string(),
-                    metros: vec![],
+                    exchange,
+                    groups: vec![group],
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -82,7 +88,8 @@ mod tests {
         let create_command = CreateFeedCommand {
             code: "test_feed".to_string(),
             name: "Test Feed".to_string(),
-            metros: vec![],
+            exchange,
+            groups: vec![group],
         };
 
         let create_invalid_command = CreateFeedCommand {

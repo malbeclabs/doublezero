@@ -1,7 +1,6 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction, processors::feed::update::FeedUpdateArgs,
-    state::feed::MetroGroups,
 };
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
 
@@ -9,8 +8,8 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 pub struct UpdateFeedCommand {
     pub pubkey: Pubkey,
     pub name: Option<String>,
-    /// `exchange_pk → group_pks`. `None` leaves the metro map unchanged.
-    pub metros: Option<Vec<MetroGroups>>,
+    /// Replacement multicast group set. `None` leaves the groups unchanged.
+    pub groups: Option<Vec<Pubkey>>,
 }
 
 impl UpdateFeedCommand {
@@ -23,7 +22,7 @@ impl UpdateFeedCommand {
         client.execute_transaction(
             DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
                 name: self.name.clone(),
-                metros: self.metros.clone(),
+                groups: self.groups.clone(),
             }),
             vec![
                 AccountMeta::new(self.pubkey, false),
@@ -52,14 +51,18 @@ mod tests {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_feed_pda(&client.get_program_id(), "test_feed");
+        let (pda_pubkey, _) = get_feed_pda(
+            &client.get_program_id(),
+            "test_feed",
+            &solana_sdk::pubkey::Pubkey::new_unique(),
+        );
 
         client
             .expect_execute_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
                     name: Some("Test Feed".to_string()),
-                    metros: None,
+                    groups: None,
                 })),
                 predicate::eq(vec![
                     AccountMeta::new(pda_pubkey, false),
@@ -71,7 +74,7 @@ mod tests {
         let res = UpdateFeedCommand {
             pubkey: pda_pubkey,
             name: Some("Test Feed".to_string()),
-            metros: None,
+            groups: None,
         }
         .execute(&client);
         assert!(res.is_ok());

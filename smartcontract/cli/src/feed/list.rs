@@ -24,7 +24,9 @@ pub struct FeedDisplay {
     pub account: Pubkey,
     pub code: String,
     pub name: String,
-    pub metros: usize,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub exchange: Pubkey,
+    pub groups: usize,
     pub reference_count: u32,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
@@ -45,7 +47,8 @@ impl ListFeedCliCommand {
                 account: pubkey,
                 code: feed.code,
                 name: feed.name,
-                metros: feed.metros.len(),
+                exchange: feed.exchange,
+                groups: feed.groups.len(),
                 reference_count: feed.reference_count,
                 owner: feed.owner,
             })

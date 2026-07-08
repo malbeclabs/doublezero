@@ -1,13 +1,9 @@
 use crate::{
     authorize::authorize,
     error::DoubleZeroError,
-    processors::feed::create::validate_feed_inputs,
+    processors::feed::create::{validate_feed_groups, validate_feed_name},
     serializer::try_acc_write,
-    state::{
-        feed::{Feed, MetroGroups},
-        globalstate::GlobalState,
-        permission::permission_flags,
-    },
+    state::{feed::Feed, globalstate::GlobalState, permission::permission_flags},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -18,11 +14,12 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-/// `code` is the PDA seed and therefore immutable; only `name` and the metro map are mutable.
+/// `code` and `exchange` are the PDA seeds and therefore immutable; only `name` and the group set
+/// are mutable.
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Debug, Clone, Default)]
 pub struct FeedUpdateArgs {
     pub name: Option<String>,
-    pub metros: Option<Vec<MetroGroups>>,
+    pub groups: Option<Vec<Pubkey>>,
 }
 
 pub fn process_update_feed(
@@ -59,17 +56,19 @@ pub fn process_update_feed(
         permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
     )?;
 
-    validate_feed_inputs(
-        value.name.as_deref().unwrap_or_default(),
-        value.metros.as_deref().unwrap_or_default(),
-    )?;
+    if let Some(ref name) = value.name {
+        validate_feed_name(name)?;
+    }
+    if let Some(ref groups) = value.groups {
+        validate_feed_groups(groups)?;
+    }
 
     let mut feed = Feed::try_from(feed_account)?;
     if let Some(ref name) = value.name {
         feed.name = name.clone();
     }
-    if let Some(ref metros) = value.metros {
-        feed.metros = metros.clone();
+    if let Some(ref groups) = value.groups {
+        feed.groups = groups.clone();
     }
 
     try_acc_write(&feed, feed_account, payer_account, accounts)?;

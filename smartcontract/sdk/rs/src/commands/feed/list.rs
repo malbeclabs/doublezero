@@ -49,7 +49,8 @@ mod tests {
             code: "feed1_code".to_string(),
             name: "feed1_name".to_string(),
             reference_count: 0,
-            metros: vec![],
+            exchange: Pubkey::new_unique(),
+            groups: vec![Pubkey::new_unique()],
         };
 
         let feed2_pubkey = Pubkey::new_unique();
@@ -60,7 +61,8 @@ mod tests {
             code: "feed2_code".to_string(),
             name: "feed2_name".to_string(),
             reference_count: 0,
-            metros: vec![],
+            exchange: Pubkey::new_unique(),
+            groups: vec![Pubkey::new_unique()],
         };
 
         client

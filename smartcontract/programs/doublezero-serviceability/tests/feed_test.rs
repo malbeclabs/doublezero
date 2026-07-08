@@ -4,11 +4,7 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{get_feed_pda, get_globalstate_pda, get_program_config_pda},
     processors::feed::{create::FeedCreateArgs, delete::FeedDeleteArgs, update::FeedUpdateArgs},
-    state::{
-        accounttype::AccountType,
-        feed::{Feed, MetroGroups},
-        globalstate::GlobalState,
-    },
+    state::{accounttype::AccountType, feed::Feed, globalstate::GlobalState},
 };
 use solana_program_test::*;
 use solana_sdk::{
@@ -37,12 +33,8 @@ fn custom_code(err: DoubleZeroError) -> u32 {
 /// can match the exact `InstructionError::Custom(code)` at instruction index 0.
 ///
 /// NOTE: this intentionally does not return program logs. With the native `processor!` harness the
-/// guest program's `msg!` output is written to a thread-local invoke context that is *not* the log
-/// collector `BanksClient::simulate_transaction` / `process_transaction_with_metadata` read back,
-/// so their returned logs contain only the runtime `invoke`/`failed` frames — never the program's
-/// `Program log:` lines. The structured error code at instruction index 0 is therefore the
-/// reliable signal for which check fired. (Confirmed empirically against solana-program-test
-/// 2.3.13; see the review notes for this PR.)
+/// guest program's `msg!` output is not surfaced to BanksClient, so the structured error code at
+/// instruction index 0 is the reliable signal for which check fired.
 async fn try_execute_and_get_error(
     banks_client: &mut BanksClient,
     program_id: Pubkey,
@@ -104,15 +96,12 @@ async fn test_feed_create_get_update_delete() {
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
-    let (feed_pubkey, _) = get_feed_pda(&program_id, "shreds");
-
     let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "shreds", &exchange);
+
     let g1 = Pubkey::new_unique();
     let g2 = Pubkey::new_unique();
-    let metros = vec![MetroGroups {
-        exchange,
-        groups: vec![g1, g2],
-    }];
+    let groups = vec![g1, g2];
 
     execute_transaction(
         &mut banks_client,
@@ -121,7 +110,8 @@ async fn test_feed_create_get_update_delete() {
         DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
             code: "shreds".to_string(),
             name: "Shreds".to_string(),
-            metros: metros.clone(),
+            exchange,
+            groups: groups.clone(),
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -141,21 +131,18 @@ async fn test_feed_create_get_update_delete() {
     assert_eq!(feed.name, "Shreds".to_string());
     assert_eq!(feed.reference_count, 0);
     assert_eq!(feed.owner, payer.pubkey());
-    assert_eq!(feed.metros, metros);
+    assert_eq!(feed.exchange, exchange);
+    assert_eq!(feed.groups, groups);
 
-    // Update name and metros.
-    let new_exchange = Pubkey::new_unique();
-    let new_metros = vec![MetroGroups {
-        exchange: new_exchange,
-        groups: vec![Pubkey::new_unique()],
-    }];
+    // Update name and groups (exchange is immutable — it's a seed).
+    let new_groups = vec![Pubkey::new_unique()];
     execute_transaction(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
             name: Some("Shreds v2".to_string()),
-            metros: Some(new_metros.clone()),
+            groups: Some(new_groups.clone()),
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -171,7 +158,8 @@ async fn test_feed_create_get_update_delete() {
         .get_feed()
         .unwrap();
     assert_eq!(feed.name, "Shreds v2".to_string());
-    assert_eq!(feed.metros, new_metros);
+    assert_eq!(feed.exchange, exchange);
+    assert_eq!(feed.groups, new_groups);
 
     // Delete.
     execute_transaction(
@@ -191,18 +179,66 @@ async fn test_feed_create_get_update_delete() {
 }
 
 #[tokio::test]
-async fn test_feed_create_duplicate_code_rejected() {
+async fn test_feed_same_code_different_exchange_allowed() {
+    // One code is one SKU offered in many metros; each (code, exchange) is a distinct feed account.
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
-    let (feed_pubkey, _) = get_feed_pda(&program_id, "dupe");
+    let tokyo = Pubkey::new_unique();
+    let london = Pubkey::new_unique();
+    let (tokyo_feed, _) = get_feed_pda(&program_id, "hyperliquid", &tokyo);
+    let (london_feed, _) = get_feed_pda(&program_id, "hyperliquid", &london);
+    assert_ne!(tokyo_feed, london_feed);
+
+    for (exchange, feed_pubkey) in [(tokyo, tokyo_feed), (london, london_feed)] {
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+                code: "hyperliquid".to_string(),
+                name: "Hyperliquid".to_string(),
+                exchange,
+                groups: vec![Pubkey::new_unique()],
+            }),
+            vec![
+                AccountMeta::new(feed_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+    }
+
+    for (exchange, feed_pubkey) in [(tokyo, tokyo_feed), (london, london_feed)] {
+        let feed = get_account_data(&mut banks_client, feed_pubkey)
+            .await
+            .expect("Unable to get Feed")
+            .get_feed()
+            .unwrap();
+        assert_eq!(feed.code, "hyperliquid");
+        assert_eq!(feed.exchange, exchange);
+    }
+}
+
+#[tokio::test]
+async fn test_feed_create_duplicate_rejected() {
+    // The same (code, exchange) derives the same PDA, so a second create hits the already-created
+    // account.
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "dupe", &exchange);
 
     let create = |name: &str| {
         DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
             code: "dupe".to_string(),
             name: name.to_string(),
-            metros: vec![],
+            exchange,
+            groups: vec![Pubkey::new_unique()],
         })
     };
 
@@ -240,32 +276,22 @@ async fn test_feed_create_duplicate_code_rejected() {
 }
 
 #[tokio::test]
-async fn test_feed_create_duplicate_exchange_rejected() {
+async fn test_feed_create_empty_groups_rejected() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
-    let (feed_pubkey, _) = get_feed_pda(&program_id, "dup_ex");
-
     let exchange = Pubkey::new_unique();
-    let metros = vec![
-        MetroGroups {
-            exchange,
-            groups: vec![Pubkey::new_unique()],
-        },
-        MetroGroups {
-            exchange,
-            groups: vec![Pubkey::new_unique()],
-        },
-    ];
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "empty", &exchange);
 
     let result = try_execute_and_get_error(
         &mut banks_client,
         program_id,
         DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
-            code: "dup_ex".to_string(),
-            name: "Dup".to_string(),
-            metros,
+            code: "empty".to_string(),
+            name: "Empty".to_string(),
+            exchange,
+            groups: vec![],
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -279,21 +305,23 @@ async fn test_feed_create_duplicate_exchange_rejected() {
 }
 
 #[tokio::test]
-async fn test_feed_update_duplicate_exchange_rejected() {
+async fn test_feed_create_duplicate_group_rejected() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
-    let (feed_pubkey, _) = get_feed_pda(&program_id, "upd_dup");
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "dupgrp", &exchange);
 
-    execute_transaction(
+    let group = Pubkey::new_unique();
+    let result = try_execute_and_get_error(
         &mut banks_client,
-        recent_blockhash,
         program_id,
         DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
-            code: "upd_dup".to_string(),
-            name: "Upd".to_string(),
-            metros: vec![],
+            code: "dupgrp".to_string(),
+            name: "Dup group".to_string(),
+            exchange,
+            groups: vec![group, group],
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -303,23 +331,26 @@ async fn test_feed_update_duplicate_exchange_rejected() {
     )
     .await;
 
-    let exchange = Pubkey::new_unique();
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+}
+
+#[tokio::test]
+async fn test_feed_create_default_exchange_rejected() {
+    // Every feed is scoped to a real metro; the default pubkey is not a valid exchange.
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "nodef", &Pubkey::default());
+
     let result = try_execute_and_get_error(
         &mut banks_client,
         program_id,
-        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
-            name: None,
-            // Non-empty groups so the duplicate-exchange check fires (not the empty-groups check).
-            metros: Some(vec![
-                MetroGroups {
-                    exchange,
-                    groups: vec![Pubkey::new_unique()],
-                },
-                MetroGroups {
-                    exchange,
-                    groups: vec![Pubkey::new_unique()],
-                },
-            ]),
+        DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            code: "nodef".to_string(),
+            name: "No default".to_string(),
+            exchange: Pubkey::default(),
+            groups: vec![Pubkey::new_unique()],
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -338,7 +369,8 @@ async fn test_feed_create_unauthorized_caller_rejected() {
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
-    let (feed_pubkey, _) = get_feed_pda(&program_id, "unauth");
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "unauth", &exchange);
 
     // test_payer() is funded but not on the foundation allowlist, so it is not authorized.
     let unauthorized = test_payer();
@@ -348,7 +380,8 @@ async fn test_feed_create_unauthorized_caller_rejected() {
         DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
             code: "unauth".to_string(),
             name: "Unauthorized".to_string(),
-            metros: vec![],
+            exchange,
+            groups: vec![Pubkey::new_unique()],
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -395,7 +428,8 @@ async fn test_feed_delete_with_reference_count_rejected() {
         serialized_account(program_id, borsh::to_vec(&globalstate).unwrap()),
     );
 
-    let (feed_pubkey, feed_bump) = get_feed_pda(&program_id, "refd");
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, feed_bump) = get_feed_pda(&program_id, "refd", &exchange);
     let feed = Feed {
         account_type: AccountType::Feed,
         owner: authority.pubkey(),
@@ -403,7 +437,8 @@ async fn test_feed_delete_with_reference_count_rejected() {
         code: "refd".to_string(),
         name: "Referenced".to_string(),
         reference_count: 1,
-        metros: vec![],
+        exchange,
+        groups: vec![Pubkey::new_unique()],
     };
     program_test.add_account(
         feed_pubkey,

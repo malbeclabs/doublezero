@@ -59,7 +59,8 @@ mod tests {
             code: "feed_code".to_string(),
             name: "feed_name".to_string(),
             reference_count: 0,
-            metros: vec![],
+            exchange: Pubkey::new_unique(),
+            groups: vec![Pubkey::new_unique()],
         };
 
         let feed2 = feed.clone();

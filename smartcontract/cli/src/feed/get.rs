@@ -21,8 +21,10 @@ struct FeedDisplay {
     pub account: String,
     pub code: String,
     pub name: String,
-    /// Number of metros (exchanges) in the feed map. Empty ⇒ no metro restriction.
-    pub metros: usize,
+    /// The metro (exchange) this feed serves.
+    pub exchange: String,
+    /// Number of multicast groups joinable in this metro.
+    pub groups: usize,
     pub reference_count: u32,
     pub owner: String,
 }
@@ -42,7 +44,8 @@ impl GetFeedCliCommand {
             account: pubkey.to_string(),
             code: feed.code,
             name: feed.name,
-            metros: feed.metros.len(),
+            exchange: feed.exchange.to_string(),
+            groups: feed.groups.len(),
             reference_count: feed.reference_count,
             owner: feed.owner.to_string(),
         };

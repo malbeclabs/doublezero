@@ -386,13 +386,20 @@ async fn test_right_metro_joins_group_set() {
     assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.subscribers, vec![f.mgroup_pubkey]);
 
-    // The feed seat was ticked.
+    // The feed seat was ticked, and the user records which feed it consumed.
     let pass = get_account_data(&mut f.banks_client, f.accesspass_pubkey)
         .await
         .unwrap()
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.feed_seats()[0].current_users, 1);
+    // The user records which feed it consumed, so delete releases exactly that seat
+    // (`remove_feed_user(user.feed_pk)`); the decrement itself is covered by the AccessPass unit
+    // tests.
+    assert_eq!(
+        user.feed_pk, feed,
+        "connect records the consumed feed on the user"
+    );
 }
 
 #[tokio::test]

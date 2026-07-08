@@ -71,10 +71,7 @@ impl DeleteTenantCliCommand {
 
                 for user_pk in &tenant_users {
                     spinner.set_message(format!("Deleting user {user_pk}"));
-                    client.delete_user(DeleteUserCommand {
-                        pubkey: *user_pk,
-                        feed_pk: None,
-                    })?;
+                    client.delete_user(DeleteUserCommand { pubkey: *user_pk })?;
                     spinner.inc(1);
                 }
 
@@ -408,6 +405,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         let tenant_after = Tenant {

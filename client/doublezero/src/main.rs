@@ -63,10 +63,7 @@ impl<C: CliCommand + Sync> doublezero_daemon_cli::LedgerClient for LedgerAdapter
 
     fn delete_user(&self, pubkey: solana_sdk::pubkey::Pubkey) -> eyre::Result<()> {
         self.client
-            .delete_user(doublezero_sdk::commands::user::delete::DeleteUserCommand {
-                pubkey,
-                feed_pk: None,
-            })?;
+            .delete_user(doublezero_sdk::commands::user::delete::DeleteUserCommand { pubkey })?;
         Ok(())
     }
 

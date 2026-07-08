@@ -35,11 +35,7 @@ impl DeleteTenantCommand {
                 .collect();
 
             for user_pk in &tenant_users {
-                DeleteUserCommand {
-                    pubkey: *user_pk,
-                    feed_pk: None,
-                }
-                .execute(client)?;
+                DeleteUserCommand { pubkey: *user_pk }.execute(client)?;
             }
 
             // 2. Clean up access passes before waiting for reference_count to reach 0
@@ -225,6 +221,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(

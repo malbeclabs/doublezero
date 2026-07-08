@@ -6,7 +6,10 @@ use crate::{
     error::DoubleZeroError,
     state::{accesspass::AccessPass, feed::Feed},
 };
-use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, msg, pubkey::Pubkey};
+use solana_program::{
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
+    pubkey::Pubkey,
+};
 
 /// Validate the EdgeSeat feed metro gate without mutating the pass.
 ///
@@ -70,13 +73,15 @@ pub fn check_feed_metro_coverage(
 
 /// Enforce the EdgeSeat feed metro gate at connect and tick the matching feed seat against its cap.
 /// Call only for EdgeSeat passes. See [`check_feed_metro_coverage`].
+/// Returns the `feed_key` whose seat was ticked, so the caller can record it on the User and
+/// release exactly that seat at disconnect.
 pub fn enforce_feed_metro_gate(
     program_id: &Pubkey,
     accesspass: &mut AccessPass,
     device_exchange: &Pubkey,
     target_mgroup: Option<&Pubkey>,
     feed_account: Option<&AccountInfo>,
-) -> ProgramResult {
+) -> Result<Pubkey, ProgramError> {
     check_feed_metro_coverage(
         program_id,
         accesspass,
@@ -85,8 +90,7 @@ pub fn enforce_feed_metro_gate(
         feed_account,
     )?;
     // feed_account is guaranteed Some here (check returns Err otherwise).
-    if let Some(feed_account) = feed_account {
-        accesspass.try_add_feed_user(feed_account.key)?;
-    }
-    Ok(())
+    let feed_account = feed_account.ok_or(DoubleZeroError::FeedAccountRequired)?;
+    accesspass.try_add_feed_user(feed_account.key)?;
+    Ok(*feed_account.key)
 }

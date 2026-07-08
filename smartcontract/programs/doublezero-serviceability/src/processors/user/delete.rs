@@ -180,6 +180,12 @@ pub fn process_delete_user(
         accesspass.connection_count = accesspass.connection_count.saturating_sub(1);
         // Release the per-category seat (EdgeSeat only; no-op otherwise).
         accesspass.remove_user(user.user_type);
+        // Release the feed-scoped seat this user consumed at connect. The feed is read from the
+        // User (recorded when the seat was ticked), so the release is bound to exactly that seat
+        // and cannot be misdirected to another metro's feed by a caller-supplied account.
+        if user.user_type == UserType::Multicast && user.feed_pk != Pubkey::default() {
+            accesspass.remove_feed_user(&user.feed_pk);
+        }
         accesspass.status = if accesspass.connection_count > 0 {
             AccessPassStatus::Connected
         } else {

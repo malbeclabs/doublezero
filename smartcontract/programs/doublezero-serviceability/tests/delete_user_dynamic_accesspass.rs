@@ -682,9 +682,10 @@ async fn try_create_user(
     .await
 }
 
-/// EdgeSeat passes admit at most `max_unicast_users` unicast and `max_multicast_users` multicast
-/// users; the (N+1)th in each category is rejected with the per-category error. The pass lives at
-/// the UNSPECIFIED PDA so distinct client IPs all map to the same seat.
+/// EdgeSeat passes admit at most `max_unicast_users` unicast users; the (N+1)th is rejected with
+/// the per-category error. Multicast is feed-scoped (supersede): with no feeds provisioned on the
+/// pass, a multicast connect is rejected with `FeedAccountRequired`. The pass lives at the UNSPECIFIED PDA
+/// so distinct client IPs all map to the same seat.
 #[tokio::test]
 async fn test_edge_seat_user_caps_enforced() {
     let mut env = setup_test_env().await;
@@ -739,37 +740,28 @@ async fn test_edge_seat_user_caps_enforced() {
         "expected AccessPassMaxUnicastUsersExceeded (Custom(89)), got: {err:?}"
     );
 
-    // Multicast is a separate category, so the first multicast user is still admitted.
-    try_create_user(
+    // Multicast is feed-scoped under supersede. With no Feed account supplied, a multicast
+    // connect is rejected with FeedAccountRequired (Custom(92)) rather than the legacy multicast cap.
+    let err = try_create_user(
         &mut env,
         [100, 0, 0, 12].into(),
         UserType::Multicast,
         accesspass_pubkey,
     )
     .await
-    .expect("first multicast user should be admitted");
-
-    // Second multicast user exceeds the multicast cap.
-    let err = try_create_user(
-        &mut env,
-        [100, 0, 0, 13].into(),
-        UserType::Multicast,
-        accesspass_pubkey,
-    )
-    .await
-    .expect_err("second multicast user should exceed the cap");
+    .expect_err("multicast on a feedless EdgeSeat pass should be rejected");
     assert!(
-        format!("{err:?}").contains("Custom(90)"),
-        "expected AccessPassMaxMulticastUsersExceeded (Custom(90)), got: {err:?}"
+        format!("{err:?}").contains("Custom(92)"),
+        "expected FeedAccountRequired (Custom(92)), got: {err:?}"
     );
 
-    // The pass tracks one seat per category; connection_count counts both connections.
+    // Only the unicast connection was admitted.
     let pass = get_account_data(&mut env.banks_client, accesspass_pubkey)
         .await
         .unwrap()
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.unicast_user_count, 1);
-    assert_eq!(pass.multicast_user_count, 1);
-    assert_eq!(pass.connection_count, 2);
+    assert_eq!(pass.multicast_user_count, 0);
+    assert_eq!(pass.connection_count, 1);
 }

@@ -99,6 +99,8 @@ impl SubscribeUserCliCommand {
                     client_ip: user.client_ip,
                     publisher,
                     subscriber,
+                    device_pk: None,
+                    feed_pk: None,
                 })?;
             writeln!(out, "Updated roles for {group_pk}: {signature}")?;
         }
@@ -177,6 +179,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         let mgroup_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
@@ -218,6 +221,8 @@ mod tests {
                 client_ip,
                 publisher: false,
                 subscriber: true,
+                device_pk: None,
+                feed_pk: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -280,6 +285,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         let mgroup_pubkey1 = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
@@ -395,6 +401,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         client
@@ -436,6 +443,8 @@ mod tests {
                 client_ip,
                 publisher: false,
                 subscriber: true,
+                device_pk: None,
+                feed_pk: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -494,6 +503,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         client
@@ -535,6 +545,8 @@ mod tests {
                 client_ip,
                 publisher: true,
                 subscriber: false,
+                device_pk: None,
+                feed_pk: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));

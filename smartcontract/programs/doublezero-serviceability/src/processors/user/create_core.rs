@@ -17,7 +17,10 @@ use solana_program::{
 };
 use std::net::Ipv4Addr;
 
-use crate::{processors::validation::validate_program_account, serializer::try_acc_write};
+use crate::{
+    processors::{feed::enforce_feed_metro_gate, validation::validate_program_account},
+    serializer::try_acc_write,
+};
 
 #[derive(PartialEq)]
 pub enum PDAVersion {
@@ -68,6 +71,10 @@ pub fn create_user_core(
     tunnel_endpoint: Ipv4Addr,
     is_publisher: bool,
     owner_override: Option<Pubkey>,
+    // EdgeSeat multicast metro gate: the multicast group being joined (None for non-multicast
+    // connects) and the referenced Feed account covering the device's exchange.
+    target_mgroup: Option<&Pubkey>,
+    feed_account: Option<&AccountInfo>,
 ) -> Result<CreateUserCoreResult, ProgramError> {
     // Check if the payer is a signer
     assert!(core.payer_account.is_signer, "Payer must be a signer");
@@ -295,6 +302,24 @@ pub fn create_user_core(
     // returns before any account is written, so no state is persisted.
     accesspass.try_add_user(user_type)?;
 
+    // EdgeSeat multicast metro gate: the device's exchange must be covered by a feed on the pass,
+    // the target group must be joinable there, and that feed's seat is ticked. Unicast retains the
+    // per-category cap above and is not feed-gated. The ticked feed is recorded on the User below so
+    // delete releases exactly that seat.
+    let feed_pk = if matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_))
+        && user_type == UserType::Multicast
+    {
+        enforce_feed_metro_gate(
+            program_id,
+            &mut accesspass,
+            &device.exchange_pk,
+            target_mgroup,
+            feed_account,
+        )?
+    } else {
+        Pubkey::default()
+    };
+
     // All validations passed - now update counters
     accesspass.connection_count += 1;
     accesspass.status = AccessPassStatus::Connected;
@@ -365,6 +390,7 @@ pub fn create_user_core(
         last_bgp_up_at: 0,
         last_bgp_reported_at: 0,
         bgp_rtt_ns: 0,
+        feed_pk,
     };
 
     Ok(CreateUserCoreResult {

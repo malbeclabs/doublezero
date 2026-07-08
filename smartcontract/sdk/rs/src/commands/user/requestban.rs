@@ -50,6 +50,8 @@ impl RequestBanUserCommand {
                     client_ip: user.client_ip,
                     publisher: false,
                     subscriber: false,
+                    device_pk: None,
+                    feed_pk: None,
                 }
                 .execute(client)?;
             }
@@ -169,6 +171,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         client

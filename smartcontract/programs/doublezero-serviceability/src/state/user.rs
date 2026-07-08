@@ -282,6 +282,17 @@ pub struct User {
     /// Smoothed BGP TCP RTT in nanoseconds, sourced from the kernel via INET_DIAG.
     /// 0 means no sample has been observed yet. Same unit as `Link.delay_ns`.
     pub bgp_rtt_ns: u64, // 8
+    /// The EdgeSeat `Feed` whose per-feed seat this user consumed at connect (multicast only).
+    /// `Pubkey::default()` for non-EdgeSeat/unicast users. Used to release exactly that seat at
+    /// delete, so the release is bound to what was ticked rather than a caller-supplied account.
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    pub feed_pk: Pubkey, // 32
 }
 
 impl fmt::Display for User {
@@ -334,6 +345,9 @@ impl TryFrom<&[u8]> for User {
             last_bgp_up_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             last_bgp_reported_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             bgp_rtt_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            // Appended after the feed metro gate landed; defaults to the zero pubkey (no feed seat)
+            // for users created before this field existed.
+            feed_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::User {
@@ -550,6 +564,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -602,6 +617,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         let err = val.validate();
@@ -634,6 +650,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -665,6 +682,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -696,6 +714,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -727,6 +746,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -758,6 +778,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -790,6 +811,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -803,6 +825,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
             ..val.clone()
         };
         let err = val_loopback.validate();
@@ -817,6 +840,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
             ..val.clone()
         };
         let err = val_link_local.validate();
@@ -831,6 +855,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
             ..val.clone()
         };
         assert!(val_unspecified.validate().is_ok());
@@ -843,6 +868,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
             ..val
         };
         assert!(val_global.validate().is_ok());
@@ -877,6 +903,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         }
     }
 
@@ -1020,6 +1047,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         assert!(val.validate().is_ok());
@@ -1078,15 +1106,21 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
         let data = borsh::to_vec(&user).unwrap();
         // Remove tunnel_flags (1) + bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
-        // + bgp_rtt_ns (8) to simulate an old account that predates tunnel_flags.
-        let old_data = &data[..data.len() - 26];
+        // + bgp_rtt_ns (8) + feed_pk (32) to simulate an old account that predates all of them.
+        let old_data = &data[..data.len() - 58];
         let deserialized = User::try_from(old_data).unwrap();
         assert_eq!(
             deserialized.tunnel_flags, 0,
             "Old accounts must default tunnel_flags to 0"
+        );
+        assert_eq!(
+            deserialized.feed_pk,
+            Pubkey::default(),
+            "Old accounts must default feed_pk to the zero pubkey"
         );
         assert_eq!(
             deserialized.bgp_status,
@@ -1132,6 +1166,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
         let data = borsh::to_vec(&user).unwrap();
         let deserialized = User::try_from(&data[..]).unwrap();
@@ -1167,6 +1202,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         }
     }
 

@@ -3,13 +3,15 @@ use crate::{
     error::DoubleZeroError,
     pda::{get_accesspass_pda, get_globalstate_pda, get_resource_extension_pda},
     processors::{
+        feed::check_feed_metro_coverage,
         resource::{allocate_ip, deallocate_ip},
         validation::validate_program_account,
     },
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
-        accesspass::AccessPass,
+        accesspass::{AccessPass, AccessPassType},
+        device::Device,
         globalstate::GlobalState,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         permission::permission_flags,
@@ -74,12 +76,16 @@ pub fn update_user_multicastgroup_roles(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    // Check allowlists for additions
-    if publisher && !accesspass.mgroup_pub_allowlist.contains(mgroup_account.key) {
+    // Check allowlists for additions. EdgeSeat passes derive joinable groups from their feeds'
+    // metro→group map (the feed metro gate), which supersedes the mgroup allowlist; the caller is
+    // responsible for running enforce_feed_metro_gate for EdgeSeat connects.
+    let is_edge_seat = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_));
+    if publisher && !is_edge_seat && !accesspass.mgroup_pub_allowlist.contains(mgroup_account.key) {
         msg!("{:?}", accesspass);
         return Err(DoubleZeroError::NotAllowed.into());
     }
-    if subscriber && !accesspass.mgroup_sub_allowlist.contains(mgroup_account.key) {
+    if subscriber && !is_edge_seat && !accesspass.mgroup_sub_allowlist.contains(mgroup_account.key)
+    {
         msg!("{:?}", accesspass);
         return Err(DoubleZeroError::NotAllowed.into());
     }
@@ -236,6 +242,33 @@ pub fn process_update_multicastgroup_roles(
             );
             return Err(DoubleZeroError::Unauthorized.into());
         }
+    }
+
+    // Optional trailing accounts for the EdgeSeat feed metro gate: the user's device (for its
+    // exchange) and the Feed covering it. Read AFTER the authorize() above so they do not consume
+    // the optional trailing Permission account.
+    let device_account = accounts_iter.next();
+    let feed_account = accounts_iter.next();
+
+    // EdgeSeat passes derive joinable groups from their feeds' metro→group map. The seat was
+    // ticked at connect (CreateSubscribeUser), so post-activation role adds only re-validate
+    // coverage; they do not re-tick.
+    if matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_))
+        && (value.publisher || value.subscriber)
+    {
+        let device_account = device_account.ok_or(DoubleZeroError::MetroMismatch)?;
+        validate_program_account!(device_account, program_id, writable = false, "Device");
+        if user.device_pk != *device_account.key {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let device = Device::try_from(device_account)?;
+        check_feed_metro_coverage(
+            program_id,
+            &accesspass,
+            &device.exchange_pk,
+            Some(mgroup_account.key),
+            feed_account,
+        )?;
     }
 
     let result = update_user_multicastgroup_roles(

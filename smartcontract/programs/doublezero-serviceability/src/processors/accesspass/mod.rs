@@ -9,8 +9,8 @@ use solana_program::{
 };
 
 // Value to rent exempt three `User` accounts + configurable amount for connect/disconnect txns.
-// `User` account size assumes a single publisher and subscriber pubkey registered (266 bytes each).
-pub const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 266 * 3; // 266 bytes per User account x 3 accounts = 798 bytes
+// `User` account size assumes a single publisher and subscriber pubkey registered (298 bytes each).
+pub const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 298 * 3; // 298 bytes per User account x 3 accounts = 894 bytes
 
 /// Default per-user airdrop seeded into `GlobalState.user_airdrop_lamports` at initialization.
 /// Admins can override it via the `SetAirdrop` instruction.

@@ -269,7 +269,17 @@ pub fn process_set_access_pass(
 
         // Update fields. The max caps are overwritten from args; the live counts are left
         // untouched so an in-flight pass keeps its current seat usage.
-        accesspass.accesspass_type = value.accesspass_type.clone();
+        //
+        // EdgeSeat feed seats are owned by SetAccessPassFeeds (the oracle), not this instruction.
+        // SetAccessPassArgs carries no feed payload, so when both the stored and incoming types are
+        // EdgeSeat we preserve the provisioned seat vector instead of clobbering it (and its live
+        // current_users) with the incoming empty vec.
+        accesspass.accesspass_type = match (&accesspass.accesspass_type, &value.accesspass_type) {
+            (AccessPassType::EdgeSeat(existing), AccessPassType::EdgeSeat(_)) => {
+                AccessPassType::EdgeSeat(existing.clone())
+            }
+            _ => value.accesspass_type.clone(),
+        };
         accesspass.last_access_epoch = value.last_access_epoch;
         accesspass.flags = flags;
         accesspass.max_unicast_users = value.max_unicast_users;
@@ -416,6 +426,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         // User with 1 subscriber only (publisher use case)
@@ -442,6 +453,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         // User with both 1 publisher and 1 subscriber (future simultaneous pub/sub)
@@ -468,6 +480,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         let size_with_publisher = borsh::object_length(&user_with_publisher).unwrap();
@@ -475,25 +488,26 @@ mod tests {
         let size_with_both = borsh::object_length(&user_with_both).unwrap();
 
         // Verify our understanding of the sizes
-        // Base User size (empty vecs) = 202 bytes (includes tunnel_flags, bgp_status, last_bgp_up_at, last_bgp_reported_at, bgp_rtt_ns)
+        // Base User size (empty vecs) = 234 bytes (includes tunnel_flags, bgp_status, last_bgp_up_at,
+        // last_bgp_reported_at, bgp_rtt_ns, and the 32-byte feed_pk)
         // Each Pubkey in publishers/subscribers adds 32 bytes
         assert_eq!(
-            size_with_publisher, 234,
-            "User with 1 publisher should be 234 bytes"
+            size_with_publisher, 266,
+            "User with 1 publisher should be 266 bytes"
         );
         assert_eq!(
-            size_with_subscriber, 234,
-            "User with 1 subscriber should be 234 bytes"
+            size_with_subscriber, 266,
+            "User with 1 subscriber should be 266 bytes"
         );
         assert_eq!(
-            size_with_both, 266,
-            "User with 1 publisher + 1 subscriber should be 266 bytes"
+            size_with_both, 298,
+            "User with 1 publisher + 1 subscriber should be 298 bytes"
         );
 
-        // The constant should be sized for 3 accounts with both pub+sub (266 * 3 = 798)
+        // The constant should be sized for 3 accounts with both pub+sub (298 * 3 = 894)
         assert_eq!(
             AIRDROP_USER_RENT_LAMPORTS_BYTES,
-            266 * 3,
+            298 * 3,
             "AIRDROP_USER_RENT_LAMPORTS_BYTES should be sized for 3 User accounts with pub+sub"
         );
 

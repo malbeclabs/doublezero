@@ -23,6 +23,12 @@ pub struct DeleteUserCommand {
 }
 
 impl DeleteUserCommand {
+    pub fn new(pubkey: Pubkey) -> Self {
+        Self { pubkey }
+    }
+}
+
+impl DeleteUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _) = GetGlobalStateCommand
             .execute(client)
@@ -51,6 +57,8 @@ impl DeleteUserCommand {
                     client_ip: user.client_ip,
                     publisher: false,
                     subscriber: false,
+                    device_pk: None,
+                    feed_pk: None,
                 }
                 .execute(client)?;
             }
@@ -120,6 +128,9 @@ impl DeleteUserCommand {
 
         accounts.push(AccountMeta::new(user.owner, false));
 
+        // The on-chain DeleteUser releases the EdgeSeat feed seat from the feed recorded on the
+        // User (set when the seat was ticked at connect), so no trailing Feed account is needed
+        // here.
         client.execute_authorized_transaction(
             DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
                 dz_prefix_count: dz_prefix_count_u8,
@@ -196,6 +207,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         let mgroup = MulticastGroup {
@@ -416,6 +428,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         let mgroup = MulticastGroup {
@@ -682,6 +695,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         let user_activated_final = User {
@@ -900,6 +914,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         let owner = user.owner;

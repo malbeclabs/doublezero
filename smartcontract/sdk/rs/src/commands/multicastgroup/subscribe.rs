@@ -21,6 +21,11 @@ pub struct UpdateMulticastGroupRolesCommand {
     pub user_pk: Pubkey,
     pub publisher: bool,
     pub subscriber: bool,
+    /// Reserved for the EdgeSeat feed metro gate (the user's device + covering Feed). Not appended
+    /// by this builder — the authorized-transaction layout has no slot after the trailing
+    /// `[payer, system, permission]`; post-activation re-gating is deferred to #1699.
+    pub device_pk: Option<Pubkey>,
+    pub feed_pk: Option<Pubkey>,
 }
 
 impl UpdateMulticastGroupRolesCommand {
@@ -73,11 +78,15 @@ impl UpdateMulticastGroupRolesCommand {
             AccountMeta::new(multicast_publisher_block_ext, false),
         ];
 
-        // Use the authorized path so the payer's Permission account is appended when
-        // it exists on-chain. Removal-only cleanup (e.g. DeleteUserCommand /
-        // RequestBanUserCommand) is authorized via USER_ADMIN when the payer is
-        // neither the access-pass owner nor a foundation member; for owner/foundation
-        // callers the (optional) trailing account is simply ignored on-chain.
+        // Use the authorized path so the payer's Permission account is appended when it exists
+        // on-chain. Removal-only cleanup (DeleteUserCommand / RequestBanUserCommand) is authorized
+        // via USER_ADMIN when the payer is neither the access-pass owner nor a foundation member.
+        //
+        // The EdgeSeat feed metro gate is enforced at connect (CreateSubscribeUser). The optional
+        // `device_pk`/`feed_pk` for post-activation re-gating are NOT appended here: the on-chain
+        // trailing `[payer, system, permission]` layout (see `assemble_instructions`) leaves no slot
+        // for them via this path. Post-activation re-gating is deferred to the oracle lifecycle
+        // (see malbeclabs/infra#1700 / doublezero #1699).
         client.execute_authorized_transaction(
             DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
                 publisher: self.publisher,
@@ -171,6 +180,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            feed_pk: Pubkey::default(),
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user.client_ip, &payer);
@@ -241,6 +251,8 @@ mod tests {
             client_ip,
             publisher: true,
             subscriber: false,
+            device_pk: None,
+            feed_pk: None,
         }
         .execute(&client);
 

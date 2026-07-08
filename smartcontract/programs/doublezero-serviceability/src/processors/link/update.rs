@@ -164,7 +164,7 @@ pub fn process_update_link(
     // Permission PDA the SDK appends when it exists — off the tail, leaving the
     // caller's topology union as `topology_accounts`.
     let rest: Vec<&AccountInfo> = accounts_iter.collect();
-    let (payer_account, system_program, topology_accounts, permission_account) =
+    let (payer_account, _system_program, topology_accounts, permission_account) =
         split_trailing_permission(program_id, &rest)?;
 
     #[cfg(test)]
@@ -185,11 +185,9 @@ pub fn process_update_link(
         writable = false,
         "GlobalState"
     );
-    assert_eq!(
-        *system_program.unsigned_key(),
-        solana_system_interface::program::ID,
-        "Invalid System Program Account Owner"
-    );
+    // (System-program validation is unnecessary: the system interface builds
+    // instructions with the system program as the program ID, so a wrong account
+    // reverts automatically — see programs/CLAUDE.md.)
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
     let contributor = Contributor::try_from(contributor_account)?;

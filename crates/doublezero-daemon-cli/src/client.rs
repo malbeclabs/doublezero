@@ -14,7 +14,7 @@ use std::{fmt, fs::File, path::Path, sync::OnceLock};
 use tabled::{derive::display, Tabled};
 
 pub(crate) const DEFAULT_SOCKET_PATH: &str = "/var/run/doublezerod/doublezerod.sock";
-const NANOS_TO_MS: f64 = 1000000.0;
+const NANOS_TO_MS: f64 = 1_000_000.0;
 static GLOBAL_SOCKET_PATH: OnceLock<String> = OnceLock::new();
 
 // ---------------------------------------------------------------------------
@@ -163,6 +163,25 @@ pub struct MulticastGroups {
     pub subscriber: Vec<String>,
 }
 
+/// A single multicast group the user participates in, with the group's onchain
+/// details and the user's role(s). A user that is both publisher and subscriber
+/// of a group appears once with both booleans set.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct Subscription {
+    #[serde(default)]
+    pub pubkey: String,
+    #[serde(default)]
+    pub code: String,
+    #[serde(default)]
+    pub multicast_ip: String,
+    #[serde(default)]
+    pub max_bandwidth: u64,
+    #[serde(default)]
+    pub publisher: bool,
+    #[serde(default)]
+    pub subscriber: bool,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct V2ServiceStatus {
     #[serde(flatten)]
@@ -177,6 +196,8 @@ pub struct V2ServiceStatus {
     pub tenant: String,
     #[serde(default)]
     pub multicast_groups: MulticastGroups,
+    #[serde(default)]
+    pub subscriptions: Vec<Subscription>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -403,15 +424,15 @@ mod tests {
             device_pk: "DevicePubkey123".to_string(),
             device_code: "device1".to_string(),
             device_ip: "5.6.7.8".to_string(),
-            min_latency_ns: 1000000,
-            max_latency_ns: 5000000,
-            avg_latency_ns: 3000000,
+            min_latency_ns: 1_000_000,
+            max_latency_ns: 5_000_000,
+            avg_latency_ns: 3_000_000,
             reachable: true,
         };
         let json = serde_json::to_string(&record).unwrap();
         let deserialized: LatencyRecord = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.device_pk, "DevicePubkey123");
-        assert_eq!(deserialized.min_latency_ns, 1000000);
+        assert_eq!(deserialized.min_latency_ns, 1_000_000);
         assert!(deserialized.reachable);
     }
 
@@ -454,7 +475,7 @@ mod tests {
         let status = StatusResponse {
             doublezero_status: DoubleZeroStatus {
                 session_status: "BGP Session Up".to_string(),
-                last_session_update: Some(1625247600),
+                last_session_update: Some(1_625_247_600),
             },
             tunnel_name: Some("doublezero1".to_string()),
             tunnel_src: Some("10.0.0.1".to_string()),
@@ -490,6 +511,16 @@ mod tests {
         let groups: MulticastGroups = serde_json::from_str(json).unwrap();
         assert!(groups.publisher.is_empty());
         assert!(groups.subscriber.is_empty());
+    }
+
+    #[test]
+    fn test_subscription_defaults() {
+        let json = "{}";
+        let sub: Subscription = serde_json::from_str(json).unwrap();
+        assert!(sub.pubkey.is_empty());
+        assert_eq!(sub.max_bandwidth, 0);
+        assert!(!sub.publisher);
+        assert!(!sub.subscriber);
     }
 
     #[test]

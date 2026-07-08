@@ -4,7 +4,7 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
         get_contributor_pda, get_device_pda, get_exchange_pda, get_globalconfig_pda, get_link_pda,
-        get_location_pda, get_resource_extension_pda, get_topology_pda,
+        get_location_pda, get_permission_pda, get_resource_extension_pda, get_topology_pda,
     },
     processors::{
         contributor::create::ContributorCreateArgs,
@@ -13,6 +13,7 @@ use doublezero_serviceability::{
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         link::{create::LinkCreateArgs, update::LinkUpdateArgs},
         location::create::LocationCreateArgs,
+        permission::create::PermissionCreateArgs,
         topology::{
             assign_node_segments::AssignTopologyNodeSegmentsArgs, clear::TopologyClearArgs,
             create::TopologyCreateArgs, delete::TopologyDeleteArgs,
@@ -25,6 +26,7 @@ use doublezero_serviceability::{
         feature_flags::FeatureFlag,
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
         link::{Link, LinkDesiredStatus, LinkLinkType},
+        permission::permission_flags,
         topology::{TopologyConstraint, TopologyInfo},
     },
 };
@@ -315,16 +317,87 @@ async fn test_topology_create_non_foundation_rejected() {
     )
     .await;
 
-    // DoubleZeroError::Unauthorized = Custom(22)
+    // DoubleZeroError::NotAllowed = Custom(8)
     match result {
         Err(BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            InstructionError::Custom(22),
+            InstructionError::Custom(8),
         ))) => {}
-        _ => panic!("Expected Unauthorized error (Custom(22)), got {:?}", result),
+        _ => panic!("Expected NotAllowed error (Custom(8)), got {:?}", result),
     }
 
     println!("[PASS] test_topology_create_non_foundation_rejected");
+}
+
+/// A non-foundation key holding a TOPOLOGY_ADMIN Permission account can create
+/// a topology — exercises the new Permission-account authorization path end to end.
+#[tokio::test]
+async fn test_topology_create_with_permission_account_allowed() {
+    println!("[TEST] test_topology_create_with_permission_account_allowed");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    // A keypair that is NOT in the foundation allowlist.
+    let topology_admin = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &topology_admin.pubkey(),
+        10_000_000,
+    )
+    .await;
+
+    // Foundation grants the key a Permission account with TOPOLOGY_ADMIN.
+    let (permission_pda, _) = get_permission_pda(&program_id, &topology_admin.pubkey());
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: topology_admin.pubkey(),
+            permissions: permission_flags::TOPOLOGY_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // The TOPOLOGY_ADMIN holder creates a topology, passing its Permission PDA
+    // as the optional trailing account that authorize() reads.
+    let (topology_pda, _) = get_topology_pda(&program_id, "permissioned-topology");
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx = create_transaction_with_extra_accounts(
+        program_id,
+        &DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+            name: "permissioned-topology".to_string(),
+            constraint: TopologyConstraint::IncludeAny,
+        }),
+        &vec![
+            AccountMeta::new(topology_pda, false),
+            AccountMeta::new(admin_group_bits_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &topology_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    );
+    tx.try_sign(&[&topology_admin], recent_blockhash).unwrap();
+    banks_client
+        .process_transaction(tx)
+        .await
+        .expect("TOPOLOGY_ADMIN permission holder should be able to create a topology");
+
+    let topology = get_topology(&mut banks_client, topology_pda).await;
+    assert_eq!(topology.name, "PERMISSIONED-TOPOLOGY");
+
+    println!("[PASS] test_topology_create_with_permission_account_allowed");
 }
 
 #[tokio::test]
@@ -507,6 +580,10 @@ async fn delete_topology(
 }
 
 /// Creates a clear topology instruction, passing the given link accounts as writable.
+///
+/// Uses the production on-wire layout (`[topology, globalstate, links.., payer,
+/// system, permission?]`) so the variable-length link list comes before the
+/// payer/system_program that the SDK appends — exactly what the CLI emits.
 async fn clear_topology(
     banks_client: &mut BanksClient,
     program_id: Pubkey,
@@ -515,20 +592,44 @@ async fn clear_topology(
     link_accounts: Vec<AccountMeta>,
     payer: &Keypair,
 ) {
+    clear_topology_with_permission(
+        banks_client,
+        program_id,
+        globalstate_pubkey,
+        name,
+        link_accounts,
+        payer,
+        None,
+    )
+    .await
+}
+
+/// Like [`clear_topology`], but allows passing the payer's Permission PDA as the
+/// optional trailing account that `authorize()` reads.
+async fn clear_topology_with_permission(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    name: &str,
+    link_accounts: Vec<AccountMeta>,
+    payer: &Keypair,
+    permission: Option<AccountMeta>,
+) {
     let (topology_pda, _) = get_topology_pda(&program_id, name);
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    let base_accounts = vec![
+    let mut accounts = vec![
         AccountMeta::new(topology_pda, false),
         AccountMeta::new_readonly(globalstate_pubkey, false),
     ];
-    let mut tx = create_transaction_with_extra_accounts(
+    accounts.extend(link_accounts);
+    let mut tx = create_authorized_transaction(
         program_id,
         &DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
             name: name.to_string(),
         }),
-        &base_accounts,
+        &accounts,
         payer,
-        &link_accounts,
+        permission,
     );
     tx.try_sign(&[&payer], recent_blockhash).unwrap();
     banks_client.process_transaction(tx).await.unwrap();
@@ -952,12 +1053,13 @@ async fn test_topology_delete_fails_when_link_references_it() {
     assert!(link.link_topologies.contains(&topology_pda));
 
     // Attempt to delete — should fail because the link still references it
+    // (the guard reads topology.reference_count; no link account is passed to delete).
     let result = delete_topology(
         &mut banks_client,
         program_id,
         globalstate_pubkey,
         "test-topology",
-        vec![AccountMeta::new_readonly(link_pubkey, false)],
+        vec![],
         &payer,
     )
     .await;
@@ -1257,6 +1359,109 @@ async fn test_topology_clear_removes_from_links() {
     println!("[PASS] test_topology_clear_removes_from_links");
 }
 
+/// A non-foundation key holding a TOPOLOGY_ADMIN Permission account can clear a
+/// topology from a link. Exercises the Permission-account authorization path for
+/// `clear` through the production on-wire account layout (links before the
+/// trailing payer/system/permission), which is what the CLI/SDK actually emits.
+#[tokio::test]
+async fn test_topology_clear_with_permission_account_allowed() {
+    println!("[TEST] test_topology_clear_with_permission_account_allowed");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    let topology_pda = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "test-topology",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // unicast-default topology is required for link activation.
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // Set up a WAN link and assign the topology to it (foundation payer).
+    let (link_pubkey, contributor_pubkey, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+    assign_link_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        link_pubkey,
+        contributor_pubkey,
+        vec![topology_pda],
+        &payer,
+    )
+    .await;
+    let link = get_link(&mut banks_client, link_pubkey).await;
+    assert!(link.link_topologies.contains(&topology_pda));
+
+    // A keypair that is NOT in the foundation allowlist, granted TOPOLOGY_ADMIN.
+    let topology_admin = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &topology_admin.pubkey(),
+        10_000_000,
+    )
+    .await;
+    let (permission_pda, _) = get_permission_pda(&program_id, &topology_admin.pubkey());
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: topology_admin.pubkey(),
+            permissions: permission_flags::TOPOLOGY_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // The TOPOLOGY_ADMIN holder clears the topology from the link, passing its
+    // Permission PDA as the optional trailing account that authorize() reads.
+    clear_topology_with_permission(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "test-topology",
+        vec![AccountMeta::new(link_pubkey, false)],
+        &topology_admin,
+        Some(AccountMeta::new_readonly(permission_pda, false)),
+    )
+    .await;
+
+    // Verify the link no longer references the topology.
+    let link = get_link(&mut banks_client, link_pubkey).await;
+    assert!(
+        link.link_topologies.is_empty(),
+        "link_topologies should be empty after clear"
+    );
+
+    println!("[PASS] test_topology_clear_with_permission_account_allowed");
+}
+
 #[tokio::test]
 async fn test_topology_clear_is_idempotent() {
     println!("[TEST] test_topology_clear_is_idempotent");
@@ -1373,13 +1578,13 @@ async fn test_topology_delete_non_foundation_rejected() {
     )
     .await;
 
-    // DoubleZeroError::Unauthorized = Custom(22)
+    // DoubleZeroError::NotAllowed = Custom(8)
     match result {
         Err(BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            InstructionError::Custom(22),
+            InstructionError::Custom(8),
         ))) => {}
-        _ => panic!("Expected Unauthorized error (Custom(22)), got {:?}", result),
+        _ => panic!("Expected NotAllowed error (Custom(8)), got {:?}", result),
     }
 
     println!("[PASS] test_topology_delete_non_foundation_rejected");
@@ -1437,13 +1642,13 @@ async fn test_topology_clear_non_foundation_rejected() {
     )
     .await;
 
-    // DoubleZeroError::Unauthorized = Custom(22)
+    // DoubleZeroError::NotAllowed = Custom(8)
     match result {
         Err(BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            InstructionError::Custom(22),
+            InstructionError::Custom(8),
         ))) => {}
-        _ => panic!("Expected Unauthorized error (Custom(22)), got {:?}", result),
+        _ => panic!("Expected NotAllowed error (Custom(8)), got {:?}", result),
     }
 
     println!("[PASS] test_topology_clear_non_foundation_rejected");
@@ -1737,13 +1942,13 @@ async fn test_topology_backfill_non_foundation_rejected() {
     )
     .await;
 
-    // DoubleZeroError::Unauthorized = Custom(22)
+    // DoubleZeroError::NotAllowed = Custom(8)
     match result {
         Err(BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            InstructionError::Custom(22),
+            InstructionError::Custom(8),
         ))) => {}
-        _ => panic!("Expected Unauthorized error (Custom(22)), got {:?}", result),
+        _ => panic!("Expected NotAllowed error (Custom(8)), got {:?}", result),
     }
 
     println!("[PASS] test_topology_backfill_non_foundation_rejected");

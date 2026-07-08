@@ -109,6 +109,46 @@ impl Environment {
 
         Ok(config)
     }
+
+    /// Connection details for the shred-subscription program on Solana L1.
+    ///
+    /// Returns `None` for environments where the shred-subscription program is
+    /// not deployed (devnet, local). Note the Solana cluster differs from
+    /// [`NetworkConfig::solana_l1_rpc_url`]: DZ testnet's shred-subscription
+    /// program runs on Solana devnet, not Solana testnet.
+    pub fn shred_subscription_config(&self) -> Option<ShredSubscriptionConfig> {
+        let mut config = match self {
+            Environment::MainnetBeta => ShredSubscriptionConfig {
+                program_id: SHRED_SUBSCRIPTION_PROGRAM_ID,
+                solana_rpc_url: ENV_MAINNET_BETA_SHRED_SOLANA_RPC_URL.to_string(),
+            },
+            Environment::Testnet => ShredSubscriptionConfig {
+                program_id: SHRED_SUBSCRIPTION_PROGRAM_ID,
+                solana_rpc_url: ENV_TESTNET_SHRED_SOLANA_RPC_URL.to_string(),
+            },
+            Environment::Devnet | Environment::Local => return None,
+        };
+
+        // Allow overriding the Solana RPC endpoint (mirrors DZ_SOLANA_RPC_URL in
+        // config()): lets operators avoid the rate-limited public RPC and lets
+        // the e2e harness point the check at a local validator.
+        if std::env::var("DZ_SHRED_SOLANA_RPC_URL").is_ok() {
+            config.solana_rpc_url = std::env::var("DZ_SHRED_SOLANA_RPC_URL").unwrap();
+        }
+
+        Some(config)
+    }
+}
+
+/// Connection details for the shred-subscription program on Solana L1.
+///
+/// Distinct from [`NetworkConfig`] because the shred-subscription program can
+/// live on a different Solana cluster than the one used for general L1 access
+/// (e.g. DZ testnet's shred-subscription runs on Solana devnet).
+#[derive(Debug, Clone)]
+pub struct ShredSubscriptionConfig {
+    pub program_id: Pubkey,
+    pub solana_rpc_url: String,
 }
 
 #[derive(Debug, Clone)]
@@ -291,6 +331,55 @@ mod tests {
         let config = Environment::MainnetBeta.config().unwrap();
         assert_eq!(config.solana_l1_rpc_url, "https://custom-solana.example/");
         std::env::remove_var("DZ_SOLANA_RPC_URL");
+    }
+
+    #[test]
+    #[serial]
+    fn test_shred_subscription_config() {
+        std::env::remove_var("DZ_SHRED_SOLANA_RPC_URL");
+
+        // Mainnet-beta shred-subscription lives on Solana mainnet-beta.
+        let mainnet = Environment::MainnetBeta
+            .shred_subscription_config()
+            .unwrap();
+        assert_eq!(
+            mainnet.program_id.to_string(),
+            "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE",
+        );
+        assert_eq!(
+            mainnet.solana_rpc_url,
+            "https://api.mainnet-beta.solana.com"
+        );
+
+        // DZ testnet's shred-subscription runs on Solana devnet (not Solana
+        // testnet, where solana_l1_rpc_url points).
+        let testnet = Environment::Testnet.shred_subscription_config().unwrap();
+        assert_eq!(
+            testnet.program_id.to_string(),
+            "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE",
+        );
+        assert_eq!(testnet.solana_rpc_url, "https://api.devnet.solana.com");
+        assert_ne!(
+            testnet.solana_rpc_url,
+            Environment::Testnet.config().unwrap().solana_l1_rpc_url,
+        );
+
+        // Shred-subscription is not deployed on devnet or local.
+        assert!(Environment::Devnet.shred_subscription_config().is_none());
+        assert!(Environment::Local.shred_subscription_config().is_none());
+
+        // DZ_SHRED_SOLANA_RPC_URL overrides the endpoint, but does not resurrect
+        // environments without a deployed program.
+        std::env::set_var("DZ_SHRED_SOLANA_RPC_URL", "http://localhost:8899");
+        assert_eq!(
+            Environment::MainnetBeta
+                .shred_subscription_config()
+                .unwrap()
+                .solana_rpc_url,
+            "http://localhost:8899"
+        );
+        assert!(Environment::Devnet.shred_subscription_config().is_none());
+        std::env::remove_var("DZ_SHRED_SOLANA_RPC_URL");
     }
 
     #[test]

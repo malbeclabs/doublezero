@@ -200,6 +200,18 @@ func (c *Client) ValidatorDepositBalance(ctx context.Context, nodeID solana.Publ
 	return lamports - rentExempt, nil
 }
 
+// getRecordData fetches a DZ Ledger record, normalizing a missing record to
+// ErrAccountNotFound. Ledger clients backed by the gagliardetto RPC report an
+// absent account as rpc.ErrNotFound; callers detect absence via
+// errors.Is(err, ErrAccountNotFound), so collapse that case into the sentinel.
+func (c *Client) getRecordData(ctx context.Context, addr solana.PublicKey) ([]byte, error) {
+	data, err := c.ledgerClient.GetRecordData(ctx, addr)
+	if errors.Is(err, rpc.ErrNotFound) {
+		return nil, ErrAccountNotFound
+	}
+	return data, err
+}
+
 // FetchValidatorDebts fetches and deserializes the off-chain validator debt
 // record for the given DZ epoch from the DZ Ledger.
 func (c *Client) FetchValidatorDebts(ctx context.Context, epoch uint64) (*ComputedSolanaValidatorDebts, error) {
@@ -219,7 +231,7 @@ func (c *Client) FetchValidatorDebts(ctx context.Context, epoch uint64) (*Comput
 	if err != nil {
 		return nil, fmt.Errorf("deriving validator debt record key: %w", err)
 	}
-	data, err := c.ledgerClient.GetRecordData(ctx, addr)
+	data, err := c.getRecordData(ctx, addr)
 	if err != nil {
 		return nil, fmt.Errorf("fetching validator debt record: %w", err)
 	}
@@ -254,7 +266,7 @@ func (c *Client) FetchRewardShares(ctx context.Context, epoch uint64) (*ShapleyO
 	if err != nil {
 		return nil, fmt.Errorf("deriving reward shares record key: %w", err)
 	}
-	data, err := c.ledgerClient.GetRecordData(ctx, addr)
+	data, err := c.getRecordData(ctx, addr)
 	if err != nil {
 		return nil, fmt.Errorf("fetching reward shares record: %w", err)
 	}

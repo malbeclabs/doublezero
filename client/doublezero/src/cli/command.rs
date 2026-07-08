@@ -1,22 +1,23 @@
 use clap::{Args, Subcommand};
 use clap_complete::Shell;
+use doublezero_daemon_cli::DaemonCommand;
 use doublezero_geolocation_cli::GeolocationArgs;
 use doublezero_serviceability_cli::cli::ServiceabilityCommand;
 
 use crate::{
     cli::{multicast::MulticastCliCommand, sentinel::SentinelCliCommand},
     command::{
-        connect::ProvisioningCliCommand, disable::DisableCliCommand,
-        disconnect::DecommissioningCliCommand, enable::EnableCliCommand,
-        latency::LatencyCliCommand, routes::RoutesCliCommand, status::StatusCliCommand,
+        connect::ProvisioningCliCommand, disconnect::DecommissioningCliCommand,
+        latency::LatencyCliCommand, routes::RoutesCliCommand,
     },
 };
 
 /// Top-level command tree for the unified `doublezero` binary.
 ///
-/// Per RFC-20 §Module contract item 2, the serviceability verbs live in
-/// `doublezero_serviceability_cli::cli::ServiceabilityCommand` and are hoisted
-/// to the top level here via `#[command(flatten)]`. The binary retains the
+/// Per RFC-20 §Module contract item 2, module-crate verbs are hoisted to the
+/// top level via `#[command(flatten)]`: serviceability verbs from
+/// `doublezero_serviceability_cli`, daemon-control verbs (`enable`, `disable`)
+/// from `doublezero_daemon_cli`. The binary retains the not-yet-migrated
 /// daemon-control verbs, the `doublezero-geolocation-cli` module crate's
 /// geolocation subtree (via `GeolocationArgs`), the binary-only `Completion`
 /// generator, and `Multicast` (whose `Subscribe`/`Unsubscribe`/`Publish`/
@@ -25,12 +26,12 @@ use crate::{
 pub enum Command {
     /// Connect your server to a doublezero device
     Connect(ProvisioningCliCommand),
-    /// Enable the reconciler (start managing tunnels)
-    Enable(EnableCliCommand),
-    /// Disable the reconciler (tear down tunnels and stop managing them)
-    Disable(DisableCliCommand),
-    /// Get the status of your service
-    Status(StatusCliCommand),
+
+    /// Daemon-control verbs migrated to `doublezero-daemon-cli` (RFC-20).
+    /// Hoisted to top-level via `#[command(flatten)]`.
+    #[command(flatten)]
+    Daemon(DaemonCommand),
+
     /// Disconnect your server from the doublezero network
     Disconnect(DecommissioningCliCommand),
     /// Get device latencies

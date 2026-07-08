@@ -106,11 +106,13 @@ func (c *Client) ClosestDevice(ctx context.Context) (*Device, error) {
 	return device, nil
 }
 
-// FeedSeatPrice calls the FeedSeatPrice RPC to query device seat prices.
-// This is an idempotent read, so on RPC failure it fails over to the next
-// endpoint and retries.
-func (c *Client) FeedSeatPrice(ctx context.Context) ([]*pb.DevicePrice, error) {
-	c.log.Debug("Querying seat prices", "host", c.Host)
+// FeedSeatPrice calls the FeedSeatPrice RPC to query seat pricing for a single
+// device (by pubkey). Querying by pubkey avoids device-code resolution, which
+// the CLI refuses when it can't classify the cluster (e.g. a private Solana
+// devnet RPC URL). This is an idempotent read, so on RPC failure it fails over
+// to the next endpoint and retries.
+func (c *Client) FeedSeatPrice(ctx context.Context, devicePubkey string) ([]*pb.DevicePrice, error) {
+	c.log.Debug("Querying seat prices", "host", c.Host, "device", devicePubkey)
 	var prices []*pb.DevicePrice
 	err := c.withReadFailover(func(rpcURL string) error {
 		resp, err := c.grpcClient.FeedSeatPrice(ctx, &pb.FeedSeatPriceRequest{
@@ -119,6 +121,7 @@ func (c *Client) FeedSeatPrice(ctx context.Context) ([]*pb.DevicePrice, error) {
 			UsdcMint:                   c.USDCMint,
 			Keypair:                    c.Keypair,
 			ShredSubscriptionProgramId: c.ShredSubscriptionProgramID,
+			DevicePubkey:               devicePubkey,
 		})
 		if err != nil {
 			return err
@@ -322,6 +325,75 @@ func (c *Client) IsSeatProratingEnabled(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("failed to fetch program config on host %s: %w", c.Host, err)
 	}
 	return cfg.IsProratedServiceEnabled(), nil
+}
+
+// IsProgramPaused returns true if the shred-subscription program config has
+// the paused flag set. While paused, the oracle cannot ack instant seat
+// allocation requests, which leaves the seat un-withdrawable.
+func (c *Client) IsProgramPaused(ctx context.Context) (bool, error) {
+	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
+	}
+
+	cfg, err := shreds.New(shreds.NewRPCClient(c.SolanaRPCURL), programID).FetchProgramConfig(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to fetch program config on host %s: %w", c.Host, err)
+	}
+	return cfg.IsPaused(), nil
+}
+
+// WaitForSeatAllocationAcked waits for the oracle to ack this run's instant
+// allocation request. Withdraw is blocked onchain while the pending flag is set,
+// so callers should wait between FeedSeatPay and FeedSeatWithdraw.
+//
+// The client seat account is reused across runs and FetchClientSeat reads at the
+// default (finalized) commitment, so a read taken right after FeedSeatPay can
+// return the previous run's already-acked (pending=false) state and short-circuit
+// before this run's request is even visible. To avoid mistaking stale state for
+// an ack, we require observing the pending flag set first, then wait for the
+// oracle to clear it. On timeout the error includes whether the request was ever
+// observed and the current program-paused state, to surface a slow oracle or a
+// migration window as the likely cause.
+func (c *Client) WaitForSeatAllocationAcked(ctx context.Context, devicePubkey string, timeout time.Duration) error {
+	deviceKey, err := solana.PublicKeyFromBase58(devicePubkey)
+	if err != nil {
+		return fmt.Errorf("failed to parse device pubkey %q: %w", devicePubkey, err)
+	}
+	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
+	if err != nil {
+		return fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
+	}
+	clientIPBits := binary.BigEndian.Uint32(c.publicIP.To4())
+	shredsClient := shreds.New(shreds.NewRPCClient(c.SolanaRPCURL), programID)
+
+	c.log.Debug("Waiting for seat allocation ack", "host", c.Host, "device", devicePubkey, "timeout", timeout)
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	sawPending := false
+	for {
+		seat, err := shredsClient.FetchClientSeat(ctx, deviceKey, clientIPBits)
+		if err == nil {
+			if seat.HasPendingInstantRequest() {
+				sawPending = true
+			} else if sawPending {
+				c.log.Debug("Seat allocation acked", "host", c.Host, "device", devicePubkey)
+				return nil
+			}
+		}
+		lastErr = err
+		if time.Now().After(deadline) {
+			cfg, cfgErr := shredsClient.FetchProgramConfig(ctx)
+			paused := cfgErr == nil && cfg.IsPaused()
+			return fmt.Errorf("seat allocation not acked within %s on host %s (saw_pending=%t, program_paused=%t, last_fetch_err=%v)",
+				timeout, c.Host, sawPending, paused, lastErr)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(1 * time.Second):
+		}
+	}
 }
 
 // GetWalletPubkey calls the GetWalletPubkey RPC to read the keypair file on the

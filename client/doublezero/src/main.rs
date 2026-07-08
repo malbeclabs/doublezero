@@ -10,6 +10,7 @@ mod requirements;
 mod servicecontroller;
 use crate::cli::{command::Command, multicast::MulticastCommands, sentinel::SentinelCommands};
 use doublezero_cli_core::LogLevel;
+use doublezero_daemon_cli::{DaemonClientImpl, DaemonCommand};
 use doublezero_geolocation_cli::GeoCliCommandImpl;
 use doublezero_sdk::{
     convert_geo_program_moniker, convert_program_moniker, geolocation::client::GeoClient, DZClient,
@@ -17,9 +18,23 @@ use doublezero_sdk::{
 };
 use doublezero_serviceability::pda::get_globalstate_pda;
 use doublezero_serviceability_cli::{
-    checkversion::check_version, cli::ServiceabilityCommand, doublezerocommand::CliCommandImpl,
+    checkversion::check_version,
+    cli::ServiceabilityCommand,
+    doublezerocommand::{CliCommand, CliCommandImpl},
 };
 use servicecontroller::ServiceControllerImpl;
+
+/// Adapter bridging the binary's `CliCommand` to the daemon-cli crate's
+/// `LedgerClient` trait.
+struct LedgerAdapter {
+    env: Environment,
+}
+
+impl doublezero_daemon_cli::LedgerClient for LedgerAdapter {
+    fn get_environment(&self) -> Environment {
+        self.env
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(term_width = 0)]
@@ -136,6 +151,7 @@ async fn main() -> eyre::Result<()> {
 
     if let Some(sock_file) = &app.sock_file {
         ServiceControllerImpl::set_global_socket_path(sock_file.to_string_lossy());
+        DaemonClientImpl::set_global_socket_path(sock_file.to_string_lossy());
     }
 
     if let Some(keypair) = &app.keypair {
@@ -263,10 +279,9 @@ async fn main() -> eyre::Result<()> {
     // Skip version check for verbs that should always work even if the program is unavailable.
     let skip_version_check = matches!(
         &command,
-        Command::Status(_)
-            | Command::Enable(_)
-            | Command::Disable(_)
-            | Command::Completion(_)
+        Command::Daemon(
+            DaemonCommand::Enable(_) | DaemonCommand::Disable(_) | DaemonCommand::Status(_)
+        ) | Command::Completion(_)
             | Command::Serviceability(
                 ServiceabilityCommand::Address(_)
                     | ServiceabilityCommand::Balance(_)
@@ -283,9 +298,20 @@ async fn main() -> eyre::Result<()> {
     let res = match command {
         // Daemon-control verbs (binary-local)
         Command::Connect(args) => args.execute(&client).await,
-        Command::Enable(args) => args.execute(&client).await,
-        Command::Disable(args) => args.execute(&client).await,
-        Command::Status(args) => args.execute(&client).await,
+
+        // Daemon-control verbs migrated to doublezero-daemon-cli (RFC-20)
+        Command::Daemon(cmd) => {
+            let daemon = DaemonClientImpl::new(
+                ctx.daemon_socket_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().into_owned()),
+            );
+            let ledger = LedgerAdapter {
+                env: client.get_environment(),
+            };
+            cmd.execute(&ctx, &daemon, &ledger, &mut handle).await
+        }
+
         Command::Disconnect(args) => args.execute(&client).await,
         Command::Latency(args) => args.execute(&client).await,
         Command::Routes(args) => args.execute(&client).await,

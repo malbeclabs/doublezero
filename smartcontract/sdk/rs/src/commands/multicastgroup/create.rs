@@ -37,7 +37,7 @@ impl CreateMulticastGroupCommand {
         ];
 
         client
-            .execute_transaction(
+            .execute_authorized_transaction(
                 DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
                     code,
                     max_bandwidth: self.max_bandwidth,
@@ -77,7 +77,7 @@ mod tests {
         let owner = Pubkey::new_unique();
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::CreateMulticastGroup(
                     MulticastGroupCreateArgs {

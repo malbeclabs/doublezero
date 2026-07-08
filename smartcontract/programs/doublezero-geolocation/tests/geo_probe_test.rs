@@ -49,7 +49,7 @@ async fn test_create_geo_probe_success() {
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
             AccountMeta::new(payer.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
         ],
     );
 
@@ -112,7 +112,7 @@ async fn test_create_geo_probe_invalid_code_length() {
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
             AccountMeta::new(payer.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
         ],
     );
 
@@ -160,7 +160,7 @@ async fn test_create_geo_probe_exchange_not_activated() {
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
             AccountMeta::new(payer.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
         ],
     );
 
@@ -213,7 +213,7 @@ async fn test_update_geo_probe_success() {
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
             AccountMeta::new(payer.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
         ],
     );
 
@@ -301,7 +301,7 @@ async fn test_delete_geo_probe_success() {
             AccountMeta::new_readonly(program_config_pda, false),
             AccountMeta::new_readonly(serviceability_globalstate_pda, false),
             AccountMeta::new(payer.pubkey(), true),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
         ],
     );
 

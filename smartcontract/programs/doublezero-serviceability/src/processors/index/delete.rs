@@ -1,8 +1,8 @@
 use crate::{
-    error::DoubleZeroError,
+    authorize::authorize,
     processors::validation::validate_program_account,
     serializer::try_acc_close,
-    state::{globalstate::GlobalState, index::Index},
+    state::{globalstate::GlobalState, index::Index, permission::permission_flags},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -35,6 +35,9 @@ pub fn process_delete_index(
     let index_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
+    // system_program is appended by the transaction builder; consume it so the
+    // optional trailing Permission account is what authorize() reads next.
+    let _system_program = next_account_info(accounts_iter)?;
 
     #[cfg(test)]
     msg!("process_delete_index");
@@ -50,11 +53,15 @@ pub fn process_delete_index(
         "GlobalState"
     );
 
-    // Check foundation allowlist
+    // Authorization: INDEX_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::INDEX_ADMIN,
+    )?;
 
     // Verify it's actually an Index account
     let _index = Index::try_from(index_account)?;

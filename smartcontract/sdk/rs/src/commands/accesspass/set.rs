@@ -67,7 +67,7 @@ impl SetAccessPassCommand {
             accounts.push(AccountMeta::new(self.tenant, false));
         }
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
                 accesspass_type: self.accesspass_type.clone(),
                 client_ip: self.client_ip,
@@ -145,7 +145,7 @@ mod tests {
             .returning(|_| Err(eyre::eyre!("account not found")));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
                     accesspass_type: AccessPassType::Prepaid,

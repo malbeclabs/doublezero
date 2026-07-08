@@ -18,7 +18,7 @@ impl SetAuthorityCommand {
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
                 activator_authority_pk: self.activator_authority_pk,
                 sentinel_authority_pk: self.sentinel_authority_pk,
@@ -55,7 +55,7 @@ mod tests {
         let feed_authority_pk = Pubkey::new_unique();
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
                     activator_authority_pk: Some(activator_authority_pk),

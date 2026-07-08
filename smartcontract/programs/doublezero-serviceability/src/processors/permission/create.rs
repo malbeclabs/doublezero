@@ -1,5 +1,5 @@
 use crate::{
-    authorize::authorize,
+    authorize::{authorize, can_grant_foundation},
     error::DoubleZeroError,
     pda::get_permission_pda,
     seeds::{SEED_PERMISSION, SEED_PREFIX},
@@ -70,13 +70,33 @@ pub fn process_create_permission(
     }
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
+
+    // The SDK appends the caller's own Permission PDA as the trailing account when one
+    // exists on-chain. Capture it so it can serve both the PERMISSION_ADMIN check and
+    // the stricter FOUNDATION-grant check below.
+    let caller_permission = accounts_iter.next();
+
     authorize(
         program_id,
-        accounts_iter,
+        &mut caller_permission.into_iter(),
         payer_account.key,
         &globalstate,
         permission_flags::PERMISSION_ADMIN,
     )?;
+
+    // Granting FOUNDATION is more privileged than PERMISSION_ADMIN: a plain
+    // PERMISSION_ADMIN holder must not be able to escalate to FOUNDATION. Only a
+    // foundation_allowlist member or an existing FOUNDATION-flag holder may grant it.
+    if value.permissions & permission_flags::FOUNDATION != 0
+        && !can_grant_foundation(
+            program_id,
+            caller_permission,
+            payer_account.key,
+            &globalstate,
+        )
+    {
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
 
     let permission = Permission {
         account_type: AccountType::Permission,

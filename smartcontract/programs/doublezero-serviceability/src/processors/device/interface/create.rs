@@ -1,4 +1,5 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::get_resource_extension_pda,
     processors::{
@@ -16,6 +17,7 @@ use crate::{
             Interface, InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType,
             RoutingMode, CURRENT_INTERFACE_SCHEMA_VERSION, CYOA_DIA_INTERFACE_MTU, INTERFACE_MTU,
         },
+        permission::permission_flags,
         topology::FlexAlgoNodeSegment,
     },
 };
@@ -136,9 +138,18 @@ pub fn process_create_device_interface(
 
     let contributor = Contributor::try_from(contributor_account)?;
 
-    if contributor.owner != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
+    // Authorization: the contributor owner, or NETWORK_ADMIN (Permission account) /
+    // foundation (legacy). Privileged callers also bypass the device-contributor
+    // binding checked below.
+    let is_privileged = authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::NETWORK_ADMIN,
+    )
+    .is_ok();
+    if contributor.owner != *payer_account.key && !is_privileged {
         return Err(DoubleZeroError::InvalidOwnerPubkey.into());
     }
 
@@ -184,9 +195,7 @@ pub fn process_create_device_interface(
 
     // The supplied contributor must be the one the device belongs to,
     // unless the payer is on the foundation allowlist.
-    if !globalstate.foundation_allowlist.contains(payer_account.key)
-        && device.contributor_pk != *contributor_account.key
-    {
+    if !is_privileged && device.contributor_pk != *contributor_account.key {
         return Err(DoubleZeroError::InvalidContributorPubkey.into());
     }
 

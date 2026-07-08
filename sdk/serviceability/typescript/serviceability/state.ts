@@ -1136,13 +1136,16 @@ export const PERMISSION_FLAG_INFRA_ADMIN = 1n << 2n;
 export const PERMISSION_FLAG_NETWORK_ADMIN = 1n << 3n;
 export const PERMISSION_FLAG_TENANT_ADMIN = 1n << 4n;
 export const PERMISSION_FLAG_MULTICAST_ADMIN = 1n << 5n;
-export const PERMISSION_FLAG_RESERVATION = 1n << 6n;
+export const PERMISSION_FLAG_FEED_AUTHORITY = 1n << 6n;
 export const PERMISSION_FLAG_ACTIVATOR = 1n << 7n;
 export const PERMISSION_FLAG_SENTINEL = 1n << 8n;
 export const PERMISSION_FLAG_USER_ADMIN = 1n << 9n;
 export const PERMISSION_FLAG_ACCESS_PASS_ADMIN = 1n << 10n;
 export const PERMISSION_FLAG_HEALTH_ORACLE = 1n << 11n;
 export const PERMISSION_FLAG_QA = 1n << 12n;
+export const PERMISSION_FLAG_TOPOLOGY_ADMIN = 1n << 15n;
+export const PERMISSION_FLAG_RESOURCE_ADMIN = 1n << 16n;
+export const PERMISSION_FLAG_INDEX_ADMIN = 1n << 17n;
 
 const PERMISSION_STATUS_NAMES: Record<number, string> = {
   0: "none",

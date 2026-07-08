@@ -123,7 +123,7 @@ impl UpdateLinkCommand {
             }
         }
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
                 code,
                 contributor_pk: self.contributor_pk,
@@ -247,7 +247,7 @@ mod tests {
             setup_link_and_contributors(&mut client, payer);
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .withf(move |_, accounts| {
                 accounts.len() == 4
                     && accounts[0].pubkey == link_pubkey
@@ -271,7 +271,7 @@ mod tests {
             setup_link_and_contributors(&mut client, Pubkey::new_unique());
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .withf(move |_, accounts| {
                 accounts.len() == 3
                     && accounts[0].pubkey == link_pubkey

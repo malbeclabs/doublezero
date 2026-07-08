@@ -71,6 +71,20 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		}
 	})
 
+	if !t.Run("ensure_program_unpaused", func(t *testing.T) {
+		// Migrations pause the program; while paused the oracle cannot ack
+		// instant seat allocation requests, which would leave the seat
+		// un-withdrawable and fail the rest of the test with a confusing
+		// "invalid account data for instruction" rejection.
+		paused, err := client.IsProgramPaused(ctx)
+		require.NoError(t, err, "failed to read program-paused flag")
+		if paused {
+			t.Skip("Skipping: shred-subscription program is paused (migration in progress)")
+		}
+	}) {
+		return
+	}
+
 	if !t.Run("ensure_multicast_disconnected", func(t *testing.T) {
 		statuses, err := client.GetUserStatuses(ctx)
 		if err != nil {
@@ -116,12 +130,14 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("query_seat_price", func(t *testing.T) {
-		prices, err := client.FeedSeatPrice(ctx)
+		prices, err := client.FeedSeatPrice(ctx, device.PubKey)
 		require.NoError(t, err, "failed to get seat prices")
 
+		// Match by pubkey, not code: querying by --device skips code resolution,
+		// so the returned rows may not carry a device_code.
 		var price *pb.DevicePrice
 		for _, p := range prices {
-			if p.DeviceCode == device.Code {
+			if p.DevicePubkey == device.PubKey {
 				price = p
 				break
 			}
@@ -185,6 +201,17 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		effectivePrice, err = client.GetEffectiveSeatPrice(ctx, device.PubKey, epochPrice)
 		require.NoError(t, err, "failed to get effective seat price")
 		log.Info("Effective seat price", "effective_usdc", effectivePrice, "epoch_usdc", parsedAmount)
+	}) {
+		return
+	}
+
+	if !t.Run("wait_for_seat_allocation_acked", func(t *testing.T) {
+		// The tunnel can come up before the oracle has acked the instant
+		// allocation request. Withdraw rejects while the request is still
+		// pending, so wait here rather than racing the oracle on the
+		// withdraw_seat step.
+		err := client.WaitForSeatAllocationAcked(ctx, device.PubKey, 90*time.Second)
+		require.NoError(t, err, "oracle did not ack instant seat allocation")
 	}) {
 		return
 	}
@@ -259,7 +286,28 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		}
 
 		refund := balanceAfterWithdraw - balanceAfterPay
-		retained := balanceBeforePay - balanceAfterWithdraw
+
+		// A seat's payment escrow can carry a balance from an earlier run whose
+		// withdraw did not complete (e.g. during the reservoir-ack outage on
+		// devnet). Closing the escrow now refunds that leftover too, so the
+		// wallet-measured refund exceeds what was paid this run and no longer
+		// isolates this payment (`retained` would underflow). In that case the
+		// wallet-delta proration check is not meaningful, so skip it rather than
+		// fail — the settlement path itself is still covered by the pay/ack/
+		// tunnel/withdraw sub-tests above.
+		if refund > parsedAmount {
+			log.Warn("skipping wallet-delta proration check: refund exceeds amount paid this run (pre-existing escrow drained)",
+				"refund", refund,
+				"paid_amount", parsedAmount,
+				"before_pay", balanceBeforePay,
+				"after_pay", balanceAfterPay,
+				"after_withdraw", balanceAfterWithdraw,
+			)
+			return
+		}
+		// Equivalent to balanceBeforePay - balanceAfterWithdraw, but computed from
+		// the amount paid this run so it cannot underflow given the guard above.
+		retained := parsedAmount - refund
 
 		log.Info("USDC balance after withdraw",
 			"balance", balanceAfterWithdraw,

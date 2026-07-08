@@ -1,9 +1,10 @@
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     pda::*,
     programversion::ProgramVersion,
     serializer::try_acc_write,
-    state::{globalstate::GlobalState, programconfig::ProgramConfig},
+    state::{globalstate::GlobalState, permission::permission_flags, programconfig::ProgramConfig},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -75,11 +76,15 @@ pub fn process_set_version(
         "Invalid GlobalState PubKey"
     );
 
-    // Parse the global state account & check if the payer is in the allowlist
+    // Authorization: GLOBALSTATE_ADMIN (Permission account) or foundation (legacy).
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::GLOBALSTATE_ADMIN,
+    )?;
 
     let mut program_config = ProgramConfig::try_from(program_config_account)?;
 

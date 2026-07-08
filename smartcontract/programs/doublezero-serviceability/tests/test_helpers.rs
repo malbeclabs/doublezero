@@ -28,7 +28,7 @@ use solana_sdk::{
 
 use std::any::type_name;
 
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn init_logger() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
@@ -59,7 +59,7 @@ pub const TEST_PAYER_BYTES: [u8; 64] = [
 
 #[allow(dead_code)]
 pub fn test_payer() -> Keypair {
-    Keypair::from_bytes(&TEST_PAYER_BYTES).unwrap()
+    Keypair::try_from(&TEST_PAYER_BYTES[..]).unwrap()
 }
 
 #[allow(dead_code)]
@@ -414,6 +414,42 @@ pub fn create_transaction_with_extra_accounts(
                 extra_accounts.to_vec(),
             ]
             .concat(),
+        )],
+        Some(&payer.pubkey()),
+    )
+}
+
+/// Builds a transaction whose account list matches what the production SDK
+/// client (`assemble_instructions`) emits: the caller's `accounts`, then the
+/// payer and system_program, then an optional Permission account — all appended
+/// *after* any variable-length accounts the caller put in `accounts`.
+///
+/// Use this (rather than [`create_transaction_with_extra_accounts`], which
+/// places payer/system *before* the extras) for the variable-length processors
+/// that parse payer/system/permission off the tail of the account list, so the
+/// test exercises the same on-wire layout the CLI produces.
+#[allow(dead_code)]
+pub fn create_authorized_transaction(
+    program_id: Pubkey,
+    instruction: &DoubleZeroInstruction,
+    accounts: &[AccountMeta],
+    payer: &Keypair,
+    permission: Option<AccountMeta>,
+) -> Transaction {
+    let mut metas = accounts.to_vec();
+    metas.push(AccountMeta::new(payer.pubkey(), true));
+    metas.push(AccountMeta::new(
+        solana_system_interface::program::ID,
+        false,
+    ));
+    if let Some(permission) = permission {
+        metas.push(permission);
+    }
+    Transaction::new_with_payer(
+        &[Instruction::new_with_bytes(
+            program_id,
+            &to_vec(instruction).unwrap(),
+            metas,
         )],
         Some(&payer.pubkey()),
     )

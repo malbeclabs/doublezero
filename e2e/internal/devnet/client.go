@@ -38,6 +38,11 @@ type ClientSpec struct {
 	RouteLivenessEnablePassive bool
 	RouteLivenessEnableActive  bool
 
+	// RouteLivenessBackoffMax caps the Down-state probe interval (exponential backoff).
+	// When zero, the daemon default applies. Pinned to a small value in tests to avoid
+	// a multi-second gap between probes that can outlast the test deadline.
+	RouteLivenessBackoffMax time.Duration
+
 	// RouteLivenessEnable is a flag to enable or disable route liveness. False puts the system in
 	// passive-mode, and true puts it in active-mode.
 	// RouteLivenessEnable bool
@@ -207,6 +212,9 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 	if c.Spec.RouteLivenessDebug {
 		extraArgs = append(extraArgs, "-route-liveness-debug")
+	}
+	if c.Spec.RouteLivenessBackoffMax > 0 {
+		extraArgs = append(extraArgs, fmt.Sprintf("-route-liveness-backoff-max=%s", c.Spec.RouteLivenessBackoffMax))
 	}
 	if c.Spec.LatencyProbeTunnelEndpoints {
 		extraArgs = append(extraArgs, "-latency-probe-tunnel-endpoints")
@@ -743,6 +751,65 @@ func (c *Client) WaitForLatencyReady(ctx context.Context, timeout time.Duration)
 	if err != nil {
 		return fmt.Errorf("daemon latency probe did not become ready within %s: %w", timeout, err)
 	}
+	return nil
+}
+
+// WaitForLatencyOrdering waits until both devices are reachable AND the measured
+// minimum latency of fasterPK is lower than that of slowerPK by more than margin.
+//
+// This makes a device-selection precondition explicit and deterministic: the client
+// picks a device by min_latency_ns within a small tolerance window (see
+// LATENCY_TOLERANCE_NS in client/doublezero/src/dzd_latency.rs). Waiting only for one
+// device to have a reachable sample (WaitForLatencyResults) is not enough — if the
+// other device's measurement has not converged below the tolerance yet, selection is
+// effectively a tie and can pick either device. Pass a margin >= the client's 5ms
+// tolerance so the ordering the test relies on is unambiguous at connect time.
+func (c *Client) WaitForLatencyOrdering(ctx context.Context, fasterPK, slowerPK string, margin time.Duration, timeout time.Duration) error {
+	c.log.Debug("==> Waiting for latency ordering", "fasterPK", fasterPK, "slowerPK", slowerPK, "margin", margin, "timeout", timeout)
+
+	start := time.Now()
+	marginNS := float64(margin.Nanoseconds())
+
+	// minLatencyNS returns the min_latency_ns for the given device when it has a
+	// reachable sample. JSON numbers decode into float64 within map[string]any.
+	minLatencyNS := func(results []map[string]any, devicePK string) (float64, bool) {
+		for _, result := range results {
+			if result["device_pk"] != devicePK || result["reachable"] != true {
+				continue
+			}
+			minNS, ok := result["min_latency_ns"].(float64)
+			if !ok {
+				return 0, false
+			}
+			return minNS, true
+		}
+		return 0, false
+	}
+
+	err := poll.Until(ctx, func() (bool, error) {
+		resp, err := docker.ExecReturnObject[daemonLatencyResponse](ctx, c.dn.dockerClient, c.ContainerID, []string{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/v2/latency"})
+		if err != nil {
+			return false, nil
+		}
+
+		fasterMin, fasterOK := minLatencyNS(resp.Results, fasterPK)
+		slowerMin, slowerOK := minLatencyNS(resp.Results, slowerPK)
+		if !fasterOK || !slowerOK {
+			return false, nil
+		}
+
+		if slowerMin-fasterMin > marginNS {
+			c.log.Debug("✅ Latency ordering satisfied", "fasterMinNS", fasterMin, "slowerMinNS", slowerMin, "marginNS", marginNS, "duration", time.Since(start))
+			return true, nil
+		}
+
+		c.log.Debug("--> Waiting for latency ordering", "fasterMinNS", fasterMin, "slowerMinNS", slowerMin, "marginNS", marginNS)
+		return false, nil
+	}, timeout, 1*time.Second)
+	if err != nil {
+		return fmt.Errorf("latency ordering (%s faster than %s by >%s) not reached within %s: %w", fasterPK, slowerPK, margin, timeout, err)
+	}
+
 	return nil
 }
 

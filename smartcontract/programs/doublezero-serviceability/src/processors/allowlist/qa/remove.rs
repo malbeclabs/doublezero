@@ -1,5 +1,8 @@
 use crate::{
-    error::DoubleZeroError, pda::*, serializer::try_acc_write, state::globalstate::GlobalState,
+    authorize::authorize,
+    pda::*,
+    serializer::try_acc_write,
+    state::{globalstate::GlobalState, permission::permission_flags},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -67,11 +70,15 @@ pub fn process_remove_qa_allowlist_globalconfig(
         "Invalid System Program Account Owner"
     );
 
-    // Parse the global state account & check if the payer is in the allowlist
+    // Authorization: GLOBALSTATE_ADMIN (Permission account) or foundation (legacy).
     let mut globalstate = GlobalState::try_from(globalstate_account)?;
-    if !globalstate.foundation_allowlist.contains(payer_account.key) {
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
+    authorize(
+        program_id,
+        accounts_iter,
+        payer_account.key,
+        &globalstate,
+        permission_flags::GLOBALSTATE_ADMIN,
+    )?;
 
     globalstate.qa_allowlist.retain(|x| x != &value.pubkey);
 

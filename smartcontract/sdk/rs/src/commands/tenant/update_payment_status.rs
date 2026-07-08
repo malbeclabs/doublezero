@@ -16,7 +16,7 @@ impl UpdatePaymentStatusCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
         let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
                 payment_status: self.payment_status,
                 last_deduction_dz_epoch: self.last_deduction_dz_epoch,

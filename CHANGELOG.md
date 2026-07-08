@@ -6,6 +6,64 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+- Serviceability
+  - Gate Device and device-interface instructions on `NETWORK_ADMIN` (and `HEALTH_ORACLE` for sethealth) or the contributor owner via `authorize()`; internal foundation-only sub-gates now also accept NETWORK_ADMIN holders. (#3980)
+  - Gate UpdateUser on `USER_ADMIN`, CheckAccessPass on `ACTIVATOR`, and accesspass CheckStatus on `ACTIVATOR|USER_ADMIN` via `authorize()`; user create and set_bgp_status remain owner-authorized (not part of the admin Permission system). (#3984)
+  - Gate Tenant instructions (create/update/delete/add_administrator/remove_administrator/update_payment_status) on `TENANT_ADMIN` or foundation/sentinel via `authorize()`. (#3983)
+  - Gate MulticastGroup CRUD on `MULTICAST_ADMIN` and publisher/subscriber allowlist add/remove on `mgroup.owner OR MULTICAST_ADMIN`/`ACCESS_PASS_ADMIN` via `authorize()`; add handlers use split_trailing_permission. (#3982)
+  - Require a Permission account (or the legacy foundation authority) for GlobalState, GlobalConfig, and foundation/QA allowlist admin instructions, gated on `GLOBALSTATE_ADMIN` via `authorize()`. (#3977)
+  - Gate Contributor instructions (create/update/suspend/resume/delete) on `CONTRIBUTOR_ADMIN` or foundation; the contributor owner retains the ops-manager-only update path. (#3978)
+  - Gate Location and Exchange instructions (create/update/suspend/resume/delete, exchange setdevice) on `INFRA_ADMIN` or foundation via `authorize()`. (#3979)
+  - Gate Link instructions (create/update/delete/suspend/resume/accept/sethealth) on `NETWORK_ADMIN` (and `HEALTH_ORACLE` for sethealth) or the contributor owner via `authorize()`; variable-length delete/update use split_trailing_permission. (#3981)
+- Collector
+  - Harden ledger writes against a slow/degraded RPC endpoint: bound each RPC request (default 15s, `--ledger-rpc-timeout`), size the connection pool above the submitter concurrency (default 128, `--ledger-rpc-max-conns`), and deadline each submission attempt so it fails fast and retries with a fresh blockhash instead of sending an expired one and failing preflight with `BlockhashNotFound`. (#3973)
+- Onchain programs
+  - Restrict granting the `FOUNDATION` permission flag: a plain `PERMISSION_ADMIN` holder can no longer grant `FOUNDATION` (a privilege escalation). Only a `foundation_allowlist` member or an existing `FOUNDATION` holder may grant it, enforced independently of `RequirePermissionAccounts` so foundation members are never locked out.
+- CLI
+  - Add `doublezero permission audit` to check legacy→Permission parity before enabling `require-permission-accounts`: it reports which legacy keys would lose access to migrated instructions (coverage gaps, non-zero exit), super-admin holders, and the non-migrated subsystems that still depend on the GlobalState allowlists.
+  - Block `doublezero device delete` when the device is still enabled in the shred-subscription program (checked via its `DeviceHistory` account on Solana L1), preventing an orphaned device that deadlocks shred oracle epoch settlement. (#3989)
+- E2E
+  - Fix the multicast settlement QA test's seat-allocation ack wait. It read the reused client seat at finalized commitment and could accept the previous run's already-acked state, then withdraw while the current request was still pending. It now waits to observe the request pending before treating a cleared flag as the ack. (#3972)
+- Sentinel
+  - Enable the `reqwest` `json` feature explicitly for the sentinel crate, which relies on `Response::json()` in the validator metadata reader and multicast publisher after the workspace dependency stopped enabling it by default. (#3986)
+  - Make the all-devices unicast QA test tolerate a host reporting multiple tunnel statuses. It now selects the IBRL status via `GetUserStatuses`/`FindIBRLStatus` instead of erroring on a lingering Multicast tunnel and dropping the host, and logs a warning when a host reports more than one status. (#3976)
+- CI
+  - Auto-publish the mainnet-beta client base image daily when the stable Cloudsmith channel advances (idempotency-gated so a run with no new version is a no-op), and notify `doublezero-edge-connect` to rebuild its testnet and mainnet-beta variants when a new base image is published. Serialize publishes with per-job concurrency groups, keep the notify steps non-fatal to the publish, and skip Debian pre-release versions when resolving the mainnet-beta tag. (#3990)
+  - Add a testnet release orchestrator workflow (`release.testnet.yml`) that drives the release end to end: preflight checks, version-bump PRs for doublezero and infra, a human-approved gate before pushing the 9 component tags, CloudSmith package verification, Solana program build and staging with a manual deploy gate, onchain version verification, infra core/client deploys, QA, and Slack notifications. Supports `dry_run` for plumbing validation and safe re-runs (existing PRs are reused; already-pushed tags are skipped via a new `skip_existing` input on the tag workflow). Runbook at `docs/testnet-release.md`.
+
+## [v0.29.0](https://github.com/malbeclabs/doublezero/compare/client/v0.28.0...client/v0.29.0) - 2026-07-02
+
+### Breaking
+
+- SDK
+  - revdist Python SDK migrated to the async solana-py RPC API (solana-py 0.40.0 removed the sync `Client`). The `Client` read methods (`fetch_config`, `fetch_distribution`, etc.) are now coroutines and must be awaited; `new_rpc_client` returns an `AsyncClient`. (#3945)
+
+### Changes
+
+- Dependencies
+  - Migrate the entire Rust workspace from solana-sdk 2.3.x to the solana 3.0 line plus the granular split crates (`solana-pubkey`, `solana-instruction`, `solana-cpi`, `solana-sdk-ids`, `solana-system-interface`, `solana-commitment-config`, `solana-compute-budget-interface`), aligning with the doublezero-solana programs. Onchain account layouts are unchanged (regenerated fixtures are byte-identical), so the Go, TypeScript, and Python SDKs are unaffected. (#3830)
+- Onchain programs
+  - Adapt to the solana 3.0 APIs: `AccountInfo::realloc` becomes `resize`, system-program and BPF-upgradeable-loader IDs move to `solana-sdk-ids`, `ProgramError::BorshIoError` is now a unit variant, and `AccountInfo::new` drops its `rent_epoch` argument. Bump the programs build toolchain to Rust 1.91.
+- Client
+  - Add a `-route-liveness-backoff-max` daemon flag to cap the Down-state liveness probe interval. Defaults to 60s (production behavior unchanged); the e2e harness pins a small value to avoid a probe gap that flaked the multi-client IBRL tests. (#3949)
+  - Add a structured `subscriptions` array to `doublezero status` (after `multicast_groups`) with per-group detail — group pubkey, code, multicast IP, max bandwidth, and `publisher`/`subscriber` booleans — so consumers no longer have to parse the flattened `P:`/`S:` string. (#3964)
+  - Originate a PIM Register beacon for multicast publishers: `doublezerod` periodically sends a PIM Register (encapsulating the publisher heartbeat) unicast to the RP over the tunnel, so the device originates the MSDP SA for the published source even on a dual-role publisher/subscriber tunnel, where `pim ipv4 border-router` source injection is suppressed by the subscriber-side PIM neighbor. (RFC-22)
+- CI
+  - Install agave v3.0.4 and build/test the SBF programs with platform-tools v1.54 (`SBF_TOOLS_VERSION`), required because the solana 3.0 dependency tree pulls edition2024 crates that need Cargo >= 1.85 (agave's default platform-tools v1.51 ships Cargo 1.84.1).
+- Controller
+  - Permit the unicast PIM Register to the RP (`permit pim any host 10.0.0.0`) on publisher multicast tunnels so the client-originated Register reaches the device; `pim ipv4 border-router` is retained as a backstop. (RFC-22)
+- E2E tests
+  - Bump the e2e base image to agave v3.0.4 and build the onchain programs with platform-tools v1.54 to match the solana 3.0 migration.
+  - Pin the e2e ledger `solana-test-validator` to the deploy floor (agave 2.2.16, testnet) so a green e2e proves a change actually deploys and runs on the production cluster runtime. Previously the runtime validator rode the SBF build toolchain version (2.3.13); it is now decoupled and pinned independently. The build toolchain is unchanged. (#3957)
+  - Fix a `TestE2E_Multicast` flake where the post-connect `doublezero status` check could observe only the first multicast group. After incrementally adding the second group, the test relied on `WaitForTunnelUp`, which returns immediately because the first tunnel is already up, so the single-shot status assertion could race the onchain propagation and the daemon's cached program data. Add an `Eventually` poll on `doublezero user list` for both groups before the post-connect checks.
+
+## [v0.28.0](https://github.com/malbeclabs/doublezero/compare/client/v0.27.1...client/v0.28.0) - 2026-06-26
+
+
+### Breaking
+
 - CLI
   - Remove the `doublezero-admin` binary. Its commands now live in the `doublezero` CLI as hidden subcommands (e.g. `doublezero sentinel ...`, `doublezero migrate flex-algo`).
 
@@ -14,9 +72,12 @@ All notable changes to this project will be documented in this file.
 - Client
   - Add a `--no-wait` flag to `doublezero disconnect` that skips waiting for the daemon to tear down the tunnel(s), exiting once the onchain user deletion is confirmed. (#3911)
 - CLI
+  - `doublezero user subscribe` can now remove multicast roles: `--publisher`/`--subscriber` accept an explicit value (`--publisher false` / `--subscriber false`) to drop a role, an omitted flag preserves the user's current role for the group, and the command errors when neither flag is given. Bare `--publisher`/`--subscriber` still mean `true`. (#3914)
   - Add hidden `migrate flex-algo` (RFC-18 link-topology and Vpnv4 loopback FlexAlgoNodeSegment backfill); the prior `migrate` command is now `migrate user-pda`. Moved from `doublezero-admin`.
   - Add hidden `device migrate-multicast-counts` and `device migrate-unicast-counts` to reconcile stale per-device subscriber, publisher, and unicast-user counts. Moved from `doublezero-admin`.
   - Add hidden `sentinel find-validator-multicast-publishers` and `sentinel create-validator-multicast-publishers` commands. Moved from `doublezero-admin`.
+  - Feature-gate `doublezero-sentinel`'s server-mode deps (Prometheus exporter) behind a default-on `server` feature and depend on it with `default-features = false`, so the `doublezero` binary no longer links `rustls`/`aws-lc-sys`. Restores the glibc floor (binaries built on Ubuntu 24.04 load on 22.04 again) and shrinks the binary.
+  - Add a `--narrow` flag to `device list`, `link list`, and `access-pass list` that renders a width-reduced table for wide output — dropping low-value columns, abbreviating pubkeys to a copyable leading-prefix, and shortening headers — while leaving `--json` and the default table unchanged. (#3938)
 - Onchain programs
   - Validate the device `mgmt_vrf` field against the account-code charset (`[A-Za-z0-9:_-]`) and a 32-byte length cap, matching the device `code` field. Empty (the default VRF) is still accepted.
   - Transfer connect/disconnect credits to the user's account when adding a user to a multicast group's publisher or subscriber allowlist, so the user can connect immediately. The airdrop is atomic with the allowlist update and mirrors `set_access_pass` (scaled for `allow_multiple_ip` passes). (#3851)
@@ -30,6 +91,8 @@ All notable changes to this project will be documented in this file.
 - E2E tests
   - Route all devnet networks (CYOA, default, and miscellaneous) through a shared collision-safe subnet allocator to prevent overlapping subnet assignments across concurrent test runs. (#3919)
   - Harden the mainnet-beta QA client against flaky/stale Solana RPC: multi-endpoint failover (with a public-RPC default fallback when `SOLANA_RPC_FALLBACK_URLS` is unset), active slot-lag detection, poll-until-consistent post-write reads, and configurable timeout/retry budgets. Eliminates manual `SOLANA_RPC_URL` repointing during RPC outages. (#3930)
+  - Make device selection deterministic in the maxusers rollover test by waiting until the nearby device is measured faster than the faraway device by more than the client's 5ms latency tolerance, so the client cannot connect to the wrong device on a tie. (#3936)
+  - Match CLI validation errors case-insensitively in the interface validation test, decoupling assertions from the program's error-message casing. (#3936)
 
 ## [v0.27.1](https://github.com/malbeclabs/doublezero/compare/client/v0.27.0...client/v0.27.1) - 2026-06-10
 
@@ -70,6 +133,7 @@ All notable changes to this project will be documented in this file.
 - SDK (Rust)
   - Remove the client-side `User not active` precheck from the multicast subscribe/publish command (`UpdateMulticastGroupRoles`) so non-`Activated` users are no longer blocked before submission; authorization is enforced onchain.
 - CLI
+  - Extract `doublezero-daemon-cli` crate housing the `DaemonClient` trait and the `enable`, `disable`, and `status` daemon verbs. The new crate owns all daemon HTTP interaction (Unix-socket client, response types, shared output helpers) and is consumed by the `doublezero` binary. `check_daemon` binds `get_environment()` once per invocation instead of calling it per-check.
   - Fold `version`, `account`, `accounts`, `log`, and `subscribe` diagnostic verbs from the binary's top-level `Command` enum into `ServiceabilityCommand` per RFC-20. Each verb now takes `&CliContext` + generic `&C: CliCommand` + `&mut W` writer and is async. Add `--json` to `account`, `accounts`, and `log` (RFC-20 §Output). The binary-level `subscribe` override uses the real blocking `DZClient::subscribe` for live event streaming; the module crate's implementation falls back to a `get_all()` snapshot for testability.
   - Change `geolocation user update-payment` to `update-payment-status` for clarity. 
   - geolocation `user get`: Show probe code, rather than probe pubkey in target list. 
@@ -550,6 +614,18 @@ All notable changes to this project will be documented in this file.
   - Add onchain parent DZD discovery to geoprobe-agent: periodically queries the Geolocation program for this probe's parent devices and resolves their metrics publisher keys from Serviceability, replacing the need for static `--parent-dzd` CLI flags. Static parents from CLI are merged with onchain parents, with onchain taking precedence for duplicate keys.
   - Optimize inbound probe-measured RTT accuracy: pre-sign both TWAMP probes before network I/O so probe 1 fires immediately after reply 0 with no signing delay, measure Tx-to-Rx interval (reply 0 Tx → probe 1 Rx) instead of Rx-to-Rx to exclude processing overhead on both sides, use kernel `SO_TIMESTAMPNS` receive timestamps on the reflector, and add a 15ms busy-poll window on the sender to avoid scheduler wakeup latency
   - Optimize outbound probe RTT accuracy: send a staggered warmup probe on a separate socket 2ms before the measurement probe to wake the reflector's thread, then take the min RTT of both
+- Onchain Programs
+  - Serviceability: add `Permission` account with `CreatePermission`, `UpdatePermission`, `DeletePermission`, `SuspendPermission`, and `ResumePermission` instructions for managing per-keypair permission bitmasks onchain
+  - Serviceability: add `TOPOLOGY_ADMIN`, `RESOURCE_ADMIN`, and `INDEX_ADMIN` permission flags for delegating management of segment-routing topologies, ResourceExtension accounts, and internal Index accounts (legacy authorization maps each to the foundation allowlist)
+  - Serviceability: enforce `TOPOLOGY_ADMIN`/`RESOURCE_ADMIN`/`INDEX_ADMIN` via `authorize()` in the topology (create/delete/clear/assign-node-segments), resource (create/allocate/deallocate/close), and index (create/delete) instructions, which were previously gated by the foundation allowlist only
+  - Serviceability: fix `ClearTopology` account layout — the processor now parses `payer`/`system_program`/`permission` from the tail of the account list (matching what the SDK client appends after the variable-length link list) instead of reading them at fixed front positions, so `doublezero topology clear` no longer reverts when links are passed
+  - Serviceability: `authorize()` now falls back to the legacy allowlists when a payer's auto-injected Permission account exists but does not grant the requested flag, as long as `RequirePermissionAccounts` is off — so foundation (and other legacy-authorized) keys are not locked out of an instruction merely because they also hold an unrelated, under-privileged Permission account
+- SDK
+  - Add `execute_authorized_transaction` (and its `_quiet` variant) alongside `execute_transaction`. The authorized variants append the payer's Permission PDA (read-only) as the trailing account when it exists on-chain, so `authorize()` can find it. All variants share the same builder, so the protocol-max compute-budget/heap-frame requests, preflight, and error-reporting behavior are identical to `execute_transaction`; the only difference is the optional trailing Permission account. The Permission PDA lookup is retried on transient RPC errors and memoized per client.
+  - Add `TOPOLOGY_ADMIN`/`RESOURCE_ADMIN`/`INDEX_ADMIN` permission-flag constants to the Go, TypeScript, and Python serviceability SDKs
+- CLI
+  - Add `permission get`, `permission list`, and `permission set` commands with table and JSON output; `permission set` supports incremental `--add` / `--remove` flags and creates or updates the account as needed
+  - Add `topology-admin`, `resource-admin`, and `index-admin` to the named permissions accepted by `permission set --add` / `--remove`
 
 ## [v0.11.0](https://github.com/malbeclabs/doublezero/compare/client/v0.10.0...client/v0.11.0) - 2026-03-12
 

@@ -73,7 +73,12 @@ impl UpdateMulticastGroupRolesCommand {
             AccountMeta::new(multicast_publisher_block_ext, false),
         ];
 
-        client.execute_transaction(
+        // Use the authorized path so the payer's Permission account is appended when
+        // it exists on-chain. Removal-only cleanup (e.g. DeleteUserCommand /
+        // RequestBanUserCommand) is authorized via USER_ADMIN when the payer is
+        // neither the access-pass owner nor a foundation member; for owner/foundation
+        // callers the (optional) trailing account is simply ignored on-chain.
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
                 publisher: self.publisher,
                 subscriber: self.subscriber,
@@ -210,7 +215,7 @@ mod tests {
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::UpdateMulticastGroupRoles(
                     UpdateMulticastGroupRolesArgs {

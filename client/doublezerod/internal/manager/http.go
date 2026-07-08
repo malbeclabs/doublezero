@@ -12,12 +12,25 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/mr-tron/base58"
 )
 
 // MulticastGroups contains the group codes a user publishes to and subscribes to.
 type MulticastGroups struct {
 	Publisher  []string `json:"publisher"`
 	Subscriber []string `json:"subscriber"`
+}
+
+// Subscription describes one multicast group the user participates in, with the
+// group's onchain details and the user's role(s) in it. A user that is both
+// publisher and subscriber of a group appears once with both booleans set.
+type Subscription struct {
+	Pubkey       string `json:"pubkey"`
+	Code         string `json:"code"`
+	MulticastIp  string `json:"multicast_ip"`
+	MaxBandwidth uint64 `json:"max_bandwidth"`
+	Publisher    bool   `json:"publisher"`
+	Subscriber   bool   `json:"subscriber"`
 }
 
 // V2ServiceStatus wraps a StatusResponse with enriched fields.
@@ -30,6 +43,7 @@ type V2ServiceStatus struct {
 	Metro                       string          `json:"metro"`
 	Tenant                      string          `json:"tenant"`
 	MulticastGroups             MulticastGroups `json:"multicast_groups"`
+	Subscriptions               []Subscription  `json:"subscriptions"`
 }
 
 // V2StatusResponse is the response for the /v2/status endpoint.
@@ -295,6 +309,7 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 				Publisher:  []string{},
 				Subscriber: []string{},
 			},
+			Subscriptions: []Subscription{},
 		}
 
 		if data == nil {
@@ -371,15 +386,41 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 					es.Tenant = t.Code
 				}
 			}
+			// Build the structured subscriptions list (one entry per group,
+			// deduplicated) alongside the flat code lists. Iterate publishers
+			// first, then subscribers, to keep a publishers-first ordering.
+			subIdxByPK := make(map[[32]byte]int)
+			addRole := func(pk [32]byte, pub, sub bool) {
+				if idx, ok := subIdxByPK[pk]; ok {
+					es.Subscriptions[idx].Publisher = es.Subscriptions[idx].Publisher || pub
+					es.Subscriptions[idx].Subscriber = es.Subscriptions[idx].Subscriber || sub
+					return
+				}
+				mg, ok := mcastGroupsByPK[pk]
+				if !ok {
+					return
+				}
+				subIdxByPK[pk] = len(es.Subscriptions)
+				es.Subscriptions = append(es.Subscriptions, Subscription{
+					Pubkey:       base58.Encode(mg.PubKey[:]),
+					Code:         mg.Code,
+					MulticastIp:  net.IP(mg.MulticastIp[:]).String(),
+					MaxBandwidth: mg.MaxBandwidth,
+					Publisher:    pub,
+					Subscriber:   sub,
+				})
+			}
 			for _, pk := range matchedUser.Publishers {
 				if mg, ok := mcastGroupsByPK[pk]; ok {
 					es.MulticastGroups.Publisher = append(es.MulticastGroups.Publisher, mg.Code)
 				}
+				addRole(pk, true, false)
 			}
 			for _, pk := range matchedUser.Subscribers {
 				if mg, ok := mcastGroupsByPK[pk]; ok {
 					es.MulticastGroups.Subscriber = append(es.MulticastGroups.Subscriber, mg.Code)
 				}
+				addRole(pk, false, true)
 			}
 		}
 

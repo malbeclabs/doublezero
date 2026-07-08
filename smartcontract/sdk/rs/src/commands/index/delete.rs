@@ -20,7 +20,7 @@ impl DeleteIndexCommand {
             AccountMeta::new_readonly(globalstate_pubkey, false),
         ];
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::DeleteIndex(IndexDeleteArgs {}),
             accounts,
         )

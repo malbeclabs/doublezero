@@ -14,12 +14,14 @@ use doublezero_serviceability::{
             create::MulticastGroupCreateArgs,
             subscribe::UpdateMulticastGroupRolesArgs,
         },
+        permission::create::PermissionCreateArgs,
         user::create::UserCreateArgs,
     },
     resource::ResourceType,
     state::{
         accesspass::AccessPassType,
         device::DeviceType,
+        permission::permission_flags,
         user::{UserCYOA, UserStatus, UserType},
     },
 };
@@ -596,6 +598,184 @@ async fn test_subscribe_unauthorized_payer_rejected() {
             ),
         ],
         &other_payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(22),
+        ))) => {}
+        _ => panic!("Expected Unauthorized error (Custom(22)), got {:?}", result),
+    }
+}
+
+/// A USER_ADMIN Permission holder who is neither the access-pass owner nor a
+/// foundation member can strip a user's multicast roles (removal-only). This is the
+/// prerequisite cleanup that DeleteUserCommand / RequestBanUserCommand perform before
+/// the (USER_ADMIN-authorized) delete/ban instruction. The payer's Permission PDA is
+/// passed as the trailing account, mirroring the SDK's authorized-transaction path.
+#[tokio::test]
+async fn test_unsubscribe_user_admin_permission_allowed() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer, // foundation + user.owner (alice)
+        program_id,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        globalstate_pubkey,
+        ..
+    } = f;
+
+    // Subscribe the user (as owner) so there is a role to remove.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await
+    .expect("owner should be able to subscribe");
+
+    // user_admin: not the owner, not in the foundation allowlist, but granted USER_ADMIN.
+    let user_admin = solana_sdk::signature::Keypair::new();
+    transfer(&mut banks_client, &payer, &user_admin.pubkey(), 10_000_000).await;
+
+    let (permission_pda, _) = get_permission_pda(&program_id, &user_admin.pubkey());
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: user_admin.pubkey(),
+            permissions: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer, // foundation creates the permission
+    )
+    .await;
+
+    // user_admin removes the role, appending their Permission PDA as the trailing account.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+        ],
+        &user_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    )
+    .await
+    .expect("USER_ADMIN holder should be able to remove roles (removal-only cleanup)");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.subscribers.len(), 0);
+    assert_eq!(user.status, UserStatus::Activated);
+}
+
+/// The USER_ADMIN cleanup path is removal-only: a USER_ADMIN holder cannot ADD roles
+/// (subscribe/publish) on behalf of another user, even with their Permission account
+/// attached — that still requires the access-pass owner or a foundation member.
+#[tokio::test]
+async fn test_subscribe_user_admin_permission_rejected() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        globalstate_pubkey,
+        ..
+    } = f;
+
+    let user_admin = solana_sdk::signature::Keypair::new();
+    transfer(&mut banks_client, &payer, &user_admin.pubkey(), 10_000_000).await;
+
+    let (permission_pda, _) = get_permission_pda(&program_id, &user_admin.pubkey());
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: user_admin.pubkey(),
+            permissions: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true, // attempting to ADD a role
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+        ],
+        &user_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
     )
     .await;
 

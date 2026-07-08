@@ -3,6 +3,7 @@ package qa
 import (
 	"testing"
 
+	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -288,6 +289,36 @@ this shouldn't match
 				require.Equal(t, tc.wantNums[i], hops[i].Num, "hop index %d Num mismatch", i)
 				require.InDelta(t, tc.wantLoss[i], hops[i].Loss, 0.0001, "hop %d loss mismatch", hops[i].Num)
 			}
+		})
+	}
+}
+
+func TestFindIBRLStatus(t *testing.T) {
+	t.Parallel()
+
+	ibrl := &pb.Status{UserType: "IBRL", SessionStatus: UserStatusUp}
+	ibrlAllocated := &pb.Status{UserType: "IBRLWithAllocatedIP", SessionStatus: UserStatusUp}
+	multicast := &pb.Status{UserType: "Multicast", SessionStatus: UserStatusUp}
+
+	tests := []struct {
+		name     string
+		statuses []*pb.Status
+		want     *pb.Status
+	}{
+		{"nil list returns nil", nil, nil},
+		{"single multicast returns sole status", []*pb.Status{multicast}, multicast},
+		{"ibrl plus lingering multicast returns ibrl", []*pb.Status{multicast, ibrl}, ibrl},
+		{"ibrl-allocated plus multicast returns ibrl", []*pb.Status{multicast, ibrlAllocated}, ibrlAllocated},
+		{"multiple with no ibrl returns nil", []*pb.Status{multicast, multicast}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FindIBRLStatus(tt.statuses)
+			if tt.want == nil {
+				require.Nil(t, got)
+				return
+			}
+			require.Same(t, tt.want, got)
 		})
 	}
 }

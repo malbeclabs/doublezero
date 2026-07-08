@@ -22,6 +22,7 @@ use doublezero_serviceability::{
         exchange::create::ExchangeCreateArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         location::create::LocationCreateArgs,
+        permission::create::PermissionCreateArgs,
         topology::create::TopologyCreateArgs,
     },
     resource::{IdOrIp, ResourceType},
@@ -31,6 +32,7 @@ use doublezero_serviceability::{
         interface::{
             InterfaceCYOA, InterfaceDIA, InterfaceStatus, InterfaceType, LoopbackType, RoutingMode,
         },
+        permission::permission_flags,
         topology::TopologyConstraint,
     },
 };
@@ -1030,6 +1032,126 @@ async fn test_update_interface_node_segment_idx_missing_resource_account() {
     }
 }
 
+/// Test: a NETWORK_ADMIN Permission-account holder — neither the contributor's owner
+/// nor a foundation-allowlist key — can update node_segment_idx.
+///
+/// This is the case the count-heuristic → PDA-peel change protects: it drives
+/// `process_update_device_interface` with a real Permission (NETWORK_ADMIN) account
+/// appended to the tail *after* the variable-length SegmentRoutingIds account in the
+/// middle, exercising both `split_trailing_permission` (peeling payer/system/permission
+/// while a mid account is present) and the `authorize(NETWORK_ADMIN)` privilege path
+/// that gates node_segment_idx.
+#[tokio::test]
+async fn test_update_interface_node_segment_idx_authorized_by_network_admin_permission() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    let (device_pubkey, contributor_pubkey, segment_routing_ids_pda) = setup_device_with_interface(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    // A key that is neither the contributor's owner (payer) nor on the foundation allowlist.
+    let network_admin = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &network_admin.pubkey(),
+        10_000_000,
+    )
+    .await;
+
+    let update_args = DeviceInterfaceUpdateArgs {
+        name: "loopback0".to_string(),
+        node_segment_idx: Some(42),
+        ..Default::default()
+    };
+    let update_accounts = vec![
+        AccountMeta::new(device_pubkey, false),
+        AccountMeta::new(contributor_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+        AccountMeta::new(segment_routing_ids_pda, false),
+    ];
+
+    // Without a Permission account the non-owner signer is rejected — proving that the
+    // Permission (not some other trailing account) is what authorizes the update below.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx = create_authorized_transaction(
+        program_id,
+        &DoubleZeroInstruction::UpdateDeviceInterface(update_args.clone()),
+        &update_accounts,
+        &network_admin,
+        None,
+    );
+    tx.try_sign(&[&network_admin], recent_blockhash).unwrap();
+    let err = banks_client
+        .process_transaction(tx)
+        .await
+        .expect_err("non-owner without a Permission account should be rejected");
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(code),
+        )) => assert_eq!(DoubleZeroError::NotAllowed, code.into()),
+        other => panic!("Unexpected error type: {other:?}"),
+    }
+
+    // Foundation grants the key a Permission account with NETWORK_ADMIN.
+    let (permission_pda, _) = get_permission_pda(&program_id, &network_admin.pubkey());
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: network_admin.pubkey(),
+            permissions: permission_flags::NETWORK_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // With the Permission PDA appended to the tail (after the SegmentRoutingIds account
+    // in the middle), the NETWORK_ADMIN holder can set node_segment_idx.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx = create_authorized_transaction(
+        program_id,
+        &DoubleZeroInstruction::UpdateDeviceInterface(update_args),
+        &update_accounts,
+        &network_admin,
+        Some(AccountMeta::new_readonly(permission_pda, false)),
+    );
+    tx.try_sign(&[&network_admin], recent_blockhash).unwrap();
+    banks_client
+        .process_transaction(tx)
+        .await
+        .expect("NETWORK_ADMIN Permission holder should be able to update node_segment_idx");
+
+    // Verify the update landed and the ID was allocated in the resource extension.
+    let device = get_device(&mut banks_client, device_pubkey)
+        .await
+        .expect("Device not found");
+    assert_eq!(device.interfaces[0].node_segment_idx, 42);
+
+    let resource = get_resource_extension_data(&mut banks_client, segment_routing_ids_pda)
+        .await
+        .expect("SegmentRoutingIds resource not found");
+    assert!(
+        resource.iter_allocated().contains(&IdOrIp::Id(42)),
+        "ID 42 should be allocated"
+    );
+}
+
 /// Test: allocating an already-taken ID fails
 #[tokio::test]
 async fn test_update_interface_node_segment_idx_duplicate_allocation() {
@@ -1954,7 +2076,7 @@ async fn test_update_topologies_allowed_for_contributor() {
 
     // Fund the new owner so it can pay tx fees.
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    let transfer_ix = solana_sdk::system_instruction::transfer(
+    let transfer_ix = solana_system_interface::instruction::transfer(
         &payer.pubkey(),
         &contributor_owner.pubkey(),
         1_000_000_000,

@@ -102,7 +102,7 @@ impl RequestBanUserCommand {
             accounts.push(AccountMeta::new(dz_prefix_ext, false));
         }
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
                 dz_prefix_count: dz_prefix_count_u8,
                 multicast_publisher_count: 1,
@@ -201,7 +201,7 @@ mod tests {
             get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
                     dz_prefix_count: 1,

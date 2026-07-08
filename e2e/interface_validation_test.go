@@ -15,6 +15,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// containsAnyFold reports whether s contains any of the given substrings,
+// case-insensitively. Used to match CLI error output robustly: the human-readable
+// message, the error enum name, or the raw hex code may each appear depending on
+// timing, and the message casing must not matter (e.g. the program returns
+// "Invalid Interface IP", not "Invalid interface IP").
+func containsAnyFold(s string, substrs ...string) bool {
+	s = strings.ToLower(s)
+	for _, sub := range substrs {
+		if strings.Contains(s, strings.ToLower(sub)) {
+			return true
+		}
+	}
+	return false
+}
+
 // TestE2E_InterfaceValidation tests the interface validation rules for CYOA and public IPs.
 // This test consolidates multiple validation scenarios into a single test function to reduce
 // the number of Docker networks created, avoiding network address pool exhaustion.
@@ -43,9 +58,10 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 
 		require.Error(t, err, "expected error when creating loopback with CYOA")
 		require.True(t,
-			strings.Contains(string(output), "CYOA can only be set on physical interfaces") ||
-				strings.Contains(string(output), "CyoaRequiresPhysical") ||
-				strings.Contains(string(output), "0x45"), // error code 69 in hex
+			containsAnyFold(string(output),
+				"CYOA can only be set on physical interfaces", // CyoaRequiresPhysical message
+				"CyoaRequiresPhysical",
+				"0x45"), // error code 69 in hex
 			"expected CyoaRequiresPhysical error, got: %s", string(output))
 
 		dn.log.Debug("--> Correctly rejected loopback with CYOA")
@@ -125,9 +141,10 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 
 		require.Error(t, err, "expected error when creating loopback with public IP but without user_tunnel_endpoint")
 		require.True(t,
-			strings.Contains(string(output), "Invalid interface IP") ||
-				strings.Contains(string(output), "InvalidInterfaceIp") ||
-				strings.Contains(string(output), "0x2f"), // error code 47 in hex
+			containsAnyFold(string(output),
+				"Invalid Interface IP", // InvalidInterfaceIp message
+				"InvalidInterfaceIp",
+				"0x2f"), // error code 47 in hex
 			"expected InvalidInterfaceIp error, got: %s", string(output))
 
 		dn.log.Debug("--> Correctly rejected loopback with public IP without user_tunnel_endpoint")
@@ -164,9 +181,10 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 
 		require.Error(t, err, "expected error when updating loopback to add CYOA")
 		require.True(t,
-			strings.Contains(string(output), "CYOA can only be set on physical interfaces") ||
-				strings.Contains(string(output), "CyoaRequiresPhysical") ||
-				strings.Contains(string(output), "0x45"), // error code 69 in hex
+			containsAnyFold(string(output),
+				"CYOA can only be set on physical interfaces", // CyoaRequiresPhysical message
+				"CyoaRequiresPhysical",
+				"0x45"), // error code 69 in hex
 			"expected CyoaRequiresPhysical error, got: %s", string(output))
 
 		dn.log.Debug("--> Correctly rejected update to add CYOA on loopback")
@@ -232,9 +250,10 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 
 		require.Error(t, err, "expected error when creating plain physical interface with ip_net")
 		require.True(t,
-			strings.Contains(string(output), "Invalid interface IP") ||
-				strings.Contains(string(output), "InvalidInterfaceIp") ||
-				strings.Contains(string(output), "0x2f"),
+			containsAnyFold(string(output),
+				"Invalid Interface IP", // InvalidInterfaceIp message
+				"InvalidInterfaceIp",
+				"0x2f"), // error code 47 in hex
 			"expected InvalidInterfaceIp error, got: %s", string(output))
 
 		dn.log.Debug("--> Correctly rejected plain physical interface with ip_net")
@@ -297,9 +316,10 @@ func TestE2E_InterfaceValidation(t *testing.T) {
 
 		require.Error(t, err, "expected error when updating plain physical interface with ip_net")
 		require.True(t,
-			strings.Contains(string(output), "Invalid interface IP") ||
-				strings.Contains(string(output), "InvalidInterfaceIp") ||
-				strings.Contains(string(output), "0x2f"),
+			containsAnyFold(string(output),
+				"Invalid Interface IP", // InvalidInterfaceIp message
+				"InvalidInterfaceIp",
+				"0x2f"), // error code 47 in hex
 			"expected InvalidInterfaceIp error, got: %s", string(output))
 
 		dn.log.Debug("--> Correctly rejected update of plain physical interface with ip_net")

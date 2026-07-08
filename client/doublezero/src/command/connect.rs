@@ -583,7 +583,7 @@ impl ProvisioningCliCommand {
                         spinner.println("❌ Error creating user");
                         spinner.println(format!("\n{}: {:?}\n", "Error", e));
 
-                        Err(eyre::eyre!("Error creating user"))
+                        Err(eyre::eyre!("Error creating user: {e:?}"))
                     }
                 }
             }?,
@@ -704,7 +704,7 @@ impl ProvisioningCliCommand {
 
                 // Subscribe to remaining groups
                 for group_pk in all_group_pks.iter().skip(1) {
-                    spinner.println(format!("    Subscribing to group: {group_pk}"));
+                    spinner.set_message(format!("Subscribing to group: {group_pk}"));
                     client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                         user_pk,
                         group_pk: *group_pk,
@@ -726,9 +726,8 @@ impl ProvisioningCliCommand {
                 // Subscribe to any pub groups not already subscribed
                 for group_pk in pub_group_pks {
                     if !user.publishers.contains(group_pk) {
-                        spinner.println(format!(
-                            "    Adding publisher subscription to existing Multicast user: {}",
-                            user_pk
+                        spinner.set_message(format!(
+                            "Adding publisher subscription to existing Multicast user: {user_pk}"
                         ));
 
                         let res =
@@ -747,7 +746,9 @@ impl ProvisioningCliCommand {
                             Err(e) => {
                                 spinner.println("❌ Error adding publisher subscription");
                                 spinner.println(format!("\n{}: {:?}\n", "Error", e));
-                                eyre::bail!("Error adding publisher subscription to existing user");
+                                eyre::bail!(
+                                    "Error adding publisher subscription to existing user: {e:?}"
+                                );
                             }
                         }
                     }
@@ -756,9 +757,8 @@ impl ProvisioningCliCommand {
                 // Subscribe to any sub groups not already subscribed
                 for group_pk in sub_group_pks {
                     if !user.subscribers.contains(group_pk) {
-                        spinner.println(format!(
-                            "    Adding subscriber subscription to existing Multicast user: {}",
-                            user_pk
+                        spinner.set_message(format!(
+                            "Adding subscriber subscription to existing Multicast user: {user_pk}"
                         ));
 
                         let res =
@@ -778,7 +778,7 @@ impl ProvisioningCliCommand {
                                 spinner.println("❌ Error adding subscriber subscription");
                                 spinner.println(format!("\n{}: {:?}\n", "Error", e));
                                 eyre::bail!(
-                                    "Error adding subscriber subscription to existing user"
+                                    "Error adding subscriber subscription to existing user: {e:?}"
                                 );
                             }
                         }
@@ -831,7 +831,7 @@ impl ProvisioningCliCommand {
                     Err(e) => {
                         spinner.println("❌ Error creating user");
                         spinner.println(format!("\n{}: {:?}\n", "Error", e));
-                        return Err(eyre::eyre!("Error creating user"));
+                        return Err(eyre::eyre!("Error creating user: {e:?}"));
                     }
                 };
 
@@ -842,7 +842,7 @@ impl ProvisioningCliCommand {
 
                 // Subscribe to remaining groups
                 for group_pk in all_group_pks.iter().skip(1) {
-                    spinner.println(format!("    Subscribing to group: {group_pk}"));
+                    spinner.set_message(format!("Subscribing to group: {group_pk}"));
                     client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                         user_pk,
                         group_pk: *group_pk,
@@ -1045,7 +1045,7 @@ mod tests {
         TMPDIR.get_or_init(|| create_temp_config().expect("Failed to create temp config"))
     }
 
-    #[ctor::ctor]
+    #[ctor::ctor(unsafe)]
     fn setup() {
         let temp_dir = get_temp_dir();
         println!("Using TMPDIR = {}", temp_dir.path().display());

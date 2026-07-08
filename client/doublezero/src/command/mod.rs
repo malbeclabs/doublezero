@@ -1,10 +1,7 @@
 pub mod connect;
-pub mod disable;
 pub mod disconnect;
-pub mod enable;
 pub mod helpers;
 pub mod latency;
 pub mod multicast;
 pub mod routes;
-pub mod status;
 pub mod util;

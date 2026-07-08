@@ -86,12 +86,16 @@ pub fn check_accesspass(
     client_ip: Ipv4Addr,
     enforce_epoch: bool,
 ) -> eyre::Result<bool> {
-    let (_, accesspass) = client
-        .get_accesspass(GetAccessPassCommand {
-            client_ip,
-            user_payer: client.get_payer(),
-        })?
-        .ok_or_else(|| eyre::eyre!("Access Pass not found"))?;
+    // A missing AccessPass returns Ok(false) (not an error) so the caller can
+    // render its own diagnostic (e.g. the client IP and UserPayer) before
+    // bailing, rather than surfacing a generic "not found" message.
+    let Some((_, accesspass)) = client.get_accesspass(GetAccessPassCommand {
+        client_ip,
+        user_payer: client.get_payer(),
+    })?
+    else {
+        return Ok(false);
+    };
 
     if !enforce_epoch {
         return Ok(true);

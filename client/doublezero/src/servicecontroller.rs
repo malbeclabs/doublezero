@@ -156,6 +156,25 @@ pub struct MulticastGroups {
     pub subscriber: Vec<String>,
 }
 
+/// A single multicast group the user participates in, with the group's onchain
+/// details and the user's role(s). A user that is both publisher and subscriber
+/// of a group appears once with both booleans set.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+pub struct Subscription {
+    #[serde(default)]
+    pub pubkey: String,
+    #[serde(default)]
+    pub code: String,
+    #[serde(default)]
+    pub multicast_ip: String,
+    #[serde(default)]
+    pub max_bandwidth: u64,
+    #[serde(default)]
+    pub publisher: bool,
+    #[serde(default)]
+    pub subscriber: bool,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct V2ServiceStatus {
     #[serde(flatten)]
@@ -170,6 +189,8 @@ pub struct V2ServiceStatus {
     pub tenant: String,
     #[serde(default)]
     pub multicast_groups: MulticastGroups,
+    #[serde(default)]
+    pub subscriptions: Vec<Subscription>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -192,7 +213,6 @@ pub trait ServiceController {
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
     async fn v2_status(&self) -> eyre::Result<V2StatusResponse>;
     async fn enable(&self) -> eyre::Result<()>;
-    async fn disable(&self) -> eyre::Result<()>;
     async fn routes(&self) -> eyre::Result<Vec<RouteRecord>>;
 }
 
@@ -336,23 +356,6 @@ impl ServiceController for ServiceControllerImpl {
             .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
         if res.status() != 200 {
             eyre::bail!("Failed to enable reconciler: {}", res.status());
-        }
-        Ok(())
-    }
-
-    async fn disable(&self) -> eyre::Result<()> {
-        let client: Client<UnixConnector, Full<Bytes>> =
-            Client::builder(TokioExecutor::new()).build(UnixConnector);
-        let req = Request::builder()
-            .method(Method::POST)
-            .uri(Uri::new(&self.socket_path, "/disable"))
-            .body(Full::from(Bytes::new()))?;
-        let res = client
-            .request(req)
-            .await
-            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
-        if res.status() != 200 {
-            eyre::bail!("Failed to disable reconciler: {}", res.status());
         }
         Ok(())
     }

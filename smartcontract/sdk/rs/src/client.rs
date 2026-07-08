@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use crate::config::default_program_id;
 use doublezero_serviceability::{
-    error::DoubleZeroError, instructions::*, state::accounttype::AccountType,
+    error::DoubleZeroError, instructions::*, pda::get_permission_pda,
+    state::accounttype::AccountType,
 };
 use eyre::{bail, eyre, OptionExt};
 use log::debug;
@@ -20,11 +21,11 @@ use solana_client::{
     },
     rpc_filter::{Memcmp, MemcmpEncodedBytes, RpcFilterType},
 };
+use solana_commitment_config::CommitmentConfig;
+use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_rpc_client_api::client_error::{Error as ClientError, ErrorKind as ClientErrorKind};
 use solana_sdk::{
     account::Account,
-    commitment_config::CommitmentConfig,
-    compute_budget::ComputeBudgetInstruction,
     instruction::{AccountMeta, Instruction, InstructionError},
     program_error::ProgramError,
     pubkey::Pubkey,
@@ -42,7 +43,7 @@ use std::{
     str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
 };
 
@@ -69,6 +70,11 @@ pub struct DZClient {
     rpc_ws_url: String,
     payer: Option<Keypair>,
     pub(crate) program_id: Pubkey,
+    /// Memoizes the payer's Permission PDA lookup so authorized transactions
+    /// resolve it at most once per client (the payer is fixed for the client's
+    /// lifetime). `None` = not yet resolved; `Some(None)` = resolved, no
+    /// on-chain Permission account; `Some(Some(meta))` = resolved and present.
+    permission_account_cache: Mutex<Option<Option<AccountMeta>>>,
 }
 
 impl DZClient {
@@ -109,6 +115,7 @@ impl DZClient {
             rpc_ws_url,
             payer,
             program_id,
+            permission_account_cache: Mutex::new(None),
         })
     }
 
@@ -150,6 +157,7 @@ impl DZClient {
             rpc_ws_url,
             payer,
             program_id: ctx.serviceability_program_id,
+            permission_account_cache: Mutex::new(None),
         })
     }
 
@@ -184,36 +192,81 @@ impl DZClient {
             .with_max_delay(Duration::from_secs(5))
     }
 
+    /// Assemble the full instruction list for a serviceability transaction.
+    ///
+    /// Every transaction is prefixed with the protocol-max compute-unit and
+    /// heap-frame requests (serviceability runs on a dedicated private cluster
+    /// where this is always required — see the module-level constants). The main
+    /// instruction's trailing accounts are always `[payer, system]`, optionally
+    /// followed by the payer's Permission PDA. The Permission account MUST stay
+    /// last because `authorize()` reads it as the final account after the
+    /// expected ones have been consumed.
+    fn assemble_instructions(
+        program_id: &Pubkey,
+        payer: &Pubkey,
+        instruction: &DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+        permission: Option<AccountMeta>,
+    ) -> Vec<Instruction> {
+        let data = instruction.pack();
+
+        let mut trailing = vec![
+            AccountMeta::new(*payer, true),
+            AccountMeta::new(program::id(), false),
+        ];
+        if let Some(permission) = permission {
+            trailing.push(permission);
+        }
+
+        vec![
+            ComputeBudgetInstruction::set_compute_unit_limit(MAX_COMPUTE_UNIT_LIMIT),
+            ComputeBudgetInstruction::request_heap_frame(MAX_HEAP_FRAME_BYTES),
+            Instruction::new_with_bytes(*program_id, &data, [accounts, trailing].concat()),
+        ]
+    }
+
+    /// Resolve the payer's Permission PDA as a read-only [`AccountMeta`], or
+    /// `None` when no Permission account exists on-chain. The lookup is retried
+    /// on transient RPC errors and memoized for the client's lifetime.
+    fn resolve_permission_account(&self, payer: &Pubkey) -> Option<AccountMeta> {
+        let mut cache = self.permission_account_cache.lock().unwrap();
+        if let Some(cached) = cache.as_ref() {
+            return cached.clone();
+        }
+        let (permission_pda, _) = get_permission_pda(&self.program_id, payer);
+        let exists = (|| self.client.get_account(&permission_pda))
+            .retry(Self::rpc_retry_builder())
+            .when(Self::is_retryable_rpc_error)
+            .call()
+            .is_ok();
+        let meta = exists.then(|| AccountMeta::new_readonly(permission_pda, false));
+        *cache = Some(meta.clone());
+        meta
+    }
+
     fn execute_transaction_inner(
         &self,
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
         quiet: bool,
+        with_permission: bool,
     ) -> eyre::Result<Signature> {
         let payer = self
             .payer
             .as_ref()
             .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
-        let data = instruction.pack();
 
-        let main_ix = Instruction::new_with_bytes(
-            self.program_id,
-            &data,
-            [
-                accounts,
-                vec![
-                    AccountMeta::new(payer.pubkey(), true),
-                    AccountMeta::new(program::id(), false),
-                ],
-            ]
-            .concat(),
+        let permission = with_permission
+            .then(|| self.resolve_permission_account(&payer.pubkey()))
+            .flatten();
+
+        let instructions = Self::assemble_instructions(
+            &self.program_id,
+            &payer.pubkey(),
+            &instruction,
+            accounts,
+            permission,
         );
-
-        let instructions: Vec<Instruction> = vec![
-            ComputeBudgetInstruction::set_compute_unit_limit(MAX_COMPUTE_UNIT_LIMIT),
-            ComputeBudgetInstruction::request_heap_frame(MAX_HEAP_FRAME_BYTES),
-            main_ix,
-        ];
 
         let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
 
@@ -237,7 +290,7 @@ impl DZClient {
             ) {
             Ok(sig) => Ok(sig),
             Err(client_err) => {
-                let tx_err = match &client_err.kind {
+                let tx_err = match client_err.kind.as_ref() {
                     ClientErrorKind::TransactionError(e) => Some(e.clone()),
                     ClientErrorKind::RpcError(
                         solana_rpc_client_api::request::RpcError::RpcResponseError {
@@ -247,7 +300,7 @@ impl DZClient {
                                 ),
                             ..
                         },
-                    ) => res.err.clone(),
+                    ) => res.err.clone().map(Into::into),
                     _ => None,
                 };
 
@@ -313,7 +366,7 @@ impl DZClient {
     /// Returns false for permanent errors like AccountNotFound or RPC response errors.
     fn is_retryable_rpc_error(err: &ClientError) -> bool {
         matches!(
-            err.kind,
+            err.kind.as_ref(),
             ClientErrorKind::Io(_) | ClientErrorKind::Reqwest(_) | ClientErrorKind::Middleware(_)
         )
     }
@@ -572,7 +625,7 @@ impl DoubleZeroClient for DZClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature> {
-        self.execute_transaction_inner(instruction, accounts, false)
+        self.execute_transaction_inner(instruction, accounts, false, false)
     }
 
     fn execute_transaction_quiet(
@@ -580,7 +633,23 @@ impl DoubleZeroClient for DZClient {
         instruction: DoubleZeroInstruction,
         accounts: Vec<AccountMeta>,
     ) -> eyre::Result<Signature> {
-        self.execute_transaction_inner(instruction, accounts, true)
+        self.execute_transaction_inner(instruction, accounts, true, false)
+    }
+
+    fn execute_authorized_transaction(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+    ) -> eyre::Result<Signature> {
+        self.execute_transaction_inner(instruction, accounts, false, true)
+    }
+
+    fn execute_authorized_transaction_quiet(
+        &self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+    ) -> eyre::Result<Signature> {
+        self.execute_transaction_inner(instruction, accounts, true, true)
     }
 
     fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>> {
@@ -744,6 +813,98 @@ impl DoubleZeroClient for DZClient {
         }
 
         Ok(transactions)
+    }
+}
+
+#[cfg(test)]
+mod assemble_instructions_tests {
+    use super::*;
+
+    // Compute-budget instruction borsh discriminants.
+    const SET_COMPUTE_UNIT_LIMIT: u8 = 2;
+    const REQUEST_HEAP_FRAME: u8 = 1;
+
+    fn base_accounts() -> Vec<AccountMeta> {
+        vec![
+            AccountMeta::new(Pubkey::new_unique(), false),
+            AccountMeta::new_readonly(Pubkey::new_unique(), false),
+        ]
+    }
+
+    /// C1 regression: every transaction must carry the protocol-max compute and
+    /// heap-frame requests as its first two instructions.
+    #[test]
+    fn prepends_compute_budget_instructions() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+
+        let ixs = DZClient::assemble_instructions(
+            &program_id,
+            &payer,
+            &DoubleZeroInstruction::InitGlobalState(),
+            base_accounts(),
+            None,
+        );
+
+        assert_eq!(ixs.len(), 3);
+        // First two target the compute-budget program (not the serviceability one).
+        assert_eq!(ixs[0].program_id, ixs[1].program_id);
+        assert_ne!(ixs[0].program_id, program_id);
+        assert_eq!(ixs[0].data[0], SET_COMPUTE_UNIT_LIMIT);
+        assert_eq!(ixs[1].data[0], REQUEST_HEAP_FRAME);
+        // Third is the actual serviceability instruction.
+        assert_eq!(ixs[2].program_id, program_id);
+    }
+
+    #[test]
+    fn trailing_accounts_without_permission_are_payer_then_system() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let base = base_accounts();
+
+        let ixs = DZClient::assemble_instructions(
+            &program_id,
+            &payer,
+            &DoubleZeroInstruction::InitGlobalState(),
+            base.clone(),
+            None,
+        );
+
+        let metas = &ixs[2].accounts;
+        assert_eq!(metas.len(), base.len() + 2);
+
+        let payer_meta = &metas[base.len()];
+        assert_eq!(payer_meta.pubkey, payer);
+        assert!(payer_meta.is_signer && payer_meta.is_writable);
+
+        assert_eq!(metas[base.len() + 1].pubkey, program::id());
+    }
+
+    /// H2 regression: when present, the Permission account MUST be the trailing
+    /// account — after payer + system — because `authorize()` reads it last.
+    #[test]
+    fn permission_account_is_appended_after_payer_and_system() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let (permission_pda, _) = get_permission_pda(&program_id, &payer);
+        let base = base_accounts();
+
+        let ixs = DZClient::assemble_instructions(
+            &program_id,
+            &payer,
+            &DoubleZeroInstruction::InitGlobalState(),
+            base.clone(),
+            Some(AccountMeta::new_readonly(permission_pda, false)),
+        );
+
+        let metas = &ixs[2].accounts;
+        assert_eq!(metas.len(), base.len() + 3);
+        assert_eq!(metas[base.len()].pubkey, payer);
+        assert_eq!(metas[base.len() + 1].pubkey, program::id());
+
+        let perm = &metas[base.len() + 2];
+        assert_eq!(perm.pubkey, permission_pda);
+        assert!(!perm.is_signer && !perm.is_writable);
     }
 }
 

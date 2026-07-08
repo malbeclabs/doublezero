@@ -110,7 +110,7 @@ impl DeleteTenantCommand {
         let (vrf_ids_pda, _, _) =
             get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
 
-        client.execute_transaction(
+        client.execute_authorized_transaction(
             DoubleZeroInstruction::DeleteTenant(TenantDeleteArgs {}),
             vec![
                 AccountMeta::new(self.tenant_pubkey, false),
@@ -166,7 +166,7 @@ mod tests {
             .returning(|_| Ok(HashMap::new()));
 
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteTenant(TenantDeleteArgs {})),
                 predicate::eq(vec![
@@ -315,9 +315,9 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
-        // 5. DeleteUserCommand internally: execute_transaction(DeleteUser)
+        // 5. DeleteUserCommand internally: execute_authorized_transaction(DeleteUser)
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
                     dz_prefix_count: 1,
@@ -345,9 +345,9 @@ mod tests {
                 Ok(map)
             });
 
-        // 6. SetAccessPassCommand: execute_transaction(SetAccessPass) to reset tenant
+        // 6. SetAccessPassCommand: execute_authorized_transaction(SetAccessPass) to reset tenant
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
                     accesspass_type: AccessPassType::Prepaid,
@@ -374,7 +374,7 @@ mod tests {
 
         // 8. Final: execute_transaction(DeleteTenant)
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteTenant(TenantDeleteArgs {})),
                 predicate::eq(vec![
@@ -465,9 +465,9 @@ mod tests {
                 Ok(map)
             });
 
-        // 2. SetAccessPassCommand: execute_transaction(SetAccessPass) to reset tenant
+        // 2. SetAccessPassCommand: execute_authorized_transaction(SetAccessPass) to reset tenant
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
                     accesspass_type: AccessPassType::Prepaid,
@@ -485,7 +485,7 @@ mod tests {
 
         // 3. execute_transaction(DeleteTenant)
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteTenant(TenantDeleteArgs {})),
                 predicate::eq(vec![
@@ -528,7 +528,7 @@ mod tests {
 
         // 2. execute_transaction(DeleteTenant) fails because users still connected
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteTenant(TenantDeleteArgs {})),
                 predicate::eq(vec![
@@ -583,7 +583,7 @@ mod tests {
 
         // 3. execute_transaction(DeleteTenant)
         client
-            .expect_execute_transaction()
+            .expect_execute_authorized_transaction()
             .with(
                 predicate::eq(DoubleZeroInstruction::DeleteTenant(TenantDeleteArgs {})),
                 predicate::eq(vec![

@@ -184,6 +184,7 @@ impl ServiceabilityCommand {
                 PermissionCommands::Delete(args) => args.execute(ctx, client, out).await,
                 PermissionCommands::Get(args) => args.execute(ctx, client, out).await,
                 PermissionCommands::List(args) => args.execute(ctx, client, out).await,
+                PermissionCommands::Audit(args) => args.execute(ctx, client, out).await,
             },
             Self::Tenant(cmd) => match cmd.command {
                 TenantCommands::Create(args) => args.execute(ctx, client, out).await,
@@ -391,6 +392,17 @@ mod tests {
             parsed.command,
             ServiceabilityCommand::Resource(ResourceCliCommand {
                 command: ResourceCommands::Verify(_),
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_permission_audit() {
+        let parsed = TestCli::try_parse_from(["test", "permission", "audit"]).unwrap();
+        assert!(matches!(
+            parsed.command,
+            ServiceabilityCommand::Permission(PermissionCliCommand {
+                command: PermissionCommands::Audit(_),
             })
         ));
     }

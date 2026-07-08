@@ -213,7 +213,6 @@ pub trait ServiceController {
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
     async fn v2_status(&self) -> eyre::Result<V2StatusResponse>;
     async fn enable(&self) -> eyre::Result<()>;
-    async fn disable(&self) -> eyre::Result<()>;
     async fn routes(&self) -> eyre::Result<Vec<RouteRecord>>;
 }
 
@@ -357,23 +356,6 @@ impl ServiceController for ServiceControllerImpl {
             .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
         if res.status() != 200 {
             eyre::bail!("Failed to enable reconciler: {}", res.status());
-        }
-        Ok(())
-    }
-
-    async fn disable(&self) -> eyre::Result<()> {
-        let client: Client<UnixConnector, Full<Bytes>> =
-            Client::builder(TokioExecutor::new()).build(UnixConnector);
-        let req = Request::builder()
-            .method(Method::POST)
-            .uri(Uri::new(&self.socket_path, "/disable"))
-            .body(Full::from(Bytes::new()))?;
-        let res = client
-            .request(req)
-            .await
-            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
-        if res.status() != 200 {
-            eyre::bail!("Failed to disable reconciler: {}", res.status());
         }
         Ok(())
     }

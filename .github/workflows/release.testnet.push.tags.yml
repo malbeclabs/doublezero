@@ -11,6 +11,11 @@ on:
         description: 'The component to tag'
         required: true
         type: string
+      skip_existing:
+        description: 'Succeed without re-tagging if the tag already exists (for orchestrator re-runs)'
+        required: false
+        type: boolean
+        default: false
     secrets:
       DOUBLEZERO_PAT:
         description: 'PAT to push tags to the repository'
@@ -43,7 +48,15 @@ jobs:
           fi
           echo "Version format is valid."
 
-          if git rev-parse -q --verify "refs/tags/$TAG_NAME"; then
+          if EXISTING=$(git rev-parse -q --verify "refs/tags/$TAG_NAME^{commit}"); then
+            if [ "${{ inputs.skip_existing }}" = "true" ]; then
+              HEAD_SHA=$(git rev-parse HEAD)
+              echo "Tag '$TAG_NAME' already exists at $EXISTING; skipping (skip_existing=true)."
+              if [ "$EXISTING" != "$HEAD_SHA" ]; then
+                echo "::warning::existing tag '$TAG_NAME' points at $EXISTING, but this run would have tagged $HEAD_SHA"
+              fi
+              exit 0
+            fi
             echo "Error: Tag '$TAG_NAME' already exists in the repository."
             exit 1
           fi

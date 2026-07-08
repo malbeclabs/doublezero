@@ -43,7 +43,7 @@ jobs:
       matrix: ${{ steps.shard.outputs.matrix }}
     steps:
       # Version-bump PRs (only version lines change in Cargo.toml/Cargo.lock)
-      # and markdown-only PRs (docs, RFCs) get no signal from e2e. When
+      # and docs-only PRs (markdown plus rfcs images) get no signal from e2e. When
       # skipping, report the required shard checks as successful on the PR
       # head, because the gated matrix job never creates its check runs and
       # branch protection would otherwise block the merge. Keep in sync with
@@ -72,11 +72,16 @@ jobs:
                 .filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l))
                 .every((l) => /^[+-]version = "/.test(l));
               const isMd = (name) => typeof name === 'string' && name.endsWith('.md');
-              // Markdown is inert for e2e; a rename/copy must come from
-              // markdown too, since a rename also deletes the source path.
+              // Images under rfcs/ are figures for markdown RFCs; inert for e2e.
+              const isRfcImage = (name) => typeof name === 'string' &&
+                name.startsWith('rfcs/') && /\.(png|jpe?g|gif|svg|webp)$/i.test(name);
+              const isInert = (name) => isMd(name) || isRfcImage(name);
+              // Markdown and rfcs images are inert for e2e; a rename/copy must
+              // come from an inert path too, since a rename also deletes the
+              // source path.
               const fileOk = (f) => {
-                if (isMd(f.filename)) {
-                  return (f.status !== 'renamed' && f.status !== 'copied') || isMd(f.previous_filename);
+                if (isInert(f.filename)) {
+                  return (f.status !== 'renamed' && f.status !== 'copied') || isInert(f.previous_filename);
                 }
                 return (f.filename === 'Cargo.toml' || f.filename === 'Cargo.lock') &&
                   f.status === 'modified' &&
@@ -104,7 +109,7 @@ jobs:
                   details_url: runUrl,
                   output: {
                     title: 'Skipped: docs/version-bump-only PR',
-                    summary: 'Only markdown files and version lines in Cargo.toml/Cargo.lock changed, so shreds e2e was skipped.',
+                    summary: 'Only markdown files, rfcs images, and version lines in Cargo.toml/Cargo.lock changed, so shreds e2e was skipped.',
                   },
                 });
               }

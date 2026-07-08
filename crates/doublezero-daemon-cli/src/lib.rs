@@ -6,6 +6,7 @@
 pub mod cli;
 pub mod client;
 pub mod disable;
+pub mod disconnect;
 pub mod enable;
 pub mod helpers;
 pub mod ledger;

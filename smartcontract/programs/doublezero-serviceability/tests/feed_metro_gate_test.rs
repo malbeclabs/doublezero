@@ -4,7 +4,7 @@
 //! - wrong-metro device rejected (MetroMismatch)
 //! - right-metro joins the metro's group set
 //! - multi-feed seat (matching feed admits)
-//! - no-metro feed reachable from anywhere
+//! - group not in the feed's set rejected (GroupNotInFeed)
 
 use doublezero_serviceability::{
     entrypoint::process_instruction,

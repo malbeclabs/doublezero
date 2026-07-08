@@ -346,13 +346,13 @@ impl AccessPass {
     }
 
     /// Tick the matching feed seat's `current_users` against its `max_users`. Returns
-    /// `FeedNotOnAccessPass` if the pass carries no seat for `feed_key`, or
-    /// `AccessPassMaxMulticastUsersExceeded` if the feed cap is full.
+    /// `FeedNotOnAccessPass` if the pass carries no seat for `feed_key`, or `FeedSeatFull` if the
+    /// feed cap is full.
     pub fn try_add_feed_user(&mut self, feed_key: &Pubkey) -> Result<(), DoubleZeroError> {
         match self.feed_seat_mut(feed_key) {
             Some(seat) => {
                 if seat.current_users >= seat.max_users {
-                    return Err(DoubleZeroError::AccessPassMaxMulticastUsersExceeded);
+                    return Err(DoubleZeroError::FeedSeatFull);
                 }
                 seat.current_users += 1;
                 Ok(())
@@ -590,7 +590,7 @@ mod tests {
         assert_eq!(ap.feed_seats()[0].current_users, 2);
         assert_eq!(
             ap.try_add_feed_user(&feed_a).unwrap_err(),
-            DoubleZeroError::AccessPassMaxMulticastUsersExceeded
+            DoubleZeroError::FeedSeatFull
         );
 
         // feed_b is independent.

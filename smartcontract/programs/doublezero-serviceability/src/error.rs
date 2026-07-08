@@ -194,6 +194,8 @@ pub enum DoubleZeroError {
     FeedNotOnAccessPass, // variant 93
     #[error("Target multicast group is not joinable via the feed for this exchange")]
     GroupNotInFeed, // variant 94
+    #[error("Feed seat is full (per-feed concurrent-user cap reached)")]
+    FeedSeatFull, // variant 95
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -294,6 +296,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::FeedAccountRequired => ProgramError::Custom(92),
             DoubleZeroError::FeedNotOnAccessPass => ProgramError::Custom(93),
             DoubleZeroError::GroupNotInFeed => ProgramError::Custom(94),
+            DoubleZeroError::FeedSeatFull => ProgramError::Custom(95),
         }
     }
 }
@@ -395,6 +398,7 @@ impl From<u32> for DoubleZeroError {
             92 => DoubleZeroError::FeedAccountRequired,
             93 => DoubleZeroError::FeedNotOnAccessPass,
             94 => DoubleZeroError::GroupNotInFeed,
+            95 => DoubleZeroError::FeedSeatFull,
             _ => DoubleZeroError::Custom(e),
         }
     }

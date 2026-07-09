@@ -108,10 +108,10 @@ mod tests {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
 
-        // Fixed full-length pubkeys: `Pubkey::new_unique()` can render to fewer than 43 base58
-        // chars, which `parse_pubkey` rejects and would wrongly route down the code path.
         let exchange_pk = Pubkey::from_str_const("GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah");
-        let group_pk = Pubkey::from_str_const("DDddB7bhR9azxLAUEH7ZVtW168wRdreiDKhi4McDfKZt");
+        // A pubkey with a leading zero byte renders to fewer than 43 base58 chars; it must still
+        // pass through as a pubkey rather than fall into the code-lookup path.
+        let group_pk = Pubkey::from_str_const("1119DWteoLSdjvrT6g6L8C2PfDD2faiTQUpsjY2RiF");
         let feed_pk = Pubkey::new_unique();
         let signature = Signature::new_unique();
 

@@ -72,8 +72,11 @@ pub fn resolve_exchange_pk<C: CliCommand>(
 ///
 /// Unlike [`resolve_exchange_pk`], a pubkey input is used as-is with no onchain
 /// lookup or validation; only a code queries the backend for the account.
+/// Classification uses a full base58 decode rather than [`parse_pubkey`]'s
+/// 43-44 char window so pubkeys with leading zero bytes (shorter encodings)
+/// still pass through.
 pub fn resolve_exchange_arg<C: CliCommand>(client: &C, input: &str) -> eyre::Result<Pubkey> {
-    match parse_pubkey(input) {
+    match Pubkey::from_str(input).ok() {
         Some(pk) => Ok(pk),
         None => client
             .get_exchange(GetExchangeCommand {
@@ -87,9 +90,11 @@ pub fn resolve_exchange_arg<C: CliCommand>(client: &C, input: &str) -> eyre::Res
 /// Resolve a multicast group argument that is either a base58 pubkey or a group code.
 ///
 /// A pubkey input is used as-is with no onchain lookup or validation; only a
-/// code queries the backend for the account.
+/// code queries the backend for the account. Classification uses a full base58
+/// decode rather than [`parse_pubkey`]'s 43-44 char window so pubkeys with
+/// leading zero bytes (shorter encodings) still pass through.
 pub fn resolve_multicastgroup_arg<C: CliCommand>(client: &C, input: &str) -> eyre::Result<Pubkey> {
-    match parse_pubkey(input) {
+    match Pubkey::from_str(input).ok() {
         Some(pk) => Ok(pk),
         None => client
             .get_multicastgroup(GetMulticastGroupCommand {

@@ -788,6 +788,92 @@ async fn test_subscribe_user_admin_permission_rejected() {
     }
 }
 
+/// An ACCESS_PASS_ADMIN Permission holder who is neither the access-pass owner nor a foundation
+/// member CAN add roles (subscribe) on behalf of another owner. Granting roles manages the pass's
+/// entitlements, so it is gated on ACCESS_PASS_ADMIN — distinct from the USER_ADMIN removal-only
+/// cleanup path above. This is the path the oracle uses to subscribe validator-owned users
+/// (accesspass.user_payer = validator) once it operates on its Permission account rather than
+/// foundation membership. The Permission path has no owns-it restriction, so the cross-owner
+/// subscribe succeeds.
+#[tokio::test]
+async fn test_subscribe_access_pass_admin_permission_allowed() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer, // foundation + user.owner (alice)
+        program_id,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        globalstate_pubkey,
+        ..
+    } = f;
+
+    // access_pass_admin: not the owner, not in the foundation allowlist, granted ACCESS_PASS_ADMIN.
+    let access_pass_admin = solana_sdk::signature::Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &access_pass_admin.pubkey(),
+        10_000_000,
+    )
+    .await;
+
+    let (permission_pda, _) = get_permission_pda(&program_id, &access_pass_admin.pubkey());
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: access_pass_admin.pubkey(),
+            permissions: permission_flags::ACCESS_PASS_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer, // foundation creates the permission
+    )
+    .await;
+
+    // access_pass_admin subscribes the user, appending their Permission PDA as the trailing account.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+        ],
+        &access_pass_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    )
+    .await
+    .expect("ACCESS_PASS_ADMIN holder should be able to add a subscriber role cross-owner");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert!(user.subscribers.contains(&mgroup1_pubkey));
+    assert_eq!(user.status, UserStatus::Activated);
+}
+
 // --- Onchain allocation tests ---
 
 /// First publisher subscribe with onchain allocation allocates dz_ip directly,

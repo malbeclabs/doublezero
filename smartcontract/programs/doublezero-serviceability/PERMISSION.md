@@ -57,8 +57,8 @@ sufficient.
 |---------------------|---------|------------------------------------------------------|
 | `ACTIVATOR`         | `1<<7`  | Activate/reject network entities                     |
 | `SENTINEL`          | `1<<8`  | Suspend network entities                             |
-| `USER_ADMIN`        | `1<<9`  | Administer users (ban, delete, close account)        |
-| `ACCESS_PASS_ADMIN` | `1<<10` | Create and modify access passes                      |
+| `USER_ADMIN`        | `1<<9`  | Administer users (ban, delete, close account); create users with a custom owner; strip a user's multicast roles as delete/ban cleanup |
+| `ACCESS_PASS_ADMIN` | `1<<10` | Create and modify access passes; manage their multicast subscriber allowlists; grant multicast roles |
 
 ### Tier 4 — Technical/automated roles
 
@@ -112,6 +112,28 @@ Falls back to `GlobalState` fields:
 Even when `RequirePermissionAccounts` is set (legacy mode disabled), `foundation_allowlist` members
 can still call Permission instructions without a Permission account. This prevents the foundation
 from being locked out of the permission system when migrating to strict mode.
+
+### Domain instruction enforcement (access pass / multicast / user)
+
+These instructions call `authorize()` and therefore honor a Permission account bearing the listed
+flag, in addition to their legacy authorities (and, where noted, an OR'd resource-owner branch).
+The Permission path has **no owns-it restriction**, so a flag holder may act across owners — this
+is what lets the feed oracle operate on validator-owned passes and users while holding only
+`ACCESS_PASS_ADMIN | USER_ADMIN`, rather than sitting in `foundation_allowlist`.
+
+| Instruction                        | Flag                | Also authorized by (besides the flag's legacy authorities) |
+|------------------------------------|---------------------|-------------------------------------------------------------|
+| `SetAccessPass`                    | `ACCESS_PASS_ADMIN` | a `tenant_add` administrator (feed authority owns-it gated) |
+| `CloseAccessPass`                  | `ACCESS_PASS_ADMIN` | (feed authority owns-it gated)                              |
+| `AddMulticastGroupSubAllowlist`    | `ACCESS_PASS_ADMIN` | the multicast group owner (feed authority owns-it gated)    |
+| `RemoveMulticastGroupSubAllowlist` | `ACCESS_PASS_ADMIN` | the multicast group owner                                   |
+| `UpdateMulticastGroupRoles` (grant roles)   | `ACCESS_PASS_ADMIN` | the access pass `user_payer`                       |
+| `UpdateMulticastGroupRoles` (remove roles)  | `USER_ADMIN`        | the access pass `user_payer` (removal-only cleanup) |
+| `CreateSubscribeUser` (custom owner)        | `USER_ADMIN`        | the sentinel authority                             |
+| `DeleteUser`                       | `USER_ADMIN`        | the user's `owner`                                          |
+
+This table covers the access-pass, multicast, and user surface. Other domains (topology, resource,
+index, permission) also enforce their own flags — see the individual processors.
 
 ---
 

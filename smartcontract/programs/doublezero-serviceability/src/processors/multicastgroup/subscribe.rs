@@ -1,5 +1,5 @@
 use crate::{
-    authorize::authorize,
+    authorize::{authorize, split_trailing_permission},
     error::DoubleZeroError,
     pda::{get_accesspass_pda, get_globalstate_pda, get_resource_extension_pda},
     processors::{
@@ -162,8 +162,18 @@ pub fn process_update_multicastgroup_roles(
     let globalstate = GlobalState::try_from(gs_account)?;
     let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
 
-    let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
+    // Trailing layout: [device?, feed?, payer, system, permission?]. The SDK appends the payer's
+    // Permission PDA last (via execute_authorized_transaction); the optional EdgeSeat device/feed
+    // accounts for post-activation metro re-gating precede payer/system, because the client pushes
+    // them into the instruction's account list ahead of the [payer, system, permission] trailer
+    // that assemble_instructions always appends. split_trailing_permission identifies the
+    // Permission by PDA match rather than by position, so it never mistakes device/feed for the
+    // Permission account regardless of which optional accounts are present.
+    let remaining: Vec<&AccountInfo> = accounts_iter.collect();
+    let (payer_account, system_program, leading, permission_account) =
+        split_trailing_permission(program_id, &remaining)?;
+    let device_account = leading.first().copied();
+    let feed_account = leading.get(1).copied();
 
     #[cfg(test)]
     msg!("process_update_multicastgroup_roles({:?})", value);
@@ -224,31 +234,50 @@ pub fn process_update_multicastgroup_roles(
     if accesspass.user_payer != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
+        // A caller who is neither the pass's user_payer nor a foundation member may still act on
+        // another owner's pass with the right permission, and the two operations require different
+        // grants:
+        //   - Removal-only cleanup (stripping roles as a prerequisite to delete/request-ban) is a
+        //     USER_ADMIN operation, as DeleteUserCommand / RequestBanUserCommand authorize the
+        //     final instruction with the same flag.
+        //   - Granting roles (subscribe/publish) on behalf of another owner manages the pass's
+        //     entitlements, so it is an ACCESS_PASS_ADMIN operation. This is the path the oracle
+        //     uses to subscribe validator-owned users (accesspass.user_payer = validator) once it
+        //     drops out of foundation and operates on its Permission account.
+        // The oracle holds both flags. authorize() reads the optional trailing Permission account
+        // the SDK appends and also honors the corresponding legacy authorities.
         let removal_only = !value.publisher && !value.subscriber;
-        if removal_only {
-            // Consumes the trailing Permission account if the SDK appended one.
-            authorize(
-                program_id,
-                accounts_iter,
-                payer_account.key,
-                &globalstate,
-                permission_flags::USER_ADMIN,
-            )?;
+        let required_flag = if removal_only {
+            permission_flags::USER_ADMIN
         } else {
-            msg!(
-                "AccessPass user_payer {:?} does not match payer {:?}",
-                accesspass.user_payer,
-                payer_account.key
-            );
-            return Err(DoubleZeroError::Unauthorized.into());
+            permission_flags::ACCESS_PASS_ADMIN
+        };
+        let authorized = authorize(
+            program_id,
+            &mut permission_account.into_iter(),
+            payer_account.key,
+            &globalstate,
+            required_flag,
+        )
+        .is_ok();
+        if !authorized {
+            if !removal_only {
+                msg!(
+                    "AccessPass user_payer {:?} does not match payer {:?}",
+                    accesspass.user_payer,
+                    payer_account.key
+                );
+            }
+            // Preserve the historical error variants: a removal-only cleanup that fails
+            // authorization returns NotAllowed (as the prior `authorize()?` did), while an
+            // attempt to add roles without authority returns Unauthorized.
+            return Err(if removal_only {
+                DoubleZeroError::NotAllowed.into()
+            } else {
+                DoubleZeroError::Unauthorized.into()
+            });
         }
     }
-
-    // Optional trailing accounts for the EdgeSeat feed metro gate: the user's device (for its
-    // exchange) and the Feed covering it. Read AFTER the authorize() above so they do not consume
-    // the optional trailing Permission account.
-    let device_account = accounts_iter.next();
-    let feed_account = accounts_iter.next();
 
     // EdgeSeat passes derive joinable groups from their feeds' metro→group map. The seat was
     // ticked at connect (CreateSubscribeUser), so post-activation role adds only re-validate

@@ -1,6 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
-    helpers::{resolve_exchange_arg, resolve_multicastgroup_arg},
+    helpers::{parse_or_resolve_exchange, parse_or_resolve_multicastgroup},
     validators::{validate_code, validate_pubkey_or_code},
 };
 use clap::Args;
@@ -36,11 +36,11 @@ impl CreateFeedCliCommand {
             RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
         );
 
-        let exchange = resolve_exchange_arg(client, &self.exchange)?;
+        let exchange = parse_or_resolve_exchange(client, &self.exchange)?;
         let groups = self
             .groups
             .iter()
-            .map(|g| resolve_multicastgroup_arg(client, g))
+            .map(|g| parse_or_resolve_multicastgroup(client, g))
             .collect::<eyre::Result<Vec<_>>>()?;
 
         let (signature, _pubkey) = client.create_feed(CreateFeedCommand {
@@ -196,6 +196,39 @@ mod tests {
             .execute(&ctx, &client, &mut output),
         );
         assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            format!("Signature: {signature}\n")
+        );
+    }
+
+    #[test]
+    fn test_cli_feed_create_unknown_group_code() {
+        let mut client = create_test_client();
+        client.expect_check_requirements().returning(|_| Ok(()));
+
+        // The exchange is a pubkey, so only the group code triggers a lookup.
+        let exchange_pk = Pubkey::from_str_const("GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah");
+        client
+            .expect_get_multicastgroup()
+            .returning(|_| Err(eyre::eyre!("MulticastGroup with code nope not found")));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            CreateFeedCliCommand {
+                code: "feed01".to_string(),
+                name: "Feed".to_string(),
+                exchange: exchange_pk.to_string(),
+                groups: vec!["nope".to_string()],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        let err = res.unwrap_err();
+        assert!(
+            err.to_string().contains("Multicast group not found: nope"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

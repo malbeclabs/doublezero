@@ -58,6 +58,9 @@ pub fn resolve_location_pk<C: CliCommand>(
 }
 
 /// Resolve a `--pubkey`/`--code` argument to the exchange's on-chain pubkey.
+///
+/// Always queries the ledger, so a pubkey input is validated to exist. Use
+/// [`parse_or_resolve_exchange`] when pubkey inputs must pass through untouched.
 pub fn resolve_exchange_pk<C: CliCommand>(
     client: &C,
     pubkey_or_code: &str,
@@ -75,7 +78,7 @@ pub fn resolve_exchange_pk<C: CliCommand>(
 /// Classification uses a full base58 decode rather than [`parse_pubkey`]'s
 /// 43-44 char window so pubkeys with leading zero bytes (shorter encodings)
 /// still pass through.
-pub fn resolve_exchange_arg<C: CliCommand>(client: &C, input: &str) -> eyre::Result<Pubkey> {
+pub fn parse_or_resolve_exchange<C: CliCommand>(client: &C, input: &str) -> eyre::Result<Pubkey> {
     match Pubkey::from_str(input).ok() {
         Some(pk) => Ok(pk),
         None => client
@@ -93,7 +96,10 @@ pub fn resolve_exchange_arg<C: CliCommand>(client: &C, input: &str) -> eyre::Res
 /// code queries the backend for the account. Classification uses a full base58
 /// decode rather than [`parse_pubkey`]'s 43-44 char window so pubkeys with
 /// leading zero bytes (shorter encodings) still pass through.
-pub fn resolve_multicastgroup_arg<C: CliCommand>(client: &C, input: &str) -> eyre::Result<Pubkey> {
+pub fn parse_or_resolve_multicastgroup<C: CliCommand>(
+    client: &C,
+    input: &str,
+) -> eyre::Result<Pubkey> {
     match Pubkey::from_str(input).ok() {
         Some(pk) => Ok(pk),
         None => client

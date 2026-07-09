@@ -1,6 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
-    helpers::{resolve_exchange_arg, resolve_multicastgroup_arg},
+    helpers::{parse_or_resolve_exchange, parse_or_resolve_multicastgroup},
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
@@ -40,7 +40,7 @@ impl UpdateFeedCliCommand {
         let exchange = self
             .exchange
             .as_deref()
-            .map(|e| resolve_exchange_arg(client, e))
+            .map(|e| parse_or_resolve_exchange(client, e))
             .transpose()?;
         let (pubkey, _feed) = client.get_feed(GetFeedCommand {
             pubkey_or_code: self.pubkey,
@@ -54,7 +54,7 @@ impl UpdateFeedCliCommand {
             Some(
                 self.groups
                     .iter()
-                    .map(|g| resolve_multicastgroup_arg(client, g))
+                    .map(|g| parse_or_resolve_multicastgroup(client, g))
                     .collect::<eyre::Result<Vec<_>>>()?,
             )
         };

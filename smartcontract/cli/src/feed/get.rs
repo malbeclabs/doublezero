@@ -1,5 +1,5 @@
 use crate::{
-    doublezerocommand::CliCommand, helpers::resolve_exchange_arg,
+    doublezerocommand::CliCommand, helpers::parse_or_resolve_exchange,
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
@@ -44,7 +44,7 @@ impl GetFeedCliCommand {
         let exchange = self
             .exchange
             .as_deref()
-            .map(|e| resolve_exchange_arg(client, e))
+            .map(|e| parse_or_resolve_exchange(client, e))
             .transpose()?;
         let (pubkey, feed) = client.get_feed(GetFeedCommand {
             pubkey_or_code: self.pubkey,
@@ -106,9 +106,10 @@ mod tests {
             .times(1)
             .returning(move |_| Ok((exchange_pk, exchange.clone())));
 
+        let owner_pk = Pubkey::new_unique();
         let feed = Feed {
             account_type: AccountType::Feed,
-            owner: Pubkey::new_unique(),
+            owner: owner_pk,
             bump_seed: 255,
             code: "feed01".to_string(),
             name: "Feed".to_string(),
@@ -136,6 +137,11 @@ mod tests {
         );
         assert!(res.is_ok(), "{res:?}");
         let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains("feed01"), "{output_str}");
+        assert_eq!(
+            output_str,
+            format!(
+                " account  | {feed_pk}\n code     | feed01\n name     | Feed\n exchange | {exchange_pk}\n groups   | 0\n owner    | {owner_pk}\n"
+            )
+        );
     }
 }

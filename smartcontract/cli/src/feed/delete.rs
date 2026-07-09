@@ -1,5 +1,5 @@
 use crate::{
-    doublezerocommand::CliCommand, helpers::resolve_exchange_arg,
+    doublezerocommand::CliCommand, helpers::parse_or_resolve_exchange,
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
@@ -32,7 +32,7 @@ impl DeleteFeedCliCommand {
         let exchange = self
             .exchange
             .as_deref()
-            .map(|e| resolve_exchange_arg(client, e))
+            .map(|e| parse_or_resolve_exchange(client, e))
             .transpose()?;
         let (pubkey, _feed) = client.get_feed(GetFeedCommand {
             pubkey_or_code: self.pubkey,

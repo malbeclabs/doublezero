@@ -231,8 +231,20 @@ async fn test_set_access_pass_feeds() {
             client_ip,
             user_payer,
             feeds: vec![
-                FeedSeatConfig { max_users: 5 },
-                FeedSeatConfig { max_users: 3 },
+                FeedSeatConfig {
+                    max_users: 5,
+                    max_future_users: 5,
+                    anniversary_day: 15,
+                    window_end: 1_800_000_000,
+                    terminates_at: 1_900_000_000,
+                },
+                FeedSeatConfig {
+                    max_users: 3,
+                    max_future_users: 3,
+                    anniversary_day: 15,
+                    window_end: 1_800_000_000,
+                    terminates_at: 1_900_000_000,
+                },
             ],
         }),
         vec![
@@ -252,12 +264,20 @@ async fn test_set_access_pass_feeds() {
             FeedSeat {
                 feed_key: feed_a,
                 max_users: 5,
+                max_future_users: 5,
                 current_users: 0,
+                anniversary_day: 15,
+                window_end: 1_800_000_000,
+                terminates_at: 1_900_000_000,
             },
             FeedSeat {
                 feed_key: feed_b,
                 max_users: 3,
+                max_future_users: 3,
                 current_users: 0,
+                anniversary_day: 15,
+                window_end: 1_800_000_000,
+                terminates_at: 1_900_000_000,
             },
         ])
     );
@@ -271,7 +291,13 @@ async fn test_set_access_pass_feeds() {
         DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
             client_ip,
             user_payer,
-            feeds: vec![FeedSeatConfig { max_users: 7 }],
+            feeds: vec![FeedSeatConfig {
+                max_users: 7,
+                max_future_users: 7,
+                anniversary_day: 15,
+                window_end: 1_800_000_000,
+                terminates_at: 1_900_000_000,
+            }],
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -288,7 +314,11 @@ async fn test_set_access_pass_feeds() {
         AccessPassType::EdgeSeat(vec![FeedSeat {
             feed_key: feed_a,
             max_users: 7,
+            max_future_users: 7,
             current_users: 0,
+            anniversary_day: 15,
+            window_end: 1_800_000_000,
+            terminates_at: 1_900_000_000,
         }])
     );
 }
@@ -329,7 +359,13 @@ async fn test_cannot_set_feeds_on_non_edge_seat() {
         DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
             client_ip,
             user_payer,
-            feeds: vec![FeedSeatConfig { max_users: 5 }],
+            feeds: vec![FeedSeatConfig {
+                max_users: 5,
+                max_future_users: 5,
+                anniversary_day: 15,
+                window_end: 1_800_000_000,
+                terminates_at: 1_900_000_000,
+            }],
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -382,7 +418,13 @@ async fn test_cannot_set_feeds_unauthorized_caller() {
         DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
             client_ip,
             user_payer,
-            feeds: vec![FeedSeatConfig { max_users: 5 }],
+            feeds: vec![FeedSeatConfig {
+                max_users: 5,
+                max_future_users: 5,
+                anniversary_day: 15,
+                window_end: 1_800_000_000,
+                terminates_at: 1_900_000_000,
+            }],
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -418,7 +460,16 @@ async fn test_cannot_set_feeds_exceeds_max() {
 
     // MAX_ACCESS_PASS_FEEDS + 1 configs is rejected by the cap check before any Feed account is
     // read, so no Feed accounts are passed.
-    let too_many = vec![FeedSeatConfig { max_users: 1 }; MAX_ACCESS_PASS_FEEDS + 1];
+    let too_many = vec![
+        FeedSeatConfig {
+            max_users: 1,
+            max_future_users: 1,
+            anniversary_day: 15,
+            window_end: 1_800_000_000,
+            terminates_at: 1_900_000_000,
+        };
+        MAX_ACCESS_PASS_FEEDS + 1
+    ];
     let result = try_execute_and_get_error(
         &mut banks_client,
         program_id,
@@ -476,8 +527,20 @@ async fn test_cannot_set_duplicate_feed_key() {
             client_ip,
             user_payer,
             feeds: vec![
-                FeedSeatConfig { max_users: 5 },
-                FeedSeatConfig { max_users: 2 },
+                FeedSeatConfig {
+                    max_users: 5,
+                    max_future_users: 5,
+                    anniversary_day: 15,
+                    window_end: 1_800_000_000,
+                    terminates_at: 1_900_000_000,
+                },
+                FeedSeatConfig {
+                    max_users: 2,
+                    max_future_users: 2,
+                    anniversary_day: 15,
+                    window_end: 1_800_000_000,
+                    terminates_at: 1_900_000_000,
+                },
             ],
         }),
         vec![
@@ -544,7 +607,11 @@ async fn test_cannot_set_max_users_below_current_users() {
         accesspass_type: AccessPassType::EdgeSeat(vec![FeedSeat {
             feed_key: feed_pubkey,
             max_users: 5,
+            max_future_users: 5,
             current_users: 3,
+            anniversary_day: 15,
+            window_end: 1_800_000_000,
+            terminates_at: 1_900_000_000,
         }]),
         client_ip,
         user_payer,
@@ -585,7 +652,13 @@ async fn test_cannot_set_max_users_below_current_users() {
         DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
             client_ip,
             user_payer,
-            feeds: vec![FeedSeatConfig { max_users: 2 }],
+            feeds: vec![FeedSeatConfig {
+                max_users: 2,
+                max_future_users: 2,
+                anniversary_day: 15,
+                window_end: 1_800_000_000,
+                terminates_at: 1_900_000_000,
+            }],
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -596,5 +669,107 @@ async fn test_cannot_set_max_users_below_current_users() {
     )
     .await;
 
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+}
+
+#[tokio::test]
+async fn test_cannot_set_feeds_with_invalid_billing_window() {
+    // anniversary_day must be a calendar day (1..=31) and window_end must not extend past
+    // terminates_at. Each is validated per-feed inside the provisioning loop.
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let feed_a = create_feed(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        "feda",
+    )
+    .await;
+
+    let client_ip = Ipv4Addr::new(100, 0, 0, 7);
+    let user_payer = Pubkey::new_unique();
+    let accesspass_pubkey = create_edge_seat_pass(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        client_ip,
+        user_payer,
+        AccessPassType::EdgeSeat(vec![]),
+    )
+    .await;
+
+    let accounts = vec![
+        AccountMeta::new(accesspass_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+        AccountMeta::new(feed_a, false),
+    ];
+
+    // anniversary_day = 0 (below range) rejects.
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip,
+            user_payer,
+            feeds: vec![FeedSeatConfig {
+                max_users: 5,
+                max_future_users: 5,
+                anniversary_day: 0,
+                window_end: 1_800_000_000,
+                terminates_at: 1_900_000_000,
+            }],
+        }),
+        accounts.clone(),
+        &payer,
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+
+    // anniversary_day = 32 (above range) rejects.
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip,
+            user_payer,
+            feeds: vec![FeedSeatConfig {
+                max_users: 5,
+                max_future_users: 5,
+                anniversary_day: 32,
+                window_end: 1_800_000_000,
+                terminates_at: 1_900_000_000,
+            }],
+        }),
+        accounts.clone(),
+        &payer,
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+
+    // window_end after terminates_at rejects.
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip,
+            user_payer,
+            feeds: vec![FeedSeatConfig {
+                max_users: 5,
+                max_future_users: 5,
+                anniversary_day: 15,
+                window_end: 1_900_000_001,
+                terminates_at: 1_900_000_000,
+            }],
+        }),
+        accounts,
+        &payer,
+    )
+    .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
 }

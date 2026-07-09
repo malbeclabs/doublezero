@@ -70,7 +70,7 @@ function assertFields(
     const actual = got[f.name];
     if (f.typ === "u8" || f.typ === "u16" || f.typ === "u32") {
       expect(actual).toBe(Number(f.value));
-    } else if (f.typ === "u64" || f.typ === "u128") {
+    } else if (f.typ === "u64" || f.typ === "u128" || f.typ === "i64") {
       expect(actual).toBe(BigInt(f.value));
     } else if (f.typ === "pubkey") {
       expect((actual as PublicKey).toBase58()).toBe(f.value);
@@ -533,7 +533,11 @@ describe("AccessPassEdgeSeat fixture", () => {
       EdgeSeatFeedSeatsLen: ap.feedSeats.length,
       EdgeSeatFeedSeat0FeedKey: ap.feedSeats[0]?.feedKey,
       EdgeSeatFeedSeat0MaxUsers: ap.feedSeats[0]?.maxUsers,
+      EdgeSeatFeedSeat0MaxFutureUsers: ap.feedSeats[0]?.maxFutureUsers,
       EdgeSeatFeedSeat0CurrentUsers: ap.feedSeats[0]?.currentUsers,
+      EdgeSeatFeedSeat0AnniversaryDay: ap.feedSeats[0]?.anniversaryDay,
+      EdgeSeatFeedSeat0WindowEnd: ap.feedSeats[0]?.windowEnd,
+      EdgeSeatFeedSeat0TerminatesAt: ap.feedSeats[0]?.terminatesAt,
       UserPayer: ap.userPayer,
       ConnectionCount: ap.connectionCount,
       Status: ap.status,
@@ -549,7 +553,11 @@ describe("AccessPassEdgeSeat fixture", () => {
     expect(ap.associatedPubkey).toBeNull();
     expect(ap.feedSeats).toHaveLength(1);
     expect(ap.feedSeats[0].maxUsers).toBe(7);
+    expect(ap.feedSeats[0].maxFutureUsers).toBe(4);
     expect(ap.feedSeats[0].currentUsers).toBe(3);
+    expect(ap.feedSeats[0].anniversaryDay).toBe(15);
+    expect(ap.feedSeats[0].windowEnd).toBe(1800000000n);
+    expect(ap.feedSeats[0].terminatesAt).toBe(1900000000n);
     expect(ap.unicastUserCount).toBe(2);
     expect(ap.maxUnicastUsers).toBe(4);
     expect(ap.multicastUserCount).toBe(1);

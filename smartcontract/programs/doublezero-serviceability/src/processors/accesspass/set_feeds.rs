@@ -26,10 +26,16 @@ pub const MAX_ACCESS_PASS_FEEDS: usize = 64;
 
 /// Per-feed provisioning input paired by position with the passed `Feed` accounts. The `feed_key`
 /// is read from the account (not duplicated here) and `current_users` is maintained server-side,
-/// so the only caller-supplied value is the cap.
+/// so the caller supplies each feed's billing state: the current cap, the future cap, the
+/// anniversary day, and the window/termination boundaries (see [`FeedSeat`]). The granter computes
+/// `window_end` / `terminates_at` with anniversary clamping and passes them.
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone)]
 pub struct FeedSeatConfig {
-    pub max_users: u16,
+    pub max_users: u8,
+    pub max_future_users: u8,
+    pub anniversary_day: u8,
+    pub window_end: i64,
+    pub terminates_at: i64,
 }
 
 /// Provision the feed_keys (SKU seats) onto an EdgeSeat access pass. The provisioning actor is the
@@ -141,8 +147,11 @@ pub fn process_set_access_pass_feeds(
             .map(|s| s.current_users)
             .unwrap_or(0);
 
-        // A re-provision must not set a cap below the live count carried over from the prior seat,
-        // or the seat would start over its cap (enforced once connect-time ticking lands).
+        // A re-provision must not set the current cap below the live count carried over from the
+        // prior seat, or the seat would start over its cap. This check is intentionally NOT applied
+        // to max_future_users: a future cap below the live count is a valid reduction (existing
+        // users are grandfathered until they disconnect; new ones just are not admitted after the
+        // window flips).
         if config.max_users < current_users {
             msg!(
                 "max_users {} below current_users {} for feed {}",
@@ -153,10 +162,36 @@ pub fn process_set_access_pass_feeds(
             return Err(DoubleZeroError::InvalidArgument.into());
         }
 
+        // anniversary_day is a calendar day-of-month; the granter clamps to the shortest month.
+        if !(1..=31).contains(&config.anniversary_day) {
+            msg!(
+                "anniversary_day {} out of range 1..=31 for feed {}",
+                config.anniversary_day,
+                feed_key
+            );
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+
+        // The cap flips at window_end and the feed is removed at terminates_at, so the window must
+        // not extend past termination.
+        if config.window_end > config.terminates_at {
+            msg!(
+                "window_end {} after terminates_at {} for feed {}",
+                config.window_end,
+                config.terminates_at,
+                feed_key
+            );
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+
         new_seats.push(FeedSeat {
             feed_key,
             max_users: config.max_users,
+            max_future_users: config.max_future_users,
             current_users,
+            anniversary_day: config.anniversary_day,
+            window_end: config.window_end,
+            terminates_at: config.terminates_at,
         });
     }
 

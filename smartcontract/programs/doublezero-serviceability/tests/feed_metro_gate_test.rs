@@ -309,6 +309,10 @@ async fn set_pass_feeds(f: &mut FeedFixture, seats: Vec<FeedSeat>) {
                 .iter()
                 .map(|s| FeedSeatConfig {
                     max_users: s.max_users,
+                    max_future_users: s.max_future_users,
+                    anniversary_day: s.anniversary_day,
+                    window_end: s.window_end,
+                    terminates_at: s.terminates_at,
                 })
                 .collect(),
         }),
@@ -368,7 +372,11 @@ async fn test_right_metro_joins_group_set() {
         vec![FeedSeat {
             feed_key: feed,
             max_users: 2,
+            max_future_users: 2,
             current_users: 0,
+            anniversary_day: 15,
+            window_end: 1_800_000_000,
+            terminates_at: 1_900_000_000,
         }],
     )
     .await;
@@ -414,7 +422,11 @@ async fn test_wrong_metro_device_rejected() {
         vec![FeedSeat {
             feed_key: feed,
             max_users: 2,
+            max_future_users: 2,
             current_users: 0,
+            anniversary_day: 15,
+            window_end: 1_800_000_000,
+            terminates_at: 1_900_000_000,
         }],
     )
     .await;
@@ -441,12 +453,20 @@ async fn test_multi_feed_seat_matching_admits() {
             FeedSeat {
                 feed_key: feed_other,
                 max_users: 1,
+                max_future_users: 1,
                 current_users: 0,
+                anniversary_day: 15,
+                window_end: 1_800_000_000,
+                terminates_at: 1_900_000_000,
             },
             FeedSeat {
                 feed_key: feed_match,
                 max_users: 1,
+                max_future_users: 1,
                 current_users: 0,
+                anniversary_day: 15,
+                window_end: 1_800_000_000,
+                terminates_at: 1_900_000_000,
             },
         ],
     )
@@ -483,7 +503,11 @@ async fn test_group_not_in_feed_rejected() {
         vec![FeedSeat {
             feed_key: feed,
             max_users: 2,
+            max_future_users: 2,
             current_users: 0,
+            anniversary_day: 15,
+            window_end: 1_800_000_000,
+            terminates_at: 1_900_000_000,
         }],
     )
     .await;

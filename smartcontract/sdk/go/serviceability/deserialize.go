@@ -377,16 +377,21 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 		ap.OthersTypeName = reader.ReadString()
 		ap.OthersKey = reader.ReadString()
 	case AccessPassTypeEdgeSeat:
-		// EdgeSeat carries a borsh Vec<FeedSeat>: u32 count, then each FeedSeat is
-		// feed_key (32) + max_users (u16) + current_users (u16).
+		// EdgeSeat carries a borsh Vec<FeedSeat>: u32 count, then each FeedSeat is 52 bytes:
+		// feed_key (32) + max_users (u8) + max_future_users (u8) + current_users (u8) +
+		// anniversary_day (u8) + window_end (i64) + terminates_at (i64).
 		count := reader.ReadU32()
-		if count > 0 && (count*36) <= reader.Remaining() {
+		if count > 0 && (count*52) <= reader.Remaining() {
 			ap.FeedSeats = make([]FeedSeat, count)
 			for i := uint32(0); i < count; i++ {
 				ap.FeedSeats[i] = FeedSeat{
-					FeedKey:      reader.ReadPubkey(),
-					MaxUsers:     reader.ReadU16(),
-					CurrentUsers: reader.ReadU16(),
+					FeedKey:        reader.ReadPubkey(),
+					MaxUsers:       reader.ReadU8(),
+					MaxFutureUsers: reader.ReadU8(),
+					CurrentUsers:   reader.ReadU8(),
+					AnniversaryDay: reader.ReadU8(),
+					WindowEnd:      int64(reader.ReadU64()),
+					TerminatesAt:   int64(reader.ReadU64()),
 				}
 			}
 		}

@@ -6,17 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
-- Serviceability
-  - The `AccessPass` `EdgeSeat` variant now carries a `Vec<FeedSeat>` payload (`feed_key` + per-feed cap) instead of being a bare marker. This changes the `AccessPass` borsh layout for EdgeSeat passes. (#3954)
+- None for this release
 
 ### Added
 
 - Serviceability
   - `Feed` account: a catalog entry for one metro's multicast group set, keyed by `(code, exchange)` (one `feed_key` is one feed in one metro), managed by a catalog admin (`FEED_AUTHORITY` Permission or `FOUNDATION`) via `CreateFeed`/`UpdateFeed`/`DeleteFeed`. (#3953)
-  - `SetAccessPassFeeds` provisions feed_keys (SKU seats) onto an EdgeSeat pass; the oracle calls it via its `ACCESS_PASS_ADMIN` Permission. (#3954)
+  - `SetAccessPassFeeds` provisions feed_keys (SKU seats) onto an EdgeSeat pass, each `FeedSeat` carrying the feed's full per-feed billing state (current cap, future cap, the window boundary between them, the termination date, and the renewal anniversary day); the oracle calls it via its `ACCESS_PASS_ADMIN` Permission. (#3954, #4030)
   - EdgeSeat multicast connect is metro-gated: a device whose exchange is not covered by any of the pass's feeds is rejected with `MetroMismatch`, and the matching feed's per-feed cap is enforced. (#3955)
 - SDK
-  - Go, TypeScript, and Python deserialization for the `Feed` account and the `EdgeSeat` `FeedSeat` payload. (#3956)
+  - Go, TypeScript, and Python deserialization for the `Feed` account and the `EdgeSeat` `FeedSeat` payload. (#3956, #4030)
 - Controller
   - Track the latest config agent version per device in a new `controller_agent_versions` ClickHouse table, updated on GetConfig polls. (#3578)
 

@@ -35,12 +35,32 @@
     {
       "name": "EdgeSeatFeedSeat0MaxUsers",
       "value": "7",
-      "typ": "u16"
+      "typ": "u8"
+    },
+    {
+      "name": "EdgeSeatFeedSeat0MaxFutureUsers",
+      "value": "4",
+      "typ": "u8"
     },
     {
       "name": "EdgeSeatFeedSeat0CurrentUsers",
       "value": "3",
-      "typ": "u16"
+      "typ": "u8"
+    },
+    {
+      "name": "EdgeSeatFeedSeat0AnniversaryDay",
+      "value": "15",
+      "typ": "u8"
+    },
+    {
+      "name": "EdgeSeatFeedSeat0WindowEnd",
+      "value": "1800000000",
+      "typ": "i64"
+    },
+    {
+      "name": "EdgeSeatFeedSeat0TerminatesAt",
+      "value": "1900000000",
+      "typ": "i64"
     },
     {
       "name": "ClientIp",

@@ -40,7 +40,7 @@ def _assert_fields(expected_fields: list[dict], got: dict) -> None:
         typ = f["typ"]
         raw = f["value"]
         actual = got[name]
-        if typ in ("u8", "u16", "u32", "u64"):
+        if typ in ("u8", "u16", "u32", "u64", "i64"):
             assert actual == int(raw), f"{name}: expected {raw}, got {actual}"
         elif typ == "pubkey":
             expected = Pubkey.from_string(raw)
@@ -511,7 +511,19 @@ class TestFixtureAccessPassEdgeSeat:
                 "EdgeSeatFeedSeat0MaxUsers": ap.feed_seats[0].max_users
                 if ap.feed_seats
                 else None,
+                "EdgeSeatFeedSeat0MaxFutureUsers": ap.feed_seats[0].max_future_users
+                if ap.feed_seats
+                else None,
                 "EdgeSeatFeedSeat0CurrentUsers": ap.feed_seats[0].current_users
+                if ap.feed_seats
+                else None,
+                "EdgeSeatFeedSeat0AnniversaryDay": ap.feed_seats[0].anniversary_day
+                if ap.feed_seats
+                else None,
+                "EdgeSeatFeedSeat0WindowEnd": ap.feed_seats[0].window_end
+                if ap.feed_seats
+                else None,
+                "EdgeSeatFeedSeat0TerminatesAt": ap.feed_seats[0].terminates_at
                 if ap.feed_seats
                 else None,
                 "UserPayer": ap.user_payer,
@@ -529,7 +541,11 @@ class TestFixtureAccessPassEdgeSeat:
         assert ap.associated_pubkey is None
         assert len(ap.feed_seats) == 1
         assert ap.feed_seats[0].max_users == 7
+        assert ap.feed_seats[0].max_future_users == 4
         assert ap.feed_seats[0].current_users == 3
+        assert ap.feed_seats[0].anniversary_day == 15
+        assert ap.feed_seats[0].window_end == 1800000000
+        assert ap.feed_seats[0].terminates_at == 1900000000
         assert ap.unicast_user_count == 2
         assert ap.max_unicast_users == 4
         assert ap.multicast_user_count == 1

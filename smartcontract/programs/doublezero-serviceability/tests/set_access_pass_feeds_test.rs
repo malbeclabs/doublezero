@@ -911,7 +911,11 @@ async fn test_max_future_users_below_current_users_allowed() {
         &authority,
     )
     .await;
-    assert_eq!(result, Ok(()), "future cap below current_users must be allowed");
+    assert_eq!(
+        result,
+        Ok(()),
+        "future cap below current_users must be allowed"
+    );
 
     // The seat kept its live count and took the lower future cap.
     let accesspass = read_accesspass(&mut banks_client, accesspass_pubkey).await;

@@ -381,7 +381,9 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 		// feed_key (32) + max_users (u8) + max_future_users (u8) + current_users (u8) +
 		// anniversary_day (u8) + window_end (i64) + terminates_at (i64).
 		count := reader.ReadU32()
-		if count > 0 && (count*52) <= reader.Remaining() {
+		// Divide rather than multiply so a huge count can't overflow the uint32 bound check
+		// (count*52 could wrap); the program caps feeds well below this, so it's defensive only.
+		if count > 0 && count <= reader.Remaining()/52 {
 			ap.FeedSeats = make([]FeedSeat, count)
 			for i := uint32(0); i < count; i++ {
 				ap.FeedSeats[i] = FeedSeat{

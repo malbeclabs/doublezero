@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 )
 
 // logEntry captures a single log call for test assertions.
@@ -28,42 +31,283 @@ func (h *capturingHandler) Handle(_ context.Context, r slog.Record) error {
 func (h *capturingHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
 func (h *capturingHandler) WithGroup(_ string) slog.Handler      { return h }
 
-func TestClickhouseWriterLogEscalation(t *testing.T) {
+// fakeBatch implements driver.Batch for the methods the writer uses; the
+// embedded nil interface panics on anything else.
+type fakeBatch struct {
+	driver.Batch
+	rows      [][]any
+	appendErr error
+	sendErr   error
+	sent      bool
+}
+
+func (b *fakeBatch) Append(v ...any) error {
+	if b.appendErr != nil {
+		return b.appendErr
+	}
+	b.rows = append(b.rows, v)
+	return nil
+}
+func (b *fakeBatch) Send() error {
+	if b.sendErr != nil {
+		return b.sendErr
+	}
+	b.sent = true
+	return nil
+}
+func (b *fakeBatch) Close() error { return nil }
+
+// fakeConn implements driver.Conn for the methods the writer uses.
+type fakeConn struct {
+	driver.Conn
+	prepared   []string
+	batches    []*fakeBatch
+	prepareErr error
+	appendErr  error
+	sendErr    error
+	execErrOn  string // substring of a query whose Exec should fail
+	execErr    error
+}
+
+func (c *fakeConn) PrepareBatch(_ context.Context, query string, _ ...driver.PrepareBatchOption) (driver.Batch, error) {
+	c.prepared = append(c.prepared, query)
+	if c.prepareErr != nil {
+		return nil, c.prepareErr
+	}
+	b := &fakeBatch{appendErr: c.appendErr, sendErr: c.sendErr}
+	c.batches = append(c.batches, b)
+	return b, nil
+}
+
+func (c *fakeConn) Exec(_ context.Context, query string, _ ...any) error {
+	if c.execErrOn != "" && strings.Contains(query, c.execErrOn) {
+		return c.execErr
+	}
+	return nil
+}
+
+func newTestWriter(conn clickhouse.Conn) (*ClickhouseWriter, *capturingHandler) {
 	h := &capturingHandler{}
-	logger := slog.New(h)
-	cw := &ClickhouseWriter{log: logger}
+	return &ClickhouseWriter{
+		conn:            conn,
+		log:             slog.New(h),
+		db:              "testdb",
+		build:           Build{Version: "v1.2.3", Commit: "abc123", Date: "2026-01-01"},
+		eventsEnabled:   true,
+		versionsEnabled: true,
+	}, h
+}
 
-	testErr := errors.New("connection reset")
+func TestFlushSuccessResetsCounterAndPreservesColumnOrder(t *testing.T) {
+	conn := &fakeConn{}
+	cw, _ := newTestWriter(conn)
+	cw.consecutiveErrors = 2
 
-	// First few errors should be WARN
-	for range consecutiveErrorThreshold {
-		cw.recordFlushError("error sending clickhouse batch", testErr)
+	ts := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+	cw.Record(getConfigEvent{Timestamp: ts, DevicePubkey: "dev1"})
+	cw.RecordVersion(agentVersionReport{
+		DevicePubkey: "dev1",
+		UpdatedAt:    ts,
+		AgentVersion: "v0.9.0",
+		AgentCommit:  "deadbeef",
+		AgentDate:    "2026-07-01",
+	})
+	cw.flush(context.Background())
+
+	if cw.consecutiveErrors != 0 {
+		t.Errorf("consecutiveErrors = %d after successful flush, want 0", cw.consecutiveErrors)
+	}
+	if len(conn.batches) != 2 {
+		t.Fatalf("prepared %d batches, want 2", len(conn.batches))
 	}
 
-	// Verify first errors are WARN, last one crosses threshold and is ERROR
-	for i, entry := range h.entries {
-		if i < consecutiveErrorThreshold-1 {
-			if entry.Level != slog.LevelWarn {
-				t.Errorf("entry[%d]: got level %v, want WARN", i, entry.Level)
-			}
-		} else {
-			if entry.Level != slog.LevelError {
-				t.Errorf("entry[%d]: got level %v, want ERROR", i, entry.Level)
-			}
+	// Version row values must line up with the INSERT column list.
+	wantColumns := `(device_pubkey, updated_at, agent_version, agent_commit, agent_date, controller_version, controller_commit, controller_date)`
+	if !strings.Contains(conn.prepared[1], wantColumns) {
+		t.Fatalf("versions INSERT = %q, want column list %q", conn.prepared[1], wantColumns)
+	}
+	rows := conn.batches[1].rows
+	if len(rows) != 1 {
+		t.Fatalf("versions batch has %d rows, want 1", len(rows))
+	}
+	want := []any{"dev1", ts, "v0.9.0", "deadbeef", "2026-07-01", "v1.2.3", "abc123", "2026-01-01"}
+	if len(rows[0]) != len(want) {
+		t.Fatalf("versions row has %d values, want %d", len(rows[0]), len(want))
+	}
+	for i, v := range want {
+		if rows[0][i] != v {
+			t.Errorf("versions row[%d] = %v, want %v", i, rows[0][i], v)
+		}
+	}
+}
+
+func TestFlushNoopTickDoesNotResetCounter(t *testing.T) {
+	conn := &fakeConn{}
+	cw, _ := newTestWriter(conn)
+	cw.consecutiveErrors = 2
+
+	cw.flush(context.Background())
+
+	if cw.consecutiveErrors != 2 {
+		t.Errorf("consecutiveErrors = %d after no-op tick, want 2", cw.consecutiveErrors)
+	}
+	if len(conn.prepared) != 0 {
+		t.Errorf("no-op tick prepared %d batches, want 0", len(conn.prepared))
+	}
+}
+
+func TestFlushFailureIncrementsCounterOncePerTick(t *testing.T) {
+	conn := &fakeConn{sendErr: errors.New("connection reset")}
+	cw, h := newTestWriter(conn)
+
+	record := func() {
+		cw.Record(getConfigEvent{Timestamp: time.Time{}, DevicePubkey: "dev1"})
+		cw.RecordVersion(agentVersionReport{DevicePubkey: "dev1", AgentVersion: "v0.9.0"})
+	}
+
+	// Both sub-flushes fail each tick, but the counter must advance once per
+	// tick so the WARN→ERROR threshold counts failed ticks.
+	for tick := 1; tick <= consecutiveErrorThreshold; tick++ {
+		record()
+		cw.flush(context.Background())
+		if cw.consecutiveErrors != tick {
+			t.Fatalf("tick %d: consecutiveErrors = %d, want %d", tick, cw.consecutiveErrors, tick)
 		}
 	}
 
-	// Reset counter (simulating a successful flush)
-	cw.consecutiveErrors = 0
-	h.entries = nil
-
-	// Next error after reset should be WARN again
-	cw.recordFlushError("error sending clickhouse batch", testErr)
-	if len(h.entries) != 1 {
-		t.Fatalf("expected 1 entry, got %d", len(h.entries))
+	var warns, errs int
+	for _, e := range h.entries {
+		switch e.Level {
+		case slog.LevelWarn:
+			warns++
+		case slog.LevelError:
+			errs++
+		}
 	}
-	if h.entries[0].Level != slog.LevelWarn {
-		t.Errorf("after reset: got level %v, want WARN", h.entries[0].Level)
+	// Two failing sub-flushes per tick: WARN for the first threshold-1 ticks,
+	// ERROR from the threshold-th tick on.
+	if wantWarns := 2 * (consecutiveErrorThreshold - 1); warns != wantWarns {
+		t.Errorf("got %d WARN entries, want %d", warns, wantWarns)
+	}
+	if errs != 2 {
+		t.Errorf("got %d ERROR entries, want 2", errs)
+	}
+
+	// A successful flush resets the counter and de-escalates back to WARN.
+	conn.sendErr = nil
+	record()
+	cw.flush(context.Background())
+	if cw.consecutiveErrors != 0 {
+		t.Fatalf("consecutiveErrors = %d after successful flush, want 0", cw.consecutiveErrors)
+	}
+	h.entries = nil
+	conn.sendErr = errors.New("connection reset")
+	record()
+	cw.flush(context.Background())
+	for _, e := range h.entries {
+		if e.Level != slog.LevelWarn {
+			t.Errorf("after reset: got level %v, want WARN", e.Level)
+		}
+	}
+}
+
+func TestFlushAbortsBatchOnAppendError(t *testing.T) {
+	conn := &fakeConn{appendErr: errors.New("wrong column count")}
+	cw, _ := newTestWriter(conn)
+
+	cw.RecordVersion(agentVersionReport{DevicePubkey: "dev1", AgentVersion: "v0.9.0"})
+	cw.flush(context.Background())
+
+	if cw.consecutiveErrors != 1 {
+		t.Errorf("consecutiveErrors = %d after append error, want 1", cw.consecutiveErrors)
+	}
+	if len(conn.batches) != 1 {
+		t.Fatalf("prepared %d batches, want 1", len(conn.batches))
+	}
+	if conn.batches[0].sent {
+		t.Error("partial batch was sent after append error, want aborted")
+	}
+}
+
+func TestFlushVersionsDeduplicatesPerDevice(t *testing.T) {
+	conn := &fakeConn{}
+	cw, _ := newTestWriter(conn)
+
+	older := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+	newer := older.Add(5 * time.Second)
+	// Insert newest first to prove dedup picks by UpdatedAt, not order.
+	cw.RecordVersion(agentVersionReport{DevicePubkey: "dev1", UpdatedAt: newer, AgentVersion: "v0.9.1"})
+	cw.RecordVersion(agentVersionReport{DevicePubkey: "dev1", UpdatedAt: older, AgentVersion: "v0.9.0"})
+	cw.RecordVersion(agentVersionReport{DevicePubkey: "dev2", UpdatedAt: older, AgentVersion: "v0.9.0"})
+	cw.flush(context.Background())
+
+	rows := conn.batches[0].rows
+	if len(rows) != 2 {
+		t.Fatalf("versions batch has %d rows, want 2 (one per device)", len(rows))
+	}
+	for _, row := range rows {
+		if row[0] == "dev1" && row[2] != "v0.9.1" {
+			t.Errorf("dev1 row kept version %v, want newest v0.9.1", row[2])
+		}
+	}
+}
+
+func TestCreateTablesDegradesPerTable(t *testing.T) {
+	conn := &fakeConn{execErrOn: "controller_agent_versions", execErr: errors.New("ACCESS_DENIED")}
+	cw, h := newTestWriter(conn)
+
+	if err := cw.CreateTables(context.Background()); err != nil {
+		t.Fatalf("CreateTables returned %v, want nil when one table is usable", err)
+	}
+	if !cw.eventsEnabled || cw.versionsEnabled {
+		t.Errorf("enabled flags = (events=%v, versions=%v), want (true, false)", cw.eventsEnabled, cw.versionsEnabled)
+	}
+	if len(h.entries) != 1 || h.entries[0].Level != slog.LevelError {
+		t.Errorf("expected one ERROR log for the failed table, got %+v", h.entries)
+	}
+
+	// The disabled stream must not buffer; the enabled one must.
+	cw.RecordVersion(agentVersionReport{DevicePubkey: "dev1", AgentVersion: "v0.9.0"})
+	cw.Record(getConfigEvent{DevicePubkey: "dev1"})
+	if len(cw.versions) != 0 || len(cw.events) != 1 {
+		t.Errorf("buffers = (events=%d, versions=%d), want (1, 0)", len(cw.events), len(cw.versions))
+	}
+
+	// Both tables failing disables everything and surfaces an error.
+	conn.execErrOn = "CREATE TABLE"
+	if err := cw.CreateTables(context.Background()); err == nil {
+		t.Error("CreateTables returned nil, want error when no table is usable")
+	}
+	if cw.eventsEnabled || cw.versionsEnabled {
+		t.Error("expected both streams disabled when no table is usable")
+	}
+}
+
+func TestRecordVersion(t *testing.T) {
+	cw, _ := newTestWriter(&fakeConn{})
+
+	// A blank agent report must not be recorded: ReplacingMergeTree keeps the
+	// row with the newest updated_at, so it would overwrite the last known
+	// good version row.
+	cw.RecordVersion(agentVersionReport{DevicePubkey: "dev1"})
+	if len(cw.versions) != 0 {
+		t.Fatalf("blank agent report was recorded, want skipped")
+	}
+
+	long := strings.Repeat("x", maxAgentFieldLen+50)
+	cw.RecordVersion(agentVersionReport{DevicePubkey: "dev1", AgentVersion: "v0.9.0", AgentCommit: long})
+	if len(cw.versions) != 1 {
+		t.Fatalf("expected 1 recorded version event, got %d", len(cw.versions))
+	}
+	got := cw.versions[0]
+	if got.ControllerVersion != "v1.2.3" || got.ControllerCommit != "abc123" || got.ControllerDate != "2026-01-01" {
+		t.Errorf("controller build info not stamped: %+v", got)
+	}
+	if got.AgentVersion != "v0.9.0" {
+		t.Errorf("AgentVersion = %q, want %q", got.AgentVersion, "v0.9.0")
+	}
+	if len(got.AgentCommit) != maxAgentFieldLen {
+		t.Errorf("AgentCommit length = %d, want truncated to %d", len(got.AgentCommit), maxAgentFieldLen)
 	}
 }
 

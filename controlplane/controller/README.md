@@ -104,11 +104,16 @@ CREATE USER controller_devnet IDENTIFIED BY 'your_password';
 
 -- Grant permissions
 GRANT SELECT, INSERT, CREATE TABLE, SHOW COLUMNS ON devnet.controller_grpc_getconfig_success TO controller_devnet;
+GRANT SELECT, INSERT, CREATE TABLE, SHOW COLUMNS ON devnet.controller_agent_versions TO controller_devnet;
 ```
 
-The controller will automatically create the `controller_grpc_getconfig_success` table on startup and batch-insert GetConfig events every 10 seconds.
+The controller automatically creates both tables on startup and batch-inserts every 10 seconds.
 
-#### Table Schema
+Apply the grants **before** deploying a controller version that adds a table: table creation degrades per-table, so a failing `CREATE TABLE` (e.g. a missing grant) disables writes to that table until restart while the other table keeps working. Failures are logged at `ERROR`.
+
+#### Table Schemas
+
+**GetConfig events** — one row per successful GetConfig poll:
 
 ```sql
 CREATE TABLE devnet.controller_grpc_getconfig_success (
@@ -118,3 +123,24 @@ CREATE TABLE devnet.controller_grpc_getconfig_success (
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (timestamp, device_pubkey)
 ```
+
+**Agent versions** — latest agent and controller version per device. Uses `ReplacingMergeTree` so ClickHouse merges rows down to one per device; query with `FINAL` for deduplicated results:
+
+```sql
+CREATE TABLE devnet.controller_agent_versions (
+    device_pubkey LowCardinality(String),
+    updated_at DateTime64(3),
+    agent_version LowCardinality(String) DEFAULT '',
+    agent_commit LowCardinality(String) DEFAULT '',
+    agent_date LowCardinality(String) DEFAULT '',
+    controller_version LowCardinality(String) DEFAULT '',
+    controller_commit LowCardinality(String) DEFAULT '',
+    controller_date LowCardinality(String) DEFAULT ''
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY device_pubkey
+```
+
+Caveats for consumers of this table:
+
+- Rows are **last-reported values, agent-asserted over an unauthenticated endpoint** with latest-write-wins semantics — treat them as informational, not verified fleet state.
+- Blank version reports are skipped, so a device whose agent never reports version fields gets no row (indistinguishable from never having polled), and a downgrade to a non-reporting agent leaves the old row in place. Check `updated_at` freshness or join against `controller_grpc_getconfig_success` for liveness.

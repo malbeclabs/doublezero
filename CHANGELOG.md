@@ -17,6 +17,8 @@ All notable changes to this project will be documented in this file.
   - EdgeSeat multicast connect is metro-gated: a device whose exchange is not covered by any of the pass's feeds is rejected with `MetroMismatch`, and the matching feed's per-feed cap is enforced. (#3955)
 - SDK
   - Go, TypeScript, and Python deserialization for the `Feed` account and the `EdgeSeat` `FeedSeat` payload. (#3956)
+- Controller
+  - Track the latest config agent version per device in a new `controller_agent_versions` ClickHouse table, updated on GetConfig polls. (#3578)
 
 ### Changes
 

@@ -13,7 +13,6 @@ import (
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -93,10 +92,6 @@ type ManagerConfig struct {
 
 	// Client version to advertise to peers in control packets.
 	ClientVersion string
-
-	// RouteReconcileInterval controls how often the manager scans the kernel
-	// routing table for missing routes and reinstalls them. Zero disables.
-	RouteReconcileInterval time.Duration
 }
 
 // Validate fills defaults and enforces constraints for ManagerConfig.
@@ -156,12 +151,6 @@ func (c *ManagerConfig) Validate() error {
 	if c.ClientVersion == "" {
 		return errors.New("clientVersion is required")
 	}
-	if c.RouteReconcileInterval < 0 {
-		return errors.New("routeReconcileInterval must be non-negative")
-	}
-	// Note: RouteReconcileInterval == 0 is left as-is to disable reconciliation
-	// (see the `> 0` guard in NewManager). The operational default comes from
-	// the flag default in main.go, not from here.
 	return nil
 }
 
@@ -302,26 +291,6 @@ func NewManager(ctx context.Context, cfg *ManagerConfig, cr *routing.ConfiguredR
 		}
 	}()
 
-	// Route reconciliation goroutine: periodically scans the kernel routing
-	// table for missing routes and reinstalls them.
-	if cfg.RouteReconcileInterval > 0 {
-		log.Info("liveness: route reconciliation enabled", "interval", cfg.RouteReconcileInterval.String())
-		m.wg.Add(1)
-		go func() {
-			defer m.wg.Done()
-			ticker := time.NewTicker(cfg.RouteReconcileInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-m.ctx.Done():
-					return
-				case <-ticker.C:
-					m.reconcileRoutes()
-				}
-			}
-		}()
-	}
-
 	// If any routes are configured to be excluded, mark then as AdminDown immediately.
 	if m.cr != nil {
 		for ip := range m.cr.GetExcluded() {
@@ -447,13 +416,8 @@ func (m *manager) WithdrawRoute(r *Route, iface string) error {
 	m.log.Info("liveness: withdrawing route", "route", r.String(), "iface", iface)
 
 	// Clear desired/installed under the lock *before* issuing any kernel
-	// RouteDelete, mirroring onSessionDown. reconcileRoutes re-checks
-	// installed[rk] under m.mu before its RouteAdd, so clearing the flag first
-	// closes the resurrection race: reconcile either observes the withdrawal
-	// and skips, or its add lands before our delete and the end state is the
-	// route gone. (The previous passive-mode ordering deleted the kernel route
-	// first, leaving a window where reconcile could resurrect a route the
-	// manager believed was withdrawn.)
+	// RouteDelete, mirroring onSessionDown, so concurrent observers of the
+	// installed map never see a withdrawn route as installed.
 	rk := routeKeyFor(iface, r)
 	m.mu.Lock()
 	delete(m.desired, rk)
@@ -904,110 +868,6 @@ func (m *manager) onSessionDown(sess *Session) {
 		"downReason", snap.LastDownReason.String(),
 		"peerClientVersion", snap.PeerClientVersion.String(),
 	)
-}
-
-// reconcileRoutes scans the kernel routing table for routes that should be
-// installed but are missing, and reinstalls them. This mitigates routes being
-// removed by external processes.
-func (m *manager) reconcileRoutes() {
-	// Snapshot installed and desired under lock.
-	type installedRoute struct {
-		rk    RouteKey
-		route *Route
-	}
-	m.mu.Lock()
-	toCheck := make([]installedRoute, 0, len(m.installed))
-	for rk, ok := range m.installed {
-		if !ok {
-			continue
-		}
-		r, exists := m.desired[rk]
-		if !exists {
-			continue
-		}
-		// Skip excluded destinations: the manager's Netlinker is a
-		// ConfiguredRouteReaderWriter whose RouteAdd is a silent no-op for
-		// these, so they are never actually present in the kernel. Without
-		// this guard every excluded route would be flagged "missing" and
-		// "reinstalled" (a no-op) on every tick, inflating the reinstall
-		// counter and spamming logs forever.
-		if m.cr != nil && r.Dst != nil && r.Dst.IP != nil && m.cr.IsExcluded(r.Dst.IP.String()) {
-			continue
-		}
-		toCheck = append(toCheck, installedRoute{rk: rk, route: r})
-	}
-	m.mu.Unlock()
-
-	if len(toCheck) == 0 {
-		return
-	}
-
-	kernelRoutes, err := m.cfg.Netlinker.RouteByProtocol(unix.RTPROT_BGP)
-	if err != nil {
-		m.log.Error("liveness: error fetching kernel routes for reconciliation", "error", err)
-		return
-	}
-
-	// Build a lookup set keyed by (table, dst, nexthop, src) for fast matching.
-	// Dst uses the full prefix (IP + mask) via *net.IPNet.String() so a kernel
-	// route with a different mask does not satisfy a desired route at the same
-	// IP (e.g. 10.0.0.0/16 must not match a desired 10.0.0.0/24).
-	type kernelKey struct {
-		Table   int
-		Dst     string
-		NextHop string
-		SrcIP   string
-	}
-	dstString := func(ipnet *net.IPNet) string {
-		if ipnet == nil || ipnet.IP == nil {
-			return ""
-		}
-		return ipnet.String()
-	}
-	kernelSet := make(map[kernelKey]struct{}, len(kernelRoutes))
-	for _, kr := range kernelRoutes {
-		var nhIP, srcIP string
-		if kr.NextHop != nil && kr.NextHop.To4() != nil {
-			nhIP = kr.NextHop.To4().String()
-		}
-		if kr.Src != nil && kr.Src.To4() != nil {
-			srcIP = kr.Src.To4().String()
-		}
-		kernelSet[kernelKey{Table: kr.Table, Dst: dstString(kr.Dst), NextHop: nhIP, SrcIP: srcIP}] = struct{}{}
-	}
-
-	for _, ir := range toCheck {
-		kk := kernelKey{Table: ir.route.Table, Dst: dstString(ir.route.Dst), NextHop: ir.rk.NextHop, SrcIP: ir.rk.SrcIP}
-		if _, present := kernelSet[kk]; present {
-			continue
-		}
-		// Re-check and reinstall under the lock. onSessionDown flips
-		// installed[rk] to false under m.mu *before* issuing RouteDelete, so
-		// holding the lock across the re-check and RouteAdd closes the race:
-		// either we observe the withdrawal and skip, or our add completes
-		// before the delete lands and the end state stays consistent. The
-		// netlink call under the lock only happens for genuinely-missing
-		// routes, which are rare by definition.
-		m.mu.Lock()
-		if !m.installed[ir.rk] {
-			m.mu.Unlock()
-			continue
-		}
-		err := m.cfg.Netlinker.RouteAdd(&ir.route.Route)
-		m.mu.Unlock()
-
-		if err != nil {
-			m.log.Error("liveness: error reinstalling route",
-				"error", err, "route", ir.route.String())
-			m.metrics.RouteInstallFailures.WithLabelValues(ir.rk.Interface, ir.rk.SrcIP).Inc()
-			continue
-		}
-		m.log.Warn("liveness: reinstalled missing route",
-			"route", ir.route.String(),
-			"iface", ir.rk.Interface,
-		)
-		m.metrics.routeReinstall(ir.rk.Interface, ir.rk.SrcIP)
-	}
 }
 
 // isPeerEffectivelyPassive returns true when this session should not have its

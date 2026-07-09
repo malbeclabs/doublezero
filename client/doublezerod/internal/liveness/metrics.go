@@ -42,7 +42,6 @@ type Metrics struct {
 	DesiredMapSize           prometheus.Gauge
 	PeerSessions             *prometheus.GaugeVec
 	PeerDetectTime           *prometheus.GaugeVec
-	RouteReinstalls          *prometheus.CounterVec
 }
 
 var (
@@ -213,13 +212,6 @@ func newMetrics() *Metrics {
 				Help: "Size of the desired map",
 			},
 		),
-		RouteReinstalls: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "doublezero_liveness_route_reinstalls_total",
-				Help: "Count of routes reinstalled after being removed from the kernel by an external process",
-			},
-			serviceLabels,
-		),
 	}
 }
 
@@ -249,7 +241,6 @@ func (m *Metrics) Register(r prometheus.Registerer) {
 		m.DesiredMapSize,
 		m.PeerSessions,
 		m.PeerDetectTime,
-		m.RouteReinstalls,
 	)
 }
 
@@ -303,10 +294,6 @@ func (m *Metrics) cleanupWithdrawRoute(peer Peer, state State, peerMetrics bool)
 
 func (m *Metrics) convergenceToUp(peer Peer, convergence time.Duration) {
 	m.ConvergenceToUp.WithLabelValues(peer.Interface, peer.LocalIP).Observe(convergence.Seconds())
-}
-
-func (m *Metrics) routeReinstall(iface, localIP string) {
-	m.RouteReinstalls.WithLabelValues(iface, localIP).Inc()
 }
 
 func (m *Metrics) convergenceToDown(peer Peer, convergence time.Duration) {

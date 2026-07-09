@@ -76,13 +76,14 @@ runs:
             --arg text "$WORKFLOW run in $REPO may need environment approval: $RUN_URL" \
             --arg ts "$SLACK_THREAD_TS" \
             '{channel: $ch, text: $text} + (if $ts != "" then {thread_ts: $ts} else {} end)')
-          RESP=$(curl -sf https://slack.com/api/chat.postMessage \
+          RESP=$(curl -sf --max-time 15 --retry 3 --retry-max-time 60 --retry-all-errors \
+            https://slack.com/api/chat.postMessage \
             -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
             -H 'Content-type: application/json; charset=utf-8' \
             --data "$PAYLOAD") || RESP='{"ok":false,"error":"curl error"}'
           # chat.postMessage returns HTTP 200 with ok=false on errors; check .ok.
           echo "$RESP" | jq -e '.ok' >/dev/null \
-            || echo "::warning::failed to post Slack approval ping for $RUN_URL: $(echo "$RESP" | jq -r '.error')"
+            || echo "::warning::failed to post Slack approval ping for $RUN_URL: $(echo "$RESP" | jq -r '.error // "unknown"' | tr -d '\r\n')"
         fi
         echo "Watching $RUN_URL"
         gh run watch "$RUN_ID" -R "$REPO" --exit-status --interval 30

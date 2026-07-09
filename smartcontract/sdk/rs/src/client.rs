@@ -256,6 +256,10 @@ impl DZClient {
     /// connection, so gating on `Ok` would leave the stale entry — reintroducing the
     /// silent legacy-allowlist fallback this fix closes. A spurious invalidation (the
     /// tx never landed) only costs one re-resolution on the next gated transaction.
+    ///
+    /// This handles only create/delete this client itself sends. A cross-process
+    /// create/delete is recovered reactively by the retry loop in
+    /// `execute_transaction_inner` (see [`Self::is_stale_permission_error`]).
     fn note_transaction_sent(&self, instruction: &DoubleZeroInstruction) {
         if Self::instruction_invalidates_permission_cache(instruction) {
             *self.permission_account_cache.lock().unwrap() = None;
@@ -264,10 +268,12 @@ impl DZClient {
 
     /// Resolve the payer's Permission PDA as a read-only [`AccountMeta`], or
     /// `None` when no Permission account exists on-chain. The lookup is retried
-    /// on transient RPC errors and memoized until this client sends a
-    /// `CreatePermission` / `DeletePermission` (regardless of the reported send
-    /// result), which invalidates it (see
-    /// [`Self::instruction_invalidates_permission_cache`]).
+    /// on transient RPC errors and memoized until invalidated, either by this
+    /// client sending a `CreatePermission` / `DeletePermission` (see
+    /// [`Self::instruction_invalidates_permission_cache`]) or by a gated
+    /// transaction failing with an authorization-shaped error that indicates the
+    /// memo went stale cross-process (see [`Self::is_stale_permission_error`] and
+    /// the retry loop in `execute_transaction_inner`).
     fn resolve_permission_account(&self, payer: &Pubkey) -> Option<AccountMeta> {
         let mut cache = self.permission_account_cache.lock().unwrap();
         if let Some(cached) = cache.as_ref() {
@@ -296,115 +302,161 @@ impl DZClient {
             .as_ref()
             .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
 
-        let permission = with_permission
+        let mut permission = with_permission
             .then(|| self.resolve_permission_account(&payer.pubkey()))
             .flatten();
 
-        let instructions = Self::assemble_instructions(
-            &self.program_id,
-            &payer.pubkey(),
-            &instruction,
-            accounts,
-            permission,
-        );
+        // Send at most twice. A gated transaction can fail because another process
+        // created or deleted the payer's Permission PDA after this client memoized the
+        // lookup (see `resolve_permission_account`): a cross-process delete leaves a
+        // stale `Some(meta)` that appends a now-closed PDA (`InvalidAccountData`), and a
+        // cross-process create leaves a stale negative that omits the account
+        // (`NotAllowed` under strict mode). On such an authorization-shaped failure, drop
+        // the memo, re-resolve, and resend once — but only if the re-resolved account
+        // actually changed, so a genuine denial (unchanged on-chain state) fails fast
+        // without a wasted resend. Retrying is safe because `authorize()` rejects before
+        // any state change, so the first attempt reverted.
+        let mut attempt: u32 = 0;
+        loop {
+            attempt += 1;
 
-        let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
-
-        let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
-        transaction.sign(&[&payer], blockhash);
-
-        debug!("Sending transaction: {transaction:?}");
-
-        let signature = transaction.signatures[0];
-        let send_config = RpcSendTransactionConfig {
-            skip_preflight: true,
-            ..RpcSendTransactionConfig::default()
-        };
-
-        let send_result = self
-            .client
-            .send_and_confirm_transaction_with_spinner_and_config(
-                &transaction,
-                self.client.commitment(),
-                send_config,
+            let instructions = Self::assemble_instructions(
+                &self.program_id,
+                &payer.pubkey(),
+                &instruction,
+                accounts.clone(),
+                permission.clone(),
             );
 
-        // Maintain the permission cache before inspecting the send result — the tx may
-        // have landed on-chain even on an Err (see `note_transaction_sent`).
-        self.note_transaction_sent(&instruction);
+            let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
 
-        match send_result {
-            Ok(sig) => Ok(sig),
-            Err(client_err) => {
-                let tx_err = match client_err.kind.as_ref() {
-                    ClientErrorKind::TransactionError(e) => Some(e.clone()),
-                    ClientErrorKind::RpcError(
-                        solana_rpc_client_api::request::RpcError::RpcResponseError {
-                            data:
-                                solana_rpc_client_api::request::RpcResponseErrorData::SendTransactionPreflightFailure(
-                                    res,
-                                ),
-                            ..
-                        },
-                    ) => res.err.clone().map(Into::into),
+            let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
+            transaction.sign(&[&payer], blockhash);
+
+            debug!("Sending transaction: {transaction:?}");
+
+            let signature = transaction.signatures[0];
+            let send_config = RpcSendTransactionConfig {
+                skip_preflight: true,
+                ..RpcSendTransactionConfig::default()
+            };
+
+            let send_result = self
+                .client
+                .send_and_confirm_transaction_with_spinner_and_config(
+                    &transaction,
+                    self.client.commitment(),
+                    send_config,
+                );
+
+            // Maintain the permission cache before inspecting the send result — the tx
+            // may have landed on-chain even on an Err (see `note_transaction_sent`).
+            self.note_transaction_sent(&instruction);
+
+            let client_err = match send_result {
+                Ok(sig) => return Ok(sig),
+                Err(client_err) => client_err,
+            };
+
+            let Some(err) = Self::parse_transaction_error(&client_err) else {
+                return Err(eyre!(client_err));
+            };
+
+            // First attempt of a gated tx: an authorization-shaped failure may be a
+            // stale permission memo. Invalidate, re-resolve, and retry once if the
+            // resolved account changed.
+            if attempt == 1 && with_permission && Self::is_stale_permission_error(&err) {
+                *self.permission_account_cache.lock().unwrap() = None;
+                let refreshed = self.resolve_permission_account(&payer.pubkey());
+                if refreshed != permission {
+                    permission = refreshed;
+                    continue;
+                }
+            }
+
+            // The tx may have landed onchain (skip_preflight=true means failing
+            // txs still land). Fetch logs from the confirmed tx if available.
+            let program_logs = self
+                .client
+                .get_transaction_with_config(
+                    &signature,
+                    RpcTransactionConfig {
+                        encoding: Some(UiTransactionEncoding::Base64),
+                        commitment: Some(self.client.commitment()),
+                        max_supported_transaction_version: Some(0),
+                    },
+                )
+                .ok()
+                .and_then(|tx| tx.transaction.meta)
+                .and_then(|meta| match meta.log_messages {
+                    OptionSerializer::Some(logs) => Some(logs),
                     _ => None,
-                };
+                })
+                .unwrap_or_default();
 
-                let Some(err) = tx_err else {
-                    return Err(eyre!(client_err));
-                };
-
-                // The tx may have landed onchain (skip_preflight=true means failing
-                // txs still land). Fetch logs from the confirmed tx if available.
-                let program_logs = self
-                    .client
-                    .get_transaction_with_config(
-                        &signature,
-                        RpcTransactionConfig {
-                            encoding: Some(UiTransactionEncoding::Base64),
-                            commitment: Some(self.client.commitment()),
-                            max_supported_transaction_version: Some(0),
-                        },
-                    )
-                    .ok()
-                    .and_then(|tx| tx.transaction.meta)
-                    .and_then(|meta| match meta.log_messages {
-                        OptionSerializer::Some(logs) => Some(logs),
-                        _ => None,
-                    })
-                    .unwrap_or_default();
-
-                if quiet {
-                    if let TransactionError::InstructionError(
-                        _index,
-                        InstructionError::Custom(number),
-                    ) = err
-                    {
-                        return Err(eyre!(SimulationError {
-                            source: DoubleZeroError::from(number),
-                            program_logs,
-                        }));
-                    }
-                    return Err(eyre!(SimulationTransactionError {
-                        source: err,
-                        program_logs,
-                    }));
-                }
-
-                eprintln!("Program Logs:");
-                for log in &program_logs {
-                    eprintln!("{log}");
-                }
-
+            if quiet {
                 if let TransactionError::InstructionError(
                     _index,
                     InstructionError::Custom(number),
                 ) = err
                 {
-                    return Err(eyre!(DoubleZeroError::from(number)));
+                    return Err(eyre!(SimulationError {
+                        source: DoubleZeroError::from(number),
+                        program_logs,
+                    }));
                 }
-                Err(eyre!(err))
+                return Err(eyre!(SimulationTransactionError {
+                    source: err,
+                    program_logs,
+                }));
             }
+
+            eprintln!("Program Logs:");
+            for log in &program_logs {
+                eprintln!("{log}");
+            }
+
+            if let TransactionError::InstructionError(_index, InstructionError::Custom(number)) =
+                err
+            {
+                return Err(eyre!(DoubleZeroError::from(number)));
+            }
+            return Err(eyre!(err));
+        }
+    }
+
+    /// Extract the on-chain [`TransactionError`] from a send error, whether it surfaced
+    /// as a confirmed `TransactionError` or as a preflight-failure RPC response. Returns
+    /// `None` for transport/RPC errors that carry no program-level result.
+    fn parse_transaction_error(client_err: &ClientError) -> Option<TransactionError> {
+        match client_err.kind.as_ref() {
+            ClientErrorKind::TransactionError(e) => Some(e.clone()),
+            ClientErrorKind::RpcError(
+                solana_rpc_client_api::request::RpcError::RpcResponseError {
+                    data:
+                        solana_rpc_client_api::request::RpcResponseErrorData::SendTransactionPreflightFailure(
+                            res,
+                        ),
+                    ..
+                },
+            ) => res.err.clone().map(Into::into),
+            _ => None,
+        }
+    }
+
+    /// Whether a failed gated transaction looks like it was rejected by `authorize()`
+    /// because of a stale permission-account memo, and so is worth re-resolving and
+    /// resending once. Two shapes qualify: `InvalidAccountData` (the appended Permission
+    /// PDA was closed cross-process, failing the owner check) and `NotAllowed`
+    /// (`Custom(8)`, the account was created cross-process but the client omitted it and
+    /// hit the strict-mode legacy denial). Any other error is a genuine failure.
+    fn is_stale_permission_error(err: &TransactionError) -> bool {
+        match err {
+            TransactionError::InstructionError(_, InstructionError::InvalidAccountData) => true,
+            TransactionError::InstructionError(_, InstructionError::Custom(number)) => {
+                DoubleZeroError::from(*number) == DoubleZeroError::NotAllowed
+            }
+            _ => false,
         }
     }
 
@@ -1021,6 +1073,58 @@ mod assemble_instructions_tests {
             PermissionDeleteArgs {},
         ));
         assert_eq!(*client.permission_account_cache.lock().unwrap(), None);
+    }
+
+    /// The stale-permission classifier decides whether a failed gated tx triggers the
+    /// invalidate-and-retry-once recovery. It must fire for the two cross-process
+    /// signatures — `InvalidAccountData` (deleted PDA fails the owner check) and
+    /// `NotAllowed` (created-but-omitted account hits strict-mode denial) — and for
+    /// nothing else, so genuine failures are not needlessly resent.
+    #[test]
+    fn is_stale_permission_error_matches_only_authorization_shapes() {
+        // Derive NotAllowed's on-chain code rather than hard-coding it, so a renumber
+        // of the error enum is caught here instead of silently disabling recovery.
+        let not_allowed_code = match ProgramError::from(DoubleZeroError::NotAllowed) {
+            ProgramError::Custom(n) => n,
+            other => panic!("NotAllowed did not map to Custom: {other:?}"),
+        };
+
+        // Deleted-PDA owner-check failure.
+        assert!(DZClient::is_stale_permission_error(
+            &TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+        ));
+        // Created-cross-process, strict-mode denial (index is irrelevant).
+        assert!(DZClient::is_stale_permission_error(
+            &TransactionError::InstructionError(3, InstructionError::Custom(not_allowed_code))
+        ));
+
+        // A different custom error is a genuine failure, not a stale memo.
+        let other_code = not_allowed_code.wrapping_add(1);
+        assert!(!DZClient::is_stale_permission_error(
+            &TransactionError::InstructionError(0, InstructionError::Custom(other_code))
+        ));
+        // Non-authorization instruction errors do not qualify.
+        assert!(!DZClient::is_stale_permission_error(
+            &TransactionError::InstructionError(0, InstructionError::InvalidArgument)
+        ));
+        // Transaction-level (non-instruction) errors do not qualify.
+        assert!(!DZClient::is_stale_permission_error(
+            &TransactionError::AlreadyProcessed
+        ));
+    }
+
+    /// `parse_transaction_error` must surface the program-level `TransactionError` from
+    /// the confirmed-error shape and yield `None` for transport errors that carry no
+    /// on-chain result (which the retry path treats as non-recoverable).
+    #[test]
+    fn parse_transaction_error_extracts_program_result() {
+        let tx_err = TransactionError::InstructionError(0, InstructionError::InvalidAccountData);
+        let client_err = ClientError::from(ClientErrorKind::TransactionError(tx_err.clone()));
+        assert_eq!(DZClient::parse_transaction_error(&client_err), Some(tx_err));
+
+        // A bare custom (non-transaction) client error has no program result.
+        let transport = ClientError::from(ClientErrorKind::Custom("connection reset".into()));
+        assert_eq!(DZClient::parse_transaction_error(&transport), None);
     }
 }
 

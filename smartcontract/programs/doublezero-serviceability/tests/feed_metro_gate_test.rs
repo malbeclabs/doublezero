@@ -326,6 +326,12 @@ async fn try_subscribe_with_feed(
 ) -> Result<(), BanksClientError> {
     let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
     let (user_pubkey, _) = get_user_pda(&f.program_id, &f.user_ip, UserType::Multicast);
+    // The Feed (EdgeSeat metro gate) is part of the instruction's own account list, ahead of the
+    // [payer, system] trailer the client appends — mirroring the SDK's create_subscribe command,
+    // which pushes the feed into `accounts` before execute_transaction appends payer/system. The
+    // processor peels the optional trailing Permission PDA off the end by PDA match
+    // (split_trailing_permission), so the feed sits in the leading list rather than after
+    // payer/system.
     let accounts = vec![
         AccountMeta::new(user_pubkey, false),
         AccountMeta::new(f.device_pubkey, false),
@@ -336,6 +342,7 @@ async fn try_subscribe_with_feed(
         AccountMeta::new(f.multicast_publisher_block, false),
         AccountMeta::new(f.tunnel_ids, false),
         AccountMeta::new(f.dz_prefix_block, false),
+        AccountMeta::new_readonly(feed, false),
     ];
     let mut tx = create_transaction_with_extra_accounts(
         f.program_id,
@@ -351,7 +358,7 @@ async fn try_subscribe_with_feed(
         }),
         &accounts,
         &f.payer,
-        &[AccountMeta::new_readonly(feed, false)],
+        &[],
     );
     tx.try_sign(&[&f.payer], recent_blockhash).unwrap();
     f.banks_client.process_transaction(tx).await

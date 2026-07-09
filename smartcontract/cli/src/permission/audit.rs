@@ -23,8 +23,10 @@ use std::{collections::HashMap, io::Write};
 /// `AUTHORIZE_GATED_FLAGS` (the serviceability crate owns that list); this const only
 /// records the residual GlobalState-gated privileges that no flag covers.
 const NON_MIGRATED_SUBSYSTEMS: &[&str] = &[
-    "user create (custom owner override requires foundation_allowlist or sentinel_authority; \
-     qa_allowlist/foundation_allowlist bypass device status & seat limits)",
+    "user create (custom owner override now honors USER_ADMIN via authorize() — foundation_allowlist \
+     via the USER_ADMIN legacy mapping, Permission holders directly — so only the sentinel_authority \
+     direct check remains un-migrated; qa_allowlist/foundation_allowlist still bypass device status & \
+     seat limits)",
 ];
 
 /// A legacy key that authorizes a migrated instruction today but lacks an equivalent

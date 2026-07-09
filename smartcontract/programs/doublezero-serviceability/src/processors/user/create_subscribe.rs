@@ -1,4 +1,5 @@
 use crate::{
+    authorize::split_trailing_permission,
     error::DoubleZeroError,
     seeds::{SEED_PREFIX, SEED_USER},
     serializer::{try_acc_create, try_acc_write},
@@ -90,12 +91,17 @@ pub fn process_create_subscribe_user(
     )?
     .expect("dz_prefix_count > 0 guarantees Some");
 
-    let payer_account = next_account_info(accounts_iter)?;
-    let system_program = next_account_info(accounts_iter)?;
-
-    // Optional trailing Feed account for the EdgeSeat metro gate: the feed (referenced by the pass)
-    // that covers the device's exchange and lists the target multicast group.
-    let feed_account = accounts_iter.next();
+    // Trailing layout after the resource-extension accounts: [feed?, payer, system, permission?].
+    // The optional Feed account (EdgeSeat metro gate — the feed covering the device's exchange and
+    // listing the target multicast group) precedes payer/system; the optional payer Permission PDA
+    // (appended by the SDK when it exists on-chain, authorizing a USER_ADMIN owner-override inside
+    // create_user_core) is last. split_trailing_permission identifies the Permission by PDA match
+    // rather than by position, so Feed and Permission coexist unambiguously — a single positional
+    // slot cannot, since either may be present or absent independently.
+    let remaining: Vec<&AccountInfo> = accounts_iter.collect();
+    let (payer_account, system_program, leading, permission_account) =
+        split_trailing_permission(program_id, &remaining)?;
+    let feed_account = leading.first().copied();
 
     msg!("process_create_subscribe_user({:?})", value);
 
@@ -106,6 +112,7 @@ pub fn process_create_subscribe_user(
         globalstate_account,
         tenant_account: None, // No tenant support for multicast group users
         payer_account,
+        permission_account,
     };
 
     let owner_override = if value.owner != Pubkey::default() {

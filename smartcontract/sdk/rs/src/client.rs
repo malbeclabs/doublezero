@@ -274,20 +274,42 @@ impl DZClient {
     /// transaction failing with an authorization-shaped error that indicates the
     /// memo went stale cross-process (see [`Self::is_stale_permission_error`] and
     /// the retry loop in `execute_transaction_inner`).
+    ///
+    /// Only a *definitive* answer is cached: a successful RPC response — whether
+    /// the account is present or absent — is memoized, but a genuine RPC failure
+    /// is not. Caching a failure as "no account" would latch the legacy allowlist
+    /// path until the next invalidation or restart, which under
+    /// `RequirePermissionAccounts` strict mode surfaces as a spurious `NotAllowed`
+    /// (issue #4011).
     fn resolve_permission_account(&self, payer: &Pubkey) -> Option<AccountMeta> {
         let mut cache = self.permission_account_cache.lock().unwrap();
         if let Some(cached) = cache.as_ref() {
             return cached.clone();
         }
         let (permission_pda, _) = get_permission_pda(&self.program_id, payer);
-        let exists = (|| self.client.get_account(&permission_pda))
-            .retry(Self::rpc_retry_builder())
-            .when(Self::is_retryable_rpc_error)
-            .call()
-            .is_ok();
-        let meta = exists.then(|| AccountMeta::new_readonly(permission_pda, false));
-        *cache = Some(meta.clone());
-        meta
+        // Use `get_account_with_commitment` so a definitive "account does not exist"
+        // comes back as `Ok(value: None)` rather than an `Err`. Any `Err` here is a
+        // genuine RPC failure (retries exhausted or non-retryable), which must NOT be
+        // cached as "no account": doing so would latch the legacy allowlist path until
+        // the next create/delete invalidation or a restart (see issue #4011). Leave the
+        // cache empty so the next authorized transaction re-resolves.
+        match (|| {
+            self.client
+                .get_account_with_commitment(&permission_pda, self.client.commitment())
+        })
+        .retry(Self::rpc_retry_builder())
+        .when(Self::is_retryable_rpc_error)
+        .call()
+        {
+            Ok(response) => {
+                let meta = response
+                    .value
+                    .map(|_| AccountMeta::new_readonly(permission_pda, false));
+                *cache = Some(meta.clone());
+                meta
+            }
+            Err(_) => None,
+        }
     }
 
     fn execute_transaction_inner(
@@ -1125,6 +1147,53 @@ mod assemble_instructions_tests {
         // A bare custom (non-transaction) client error has no program result.
         let transport = ClientError::from(ClientErrorKind::Custom("connection reset".into()));
         assert_eq!(DZClient::parse_transaction_error(&transport), None);
+    }
+
+    fn client_with_mock_rpc(url: &str) -> DZClient {
+        DZClient {
+            rpc_url: String::new(),
+            client: RpcClient::new_mock(url.to_string()),
+            rpc_ws_url: String::new(),
+            payer: None,
+            program_id: Pubkey::new_unique(),
+            permission_account_cache: Mutex::new(None),
+        }
+    }
+
+    /// Regression for #4011: a definitive "account does not exist" (a successful
+    /// RPC response with a null account) is cached, so the legacy path is served
+    /// without re-querying on the next call.
+    #[test]
+    fn resolve_permission_account_caches_definitive_absence() {
+        // The mock's default `getAccountInfo` returns `value: null`, i.e. a
+        // successful "account not found" response.
+        let client = client_with_mock_rpc("succeeds");
+
+        assert_eq!(
+            client.resolve_permission_account(&Pubkey::new_unique()),
+            None
+        );
+        // Definitive absence is memoized as `Some(None)`.
+        assert_eq!(*client.permission_account_cache.lock().unwrap(), Some(None));
+    }
+
+    /// Regression for #4011: a genuine RPC failure must NOT be cached as "no
+    /// account". Caching it would latch the legacy path until the next
+    /// create/delete invalidation or a restart. The cache stays unresolved so the
+    /// next call re-queries.
+    #[test]
+    fn resolve_permission_account_does_not_cache_rpc_failure() {
+        // The "fails" mock returns a malformed body that fails to deserialize into
+        // the expected account response — a non-retryable RPC error.
+        let client = client_with_mock_rpc("fails");
+
+        assert_eq!(
+            client.resolve_permission_account(&Pubkey::new_unique()),
+            None
+        );
+        // Not latched: the cache is still unresolved, so the next authorized
+        // transaction re-resolves rather than serving a stale "no account".
+        assert_eq!(*client.permission_account_cache.lock().unwrap(), None);
     }
 }
 

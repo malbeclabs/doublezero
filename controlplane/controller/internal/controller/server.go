@@ -1040,7 +1040,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 			Timestamp:    reqStart,
 			DevicePubkey: req.GetPubkey(),
 		})
-		c.clickhouse.RecordVersion(versionEvent{
+		c.clickhouse.RecordVersion(agentVersionReport{
 			DevicePubkey: req.GetPubkey(),
 			UpdatedAt:    reqStart,
 			AgentVersion: agentVersion,

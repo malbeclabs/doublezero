@@ -109,6 +109,8 @@ GRANT SELECT, INSERT, CREATE TABLE, SHOW COLUMNS ON devnet.controller_agent_vers
 
 The controller automatically creates both tables on startup and batch-inserts every 10 seconds.
 
+Apply the grants **before** deploying a controller version that adds a table: table creation degrades per-table, so a failing `CREATE TABLE` (e.g. a missing grant) disables writes to that table until restart while the other table keeps working. Failures are logged at `ERROR`.
+
 #### Table Schemas
 
 **GetConfig events** — one row per successful GetConfig poll:
@@ -137,3 +139,8 @@ CREATE TABLE devnet.controller_agent_versions (
 ) ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY device_pubkey
 ```
+
+Caveats for consumers of this table:
+
+- Rows are **last-reported values, agent-asserted over an unauthenticated endpoint** with latest-write-wins semantics — treat them as informational, not verified fleet state.
+- Blank version reports are skipped, so a device whose agent never reports version fields gets no row (indistinguishable from never having polled), and a downgrade to a non-reporting agent leaves the old row in place. Check `updated_at` freshness or join against `controller_grpc_getconfig_success` for liveness.

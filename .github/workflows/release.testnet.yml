@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 env:
-  SLACK_CHANNEL_ID: C0XXXXXXX # int-tech — placeholder; maintainer fills real ID before merge, see PR checklist
+  SLACK_CHANNEL_ID: C0853CEAUR4 # bots
 
 # Serialize releases of the same version: overlapping dispatches would
 # force-push the same release branches and race on the same tags.
@@ -172,9 +172,15 @@ jobs:
   # Gate 1: approve only after BOTH version PRs are merged.
   gate-tags:
     runs-on: ubuntu-latest
-    needs: open-prs
+    # preflight is already in the transitive chain; listed directly so its
+    # thread_ts output is readable here (needs only exposes direct dependencies).
+    needs: [open-prs, preflight]
     environment: testnet
     steps:
+      # checkout only to resolve the local composite action
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
       - uses: actions/create-github-app-token@v2
         id: app
         with:
@@ -197,6 +203,18 @@ jobs:
             { [ "$DZ" = "MERGED" ] && [ "$INFRA" = "MERGED" ]; } || {
               echo "::error::approve this gate only after BOTH version PRs are merged"; exit 1; }
           fi
+      # The tag jobs request the `testnet` environment prompt again right after
+      # this job completes; nudge the thread so that second approval isn't missed.
+      # Skipped in dry runs, where push-tags doesn't run at all.
+      - name: Post tag-approval nudge to Slack thread
+        if: ${{ !inputs.dry_run }}
+        uses: ./.github/actions/slack-thread-post
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ env.SLACK_CHANNEL_ID }}
+          thread-ts: ${{ needs.preflight.outputs.thread_ts }}
+          text: |-
+            Version PRs confirmed merged. The 9 tag jobs are now waiting on the `testnet` environment prompt: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   push-tags:
     if: ${{ !inputs.dry_run }}

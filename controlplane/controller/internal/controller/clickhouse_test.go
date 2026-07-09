@@ -67,6 +67,34 @@ func TestClickhouseWriterLogEscalation(t *testing.T) {
 	}
 }
 
+func TestRecordVersion(t *testing.T) {
+	cw := &ClickhouseWriter{
+		controllerVersion: "v1.2.3",
+		controllerCommit:  "abc123",
+		controllerDate:    "2026-01-01",
+	}
+
+	// A blank agent report must not be recorded: ReplacingMergeTree keeps the
+	// row with the newest updated_at, so it would overwrite the last known
+	// good version row.
+	cw.RecordVersion(versionEvent{DevicePubkey: "dev1"})
+	if len(cw.versions) != 0 {
+		t.Fatalf("blank agent report was recorded, want skipped")
+	}
+
+	cw.RecordVersion(versionEvent{DevicePubkey: "dev1", AgentVersion: "v0.9.0"})
+	if len(cw.versions) != 1 {
+		t.Fatalf("expected 1 recorded version event, got %d", len(cw.versions))
+	}
+	got := cw.versions[0]
+	if got.ControllerVersion != "v1.2.3" || got.ControllerCommit != "abc123" || got.ControllerDate != "2026-01-01" {
+		t.Errorf("controller build info not stamped: %+v", got)
+	}
+	if got.AgentVersion != "v0.9.0" {
+		t.Errorf("AgentVersion = %q, want %q", got.AgentVersion, "v0.9.0")
+	}
+}
+
 func TestBuildClickhouseOptions(t *testing.T) {
 	tests := []struct {
 		name       string

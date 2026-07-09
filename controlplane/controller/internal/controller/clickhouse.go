@@ -129,6 +129,12 @@ func (cw *ClickhouseWriter) Record(event getConfigEvent) {
 }
 
 func (cw *ClickhouseWriter) RecordVersion(event versionEvent) {
+	// A blank report (e.g. an old or restarting agent) must not overwrite the
+	// last known good version row, since ReplacingMergeTree keeps the row with
+	// the newest updated_at.
+	if event.AgentVersion == "" && event.AgentCommit == "" && event.AgentDate == "" {
+		return
+	}
 	event.ControllerVersion = cw.controllerVersion
 	event.ControllerCommit = cw.controllerCommit
 	event.ControllerDate = cw.controllerDate
@@ -159,21 +165,28 @@ func (cw *ClickhouseWriter) flush(ctx context.Context) {
 	cw.versions = nil
 	cw.mu.Unlock()
 
+	if len(events) == 0 && len(versions) == 0 {
+		return
+	}
+	ok := true
 	if len(events) > 0 {
-		cw.flushEvents(ctx, events)
+		ok = cw.flushEvents(ctx, events) && ok
 	}
 	if len(versions) > 0 {
-		cw.flushVersions(ctx, versions)
+		ok = cw.flushVersions(ctx, versions) && ok
+	}
+	if ok {
+		cw.consecutiveErrors = 0
 	}
 }
 
-func (cw *ClickhouseWriter) flushEvents(ctx context.Context, events []getConfigEvent) {
+func (cw *ClickhouseWriter) flushEvents(ctx context.Context, events []getConfigEvent) bool {
 	batch, err := cw.conn.PrepareBatch(ctx, fmt.Sprintf(
 		`INSERT INTO "%s".controller_grpc_getconfig_success (timestamp, device_pubkey)`, cw.db,
 	))
 	if err != nil {
 		cw.recordFlushError("error preparing clickhouse batch", err)
-		return
+		return false
 	}
 	for _, e := range events {
 		if err := batch.Append(e.Timestamp, e.DevicePubkey); err != nil {
@@ -183,23 +196,23 @@ func (cw *ClickhouseWriter) flushEvents(ctx context.Context, events []getConfigE
 	if err := batch.Send(); err != nil {
 		_ = batch.Close()
 		cw.recordFlushError("error sending clickhouse batch", err)
-		return
+		return false
 	}
 	if err := batch.Close(); err != nil {
 		cw.recordFlushError("error closing clickhouse batch", err)
-		return
+		return false
 	}
-	cw.consecutiveErrors = 0
 	cw.log.Debug("flushed getconfig events to clickhouse", "count", len(events))
+	return true
 }
 
-func (cw *ClickhouseWriter) flushVersions(ctx context.Context, versions []versionEvent) {
+func (cw *ClickhouseWriter) flushVersions(ctx context.Context, versions []versionEvent) bool {
 	batch, err := cw.conn.PrepareBatch(ctx, fmt.Sprintf(
 		`INSERT INTO "%s".controller_agent_versions (device_pubkey, updated_at, agent_version, agent_commit, agent_date, controller_version, controller_commit, controller_date)`, cw.db,
 	))
 	if err != nil {
 		cw.recordFlushError("error preparing clickhouse versions batch", err)
-		return
+		return false
 	}
 	for _, v := range versions {
 		if err := batch.Append(v.DevicePubkey, v.UpdatedAt, v.AgentVersion, v.AgentCommit, v.AgentDate, v.ControllerVersion, v.ControllerCommit, v.ControllerDate); err != nil {
@@ -209,13 +222,14 @@ func (cw *ClickhouseWriter) flushVersions(ctx context.Context, versions []versio
 	if err := batch.Send(); err != nil {
 		_ = batch.Close()
 		cw.recordFlushError("error sending clickhouse versions batch", err)
-		return
+		return false
 	}
 	if err := batch.Close(); err != nil {
 		cw.recordFlushError("error closing clickhouse versions batch", err)
-		return
+		return false
 	}
 	cw.log.Debug("flushed version events to clickhouse", "count", len(versions))
+	return true
 }
 
 // recordFlushError increments the consecutive error counter and logs at the

@@ -17,6 +17,8 @@ All notable changes to this project will be documented in this file.
   - EdgeSeat multicast connect is metro-gated: a device whose exchange is not covered by any of the pass's feeds is rejected with `MetroMismatch`, and the matching feed's per-feed cap is enforced. (#3955)
 - SDK
   - Go, TypeScript, and Python deserialization for the `Feed` account and the `EdgeSeat` `FeedSeat` payload. (#3956)
+- Controller
+  - Track the latest config agent version per device in a new `controller_agent_versions` ClickHouse table, updated on GetConfig polls. (#3578)
 
 ### Changes
 
@@ -393,8 +395,6 @@ All notable changes to this project will be documented in this file.
   - Filter devices by type-specific capacity during auto-selection so clients are not provisioned onto devices that have reached their unicast, multicast publisher, or multicast subscriber limits
 - Collector
   - fallback to any probe if anchor probes aren't available
-- Device Controller
-  - store config agent version info in clickhouse
 - Smartcontract
   - Fix `BackfillTopology` account ordering: payer and system_program are now correctly placed after the variable-length device list, not before it
   - Fix `BackfillTopology` SID collision: flex-algo node segment indices are now guaranteed not to duplicate any existing base `node_segment_idx` value on the device

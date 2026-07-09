@@ -2,8 +2,10 @@ use crate::doublezerocommand::CliCommand;
 use chrono::{TimeZone, Utc};
 use doublezero_sdk::commands::{
     contributor::get::GetContributorCommand, exchange::get::GetExchangeCommand,
-    location::get::GetLocationCommand, tenant::get::GetTenantCommand,
+    location::get::GetLocationCommand, multicastgroup::get::GetMulticastGroupCommand,
+    tenant::get::GetTenantCommand,
 };
+use eyre::WrapErr;
 use std::{
     io::{Read, Write},
     str,
@@ -64,6 +66,38 @@ pub fn resolve_exchange_pk<C: CliCommand>(
         pubkey_or_code: pubkey_or_code.to_string(),
     })?;
     Ok(pubkey)
+}
+
+/// Resolve an exchange argument that is either a base58 pubkey or an exchange code.
+///
+/// Unlike [`resolve_exchange_pk`], a pubkey input is used as-is with no onchain
+/// lookup or validation; only a code queries the backend for the account.
+pub fn resolve_exchange_arg<C: CliCommand>(client: &C, input: &str) -> eyre::Result<Pubkey> {
+    match parse_pubkey(input) {
+        Some(pk) => Ok(pk),
+        None => client
+            .get_exchange(GetExchangeCommand {
+                pubkey_or_code: input.to_string(),
+            })
+            .map(|(pubkey, _)| pubkey)
+            .wrap_err_with(|| format!("Exchange not found: {input}")),
+    }
+}
+
+/// Resolve a multicast group argument that is either a base58 pubkey or a group code.
+///
+/// A pubkey input is used as-is with no onchain lookup or validation; only a
+/// code queries the backend for the account.
+pub fn resolve_multicastgroup_arg<C: CliCommand>(client: &C, input: &str) -> eyre::Result<Pubkey> {
+    match parse_pubkey(input) {
+        Some(pk) => Ok(pk),
+        None => client
+            .get_multicastgroup(GetMulticastGroupCommand {
+                pubkey_or_code: input.to_string(),
+            })
+            .map(|(pubkey, _)| pubkey)
+            .wrap_err_with(|| format!("Multicast group not found: {input}")),
+    }
 }
 
 /// Resolve a `--pubkey`/`--code` argument to the contributor's on-chain pubkey.

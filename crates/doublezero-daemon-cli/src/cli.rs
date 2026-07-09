@@ -9,8 +9,8 @@ use doublezero_cli_core::CliContext;
 use std::io::Write;
 
 use crate::{
-    client::DaemonClient, disable::Disable, disconnect::Disconnect, enable::Enable,
-    latency::Latency, ledger::LedgerClient, routes::Routes, status::Status,
+    client::DaemonClient, connect::Connect, disable::Disable, disconnect::Disconnect,
+    enable::Enable, latency::Latency, ledger::LedgerClient, routes::Routes, status::Status,
 };
 
 /// Daemon-control verbs hoisted to the binary's top level.
@@ -18,6 +18,8 @@ use crate::{
 /// Populated incrementally as verbs migrate from the binary into this crate.
 #[derive(Subcommand, Debug)]
 pub enum DaemonCommand {
+    /// Connect your server to a doublezero device
+    Connect(Connect),
     /// Enable the reconciler (start managing tunnels)
     Enable(Enable),
     /// Disable the reconciler (tear down tunnels and stop managing them)
@@ -41,6 +43,7 @@ impl DaemonCommand {
         out: &mut W,
     ) -> eyre::Result<()> {
         match self {
+            Self::Connect(cmd) => cmd.execute(ctx, daemon, ledger, out).await,
             Self::Enable(cmd) => cmd.execute(ctx, daemon, ledger, out).await,
             Self::Disable(cmd) => cmd.execute(ctx, daemon, ledger, out).await,
             Self::Status(cmd) => cmd.execute(ctx, daemon, ledger, out).await,

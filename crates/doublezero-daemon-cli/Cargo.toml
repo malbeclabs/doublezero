@@ -33,10 +33,12 @@ tracing.workspace = true
 
 doublezero-cli-core.workspace = true
 doublezero-config.workspace = true
+doublezero-serviceability.workspace = true
 doublezero_sdk.workspace = true
 
 [dev-dependencies]
+ctor.workspace = true
 doublezero-cli-core = { workspace = true, features = ["testing"] }
 doublezero-program-common.workspace = true
-doublezero-serviceability.workspace = true
+tempfile.workspace = true
 tokio.workspace = true

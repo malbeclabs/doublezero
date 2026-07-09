@@ -3,9 +3,7 @@ use clap_complete::generate;
 use std::path::PathBuf;
 mod cli;
 mod command;
-mod dzd_latency;
 use doublezero_config::Environment;
-mod requirements;
 mod servicecontroller;
 use crate::cli::{command::Command, multicast::MulticastCommands, sentinel::SentinelCommands};
 use doublezero_cli_core::LogLevel;
@@ -80,6 +78,77 @@ impl<C: CliCommand + Sync> doublezero_daemon_cli::LedgerClient for LedgerAdapter
     {
         self.client
             .list_device(doublezero_sdk::commands::device::list::ListDeviceCommand)
+    }
+
+    fn get_epoch(&self) -> eyre::Result<u64> {
+        self.client.get_epoch()
+    }
+
+    fn get_accesspass(
+        &self,
+        client_ip: std::net::Ipv4Addr,
+        user_payer: solana_sdk::pubkey::Pubkey,
+    ) -> eyre::Result<Option<doublezero_serviceability::state::accesspass::AccessPass>> {
+        Ok(self
+            .client
+            .get_accesspass(
+                doublezero_sdk::commands::accesspass::get::GetAccessPassCommand {
+                    client_ip,
+                    user_payer,
+                },
+            )?
+            .map(|(_, accesspass)| accesspass))
+    }
+
+    fn get_device(&self, pubkey_or_code: String) -> eyre::Result<doublezero_sdk::Device> {
+        let (_, device) =
+            self.client
+                .get_device(doublezero_sdk::commands::device::get::GetDeviceCommand {
+                    pubkey_or_code,
+                })?;
+        Ok(device)
+    }
+
+    fn get_tenant(
+        &self,
+        pubkey_or_code: String,
+    ) -> eyre::Result<(solana_sdk::pubkey::Pubkey, doublezero_sdk::Tenant)> {
+        self.client
+            .get_tenant(doublezero_sdk::commands::tenant::get::GetTenantCommand { pubkey_or_code })
+    }
+
+    fn list_multicastgroup(
+        &self,
+    ) -> eyre::Result<
+        std::collections::HashMap<solana_sdk::pubkey::Pubkey, doublezero_sdk::MulticastGroup>,
+    > {
+        self.client.list_multicastgroup(
+            doublezero_sdk::commands::multicastgroup::list::ListMulticastGroupCommand,
+        )
+    }
+
+    fn create_user(
+        &self,
+        cmd: doublezero_sdk::commands::user::create::CreateUserCommand,
+    ) -> eyre::Result<solana_sdk::pubkey::Pubkey> {
+        let (_, pubkey) = self.client.create_user(cmd)?;
+        Ok(pubkey)
+    }
+
+    fn create_subscribe_user(
+        &self,
+        cmd: doublezero_sdk::commands::user::create_subscribe::CreateSubscribeUserCommand,
+    ) -> eyre::Result<solana_sdk::pubkey::Pubkey> {
+        let (_, pubkey) = self.client.create_subscribe_user(cmd)?;
+        Ok(pubkey)
+    }
+
+    fn update_multicastgroup_roles(
+        &self,
+        cmd: doublezero_sdk::commands::multicastgroup::subscribe::UpdateMulticastGroupRolesCommand,
+    ) -> eyre::Result<()> {
+        self.client.update_multicastgroup_roles(cmd)?;
+        Ok(())
     }
 }
 
@@ -343,9 +412,6 @@ async fn main() -> eyre::Result<()> {
     }
 
     let res = match command {
-        // Daemon-control verbs (binary-local)
-        Command::Connect(args) => args.execute(&client).await,
-
         // Daemon-control verbs migrated to doublezero-daemon-cli (RFC-20)
         Command::Daemon(cmd) => {
             let daemon = DaemonClientImpl::new(

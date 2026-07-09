@@ -81,6 +81,9 @@ pub fn check_balance(client: &dyn CliCommand, spinner: Option<&ProgressBar>) -> 
     }
 }
 
+/// Mirrors `check_accesspass` in `doublezero-daemon-cli`
+/// (`crates/doublezero-daemon-cli/src/connect.rs`) — keep the two in sync if
+/// AccessPass validity semantics change.
 pub fn check_accesspass(
     client: &dyn CliCommand,
     client_ip: Ipv4Addr,

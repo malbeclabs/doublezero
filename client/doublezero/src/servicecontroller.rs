@@ -1,61 +1,21 @@
+//! Binary-local daemon client retained for the not-yet-migrated multicast
+//! verbs (`subscribe`/`unsubscribe`/`publish`/`unpublish`), which only need
+//! the daemon-discovered client IP via `/v2/status`. The full daemon client
+//! lives in `doublezero-daemon-cli` (`DaemonClient`); this remnant moves there
+//! when the multicast verbs migrate (RFC-20).
+
 use chrono::DateTime;
-use doublezero_config::Environment;
 use eyre::eyre;
-use http_body_util::{BodyExt, Empty, Full};
+use http_body_util::{BodyExt, Empty};
 use hyper::{body::Bytes, Method, Request};
 use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use hyperlocal::{UnixConnector, Uri};
-use mockall::automock;
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs::File, path::Path, sync::OnceLock};
+use std::sync::OnceLock;
 use tabled::{derive::display, Tabled};
 
 const DEFAULT_SOCKET_PATH: &str = "/var/run/doublezerod/doublezerod.sock";
-const NANOS_TO_MS: f64 = 1_000_000.0;
 static GLOBAL_SOCKET_PATH: OnceLock<String> = OnceLock::new();
-
-#[derive(Clone, Tabled, Deserialize, Serialize, Debug)]
-pub struct LatencyRecord {
-    #[tabled(rename = "Pubkey")]
-    pub device_pk: String,
-    #[tabled(rename = "Code")]
-    pub device_code: String,
-    #[tabled(rename = "IP")]
-    pub device_ip: String,
-    #[tabled(display = "display_as_ms", rename = "Min")]
-    pub min_latency_ns: i64,
-    #[tabled(display = "display_as_ms", rename = "Max")]
-    pub max_latency_ns: i64,
-    #[tabled(display = "display_as_ms", rename = "Avg")]
-    pub avg_latency_ns: i64,
-    pub reachable: bool,
-}
-
-fn display_as_ms(latency: &i64) -> String {
-    format!("{:.2}ms", (*latency as f64 / NANOS_TO_MS))
-}
-
-impl fmt::Display for LatencyRecord {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "device: {}, code: {}, ip: {}, latency min: {}, max: {}, avg: {}, reachable: {}",
-            self.device_pk,
-            self.device_code,
-            self.device_ip,
-            self.min_latency_ns,
-            self.max_latency_ns,
-            self.avg_latency_ns,
-            self.reachable
-        )
-    }
-}
-
-#[derive(Deserialize, Debug)]
-pub struct LatencyResponse {
-    pub ready: bool,
-    pub results: Vec<LatencyRecord>,
-}
 
 #[derive(Tabled, Serialize, Deserialize, Debug, Clone)]
 #[tabled(display(Option, "display::option", ""))]
@@ -72,12 +32,6 @@ pub struct StatusResponse {
     pub doublezero_ip: Option<String>,
     #[tabled(rename = "User Type")]
     pub user_type: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct GetConfigResponse {
-    pub program_id: String,
-    pub rpc_url: String,
 }
 
 #[derive(Tabled, Serialize, Deserialize, Debug, Clone)]
@@ -97,28 +51,6 @@ fn maybe_i64_to_dt_str(maybe_i64_dt: &Option<i64>) -> String {
                 .unwrap_or_else(|| "invalid timestamp".to_string())
         },
     )
-}
-
-#[derive(Deserialize, Debug)]
-pub struct ErrorResponse {
-    pub status: String,
-    pub description: String,
-}
-
-/// Parse a daemon response, falling back to ErrorResponse if the primary type fails.
-fn parse_daemon_response<T: serde::de::DeserializeOwned>(
-    data: &[u8],
-    endpoint: &str,
-) -> eyre::Result<T> {
-    match serde_json::from_slice::<T>(data) {
-        Ok(response) => Ok(response),
-        Err(parse_err) => match serde_json::from_slice::<ErrorResponse>(data) {
-            Ok(err_resp) if err_resp.status == "error" => Err(eyre!(err_resp.description)),
-            _ => Err(eyre!(
-                "Failed to parse daemon {endpoint} response: {parse_err}"
-            )),
-        },
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq)]
@@ -176,16 +108,9 @@ pub struct V2StatusResponse {
     pub services: Vec<V2ServiceStatus>,
 }
 
-#[automock]
+#[allow(async_fn_in_trait)]
 pub trait ServiceController {
-    fn service_controller_check(&self) -> bool;
-    fn service_controller_can_open(&self) -> bool;
-    async fn get_config(&self) -> eyre::Result<GetConfigResponse>;
-    async fn get_env(&self) -> eyre::Result<Environment>;
-    async fn latency(&self) -> eyre::Result<LatencyResponse>;
-    async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
     async fn v2_status(&self) -> eyre::Result<V2StatusResponse>;
-    async fn enable(&self) -> eyre::Result<()>;
 }
 
 pub struct ServiceControllerImpl {
@@ -210,95 +135,6 @@ impl ServiceControllerImpl {
 }
 
 impl ServiceController for ServiceControllerImpl {
-    fn service_controller_check(&self) -> bool {
-        Path::new(&self.socket_path).exists()
-    }
-
-    fn service_controller_can_open(&self) -> bool {
-        let file = File::options()
-            .read(true)
-            .write(true)
-            .open(&self.socket_path);
-        match file {
-            Ok(_) => true,
-            Err(e) => !matches!(e.kind(), std::io::ErrorKind::PermissionDenied),
-        }
-    }
-
-    async fn get_config(&self) -> eyre::Result<GetConfigResponse> {
-        let uri = Uri::new(&self.socket_path, "/config").into();
-        let client: Client<UnixConnector, Full<Bytes>> =
-            Client::builder(TokioExecutor::new()).build(UnixConnector);
-        let res = client
-            .get(uri)
-            .await
-            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
-
-        let data = res
-            .into_body()
-            .collect()
-            .await
-            .map_err(|e| eyre!("Unable to read response body: {e}"))?
-            .to_bytes();
-
-        parse_daemon_response::<GetConfigResponse>(&data, "/config")
-    }
-
-    async fn get_env(&self) -> eyre::Result<Environment> {
-        let config = self.get_config().await?;
-        Ok(Environment::from_program_id(&config.program_id).unwrap_or_default())
-    }
-
-    async fn latency(&self) -> eyre::Result<LatencyResponse> {
-        let uri = Uri::new(&self.socket_path, "/v2/latency").into();
-        let client: Client<UnixConnector, Full<Bytes>> =
-            Client::builder(TokioExecutor::new()).build(UnixConnector);
-        let res = client
-            .get(uri)
-            .await
-            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
-
-        let data = res
-            .into_body()
-            .collect()
-            .await
-            .map_err(|e| eyre!("Unable to read response body: {e}"))?
-            .to_bytes();
-
-        parse_daemon_response::<LatencyResponse>(&data, "/v2/latency")
-    }
-
-    async fn status(&self) -> eyre::Result<Vec<StatusResponse>> {
-        let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
-
-        let req = Request::builder()
-            .method(Method::GET)
-            .uri(Uri::new(&self.socket_path, "/status"))
-            .body(Empty::<Bytes>::new())?;
-
-        match client.request(req).await {
-            Ok(res) => {
-                if res.status() != 200 {
-                    eyre::bail!("Unable to connect to doublezero daemon: {}", res.status());
-                }
-
-                let data = res
-                    .into_body()
-                    .collect()
-                    .await
-                    .map_err(|e| eyre!("Unable to read response body: {e}"))?
-                    .to_bytes();
-
-                if data.is_empty() {
-                    eyre::bail!("No data returned from daemon /status");
-                }
-
-                parse_daemon_response::<Vec<StatusResponse>>(&data, "/status")
-            }
-            Err(e) => Err(eyre!("Unable to connect to doublezero daemon: {e}")),
-        }
-    }
-
     async fn v2_status(&self) -> eyre::Result<V2StatusResponse> {
         let client = Client::builder(TokioExecutor::new()).build(UnixConnector);
         let req = Request::builder()
@@ -314,103 +150,11 @@ impl ServiceController for ServiceControllerImpl {
             .map_err(|e| eyre!("Unable to parse V2StatusResponse: {e}"))?;
         Ok(response)
     }
-
-    async fn enable(&self) -> eyre::Result<()> {
-        let client: Client<UnixConnector, Full<Bytes>> =
-            Client::builder(TokioExecutor::new()).build(UnixConnector);
-        let req = Request::builder()
-            .method(Method::POST)
-            .uri(Uri::new(&self.socket_path, "/enable"))
-            .body(Full::from(Bytes::new()))?;
-        let res = client
-            .request(req)
-            .await
-            .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
-        if res.status() != 200 {
-            eyre::bail!("Failed to enable reconciler: {}", res.status());
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-
-    #[test]
-    fn test_service_controller_uses_explicit_socket_path_for_checks() {
-        let socket_path =
-            std::env::temp_dir().join(format!("doublezerod-test-{}.sock", std::process::id()));
-        {
-            let mut file = File::create(&socket_path).expect("create socket placeholder");
-            file.write_all(b"test").expect("write socket placeholder");
-        }
-
-        let controller =
-            ServiceControllerImpl::new(Some(socket_path.to_string_lossy().into_owned()));
-
-        assert!(controller.service_controller_check());
-        assert!(controller.service_controller_can_open());
-
-        std::fs::remove_file(socket_path).expect("remove socket placeholder");
-    }
-
-    /// Test that validates the JSON output format for LatencyRecord.
-    /// This test catches breaking changes to the JSON API contract.
-    #[test]
-    fn test_latency_record_json_output_format() {
-        let latency = LatencyRecord {
-            device_pk: "DevicePubkey123".to_string(),
-            device_code: "device1".to_string(),
-            device_ip: "5.6.7.8".to_string(),
-            min_latency_ns: 1_000_000,
-            max_latency_ns: 5_000_000,
-            avg_latency_ns: 3_000_000,
-            reachable: true,
-        };
-
-        let json_output = serde_json::to_value(&latency).expect("Failed to serialize");
-
-        // Validate all fields are present
-        assert!(
-            json_output.get("device_pk").is_some(),
-            "Missing 'device_pk' field"
-        );
-        assert!(
-            json_output.get("device_code").is_some(),
-            "Missing 'device_code' field"
-        );
-        assert!(
-            json_output.get("device_ip").is_some(),
-            "Missing 'device_ip' field"
-        );
-        assert!(
-            json_output.get("min_latency_ns").is_some(),
-            "Missing 'min_latency_ns' field"
-        );
-        assert!(
-            json_output.get("max_latency_ns").is_some(),
-            "Missing 'max_latency_ns' field"
-        );
-        assert!(
-            json_output.get("avg_latency_ns").is_some(),
-            "Missing 'avg_latency_ns' field"
-        );
-        assert!(
-            json_output.get("reachable").is_some(),
-            "Missing 'reachable' field"
-        );
-
-        // Validate field values
-        assert_eq!(json_output.get("device_pk").unwrap(), "DevicePubkey123");
-        assert_eq!(json_output.get("device_code").unwrap(), "device1");
-        assert_eq!(json_output.get("device_ip").unwrap(), "5.6.7.8");
-        assert_eq!(json_output.get("min_latency_ns").unwrap(), 1_000_000);
-        assert_eq!(json_output.get("max_latency_ns").unwrap(), 5_000_000);
-        assert_eq!(json_output.get("avg_latency_ns").unwrap(), 3_000_000);
-        assert_eq!(json_output.get("reachable").unwrap(), true);
-    }
 
     /// Test StatusResponse JSON output format
     #[test]

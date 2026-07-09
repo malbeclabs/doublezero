@@ -13,6 +13,25 @@ jobs, approve infra's `testnet` environment three times (`stage-programs`,
 `#int-tech` when it may be waiting), and approve gate 2 after the program
 deploy.
 
+## Slack notifications
+
+All Slack traffic for a run lands in a single `#int-tech` thread: `preflight`
+posts the parent message ("Testnet Deploy vX.Y.Z :thread:") after its
+validation steps pass, and every later post — PR links, approval pings for the
+dispatched infra runs, the program-deploy call, success, failure — is a reply
+in that thread. Posts go through the Slack Web API (`chat.postMessage`) using
+the `SLACK_BOT_TOKEN` repo secret and the channel ID set in the workflow's
+`SLACK_CHANNEL_ID` env var.
+
+Slack delivery is best-effort by design: a failed post (outage, missing or bad
+token) emits a workflow warning and never fails or blocks the release. If the
+parent post itself failed, downstream posts degrade to top-level (unthreaded)
+`#int-tech` messages.
+
+Re-run semantics: "Re-run failed jobs" keeps `preflight`'s outputs, so posts
+continue in the same thread. "Re-run all jobs" re-runs `preflight` and starts
+a new thread.
+
 ## Starting a release
 
 ```bash
@@ -31,7 +50,7 @@ gh workflow run release.testnet.yml -R malbeclabs/doublezero -f version=X.Y.Z
 | Stage | Automated | Human action required |
 | --- | --- | --- |
 | `preflight` | Validates the version, reads the current workspace version, checks the latest devnet daily release succeeded. | — |
-| `open-prs` | Opens the doublezero version-bump PR (`release/vX.Y.Z`: Cargo.toml, Cargo.lock, CHANGELOG promotion) and the infra pinned-versions PR (`release/testnet-vX.Y.Z`). PR links appear in the run summary. | Review and **merge both PRs**. |
+| `open-prs` | Opens the doublezero version-bump PR (`release/vX.Y.Z`: Cargo.toml, Cargo.lock, CHANGELOG promotion) and the infra pinned-versions PR (`release/testnet-vX.Y.Z`). PR links appear in the run summary and are posted to the Slack thread. | Review and **merge both PRs**. |
 | `gate-tags` | Waits on the `testnet` environment, then verifies both PRs are merged (the gate fails if you approve early). | **Approve gate 1** after both PRs are merged. |
 | `push-tags` | Pushes the 9 component tags (`controller`, `internet-latency-collector`, `agent`, `device-telemetry-agent`, `geoprobe-agent`, `geoprobe-target`, `funder`, `monitor`, `client`) via the reusable tag workflow, which runs in the protected `testnet` environment. | **Approve the `testnet` environment prompt** on the tag jobs. |
 | `verify-cloudsmith` | Polls CloudSmith (up to ~60 min) until all 9 packages exist at the new version. | — |
@@ -44,7 +63,8 @@ gh workflow run release.testnet.yml -R malbeclabs/doublezero -f version=X.Y.Z
 | `qa` | Dispatches infra `qa.testnet.yml` and waits for it (may queue behind the hourly cron run). | — |
 | `announce` | Posts success to Slack with the dashboard link. | **Watch the system dashboard for ~30 min** (https://doublezero.grafana.net/d/bf3dece9-51ac-4087-b6b1-579b3859ce14/). The foundation posts the community announcement. |
 
-Any failed job triggers a Slack alert via `notify-failure`.
+Any failed job triggers a Slack alert via `notify-failure`, posted to the same
+thread.
 
 All doublezero-side approvals (gate 1, the tag jobs, gate 2) use the single `testnet`
 environment, so the approval prompts look alike — the review dialog lists which job(s)

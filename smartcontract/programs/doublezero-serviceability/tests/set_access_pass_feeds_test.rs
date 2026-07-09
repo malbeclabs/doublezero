@@ -20,6 +20,7 @@ use doublezero_serviceability::{
 use solana_program_test::*;
 use solana_sdk::{
     account::Account,
+    clock::Clock,
     instruction::{AccountMeta, InstructionError},
     program_error::ProgramError,
     pubkey::Pubkey,
@@ -28,6 +29,13 @@ use solana_sdk::{
     transaction::TransactionError,
 };
 use std::net::Ipv4Addr;
+
+// Billing-window bounds for the happy-path tests. Far in the future (year ~2096 / ~2099) so the
+// processor's "window_end must be in the future" check stays satisfied for the lifetime of these
+// tests, regardless of the bank clock. Tests that exercise the future check itself read the clock
+// and derive timestamps relative to it instead.
+const TEST_WINDOW_END: i64 = 4_000_000_000;
+const TEST_TERMINATES_AT: i64 = 4_100_000_000;
 
 mod test_helpers;
 use test_helpers::*;
@@ -235,15 +243,15 @@ async fn test_set_access_pass_feeds() {
                     max_users: 5,
                     max_future_users: 5,
                     anniversary_day: 15,
-                    window_end: 1_800_000_000,
-                    terminates_at: 1_900_000_000,
+                    window_end: TEST_WINDOW_END,
+                    terminates_at: TEST_TERMINATES_AT,
                 },
                 FeedSeatConfig {
                     max_users: 3,
                     max_future_users: 3,
                     anniversary_day: 15,
-                    window_end: 1_800_000_000,
-                    terminates_at: 1_900_000_000,
+                    window_end: TEST_WINDOW_END,
+                    terminates_at: TEST_TERMINATES_AT,
                 },
             ],
         }),
@@ -267,8 +275,8 @@ async fn test_set_access_pass_feeds() {
                 max_future_users: 5,
                 current_users: 0,
                 anniversary_day: 15,
-                window_end: 1_800_000_000,
-                terminates_at: 1_900_000_000,
+                window_end: TEST_WINDOW_END,
+                terminates_at: TEST_TERMINATES_AT,
             },
             FeedSeat {
                 feed_key: feed_b,
@@ -276,8 +284,8 @@ async fn test_set_access_pass_feeds() {
                 max_future_users: 3,
                 current_users: 0,
                 anniversary_day: 15,
-                window_end: 1_800_000_000,
-                terminates_at: 1_900_000_000,
+                window_end: TEST_WINDOW_END,
+                terminates_at: TEST_TERMINATES_AT,
             },
         ])
     );
@@ -295,8 +303,8 @@ async fn test_set_access_pass_feeds() {
                 max_users: 7,
                 max_future_users: 7,
                 anniversary_day: 15,
-                window_end: 1_800_000_000,
-                terminates_at: 1_900_000_000,
+                window_end: TEST_WINDOW_END,
+                terminates_at: TEST_TERMINATES_AT,
             }],
         }),
         vec![
@@ -317,8 +325,8 @@ async fn test_set_access_pass_feeds() {
             max_future_users: 7,
             current_users: 0,
             anniversary_day: 15,
-            window_end: 1_800_000_000,
-            terminates_at: 1_900_000_000,
+            window_end: TEST_WINDOW_END,
+            terminates_at: TEST_TERMINATES_AT,
         }])
     );
 }
@@ -363,8 +371,8 @@ async fn test_cannot_set_feeds_on_non_edge_seat() {
                 max_users: 5,
                 max_future_users: 5,
                 anniversary_day: 15,
-                window_end: 1_800_000_000,
-                terminates_at: 1_900_000_000,
+                window_end: TEST_WINDOW_END,
+                terminates_at: TEST_TERMINATES_AT,
             }],
         }),
         vec![
@@ -422,8 +430,8 @@ async fn test_cannot_set_feeds_unauthorized_caller() {
                 max_users: 5,
                 max_future_users: 5,
                 anniversary_day: 15,
-                window_end: 1_800_000_000,
-                terminates_at: 1_900_000_000,
+                window_end: TEST_WINDOW_END,
+                terminates_at: TEST_TERMINATES_AT,
             }],
         }),
         vec![
@@ -465,8 +473,8 @@ async fn test_cannot_set_feeds_exceeds_max() {
             max_users: 1,
             max_future_users: 1,
             anniversary_day: 15,
-            window_end: 1_800_000_000,
-            terminates_at: 1_900_000_000,
+            window_end: TEST_WINDOW_END,
+            terminates_at: TEST_TERMINATES_AT,
         };
         MAX_ACCESS_PASS_FEEDS + 1
     ];
@@ -531,15 +539,15 @@ async fn test_cannot_set_duplicate_feed_key() {
                     max_users: 5,
                     max_future_users: 5,
                     anniversary_day: 15,
-                    window_end: 1_800_000_000,
-                    terminates_at: 1_900_000_000,
+                    window_end: TEST_WINDOW_END,
+                    terminates_at: TEST_TERMINATES_AT,
                 },
                 FeedSeatConfig {
                     max_users: 2,
                     max_future_users: 2,
                     anniversary_day: 15,
-                    window_end: 1_800_000_000,
-                    terminates_at: 1_900_000_000,
+                    window_end: TEST_WINDOW_END,
+                    terminates_at: TEST_TERMINATES_AT,
                 },
             ],
         }),
@@ -610,8 +618,8 @@ async fn test_cannot_set_max_users_below_current_users() {
             max_future_users: 5,
             current_users: 3,
             anniversary_day: 15,
-            window_end: 1_800_000_000,
-            terminates_at: 1_900_000_000,
+            window_end: TEST_WINDOW_END,
+            terminates_at: TEST_TERMINATES_AT,
         }]),
         client_ip,
         user_payer,
@@ -656,8 +664,8 @@ async fn test_cannot_set_max_users_below_current_users() {
                 max_users: 2,
                 max_future_users: 2,
                 anniversary_day: 15,
-                window_end: 1_800_000_000,
-                terminates_at: 1_900_000_000,
+                window_end: TEST_WINDOW_END,
+                terminates_at: TEST_TERMINATES_AT,
             }],
         }),
         vec![
@@ -669,13 +677,17 @@ async fn test_cannot_set_max_users_below_current_users() {
     )
     .await;
 
-    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+    assert_custom_at_ix0(
+        &result,
+        custom_code(DoubleZeroError::FeedMaxUsersBelowCurrentUsers),
+    );
 }
 
 #[tokio::test]
 async fn test_cannot_set_feeds_with_invalid_billing_window() {
-    // anniversary_day must be a calendar day (1..=31) and window_end must not extend past
-    // terminates_at. Each is validated per-feed inside the provisioning loop.
+    // The per-feed billing fields are validated inside the provisioning loop, each with its own
+    // error variant: anniversary_day must be 1..=31, and the window must satisfy
+    // now < window_end <= terminates_at (in the future and ordered).
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
@@ -721,15 +733,18 @@ async fn test_cannot_set_feeds_with_invalid_billing_window() {
                 max_users: 5,
                 max_future_users: 5,
                 anniversary_day: 0,
-                window_end: 1_800_000_000,
-                terminates_at: 1_900_000_000,
+                window_end: TEST_WINDOW_END,
+                terminates_at: TEST_TERMINATES_AT,
             }],
         }),
         accounts.clone(),
         &payer,
     )
     .await;
-    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+    assert_custom_at_ix0(
+        &result,
+        custom_code(DoubleZeroError::FeedInvalidAnniversaryDay),
+    );
 
     // anniversary_day = 32 (above range) rejects.
     let result = try_execute_and_get_error(
@@ -742,17 +757,20 @@ async fn test_cannot_set_feeds_with_invalid_billing_window() {
                 max_users: 5,
                 max_future_users: 5,
                 anniversary_day: 32,
-                window_end: 1_800_000_000,
-                terminates_at: 1_900_000_000,
+                window_end: TEST_WINDOW_END,
+                terminates_at: TEST_TERMINATES_AT,
             }],
         }),
         accounts.clone(),
         &payer,
     )
     .await;
-    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+    assert_custom_at_ix0(
+        &result,
+        custom_code(DoubleZeroError::FeedInvalidAnniversaryDay),
+    );
 
-    // window_end after terminates_at rejects.
+    // window_end after terminates_at rejects (both far-future so only the ordering fails).
     let result = try_execute_and_get_error(
         &mut banks_client,
         program_id,
@@ -763,17 +781,20 @@ async fn test_cannot_set_feeds_with_invalid_billing_window() {
                 max_users: 5,
                 max_future_users: 5,
                 anniversary_day: 15,
-                window_end: 1_900_000_001,
-                terminates_at: 1_900_000_000,
+                window_end: TEST_TERMINATES_AT + 1,
+                terminates_at: TEST_TERMINATES_AT,
             }],
         }),
         accounts.clone(),
         &payer,
     )
     .await;
-    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+    assert_custom_at_ix0(
+        &result,
+        custom_code(DoubleZeroError::FeedInvalidBillingWindow),
+    );
 
-    // Non-positive (unset) window_end / terminates_at rejects: an already-terminated feed.
+    // Unset (zero) window is not in the future, so it rejects.
     let result = try_execute_and_get_error(
         &mut banks_client,
         program_id,
@@ -788,11 +809,44 @@ async fn test_cannot_set_feeds_with_invalid_billing_window() {
                 terminates_at: 0,
             }],
         }),
+        accounts.clone(),
+        &payer,
+    )
+    .await;
+    assert_custom_at_ix0(
+        &result,
+        custom_code(DoubleZeroError::FeedInvalidBillingWindow),
+    );
+
+    // A positive but already-elapsed window_end rejects: this is the "past date slips through" case
+    // that motivated the Clock check. Read the bank clock and set window_end just before now.
+    let now = banks_client
+        .get_sysvar::<Clock>()
+        .await
+        .unwrap()
+        .unix_timestamp;
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip,
+            user_payer,
+            feeds: vec![FeedSeatConfig {
+                max_users: 5,
+                max_future_users: 5,
+                anniversary_day: 15,
+                window_end: now - 1,
+                terminates_at: TEST_TERMINATES_AT,
+            }],
+        }),
         accounts,
         &payer,
     )
     .await;
-    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+    assert_custom_at_ix0(
+        &result,
+        custom_code(DoubleZeroError::FeedInvalidBillingWindow),
+    );
 }
 
 #[tokio::test]
@@ -839,8 +893,8 @@ async fn test_cannot_set_max_future_users_below_max_users() {
                 max_users: 5,
                 max_future_users: 3,
                 anniversary_day: 15,
-                window_end: 1_800_000_000,
-                terminates_at: 1_900_000_000,
+                window_end: TEST_WINDOW_END,
+                terminates_at: TEST_TERMINATES_AT,
             }],
         }),
         vec![
@@ -851,5 +905,64 @@ async fn test_cannot_set_max_future_users_below_max_users() {
         &payer,
     )
     .await;
-    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+    assert_custom_at_ix0(
+        &result,
+        custom_code(DoubleZeroError::FeedMaxFutureUsersBelowMaxUsers),
+    );
+}
+
+#[tokio::test]
+async fn test_cannot_set_zero_max_users() {
+    // A zero current cap admits no users, so a seat with max_users == 0 is rejected as nonsensical.
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let feed_a = create_feed(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        "feda",
+    )
+    .await;
+
+    let client_ip = Ipv4Addr::new(100, 0, 0, 10);
+    let user_payer = Pubkey::new_unique();
+    let accesspass_pubkey = create_edge_seat_pass(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        client_ip,
+        user_payer,
+        AccessPassType::EdgeSeat(vec![]),
+    )
+    .await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip,
+            user_payer,
+            feeds: vec![FeedSeatConfig {
+                max_users: 0,
+                max_future_users: 0,
+                anniversary_day: 15,
+                window_end: TEST_WINDOW_END,
+                terminates_at: TEST_TERMINATES_AT,
+            }],
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(feed_a, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedMaxUsersZero));
 }

@@ -14,9 +14,11 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use borsh_incremental::BorshDeserializeIncremental;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
+    clock::Clock,
     entrypoint::ProgramResult,
     msg,
     pubkey::Pubkey,
+    sysvar::Sysvar,
 };
 use std::net::Ipv4Addr;
 
@@ -124,6 +126,11 @@ pub fn process_set_access_pass_feeds(
     }
     let prior_seats = accesspass.feed_seats().to_vec();
 
+    // Current on-chain time, used to reject billing windows that have already elapsed. Read via the
+    // Clock syscall (no account to pass); the granter is trusted, so this is a sanity floor rather
+    // than the authoritative timing (the oracle drives the actual flip/removal).
+    let now = Clock::get()?.unix_timestamp;
+
     // Validate each referenced Feed and preserve live counts. Feeds are not reference-counted, so
     // this only reads the Feed accounts (to bind feed_key and confirm the feed exists) and never
     // writes them; dropping a feed from a pass needs nothing here.
@@ -147,6 +154,12 @@ pub fn process_set_access_pass_feeds(
             .map(|s| s.current_users)
             .unwrap_or(0);
 
+        // A zero current cap admits no users, which is not a meaningful seat to provision.
+        if config.max_users == 0 {
+            msg!("max_users must be > 0 for feed {}", feed_key);
+            return Err(DoubleZeroError::FeedMaxUsersZero.into());
+        }
+
         // A re-provision must not set the current cap below the live count carried over from the
         // prior seat, or the seat would start over its cap.
         if config.max_users < current_users {
@@ -156,7 +169,7 @@ pub fn process_set_access_pass_feeds(
                 current_users,
                 feed_key
             );
-            return Err(DoubleZeroError::InvalidArgument.into());
+            return Err(DoubleZeroError::FeedMaxUsersBelowCurrentUsers.into());
         }
 
         // For now the future cap may only grow (or hold) relative to the current cap. Shrinking it
@@ -170,7 +183,7 @@ pub fn process_set_access_pass_feeds(
                 config.max_users,
                 feed_key
             );
-            return Err(DoubleZeroError::InvalidArgument.into());
+            return Err(DoubleZeroError::FeedMaxFutureUsersBelowMaxUsers.into());
         }
 
         // anniversary_day is a calendar day-of-month; the granter clamps to the shortest month.
@@ -180,31 +193,22 @@ pub fn process_set_access_pass_feeds(
                 config.anniversary_day,
                 feed_key
             );
-            return Err(DoubleZeroError::InvalidArgument.into());
+            return Err(DoubleZeroError::FeedInvalidAnniversaryDay.into());
         }
 
-        // window_end and terminates_at are absolute unix seconds; a non-positive value is unset or
-        // in the distant past, i.e. a feed the oracle would treat as already terminated on arrival.
-        if config.window_end <= 0 || config.terminates_at <= 0 {
+        // window_end and terminates_at are absolute unix seconds. window_end must still be in the
+        // future (the cap flip hasn't already elapsed) and no later than terminates_at; since
+        // window_end > now and window_end <= terminates_at, terminates_at is future too. This
+        // rejects unset (0), inverted, and already-elapsed windows in one check.
+        if config.window_end <= now || config.window_end > config.terminates_at {
             msg!(
-                "window_end {} / terminates_at {} must be positive unix seconds for feed {}",
+                "invalid billing window for feed {}: now {}, window_end {}, terminates_at {}",
+                feed_key,
+                now,
                 config.window_end,
-                config.terminates_at,
-                feed_key
+                config.terminates_at
             );
-            return Err(DoubleZeroError::InvalidArgument.into());
-        }
-
-        // The cap flips at window_end and the feed is removed at terminates_at, so the window must
-        // not extend past termination.
-        if config.window_end > config.terminates_at {
-            msg!(
-                "window_end {} after terminates_at {} for feed {}",
-                config.window_end,
-                config.terminates_at,
-                feed_key
-            );
-            return Err(DoubleZeroError::InvalidArgument.into());
+            return Err(DoubleZeroError::FeedInvalidBillingWindow.into());
         }
 
         new_seats.push(FeedSeat {

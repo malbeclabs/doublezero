@@ -238,8 +238,9 @@ impl DZClient {
 
     /// Resolve the payer's Permission PDA as a read-only [`AccountMeta`], or
     /// `None` when no Permission account exists on-chain. The lookup is retried
-    /// on transient RPC errors and memoized until a `CreatePermission` /
-    /// `DeletePermission` this client lands invalidates it (see
+    /// on transient RPC errors and memoized until this client sends a
+    /// `CreatePermission` / `DeletePermission` (regardless of the reported send
+    /// result), which invalidates it (see
     /// [`Self::instruction_invalidates_permission_cache`]).
     fn resolve_permission_account(&self, payer: &Pubkey) -> Option<AccountMeta> {
         let mut cache = self.permission_account_cache.lock().unwrap();
@@ -294,24 +295,29 @@ impl DZClient {
             ..RpcSendTransactionConfig::default()
         };
 
-        match self
+        let send_result = self
             .client
             .send_and_confirm_transaction_with_spinner_and_config(
                 &transaction,
                 self.client.commitment(),
                 send_config,
-            ) {
-            Ok(sig) => {
-                // A CreatePermission/DeletePermission this client just landed can flip
-                // whether the payer's Permission PDA exists on-chain. Drop the memoized
-                // lookup so the next authorized transaction re-resolves it — covering the
-                // bootstrap case where a long-lived client creates its own Permission
-                // account and then performs another gated action in the same session.
-                if Self::instruction_invalidates_permission_cache(&instruction) {
-                    *self.permission_account_cache.lock().unwrap() = None;
-                }
-                Ok(sig)
-            }
+            );
+
+        // A CreatePermission/DeletePermission this client just landed can flip whether the
+        // payer's Permission PDA exists on-chain. Drop the memoized lookup so the next
+        // authorized transaction re-resolves it — covering the bootstrap case where a
+        // long-lived client creates its own Permission account and then performs another
+        // gated action in the same session. This runs regardless of the send result:
+        // skip_preflight=true means a tx can land on-chain even when the client sees an
+        // Err (confirmation timeout, connection drop), so gating invalidation on Ok would
+        // leave the stale entry — the exact silent legacy-fallback this fix closes. A
+        // spurious invalidation (tx never landed) only costs one re-resolution.
+        if Self::instruction_invalidates_permission_cache(&instruction) {
+            *self.permission_account_cache.lock().unwrap() = None;
+        }
+
+        match send_result {
+            Ok(sig) => Ok(sig),
             Err(client_err) => {
                 let tx_err = match client_err.kind.as_ref() {
                     ClientErrorKind::TransactionError(e) => Some(e.clone()),

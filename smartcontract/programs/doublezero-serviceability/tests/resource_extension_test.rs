@@ -13,7 +13,7 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
         get_contributor_pda, get_device_pda, get_exchange_pda, get_location_pda,
-        get_resource_extension_pda,
+        get_permission_pda, get_resource_extension_pda,
     },
     processors::{
         contributor::create::ContributorCreateArgs,
@@ -25,6 +25,7 @@ use doublezero_serviceability::{
         },
         exchange::create::ExchangeCreateArgs,
         location::create::LocationCreateArgs,
+        permission::create::PermissionCreateArgs,
         resource::{
             allocate::ResourceAllocateArgs, closeaccount::ResourceExtensionCloseAccountArgs,
             create::ResourceCreateArgs, deallocate::ResourceDeallocateArgs,
@@ -35,10 +36,16 @@ use doublezero_serviceability::{
         accounttype::AccountType,
         device::{DeviceDesiredStatus, DeviceStatus, DeviceType},
         interface::{InterfaceCYOA, InterfaceDIA, RoutingMode},
+        permission::permission_flags,
     },
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
+use solana_sdk::{
+    instruction::{AccountMeta, InstructionError},
+    pubkey::Pubkey,
+    signature::Signer,
+    transaction::TransactionError,
+};
 
 mod test_helpers;
 use test_helpers::*;
@@ -76,6 +83,77 @@ async fn test_globalconfig_creates_global_resources() {
     }
 
     println!("[PASS] test_globalconfig_creates_global_resources");
+}
+
+/// Regression test for #4009: CloseResource must reject any account that is not
+/// a ResourceExtension. Otherwise a RESOURCE_ADMIN could close arbitrary
+/// program-owned accounts (e.g. a Permission PDA), bypassing the Permission
+/// self-lockout guards.
+#[tokio::test]
+async fn test_close_resource_rejects_non_resource_extension() {
+    println!("[TEST] test_close_resource_rejects_non_resource_extension");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    // Create a Permission account to stand in for a non-ResourceExtension,
+    // program-owned account.
+    let user_payer = Pubkey::new_unique();
+    let (permission_pda, _) = get_permission_pda(&program_id, &user_payer);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer,
+            permissions: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Attempt to close the Permission PDA via CloseResource. The default payer is
+    // the foundation/legacy authority, so authorization succeeds and the new
+    // account-type check is what rejects the call.
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CloseResource(ResourceExtensionCloseAccountArgs {}),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new(payer.pubkey(), false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // DoubleZeroError::InvalidAccountType maps to ProgramError::Custom(9).
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            _,
+            InstructionError::Custom(9),
+        ))) => {}
+        other => panic!("expected Custom(9) (InvalidAccountType), got {other:?}"),
+    }
+
+    // The Permission account must still exist (the close was rejected).
+    let permission = get_account_data(&mut banks_client, permission_pda)
+        .await
+        .expect("Permission account should still exist");
+    assert_eq!(
+        permission.get_permission().unwrap().account_type,
+        AccountType::Permission
+    );
+
+    println!("[PASS] test_close_resource_rejects_non_resource_extension");
 }
 
 #[tokio::test]

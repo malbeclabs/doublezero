@@ -1,7 +1,8 @@
 use crate::{
     authorize::authorize,
+    error::DoubleZeroError,
     serializer::try_acc_close,
-    state::{globalstate::GlobalState, permission::permission_flags},
+    state::{accounttype::AccountType, globalstate::GlobalState, permission::permission_flags},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -64,6 +65,21 @@ pub fn process_closeaccount_resource_extension(
         &globalstate,
         permission_flags::RESOURCE_ADMIN,
     )?;
+
+    // Verify the target really is a ResourceExtension before closing it. Without
+    // this, a RESOURCE_ADMIN could pass any writable, program-owned account (e.g.
+    // a Permission PDA) and close it outright, bypassing the Permission
+    // self-lockout guards in update/suspend/delete. See issue #4009.
+    let account_type = resource_account
+        .data
+        .borrow()
+        .first()
+        .copied()
+        .map(AccountType::from)
+        .unwrap_or(AccountType::None);
+    if account_type != AccountType::ResourceExtension {
+        return Err(DoubleZeroError::InvalidAccountType.into());
+    }
 
     try_acc_close(resource_account, owner_account)?;
 

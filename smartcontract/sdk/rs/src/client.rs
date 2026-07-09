@@ -225,9 +225,49 @@ impl DZClient {
         ]
     }
 
+    /// Whether landing `instruction` can change whether the payer's Permission PDA
+    /// exists on-chain, so the memoized lookup must be dropped. `CreatePermission` and
+    /// `DeletePermission` flip existence; `UpdatePermission` only changes the flags
+    /// bitmask, which the cache does not encode (the cached `AccountMeta` records just
+    /// the PDA address and its read-only flags), so it is unaffected.
+    ///
+    /// This is intentionally not scoped to the client's own payer: `CreatePermission`
+    /// may target another `user_payer` and `DeletePermission` carries no pubkey at all
+    /// (the target PDA rides in the accounts list), so an admin doing bulk grants drops
+    /// its own memo each time. That is harmless, conservative over-invalidation (one
+    /// extra `get_account`); do not "optimize" it to payer-scoped, which would
+    /// reintroduce a create/delete asymmetry.
+    fn instruction_invalidates_permission_cache(instruction: &DoubleZeroInstruction) -> bool {
+        matches!(
+            instruction,
+            DoubleZeroInstruction::CreatePermission(_) | DoubleZeroInstruction::DeletePermission(_)
+        )
+    }
+
+    /// Refresh cached state after a transaction has been sent, regardless of the
+    /// reported send result. A `CreatePermission`/`DeletePermission` can flip whether
+    /// the payer's Permission PDA exists on-chain, so drop the memoized lookup to force
+    /// a re-resolution on the next authorized transaction — covering the bootstrap case
+    /// where a long-lived client creates its own Permission account and then performs
+    /// another gated action in the same session.
+    ///
+    /// This runs even when the send reported an `Err`: `skip_preflight=true` means the
+    /// tx can land on-chain while the client observes a confirmation timeout or dropped
+    /// connection, so gating on `Ok` would leave the stale entry — reintroducing the
+    /// silent legacy-allowlist fallback this fix closes. A spurious invalidation (the
+    /// tx never landed) only costs one re-resolution on the next gated transaction.
+    fn note_transaction_sent(&self, instruction: &DoubleZeroInstruction) {
+        if Self::instruction_invalidates_permission_cache(instruction) {
+            *self.permission_account_cache.lock().unwrap() = None;
+        }
+    }
+
     /// Resolve the payer's Permission PDA as a read-only [`AccountMeta`], or
     /// `None` when no Permission account exists on-chain. The lookup is retried
-    /// on transient RPC errors and memoized for the client's lifetime.
+    /// on transient RPC errors and memoized until this client sends a
+    /// `CreatePermission` / `DeletePermission` (regardless of the reported send
+    /// result), which invalidates it (see
+    /// [`Self::instruction_invalidates_permission_cache`]).
     fn resolve_permission_account(&self, payer: &Pubkey) -> Option<AccountMeta> {
         let mut cache = self.permission_account_cache.lock().unwrap();
         if let Some(cached) = cache.as_ref() {
@@ -281,13 +321,19 @@ impl DZClient {
             ..RpcSendTransactionConfig::default()
         };
 
-        match self
+        let send_result = self
             .client
             .send_and_confirm_transaction_with_spinner_and_config(
                 &transaction,
                 self.client.commitment(),
                 send_config,
-            ) {
+            );
+
+        // Maintain the permission cache before inspecting the send result — the tx may
+        // have landed on-chain even on an Err (see `note_transaction_sent`).
+        self.note_transaction_sent(&instruction);
+
+        match send_result {
             Ok(sig) => Ok(sig),
             Err(client_err) => {
                 let tx_err = match client_err.kind.as_ref() {
@@ -905,6 +951,76 @@ mod assemble_instructions_tests {
         let perm = &metas[base.len() + 2];
         assert_eq!(perm.pubkey, permission_pda);
         assert!(!perm.is_signer && !perm.is_writable);
+    }
+
+    /// The permission-account cache must be dropped exactly when an instruction can
+    /// change whether the payer's Permission PDA exists — otherwise a client that
+    /// bootstraps its own Permission account keeps serving the stale "does not exist"
+    /// result for the rest of its lifetime.
+    #[test]
+    fn permission_cache_invalidated_only_by_create_and_delete() {
+        use doublezero_serviceability::processors::permission::{
+            create::PermissionCreateArgs, delete::PermissionDeleteArgs,
+            update::PermissionUpdateArgs,
+        };
+
+        assert!(DZClient::instruction_invalidates_permission_cache(
+            &DoubleZeroInstruction::CreatePermission(PermissionCreateArgs::default())
+        ));
+        assert!(DZClient::instruction_invalidates_permission_cache(
+            &DoubleZeroInstruction::DeletePermission(PermissionDeleteArgs {})
+        ));
+        // UpdatePermission only changes the flags bitmask, not existence.
+        assert!(!DZClient::instruction_invalidates_permission_cache(
+            &DoubleZeroInstruction::UpdatePermission(PermissionUpdateArgs::default())
+        ));
+        // Unrelated instructions never invalidate.
+        assert!(!DZClient::instruction_invalidates_permission_cache(
+            &DoubleZeroInstruction::InitGlobalState()
+        ));
+    }
+
+    /// Behavioral guard: sending a create/delete must actually clear the memoized
+    /// lookup, not merely be classified as invalidating. Protects against a regression
+    /// that drops or misplaces the cache-clear in `execute_transaction_inner` — the
+    /// predicate test above would still pass in that case.
+    #[test]
+    fn note_transaction_sent_clears_cache_only_for_create_and_delete() {
+        use doublezero_serviceability::processors::permission::{
+            create::PermissionCreateArgs, delete::PermissionDeleteArgs,
+            update::PermissionUpdateArgs,
+        };
+
+        let client = DZClient {
+            rpc_url: String::new(),
+            client: RpcClient::new_mock(String::new()),
+            rpc_ws_url: String::new(),
+            payer: None,
+            program_id: Pubkey::new_unique(),
+            // Seed the resolved-but-absent state that the bug served stale forever.
+            permission_account_cache: Mutex::new(Some(None)),
+        };
+
+        // Update and unrelated instructions leave the memo intact.
+        client.note_transaction_sent(&DoubleZeroInstruction::UpdatePermission(
+            PermissionUpdateArgs::default(),
+        ));
+        client.note_transaction_sent(&DoubleZeroInstruction::InitGlobalState());
+        assert_eq!(*client.permission_account_cache.lock().unwrap(), Some(None));
+
+        // Create drops it back to the unresolved state so the next lookup re-resolves.
+        client.note_transaction_sent(&DoubleZeroInstruction::CreatePermission(
+            PermissionCreateArgs::default(),
+        ));
+        assert_eq!(*client.permission_account_cache.lock().unwrap(), None);
+
+        // Same for delete, starting from a resolved-and-present entry.
+        *client.permission_account_cache.lock().unwrap() =
+            Some(Some(AccountMeta::new_readonly(Pubkey::new_unique(), false)));
+        client.note_transaction_sent(&DoubleZeroInstruction::DeletePermission(
+            PermissionDeleteArgs {},
+        ));
+        assert_eq!(*client.permission_account_cache.lock().unwrap(), None);
     }
 }
 

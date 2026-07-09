@@ -43,17 +43,17 @@ var (
 	reconcilerFetchTimeout      = flag.Int("reconciler-fetch-timeout", 60, "timeout in seconds for onchain data fetches during reconciliation")
 	onchainRPCTimeout           = flag.Duration("onchain-rpc-timeout", defaultOnchainRPCTimeout, "Timeout for GetProgramData RPC calls inside the onchain caching fetcher.")
 	stateDir                    = flag.String("state-dir", "/var/lib/doublezerod", "directory for persistent state files")
+	routeReconcileInterval      = flag.Duration("route-reconcile-interval", defaultRouteReconcileInterval, "interval for periodic kernel route reconciliation (reinstalls externally-deleted BGP routes); 0 disables")
 
 	// Route liveness configuration flags.
-	routeLivenessTxMin             = flag.Duration("route-liveness-tx-min", defaultRouteLivenessTxMin, "route liveness tx min")
-	routeLivenessRxMin             = flag.Duration("route-liveness-rx-min", defaultRouteLivenessRxMin, "route liveness rx min")
-	routeLivenessDetectMult        = flag.Uint("route-liveness-detect-mult", defaultRouteLivenessDetectMult, "route liveness detect mult")
-	routeLivenessMinTxFloor        = flag.Duration("route-liveness-min-tx-floor", defaultRouteLivenessMinTxFloor, "route liveness min tx floor")
-	routeLivenessMaxTxCeil         = flag.Duration("route-liveness-max-tx-ceil", defaultRouteLivenessMaxTxCeil, "route liveness max tx ceil")
-	routeLivenessBackoffMax        = flag.Duration("route-liveness-backoff-max", defaultRouteLivenessBackoffMax, "route liveness backoff max (cap on Down-state probe interval; must be >= route-liveness-min-tx-floor)")
-	routeLivenessReconcileInterval = flag.Duration("route-liveness-reconcile-interval", defaultRouteLivenessReconcileInterval, "interval for periodic kernel route reconciliation; 0 disables")
-	routeLivenessPeerMetrics       = flag.Bool("route-liveness-peer-metrics", false, "enables per peer metrics for route liveness (high cardinality)")
-	routeLivenessDebug             = flag.Bool("route-liveness-debug", false, "enables debug logging for route liveness")
+	routeLivenessTxMin       = flag.Duration("route-liveness-tx-min", defaultRouteLivenessTxMin, "route liveness tx min")
+	routeLivenessRxMin       = flag.Duration("route-liveness-rx-min", defaultRouteLivenessRxMin, "route liveness rx min")
+	routeLivenessDetectMult  = flag.Uint("route-liveness-detect-mult", defaultRouteLivenessDetectMult, "route liveness detect mult")
+	routeLivenessMinTxFloor  = flag.Duration("route-liveness-min-tx-floor", defaultRouteLivenessMinTxFloor, "route liveness min tx floor")
+	routeLivenessMaxTxCeil   = flag.Duration("route-liveness-max-tx-ceil", defaultRouteLivenessMaxTxCeil, "route liveness max tx ceil")
+	routeLivenessBackoffMax  = flag.Duration("route-liveness-backoff-max", defaultRouteLivenessBackoffMax, "route liveness backoff max (cap on Down-state probe interval; must be >= route-liveness-min-tx-floor)")
+	routeLivenessPeerMetrics = flag.Bool("route-liveness-peer-metrics", false, "enables per peer metrics for route liveness (high cardinality)")
+	routeLivenessDebug       = flag.Bool("route-liveness-debug", false, "enables debug logging for route liveness")
 
 	// TODO(snormore): These flags are temporary for initial rollout testing.
 	// They will be superceded by a single `route-liveness-enable` flag, where false means
@@ -69,6 +69,7 @@ var (
 
 const (
 	defaultOnchainRPCTimeout       = 30 * time.Second
+	defaultRouteReconcileInterval  = 30 * time.Second
 	defaultRouteLivenessTxMin      = 1 * time.Second
 	defaultRouteLivenessRxMin      = 1 * time.Second
 	defaultRouteLivenessDetectMult = 3
@@ -76,8 +77,7 @@ const (
 	defaultRouteLivenessMaxTxCeil  = 3 * time.Second
 	// Matches liveness.defaultBackoffMax so production behavior is unchanged; the
 	// e2e harness overrides this to a small value to avoid the Down-state probe gap.
-	defaultRouteLivenessBackoffMax        = 1 * time.Minute
-	defaultRouteLivenessReconcileInterval = 30 * time.Second
+	defaultRouteLivenessBackoffMax = 1 * time.Minute
 
 	defaultRouteLivenessBindIP = "0.0.0.0"
 )
@@ -186,8 +186,6 @@ func main() {
 
 			EnablePeerMetrics: *routeLivenessPeerMetrics,
 
-			RouteReconcileInterval: *routeLivenessReconcileInterval,
-
 			// Default to treating peers that advertise passive mode as passive. That is, we will
 			// install their routes immediately and never uninstall them on down events.
 			HonorPeerAdvertisedPassive: true,
@@ -197,7 +195,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, *latencySingleSocket, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval, *reconcilerFetchTimeout, *stateDir, *onchainRPCTimeout); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, *latencySingleSocket, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval, *reconcilerFetchTimeout, *stateDir, *onchainRPCTimeout, *routeReconcileInterval); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

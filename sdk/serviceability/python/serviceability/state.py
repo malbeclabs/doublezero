@@ -23,6 +23,12 @@ def _read_pubkey_vec(r: DefensiveReader) -> list[Pubkey]:
     return [Pubkey.from_bytes(b) for b in raw]
 
 
+def _read_i64(r: DefensiveReader) -> int:
+    """Read a borsh i64 (the reader only exposes unsigned reads, so reinterpret the sign bit)."""
+    v = r.read_u64()
+    return v - (1 << 64) if v >= (1 << 63) else v
+
+
 # ---------------------------------------------------------------------------
 # Account type discriminants
 # ---------------------------------------------------------------------------
@@ -1030,11 +1036,21 @@ class Tenant:
 
 @dataclass
 class FeedSeat:
-    """One purchased SKU seat on an EdgeSeat access pass."""
+    """One purchased SKU seat on an EdgeSeat access pass, carrying a feed's whole billing state.
+
+    The cap is ``max_users`` before ``window_end`` and ``max_future_users`` from ``window_end``
+    until ``terminates_at``, when the feed is removed from the pass. ``current_users`` is the live
+    count. ``anniversary_day`` is the original start day-of-month (1..=31) for drift-free renewals.
+    ``window_end`` and ``terminates_at`` are unix seconds.
+    """
 
     feed_key: Pubkey = Pubkey.default()
     max_users: int = 0
+    max_future_users: int = 0
     current_users: int = 0
+    anniversary_day: int = 0
+    window_end: int = 0
+    terminates_at: int = 0
 
 
 @dataclass
@@ -1080,15 +1096,20 @@ class AccessPass:
         elif tag == 3:
             ap.others_type_name = r.read_string()
             ap.others_key = r.read_string()
-        # EdgeSeat carries a Vec<FeedSeat>: u32 count, then each FeedSeat is
-        # feed_key (32) + max_users (u16) + current_users (u16).
+        # EdgeSeat carries a Vec<FeedSeat>: u32 count, then each FeedSeat is 52 bytes:
+        # feed_key (32) + max_users (u8) + max_future_users (u8) + current_users (u8) +
+        # anniversary_day (u8) + window_end (i64) + terminates_at (i64).
         elif tag == 4:
             count = r.read_u32()
             ap.feed_seats = [
                 FeedSeat(
                     feed_key=_read_pubkey(r),
-                    max_users=r.read_u16(),
-                    current_users=r.read_u16(),
+                    max_users=r.read_u8(),
+                    max_future_users=r.read_u8(),
+                    current_users=r.read_u8(),
+                    anniversary_day=r.read_u8(),
+                    window_end=_read_i64(r),
+                    terminates_at=_read_i64(r),
                 )
                 for _ in range(count)
             ]

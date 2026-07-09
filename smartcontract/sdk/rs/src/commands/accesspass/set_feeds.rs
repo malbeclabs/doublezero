@@ -9,11 +9,16 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature}
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
-/// One feed seat (SKU) to provision: the `Feed` account to reference and its per-feed cap.
+/// One feed seat (SKU) to provision: the `Feed` account to reference and its per-feed billing
+/// state (current cap, future cap, anniversary day, and the window/termination boundaries).
 #[derive(Debug, PartialEq, Clone)]
 pub struct FeedSeatProvision {
     pub feed_key: Pubkey,
-    pub max_users: u16,
+    pub max_users: u8,
+    pub max_future_users: u8,
+    pub anniversary_day: u8,
+    pub window_end: i64,
+    pub terminates_at: i64,
 }
 
 /// Provision feed seats (SKUs) onto an EdgeSeat access pass.
@@ -61,6 +66,10 @@ impl SetAccessPassFeedsCommand {
                     .iter()
                     .map(|seat| FeedSeatConfig {
                         max_users: seat.max_users,
+                        max_future_users: seat.max_future_users,
+                        anniversary_day: seat.anniversary_day,
+                        window_end: seat.window_end,
+                        terminates_at: seat.terminates_at,
                     })
                     .collect(),
             }),
@@ -103,7 +112,13 @@ mod tests {
                     SetAccessPassFeedsArgs {
                         client_ip,
                         user_payer: payer,
-                        feeds: vec![FeedSeatConfig { max_users: 5 }],
+                        feeds: vec![FeedSeatConfig {
+                            max_users: 5,
+                            max_future_users: 8,
+                            anniversary_day: 15,
+                            window_end: 1_800_000_000,
+                            terminates_at: 1_900_000_000,
+                        }],
                     },
                 )),
                 predicate::eq(vec![
@@ -120,6 +135,10 @@ mod tests {
             feeds: vec![FeedSeatProvision {
                 feed_key,
                 max_users: 5,
+                max_future_users: 8,
+                anniversary_day: 15,
+                window_end: 1_800_000_000,
+                terminates_at: 1_900_000_000,
             }],
         }
         .execute(&client);

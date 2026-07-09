@@ -1198,7 +1198,8 @@ fn generate_access_pass_edge_seat(dir: &Path) {
     let feed_key = pubkey_from_byte(0xB2);
 
     // EdgeSeat pass with allow_multiple_ip set and per-category caps populated.
-    // The EdgeSeat carries one FeedSeat (feed_key + max_users + current_users).
+    // The EdgeSeat carries one FeedSeat carrying the feed's full billing state (feed_key +
+    // max_users + max_future_users + current_users + anniversary_day + window_end + terminates_at).
     let val = AccessPass {
         account_type: AccountType::AccessPass,
         owner,
@@ -1206,7 +1207,11 @@ fn generate_access_pass_edge_seat(dir: &Path) {
         accesspass_type: AccessPassType::EdgeSeat(vec![FeedSeat {
             feed_key,
             max_users: 7,
+            max_future_users: 4,
             current_users: 3,
+            anniversary_day: 15,
+            window_end: 1_800_000_000,
+            terminates_at: 1_900_000_000,
         }]),
         client_ip: Ipv4Addr::UNSPECIFIED,
         user_payer,
@@ -1235,8 +1240,12 @@ fn generate_access_pass_edge_seat(dir: &Path) {
             FieldValue { name: "AccessPassType".into(), value: "4".into(), typ: "u8".into() },
             FieldValue { name: "EdgeSeatFeedSeatsLen".into(), value: "1".into(), typ: "u32".into() },
             FieldValue { name: "EdgeSeatFeedSeat0FeedKey".into(), value: pubkey_bs58(&feed_key), typ: "pubkey".into() },
-            FieldValue { name: "EdgeSeatFeedSeat0MaxUsers".into(), value: "7".into(), typ: "u16".into() },
-            FieldValue { name: "EdgeSeatFeedSeat0CurrentUsers".into(), value: "3".into(), typ: "u16".into() },
+            FieldValue { name: "EdgeSeatFeedSeat0MaxUsers".into(), value: "7".into(), typ: "u8".into() },
+            FieldValue { name: "EdgeSeatFeedSeat0MaxFutureUsers".into(), value: "4".into(), typ: "u8".into() },
+            FieldValue { name: "EdgeSeatFeedSeat0CurrentUsers".into(), value: "3".into(), typ: "u8".into() },
+            FieldValue { name: "EdgeSeatFeedSeat0AnniversaryDay".into(), value: "15".into(), typ: "u8".into() },
+            FieldValue { name: "EdgeSeatFeedSeat0WindowEnd".into(), value: "1800000000".into(), typ: "i64".into() },
+            FieldValue { name: "EdgeSeatFeedSeat0TerminatesAt".into(), value: "1900000000".into(), typ: "i64".into() },
             FieldValue { name: "ClientIp".into(), value: "0.0.0.0".into(), typ: "ipv4".into() },
             FieldValue { name: "UserPayer".into(), value: pubkey_bs58(&user_payer), typ: "pubkey".into() },
             FieldValue { name: "LastAccessEpoch".into(), value: "18446744073709551615".into(), typ: "u64".into() },

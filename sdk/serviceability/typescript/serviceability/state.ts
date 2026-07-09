@@ -1048,11 +1048,18 @@ export const ACCESS_PASS_TYPE_SOLANA_RPC = 2;
 export const ACCESS_PASS_TYPE_OTHERS = 3;
 export const ACCESS_PASS_TYPE_EDGE_SEAT = 4;
 
-// One purchased SKU seat on an EdgeSeat access pass.
+// One purchased SKU seat on an EdgeSeat access pass, carrying a feed's whole billing state. The cap
+// is maxUsers before windowEnd and maxFutureUsers from windowEnd until terminatesAt, when the feed
+// is removed from the pass. currentUsers is the live count. anniversaryDay is the original start
+// day-of-month (1..=31) for drift-free renewals. windowEnd and terminatesAt are unix seconds.
 export interface FeedSeat {
   feedKey: PublicKey;
   maxUsers: number;
+  maxFutureUsers: number;
   currentUsers: number;
+  anniversaryDay: number;
+  windowEnd: bigint;
+  terminatesAt: bigint;
 }
 
 export interface AccessPass {
@@ -1098,15 +1105,21 @@ export function deserializeAccessPass(data: Uint8Array): AccessPass {
     othersTypeName = r.readString();
     othersKey = r.readString();
   }
-  // EdgeSeat carries a Vec<FeedSeat>: u32 count, then each FeedSeat is
-  // feed_key (32) + max_users (u16) + current_users (u16).
+  // EdgeSeat carries a Vec<FeedSeat>: u32 count, then each FeedSeat is 52 bytes:
+  // feed_key (32) + max_users (u8) + max_future_users (u8) + current_users (u8) +
+  // anniversary_day (u8) + window_end (i64) + terminates_at (i64).
   else if (accessPassType === 4) {
     const count = r.readU32();
     for (let i = 0; i < count; i++) {
       feedSeats.push({
         feedKey: readPubkey(r),
-        maxUsers: r.readU16(),
-        currentUsers: r.readU16(),
+        maxUsers: r.readU8(),
+        maxFutureUsers: r.readU8(),
+        currentUsers: r.readU8(),
+        anniversaryDay: r.readU8(),
+        // readU64 is unsigned; reinterpret the sign bit for the i64 timestamps.
+        windowEnd: BigInt.asIntN(64, r.readU64()),
+        terminatesAt: BigInt.asIntN(64, r.readU64()),
       });
     }
   }

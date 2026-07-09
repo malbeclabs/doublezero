@@ -41,6 +41,11 @@ use std::net::Ipv4Addr;
 mod test_helpers;
 use test_helpers::*;
 
+// Far-future billing-window bounds (year ~2096 / ~2099) so the processor's "window_end must be in
+// the future" check stays satisfied for the lifetime of these tests.
+const TEST_WINDOW_END: i64 = 4_000_000_000;
+const TEST_TERMINATES_AT: i64 = 4_100_000_000;
+
 struct FeedFixture {
     banks_client: BanksClient,
     payer: solana_sdk::signature::Keypair,
@@ -309,6 +314,10 @@ async fn set_pass_feeds(f: &mut FeedFixture, seats: Vec<FeedSeat>) {
                 .iter()
                 .map(|s| FeedSeatConfig {
                     max_users: s.max_users,
+                    max_future_users: s.max_future_users,
+                    anniversary_day: s.anniversary_day,
+                    window_end: s.window_end,
+                    terminates_at: s.terminates_at,
                 })
                 .collect(),
         }),
@@ -375,7 +384,11 @@ async fn test_right_metro_joins_group_set() {
         vec![FeedSeat {
             feed_key: feed,
             max_users: 2,
+            max_future_users: 2,
             current_users: 0,
+            anniversary_day: 15,
+            window_end: TEST_WINDOW_END,
+            terminates_at: TEST_TERMINATES_AT,
         }],
     )
     .await;
@@ -421,7 +434,11 @@ async fn test_wrong_metro_device_rejected() {
         vec![FeedSeat {
             feed_key: feed,
             max_users: 2,
+            max_future_users: 2,
             current_users: 0,
+            anniversary_day: 15,
+            window_end: TEST_WINDOW_END,
+            terminates_at: TEST_TERMINATES_AT,
         }],
     )
     .await;
@@ -448,12 +465,20 @@ async fn test_multi_feed_seat_matching_admits() {
             FeedSeat {
                 feed_key: feed_other,
                 max_users: 1,
+                max_future_users: 1,
                 current_users: 0,
+                anniversary_day: 15,
+                window_end: TEST_WINDOW_END,
+                terminates_at: TEST_TERMINATES_AT,
             },
             FeedSeat {
                 feed_key: feed_match,
                 max_users: 1,
+                max_future_users: 1,
                 current_users: 0,
+                anniversary_day: 15,
+                window_end: TEST_WINDOW_END,
+                terminates_at: TEST_TERMINATES_AT,
             },
         ],
     )
@@ -490,7 +515,11 @@ async fn test_group_not_in_feed_rejected() {
         vec![FeedSeat {
             feed_key: feed,
             max_users: 2,
+            max_future_users: 2,
             current_users: 0,
+            anniversary_day: 15,
+            window_end: TEST_WINDOW_END,
+            terminates_at: TEST_TERMINATES_AT,
         }],
     )
     .await;

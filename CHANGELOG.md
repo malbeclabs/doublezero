@@ -6,24 +6,18 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
-- Serviceability
-  - The `AccessPass` `EdgeSeat` variant now carries a `Vec<FeedSeat>` payload (`feed_key` + per-feed cap) instead of being a bare marker. This changes the `AccessPass` borsh layout for EdgeSeat passes. (#3954)
-
-### Added
+### Changes
 
 - Serviceability
   - `Feed` account: a catalog entry for one metro's multicast group set, keyed by `(code, exchange)` (one `feed_key` is one feed in one metro), managed by a catalog admin (`FEED_AUTHORITY` Permission or `FOUNDATION`) via `CreateFeed`/`UpdateFeed`/`DeleteFeed`. (#3953)
-  - `SetAccessPassFeeds` provisions feed_keys (SKU seats) onto an EdgeSeat pass; the oracle calls it via its `ACCESS_PASS_ADMIN` Permission. (#3954)
+  - `SetAccessPassFeeds` provisions feed_keys (SKU seats) onto an EdgeSeat pass, each `FeedSeat` carrying the feed's full per-feed billing state (current cap, future cap, the window boundary between them, the termination date, and the renewal anniversary day); the oracle calls it via its `ACCESS_PASS_ADMIN` Permission. (#3954, #4030)
+  - The `AccessPass` `EdgeSeat` variant now carries a `Vec<FeedSeat>` payload (`feed_key` + per-feed cap) instead of being a bare marker. This changes the `AccessPass` borsh layout for EdgeSeat passes. (#3954)
   - EdgeSeat multicast connect is metro-gated: a device whose exchange is not covered by any of the pass's feeds is rejected with `MetroMismatch`, and the matching feed's per-feed cap is enforced. (#3955)
-- SDK
-  - Go, TypeScript, and Python deserialization for the `Feed` account and the `EdgeSeat` `FeedSeat` payload. (#3956)
 - Controller
   - Track the latest config agent version per device in a new `controller_agent_versions` ClickHouse table, updated on GetConfig polls. (#3578)
-
-### Changes
-
 - SDK
   - Give the shreds SDK RPC client a bounded per-request timeout (15s) and a sized connection pool instead of the unbounded `http.DefaultClient`, so a slow or degraded RPC endpoint fails fast rather than blocking until a transaction's blockhash expires and its send fails preflight with `BlockhashNotFound`.
+  - Go, TypeScript, and Python deserialization for the `Feed` account and the `EdgeSeat` `FeedSeat` payload. (#3956, #4030)
 - Serviceability
   - Gate Device and device-interface instructions on `NETWORK_ADMIN` (and `HEALTH_ORACLE` for sethealth) or the contributor owner via `authorize()`; internal foundation-only sub-gates now also accept NETWORK_ADMIN holders. (#3980)
   - Gate UpdateUser on `USER_ADMIN`, CheckAccessPass on `ACTIVATOR`, and accesspass CheckStatus on `ACTIVATOR|USER_ADMIN` via `authorize()`; user create and set_bgp_status remain owner-authorized (not part of the admin Permission system). (#3984)

@@ -1129,13 +1129,20 @@ func (s AccessPassStatus) String() string {
 	}
 }
 
-// FeedSeat is one purchased SKU seat on an EdgeSeat access pass. FeedKey is the pubkey of
-// the serviceability Feed account; MaxUsers is the per-feed concurrent-user cap; CurrentUsers
-// is the live count.
+// FeedSeat is one purchased SKU seat on an EdgeSeat access pass, carrying the feed's whole
+// billing lifecycle. FeedKey is the pubkey of the serviceability Feed account. The cap is
+// MaxUsers before WindowEnd and MaxFutureUsers from WindowEnd until TerminatesAt, when the feed
+// is removed from the pass. CurrentUsers is the live count. AnniversaryDay is the original start
+// day-of-month (1..=31) used to recompute renewal boundaries without drift. WindowEnd and
+// TerminatesAt are unix seconds.
 type FeedSeat struct {
-	FeedKey      [32]byte
-	MaxUsers     uint16
-	CurrentUsers uint16
+	FeedKey        [32]byte
+	MaxUsers       uint8
+	MaxFutureUsers uint8
+	CurrentUsers   uint8
+	AnniversaryDay uint8
+	WindowEnd      int64
+	TerminatesAt   int64
 }
 
 type AccessPass struct {

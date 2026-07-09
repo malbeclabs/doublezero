@@ -11,10 +11,13 @@ use solana_program::{
 };
 use std::{fmt, net::Ipv4Addr};
 
-/// One purchased SKU seat on an EdgeSeat access pass. `feed_key` is the pubkey of the
-/// serviceability `Feed` account (the catalog entry); `max_users` is the per-feed concurrent-user
-/// cap seeded from the coupon; `current_users` is the live count, ticked at connect and released
-/// at disconnect.
+/// One purchased SKU seat on an EdgeSeat access pass, carrying a feed's whole billing lifecycle so
+/// the oracle's expiry loop needs no database. `feed_key` is the pubkey of the serviceability
+/// `Feed` account (the catalog entry). The cap is `max_users` before `window_end` and
+/// `max_future_users` from `window_end` until `terminates_at`, when the feed is removed from the
+/// pass. `current_users` is the live count, ticked at connect and released at disconnect.
+/// `anniversary_day` is the original start day-of-month (1..=31) so a renewal recomputes the next
+/// boundary from the original day and does not drift (e.g. Jan 31 -> Feb 28 -> Mar 31).
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FeedSeat {
@@ -26,8 +29,12 @@ pub struct FeedSeat {
         )
     )]
     pub feed_key: Pubkey, // 32
-    pub max_users: u16,     // 2
-    pub current_users: u16, // 2
+    pub max_users: u8,        // 1   cap until window_end
+    pub max_future_users: u8, // 1   cap from window_end until terminates_at
+    pub current_users: u8,    // 1   live count, ticked at connect / released at disconnect
+    pub anniversary_day: u8,  // 1   original start day-of-month (1..=31), for clamped renewals
+    pub window_end: i64,      // 8   unix seconds; cap flips max_users -> max_future_users here
+    pub terminates_at: i64,   // 8   unix seconds; feed removed from the pass here
 }
 
 #[repr(u8)]
@@ -401,9 +408,9 @@ mod tests {
         let c = AccessPassType::EdgeSeat(vec![]);
         assert_eq!(object_length(&c).unwrap(), 5);
 
-        // Each FeedSeat adds 36 bytes (32 pubkey + 2 + 2).
+        // Each FeedSeat adds 52 bytes (32 pubkey + 1 + 1 + 1 + 1 + 8 + 8).
         let d = AccessPassType::EdgeSeat(vec![FeedSeat::default()]);
-        assert_eq!(object_length(&d).unwrap(), 1 + 4 + 36);
+        assert_eq!(object_length(&d).unwrap(), 1 + 4 + 52);
     }
 
     #[test]
@@ -575,12 +582,20 @@ mod tests {
             FeedSeat {
                 feed_key: feed_a,
                 max_users: 2,
+                max_future_users: 0,
                 current_users: 0,
+                anniversary_day: 1,
+                window_end: 0,
+                terminates_at: 0,
             },
             FeedSeat {
                 feed_key: feed_b,
                 max_users: 1,
+                max_future_users: 0,
                 current_users: 0,
+                anniversary_day: 1,
+                window_end: 0,
+                terminates_at: 0,
             },
         ]));
 

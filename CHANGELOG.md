@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.29.1](https://github.com/malbeclabs/doublezero/compare/client/v0.29.0...client/v0.29.1) - 2026-07-09
+
+### Breaking
+
 - Serviceability
   - The `AccessPass` `EdgeSeat` variant now carries a `Vec<FeedSeat>` payload (`feed_key` + per-feed cap) instead of being a bare marker. This changes the `AccessPass` borsh layout for EdgeSeat passes. (#3954)
 

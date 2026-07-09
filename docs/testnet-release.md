@@ -32,12 +32,12 @@ gh workflow run release.testnet.yml -R malbeclabs/doublezero -f version=X.Y.Z
 | --- | --- | --- |
 | `preflight` | Validates the version, reads the current workspace version, checks the latest devnet daily release succeeded. | — |
 | `open-prs` | Opens the doublezero version-bump PR (`release/vX.Y.Z`: Cargo.toml, Cargo.lock, CHANGELOG promotion) and the infra pinned-versions PR (`release/testnet-vX.Y.Z`). PR links appear in the run summary. | Review and **merge both PRs**. |
-| `gate-tags` | Waits on the `testnet-release-gate` environment, then verifies both PRs are merged (the gate fails if you approve early). | **Approve gate 1** after both PRs are merged. |
+| `gate-tags` | Waits on the `testnet` environment, then verifies both PRs are merged (the gate fails if you approve early). | **Approve gate 1** after both PRs are merged. |
 | `push-tags` | Pushes the 9 component tags (`controller`, `internet-latency-collector`, `agent`, `device-telemetry-agent`, `geoprobe-agent`, `geoprobe-target`, `funder`, `monitor`, `client`) via the reusable tag workflow, which runs in the protected `testnet` environment. | **Approve the `testnet` environment prompt** on the tag jobs. |
 | `verify-cloudsmith` | Polls CloudSmith (up to ~60 min) until all 9 packages exist at the new version. | — |
 | `build-programs` | Builds the three Solana programs (`serviceability` default features; `telemetry` and `geolocation` with `--features testnet`) from main and uploads them with checksums and a `DEPLOY.md` manifest. | — |
 | `stage-programs` | Dispatches the infra `stage-programs.testnet.yml` workflow, which copies the artifacts to `nyc-tn-bm2:/opt/doublezero/program-releases/vX.Y.Z/`, then pings Slack. | **Approve infra's `testnet` environment** on the dispatched run (link posted to `#int-tech`). Then **deploy the programs** on nyc-tn-bm2 from that directory per the Notion runbook ("Build and deploy DoubleZero solana programs - testnet"), and set the onchain version. |
-| `gate-programs` | Waits on the `testnet-program-deploy` environment. | **Approve gate 2** once the programs are deployed and the onchain version is set. |
+| `gate-programs` | Waits on the `testnet` environment. | **Approve gate 2** once the programs are deployed and the onchain version is set. |
 | `verify-onchain` | Installs the released client from CloudSmith and checks `doublezero --env testnet version` reports the new program version. | — |
 | `deploy-core` | Dispatches infra `deploy-core.testnet.yml` and waits for it. | **Approve infra's `testnet` environment** on the dispatched run (link posted to `#int-tech`). |
 | `deploy-clients` | Dispatches infra `deploy-clients.testnet.yml` and waits for it. | **Approve infra's `testnet` environment** on the dispatched run (link posted to `#int-tech`). |
@@ -45,6 +45,12 @@ gh workflow run release.testnet.yml -R malbeclabs/doublezero -f version=X.Y.Z
 | `announce` | Posts success to Slack with the dashboard link. | **Watch the system dashboard for ~30 min** (https://doublezero.grafana.net/d/bf3dece9-51ac-4087-b6b1-579b3859ce14/). The foundation posts the community announcement. |
 
 Any failed job triggers a Slack alert via `notify-failure`.
+
+All doublezero-side approvals (gate 1, the tag jobs, gate 2) use the single `testnet`
+environment, so the approval prompts look alike — the review dialog lists which job(s)
+are waiting; check the job name to know which gate you are approving. Each gate is
+followed by a verification step, so approving the wrong thing fails fast rather than
+advancing the release.
 
 ## Dry-run mode
 

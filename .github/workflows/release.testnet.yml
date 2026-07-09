@@ -147,7 +147,7 @@ jobs:
   gate-tags:
     runs-on: ubuntu-latest
     needs: open-prs
-    environment: testnet-release-gate
+    environment: testnet
     steps:
       - uses: actions/create-github-app-token@v2
         id: app
@@ -278,7 +278,7 @@ jobs:
             echo "(serviceability is the only program with a settable version account; telemetry has"
             echo "none and geolocation has no CLI setter). Verify with: doublezero --env testnet version"
             echo
-            echo "Then approve the 'testnet-program-deploy' gate on the orchestrator run above."
+            echo "Then approve the waiting 'gate-programs' job (testnet environment) on the orchestrator run above."
           } > staged/DEPLOY.md
       - uses: actions/upload-artifact@v4
         with:
@@ -314,7 +314,7 @@ jobs:
           {
             echo "## Program deploy required"
             echo "Artifacts staged on nyc-tn-bm2 at /opt/doublezero/program-releases/v${{ inputs.version }}/ (see DEPLOY.md there)."
-            echo "Deploy the three programs with the local keypair, set the onchain version, then approve the testnet-program-deploy gate."
+            echo "Deploy the three programs with the local keypair, set the onchain version, then approve the waiting 'gate-programs' job (testnet environment)."
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Ping dev team
         uses: malbeclabs/action-slack-notify@v2
@@ -322,7 +322,7 @@ jobs:
           SLACK_COLOR: warning
           SLACK_USERNAME: Doublezero Releaser
           SLACK_TITLE: "Testnet release v${{ inputs.version }}: program deploy needed"
-          SLACK_MESSAGE: "Artifacts staged on nyc-tn-bm2:/opt/doublezero/program-releases/v${{ inputs.version }}/. Deploy programs, then approve the testnet-program-deploy gate."
+          SLACK_MESSAGE: "Artifacts staged on nyc-tn-bm2:/opt/doublezero/program-releases/v${{ inputs.version }}/. Deploy programs, then approve the waiting gate-programs job (testnet environment) on the orchestrator run."
           MSG_MINIMAL: actions url
           SLACK_WEBHOOK: ${{ secrets.SLACK_TESTNET_ALERTS_WEBHOOK }}
 
@@ -330,7 +330,7 @@ jobs:
   gate-programs:
     runs-on: ubuntu-latest
     needs: [stage-programs, verify-cloudsmith]
-    environment: testnet-program-deploy
+    environment: testnet
     steps:
       - name: Gate passed
         run: echo "Program deploy confirmed by approver; verifying onchain next."

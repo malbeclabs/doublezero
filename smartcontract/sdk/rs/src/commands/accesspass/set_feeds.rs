@@ -114,7 +114,7 @@ mod tests {
                         user_payer: payer,
                         feeds: vec![FeedSeatConfig {
                             max_users: 5,
-                            max_future_users: 3,
+                            max_future_users: 8,
                             anniversary_day: 15,
                             window_end: 1_800_000_000,
                             terminates_at: 1_900_000_000,
@@ -135,7 +135,7 @@ mod tests {
             feeds: vec![FeedSeatProvision {
                 feed_key,
                 max_users: 5,
-                max_future_users: 3,
+                max_future_users: 8,
                 anniversary_day: 15,
                 window_end: 1_800_000_000,
                 terminates_at: 1_900_000_000,

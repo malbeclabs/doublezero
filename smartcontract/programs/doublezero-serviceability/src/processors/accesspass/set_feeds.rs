@@ -148,15 +148,26 @@ pub fn process_set_access_pass_feeds(
             .unwrap_or(0);
 
         // A re-provision must not set the current cap below the live count carried over from the
-        // prior seat, or the seat would start over its cap. This check is intentionally NOT applied
-        // to max_future_users: a future cap below the live count is a valid reduction (existing
-        // users are grandfathered until they disconnect; new ones just are not admitted after the
-        // window flips).
+        // prior seat, or the seat would start over its cap.
         if config.max_users < current_users {
             msg!(
                 "max_users {} below current_users {} for feed {}",
                 config.max_users,
                 current_users,
+                feed_key
+            );
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+
+        // For now the future cap may only grow (or hold) relative to the current cap. Shrinking it
+        // would force a decision about which live users to drop when the cap flips at window_end,
+        // which is unspecified; requiring max_future_users >= max_users keeps the flip a no-op for
+        // existing users. (Stricter than #1907; revisit if attrition-based reduction is wanted.)
+        if config.max_future_users < config.max_users {
+            msg!(
+                "max_future_users {} below max_users {} for feed {}",
+                config.max_future_users,
+                config.max_users,
                 feed_key
             );
             return Err(DoubleZeroError::InvalidArgument.into());

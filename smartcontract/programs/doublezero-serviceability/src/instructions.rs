@@ -1389,7 +1389,7 @@ mod tests {
                 user_payer: Pubkey::new_unique(),
                 feeds: vec![crate::processors::accesspass::set_feeds::FeedSeatConfig {
                     max_users: 4,
-                    max_future_users: 2,
+                    max_future_users: 8,
                     anniversary_day: 15,
                     window_end: 1_800_000_000,
                     terminates_at: 1_900_000_000,

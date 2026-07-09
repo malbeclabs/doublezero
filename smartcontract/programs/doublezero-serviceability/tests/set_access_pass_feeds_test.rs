@@ -796,99 +796,39 @@ async fn test_cannot_set_feeds_with_invalid_billing_window() {
 }
 
 #[tokio::test]
-async fn test_max_future_users_below_current_users_allowed() {
-    // The re-provision cap check applies only to max_users, NOT max_future_users: a future cap
-    // below the live count is a valid planned reduction (existing users are grandfathered until
-    // they disconnect; new ones are not admitted after the window flips). This locks in that
-    // deliberate asymmetry so a later symmetric-check "cleanup" can't silently break it. Setup
-    // mirrors test_cannot_set_max_users_below_current_users (current_users seeded directly, since
-    // connect-time ticking lands in a later PR).
-    let program_id = Pubkey::new_unique();
-    let authority = test_payer();
+async fn test_cannot_set_max_future_users_below_max_users() {
+    // For now the future cap may not drop below the current cap (see set_feeds.rs): shrinking it
+    // would force a decision about which live users to drop when the cap flips. Equal or larger is
+    // allowed (covered by test_set_access_pass_feeds); below must reject.
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
-    let mut program_test = ProgramTest::new(
-        "doublezero_serviceability",
+    let feed_a = create_feed(
+        &mut banks_client,
         program_id,
-        processor!(process_instruction),
-    );
-
-    let (globalstate_pubkey, globalstate_bump) = get_globalstate_pda(&program_id);
-    let globalstate = GlobalState {
-        bump_seed: globalstate_bump,
-        foundation_allowlist: vec![authority.pubkey()],
-        ..GlobalState::default()
-    };
-    program_test.add_account(
         globalstate_pubkey,
-        serialized_account(program_id, borsh::to_vec(&globalstate).unwrap()),
-    );
+        &payer,
+        recent_blockhash,
+        "feda",
+    )
+    .await;
 
-    let feed_exchange = Pubkey::new_unique();
-    let (feed_pubkey, feed_bump) = get_feed_pda(&program_id, "livd", &feed_exchange);
-    let feed = Feed {
-        account_type: AccountType::Feed,
-        owner: authority.pubkey(),
-        bump_seed: feed_bump,
-        code: "livd".to_string(),
-        name: "Live".to_string(),
-        exchange: feed_exchange,
-        groups: vec![Pubkey::new_unique()],
-    };
-    program_test.add_account(
-        feed_pubkey,
-        serialized_account(program_id, borsh::to_vec(&feed).unwrap()),
-    );
-
-    let client_ip = Ipv4Addr::new(100, 0, 0, 8);
+    let client_ip = Ipv4Addr::new(100, 0, 0, 9);
     let user_payer = Pubkey::new_unique();
-    let (accesspass_pubkey, accesspass_bump) =
-        get_accesspass_pda(&program_id, &client_ip, &user_payer);
-    let accesspass = AccessPass {
-        account_type: AccountType::AccessPass,
-        owner: authority.pubkey(),
-        bump_seed: accesspass_bump,
-        accesspass_type: AccessPassType::EdgeSeat(vec![FeedSeat {
-            feed_key: feed_pubkey,
-            max_users: 5,
-            max_future_users: 5,
-            current_users: 3,
-            anniversary_day: 15,
-            window_end: 1_800_000_000,
-            terminates_at: 1_900_000_000,
-        }]),
+    let accesspass_pubkey = create_edge_seat_pass(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
         client_ip,
         user_payer,
-        last_access_epoch: u64::MAX,
-        connection_count: 0,
-        status: AccessPassStatus::Connected,
-        mgroup_pub_allowlist: vec![],
-        mgroup_sub_allowlist: vec![],
-        flags: 0,
-        tenant_allowlist: vec![],
-        unicast_user_count: 0,
-        max_unicast_users: 1,
-        multicast_user_count: 3,
-        max_multicast_users: 4,
-    };
-    program_test.add_account(
-        accesspass_pubkey,
-        serialized_account(program_id, borsh::to_vec(&accesspass).unwrap()),
-    );
+        AccessPassType::EdgeSeat(vec![]),
+    )
+    .await;
 
-    program_test.add_account(
-        authority.pubkey(),
-        Account {
-            lamports: 100_000_000,
-            data: vec![],
-            owner: solana_system_interface::program::ID,
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-
-    let (mut banks_client, _payer, _recent_blockhash) = program_test.start().await;
-
-    // max_users (3) stays at the live count (ok), and max_future_users (1) is BELOW it (allowed).
+    // max_future_users (3) below max_users (5) must reject.
     let result = try_execute_and_get_error(
         &mut banks_client,
         program_id,
@@ -896,8 +836,8 @@ async fn test_max_future_users_below_current_users_allowed() {
             client_ip,
             user_payer,
             feeds: vec![FeedSeatConfig {
-                max_users: 3,
-                max_future_users: 1,
+                max_users: 5,
+                max_future_users: 3,
                 anniversary_day: 15,
                 window_end: 1_800_000_000,
                 terminates_at: 1_900_000_000,
@@ -906,29 +846,10 @@ async fn test_max_future_users_below_current_users_allowed() {
         vec![
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(feed_pubkey, false),
+            AccountMeta::new(feed_a, false),
         ],
-        &authority,
+        &payer,
     )
     .await;
-    assert_eq!(
-        result,
-        Ok(()),
-        "future cap below current_users must be allowed"
-    );
-
-    // The seat kept its live count and took the lower future cap.
-    let accesspass = read_accesspass(&mut banks_client, accesspass_pubkey).await;
-    assert_eq!(
-        accesspass.accesspass_type,
-        AccessPassType::EdgeSeat(vec![FeedSeat {
-            feed_key: feed_pubkey,
-            max_users: 3,
-            max_future_users: 1,
-            current_users: 3,
-            anniversary_day: 15,
-            window_end: 1_800_000_000,
-            terminates_at: 1_900_000_000,
-        }])
-    );
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
 }

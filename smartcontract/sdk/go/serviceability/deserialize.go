@@ -390,8 +390,8 @@ func DeserializeAccessPass(reader *ByteReader, ap *AccessPass) {
 					MaxFutureUsers: reader.ReadU8(),
 					CurrentUsers:   reader.ReadU8(),
 					AnniversaryDay: reader.ReadU8(),
-					WindowEnd:      int64(reader.ReadU64()),
-					TerminatesAt:   int64(reader.ReadU64()),
+					WindowEnd:      reader.ReadI64(),
+					TerminatesAt:   reader.ReadI64(),
 				}
 			}
 		}

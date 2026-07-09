@@ -172,6 +172,18 @@ pub fn process_set_access_pass_feeds(
             return Err(DoubleZeroError::InvalidArgument.into());
         }
 
+        // window_end and terminates_at are absolute unix seconds; a non-positive value is unset or
+        // in the distant past, i.e. a feed the oracle would treat as already terminated on arrival.
+        if config.window_end <= 0 || config.terminates_at <= 0 {
+            msg!(
+                "window_end {} / terminates_at {} must be positive unix seconds for feed {}",
+                config.window_end,
+                config.terminates_at,
+                feed_key
+            );
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+
         // The cap flips at window_end and the feed is removed at terminates_at, so the window must
         // not extend past termination.
         if config.window_end > config.terminates_at {

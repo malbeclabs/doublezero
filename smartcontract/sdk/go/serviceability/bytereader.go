@@ -81,6 +81,10 @@ func (br *ByteReader) ReadU64() uint64 {
 	return val
 }
 
+func (br *ByteReader) ReadI64() int64 {
+	return int64(br.ReadU64())
+}
+
 func (br *ByteReader) ReadU128() Uint128 {
 	if br.offset+16 > len(br.data) {
 		return Uint128{0, 0}

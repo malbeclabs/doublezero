@@ -6,18 +6,30 @@ everything that can be automated and pauses at two human gates: one before tags
 are pushed, and one around the Solana program deploy (which stays manual).
 
 Beyond the two gates, several jobs run in approval-protected environments, so a
-full release is roughly 6–7 approval interactions across the two repos: merge
-both version PRs, approve gate 1, approve the `testnet` environment on the tag
-jobs, approve infra's `testnet` environment three times (`stage-programs`,
-`deploy-core`, `deploy-clients` — each dispatched infra run posts a link to
-`#bots` when it may be waiting), and approve gate 2 after the program
-deploy.
+full release is roughly 6 approval interactions across the two repos: merge
+both version PRs, approve gate 1 (**one** approval — it confirms the merges and
+authorizes pushing the 9 tags; the tag workflow carries no environment of its
+own, so it does not prompt again), approve infra's `testnet` environment three
+times (`stage-programs`, `deploy-core`, `deploy-clients` — each dispatched
+infra run posts a link to `#bots` when it may be waiting), and approve gate 2
+after the program deploy.
+
+Approve gate 1 **only after both version PRs are merged** — the approval is the
+"merges are done, ship the tags" signal, and the job verifies the merges
+immediately after approval, failing fast if it was approved early. The reusable
+tag workflow is pure mechanism: the approval prompt lives with its callers (the
+orchestrator's gate 1, or the `approve` job in the manual
+`release.testnet.push.tags.components` dispatcher, which still prompts on the
+`testnet` environment exactly as before). It enforces this with a caller
+allowlist (`github.workflow_ref`), so a new workflow calling it fails closed
+until it is added — with its own approval story — in a reviewed change. No
+environments beyond `testnet` are involved.
 
 ## Slack notifications
 
 All Slack traffic for a run lands in a single `#bots` thread: `preflight`
 posts the parent message ("Testnet Deploy vX.Y.Z :thread:") after its
-validation steps pass, and every later post — PR links, the tag-approval nudge,
+validation steps pass, and every later post — PR links, the tag-push notice,
 approval pings for the dispatched infra runs, the program-deploy call, success,
 failure — is a reply in that thread. Posts go through the Slack Web API (`chat.postMessage`) using
 the `SLACK_BOT_TOKEN` repo secret and the channel ID set in the workflow's
@@ -51,8 +63,8 @@ gh workflow run release.testnet.yml -R malbeclabs/doublezero -f version=X.Y.Z
 | --- | --- | --- |
 | `preflight` | Validates the version, reads the current workspace version, checks the latest devnet daily release succeeded. | — |
 | `open-prs` | Opens the doublezero version-bump PR (`release/vX.Y.Z`: Cargo.toml, Cargo.lock, CHANGELOG promotion) and the infra pinned-versions PR (`release/testnet-vX.Y.Z`). PR links appear in the run summary and are posted to the Slack thread. | Review and **merge both PRs**. |
-| `gate-tags` | Waits on the `testnet` environment, then verifies both PRs are merged (the gate fails if you approve early). | **Approve gate 1** after both PRs are merged. |
-| `push-tags` | Pushes the 9 component tags (`controller`, `internet-latency-collector`, `agent`, `device-telemetry-agent`, `geoprobe-agent`, `geoprobe-target`, `funder`, `monitor`, `client`) via the reusable tag workflow, which runs in the protected `testnet` environment. | **Approve the `testnet` environment prompt** on the tag jobs (nudged in the Slack thread). |
+| `gate-tags` | Waits on the `testnet` environment, then verifies both PRs are merged (the gate fails if you approve early). | **Approve gate 1 only after both PRs are merged** — this one approval confirms the merges and authorizes pushing the tags. |
+| `push-tags` | Pushes the 9 component tags (`controller`, `internet-latency-collector`, `agent`, `device-telemetry-agent`, `geoprobe-agent`, `geoprobe-target`, `funder`, `monitor`, `client`) via the reusable tag workflow, which carries no environment — gate 1 already authorized the push (manual dispatches prompt via their own `approve` job on `testnet`). | — |
 | `verify-cloudsmith` | Polls CloudSmith (up to ~60 min) until all 9 packages exist at the new version. | — |
 | `build-programs` | Builds the three Solana programs (`serviceability` default features; `telemetry` and `geolocation` with `--features testnet`) from main and uploads them with checksums and a `DEPLOY.md` manifest. | — |
 | `stage-programs` | Dispatches the infra `stage-programs.testnet.yml` workflow, which copies the artifacts to `nyc-tn-bm2:/opt/doublezero/program-releases/vX.Y.Z/`, then pings Slack. | **Approve infra's `testnet` environment** on the dispatched run (link posted to `#bots`). Then **deploy the programs** on nyc-tn-bm2 following the `DEPLOY.md` staged alongside them (commands mirror the [infra runbook](https://github.com/malbeclabs/infra/blob/main/docs/runbooks/deploys/solana-programs-testnet.md)), and refresh the onchain version (`doublezero init`). |
@@ -61,16 +73,20 @@ gh workflow run release.testnet.yml -R malbeclabs/doublezero -f version=X.Y.Z
 | `deploy-core` | Dispatches infra `deploy-core.testnet.yml` and waits for it. | **Approve infra's `testnet` environment** on the dispatched run (link posted to `#bots`). |
 | `deploy-clients` | Dispatches infra `deploy-clients.testnet.yml` and waits for it. | **Approve infra's `testnet` environment** on the dispatched run (link posted to `#bots`). |
 | `qa` | Dispatches infra `qa.testnet.yml` and waits for it (may queue behind the hourly cron run). | — |
-| `announce` | Posts success to Slack with the dashboard link. | **Watch the system dashboard for ~30 min** (https://doublezero.grafana.net/d/bf3dece9-51ac-4087-b6b1-579b3859ce14/). The foundation posts the community announcement. |
+| `announce` | Posts success to Slack with the dashboard link. | **Watch the dashboard for ~30 min** (https://data.doublezero.xyz/). The foundation posts the community announcement. |
 
 Any failed job triggers a Slack alert via `notify-failure`, posted to the same
-thread.
+thread. A final `pipeline-complete` job asserts every stage actually succeeded and
+fails the run otherwise, so a run that silently skipped stages can never conclude
+green (a skipped job otherwise transitively skips everything below it and the run
+still "succeeds").
 
-All doublezero-side approvals (gate 1, the tag jobs, gate 2) use the single `testnet`
-environment, so the approval prompts look alike — the review dialog lists which job(s)
-are waiting; check the job name to know which gate you are approving. Each gate is
-followed by a verification step, so approving the wrong thing fails fast rather than
-advancing the release.
+Both doublezero-side approvals (gate 1 and gate 2) use the single `testnet`
+environment, so the prompts look alike — the review dialog lists the waiting job,
+whose name spells out what approving means ("approve only after both version PRs
+are merged — this pushes the tags" / "approve only after the programs are deployed
+on nyc-tn-bm2"). Each gate is followed by a verification step, so approving the
+wrong thing or approving early fails fast rather than advancing the release.
 
 ## Dry-run mode
 
@@ -85,10 +101,9 @@ advancing the release.
   the **current** (previous) version to exercise the CloudSmith query logic.
 - Programs are still built and staged, but `verify-onchain` is skipped, and the infra
   deploy workflows are dispatched in their check mode (`mode=dry-run`).
-- The approval prompts are **not** skipped: gate 1, the `testnet` prompt on the
-  (no-op) tag jobs, gate 2, and infra's `testnet` environment all still require
-  approval even though nothing is deployed. A dry run exercises the same approval
-  sequence as a real release.
+- The approval prompts are **not** skipped: gate 1, gate 2, and infra's `testnet`
+  environment (three times) all still require approval even though nothing is
+  deployed. A dry run exercises the same approval sequence as a real release.
 
 Cleanup after a dry run: close both draft PRs and delete their branches
 (`release/vX.Y.Z` in doublezero, `release/testnet-vX.Y.Z` in infra).

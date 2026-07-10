@@ -167,10 +167,15 @@ jobs:
             Version PRs are open:
             • https://github.com/malbeclabs/doublezero/pull/${{ steps.dzpr.outputs.pr }}
             • https://github.com/malbeclabs/infra/pull/${{ steps.infrapr.outputs.pr }}
-            Review and merge both, then approve the waiting `gate-tags` job (`testnet` environment) on the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Review and merge both. Then approve gate 1 (`testnet` environment prompt) on the run — *approve only once both PRs are merged*; approving confirms the merges and pushes the 9 component tags with no further prompt: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-  # Gate 1: approve only after BOTH version PRs are merged.
+  # Gate 1 — the single approval for the tag phase: approving asserts both
+  # version PRs are merged AND authorizes pushing the 9 component tags (the tag
+  # workflow carries no environment of its own, so no second prompt follows).
+  # The verification step below fails fast if this is approved before both PRs
+  # are merged.
   gate-tags:
+    name: "gate 1: approve only after BOTH version PRs are merged — this pushes the tags"
     runs-on: ubuntu-latest
     # preflight is already in the transitive chain; listed directly so its
     # thread_ts output is readable here (needs only exposes direct dependencies).
@@ -203,16 +208,14 @@ jobs:
             { [ "$DZ" = "MERGED" ] && [ "$INFRA" = "MERGED" ]; } || {
               echo "::error::approve this gate only after BOTH version PRs are merged"; exit 1; }
           fi
-      # The tag jobs request the `testnet` environment prompt again right after
-      # this job completes; nudge the thread so that second approval isn't missed.
-      - name: Post tag-approval nudge to Slack thread
+      - name: Post tag-push notice to Slack thread
         uses: ./.github/actions/slack-thread-post
         with:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           channel: ${{ env.SLACK_CHANNEL_ID }}
           thread-ts: ${{ needs.preflight.outputs.thread_ts }}
           text: |-
-            Version PRs confirmed merged. The 9 tag jobs will request the `testnet` environment prompt momentarily: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Gate 1 approved and version PRs confirmed merged — pushing the 9 component tags${{ inputs.dry_run && ' (dry run: tag jobs are no-ops)' || '' }}. No further approval needed for this phase.
 
   # Runs in dry runs too (as a validated no-op via dry_run): a job-level skip
   # here would transitively skip every downstream job with a default status
@@ -402,6 +405,7 @@ jobs:
 
   # Gate 2: approve only after the programs are deployed on testnet.
   gate-programs:
+    name: "gate 2: approve only after the programs are deployed on nyc-tn-bm2"
     runs-on: ubuntu-latest
     needs: [stage-programs, verify-cloudsmith]
     environment: testnet
@@ -515,15 +519,43 @@ jobs:
           color: good
           text: |-
             *Testnet release v${{ inputs.version }} deployed${{ inputs.dry_run && ' (dry run)' || '' }}*
-            QA passed. Watch the system dashboard for ~30 min: https://doublezero.grafana.net/d/bf3dece9-51ac-4087-b6b1-579b3859ce14/ — and remember the community announcement (foundation).
+            QA passed. Watch the dashboard for ~30 min: https://data.doublezero.xyz/ — and remember the community announcement (foundation).
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  # Guard against hollow successes: a skipped job transitively skips everything
+  # below it with a default status condition, and the run would still conclude
+  # "success" (see #4040 — dry runs silently lost gate-programs through
+  # announce this way). Fails unless every stage actually succeeded, so an
+  # incomplete pipeline is loud, not green. !cancelled() (not always()) so
+  # deliberately cancelled runs don't end with a red guard or a spurious
+  # failure alert. announce is excluded: it can only be skipped when qa or
+  # preflight didn't succeed (both checked here), and including it would route
+  # an announce-only failure into notify-failure's "release failed" alert for
+  # a release that actually succeeded.
+  pipeline-complete:
+    runs-on: ubuntu-latest
+    needs: [preflight, open-prs, gate-tags, push-tags, verify-cloudsmith, build-programs, stage-programs, gate-programs, verify-onchain, deploy-core, deploy-clients, qa]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Assert every stage succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          BAD=$(echo "$RESULTS" | jq -r 'to_entries[] | select(.value.result != "success") | "\(.key)=\(.value.result)"' | tr '\n' ' ')
+          if [ -n "${BAD// /}" ]; then
+            echo "::error::pipeline incomplete — stages that did not succeed: $BAD"
+            exit 1
+          fi
+          echo "all stages succeeded"
 
   notify-failure:
     runs-on: ubuntu-latest
     # announce is deliberately excluded: by that point the release itself has
     # succeeded, and a failed announce means Slack delivery is broken — this
     # notifier posts via the same Slack API and would fail the same way.
-    needs: [preflight, open-prs, gate-tags, push-tags, verify-cloudsmith, build-programs, stage-programs, gate-programs, verify-onchain, deploy-core, deploy-clients, qa]
+    # pipeline-complete IS included so a hollow success also alerts.
+    needs: [preflight, open-prs, gate-tags, push-tags, verify-cloudsmith, build-programs, stage-programs, gate-programs, verify-onchain, deploy-core, deploy-clients, qa, pipeline-complete]
     if: failure()
     steps:
       # checkout only to resolve the local composite action

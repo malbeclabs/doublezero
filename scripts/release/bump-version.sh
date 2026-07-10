@@ -14,6 +14,24 @@ COUNT=$(grep -c "^version = \"$PREV\"\$" Cargo.toml)
 sed -i "s/^version = \"$PREV\"\$/version = \"$NEW\"/" Cargo.toml
 cargo update --workspace
 
+# cargo update -w re-resolves the members' dependency edges too, and a
+# requirement that admits multiple locked majors can silently rebind them
+# (observed: solana-system-interface 3.2.0 -> 2.0.0 under ">=1,<=3"). A bump
+# may only ADD the members' new version lines — any other added line is a
+# rebind/upgrade/downgrade and means a poisoned bump PR, so fail loudly
+# instead of opening it. Pure removals are cargo pruning stale lock entries
+# (legitimate normalization); log them for the PR reviewer.
+NEW_RE=${NEW//./\\.}
+PREV_RE=${PREV//./\\.}
+BAD_LINES=$(git diff -U0 -- Cargo.lock | grep -E '^\+[^+]' | grep -vE "^\+version = \"$NEW_RE\"\$" || true)
+if [ -n "$BAD_LINES" ]; then
+  echo "cargo update --workspace changed more than member versions in Cargo.lock:" >&2
+  echo "$BAD_LINES" >&2
+  exit 1
+fi
+PRUNED=$(git diff -U0 -- Cargo.lock | grep -E '^-[^-]' | grep -vE "^-version = \"$PREV_RE\"\$" || true)
+[ -z "$PRUNED" ] || { echo "note: cargo update pruned stale lock entries (review, but expected):"; echo "$PRUNED"; }
+
 grep -q '^## Unreleased$' CHANGELOG.md || { echo "CHANGELOG.md has no '## Unreleased' section" >&2; exit 1; }
 BODY=$(awk '/^## Unreleased$/{f=1; next} /^## /{f=0} f' CHANGELOG.md | grep -v '^###' | grep -cv '^[[:space:]]*$' || true)
 [ "$BODY" -gt 0 ] || echo "warning: '## Unreleased' has no entries; promoting an empty v$NEW section" >&2

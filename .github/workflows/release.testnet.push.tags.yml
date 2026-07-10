@@ -26,12 +26,30 @@ on:
         description: 'PAT to push tags to the repository'
         required: true
 
+# This workflow is pure mechanism and carries no environment; the approval
+# prompt belongs to the callers: the release orchestrator's gate 1 (verified
+# against the merged version PRs) and the manual dispatcher's approve job.
+# The caller allowlist below makes that binding: any new caller fails closed
+# until it is added here — with its own approval story — in a reviewed change.
 jobs:
   create-and-push-tag:
     name: Push ${{ inputs.version }} tag for ${{ inputs.component }}
     runs-on: ubuntu-latest
-    environment: testnet
     steps:
+      - name: Require an approval-carrying caller
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          case "$WORKFLOW_REF" in
+            malbeclabs/doublezero/.github/workflows/release.testnet.yml@*)
+              echo "caller ok (orchestrator, approval at gate 1): $WORKFLOW_REF" ;;
+            malbeclabs/doublezero/.github/workflows/release.testnet.push.tags.components.yml@*)
+              echo "caller ok (manual dispatcher, approval at its approve job): $WORKFLOW_REF" ;;
+            *)
+              echo "::error::release.testnet.push.tags.yml must be called via the release orchestrator or the components dispatcher, which carry the approval prompt (got: $WORKFLOW_REF). Add new callers to the allowlist here together with their approval mechanism."
+              exit 1 ;;
+          esac
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:

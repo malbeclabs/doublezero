@@ -9,8 +9,19 @@ on:
         type: string
 
 jobs:
+  # The reusable tag workflow carries no environment; this job is the approval
+  # prompt for manual dispatches (one click covers all components, as before).
+  approve:
+    name: "approve: push ${{ github.event.inputs.version }} tags for all components"
+    runs-on: ubuntu-latest
+    environment: testnet
+    steps:
+      - name: Approved
+        run: echo "Tag push for ${{ github.event.inputs.version }} approved."
+
   component-tags:
     name: Tag ${{ matrix.component }} with version ${{ github.event.inputs.version }}
+    needs: approve
     uses: ./.github/workflows/release.testnet.push.tags.yml
     permissions:
       contents: write

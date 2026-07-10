@@ -82,8 +82,10 @@ runs:
             -H 'Content-type: application/json; charset=utf-8' \
             --data "$PAYLOAD") || RESP='{"ok":false,"error":"curl error"}'
           # chat.postMessage returns HTTP 200 with ok=false on errors; check .ok.
-          echo "$RESP" | jq -e '.ok' >/dev/null \
-            || echo "::warning::failed to post Slack approval ping for $RUN_URL: $(echo "$RESP" | jq -r '.error // "unknown"' | tr -d '\r\n')"
+          if ! echo "$RESP" | jq -e '.ok' >/dev/null 2>&1; then
+            ERR=$(echo "$RESP" | jq -r '.error // "unknown"' 2>/dev/null | tr -d '\r\n')
+            echo "::warning::failed to post Slack approval ping for $RUN_URL: ${ERR:-unparseable response}"
+          fi
         fi
         echo "Watching $RUN_URL"
         gh run watch "$RUN_ID" -R "$REPO" --exit-status --interval 30

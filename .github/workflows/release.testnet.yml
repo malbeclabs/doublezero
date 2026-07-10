@@ -214,7 +214,7 @@ jobs:
           channel: ${{ env.SLACK_CHANNEL_ID }}
           thread-ts: ${{ needs.preflight.outputs.thread_ts }}
           text: |-
-            Version PRs confirmed merged. The 9 tag jobs are now waiting on the `testnet` environment prompt: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Version PRs confirmed merged. The 9 tag jobs will request the `testnet` environment prompt momentarily: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   push-tags:
     if: ${{ !inputs.dry_run }}

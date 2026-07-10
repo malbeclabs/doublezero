@@ -47,7 +47,7 @@ runs:
         PAYLOAD=$(jq -n --arg ch "$CHANNEL" --arg text "$TEXT" --arg ts "$THREAD_TS" --arg color "$COLOR" '
           {channel: $ch}
           + (if $color != ""
-             then {attachments: [{color: $color, text: $text, mrkdwn_in: ["text"], fallback: ($text | split("\n")[0])}]}
+             then {attachments: [{color: $color, text: $text, mrkdwn_in: ["text"], fallback: ($text | split("\n")[0] | gsub("\\*"; ""))}]}
              else {text: $text} end)
           + (if $ts != "" then {thread_ts: $ts} else {} end)')
         RESP=$(curl -sf --max-time 15 --retry 3 --retry-max-time 60 --retry-all-errors \
@@ -56,8 +56,9 @@ runs:
           -H 'Content-type: application/json; charset=utf-8' \
           --data "$PAYLOAD") || { echo "::warning::slack post failed (curl)"; exit 0; }
         # chat.postMessage returns HTTP 200 with ok=false on errors; check .ok, not the curl exit code.
-        echo "$RESP" | jq -e '.ok' >/dev/null || {
-          echo "::warning::slack post failed: $(echo "$RESP" | jq -r '.error // "unknown"' | tr -d '\r\n')"; exit 0; }
+        echo "$RESP" | jq -e '.ok' >/dev/null 2>&1 || {
+          ERR=$(echo "$RESP" | jq -r '.error // "unknown"' 2>/dev/null | tr -d '\r\n')
+          echo "::warning::slack post failed: ${ERR:-unparseable response}"; exit 0; }
         TS=$(echo "$RESP" | jq -r '.ts')
         if [[ "$TS" =~ ^[0-9]+\.[0-9]+$ ]]; then
           echo "ts=$TS" >> "$GITHUB_OUTPUT"

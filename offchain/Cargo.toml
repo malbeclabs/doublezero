@@ -125,41 +125,43 @@ tag = "revenue-distribution/v0.3.7"
 # RFC-20 CLI core: provides CliContext, OutputFormat, RequirementCheck, the
 # render_* output helpers, and the eyre-based error type. The whole SDK family
 # is pinned to a single monorepo revision so shared types unify across the
-# boundary. The pin is the malbeclabs/doublezero#3830 merge commit (Solana 3.0
-# migration); swap for the next v3-containing client/* tag once one is cut.
+# boundary. The pin is the malbeclabs/doublezero#4030 merge commit (per-feed
+# EdgeSeat FeedSeat billing state + SetAccessPassFeeds), 42 commits past the
+# #3830 Solana 3.0 boundary on the same v3 line; swap for the next
+# v3-containing client/* tag once one is cut.
 [workspace.dependencies.doublezero-cli-core]
 git = "https://github.com/malbeclabs/doublezero"
-rev = "d282439115945aae84128c6baa63cb1d967b1201"
+rev = "8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
 
 # Source of the RFC-20 `Environment` enum consumed by `CliContext`. MUST be
 # pinned to the same revision as doublezero-cli-core so the `Environment` type
 # unifies across the boundary.
 [workspace.dependencies.doublezero-config]
 git = "https://github.com/malbeclabs/doublezero"
-rev = "d282439115945aae84128c6baa63cb1d967b1201"
+rev = "8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
 
 [workspace.dependencies.doublezero-program-common]
 git = "https://github.com/malbeclabs/doublezero"
-rev = "d282439115945aae84128c6baa63cb1d967b1201"
+rev = "8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
 
 [workspace.dependencies.doublezero-record]
 features = ["no-entrypoint"]
 git = "https://github.com/malbeclabs/doublezero"
-rev = "d282439115945aae84128c6baa63cb1d967b1201"
+rev = "8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
 
 [workspace.dependencies.doublezero_sdk]
 git = "https://github.com/malbeclabs/doublezero"
-rev = "d282439115945aae84128c6baa63cb1d967b1201"
+rev = "8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
 
 [workspace.dependencies.doublezero-serviceability]
 features = ["no-entrypoint", "serde"]
 git = "https://github.com/malbeclabs/doublezero"
-rev = "d282439115945aae84128c6baa63cb1d967b1201"
+rev = "8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
 
 [workspace.dependencies.doublezero-telemetry]
 features = ["no-entrypoint", "serde"]
 git = "https://github.com/malbeclabs/doublezero"
-rev = "d282439115945aae84128c6baa63cb1d967b1201"
+rev = "8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
 
 ### Other git dependencies
 

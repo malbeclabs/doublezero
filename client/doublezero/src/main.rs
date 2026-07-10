@@ -2,11 +2,9 @@ use clap::{CommandFactory, Parser};
 use clap_complete::generate;
 use std::path::PathBuf;
 mod cli;
-mod command;
-use doublezero_config::Environment;
-mod servicecontroller;
 use crate::cli::{command::Command, multicast::MulticastCommands, sentinel::SentinelCommands};
 use doublezero_cli_core::LogLevel;
+use doublezero_config::Environment;
 use doublezero_daemon_cli::{DaemonClientImpl, DaemonCommand};
 use doublezero_geolocation_cli::GeoCliCommandImpl;
 use doublezero_sdk::{
@@ -20,7 +18,6 @@ use doublezero_serviceability_cli::{
     doublezerocommand::{CliCommand, CliCommandImpl},
     requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
 };
-use servicecontroller::ServiceControllerImpl;
 
 /// Adapter bridging the binary's `CliCommand` to the daemon-cli crate's
 /// `LedgerClient` trait. Holds the client so ledger-backed reads/writes (e.g.
@@ -266,7 +263,6 @@ async fn main() -> eyre::Result<()> {
     doublezero_cli_core::init_logging(app.log_level);
 
     if let Some(sock_file) = &app.sock_file {
-        ServiceControllerImpl::set_global_socket_path(sock_file.to_string_lossy());
         DaemonClientImpl::set_global_socket_path(sock_file.to_string_lossy());
     }
 
@@ -447,18 +443,38 @@ async fn main() -> eyre::Result<()> {
         }
 
         // Multicast: the `Group` subtree is module-crate business and dispatched by
-        // `MulticastGroupCommands::execute`; the daemon-coupled async verbs
-        // (Subscribe/Unsubscribe/Publish/Unpublish) stay binary-local because
-        // they depend on `ServiceControllerImpl` and `resolve_client_ip`.
-        Command::Multicast(args) => match args.command {
-            MulticastCommands::Group(args) => {
-                args.command.execute(&ctx, &client, &mut handle).await
+        // `MulticastGroupCommands::execute`; the daemon-coupled transport verbs
+        // (Subscribe/Unsubscribe/Publish/Unpublish) route to
+        // `doublezero-daemon-cli`, nested here to keep the
+        // `doublezero multicast <verb>` invocation.
+        Command::Multicast(args) => {
+            let daemon = DaemonClientImpl::new(
+                ctx.daemon_socket_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().into_owned()),
+            );
+            let ledger = LedgerAdapter {
+                env: client.get_environment(),
+                client: &client,
+            };
+            match args.command {
+                MulticastCommands::Group(args) => {
+                    args.command.execute(&ctx, &client, &mut handle).await
+                }
+                MulticastCommands::Subscribe(cmd) => {
+                    cmd.execute(&ctx, &daemon, &ledger, &mut handle).await
+                }
+                MulticastCommands::Unsubscribe(cmd) => {
+                    cmd.execute(&ctx, &daemon, &ledger, &mut handle).await
+                }
+                MulticastCommands::Publish(cmd) => {
+                    cmd.execute(&ctx, &daemon, &ledger, &mut handle).await
+                }
+                MulticastCommands::Unpublish(cmd) => {
+                    cmd.execute(&ctx, &daemon, &ledger, &mut handle).await
+                }
             }
-            MulticastCommands::Subscribe(args) => args.execute(&client).await,
-            MulticastCommands::Unsubscribe(args) => args.execute(&client).await,
-            MulticastCommands::Publish(args) => args.execute(&client).await,
-            MulticastCommands::Unpublish(args) => args.execute(&client).await,
-        },
+        }
 
         // Clap shell-completion generator (binary-local)
         Command::Completion(args) => {

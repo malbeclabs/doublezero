@@ -1,5 +1,6 @@
 use clap::{Args, Subcommand};
 
+use doublezero_daemon_cli::multicast::{Publish, Subscribe, Unpublish, Unsubscribe};
 use doublezero_serviceability_cli::cli::multicastgroup::MulticastGroupCliCommand;
 
 #[derive(Args, Debug)]
@@ -8,6 +9,11 @@ pub struct MulticastCliCommand {
     pub command: MulticastCommands,
 }
 
+/// Multicast subtree: `Group` CRUD dispatches to the serviceability module
+/// crate; the transport verbs (`Subscribe`/`Unsubscribe`/`Publish`/`Unpublish`)
+/// dispatch to `doublezero-daemon-cli`. They are nested here — not hoisted as
+/// `DaemonCommand` variants — to preserve the `doublezero multicast <verb>`
+/// invocation.
 #[derive(Debug, Subcommand)]
 pub enum MulticastCommands {
     /// Manage multicast groups
@@ -15,42 +21,14 @@ pub enum MulticastCommands {
     Group(MulticastGroupCliCommand),
     /// Subscribe to one or more multicast groups (user must already be connected)
     #[clap()]
-    Subscribe(MulticastSubscribeCliCommand),
+    Subscribe(Subscribe),
     /// Unsubscribe from one or more multicast groups
     #[clap()]
-    Unsubscribe(MulticastUnsubscribeCliCommand),
+    Unsubscribe(Unsubscribe),
     /// Publish to one or more multicast groups (user must already be connected)
     #[clap()]
-    Publish(MulticastPublishCliCommand),
+    Publish(Publish),
     /// Stop publishing to one or more multicast groups
     #[clap()]
-    Unpublish(MulticastUnpublishCliCommand),
-}
-
-#[derive(Args, Debug)]
-pub struct MulticastSubscribeCliCommand {
-    /// Multicast group code(s) to subscribe to
-    #[arg(num_args = 1..)]
-    pub groups: Vec<String>,
-}
-
-#[derive(Args, Debug)]
-pub struct MulticastUnsubscribeCliCommand {
-    /// Multicast group code(s) to unsubscribe from
-    #[arg(num_args = 1..)]
-    pub groups: Vec<String>,
-}
-
-#[derive(Args, Debug)]
-pub struct MulticastPublishCliCommand {
-    /// Multicast group code(s) to publish to
-    #[arg(num_args = 1..)]
-    pub groups: Vec<String>,
-}
-
-#[derive(Args, Debug)]
-pub struct MulticastUnpublishCliCommand {
-    /// Multicast group code(s) to stop publishing to
-    #[arg(num_args = 1..)]
-    pub groups: Vec<String>,
+    Unpublish(Unpublish),
 }

@@ -8,9 +8,7 @@ use crate::client::DaemonClient;
 
 /// Resolve the daemon-discovered client IP.
 ///
-/// Groundwork for `connect`/`disconnect`/`multicast` (PRs 5–7); written against
-/// the crate's `DaemonClient` trait. The binary retains its own copy until
-/// those verbs migrate.
+/// Used by `connect`, `disconnect`, and the multicast transport verbs.
 pub async fn resolve_client_ip<D: DaemonClient>(daemon: &D) -> eyre::Result<Ipv4Addr> {
     let v2_status = daemon.v2_status().await?;
     if v2_status.client_ip.is_empty() {

@@ -11,17 +11,21 @@
 //! Progress animation is rendered on a stderr spinner (transient UI);
 //! informational and result lines route through the shared writer.
 
-use std::{io::Write, net::Ipv4Addr, time::Duration};
+use std::{io::Write, net::Ipv4Addr};
 
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
     commands::multicastgroup::subscribe::UpdateMulticastGroupRolesCommand, User, UserType,
 };
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
 
-use crate::{client::DaemonClient, helpers::resolve_client_ip, ledger::LedgerClient};
+use crate::{
+    client::DaemonClient,
+    helpers::{init_spinner, resolve_client_ip},
+    ledger::LedgerClient,
+};
 
 /// Subscribe to one or more multicast groups (user must already be connected)
 #[derive(Args, Debug)]
@@ -53,21 +57,6 @@ pub struct Unpublish {
     /// Multicast group code(s) to stop publishing to
     #[arg(num_args = 1..)]
     pub groups: Vec<String>,
-}
-
-/// Build the multicast-update progress spinner (stderr; transient UI).
-fn init_spinner(len: u64) -> ProgressBar {
-    let spinner = ProgressBar::new(len);
-    spinner.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
-            .expect("Failed to set template")
-            .progress_chars("#>-")
-            .tick_strings(&["-", "\\", "|", "/"]),
-    );
-    spinner.enable_steady_tick(Duration::from_millis(100));
-    spinner.println("DoubleZero Network");
-    spinner
 }
 
 /// Resolve a list of multicast group codes to their onchain pubkeys.
@@ -942,6 +931,46 @@ mod tests {
 
         let rendered = String::from_utf8(out).unwrap();
         assert!(rendered.contains("publishing to g"), "got: {rendered}");
+    }
+
+    #[test]
+    fn publish_continues_after_per_group_failure_and_aggregates_error() {
+        // g1's onchain call fails; g2's must still be attempted, and the
+        // command must return an aggregated error naming g1.
+        let ip = Ipv4Addr::new(10, 0, 0, 1);
+        let g1 = Pubkey::new_unique();
+        let g2 = Pubkey::new_unique();
+        let user_pk = Pubkey::new_unique();
+
+        let mut users = HashMap::new();
+        users.insert(user_pk, user_with_roles(ip, vec![], vec![]));
+        let mut groups = HashMap::new();
+        groups.insert(g1, make_group("g1"));
+        groups.insert(g2, make_group("g2"));
+        let mut ledger = ledger_with_users_and_groups(users, groups);
+
+        ledger
+            .expect_update_multicastgroup_roles()
+            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| cmd.group_pk == g1)
+            .once()
+            .returning(|_| Err(eyre::eyre!("simulated chain failure")));
+        ledger
+            .expect_update_multicastgroup_roles()
+            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| cmd.group_pk == g2)
+            .once()
+            .returning(|_| Ok(()));
+
+        let daemon = daemon_with_client_ip("10.0.0.1");
+        let ctx = cli_context_default_for_tests();
+        let mut out = Vec::new();
+        let cmd = Publish {
+            groups: vec!["g1".into(), "g2".into()],
+        };
+        let err = block_on(cmd.execute(&ctx, &daemon, &ledger, &mut out)).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("publish failed"), "got: {msg}");
+        assert!(msg.contains("g1"), "got: {msg}");
+        assert!(!msg.contains("g2"), "g2 should have succeeded; got: {msg}");
     }
 
     #[test]

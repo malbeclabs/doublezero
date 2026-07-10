@@ -283,16 +283,19 @@ jobs:
           ref: main   # the merged version-bump commit
       - uses: dtolnay/rust-toolchain@1.90.0
       - uses: Swatinem/rust-cache@v2
+      # Keep the agave version and --tools-version in sync with
+      # release.devnet.smartcontract.daily.yml (platform-tools >= v1.54 is
+      # required since the solana 3.0 tree pulls edition2024 crates).
       - name: Install agave solana tools
         run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v2.3.13/install)"
+          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - name: Build programs for testnet
         run: |
           set -euo pipefail
-          (cd smartcontract/programs/doublezero-serviceability && cargo build-sbf)
-          (cd smartcontract/programs/doublezero-telemetry && cargo build-sbf --features testnet)
-          (cd smartcontract/programs/doublezero-geolocation && cargo build-sbf --features testnet)
+          (cd smartcontract/programs/doublezero-serviceability && cargo build-sbf --tools-version v1.54)
+          (cd smartcontract/programs/doublezero-telemetry && cargo build-sbf --tools-version v1.54 --features testnet)
+          (cd smartcontract/programs/doublezero-geolocation && cargo build-sbf --tools-version v1.54 --features testnet)
       - name: Assemble artifact with deploy manifest
         env:
           VERSION: ${{ inputs.version }}

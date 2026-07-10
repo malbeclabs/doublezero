@@ -129,8 +129,9 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
     }
 
     // doublezero-serviceability v0.20 added durable tunnel/BGP state to User;
-    // client/v0.25.0 then appended `bgp_rtt_ns`. Both default to the same values
-    // onchain/Borsh deserialization uses for absent tails.
+    // client/v0.25.0 then appended `bgp_rtt_ns`, and #4030 (per-feed EdgeSeat
+    // billing) appended `feed_pk`. All default to the same values onchain/Borsh
+    // deserialization uses for absent tails.
     if let Some(users) = serviceability
         .get_mut("users")
         .and_then(|users| users.as_object_mut())
@@ -148,6 +149,8 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
                 .or_insert_with(|| Value::Number(0.into()));
             user.entry("bgp_rtt_ns")
                 .or_insert_with(|| Value::Number(0.into()));
+            user.entry("feed_pk")
+                .or_insert_with(|| Value::String(Pubkey::default().to_string()));
         }
     }
 

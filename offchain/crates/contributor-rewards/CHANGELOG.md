@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - release artifact now builds as a static `x86_64-unknown-linux-musl` binary (malbeclabs/infra#1853)
 - TLS for HTTP clients moves from openssl to rustls; trust roots are the bundled webpki Mozilla set plus the host OS certificate store, so OS-installed private CAs remain trusted (malbeclabs/infra#1853)
 - refactor(contributor-rewards): use the shared `Wallet` memo helpers from `solana-client-tools` in place of the local `RELAY_MEMO_CU` constant
+- fix(contributor-rewards): backfill `User.feed_pk` (zero pubkey) in the snapshot compat migration so snapshots captured before doublezero#4030 still deserialize (malbeclabs/infra#1853)
 
 ## [0.6.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/contributor-rewards%2Fv0.6.1) - 2026-06-13
 

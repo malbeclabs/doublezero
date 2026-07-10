@@ -55,7 +55,7 @@ gh workflow run release.testnet.yml -R malbeclabs/doublezero -f version=X.Y.Z
 | `push-tags` | Pushes the 9 component tags (`controller`, `internet-latency-collector`, `agent`, `device-telemetry-agent`, `geoprobe-agent`, `geoprobe-target`, `funder`, `monitor`, `client`) via the reusable tag workflow, which runs in the protected `testnet` environment. | **Approve the `testnet` environment prompt** on the tag jobs (nudged in the Slack thread). |
 | `verify-cloudsmith` | Polls CloudSmith (up to ~60 min) until all 9 packages exist at the new version. | — |
 | `build-programs` | Builds the three Solana programs (`serviceability` default features; `telemetry` and `geolocation` with `--features testnet`) from main and uploads them with checksums and a `DEPLOY.md` manifest. | — |
-| `stage-programs` | Dispatches the infra `stage-programs.testnet.yml` workflow, which copies the artifacts to `nyc-tn-bm2:/opt/doublezero/program-releases/vX.Y.Z/`, then pings Slack. | **Approve infra's `testnet` environment** on the dispatched run (link posted to `#bots`). Then **deploy the programs** on nyc-tn-bm2 from that directory per the Notion runbook ("Build and deploy DoubleZero solana programs - testnet"), and set the onchain version. |
+| `stage-programs` | Dispatches the infra `stage-programs.testnet.yml` workflow, which copies the artifacts to `nyc-tn-bm2:/opt/doublezero/program-releases/vX.Y.Z/`, then pings Slack. | **Approve infra's `testnet` environment** on the dispatched run (link posted to `#bots`). Then **deploy the programs** on nyc-tn-bm2 following the `DEPLOY.md` staged alongside them (commands mirror the [infra runbook](https://github.com/malbeclabs/infra/blob/main/docs/runbooks/deploys/solana-programs-testnet.md)), and refresh the onchain version (`doublezero init`). |
 | `gate-programs` | Waits on the `testnet` environment. | **Approve gate 2** once the programs are deployed and the onchain version is set. |
 | `verify-onchain` | Installs the released client from CloudSmith and checks `doublezero --env testnet version` reports the new program version. | — |
 | `deploy-core` | Dispatches infra `deploy-core.testnet.yml` and waits for it. | **Approve infra's `testnet` environment** on the dispatched run (link posted to `#bots`). |
@@ -78,26 +78,41 @@ advancing the release.
 
 - Both version PRs are opened as **drafts** with `[DRY RUN]` titles. Do not merge them;
   gate 1 only checks that they were not closed.
-- No tags are pushed. `verify-cloudsmith` still runs, querying the **current** (previous)
-  version to exercise the CloudSmith query logic.
+- No tags are pushed: the tag jobs run as validated no-ops (`dry_run=true` on the tag
+  workflow). They run rather than skip because a job-level skip would transitively
+  skip every downstream job — a skipped ancestor poisons the default `success()`
+  condition for the whole graph below it. `verify-cloudsmith` still runs, querying
+  the **current** (previous) version to exercise the CloudSmith query logic.
 - Programs are still built and staged, but `verify-onchain` is skipped, and the infra
   deploy workflows are dispatched in their check mode (`mode=dry-run`).
-- The approval prompts are **not** skipped: gate 1, gate 2, the `testnet` environment
-  on this repo, and infra's `testnet` environment all still require approval even
-  though nothing is deployed.
+- The approval prompts are **not** skipped: gate 1, the `testnet` prompt on the
+  (no-op) tag jobs, gate 2, and infra's `testnet` environment all still require
+  approval even though nothing is deployed. A dry run exercises the same approval
+  sequence as a real release.
 
 Cleanup after a dry run: close both draft PRs and delete their branches
 (`release/vX.Y.Z` in doublezero, `release/testnet-vX.Y.Z` in infra).
 
 ## Recovery / re-running
 
-Use "Re-run failed jobs" on the orchestrator run to resume from where it stopped:
+After a mid-pipeline failure, prefer **"Re-run all jobs"** (or a fresh dispatch) over
+"Re-run failed jobs". Full re-runs are cheap and always correct here; partial re-runs
+depend on GitHub reviving the failure-skipped downstream jobs, and a hollow
+"success" that silently skips deploys/QA/announce is the failure mode to avoid
+(run 29106365876 ended exactly that way — root cause was a dry-run-only job-skip
+bug, since fixed, but the conservative habit stands). After any re-run, confirm the
+run actually executed the jobs you expected before trusting its green check.
+
+Full re-runs are safe by design:
 
 - The version PRs are reused if they already exist (the branch is force-pushed and the
   open PR is found by head branch).
 - Already-pushed tags are skipped (`skip_existing=true` on the tag workflow), so a
   partially completed tag matrix is safe to re-run.
-- Environment gates prompt for approval again on re-run.
+- Program staging re-copies the same artifacts; environment gates prompt again.
 
-If a downstream infra workflow failed, fix the cause there first; re-running the
-orchestrator job dispatches a fresh run of that workflow.
+If a dispatched infra workflow failed, fix the cause there first — the orchestrator
+dispatches those workflows fresh from infra `main` at runtime, so infra-side fixes
+apply on the next re-run without any doublezero change. Fixes to
+`release.testnet.yml` itself always need a fresh dispatch: any re-run (failed or all)
+executes the workflow snapshot from the original dispatch.

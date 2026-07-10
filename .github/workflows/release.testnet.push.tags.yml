@@ -16,6 +16,11 @@ on:
         required: false
         type: boolean
         default: false
+      dry_run:
+        description: 'Validate inputs and succeed without pushing anything (for orchestrator dry runs)'
+        required: false
+        type: boolean
+        default: false
     secrets:
       DOUBLEZERO_PAT:
         description: 'PAT to push tags to the repository'
@@ -47,6 +52,11 @@ jobs:
             exit 1
           fi
           echo "Version format is valid."
+
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "Dry run — not pushing tag '$TAG_NAME'."
+            exit 0
+          fi
 
           if EXISTING=$(git rev-parse -q --verify "refs/tags/$TAG_NAME^{commit}"); then
             if [ "${{ inputs.skip_existing }}" = "true" ]; then

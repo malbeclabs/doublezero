@@ -205,9 +205,7 @@ jobs:
           fi
       # The tag jobs request the `testnet` environment prompt again right after
       # this job completes; nudge the thread so that second approval isn't missed.
-      # Skipped in dry runs, where push-tags doesn't run at all.
       - name: Post tag-approval nudge to Slack thread
-        if: ${{ !inputs.dry_run }}
         uses: ./.github/actions/slack-thread-post
         with:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
@@ -216,8 +214,11 @@ jobs:
           text: |-
             Version PRs confirmed merged. The 9 tag jobs will request the `testnet` environment prompt momentarily: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
+  # Runs in dry runs too (as a validated no-op via dry_run): a job-level skip
+  # here would transitively skip every downstream job with a default status
+  # condition — a skipped ancestor poisons `success()` for the whole graph
+  # below it, even past jobs that override their own condition.
   push-tags:
-    if: ${{ !inputs.dry_run }}
     needs: gate-tags
     uses: ./.github/workflows/release.testnet.push.tags.yml
     permissions:
@@ -238,14 +239,13 @@ jobs:
       version: v${{ inputs.version }}
       component: ${{ matrix.component }}
       skip_existing: true
+      dry_run: ${{ inputs.dry_run }}
     secrets:
       DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}
 
   verify-cloudsmith:
     runs-on: ubuntu-latest
     needs: [preflight, gate-tags, push-tags]
-    # In dry-run, push-tags is skipped; still verify (against the current version) to exercise the query logic.
-    if: ${{ !cancelled() && needs.gate-tags.result == 'success' && (needs.push-tags.result == 'success' || (inputs.dry_run && needs.push-tags.result == 'skipped')) }}
     timeout-minutes: 75
     steps:
       - name: Install Cloudsmith CLI
@@ -305,6 +305,7 @@ jobs:
           cp target/deploy/doublezero_serviceability.so staged/
           cp target/deploy/doublezero_telemetry.so staged/
           cp target/deploy/doublezero_geolocation.so staged/
+          # shellcheck disable=SC1003 # trailing backslashes inside single quotes are literal line-continuations for the generated markdown
           {
             echo "# Testnet program deploy v${VERSION}"
             echo
@@ -318,12 +319,33 @@ jobs:
             echo '```'
             echo
             echo "## Deploy"
-            echo "Follow the Notion runbook 'Build and deploy DoubleZero solana programs - testnet',"
-            echo "using these prebuilt artifacts instead of building locally."
-            echo "After deploying, set the serviceability program version:"
-            echo "  doublezero --env testnet global-config set-version --min-compatible-version <X.Y.Z>"
-            echo "(serviceability is the only program with a settable version account; telemetry has"
-            echo "none and geolocation has no CLI setter). Verify with: doublezero --env testnet version"
+            echo
+            echo "Runbook: https://github.com/malbeclabs/infra/blob/main/docs/runbooks/deploys/solana-programs-testnet.md"
+            echo "(its Build/scp section is superseded by these prebuilt, staged artifacts)"
+            echo
+            echo '```bash'
+            echo "cd /opt/doublezero/program-releases/v${VERSION}"
+            echo
+            echo 'solana program deploy \'
+            echo '  --program-id ~/testnet-ops/serviceability-program-keypair.json \'
+            echo '  -k ~/testnet-ops/serviceability-program-authority.json \'
+            echo '  doublezero_serviceability.so'
+            echo
+            echo 'solana program deploy \'
+            echo '  --program-id ~/testnet-ops/telemetry-program-keypair.json \'
+            echo '  -k ~/.config/doublezero/id.json \'
+            echo '  doublezero_telemetry.so'
+            echo
+            echo 'solana program deploy \'
+            echo '  --program-id ~/testnet-ops/geolocation-program-testnet-keypair.json \'
+            echo '  -k ~/.config/doublezero/id.json \'
+            echo '  doublezero_geolocation.so'
+            echo
+            echo '# refresh the onchain program version'
+            echo 'doublezero init'
+            echo '```'
+            echo
+            echo "Verify with: doublezero --env testnet version"
             echo
             echo "Then approve the waiting 'gate-programs' job (testnet environment) on the orchestrator run above."
           } > staged/DEPLOY.md

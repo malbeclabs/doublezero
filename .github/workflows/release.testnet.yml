@@ -305,6 +305,7 @@ jobs:
           cp target/deploy/doublezero_serviceability.so staged/
           cp target/deploy/doublezero_telemetry.so staged/
           cp target/deploy/doublezero_geolocation.so staged/
+          # shellcheck disable=SC1003 # trailing backslashes inside single quotes are literal line-continuations for the generated markdown
           {
             echo "# Testnet program deploy v${VERSION}"
             echo
@@ -318,12 +319,33 @@ jobs:
             echo '```'
             echo
             echo "## Deploy"
-            echo "Follow the Notion runbook 'Build and deploy DoubleZero solana programs - testnet',"
-            echo "using these prebuilt artifacts instead of building locally."
-            echo "After deploying, set the serviceability program version:"
-            echo "  doublezero --env testnet global-config set-version --min-compatible-version <X.Y.Z>"
-            echo "(serviceability is the only program with a settable version account; telemetry has"
-            echo "none and geolocation has no CLI setter). Verify with: doublezero --env testnet version"
+            echo
+            echo "Runbook: https://github.com/malbeclabs/infra/blob/main/docs/runbooks/deploys/solana-programs-testnet.md"
+            echo "(its Build/scp section is superseded by these prebuilt, staged artifacts)"
+            echo
+            echo '```bash'
+            echo "cd /opt/doublezero/program-releases/v${VERSION}"
+            echo
+            echo 'solana program deploy \'
+            echo '  --program-id ~/testnet-ops/serviceability-program-keypair.json \'
+            echo '  -k ~/testnet-ops/serviceability-program-authority.json \'
+            echo '  doublezero_serviceability.so'
+            echo
+            echo 'solana program deploy \'
+            echo '  --program-id ~/testnet-ops/telemetry-program-keypair.json \'
+            echo '  -k ~/.config/doublezero/id.json \'
+            echo '  doublezero_telemetry.so'
+            echo
+            echo 'solana program deploy \'
+            echo '  --program-id ~/testnet-ops/geolocation-program-testnet-keypair.json \'
+            echo '  -k ~/.config/doublezero/id.json \'
+            echo '  doublezero_geolocation.so'
+            echo
+            echo '# refresh the onchain program version'
+            echo 'doublezero init'
+            echo '```'
+            echo
+            echo "Verify with: doublezero --env testnet version"
             echo
             echo "Then approve the waiting 'gate-programs' job (testnet environment) on the orchestrator run above."
           } > staged/DEPLOY.md

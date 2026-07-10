@@ -18,12 +18,12 @@ use doublezero_sdk::{
     },
     Device, User, UserCYOA, UserStatus, UserType,
 };
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
 
 use crate::{
     client::{DaemonClient, StatusResponse},
-    helpers::resolve_client_ip,
+    helpers::{init_spinner, resolve_client_ip},
     latency::{best_latency, retrieve_latencies, select_tunnel_endpoint},
     ledger::LedgerClient,
     requirements::check_daemon,
@@ -92,21 +92,6 @@ enum ParsedDzMode {
         pub_groups: Vec<String>,
         sub_groups: Vec<String>,
     },
-}
-
-/// Build the connect progress spinner (stderr; transient UI).
-fn init_spinner(len: u64) -> ProgressBar {
-    let spinner = ProgressBar::new(len);
-    spinner.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
-            .expect("Failed to set template")
-            .progress_chars("#>-")
-            .tick_strings(&["-", "\\", "|", "/"]),
-    );
-    spinner.enable_steady_tick(Duration::from_millis(100));
-    spinner.println("DoubleZero Network");
-    spinner
 }
 
 /// AccessPass pre-flight: `Ok(false)` when no pass exists for

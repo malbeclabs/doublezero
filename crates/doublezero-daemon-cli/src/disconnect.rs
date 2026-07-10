@@ -11,11 +11,13 @@ use backon::{BlockingRetryable, ExponentialBuilder};
 use clap::{Args, ValueEnum};
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::UserType;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
 
 use crate::{
-    client::DaemonClient, helpers::resolve_client_ip, ledger::LedgerClient,
+    client::DaemonClient,
+    helpers::{init_spinner, resolve_client_ip},
+    ledger::LedgerClient,
     requirements::check_daemon,
 };
 
@@ -46,21 +48,6 @@ pub struct Disconnect {
     pub no_wait: bool,
     #[arg(value_enum)]
     pub dz_mode: Option<DzMode>,
-}
-
-/// Build the disconnect progress spinner (stderr; transient UI).
-fn init_spinner(len: u64) -> ProgressBar {
-    let spinner = ProgressBar::new(len);
-    spinner.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
-            .expect("Failed to set template")
-            .progress_chars("#>-")
-            .tick_strings(&["-", "\\", "|", "/"]),
-    );
-    spinner.enable_steady_tick(Duration::from_millis(100));
-    spinner.println("DoubleZero Network");
-    spinner
 }
 
 impl Disconnect {

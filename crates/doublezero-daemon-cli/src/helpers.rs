@@ -1,16 +1,31 @@
 //! Shared output helpers for daemon-control verbs.
 
-use std::{io::Write, net::Ipv4Addr};
+use std::{io::Write, net::Ipv4Addr, time::Duration};
 
+use indicatif::{ProgressBar, ProgressStyle};
 use tabled::{settings::Style, Table, Tabled};
 
 use crate::client::DaemonClient;
 
+/// Build the standard daemon-verb progress spinner (stderr; transient UI).
+/// Informational and result lines route through the shared writer instead.
+pub(crate) fn init_spinner(len: u64) -> ProgressBar {
+    let spinner = ProgressBar::new(len);
+    spinner.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
+            .expect("Failed to set template")
+            .progress_chars("#>-")
+            .tick_strings(&["-", "\\", "|", "/"]),
+    );
+    spinner.enable_steady_tick(Duration::from_millis(100));
+    spinner.println("DoubleZero Network");
+    spinner
+}
+
 /// Resolve the daemon-discovered client IP.
 ///
-/// Groundwork for `connect`/`disconnect`/`multicast` (PRs 5–7); written against
-/// the crate's `DaemonClient` trait. The binary retains its own copy until
-/// those verbs migrate.
+/// Used by `connect`, `disconnect`, and the multicast transport verbs.
 pub async fn resolve_client_ip<D: DaemonClient>(daemon: &D) -> eyre::Result<Ipv4Addr> {
     let v2_status = daemon.v2_status().await?;
     if v2_status.client_ip.is_empty() {

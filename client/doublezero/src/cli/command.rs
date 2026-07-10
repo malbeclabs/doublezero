@@ -15,8 +15,9 @@ use crate::cli::{multicast::MulticastCliCommand, sentinel::SentinelCliCommand};
 /// `doublezero_daemon_cli`. The binary retains the
 /// `doublezero-geolocation-cli` module crate's geolocation subtree (via
 /// `GeolocationArgs`), the binary-only `Completion` generator, and `Multicast`
-/// (whose `Subscribe`/`Unsubscribe`/`Publish`/`Unpublish` arms depend on
-/// binary-local daemon-control infrastructure).
+/// (whose `Subscribe`/`Unsubscribe`/`Publish`/`Unpublish` arms route to
+/// `doublezero-daemon-cli` but stay nested to preserve the
+/// `doublezero multicast <verb>` invocation).
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// Daemon-control verbs migrated to `doublezero-daemon-cli` (RFC-20).

@@ -78,26 +78,30 @@ advancing the release.
 
 - Both version PRs are opened as **drafts** with `[DRY RUN]` titles. Do not merge them;
   gate 1 only checks that they were not closed.
-- No tags are pushed. `verify-cloudsmith` still runs, querying the **current** (previous)
-  version to exercise the CloudSmith query logic.
+- No tags are pushed: the tag jobs run as validated no-ops (`dry_run=true` on the tag
+  workflow). They run rather than skip because a job-level skip would transitively
+  skip every downstream job — a skipped ancestor poisons the default `success()`
+  condition for the whole graph below it. `verify-cloudsmith` still runs, querying
+  the **current** (previous) version to exercise the CloudSmith query logic.
 - Programs are still built and staged, but `verify-onchain` is skipped, and the infra
   deploy workflows are dispatched in their check mode (`mode=dry-run`).
-- The approval prompts are **not** skipped: gate 1, gate 2, the `testnet` environment
-  on this repo, and infra's `testnet` environment all still require approval even
-  though nothing is deployed.
+- The approval prompts are **not** skipped: gate 1, the `testnet` prompt on the
+  (no-op) tag jobs, gate 2, and infra's `testnet` environment all still require
+  approval even though nothing is deployed. A dry run exercises the same approval
+  sequence as a real release.
 
 Cleanup after a dry run: close both draft PRs and delete their branches
 (`release/vX.Y.Z` in doublezero, `release/testnet-vX.Y.Z` in infra).
 
 ## Recovery / re-running
 
-After a mid-pipeline failure, use **"Re-run all jobs"** (or dispatch a fresh run) —
-**not "Re-run failed jobs"**. When a job fails, everything downstream of it is marked
-skipped; "Re-run failed jobs" revives only the failed job and instantly re-marks the
-previously-skipped jobs as skipped again, so the run can conclude "success" without
-ever running the deploys, QA, or announce (observed on run 29106365876: the fixed
-`stage-programs` job passed on re-run, and `gate-programs` through `announce` were
-all carried over as skipped).
+After a mid-pipeline failure, prefer **"Re-run all jobs"** (or a fresh dispatch) over
+"Re-run failed jobs". Full re-runs are cheap and always correct here; partial re-runs
+depend on GitHub reviving the failure-skipped downstream jobs, and a hollow
+"success" that silently skips deploys/QA/announce is the failure mode to avoid
+(run 29106365876 ended exactly that way — root cause was a dry-run-only job-skip
+bug, since fixed, but the conservative habit stands). After any re-run, confirm the
+run actually executed the jobs you expected before trusting its green check.
 
 Full re-runs are safe by design:
 

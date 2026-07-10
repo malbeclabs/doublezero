@@ -205,9 +205,7 @@ jobs:
           fi
       # The tag jobs request the `testnet` environment prompt again right after
       # this job completes; nudge the thread so that second approval isn't missed.
-      # Skipped in dry runs, where push-tags doesn't run at all.
       - name: Post tag-approval nudge to Slack thread
-        if: ${{ !inputs.dry_run }}
         uses: ./.github/actions/slack-thread-post
         with:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
@@ -216,8 +214,11 @@ jobs:
           text: |-
             Version PRs confirmed merged. The 9 tag jobs will request the `testnet` environment prompt momentarily: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
+  # Runs in dry runs too (as a validated no-op via dry_run): a job-level skip
+  # here would transitively skip every downstream job with a default status
+  # condition — a skipped ancestor poisons `success()` for the whole graph
+  # below it, even past jobs that override their own condition.
   push-tags:
-    if: ${{ !inputs.dry_run }}
     needs: gate-tags
     uses: ./.github/workflows/release.testnet.push.tags.yml
     permissions:
@@ -238,14 +239,13 @@ jobs:
       version: v${{ inputs.version }}
       component: ${{ matrix.component }}
       skip_existing: true
+      dry_run: ${{ inputs.dry_run }}
     secrets:
       DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}
 
   verify-cloudsmith:
     runs-on: ubuntu-latest
     needs: [preflight, gate-tags, push-tags]
-    # In dry-run, push-tags is skipped; still verify (against the current version) to exercise the query logic.
-    if: ${{ !cancelled() && needs.gate-tags.result == 'success' && (needs.push-tags.result == 'success' || (inputs.dry_run && needs.push-tags.result == 'skipped')) }}
     timeout-minutes: 75
     steps:
       - name: Install Cloudsmith CLI

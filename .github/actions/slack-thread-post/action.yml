@@ -1,0 +1,67 @@
+name: slack-thread-post
+description: >-
+  Post a message to Slack via chat.postMessage, optionally as a threaded reply.
+  Never fails the job: on any error it emits a warning and exits 0, so a Slack
+  outage cannot fail a release.
+inputs:
+  token:
+    description: 'Slack bot token with chat:write in the target channel'
+    required: true
+  channel:
+    description: 'Channel ID to post to'
+    required: true
+  text:
+    description: 'Message text (Slack mrkdwn)'
+    required: true
+  thread-ts:
+    description: >-
+      ts of a parent message. When set, the message is posted as a reply in
+      that thread; when empty, it is posted as a top-level message.
+    required: false
+    default: ''
+  color:
+    description: >-
+      Attachment color (good/warning/danger or hex). When set, the text is
+      wrapped in a colored attachment; when empty, it is posted as plain text.
+    required: false
+    default: ''
+outputs:
+  ts:
+    description: 'ts of the posted message (empty if the post failed)'
+    value: ${{ steps.post.outputs.ts }}
+runs:
+  using: composite
+  steps:
+    - id: post
+      shell: bash
+      env:
+        TOKEN: ${{ inputs.token }}
+        CHANNEL: ${{ inputs.channel }}
+        TEXT: ${{ inputs.text }}
+        THREAD_TS: ${{ inputs.thread-ts }}
+        COLOR: ${{ inputs.color }}
+      run: |
+        set -euo pipefail
+        # fallback is the plain-text push-notification preview; mrkdwn_in makes
+        # the attachment text render *bold* etc. like a plain message would.
+        PAYLOAD=$(jq -n --arg ch "$CHANNEL" --arg text "$TEXT" --arg ts "$THREAD_TS" --arg color "$COLOR" '
+          {channel: $ch}
+          + (if $color != ""
+             then {attachments: [{color: $color, text: $text, mrkdwn_in: ["text"], fallback: ($text | split("\n")[0] | gsub("\\*"; ""))}]}
+             else {text: $text} end)
+          + (if $ts != "" then {thread_ts: $ts} else {} end)')
+        RESP=$(curl -sf --max-time 15 --retry 3 --retry-max-time 60 --retry-all-errors \
+          https://slack.com/api/chat.postMessage \
+          -H "Authorization: Bearer $TOKEN" \
+          -H 'Content-type: application/json; charset=utf-8' \
+          --data "$PAYLOAD") || { echo "::warning::slack post failed (curl)"; exit 0; }
+        # chat.postMessage returns HTTP 200 with ok=false on errors; check .ok, not the curl exit code.
+        echo "$RESP" | jq -e '.ok' >/dev/null 2>&1 || {
+          ERR=$(echo "$RESP" | jq -r '.error // "unknown"' 2>/dev/null | tr -d '\r\n')
+          echo "::warning::slack post failed: ${ERR:-unparseable response}"; exit 0; }
+        TS=$(echo "$RESP" | jq -r '.ts')
+        if [[ "$TS" =~ ^[0-9]+\.[0-9]+$ ]]; then
+          echo "ts=$TS" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning::slack post succeeded but returned unexpected ts"
+        fi

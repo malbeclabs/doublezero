@@ -22,6 +22,9 @@ on:
 permissions:
   contents: read
 
+env:
+  SLACK_CHANNEL_ID: C0853CEAUR4 # bots
+
 # Serialize releases of the same version: overlapping dispatches would
 # force-push the same release branches and race on the same tags.
 concurrency:
@@ -33,6 +36,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       prev_version: ${{ steps.prev.outputs.prev_version }}
+      # Empty if the Slack post failed; downstream posts then degrade to
+      # top-level messages instead of threaded replies.
+      thread_ts: ${{ steps.slack.outputs.ts }}
     steps:
       - name: Validate version format
         run: |
@@ -58,6 +64,15 @@ jobs:
           echo "latest devnet daily run: $CONCLUSION"
           [ "$CONCLUSION" = "success" ] || {
             echo "::error::latest devnet daily was '$CONCLUSION'; fix devnet or re-run with skip_devnet_check"; exit 1; }
+      # Parent message for this run's Slack thread; every later post replies to it.
+      # Runs after validation so a garbage version never opens a thread.
+      - name: Open Slack thread
+        id: slack
+        uses: ./.github/actions/slack-thread-post
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ env.SLACK_CHANNEL_ID }}
+          text: "Testnet Deploy v${{ inputs.version }}${{ inputs.dry_run && ' (dry run)' || '' }} :thread:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
   open-prs:
     runs-on: ubuntu-latest
@@ -142,13 +157,30 @@ jobs:
           fi
           echo "pr=$PR" >> "$GITHUB_OUTPUT"
           echo "infra version PR: https://github.com/malbeclabs/infra/pull/$PR" >> "$GITHUB_STEP_SUMMARY"
+      - name: Post PR links to Slack thread
+        uses: ./.github/actions/slack-thread-post
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ env.SLACK_CHANNEL_ID }}
+          thread-ts: ${{ needs.preflight.outputs.thread_ts }}
+          text: |-
+            Version PRs are open:
+            • https://github.com/malbeclabs/doublezero/pull/${{ steps.dzpr.outputs.pr }}
+            • https://github.com/malbeclabs/infra/pull/${{ steps.infrapr.outputs.pr }}
+            Review and merge both, then approve the waiting `gate-tags` job (`testnet` environment) on the run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   # Gate 1: approve only after BOTH version PRs are merged.
   gate-tags:
     runs-on: ubuntu-latest
-    needs: open-prs
+    # preflight is already in the transitive chain; listed directly so its
+    # thread_ts output is readable here (needs only exposes direct dependencies).
+    needs: [open-prs, preflight]
     environment: testnet
     steps:
+      # checkout only to resolve the local composite action
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
       - uses: actions/create-github-app-token@v2
         id: app
         with:
@@ -171,6 +203,18 @@ jobs:
             { [ "$DZ" = "MERGED" ] && [ "$INFRA" = "MERGED" ]; } || {
               echo "::error::approve this gate only after BOTH version PRs are merged"; exit 1; }
           fi
+      # The tag jobs request the `testnet` environment prompt again right after
+      # this job completes; nudge the thread so that second approval isn't missed.
+      # Skipped in dry runs, where push-tags doesn't run at all.
+      - name: Post tag-approval nudge to Slack thread
+        if: ${{ !inputs.dry_run }}
+        uses: ./.github/actions/slack-thread-post
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ env.SLACK_CHANNEL_ID }}
+          thread-ts: ${{ needs.preflight.outputs.thread_ts }}
+          text: |-
+            Version PRs confirmed merged. The 9 tag jobs will request the `testnet` environment prompt momentarily: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   push-tags:
     if: ${{ !inputs.dry_run }}
@@ -287,7 +331,9 @@ jobs:
 
   stage-programs:
     runs-on: ubuntu-latest
-    needs: build-programs
+    # preflight is already in the transitive chain; listed directly so its
+    # thread_ts output is readable here (needs only exposes direct dependencies).
+    needs: [build-programs, preflight]
     # The infra run waits on a required-reviewer approval of infra's `testnet`
     # environment; leave room for a slow approval.
     timeout-minutes: 120
@@ -305,7 +351,9 @@ jobs:
           repo: malbeclabs/infra
           workflow: stage-programs.testnet.yml
           token: ${{ steps.app.outputs.token }}
-          slack-webhook: ${{ secrets.SLACK_INT_TECH_WEBHOOK }}
+          slack-bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
+          slack-channel: ${{ env.SLACK_CHANNEL_ID }}
+          slack-thread-ts: ${{ needs.preflight.outputs.thread_ts }}
           fields: |
             version=${{ inputs.version }}
             source_run_id=${{ github.run_id }}
@@ -317,14 +365,15 @@ jobs:
             echo "Deploy the three programs with the local keypair, set the onchain version, then approve the waiting 'gate-programs' job (testnet environment)."
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Ping dev team
-        uses: malbeclabs/action-slack-notify@v2
-        env:
-          SLACK_COLOR: warning
-          SLACK_USERNAME: Doublezero Releaser
-          SLACK_TITLE: "Testnet release v${{ inputs.version }}: program deploy needed"
-          SLACK_MESSAGE: "Artifacts staged on nyc-tn-bm2:/opt/doublezero/program-releases/v${{ inputs.version }}/. Deploy programs, then approve the waiting gate-programs job (testnet environment) on the orchestrator run."
-          MSG_MINIMAL: actions url
-          SLACK_WEBHOOK: ${{ secrets.SLACK_TESTNET_ALERTS_WEBHOOK }}
+        uses: ./.github/actions/slack-thread-post
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ env.SLACK_CHANNEL_ID }}
+          thread-ts: ${{ needs.preflight.outputs.thread_ts }}
+          color: warning
+          text: |-
+            *Testnet release v${{ inputs.version }}: program deploy needed*
+            Artifacts staged on nyc-tn-bm2:/opt/doublezero/program-releases/v${{ inputs.version }}/. Deploy programs, then approve the waiting gate-programs job (testnet environment) on the orchestrator run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   # Gate 2: approve only after the programs are deployed on testnet.
   gate-programs:
@@ -359,7 +408,7 @@ jobs:
 
   deploy-core:
     runs-on: ubuntu-latest
-    needs: verify-onchain
+    needs: [verify-onchain, preflight]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -375,13 +424,15 @@ jobs:
           repo: malbeclabs/infra
           workflow: deploy-core.testnet.yml
           token: ${{ steps.app.outputs.token }}
-          slack-webhook: ${{ secrets.SLACK_INT_TECH_WEBHOOK }}
+          slack-bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
+          slack-channel: ${{ env.SLACK_CHANNEL_ID }}
+          slack-thread-ts: ${{ needs.preflight.outputs.thread_ts }}
           fields: |
             mode=${{ inputs.dry_run && 'dry-run' || 'send-it' }}
 
   deploy-clients:
     runs-on: ubuntu-latest
-    needs: deploy-core
+    needs: [deploy-core, preflight]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -397,7 +448,9 @@ jobs:
           repo: malbeclabs/infra
           workflow: deploy-clients.testnet.yml
           token: ${{ steps.app.outputs.token }}
-          slack-webhook: ${{ secrets.SLACK_INT_TECH_WEBHOOK }}
+          slack-bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
+          slack-channel: ${{ env.SLACK_CHANNEL_ID }}
+          slack-thread-ts: ${{ needs.preflight.outputs.thread_ts }}
           fields: |
             mode=${{ inputs.dry_run && 'dry-run' || 'send-it' }}
 
@@ -422,29 +475,43 @@ jobs:
 
   announce:
     runs-on: ubuntu-latest
-    needs: qa
+    needs: [qa, preflight]
     steps:
-      - uses: malbeclabs/action-slack-notify@v2
-        env:
-          SLACK_COLOR: good
-          SLACK_USERNAME: Doublezero Releaser
-          SLACK_TITLE: "Testnet release v${{ inputs.version }} deployed${{ inputs.dry_run && ' (dry run)' || '' }}"
-          SLACK_MESSAGE: "QA passed. Watch the system dashboard for ~30 min: https://doublezero.grafana.net/d/bf3dece9-51ac-4087-b6b1-579b3859ce14/ — and remember the community announcement (foundation)."
-          MSG_MINIMAL: actions url
-          SLACK_WEBHOOK: ${{ secrets.SLACK_TESTNET_ALERTS_WEBHOOK }}
+      # checkout only to resolve the local composite action
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - name: Announce success
+        uses: ./.github/actions/slack-thread-post
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ env.SLACK_CHANNEL_ID }}
+          thread-ts: ${{ needs.preflight.outputs.thread_ts }}
+          color: good
+          text: |-
+            *Testnet release v${{ inputs.version }} deployed${{ inputs.dry_run && ' (dry run)' || '' }}*
+            QA passed. Watch the system dashboard for ~30 min: https://doublezero.grafana.net/d/bf3dece9-51ac-4087-b6b1-579b3859ce14/ — and remember the community announcement (foundation).
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   notify-failure:
     runs-on: ubuntu-latest
     # announce is deliberately excluded: by that point the release itself has
     # succeeded, and a failed announce means Slack delivery is broken — this
-    # notifier posts to the same webhook and would fail the same way.
+    # notifier posts via the same Slack API and would fail the same way.
     needs: [preflight, open-prs, gate-tags, push-tags, verify-cloudsmith, build-programs, stage-programs, gate-programs, verify-onchain, deploy-core, deploy-clients, qa]
     if: failure()
     steps:
-      - uses: malbeclabs/action-slack-notify@v2
-        env:
-          SLACK_COLOR: failure
-          SLACK_USERNAME: Doublezero Releaser
-          SLACK_TITLE: "Testnet release v${{ inputs.version }} failed"
-          MSG_MINIMAL: actions url
-          SLACK_WEBHOOK: ${{ secrets.SLACK_TESTNET_ALERTS_WEBHOOK }}
+      # checkout only to resolve the local composite action
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github
+      - name: Notify failure
+        uses: ./.github/actions/slack-thread-post
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ env.SLACK_CHANNEL_ID }}
+          thread-ts: ${{ needs.preflight.outputs.thread_ts }}
+          color: danger
+          text: |-
+            *Testnet release v${{ inputs.version }} failed*
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

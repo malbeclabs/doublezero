@@ -18,11 +18,22 @@ inputs:
   token:
     description: 'Token with actions:write on the target repo'
     required: true
-  slack-webhook:
+  slack-bot-token:
     description: >-
-      Optional Slack webhook. When set, posts a link to the dispatched run before
-      watching it, so a run gated on a required-reviewer environment in the target
-      repo gets approved instead of stalling unnoticed.
+      Optional Slack bot token. When set together with slack-channel, posts a
+      link to the dispatched run before watching it, so a run gated on a
+      required-reviewer environment in the target repo gets approved instead of
+      stalling unnoticed.
+    required: false
+    default: ''
+  slack-channel:
+    description: 'Slack channel ID to post the approval ping to'
+    required: false
+    default: ''
+  slack-thread-ts:
+    description: >-
+      ts of a parent Slack message. When set, the approval ping is posted as a
+      reply in that thread; when empty, it is posted as a top-level message.
     required: false
     default: ''
 runs:
@@ -35,7 +46,9 @@ runs:
         WORKFLOW: ${{ inputs.workflow }}
         REF: ${{ inputs.ref }}
         FIELDS: ${{ inputs.fields }}
-        SLACK_WEBHOOK: ${{ inputs.slack-webhook }}
+        SLACK_BOT_TOKEN: ${{ inputs.slack-bot-token }}
+        SLACK_CHANNEL: ${{ inputs.slack-channel }}
+        SLACK_THREAD_TS: ${{ inputs.slack-thread-ts }}
       run: |
         set -euo pipefail
         CID="cid-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
@@ -58,10 +71,21 @@ runs:
           exit 1
         fi
         RUN_URL="https://github.com/$REPO/actions/runs/$RUN_ID"
-        if [ -n "$SLACK_WEBHOOK" ]; then
-          PAYLOAD=$(jq -n --arg text "$WORKFLOW run in $REPO may need environment approval: $RUN_URL" '{text: $text}')
-          curl -sf -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$SLACK_WEBHOOK" \
-            || echo "::warning::failed to post Slack approval ping for $RUN_URL"
+        if [ -n "$SLACK_BOT_TOKEN" ] && [ -n "$SLACK_CHANNEL" ]; then
+          PAYLOAD=$(jq -n --arg ch "$SLACK_CHANNEL" \
+            --arg text "$WORKFLOW run in $REPO may need environment approval: $RUN_URL" \
+            --arg ts "$SLACK_THREAD_TS" \
+            '{channel: $ch, text: $text} + (if $ts != "" then {thread_ts: $ts} else {} end)')
+          RESP=$(curl -sf --max-time 15 --retry 3 --retry-max-time 60 --retry-all-errors \
+            https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H 'Content-type: application/json; charset=utf-8' \
+            --data "$PAYLOAD") || RESP='{"ok":false,"error":"curl error"}'
+          # chat.postMessage returns HTTP 200 with ok=false on errors; check .ok.
+          if ! echo "$RESP" | jq -e '.ok' >/dev/null 2>&1; then
+            ERR=$(echo "$RESP" | jq -r '.error // "unknown"' 2>/dev/null | tr -d '\r\n')
+            echo "::warning::failed to post Slack approval ping for $RUN_URL: ${ERR:-unparseable response}"
+          fi
         fi
         echo "Watching $RUN_URL"
         gh run watch "$RUN_ID" -R "$REPO" --exit-status --interval 30

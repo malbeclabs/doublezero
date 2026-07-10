@@ -41,7 +41,7 @@ The fix is the split SPL uses: a pure, RPC-free instruction library beneath the 
 
 ### Crate location and dependency graph
 
-Create `smartcontract/sdk/rs-instructions/`, crate `doublezero_serviceability_instruction`, registered as a workspace member. The acyclic dependency graph enforces purity — the crate cannot reach RPC because it never depends on the RPC tree:
+Create `crates/doublezero-serviceability-instruction/`, crate `doublezero_serviceability_instruction`, registered as a workspace member. The acyclic dependency graph enforces purity — the crate cannot reach RPC because it never depends on the RPC tree:
 
 ```
 doublezero-serviceability            (enum, *Args, pda, resource types)
@@ -60,7 +60,7 @@ This mirrors the `spl-token` split (pure `instruction` module beneath the RPC-be
 One module per domain, mirroring `processors/` and `commands/`:
 
 ```
-smartcontract/sdk/rs-instructions/
+crates/doublezero-serviceability-instruction/
   Cargo.toml
   src/lib.rs        # re-exports domains; compute_budget_prelude(); consts;
                     #   documented list of excluded deprecated variants

@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.30.0](https://github.com/malbeclabs/doublezero/compare/client/v0.29.0...client/v0.30.0) - 2026-07-10
+
+### Breaking
+
+### Changes
+
 - Serviceability
   - `Feed` account: a catalog entry for one metro's multicast group set, keyed by `(code, exchange)` (one `feed_key` is one feed in one metro), managed by a catalog admin (`FEED_AUTHORITY` Permission or `FOUNDATION`) via `CreateFeed`/`UpdateFeed`/`DeleteFeed`. (#3953)
   - `SetAccessPassFeeds` provisions feed_keys (SKU seats) onto an EdgeSeat pass, each `FeedSeat` carrying the feed's full per-feed billing state (current cap, future cap, the window boundary between them, the termination date, and the renewal anniversary day); the oracle calls it via its `ACCESS_PASS_ADMIN` Permission. (#3954, #4030)

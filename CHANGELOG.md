@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CI
+  - Fix the event-driven `doublezero-edge-connect` rebuild: the base-image publishers now mint a short-lived, least-privilege token from the release-bot GitHub App (scoped to `doublezero-edge-connect`) to fire the cross-repo `repository_dispatch`, replacing the never-created `EDGE_CONNECT_DISPATCH_TOKEN` secret whose absence silently no-op'd every notify. Also add the missing devnet notify step, so all three variants (testnet, mainnet-beta, devnet) trigger a rebuild on base publish. The mint/notify steps stay non-fatal to the publish and edge-connect's daily poll remains the fallback.
+
 ## [v0.30.0](https://github.com/malbeclabs/doublezero/compare/client/v0.29.0...client/v0.30.0) - 2026-07-10
 
 ### Breaking

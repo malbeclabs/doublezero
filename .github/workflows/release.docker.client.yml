@@ -113,10 +113,29 @@ jobs:
             ${{ env.IMAGE }}:testnet
             ${{ env.IMAGE }}:testnet-${{ steps.v.outputs.version }}
 
+      # Mint a short-lived, least-privilege token scoped to doublezero-edge-connect
+      # from the release-bot GitHub App, used only to fire the cross-repo dispatch
+      # below. Non-fatal: if the app isn't installed on edge-connect the mint fails,
+      # the dispatch is skipped, and edge-connect's daily poll backstops the rebuild.
+      - name: Mint edge-connect dispatch token (testnet)
+        id: ec_token
+        if: steps.v.outputs.publish == 'true'
+        continue-on-error: true
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: doublezero-edge-connect
+          # Scope the token down to exactly what repository_dispatch needs, rather
+          # than inheriting every permission the release-bot App holds on the repo.
+          permission-contents: write
+
       # Tell doublezero-edge-connect to rebuild its :testnet variant against the
       # base image we just published (event-driven; its daily poll is the fallback).
       - name: Notify edge-connect to rebuild (testnet)
-        if: steps.v.outputs.publish == 'true'
+        # Skip cleanly if the token mint failed (empty token) — the poll backstops it.
+        if: steps.v.outputs.publish == 'true' && steps.ec_token.outputs.token != ''
         # A failed cross-repo dispatch must not fail an already-successful publish;
         # edge-connect's daily poll is the fallback.
         continue-on-error: true
@@ -124,7 +143,7 @@ jobs:
         env:
           DZ_VERSION: ${{ steps.v.outputs.version }}
         with:
-          github-token: ${{ secrets.EDGE_CONNECT_DISPATCH_TOKEN }}
+          github-token: ${{ steps.ec_token.outputs.token }}
           script: |
             await github.rest.repos.createDispatchEvent({
               owner: context.repo.owner,
@@ -225,10 +244,29 @@ jobs:
             ${{ env.IMAGE }}:mainnet-beta-${{ steps.v.outputs.tag }}
             ${{ env.IMAGE }}:latest
 
+      # Mint a short-lived, least-privilege token scoped to doublezero-edge-connect
+      # from the release-bot GitHub App, used only to fire the cross-repo dispatch
+      # below. Non-fatal: if the app isn't installed on edge-connect the mint fails,
+      # the dispatch is skipped, and edge-connect's daily poll backstops the rebuild.
+      - name: Mint edge-connect dispatch token (mainnet-beta)
+        id: ec_token
+        if: steps.gate.outputs.changed == 'true'
+        continue-on-error: true
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: doublezero-edge-connect
+          # Scope the token down to exactly what repository_dispatch needs, rather
+          # than inheriting every permission the release-bot App holds on the repo.
+          permission-contents: write
+
       # Tell doublezero-edge-connect to rebuild its :mainnet-beta variant against
       # the base image we just published (event-driven; poll is the fallback).
       - name: Notify edge-connect to rebuild (mainnet-beta)
-        if: steps.gate.outputs.changed == 'true'
+        # Skip cleanly if the token mint failed (empty token) — the poll backstops it.
+        if: steps.gate.outputs.changed == 'true' && steps.ec_token.outputs.token != ''
         # A failed cross-repo dispatch must not fail an already-successful publish;
         # edge-connect's daily poll is the fallback.
         continue-on-error: true
@@ -236,7 +274,7 @@ jobs:
         env:
           DZ_VERSION: ${{ steps.v.outputs.version }}
         with:
-          github-token: ${{ secrets.EDGE_CONNECT_DISPATCH_TOKEN }}
+          github-token: ${{ steps.ec_token.outputs.token }}
           script: |
             await github.rest.repos.createDispatchEvent({
               owner: context.repo.owner,

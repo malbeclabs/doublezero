@@ -146,6 +146,9 @@ func assertFields(t *testing.T, expected []fieldValue, got map[string]any) {
 		}
 		assertField(t, f, val)
 	}
+	if len(expected) != len(got) {
+		t.Errorf("field count: json has %d, got map has %d", len(expected), len(got))
+	}
 }
 
 func assertField(t *testing.T, f fieldValue, got any) {
@@ -153,7 +156,10 @@ func assertField(t *testing.T, f fieldValue, got any) {
 
 	switch f.Type {
 	case "u8":
-		want, _ := strconv.ParseUint(f.Value, 10, 8)
+		want, err := strconv.ParseUint(f.Value, 10, 8)
+		if err != nil {
+			t.Fatalf("field %s: parse u8 %q: %v", f.Name, f.Value, err)
+		}
 		switch v := got.(type) {
 		case uint8:
 			assertEq(t, f.Name, uint8(want), v)
@@ -169,13 +175,22 @@ func assertField(t *testing.T, f fieldValue, got any) {
 			t.Fatalf("field %s: expected u8-like value, got %T", f.Name, got)
 		}
 	case "u16":
-		want, _ := strconv.ParseUint(f.Value, 10, 16)
+		want, err := strconv.ParseUint(f.Value, 10, 16)
+		if err != nil {
+			t.Fatalf("field %s: parse u16 %q: %v", f.Name, f.Value, err)
+		}
 		assertEq(t, f.Name, uint16(want), got)
 	case "u32":
-		want, _ := strconv.ParseUint(f.Value, 10, 32)
+		want, err := strconv.ParseUint(f.Value, 10, 32)
+		if err != nil {
+			t.Fatalf("field %s: parse u32 %q: %v", f.Name, f.Value, err)
+		}
 		assertEq(t, f.Name, uint32(want), got)
 	case "u64":
-		want, _ := strconv.ParseUint(f.Value, 10, 64)
+		want, err := strconv.ParseUint(f.Value, 10, 64)
+		if err != nil {
+			t.Fatalf("field %s: parse u64 %q: %v", f.Name, f.Value, err)
+		}
 		assertEq(t, f.Name, uint64(want), got)
 	case "string":
 		assertEq(t, f.Name, f.Value, got)

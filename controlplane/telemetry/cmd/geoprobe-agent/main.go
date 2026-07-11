@@ -900,7 +900,7 @@ func (ml *measurementLoop) runCycle() {
 
 	rttData := make(map[geoprobe.ProbeAddress]uint64)
 
-	if len(ml.targets) > 0 
+	if len(ml.targets) > 0 {
 		twampResults, err := ml.pinger.MeasureAll(ml.ctx)
 		if err != nil {
 			ml.log.Error("Failed to measure TWAMP targets", "error", err)

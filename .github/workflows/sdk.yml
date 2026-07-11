@@ -46,6 +46,19 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: make sdk-test
 
+  # Committed .bin/.json goldens must match Rust Borsh output. Regenerating every
+  # sdk-test run would move producer and expected bytes together and mask drift;
+  # this Rust-enabled job regenerates then fails on any fixture diff.
+  sdk-fixture-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Check fixture drift
+        run: make check-fixtures
+
   sdk-compat-test:
     runs-on: ubuntu-latest
     steps:

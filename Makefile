@@ -133,6 +133,10 @@ rust-program-accounts-compat:
 # -----------------------------------------------------------------------------
 # SDK targets
 # -----------------------------------------------------------------------------
+# sdk-test intentionally does not depend on generate-fixtures: CI has no Rust
+# toolchain, and committed .bin/.json goldens are the source of truth. After
+# changing onchain Rust account structs, regenerate then re-test locally:
+#   make sdk-test-regen
 .PHONY: sdk-test
 sdk-test:
 	go test ./sdk/borsh-incremental/go/...
@@ -146,6 +150,9 @@ sdk-test:
 	$(MAKE) typescript-test-revdist
 	$(MAKE) typescript-test-serviceability
 	$(MAKE) typescript-test-telemetry
+
+.PHONY: sdk-test-regen
+sdk-test-regen: generate-fixtures sdk-test
 
 .PHONY: python-test-borsh-incremental
 python-test-borsh-incremental:
@@ -209,6 +216,12 @@ generate-fixtures:
 	cd sdk/serviceability/testdata/fixtures/generate-fixtures && cargo run
 	cd sdk/telemetry/testdata/fixtures/generate-fixtures && cargo run
 	cd sdk/geolocation/testdata/fixtures/generate-fixtures && cargo run
+
+# Regenerate fixtures and fail if committed .bin/.json goldens drifted from Rust.
+# Only goldens are checked — generator Cargo.lock refreshes are out of scope.
+.PHONY: check-fixtures
+check-fixtures: generate-fixtures
+	git diff --exit-code -- 'sdk/*/testdata/fixtures/*.bin' 'sdk/*/testdata/fixtures/*.json'
 
 # -----------------------------------------------------------------------------
 # E2E targets

@@ -89,6 +89,9 @@ jobs:
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: doublezero-edge-connect
+          # Scope the token down to exactly what repository_dispatch needs, rather
+          # than inheriting every permission the release-bot App holds on the repo.
+          permission-contents: write
 
       # Tell doublezero-edge-connect to rebuild its devnet variant against the base
       # image we just published (event-driven; its daily poll is the fallback). The

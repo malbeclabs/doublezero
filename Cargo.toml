@@ -11,6 +11,7 @@ members = [
     "smartcontract/programs/common",
     "e2e/docker/ledger/fork-accounts",
     "crates/doublezero-cli-core",
+    "crates/doublezero-serviceability-instruction",
     "crates/doublezero-daemon-cli",
     "crates/doublezero-geolocation-cli",
     "crates/sentinel",

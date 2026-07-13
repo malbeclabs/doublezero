@@ -15,7 +15,7 @@ The serviceability program exposes 116 instruction variants. The only supported 
 - **No pure builders.** A caller that wants an unsigned `Instruction` — to batch it, simulate it, inspect it, or sign it with a different signer — cannot get one. It must go through `XxxCommand::execute()`, which owns the RPC client and the send path.
 - **Heavy dependency to build one instruction.** Any consumer that needs instruction bytes today must depend on `doublezero_sdk`, which pulls `solana-client`, `tokio`, `backon`, and the rest of the RPC tree. Bots, indexers, and the fixture generator pay that cost just to lay out accounts and borsh-pack args.
 - **Account ordering is duplicated and drift-prone.** The processor (`next_account_info` order) and each command (`AccountMeta` vec) independently encode the same layout; when they disagree the processor rejects the transaction at runtime. The trailing `[payer, system_program, permission?]` convention lives in `client.rs::assemble_instructions`, so every command must line its accounts up with that tail.
-- **Dangerous length-detection is implicit.** `CreateUser`, `DeleteUser`, and `CreateSubscribeUser` detect an optional trailing account (tenant/feed) via `accounts.len()`. If a caller also appends a Permission PDA, it corrupts that parsing. Nothing in the current API prevents this.
+- **Dangerous length-detection is implicit.** `CreateUser` detects an optional trailing tenant account via `accounts.len()` and never calls `authorize()`. If a caller also appends a Permission PDA, it corrupts that parsing. Nothing in the current API prevents this. (`DeleteUser` detects its optional tenant from onchain state and `CreateSubscribeUser` via `split_trailing_permission`, so both tolerate a trailing Permission account — only `CreateUser` is length-fragile.)
 
 The fix is the split SPL uses: a pure, RPC-free instruction library beneath the RPC-bearing SDK, with the account-order convention centralized in one reviewable place and backed by golden fixtures and `solana-program-test` tests.
 
@@ -25,8 +25,8 @@ The fix is the split SPL uses: a pure, RPC-free instruction library beneath the 
 - **Pure / offline** — the builder performs no network I/O. Chain-derived values (globalstate `account_index`, `dz_prefix` count) are passed in as explicit parameters by the caller.
 - **Trailing convention** — the fixed tail of every instruction's account list: `[payer (signer, writable), system_program (readonly)]`, followed — for instructions whose `authorize()` migration is activated — by the read-only Permission PDA (derived from the payer) as the last account.
 - **`authorize()`-gated instruction** — an instruction whose processor calls `authorize()`; once migrated, its builder appends the trailing Permission account (see [Permission account](#permission-account)).
-- **Length-detected family** — `CreateUser` (36), `DeleteUser` (42), `CreateSubscribeUser` (59): processors that identify an optional trailing account by `accounts.len()`. These builders never append a Permission account, permanently, so the length count stays unambiguous.
-- **`split_trailing_permission` family** — instructions with a variable-length account list followed by payer/system and then, once migrated, the payer-derived Permission PDA, which the processor peels off by PDA match (link delete, user update, interface update, topology assign, multicast allowlists).
+- **Length-detected family** — `CreateUser` (36): its processor identifies an optional trailing tenant account by `accounts.len()` and never calls `authorize()`. Its builder never appends a Permission account, permanently, so the length count stays unambiguous. (`DeleteUser` and `CreateSubscribeUser` were originally grouped here but are not length-detected — see below.)
+- **`split_trailing_permission` family** — instructions with a variable-length account list followed by payer/system and then, once migrated, the payer-derived Permission PDA, which the processor peels off by PDA match (link delete, user update, `CreateSubscribeUser`, interface update, topology assign, multicast allowlists). `DeleteUser` similarly calls `authorize()` positionally after detecting its optional tenant from onchain state, so it too can carry a trailing Permission account.
 - **Golden fixture** — a committed `ix_<name>.bin` (wire bytes) and `ix_<name>.json` (variant, `data_hex`, ordered accounts with flags) capturing a builder's deterministic output, guarded in CI.
 
 ## Alternatives Considered
@@ -134,7 +134,7 @@ pub fn create_link(
     link_index: u128, args: LinkCreateArgs,
 ) -> Instruction;
 
-// user.rs — length-detected feed appended before payer/system
+// user.rs — split_trailing_permission; optional feed appended before payer/system
 pub fn create_subscribe_user(
     program_id: &Pubkey, payer: &Pubkey,
     device: &Pubkey, mgroup: &Pubkey, accesspass: &Pubkey,
@@ -146,8 +146,8 @@ pub fn create_subscribe_user(
 ### Variable-account instructions
 
 - **`dz_prefix` blocks** (`create_device`, `create_subscribe_user`): the builder loops `0..count` deriving `ResourceType::DzPrefixBlock(entity, idx)` PDAs, then writes the derived count back into the Args `resource_count` field. Count and account list are produced from the same loop, so they can never disagree.
-- **Length-detected optional trailing** (tenant on user create/delete, feed on subscribe): the optional account is appended conditionally **before** payer/system. Since no builder appends a Permission account here — permanently, for this family — the hazard of a Permission PDA corrupting `accounts.len()` detection cannot arise; a test pins the account count.
-- **`split_trailing_permission` family** (link delete, user update, interface update, topology assign, multicast allowlists): variable list, then payer/system, then — once migrated — the payer-derived Permission PDA last (the same commented-until-activated append; safe because the processor peels it by PDA match).
+- **Length-detected optional trailing** (`CreateUser` only — tenant): the optional account is appended conditionally **before** payer/system. Because `CreateUser` never calls `authorize()`, its builder never appends a Permission account — permanently — so the hazard of a Permission PDA corrupting `accounts.len()` detection cannot arise; a test pins the account count. (`DeleteUser` detects its tenant from onchain state and `CreateSubscribeUser` uses `split_trailing_permission`, so neither is length-fragile.)
+- **`split_trailing_permission` family** (link delete, user update, `CreateSubscribeUser`, interface update, topology assign, multicast allowlists; and `DeleteUser`): variable list, then payer/system, then — once migrated — the payer-derived Permission PDA last (the same deferred, activate-in-one-place append; safe because the processor peels it by PDA match, so the optional feed/tenant that sits before payer/system is never confused with it).
 - **Batched instructions** (`clear_topology`, `assign_topology_node_segments`): a single-chunk builder plus a `*_batched(...) -> Vec<Instruction>` convenience. The batch-size consts move into this crate; the 32-account cap math accounts for the trailing accounts the builder now owns.
 
 ### Coverage and excluded variants
@@ -155,7 +155,7 @@ pub fn create_subscribe_user(
 The enum has 116 variants (tags 0–115, contiguous). Builders cover all buildable variants (~94). Excluded, documented in `lib.rs`, are:
 
 - **Explicit placeholders** kept only for discriminant stability: `Deprecated95`, `Deprecated96`, `Deprecated102`, `Deprecated103`, `Deprecated111`.
-- **Deprecated handlers** that return `DoubleZeroError::Deprecated` (e.g. `ActivateDevice`, `RejectDevice`, `CloseAccountDevice`, the corresponding link/user/multicast lifecycle variants, and several `*DeviceInterface` variants).
+- **Deprecated handlers** that return `DoubleZeroError::Deprecated`: the device lifecycle variants `ActivateDevice`, `RejectDevice`, `SuspendDevice`, `ResumeDevice`, `CloseAccountDevice`, and the corresponding link/user/multicast lifecycle variants (`Suspend*`/`Resume*` for device/link/user are all deprecated — suspend/resume now go through `UpdateDevice`/`UpdateLink`/`UpdateUser` with `desired_status`), plus several `*DeviceInterface` variants. Because `suspend_device` is deprecated, the R0 exemplar set uses `delete_device` in its place (a variable-account builder with RPC-read owner accounts and a legacy/atomic split).
 
 No `Err`/panic stubs are emitted — builders are infallible; excluded variants simply have no builder, with the exclusion list documented.
 
@@ -186,10 +186,10 @@ Respecting the ~500-lines-of-new-code-per-PR norm (tests excluded):
 
 | PR | Scope |
 |----|-------|
-| R0 | Scaffold crate + `common` + `compute_budget_prelude` + 4 exemplar builders (`create_device`, `create_link`, `suspend_device`, `create_subscribe_user`) + first fixtures |
+| R0 | Scaffold crate + `common` + `compute_budget_prelude` + 4 exemplar builders (`create_device`, `create_link`, `delete_device`, `create_subscribe_user`) + first fixtures |
 | R1 | `device` domain builders |
 | R2 | `link` domain builders |
-| R3 | `user` domain builders (length-detected family) |
+| R3 | `user` domain builders (length-detected `CreateUser` + split_trailing_permission `CreateSubscribeUser`) |
 | R4 | `location` + `exchange` + `contributor` builders |
 | R5 | `multicastgroup` builders (+ pub/sub allowlists) |
 | R6 | `tenant` + `permission` builders |
@@ -212,7 +212,7 @@ Respecting the ~500-lines-of-new-code-per-PR norm (tests excluded):
 
 - **Account-order drift (biggest risk).** A builder whose account order diverges from its processor produces transactions the processor rejects — and, worse, a subtly wrong order could target the wrong account. Mitigations: `common::build` centralizes the trailing convention; verbatim doc-comments; and the `solana-program-test` suite runs every buildable variant against the real program so a wrong order fails a test.
 - **Trailing-convention regression.** With the layout owned in two layers (each command's account vec and `assemble_instructions`), the two could drift. After migration there is exactly one place (`common::build`) that appends payer/system; `assemble_instructions` no longer does.
-- **Permission account.** The Permission PDA is derived from the payer inside the builder, never passed in, so a caller cannot substitute an arbitrary account to spoof the trailing slot. For the length-detected family (`CreateUser`/`DeleteUser`/`CreateSubscribeUser`) it is never appended — appending one would corrupt the `accounts.len()` detection — and a test pins the account count.
+- **Permission account.** The Permission PDA is derived from the payer inside the builder, never passed in, so a caller cannot substitute an arbitrary account to spoof the trailing slot. The append is centralized in `common::build_with_permission` (deferred; enabled in one place at rollout); builders that never route through `authorize()` call `common::build` and can never carry one. For `CreateUser` (the length-detected family) it is never appended — appending one would corrupt the `accounts.len()` detection — and a test pins the account count.
 - **Count/account mismatch.** For `dz_prefix` blocks, the builder derives the count from the same loop that produces the accounts and writes it back into the Args, so the declared count can never disagree with the account list.
 - **Discriminant coupling.** Builders never hand-write tag bytes; they construct the `DoubleZeroInstruction` variant and call `.pack()`, getting the correct tag and borsh encoding for free.
 - **No new trust boundary.** The crate is host-side and RPC-free; it introduces no new signing authority and no on-chain code.

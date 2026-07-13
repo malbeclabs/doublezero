@@ -3,9 +3,21 @@
 use crate::common;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::{get_device_pda, get_globalconfig_pda, get_globalstate_pda, get_resource_extension_pda},
-    processors::device::{create::DeviceCreateArgs, delete::DeviceDeleteArgs},
+    pda::{
+        get_device_pda, get_globalconfig_pda, get_globalstate_pda, get_resource_extension_pda,
+        get_topology_pda,
+    },
+    processors::device::{
+        create::DeviceCreateArgs,
+        delete::DeviceDeleteArgs,
+        interface::{
+            create::DeviceInterfaceCreateArgs, DeviceInterfaceDeleteArgs, DeviceInterfaceUpdateArgs,
+        },
+        sethealth::DeviceSetHealthArgs,
+        update::DeviceUpdateArgs,
+    },
     resource::ResourceType,
+    state::interface::LoopbackType,
 };
 use solana_program::{
     instruction::{AccountMeta, Instruction},
@@ -201,6 +213,257 @@ pub fn delete_device(
     )
 }
 
+/// `UpdateDevice` (variant 23).
+///
+/// Account layout (processor `next_account_info` order), before the trailing
+/// accounts appended by [`common::build_with_permission`]:
+///
+/// ```text
+/// device                (writable)
+/// current_contributor   (writable)  — device.contributor_pk
+/// current_location      (writable)  — device.location_pk
+/// new_location          (writable)  — the new location, or current if unchanged
+/// globalstate           (writable)
+/// // present only when args.dz_prefixes.is_some():
+/// globalconfig          (writable)
+/// resource[i]           (writable)  — idx 0: TunnelIds(device, 0);
+///                                      idx 1..: DzPrefixBlock(device, idx-1),
+///                                      looped 0..=max(old, new) dz_prefix count
+/// ```
+///
+/// The dz_prefix resource block covers `max(old, new)` prefixes, so the old count
+/// (RPC-read from the device) is required alongside the new count in
+/// `args.dz_prefixes`. `args.resource_count` is written from the same loop.
+#[allow(clippy::too_many_arguments)]
+pub fn update_device(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    device: &Pubkey,
+    current_contributor: &Pubkey,
+    current_location: &Pubkey,
+    new_location: &Pubkey,
+    old_dz_prefix_count: usize,
+    mut args: DeviceUpdateArgs,
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    let mut accounts = vec![
+        AccountMeta::new(*device, false),
+        AccountMeta::new(*current_contributor, false),
+        AccountMeta::new(*current_location, false),
+        AccountMeta::new(*new_location, false),
+        AccountMeta::new(globalstate, false),
+    ];
+
+    let mut resource_count = 0usize;
+    if let Some(dz_prefixes) = args.dz_prefixes.as_ref() {
+        let (globalconfig, _) = get_globalconfig_pda(program_id);
+        accounts.push(AccountMeta::new(globalconfig, false));
+        let max_count = old_dz_prefix_count.max(dz_prefixes.len());
+        for idx in 0..=max_count {
+            let resource_type = if idx == 0 {
+                ResourceType::TunnelIds(*device, 0)
+            } else {
+                ResourceType::DzPrefixBlock(*device, idx - 1)
+            };
+            let (pda, _, _) = get_resource_extension_pda(program_id, resource_type);
+            accounts.push(AccountMeta::new(pda, false));
+        }
+        resource_count = max_count + 1;
+    }
+    args.resource_count = resource_count;
+
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(args),
+        accounts,
+        payer,
+    )
+}
+
+/// `SetDeviceHealth` (variant 83).
+///
+/// Account layout, before the trailing accounts:
+///
+/// ```text
+/// device       (writable)
+/// globalstate  (writable)
+/// ```
+pub fn set_device_health(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    device: &Pubkey,
+    args: DeviceSetHealthArgs,
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    let accounts = vec![
+        AccountMeta::new(*device, false),
+        AccountMeta::new(globalstate, false),
+    ];
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::SetDeviceHealth(args),
+        accounts,
+        payer,
+    )
+}
+
+/// `CreateDeviceInterface` (variant 73).
+///
+/// Account layout, before the trailing accounts:
+///
+/// ```text
+/// device                (writable)
+/// contributor           (writable)  — device.contributor_pk
+/// globalstate           (writable)
+/// device_tunnel_block   (writable)  — ResourceType::DeviceTunnelBlock
+/// segment_routing_ids   (writable)  — ResourceType::SegmentRoutingIds
+/// topology[i]           (readonly)  — one per topology_name, ONLY for Vpnv4 loopbacks
+/// ```
+///
+/// Topology PDAs are appended (and `args.topology_count` set) only when
+/// `args.loopback_type == Vpnv4`; otherwise `topology_names` is ignored.
+pub fn create_device_interface(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    device: &Pubkey,
+    contributor: &Pubkey,
+    topology_names: &[String],
+    mut args: DeviceInterfaceCreateArgs,
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    let (device_tunnel_block, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
+    let mut accounts = vec![
+        AccountMeta::new(*device, false),
+        AccountMeta::new(*contributor, false),
+        AccountMeta::new(globalstate, false),
+        AccountMeta::new(device_tunnel_block, false),
+        AccountMeta::new(segment_routing_ids, false),
+    ];
+
+    let is_vpnv4 = args.loopback_type == LoopbackType::Vpnv4;
+    if is_vpnv4 {
+        for name in topology_names {
+            let (topology, _) = get_topology_pda(program_id, name);
+            accounts.push(AccountMeta::new_readonly(topology, false));
+        }
+    }
+    let topology_count = if is_vpnv4 { topology_names.len() } else { 0 };
+    debug_assert!(
+        topology_count <= u8::MAX as usize,
+        "device interface topology_count {topology_count} exceeds u8::MAX"
+    );
+    args.topology_count = u8::try_from(topology_count).unwrap_or(u8::MAX);
+
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::CreateDeviceInterface(args),
+        accounts,
+        payer,
+    )
+}
+
+/// `DeleteDeviceInterface` (variant 74).
+///
+/// Account layout, before the trailing accounts:
+///
+/// ```text
+/// device                (writable)
+/// contributor           (writable)  — device.contributor_pk
+/// globalstate           (writable)
+/// device_tunnel_block   (writable)  — ResourceType::DeviceTunnelBlock
+/// segment_routing_ids   (writable)  — ResourceType::SegmentRoutingIds
+/// ```
+pub fn delete_device_interface(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    device: &Pubkey,
+    contributor: &Pubkey,
+    args: DeviceInterfaceDeleteArgs,
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    let (device_tunnel_block, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids, _, _) =
+        get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
+    let accounts = vec![
+        AccountMeta::new(*device, false),
+        AccountMeta::new(*contributor, false),
+        AccountMeta::new(globalstate, false),
+        AccountMeta::new(device_tunnel_block, false),
+        AccountMeta::new(segment_routing_ids, false),
+    ];
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::DeleteDeviceInterface(args),
+        accounts,
+        payer,
+    )
+}
+
+/// `UpdateDeviceInterface` (variant 76).
+///
+/// Account layout, before the trailing accounts:
+///
+/// ```text
+/// device                (writable)
+/// contributor           (writable)  — device.contributor_pk
+/// globalstate           (writable)
+/// // present when args.node_segment_idx.is_some() OR topology_names.is_some():
+/// segment_routing_ids   (writable)  — ResourceType::SegmentRoutingIds
+/// // present when topology_names.is_some():
+/// topology[i]           (readonly)  — one per topology_name
+/// ```
+///
+/// `topology_names` is `None` to leave the flex-algo topology set alone,
+/// `Some(&[])` to clear it, or `Some(names)` to set it exactly.
+/// `args.update_topologies` / `args.topology_count` are written from that choice.
+pub fn update_device_interface(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    device: &Pubkey,
+    contributor: &Pubkey,
+    topology_names: Option<&[String]>,
+    mut args: DeviceInterfaceUpdateArgs,
+) -> Instruction {
+    let update_topologies = topology_names.is_some();
+    let topology_count = topology_names.map_or(0, <[String]>::len);
+    debug_assert!(
+        topology_count <= u8::MAX as usize,
+        "device interface topology_count {topology_count} exceeds u8::MAX"
+    );
+    args.update_topologies = update_topologies;
+    args.topology_count = u8::try_from(topology_count).unwrap_or(u8::MAX);
+
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    let mut accounts = vec![
+        AccountMeta::new(*device, false),
+        AccountMeta::new(*contributor, false),
+        AccountMeta::new(globalstate, false),
+    ];
+
+    if args.node_segment_idx.is_some() || update_topologies {
+        let (segment_routing_ids, _, _) =
+            get_resource_extension_pda(program_id, ResourceType::SegmentRoutingIds);
+        accounts.push(AccountMeta::new(segment_routing_ids, false));
+    }
+    if let Some(names) = topology_names {
+        for name in names {
+            let (topology, _) = get_topology_pda(program_id, name);
+            accounts.push(AccountMeta::new_readonly(topology, false));
+        }
+    }
+
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::UpdateDeviceInterface(args),
+        accounts,
+        payer,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,5 +639,309 @@ mod tests {
                 AccountMeta::new(system_program::ID, false),
             ]
         );
+    }
+
+    #[test]
+    fn test_update_device_with_dz_prefixes() {
+        let pid = program_id();
+        let payer = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let cc = Pubkey::new_unique();
+        let cl = Pubkey::new_unique();
+        let nl = Pubkey::new_unique();
+        let args = DeviceUpdateArgs {
+            dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),
+            ..Default::default()
+        };
+        // old count 1, new count 1 -> max 1 -> TunnelIds + DzPrefix0, resource_count 2.
+        let ix = update_device(&pid, &payer, &device, &cc, &cl, &nl, 1, args);
+        assert_eq!(ix.data[0], 23);
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::UpdateDevice(a) => assert_eq!(a.resource_count, 2),
+            other => panic!("unexpected: {other:?}"),
+        }
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        let (globalconfig, _) = get_globalconfig_pda(&pid);
+        let (tunnel_ids, _, _) =
+            get_resource_extension_pda(&pid, ResourceType::TunnelIds(device, 0));
+        let (dz0, _, _) = get_resource_extension_pda(&pid, ResourceType::DzPrefixBlock(device, 0));
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(device, false),
+                AccountMeta::new(cc, false),
+                AccountMeta::new(cl, false),
+                AccountMeta::new(nl, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(globalconfig, false),
+                AccountMeta::new(tunnel_ids, false),
+                AccountMeta::new(dz0, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_update_device_no_resources() {
+        let pid = program_id();
+        let payer = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let cc = Pubkey::new_unique();
+        let cl = Pubkey::new_unique();
+        let nl = Pubkey::new_unique();
+        // No dz_prefixes -> no globalconfig/resources regardless of old count.
+        let ix = update_device(
+            &pid,
+            &payer,
+            &device,
+            &cc,
+            &cl,
+            &nl,
+            3,
+            DeviceUpdateArgs::default(),
+        );
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(device, false),
+                AccountMeta::new(cc, false),
+                AccountMeta::new(cl, false),
+                AccountMeta::new(nl, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::UpdateDevice(a) => assert_eq!(a.resource_count, 0),
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_set_device_health() {
+        let pid = program_id();
+        let payer = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let ix = set_device_health(&pid, &payer, &device, DeviceSetHealthArgs::default());
+        assert_eq!(ix.data[0], 83);
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(device, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_create_device_interface_non_vpnv4_ignores_topologies() {
+        let pid = program_id();
+        let payer = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let contributor = Pubkey::new_unique();
+        // Default loopback_type is None (non-Vpnv4); topology_names must be ignored.
+        let ix = create_device_interface(
+            &pid,
+            &payer,
+            &device,
+            &contributor,
+            &["TOPO".to_string()],
+            DeviceInterfaceCreateArgs::default(),
+        );
+        assert_eq!(ix.data[0], 73);
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        let (dtb, _, _) = get_resource_extension_pda(&pid, ResourceType::DeviceTunnelBlock);
+        let (sri, _, _) = get_resource_extension_pda(&pid, ResourceType::SegmentRoutingIds);
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(device, false),
+                AccountMeta::new(contributor, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(dtb, false),
+                AccountMeta::new(sri, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::CreateDeviceInterface(a) => assert_eq!(a.topology_count, 0),
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_create_device_interface_vpnv4_appends_topologies() {
+        let pid = program_id();
+        let payer = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let contributor = Pubkey::new_unique();
+        let args = DeviceInterfaceCreateArgs {
+            loopback_type: LoopbackType::Vpnv4,
+            ..Default::default()
+        };
+        let ix = create_device_interface(
+            &pid,
+            &payer,
+            &device,
+            &contributor,
+            &["TOPO-A".to_string(), "TOPO-B".to_string()],
+            args,
+        );
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        let (dtb, _, _) = get_resource_extension_pda(&pid, ResourceType::DeviceTunnelBlock);
+        let (sri, _, _) = get_resource_extension_pda(&pid, ResourceType::SegmentRoutingIds);
+        let (ta, _) = get_topology_pda(&pid, "TOPO-A");
+        let (tb, _) = get_topology_pda(&pid, "TOPO-B");
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(device, false),
+                AccountMeta::new(contributor, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(dtb, false),
+                AccountMeta::new(sri, false),
+                AccountMeta::new_readonly(ta, false),
+                AccountMeta::new_readonly(tb, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::CreateDeviceInterface(a) => assert_eq!(a.topology_count, 2),
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_delete_device_interface() {
+        let pid = program_id();
+        let payer = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let contributor = Pubkey::new_unique();
+        let ix = delete_device_interface(
+            &pid,
+            &payer,
+            &device,
+            &contributor,
+            DeviceInterfaceDeleteArgs::default(),
+        );
+        assert_eq!(ix.data[0], 74);
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        let (dtb, _, _) = get_resource_extension_pda(&pid, ResourceType::DeviceTunnelBlock);
+        let (sri, _, _) = get_resource_extension_pda(&pid, ResourceType::SegmentRoutingIds);
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(device, false),
+                AccountMeta::new(contributor, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(dtb, false),
+                AccountMeta::new(sri, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_update_device_interface_none_leaves_topologies() {
+        let pid = program_id();
+        let payer = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let contributor = Pubkey::new_unique();
+        let ix = update_device_interface(
+            &pid,
+            &payer,
+            &device,
+            &contributor,
+            None,
+            DeviceInterfaceUpdateArgs::default(),
+        );
+        assert_eq!(ix.data[0], 76);
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(device, false),
+                AccountMeta::new(contributor, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_update_device_interface_node_segment_adds_seg() {
+        let pid = program_id();
+        let payer = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let contributor = Pubkey::new_unique();
+        let args = DeviceInterfaceUpdateArgs {
+            node_segment_idx: Some(42),
+            ..Default::default()
+        };
+        let ix = update_device_interface(&pid, &payer, &device, &contributor, None, args);
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        let (sri, _, _) = get_resource_extension_pda(&pid, ResourceType::SegmentRoutingIds);
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(device, false),
+                AccountMeta::new(contributor, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(sri, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_update_device_interface_topologies_add_seg_and_topos() {
+        let pid = program_id();
+        let payer = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let contributor = Pubkey::new_unique();
+        let names = ["TOPO-A".to_string(), "TOPO-B".to_string()];
+        let ix = update_device_interface(
+            &pid,
+            &payer,
+            &device,
+            &contributor,
+            Some(&names),
+            DeviceInterfaceUpdateArgs::default(),
+        );
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        let (sri, _, _) = get_resource_extension_pda(&pid, ResourceType::SegmentRoutingIds);
+        let (ta, _) = get_topology_pda(&pid, "TOPO-A");
+        let (tb, _) = get_topology_pda(&pid, "TOPO-B");
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(device, false),
+                AccountMeta::new(contributor, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(sri, false),
+                AccountMeta::new_readonly(ta, false),
+                AccountMeta::new_readonly(tb, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::UpdateDeviceInterface(a) => {
+                assert_eq!(a.topology_count, 2);
+                assert!(a.update_topologies);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 }

@@ -66,6 +66,8 @@ All notable changes to this project will be documented in this file.
   - Fix dry runs dead-ending after `stage-programs`: the job-level skip of `push-tags` transitively skipped every downstream default-condition job (a skipped ancestor poisons `success()` for the whole graph, past `verify-cloudsmith`'s own override), so `gate-programs` through `announce` never ran in dry-run mode. The tag workflow gains a `dry_run` input and the tag jobs now run as validated no-ops instead of skipping — which also means dry runs exercise the `testnet` tag-approval prompt — and `verify-cloudsmith`'s special-case condition is deleted.
 - Dependencies
   - Pin the workspace `solana-system-interface` requirement to `"3"` and `solana-loader-v3-interface` to `"6"` (were multi-major ranges `>=1,<=3` and `>=5,<=6`). The wide ranges let `cargo update --workspace` silently rebind our crates' edges onto the older major the agave tree also pulls in, making lock resolution non-deterministic (poisoned the v0.30.0 release bump). No resolved versions change. (#4043)
+- RFCs
+  - Add RFC-26 proposing a pure, RPC-free Rust instruction-builder library (`doublezero_serviceability_instruction`) with one SPL-style builder per serviceability instruction, decoupling instruction construction from signing/sending and centralizing account-order conventions.
 
 ## [v0.29.0](https://github.com/malbeclabs/doublezero/compare/client/v0.28.0...client/v0.29.0) - 2026-07-02
 

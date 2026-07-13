@@ -23,8 +23,20 @@ doublezero-cli-core (shared library)               crates/doublezero-cli-core/
   ├─ init_logging (tracing facade)
   └─ testing helpers
 doublezero-serviceability-cli (module)             smartcontract/cli/
+doublezero-daemon-cli (module)                     crates/doublezero-daemon-cli/
+doublezero-geolocation-cli (module)                crates/doublezero-geolocation-cli/
 doublezero-<future-module>-cli                     ...
 ```
+
+The `doublezero-daemon-cli` crate owns the daemon-control verbs (`connect`,
+`disconnect`, `status`, `enable`, `disable`, `latency`, `routes`) and the
+multicast transport verbs (`subscribe`/`unsubscribe`/`publish`/`unpublish`).
+The daemon-control verbs are hoisted to the top level via `#[command(flatten)]`;
+the transport verbs are not `DaemonCommand` variants — the binary keeps them
+nested under its `multicast` subtree so `doublezero multicast <verb>` still
+works. It talks to `doublezerod` over the Unix socket via its `DaemonClient`
+trait and reaches the ledger through the `LedgerClient` trait the binary
+implements; it replaces the former `client/doublezero/src/servicecontroller.rs`.
 
 The core crate stays small on purpose: it depends on `clap`, the logging
 facade, `doublezero-config`, and `doublezero-program-common`. The Solana
@@ -240,10 +252,19 @@ change, leave it for a follow-up and note it in the PR description.
 
 Tracked in RFC-20 §Open Questions and in this work's plan:
 
-- Serviceability `Command` enum lives in the binary today; future PR moves
-  it into `smartcontract/cli` with `#[command(flatten)]` mounting.
-- Geolocation module crate (defer per current scope).
-- Daemon-control verbs (Connect, Status, Enable, Disable, Latency, Routes)
-  become their own module crate.
+- The binary still owns the top-level `Command` enum (the tree that flattens
+  each module crate's subcommand type) and a binary-level `serviceability
+  subscribe` override that uses the real blocking websocket loop; consolidating
+  the command tree further is future work.
 - JSON schema versioning once `--json` is a stable contract.
 - Shell-completion install location.
+
+Done since the initial draft:
+
+- Serviceability verbs moved into `doublezero-serviceability-cli`
+  (`smartcontract/cli/`); the `ServiceabilityCommand` enum lives there and is
+  hoisted into the binary via `#[command(flatten)]`.
+- Daemon-control verbs (`connect`, `disconnect`, `status`, `enable`, `disable`,
+  `latency`, `routes`) plus the multicast transport verbs extracted into the
+  `doublezero-daemon-cli` module crate.
+- Geolocation extracted into the `doublezero-geolocation-cli` module crate.

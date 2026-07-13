@@ -75,10 +75,11 @@ func TestE2E_Feed_CRUD(t *testing.T) {
 	group2 := solana.NewWallet().PublicKey().String()
 	group3 := solana.NewWallet().PublicKey().String()
 
-	// Create a feed serving the xlax metro with two groups.
+	// Create a feed serving the xlax metro with two groups. The exchange is passed by code to
+	// exercise CLI code→pubkey resolution; the get below asserts it resolved to ex.Account.
 	run(fmt.Sprintf(
-		`doublezero feed create --code shreds-lax --name "Shreds LAX" --exchange %s --group %s --group %s`,
-		ex.Account, group1, group2,
+		`doublezero feed create --code shreds-lax --name "Shreds LAX" --exchange xlax --group %s --group %s`,
+		group1, group2,
 	))
 
 	// Get and verify the created feed.

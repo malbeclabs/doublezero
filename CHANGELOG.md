@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
   - Guard the version-bump script against resolver side effects: `cargo update --workspace` may only add the members' new version lines to `Cargo.lock` — any other added line (e.g. a dependency-edge rebind like the observed `solana-system-interface` 3.2.0→2.0.0 flip) fails the bump before a poisoned PR is opened; pure removals (stale-entry pruning) are logged for the reviewer.
 - CLI
   - Documentation only: update `docs/cli-standard.md` to reference the `doublezero-daemon-cli` module crate (final PR of the RFC-20 daemon-cli extraction stack). The transition shims (`client/doublezero/src/servicecontroller.rs`, `client/doublezero/src/command/`) were already removed by the earlier stack PRs; the binary is unchanged. (#4047)
+  - The `feed` verbs accept an exchange code for `--exchange` and multicast group codes for `--group`, in addition to pubkeys; pubkey inputs behave exactly as before. (#4027)
 
 ## [v0.30.0](https://github.com/malbeclabs/doublezero/compare/client/v0.29.0...client/v0.30.0) - 2026-07-10
 

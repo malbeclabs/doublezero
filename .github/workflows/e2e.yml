@@ -15,11 +15,13 @@ on:
         description: GHCR image tag for this trusted run
         required: true
   schedule:
-    # Hourly flake gap-filler. Every tick runs only the lightweight schedule-gate
-    # job; the expensive setup + e2e matrix run only when the gate returns
-    # proceed=true (stale main AND idle e2e AND toggle enabled). See schedule-gate
-    # below and malbeclabs/infra docs/plans/2026-07-02-e2e-flake-gap-filler-*.
-    - cron: '0 * * * *'
+    # Flake gap-filler, every 6h at :23 (off the congested :00/:30 scheduler slots).
+    # Each tick runs only the lightweight schedule-gate; the expensive setup + e2e
+    # matrix run only when the gate returns proceed=true (no merge to main in
+    # STALE_HOURS AND e2e idle AND toggle enabled). The 6h cadence bounds how often
+    # it can fire during a long no-merge lull. See schedule-gate below and
+    # malbeclabs/infra docs/plans/2026-07-02-e2e-flake-gap-filler-*.
+    - cron: '23 */6 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
@@ -80,10 +82,14 @@ jobs:
             const selfId = context.runId;
             const { owner, repo } = context.repo;
 
-            // Stale check: newest e2e run against main HEAD (push or schedule),
-            // excluding this run. Missing => Infinity => stale.
+            // Stale check: newest *merge* (push) e2e run on main. Only push events
+            // count — the gap-filler's own scheduled ticks are also branch=main e2e
+            // runs, so counting them would make main never look stale (each tick
+            // sees the prior tick ~one cron-interval ago and declines forever). We
+            // want "no real e2e ran on main in STALE_HOURS", i.e. no merge.
+            // Missing => Infinity => stale.
             const mainRuns = await github.rest.actions.listWorkflowRuns({
-              owner, repo, workflow_id: 'e2e.yml', branch: 'main', per_page: 30,
+              owner, repo, workflow_id: 'e2e.yml', branch: 'main', event: 'push', per_page: 30,
             });
             const newestMain = mainRuns.data.workflow_runs
               .filter(r => r.id !== selfId)
@@ -106,12 +112,12 @@ jobs:
 
             const proceed = enabled && stale && idle;
             const ageStr = Number.isFinite(ageHours) ? ageHours.toFixed(1) + 'h' : 'none';
-            core.info(`enabled=${enabled} stale=${stale} (newest main age=${ageStr}, threshold=${STALE_HOURS}h) idle=${idle} (active=${active.length}) => proceed=${proceed}`);
+            core.info(`enabled=${enabled} stale=${stale} (newest merge age=${ageStr}, threshold=${STALE_HOURS}h) idle=${idle} (active=${active.length}) => proceed=${proceed}`);
             core.setOutput('proceed', String(proceed));
             await core.summary.addRaw(
               `### e2e flake gap-filler gate\n` +
               `- enabled: **${enabled}**\n` +
-              `- stale: **${stale}** (newest main run age ${ageStr} / ${STALE_HOURS}h)\n` +
+              `- stale: **${stale}** (newest merge (push) run age ${ageStr} / ${STALE_HOURS}h)\n` +
               `- idle: **${idle}** (in-flight e2e runs excluding self: ${active.length})\n` +
               `- **proceed: ${proceed}**\n`
             ).write();

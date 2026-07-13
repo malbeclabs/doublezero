@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 doublezero-serviceability = { path = "../../../../../smartcontract/programs/doublezero-serviceability", features = ["no-entrypoint"] }
+doublezero-serviceability-instruction = { path = "../../../../../crates/doublezero-serviceability-instruction" }
 borsh = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

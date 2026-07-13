@@ -45,6 +45,16 @@ use doublezero_serviceability::state::{
 };
 use serde::Serialize;
 
+// RFC-26 instruction-builder fixtures.
+use doublezero_serviceability::processors::{
+    device::create::DeviceCreateArgs, globalconfig::set::SetGlobalConfigArgs,
+    link::create::LinkCreateArgs, topology::assign_node_segments::AssignTopologyNodeSegmentsArgs,
+    topology::clear::TopologyClearArgs, user::create_subscribe::UserCreateSubscribeArgs,
+};
+use doublezero_serviceability_instruction as dzi;
+use doublezero_serviceability_instruction::device::DeviceDeleteResources;
+use solana_program::pubkey::Pubkey;
+
 
 #[derive(Serialize)]
 struct FixtureMeta {
@@ -103,6 +113,7 @@ fn main() {
     generate_resource_extension_ip(&fixtures_dir);
     generate_user_create_args(&fixtures_dir);
     generate_user_delete_args(&fixtures_dir);
+    generate_ix_fixtures(&fixtures_dir);
 
     println!("
 all fixtures generated in {}", fixtures_dir.display());
@@ -158,6 +169,192 @@ fn generate_user_delete_args(dir: &Path) {
     };
 
     write_fixture(dir, "user_delete_args", &data, &meta);
+}
+
+// ---------------------------------------------------------------------------
+// RFC-26 instruction-builder fixtures (`ix_<name>.bin` / `ix_<name>.json`).
+//
+// Each captures a pure builder's deterministic output: `ix_<name>.bin` is the
+// wire bytes (`instruction.data` = tag + borsh), and `ix_<name>.json` records
+// the variant tag, the data as hex, and the ordered account metas with flags.
+// These drive Go/Python/TS parity checks and guard the account layout in CI.
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct IxAccountMeta {
+    pubkey: String,
+    is_signer: bool,
+    is_writable: bool,
+}
+
+#[derive(Serialize)]
+struct IxFixtureMeta {
+    variant: u8,
+    data_hex: String,
+    accounts: Vec<IxAccountMeta>,
+}
+
+fn write_ix_fixture(dir: &Path, name: &str, ix: &solana_program::instruction::Instruction) {
+    let data_hex: String = ix.data.iter().map(|b| format!("{b:02x}")).collect();
+    let meta = IxFixtureMeta {
+        variant: ix.data[0],
+        data_hex,
+        accounts: ix
+            .accounts
+            .iter()
+            .map(|a| IxAccountMeta {
+                pubkey: a.pubkey.to_string(),
+                is_signer: a.is_signer,
+                is_writable: a.is_writable,
+            })
+            .collect(),
+    };
+    fs::write(dir.join(format!("ix_{name}.bin")), &ix.data).unwrap();
+    let json = serde_json::to_string_pretty(&meta).unwrap();
+    fs::write(dir.join(format!("ix_{name}.json")), json).unwrap();
+    println!(
+        "wrote ix_{name}.bin ({} bytes) and ix_{name}.json",
+        ix.data.len()
+    );
+}
+
+/// A representative set of builder outputs, exercising the trickiest account
+/// layouts (variable dz_prefix blocks, length-detected optional trailing, atomic
+/// resource close, batched topology, the many-pool globalconfig). All inputs are
+/// fixed so the output is byte-for-byte deterministic.
+fn generate_ix_fixtures(dir: &Path) {
+    let program_id = pubkey_from_byte(255);
+    let payer = pubkey_from_byte(1);
+    let a = pubkey_from_byte(2);
+    let b = pubkey_from_byte(3);
+    let c = pubkey_from_byte(4);
+    let d = pubkey_from_byte(5);
+
+    // create_device (20): variable dz_prefix blocks + resource_count written back.
+    let create_device = dzi::device::create_device(
+        &program_id,
+        &payer,
+        &a,
+        &b,
+        &c,
+        1,
+        DeviceCreateArgs {
+            code: "dev1".into(),
+            device_type: DeviceType::Hybrid,
+            public_ip: Ipv4Addr::new(10, 0, 0, 1),
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            metrics_publisher_pk: d,
+            mgmt_vrf: "mgmt".into(),
+            desired_status: None,
+            resource_count: 0,
+        },
+    );
+    write_ix_fixture(dir, "create_device", &create_device);
+
+    // delete_device (26): atomic-close layout with two RPC-read resource owners.
+    let delete_device = dzi::device::delete_device(
+        &program_id,
+        &payer,
+        &a,
+        &b,
+        DeviceDeleteResources::Atomic {
+            location: &c,
+            exchange: &d,
+            owners: &[pubkey_from_byte(6), pubkey_from_byte(7)],
+            device_owner: &pubkey_from_byte(8),
+        },
+    );
+    write_ix_fixture(dir, "delete_device", &delete_device);
+
+    // create_link (28): fixed account layout.
+    let create_link = dzi::link::create_link(
+        &program_id,
+        &payer,
+        &a,
+        &b,
+        &c,
+        1,
+        LinkCreateArgs {
+            code: "link1".into(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 10_000_000_000,
+            mtu: 9000,
+            delay_ns: 1_000_000,
+            jitter_ns: 100_000,
+            side_a_iface_name: "Ethernet0".into(),
+            side_z_iface_name: Some("Ethernet1".into()),
+            desired_status: None,
+            use_onchain_allocation: true,
+        },
+    );
+    write_ix_fixture(dir, "create_link", &create_link);
+
+    // create_subscribe_user (59): split_trailing_permission family, optional feed.
+    let create_subscribe_user = dzi::user::create_subscribe_user(
+        &program_id,
+        &payer,
+        &a,
+        &b,
+        &c,
+        1,
+        Some(d),
+        UserCreateSubscribeArgs {
+            user_type: UserType::IBRLWithAllocatedIP,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: Ipv4Addr::new(10, 11, 12, 13),
+            publisher: true,
+            subscriber: false,
+            tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
+            dz_prefix_count: 0,
+            owner: Pubkey::default(),
+        },
+    );
+    write_ix_fixture(dir, "create_subscribe_user", &create_subscribe_user);
+
+    // create_user (36): the length-detected family — build (no Permission), tenant appended.
+    let create_user = dzi::user::create_user(
+        &program_id,
+        &payer,
+        &a,
+        &b,
+        1,
+        Some(c),
+        UserCreateArgs {
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: Ipv4Addr::new(10, 11, 12, 13),
+            tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
+            dz_prefix_count: 0,
+        },
+    );
+    write_ix_fixture(dir, "create_user", &create_user);
+
+    // clear_topology (109): batched family, single chunk with two links.
+    let clear_topology = dzi::topology::clear_topology(
+        &program_id,
+        &payer,
+        &[a, b],
+        TopologyClearArgs {
+            name: "topo".into(),
+        },
+    );
+    write_ix_fixture(dir, "clear_topology", &clear_topology);
+
+    // assign_topology_node_segments (110): batched family, single chunk with one device.
+    let assign = dzi::topology::assign_topology_node_segments(
+        &program_id,
+        &payer,
+        &[a],
+        AssignTopologyNodeSegmentsArgs {
+            name: "topo".into(),
+        },
+    );
+    write_ix_fixture(dir, "assign_topology_node_segments", &assign);
+
+    // set_global_config (3): the config PDA plus all eight resource pools.
+    let set_global_config =
+        dzi::globalconfig::set_global_config(&program_id, &payer, SetGlobalConfigArgs::default());
+    write_ix_fixture(dir, "set_global_config", &set_global_config);
 }
 
 fn generate_global_state(dir: &Path) {

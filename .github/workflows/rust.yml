@@ -25,6 +25,14 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - run: make rust-lint
+  fixtures-check:
+    runs-on: ubuntu-24.04-16c-64gb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Regenerate fixtures and fail on drift
+        run: make check-fixtures
   rust-test:
     runs-on: ubuntu-24.04-16c-64gb
     steps:

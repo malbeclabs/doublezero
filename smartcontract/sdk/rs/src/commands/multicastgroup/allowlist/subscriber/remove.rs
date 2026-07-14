@@ -1,10 +1,8 @@
 use std::net::Ipv4Addr;
 
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
-    processors::multicastgroup::allowlist::subscriber::remove::RemoveMulticastGroupSubAllowlistArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability::processors::multicastgroup::allowlist::subscriber::remove::RemoveMulticastGroupSubAllowlistArgs;
+use doublezero_serviceability_instruction::multicastgroup::remove_multicast_group_sub_allowlist;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 use crate::{
     commands::multicastgroup::{allowlist::resolve_accesspass_pda, get::GetMulticastGroupCommand},
@@ -27,21 +25,16 @@ impl RemoveMulticastGroupSubAllowlistCommand {
 
         let accesspass_pk = resolve_accesspass_pda(client, &self.client_ip, &self.user_payer);
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(
-                RemoveMulticastGroupSubAllowlistArgs {
-                    client_ip: self.client_ip,
-                    user_payer: self.user_payer,
-                },
-            ),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(accesspass_pk, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-        )
+        client.send_transaction(remove_multicast_group_sub_allowlist(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &pda_pubkey,
+            &accesspass_pk,
+            RemoveMulticastGroupSubAllowlistArgs {
+                client_ip: self.client_ip,
+                user_payer: self.user_payer,
+            },
+        ))
     }
 }
 
@@ -51,14 +44,10 @@ mod tests {
         commands::multicastgroup::allowlist::subscriber::remove::RemoveMulticastGroupSubAllowlistCommand,
         tests::utils::create_test_client,
     };
-    use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        processors::multicastgroup::allowlist::subscriber::remove::RemoveMulticastGroupSubAllowlistArgs,
-        state::{
-            accountdata::AccountData,
-            accounttype::AccountType,
-            multicastgroup::{MulticastGroup, MulticastGroupStatus},
-        },
+    use doublezero_serviceability::state::{
+        accountdata::AccountData,
+        accounttype::AccountType,
+        multicastgroup::{MulticastGroup, MulticastGroupStatus},
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -101,17 +90,9 @@ mod tests {
                 Ok(map)
             });
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(
-                    RemoveMulticastGroupSubAllowlistArgs {
-                        client_ip: [192, 168, 1, 1].into(),
-                        user_payer: pubkey,
-                    },
-                )),
-                predicate::always(),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::always())
+            .returning(|_| Ok(Signature::new_unique()));
 
         // remove with valid code
         let res = RemoveMulticastGroupSubAllowlistCommand {

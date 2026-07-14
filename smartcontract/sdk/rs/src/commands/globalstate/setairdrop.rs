@@ -1,8 +1,7 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::globalstate::setairdrop::SetAirdropArgs,
-};
-use solana_sdk::{instruction::AccountMeta, signature::Signature};
+use crate::DoubleZeroClient;
+use doublezero_serviceability::processors::globalstate::setairdrop::SetAirdropArgs;
+use doublezero_serviceability_instruction::globalstate::set_airdrop;
+use solana_sdk::signature::Signature;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SetAirdropCommand {
@@ -12,17 +11,14 @@ pub struct SetAirdropCommand {
 
 impl SetAirdropCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("GlobalState not initialized"))?;
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::SetAirdrop(SetAirdropArgs {
+        client.send_transaction(set_airdrop(
+            &client.get_program_id(),
+            &client.get_payer(),
+            SetAirdropArgs {
                 contributor_airdrop_lamports: self.contributor_airdrop_lamports,
                 user_airdrop_lamports: self.user_airdrop_lamports,
-            }),
-            vec![AccountMeta::new(globalstate_pubkey, false)],
-        )
+            },
+        ))
     }
 }
 
@@ -32,32 +28,33 @@ mod tests {
         commands::globalstate::setairdrop::SetAirdropCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
-    use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
-        processors::globalstate::setairdrop::SetAirdropArgs,
-    };
+    use doublezero_serviceability::processors::globalstate::setairdrop::SetAirdropArgs;
+    use doublezero_serviceability_instruction::globalstate::set_airdrop;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::signature::Signature;
 
     #[test]
     fn test_commands_setairdrop_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
         let contributor_airdrop_lamports = Some(1_000_000_000);
         let user_airdrop_lamports = Some(40_000);
 
+        let expected = set_airdrop(
+            &program_id,
+            &payer,
+            SetAirdropArgs {
+                contributor_airdrop_lamports,
+                user_airdrop_lamports,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::SetAirdrop(SetAirdropArgs {
-                    contributor_airdrop_lamports,
-                    user_airdrop_lamports,
-                })),
-                predicate::eq(vec![AccountMeta::new(globalstate_pubkey, false)]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = SetAirdropCommand {
             contributor_airdrop_lamports,

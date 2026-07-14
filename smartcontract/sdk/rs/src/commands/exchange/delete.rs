@@ -1,11 +1,7 @@
-use crate::{
-    commands::{exchange::get::GetExchangeCommand, globalstate::get::GetGlobalStateCommand},
-    DoubleZeroClient,
-};
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::exchange::delete::ExchangeDeleteArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use crate::{commands::exchange::get::GetExchangeCommand, DoubleZeroClient};
+use doublezero_serviceability::processors::exchange::delete::ExchangeDeleteArgs;
+use doublezero_serviceability_instruction::exchange::delete_exchange;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteExchangeCommand {
@@ -14,10 +10,6 @@ pub struct DeleteExchangeCommand {
 
 impl DeleteExchangeCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let (_, exchange) = GetExchangeCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
@@ -31,13 +23,12 @@ impl DeleteExchangeCommand {
             ));
         }
 
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {}),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-        )
+        client.send_transaction(delete_exchange(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            ExchangeDeleteArgs {},
+        ))
     }
 }
 
@@ -48,8 +39,7 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_exchange_pda, get_globalstate_pda},
+        pda::get_exchange_pda,
         processors::exchange::delete::ExchangeDeleteArgs,
         state::{
             accountdata::AccountData,
@@ -57,15 +47,17 @@ mod tests {
             exchange::{Exchange, ExchangeStatus},
         },
     };
+    use doublezero_serviceability_instruction::exchange::delete_exchange;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_exchange_delete_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (pda_pubkey, _) = get_exchange_pda(&program_id, 1);
         let exchange = Exchange {
             account_type: AccountType::Exchange,
             index: 1,
@@ -88,16 +80,11 @@ mod tests {
             .with(predicate::eq(pda_pubkey))
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
+        let expected = delete_exchange(&program_id, &payer, &pda_pubkey, ExchangeDeleteArgs {});
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::DeleteExchange(ExchangeDeleteArgs {})),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = DeleteExchangeCommand { pubkey: pda_pubkey }.execute(&client);
 

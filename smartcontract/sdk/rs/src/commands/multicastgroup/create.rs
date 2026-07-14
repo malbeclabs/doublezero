@@ -1,11 +1,9 @@
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::{get_multicastgroup_pda, get_resource_extension_pda},
-    processors::multicastgroup::create::MulticastGroupCreateArgs,
-    resource::ResourceType,
+    pda::get_multicastgroup_pda, processors::multicastgroup::create::MulticastGroupCreateArgs,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::multicastgroup::create_multicast_group;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
@@ -21,31 +19,26 @@ impl CreateMulticastGroupCommand {
         let code =
             validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
+        let (_, globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) =
-            get_multicastgroup_pda(&client.get_program_id(), globalstate.account_index + 1);
-        let (multicast_group_block_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::MulticastGroupBlock);
-
-        let accounts = vec![
-            AccountMeta::new(pda_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(multicast_group_block_ext, false),
-        ];
+        let program_id = client.get_program_id();
+        let account_index = globalstate.account_index + 1;
+        let (pda_pubkey, _) = get_multicastgroup_pda(&program_id, account_index);
 
         client
-            .execute_authorized_transaction(
-                DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            .send_transaction(create_multicast_group(
+                &program_id,
+                &client.get_payer(),
+                account_index,
+                MulticastGroupCreateArgs {
                     code,
                     max_bandwidth: self.max_bandwidth,
                     owner: self.owner,
                     use_onchain_allocation: true,
-                }),
-                accounts,
-            )
+                },
+            ))
             .map(|sig| (sig, pda_pubkey))
     }
 }
@@ -57,43 +50,36 @@ mod tests {
         tests::utils::create_test_client, DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_multicastgroup_pda, get_resource_extension_pda},
-        processors::multicastgroup::create::MulticastGroupCreateArgs,
-        resource::ResourceType,
+        pda::get_multicastgroup_pda, processors::multicastgroup::create::MulticastGroupCreateArgs,
     };
+    use doublezero_serviceability_instruction::multicastgroup::create_multicast_group;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_multicastgroup_create() {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-        let (pda_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
-        let (multicast_group_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+        let payer = client.get_payer();
         let owner = Pubkey::new_unique();
 
+        // create_test_client seeds globalstate.account_index = 0, so the new group index is 1.
+        let expected = create_multicast_group(
+            &program_id,
+            &payer,
+            1,
+            MulticastGroupCreateArgs {
+                code: "test_group".to_string(),
+                max_bandwidth: 1000,
+                owner,
+                use_onchain_allocation: true,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreateMulticastGroup(
-                    MulticastGroupCreateArgs {
-                        code: "test_group".to_string(),
-                        max_bandwidth: 1000,
-                        owner,
-                        use_onchain_allocation: true,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(multicast_group_block_ext, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let create_command = CreateMulticastGroupCommand {
             code: "test_group".to_string(),
@@ -108,6 +94,7 @@ mod tests {
 
         let res = create_command.execute(&client);
         assert!(res.is_ok());
+        assert_eq!(res.unwrap().1, get_multicastgroup_pda(&program_id, 1).0);
 
         let res = create_invalid_command.execute(&client);
         assert!(res.is_err());

@@ -1,15 +1,12 @@
 use std::net::Ipv4Addr;
 
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_accesspass_pda,
     processors::accesspass::set::SetAccessPassArgs, state::accesspass::AccessPassType,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::accesspass::set_access_pass;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-use crate::{
-    commands::{accesspass::get::GetAccessPassCommand, globalstate::get::GetGlobalStateCommand},
-    DoubleZeroClient,
-};
+use crate::{commands::accesspass::get::GetAccessPassCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetAccessPassCommand {
@@ -25,10 +22,6 @@ pub struct SetAccessPassCommand {
 
 impl SetAccessPassCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         if self.last_access_epoch > 0 && self.last_access_epoch != u64::MAX {
             let epoch = client.get_epoch()?;
             if self.last_access_epoch < epoch {
@@ -40,44 +33,34 @@ impl SetAccessPassCommand {
             }
         }
 
-        let (pda_pubkey, _) =
-            get_accesspass_pda(&client.get_program_id(), &self.client_ip, &self.user_payer);
-
         let accesspass = GetAccessPassCommand {
             client_ip: self.client_ip,
             user_payer: self.user_payer,
         }
         .execute(client)?;
 
-        let mut accounts = vec![
-            AccountMeta::new(pda_pubkey, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-            AccountMeta::new(self.user_payer, false),
-        ];
-
-        // Get the current tenant from the existing access pass (if any)
+        // Get the current tenant from the existing access pass (if any). The builder appends the
+        // `[current_tenant, new_tenant]` pair itself when either is non-default.
         let current_tenant = accesspass
             .as_ref()
             .and_then(|(_, ap)| ap.tenant_allowlist.first().copied())
             .unwrap_or_default();
 
-        // Push tenant accounts if there's a tenant to remove or add
-        if current_tenant != Pubkey::default() || self.tenant != Pubkey::default() {
-            accounts.push(AccountMeta::new(current_tenant, false));
-            accounts.push(AccountMeta::new(self.tenant, false));
-        }
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+        client.send_transaction(set_access_pass(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.user_payer,
+            &current_tenant,
+            &self.tenant,
+            SetAccessPassArgs {
                 accesspass_type: self.accesspass_type.clone(),
                 client_ip: self.client_ip,
                 last_access_epoch: self.last_access_epoch,
                 allow_multiple_ip: self.allow_multiple_ip,
                 max_unicast_users: self.max_unicast_users,
                 max_multicast_users: self.max_multicast_users,
-            }),
-            accounts,
-        )
+            },
+        ))
     }
 }
 
@@ -88,8 +71,7 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_accesspass_pda, get_globalstate_pda},
+        pda::get_accesspass_pda,
         processors::accesspass::set::SetAccessPassArgs,
         state::{
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
@@ -97,30 +79,32 @@ mod tests {
             accounttype::AccountType,
         },
     };
+    use doublezero_serviceability_instruction::accesspass::set_access_pass;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::net::Ipv4Addr;
 
     #[test]
     fn test_commands_set_accesspass_command() {
         let mut client = create_test_client();
 
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
         let client_ip = [10, 0, 0, 1].into();
-        let payer = Pubkey::new_unique();
+        let user_payer = Pubkey::new_unique();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_accesspass_pda(&client.get_program_id(), &client_ip, &payer);
+        let (pda_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
 
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed: 0,
             accesspass_type: AccessPassType::Prepaid,
             client_ip,
-            user_payer: payer,
+            user_payer,
             last_access_epoch: 0,
             connection_count: 0,
             status: AccessPassStatus::Connected,
-            owner: client.get_payer(),
+            owner: payer,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![],
@@ -138,35 +122,37 @@ mod tests {
         // GetAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
         // exists there, so it falls back to the exact-IP PDA above.
         let (dynamic_pubkey, _) =
-            get_accesspass_pda(&client.get_program_id(), &Ipv4Addr::UNSPECIFIED, &payer);
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &user_payer);
         client
             .expect_get()
             .with(predicate::eq(dynamic_pubkey))
             .returning(|_| Err(eyre::eyre!("account not found")));
 
+        // No tenant on the existing pass and no new tenant, so the builder omits the tenant pair.
+        let expected = set_access_pass(
+            &program_id,
+            &payer,
+            &user_payer,
+            &Pubkey::default(),
+            &Pubkey::default(),
+            SetAccessPassArgs {
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip,
+                last_access_epoch: 0,
+                allow_multiple_ip: false,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-                    accesspass_type: AccessPassType::Prepaid,
-                    client_ip,
-                    last_access_epoch: 0,
-                    allow_multiple_ip: false,
-                    max_unicast_users: 1,
-                    max_multicast_users: 1,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new_readonly(globalstate_pubkey, false),
-                    AccountMeta::new(payer, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = SetAccessPassCommand {
             accesspass_type: AccessPassType::Prepaid,
             client_ip,
-            user_payer: payer,
+            user_payer,
             last_access_epoch: 0,
             allow_multiple_ip: false,
             tenant: Pubkey::default(),

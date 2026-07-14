@@ -1,11 +1,9 @@
-use crate::{DoubleZeroClient, GetGlobalStateCommand};
+use crate::DoubleZeroClient;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::{get_globalconfig_pda, get_resource_extension_pda},
-    processors::resource::create::ResourceCreateArgs,
-    resource::ResourceType,
+    processors::resource::create::ResourceCreateArgs, resource::ResourceType,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::resource::create_resource;
+use solana_sdk::signature::Signature;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateResourceCommand {
@@ -14,32 +12,43 @@ pub struct CreateResourceCommand {
 
 impl CreateResourceCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+        client.send_transaction(create_resource(
+            &client.get_program_id(),
+            &client.get_payer(),
+            ResourceCreateArgs {
+                resource_type: self.resource_type,
+            },
+        ))
+    }
+}
 
-        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::utils::create_test_client;
+    use mockall::predicate;
 
-        let (resource_pubkey, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), self.resource_type);
+    #[test]
+    fn test_commands_resource_create() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
-        let resource_create_args = ResourceCreateArgs {
-            resource_type: self.resource_type,
+        let cmd = CreateResourceCommand {
+            resource_type: ResourceType::DeviceTunnelBlock,
         };
+        let expected = create_resource(
+            &program_id,
+            &payer,
+            ResourceCreateArgs {
+                resource_type: cmd.resource_type,
+            },
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
-        let associated_account_pk = match self.resource_type {
-            ResourceType::DzPrefixBlock(pk, _) | ResourceType::TunnelIds(pk, _) => pk,
-            _ => Pubkey::default(),
-        };
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::CreateResource(resource_create_args),
-            vec![
-                AccountMeta::new(resource_pubkey, false),
-                AccountMeta::new(associated_account_pk, false),
-                AccountMeta::new(globalstate_pubkey, false),
-                AccountMeta::new(globalconfig_pubkey, false),
-            ],
-        )
+        assert!(cmd.execute(&client).is_ok());
     }
 }

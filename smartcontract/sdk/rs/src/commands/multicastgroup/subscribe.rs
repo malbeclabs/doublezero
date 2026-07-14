@@ -2,17 +2,17 @@ use std::net::Ipv4Addr;
 
 use crate::{
     commands::{
-        accesspass::get::GetAccessPassCommand, globalstate::get::GetGlobalStateCommand,
-        multicastgroup::get::GetMulticastGroupCommand, user::get::GetUserCommand,
+        accesspass::get::GetAccessPassCommand, multicastgroup::get::GetMulticastGroupCommand,
+        user::get::GetUserCommand,
     },
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
-    processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs, resource::ResourceType,
+    processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
     state::multicastgroup::MulticastGroupStatus,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateMulticastGroupRolesCommand {
@@ -30,10 +30,6 @@ pub struct UpdateMulticastGroupRolesCommand {
 
 impl UpdateMulticastGroupRolesCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let (_, mgroup) = GetMulticastGroupCommand {
             pubkey_or_code: self.group_pk.to_string(),
         }
@@ -66,36 +62,24 @@ impl UpdateMulticastGroupRolesCommand {
             eyre::bail!("User not allowed to subscribe multicast group");
         }
 
-        let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
-            &client.get_program_id(),
-            ResourceType::MulticastPublisherBlock,
-        );
-        let accounts = vec![
-            AccountMeta::new(self.group_pk, false),
-            AccountMeta::new(accesspass_pubkey, false),
-            AccountMeta::new(self.user_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(multicast_publisher_block_ext, false),
-        ];
-
-        // Use the authorized path so the payer's Permission account is appended when it exists
-        // on-chain. Removal-only cleanup (DeleteUserCommand / RequestBanUserCommand) is authorized
-        // via USER_ADMIN when the payer is neither the access-pass owner nor a foundation member.
-        //
         // The EdgeSeat feed metro gate is enforced at connect (CreateSubscribeUser). The optional
-        // `device_pk`/`feed_pk` for post-activation re-gating are NOT appended here: the on-chain
-        // trailing `[payer, system, permission]` layout (see `assemble_instructions`) leaves no slot
-        // for them via this path. Post-activation re-gating is deferred to the oracle lifecycle
+        // `device_pk`/`feed_pk` for post-activation re-gating are NOT passed to the builder here:
+        // the `update_multicast_group_roles` layout has no slot for them via this path.
+        // Post-activation re-gating is deferred to the oracle lifecycle
         // (see malbeclabs/infra#1700 / doublezero #1699).
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+        client.send_transaction(update_multicast_group_roles(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.group_pk,
+            &accesspass_pubkey,
+            &self.user_pk,
+            UpdateMulticastGroupRolesArgs {
                 publisher: self.publisher,
                 subscriber: self.subscriber,
                 client_ip: user.client_ip,
                 use_onchain_allocation: true,
-            }),
-            accounts,
-        )
+            },
+        ))
     }
 }
 
@@ -107,13 +91,8 @@ mod tests {
     };
     use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{
-            get_accesspass_pda, get_globalstate_pda, get_multicastgroup_pda,
-            get_resource_extension_pda,
-        },
+        pda::{get_accesspass_pda, get_multicastgroup_pda},
         processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
-        resource::ResourceType,
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
@@ -121,8 +100,9 @@ mod tests {
             user::{User, UserCYOA, UserStatus, UserType},
         },
     };
+    use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::net::Ipv4Addr;
 
     #[test]
@@ -131,10 +111,7 @@ mod tests {
 
         let program_id = client.get_program_id();
         let payer = client.get_payer();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
         let (mgroup_pubkey, _bump_seed) = get_multicastgroup_pda(&program_id, 1);
-        let (multicast_publisher_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
         let mgroup = MulticastGroup {
             account_type: AccountType::MulticastGroup,
             owner: payer,
@@ -224,26 +201,23 @@ mod tests {
             .with(predicate::eq(user_pubkey))
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
+        let expected = update_multicast_group_roles(
+            &program_id,
+            &payer,
+            &mgroup_pubkey,
+            &accesspass_pubkey,
+            &user_pubkey,
+            UpdateMulticastGroupRolesArgs {
+                client_ip,
+                publisher: true,
+                subscriber: false,
+                use_onchain_allocation: true,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateMulticastGroupRoles(
-                    UpdateMulticastGroupRolesArgs {
-                        client_ip,
-                        publisher: true,
-                        subscriber: false,
-                        use_onchain_allocation: true,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(mgroup_pubkey, false),
-                    AccountMeta::new(accesspass_pubkey, false),
-                    AccountMeta::new(user_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(multicast_publisher_block_ext, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = UpdateMulticastGroupRolesCommand {
             group_pk: mgroup_pubkey,

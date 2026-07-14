@@ -1,8 +1,7 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::accesspass::close::CloseAccessPassArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use crate::DoubleZeroClient;
+use doublezero_serviceability::processors::accesspass::close::CloseAccessPassArgs;
+use doublezero_serviceability_instruction::accesspass::close_access_pass;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CloseAccessPassCommand {
@@ -11,17 +10,12 @@ pub struct CloseAccessPassCommand {
 
 impl CloseAccessPassCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::CloseAccessPass(CloseAccessPassArgs {}),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-        )
+        client.send_transaction(close_access_pass(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            CloseAccessPassArgs {},
+        ))
     }
 }
 
@@ -32,35 +26,28 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_accesspass_pda, get_globalstate_pda},
-        processors::accesspass::close::CloseAccessPassArgs,
+        pda::get_accesspass_pda, processors::accesspass::close::CloseAccessPassArgs,
     };
+    use doublezero_serviceability_instruction::accesspass::close_access_pass;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_close_accesspass_command() {
         let mut client = create_test_client();
 
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
         let client_ip = [10, 0, 0, 1].into();
-        let payer = Pubkey::new_unique();
+        let user_payer = Pubkey::new_unique();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_accesspass_pda(&client.get_program_id(), &client_ip, &payer);
+        let (pda_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
 
+        let expected = close_access_pass(&program_id, &payer, &pda_pubkey, CloseAccessPassArgs {});
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CloseAccessPass(
-                    CloseAccessPassArgs {},
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = CloseAccessPassCommand { pubkey: pda_pubkey }.execute(&client);
         assert!(res.is_ok());

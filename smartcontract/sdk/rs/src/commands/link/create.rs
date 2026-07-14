@@ -1,13 +1,12 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::{get_link_pda, get_resource_extension_pda, get_topology_pda},
+    pda::get_link_pda,
     processors::link::create::LinkCreateArgs,
-    resource::ResourceType,
     state::link::{LinkDesiredStatus, LinkLinkType},
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::link::create_link;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateLinkCommand {
@@ -31,48 +30,36 @@ impl CreateLinkCommand {
             validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
         code.make_ascii_lowercase();
 
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
+        let (_globalstate_pubkey, globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) = get_link_pda(&client.get_program_id(), globalstate.account_index + 1);
+        let program_id = client.get_program_id();
+        let link_index = globalstate.account_index + 1;
+        let (pda_pubkey, _) = get_link_pda(&program_id, link_index);
 
-        let (device_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::DeviceTunnelBlock);
-        let (link_ids_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::LinkIds);
-        // The unicast-default topology account is required; CreateLink auto-tags the link into it.
-        let (unicast_default_topology_pda, _) =
-            get_topology_pda(&client.get_program_id(), "unicast-default");
+        let ix = create_link(
+            &program_id,
+            &client.get_payer(),
+            &self.contributor_pk,
+            &self.side_a_pk,
+            &self.side_z_pk,
+            link_index,
+            LinkCreateArgs {
+                code,
+                link_type: self.link_type,
+                desired_status: self.desired_status,
+                bandwidth: self.bandwidth,
+                mtu: self.mtu,
+                delay_ns: self.delay_ns,
+                jitter_ns: self.jitter_ns,
+                side_a_iface_name: self.side_a_iface_name.clone(),
+                side_z_iface_name: self.side_z_iface_name.clone(),
+                use_onchain_allocation: true,
+            },
+        );
 
-        let accounts = vec![
-            AccountMeta::new(pda_pubkey, false),
-            AccountMeta::new(self.contributor_pk, false),
-            AccountMeta::new(self.side_a_pk, false),
-            AccountMeta::new(self.side_z_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(unicast_default_topology_pda, false),
-            AccountMeta::new(device_tunnel_block_ext, false),
-            AccountMeta::new(link_ids_ext, false),
-        ];
-
-        client
-            .execute_authorized_transaction(
-                DoubleZeroInstruction::CreateLink(LinkCreateArgs {
-                    code,
-                    link_type: self.link_type,
-                    desired_status: self.desired_status,
-                    bandwidth: self.bandwidth,
-                    mtu: self.mtu,
-                    delay_ns: self.delay_ns,
-                    jitter_ns: self.jitter_ns,
-                    side_a_iface_name: self.side_a_iface_name.clone(),
-                    side_z_iface_name: self.side_z_iface_name.clone(),
-                    use_onchain_allocation: true,
-                }),
-                accounts,
-            )
-            .map(|sig| (sig, pda_pubkey))
+        client.send_transaction(ix).map(|sig| (sig, pda_pubkey))
     }
 }
 
@@ -82,57 +69,47 @@ mod tests {
         commands::link::create::CreateLinkCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
-    use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_link_pda, get_resource_extension_pda, get_topology_pda},
-        processors::link::create::LinkCreateArgs,
-        resource::ResourceType,
-    };
+    use doublezero_serviceability::processors::link::create::LinkCreateArgs;
+    use doublezero_serviceability_instruction::link::create_link;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_link_create() {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-        let (pda_pubkey, _) = get_link_pda(&program_id, 1);
-        let (device_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-        let (link_ids_ext, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
-        let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
+        let payer = client.get_payer();
         let contributor_pk = Pubkey::new_unique();
         let side_a_pk = Pubkey::new_unique();
         let side_z_pk = Pubkey::new_unique();
 
+        // create_test_client seeds globalstate.account_index = 0, so the new link
+        // index is 1.
+        let expected = create_link(
+            &program_id,
+            &payer,
+            &contributor_pk,
+            &side_a_pk,
+            &side_z_pk,
+            1,
+            LinkCreateArgs {
+                code: "test".to_string(),
+                link_type: doublezero_serviceability::state::link::LinkLinkType::DZX,
+                desired_status: None,
+                bandwidth: 10_000_000_000,
+                mtu: 9000,
+                delay_ns: 1_000_000,
+                jitter_ns: 100_000,
+                side_a_iface_name: "Ethernet0".to_string(),
+                side_z_iface_name: Some("Ethernet1".to_string()),
+                use_onchain_allocation: true,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreateLink(LinkCreateArgs {
-                    code: "test".to_string(),
-                    link_type: doublezero_serviceability::state::link::LinkLinkType::DZX,
-                    desired_status: None,
-                    bandwidth: 10_000_000_000,
-                    mtu: 9000,
-                    delay_ns: 1_000_000,
-                    jitter_ns: 100_000,
-                    side_a_iface_name: "Ethernet0".to_string(),
-                    side_z_iface_name: Some("Ethernet1".to_string()),
-                    use_onchain_allocation: true,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(contributor_pk, false),
-                    AccountMeta::new(side_a_pk, false),
-                    AccountMeta::new(side_z_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(unicast_default_pda, false),
-                    AccountMeta::new(device_tunnel_block_ext, false),
-                    AccountMeta::new(link_ids_ext, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = CreateLinkCommand {
             code: "test".to_string(),

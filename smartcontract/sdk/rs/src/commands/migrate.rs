@@ -1,11 +1,11 @@
 use crate::DoubleZeroClient;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
     pda::{get_user_old_pda, get_user_pda},
     processors::migrate::MigrateArgs,
     state::{accountdata::AccountData, accounttype::AccountType, user::User},
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::migrate::migrate;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -32,13 +32,13 @@ impl MigrateCommand {
                 let (new_pubkey, _new_bump_seed) =
                     get_user_pda(&program_id, &user.client_ip, user.user_type);
 
-                let signature = client.execute_transaction(
-                    DoubleZeroInstruction::Migrate(MigrateArgs {}),
-                    vec![
-                        AccountMeta::new(old_pubkey, false),
-                        AccountMeta::new(new_pubkey, false),
-                    ],
-                )?;
+                let signature = client.send_transaction(migrate(
+                    &program_id,
+                    &client.get_payer(),
+                    &old_pubkey,
+                    &new_pubkey,
+                    MigrateArgs {},
+                ))?;
 
                 println!(
                     "Migrated user from {} to {}: {:?}",

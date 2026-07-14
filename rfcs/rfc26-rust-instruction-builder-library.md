@@ -23,7 +23,7 @@ The fix is the split SPL uses: a pure, RPC-free instruction library beneath the 
 
 - **Builder** — a pure function `build_xxx(...) -> Instruction` that assembles exactly one serviceability instruction from resolved arguments. Infallible; no RPC.
 - **Pure / offline** — the builder performs no network I/O. Chain-derived values (globalstate `account_index`, `dz_prefix` count) are passed in as explicit parameters by the caller.
-- **Trailing convention** — the fixed tail of every instruction's account list: `[payer (signer, writable), system_program (readonly)]`, followed — for instructions whose `authorize()` migration is activated — by the read-only Permission PDA (derived from the payer) as the last account.
+- **Trailing convention** — the fixed tail of every instruction's account list: `[payer (signer, writable), system_program]`, followed — for instructions whose `authorize()` migration is activated — by the read-only Permission PDA (derived from the payer) as the last account. The `system_program` meta is emitted **writable** for byte-parity with today's `client.rs::assemble_instructions` (the runtime demotes reserved keys, so this is harmless); the golden fixtures freeze this flag.
 - **`authorize()`-gated instruction** — an instruction whose processor calls `authorize()`; once migrated, its builder appends the trailing Permission account (see [Permission account](#permission-account)).
 - **Length-detected family** — `CreateUser` (36): its processor identifies an optional trailing tenant account by `accounts.len()` and never calls `authorize()`. Its builder never appends a Permission account, permanently, so the length count stays unambiguous. (`DeleteUser` and `CreateSubscribeUser` were originally grouped here but are not length-detected — see below.)
 - **`split_trailing_permission` family** — instructions with a variable-length account list followed by payer/system and then, once migrated, the payer-derived Permission PDA, which the processor peels off by PDA match (link delete, user update, `CreateSubscribeUser`, interface update, topology assign, multicast allowlists). `DeleteUser` similarly calls `authorize()` positionally after detecting its optional tenant from onchain state, so it too can carry a trailing Permission account.
@@ -73,9 +73,11 @@ crates/doublezero-serviceability-instruction/
 
 ### The anti-drift keystone: `common.rs`
 
-`common::build` is the single place that appends the trailing accounts. Wire encoding is `1 tag byte + borsh(args)`, obtained for free by constructing the `DoubleZeroInstruction` variant and calling `.pack()` (which is `borsh::to_vec`) — no hand-written tag bytes.
+`common.rs` is the single place that appends the trailing accounts, exposed as **two methods** so that whether an instruction expects a trailing Permission account is a per-builder assignment rather than a scattered decision. Wire encoding is `1 tag byte + borsh(args)`, obtained for free by constructing the `DoubleZeroInstruction` variant and calling `.pack()` (which is `borsh::to_vec`) — no hand-written tag bytes.
 
 ```rust
+// The permanent no-permission path: instructions that never call authorize()
+// (e.g. CreateUser) are assigned here.
 pub(crate) fn build(
     program_id: &Pubkey,
     instruction: DoubleZeroInstruction,
@@ -84,16 +86,24 @@ pub(crate) fn build(
     payer: &Pubkey,
 ) -> Instruction {
     accounts.push(AccountMeta::new(*payer, true));
-    accounts.push(AccountMeta::new(solana_system_interface::program::id(), false));
-
-    // Permission PDA (authorize()) — derived from the payer, not passed in.
-    // Left commented until the instruction's authorize() migration is activated
-    // (see "Permission account" below):
-    //
-    // let (permission, _) = get_permission_pda(program_id, payer);
-    // accounts.push(AccountMeta::new_readonly(permission, false)); // must be last
+    accounts.push(AccountMeta::new(solana_system_interface::program::id(), false)); // writable for byte-parity
 
     Instruction::new_with_bytes(*program_id, &instruction.pack(), accounts)
+}
+
+// Instructions whose processor routes through authorize() are assigned here.
+// Today it delegates to `build` (permission append DEFERRED); at rollout the
+// append is enabled HERE, in one place, activating every assigned builder at once.
+pub(crate) fn build_with_permission(
+    program_id: &Pubkey,
+    instruction: DoubleZeroInstruction,
+    accounts: Vec<AccountMeta>,
+    payer: &Pubkey,
+) -> Instruction {
+    build(program_id, instruction, accounts, payer)
+    // At activation, replace the delegation above with an explicit assembly that,
+    // after payer/system, appends `get_permission_pda(program_id, payer)` read-only
+    // as the LAST account. See the "Permission account" activation precondition.
 }
 
 // Transaction-level prelude, NOT inside each builder.
@@ -108,14 +118,16 @@ This reproduces the payer/system tail that `client.rs::assemble_instructions` bu
 
 The Permission PDA is **deterministically derived from the payer** (`get_permission_pda(program_id, payer)`), so it is **never a caller-supplied argument** — no builder takes a `permission: Option<Pubkey>`, and no caller can substitute an arbitrary account. Whether an instruction expects the trailing Permission account is not something the offline builder can observe at runtime; it is the per-instruction fact of whether that instruction's `authorize()` migration is activated.
 
-The rollout therefore tracks the program's incremental `authorize()` migration. Initially builders emit no Permission account — exactly what each pre-migration processor expects. As each instruction is migrated, its builder derives and appends the payer's PDA read-only as the last account; those two lines ship **commented out** in `common.rs` (above), enabled per-builder by the activating PR.
+The rollout tracks the program's incremental `authorize()` migration via the two-method split above. Each builder is **assigned** at implementation time: `authorize()`-gated instructions to `build_with_permission`, all others to `build`. The append itself is **deferred** — `build_with_permission` delegates to `build` today, so assignment is behaviour-preserving. At the permission rollout the append is enabled **centrally, in `build_with_permission`**, activating every already-assigned builder in one change (builders on `build` stay untouched). This is a single-blast-radius activation, not a per-builder edit.
+
+**Activation precondition.** The append is pure and offline: it cannot check whether the payer's Permission PDA exists onchain. When the account does not exist, `authorize()` fails **hard** with `InvalidAccountData` (the program-ownership check runs before the foundation-recovery/legacy fallback), so a missing Permission account is never routed to the legacy allowlist path. Today's SDK sidesteps this by appending the PDA only after an RPC existence check — which a pure builder cannot replicate. The central activation MUST therefore wait until every payer is guaranteed a Permission account (e.g. `FeatureFlag::RequirePermissionAccounts` enforced); enabling it earlier would break every payer without one.
 
 ### Canonical builder signature
 
 The rule for each parameter:
 
 - **Offline-derivable PDAs are derived inside the builder** using `pda.rs` helpers (`get_device_pda`, `get_globalconfig_pda`, `get_resource_extension_pda`, etc.); the Permission PDA likewise (see [Permission account](#permission-account)), so none is a parameter.
-- **Non-derivable external accounts are passed as `&Pubkey`**: contributor, location, exchange, device, mgroup, accesspass, side_a/side_z, feed, tenant.
+- **Non-derivable external accounts are passed as `&Pubkey`**: contributor, location, exchange, device, mgroup, accesspass, side_a/side_z, feed, tenant. Optional accounts follow the same rule as `Option<&Pubkey>` (e.g. `feed`).
 - **RPC-derived scalars are passed explicitly**: `account_index: u128`, `dz_prefix_count: u8`.
 - **Returns an infallible `Instruction`.** Infallible normalization that affects the wire (e.g. `code.make_ascii_lowercase()`) may happen in the builder; fallible validation (charset/length) stays in the caller.
 
@@ -124,7 +136,7 @@ The rule for each parameter:
 pub fn create_device(
     program_id: &Pubkey, payer: &Pubkey,
     contributor: &Pubkey, location: &Pubkey, exchange: &Pubkey,
-    account_index: u128, mut args: DeviceCreateArgs,
+    device_index: u128, mut args: DeviceCreateArgs,
 ) -> Instruction;
 
 // link.rs — fixed accounts
@@ -138,7 +150,7 @@ pub fn create_link(
 pub fn create_subscribe_user(
     program_id: &Pubkey, payer: &Pubkey,
     device: &Pubkey, mgroup: &Pubkey, accesspass: &Pubkey,
-    dz_prefix_count: u8, feed: Option<Pubkey>,
+    dz_prefix_count: u8, feed: Option<&Pubkey>,
     args: UserCreateSubscribeArgs,
 ) -> Instruction;
 ```
@@ -186,7 +198,7 @@ Respecting the ~500-lines-of-new-code-per-PR norm (tests excluded):
 
 | PR | Scope |
 |----|-------|
-| R0 | Scaffold crate + `common` + `compute_budget_prelude` + 4 exemplar builders (`create_device`, `create_link`, `delete_device`, `create_subscribe_user`) + first fixtures |
+| R0 | Scaffold crate + `common` + `compute_budget_prelude` + 4 exemplar builders (`create_device`, `create_link`, `delete_device`, `create_subscribe_user`) with unit tests (tag bytes + account layout). Golden fixtures and `solana-program-test` coverage land in a follow-up PR alongside the fixture generator |
 | R1 | `device` domain builders |
 | R2 | `link` domain builders |
 | R3 | `user` domain builders (length-detected `CreateUser` + split_trailing_permission `CreateSubscribeUser`) |

@@ -3,7 +3,10 @@
 use crate::common;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::{get_globalstate_pda, get_link_pda, get_resource_extension_pda, get_topology_pda},
+    pda::{
+        get_globalstate_pda, get_link_pda, get_resource_extension_pda, get_topology_pda,
+        UNICAST_DEFAULT_TOPOLOGY_NAME,
+    },
     processors::link::create::LinkCreateArgs,
     resource::ResourceType,
 };
@@ -12,14 +15,10 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-/// The unicast-default topology account is required; `CreateLink` auto-tags the
-/// link into it.
-const UNICAST_DEFAULT_TOPOLOGY: &str = "unicast-default";
-
 /// `CreateLink` (variant 28).
 ///
 /// Account layout (processor `next_account_info` order), before the trailing
-/// `[payer, system]` appended by [`common::build`]:
+/// `[payer, system]` appended by `common::build_with_permission`:
 ///
 /// ```text
 /// link                       (writable)  — PDA get_link_pda(link_index)
@@ -45,7 +44,7 @@ pub fn create_link(
     let (device_tunnel_block, _, _) =
         get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
     let (link_ids, _, _) = get_resource_extension_pda(program_id, ResourceType::LinkIds);
-    let (unicast_default_topology, _) = get_topology_pda(program_id, UNICAST_DEFAULT_TOPOLOGY);
+    let (unicast_default_topology, _) = get_topology_pda(program_id, UNICAST_DEFAULT_TOPOLOGY_NAME);
 
     let accounts = vec![
         AccountMeta::new(link, false),
@@ -103,7 +102,7 @@ mod tests {
         let (device_tunnel_block, _, _) =
             get_resource_extension_pda(&pid, ResourceType::DeviceTunnelBlock);
         let (link_ids, _, _) = get_resource_extension_pda(&pid, ResourceType::LinkIds);
-        let (unicast_default, _) = get_topology_pda(&pid, UNICAST_DEFAULT_TOPOLOGY);
+        let (unicast_default, _) = get_topology_pda(&pid, UNICAST_DEFAULT_TOPOLOGY_NAME);
 
         assert_eq!(
             ix.accounts,

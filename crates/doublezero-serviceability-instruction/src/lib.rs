@@ -5,8 +5,8 @@
 //! already-resolved arguments and returns a single unsigned
 //! [`solana_program::instruction::Instruction`], with no network I/O — the
 //! classic SPL pattern (`spl-token::instruction::transfer(...)`). The caller
-//! composes the [`Transaction`](solana_program), prepends the
-//! [`compute_budget_prelude`], adds the blockhash, and signs.
+//! composes the `Transaction`, prepends the [`compute_budget_prelude`], adds the
+//! blockhash, and signs.
 //!
 //! Chain-derived values (globalstate `account_index`, `dz_prefix` counts,
 //! RPC-read owner pubkeys) are passed in as explicit parameters; offline-derivable

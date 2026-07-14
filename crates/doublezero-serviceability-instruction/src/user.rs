@@ -15,7 +15,7 @@ use solana_program::{
 /// `CreateSubscribeUser` (variant 59).
 ///
 /// Account layout (processor `next_account_info` order), before the trailing
-/// `[payer, system]` appended by [`common::build`]:
+/// `[payer, system]` appended by `common::build_with_permission`:
 ///
 /// ```text
 /// user                        (writable)  — get_user_pda(client_ip, user_type)
@@ -35,7 +35,7 @@ use solana_program::{
 /// length-detected family. The optional `feed` sits in the leading slice (before
 /// `[payer, system]`); a Permission account, once activated, is appended *after*
 /// `[payer, system]` and the processor peels it by PDA match — so the two never
-/// collide. This builder is therefore assigned to [`common::build_with_permission`]
+/// collide. This builder is therefore assigned to `common::build_with_permission`
 /// (permission deferred for now). `dz_prefix_count` is written back into the args
 /// so it always matches the number of `dz_prefix_block` accounts produced.
 #[allow(clippy::too_many_arguments)]
@@ -46,9 +46,16 @@ pub fn create_subscribe_user(
     mgroup: &Pubkey,
     accesspass: &Pubkey,
     dz_prefix_count: u8,
-    feed: Option<Pubkey>,
+    feed: Option<&Pubkey>,
     mut args: UserCreateSubscribeArgs,
 ) -> Instruction {
+    // The write-back overwrites any caller-set `dz_prefix_count`; assert they agree
+    // (or the caller left it zero) to catch confusion cheaply in debug builds.
+    debug_assert!(
+        args.dz_prefix_count == 0 || args.dz_prefix_count == dz_prefix_count,
+        "caller-set dz_prefix_count {} disagrees with {dz_prefix_count}",
+        args.dz_prefix_count
+    );
     args.dz_prefix_count = dz_prefix_count;
 
     let (user, _) = get_user_pda(program_id, &args.client_ip, args.user_type);
@@ -78,9 +85,11 @@ pub fn create_subscribe_user(
     }
 
     // Optional trailing Feed account (EdgeSeat metro gate), appended BEFORE
-    // payer/system and never followed by a Permission account.
+    // payer/system. A Permission PDA, once activated, is appended AFTER payer/system
+    // (not after the feed) and the processor peels it by PDA match, so the feed and
+    // the Permission account never collide.
     if let Some(feed) = feed {
-        accounts.push(AccountMeta::new_readonly(feed, false));
+        accounts.push(AccountMeta::new_readonly(*feed, false));
     }
 
     common::build_with_permission(
@@ -183,7 +192,7 @@ mod tests {
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
             1,
-            Some(feed),
+            Some(&feed),
             base_args(client_ip),
         );
 

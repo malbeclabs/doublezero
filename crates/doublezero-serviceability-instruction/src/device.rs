@@ -15,10 +15,10 @@ use solana_program::{
 /// `CreateDevice` (variant 20).
 ///
 /// Account layout (processor `next_account_info` order), before the trailing
-/// `[payer, system]` appended by [`common::build`]:
+/// `[payer, system]` appended by `common::build_with_permission`:
 ///
 /// ```text
-/// device                (writable)  — PDA get_device_pda(account_index)
+/// device                (writable)  — PDA get_device_pda(device_index)
 /// contributor           (writable)
 /// location              (writable)
 /// exchange              (writable)
@@ -31,7 +31,7 @@ use solana_program::{
 /// The `dz_prefix` blocks and `args.resource_count` are produced from the same
 /// loop, so the declared count can never disagree with the account list.
 ///
-/// `account_index` is the **new** device's index: the caller passes
+/// `device_index` is the **new** device's index: the caller passes
 /// `globalstate.account_index + 1`, not the raw current value.
 pub fn create_device(
     program_id: &Pubkey,
@@ -39,10 +39,10 @@ pub fn create_device(
     contributor: &Pubkey,
     location: &Pubkey,
     exchange: &Pubkey,
-    account_index: u128,
+    device_index: u128,
     mut args: DeviceCreateArgs,
 ) -> Instruction {
-    let (device, _) = get_device_pda(program_id, account_index);
+    let (device, _) = get_device_pda(program_id, device_index);
     let (globalstate, _) = get_globalstate_pda(program_id);
     let (globalconfig, _) = get_globalconfig_pda(program_id);
     let (tunnel_ids, _, _) =
@@ -67,14 +67,12 @@ pub fn create_device(
 
     // One TunnelIds account plus one DzPrefixBlock per advertised prefix, derived
     // from the same loop that produced the accounts above. The count is bounded
-    // by the transaction's account budget, so overflow is unreachable in
-    // practice; the debug_assert keeps the "count == accounts" invariant honest.
+    // by the transaction's account budget, so overflow is unreachable in practice;
+    // panicking is strictly better than emitting a `resource_count` that disagrees
+    // with the account list — the exact invariant this crate exists to protect.
     let resource_total = 1 + dz_prefix_count;
-    debug_assert!(
-        resource_total <= u8::MAX as usize,
-        "device resource_count {resource_total} exceeds u8::MAX"
-    );
-    args.resource_count = u8::try_from(resource_total).unwrap_or(u8::MAX);
+    args.resource_count =
+        u8::try_from(resource_total).expect("device resource_count exceeds u8::MAX");
 
     common::build_with_permission(
         program_id,
@@ -125,7 +123,12 @@ pub enum DeviceDeleteResources<'a> {
 ///   ```
 ///
 /// `owners.len()` drives both the resource-PDA loop and `args.resource_count`.
-/// This builder never appends a Permission account.
+///
+/// `process_delete_device` routes through `authorize()` (NETWORK_ADMIN, for the
+/// non-contributor override), so this builder is assigned to
+/// `common::build_with_permission` and will carry a trailing Permission PDA once
+/// the permission model is activated (deferred today, like every other assigned
+/// builder).
 pub fn delete_device(
     program_id: &Pubkey,
     payer: &Pubkey,
@@ -177,13 +180,10 @@ pub fn delete_device(
     accounts.push(AccountMeta::new(*device_owner, false));
 
     // Bounded by the transaction's account budget, so overflow is unreachable;
-    // the debug_assert keeps the "count == resource accounts" invariant honest.
-    debug_assert!(
-        owners.len() <= u8::MAX as usize,
-        "device delete resource_count {} exceeds u8::MAX",
-        owners.len()
-    );
-    let resource_count = u8::try_from(owners.len()).unwrap_or(u8::MAX);
+    // panicking is strictly better than emitting a `resource_count` that disagrees
+    // with the resource account list.
+    let resource_count =
+        u8::try_from(owners.len()).expect("device delete resource_count exceeds u8::MAX");
     common::build_with_permission(
         program_id,
         DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs { resource_count }),

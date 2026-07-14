@@ -35,6 +35,11 @@ pub(crate) fn build(
     payer: &Pubkey,
 ) -> Instruction {
     accounts.push(AccountMeta::new(*payer, true));
+    // The system program is marked **writable** for byte-parity with today's
+    // `client.rs::assemble_instructions` (`AccountMeta::new`); the runtime demotes
+    // reserved keys, so this is harmless. Byte-parity is deliberate — the golden
+    // fixtures freeze this flag, and diverging from the SDK would defeat the
+    // drop-in-replacement goal. The RFC glossary is aligned to match.
     accounts.push(AccountMeta::new(
         solana_system_interface::program::ID,
         false,
@@ -68,6 +73,17 @@ pub(crate) fn build(
 /// accounts.push(AccountMeta::new_readonly(permission, false)); // MUST be last
 /// Instruction::new_with_bytes(*program_id, &instruction.pack(), accounts)
 /// ```
+///
+/// **Activation precondition.** This append is a pure, offline operation: it
+/// cannot check whether the payer's Permission PDA actually exists onchain. When
+/// the account does not exist, `authorize()` fails **hard** with
+/// `InvalidAccountData` — the program-ownership check runs before the
+/// foundation-recovery/legacy fallback (see `authorize.rs`), so a missing
+/// Permission account is never routed to the legacy allowlist path. Today's SDK
+/// sidesteps this by appending the PDA only after an RPC existence check, which a
+/// pure builder cannot replicate. The append MUST therefore stay deferred until
+/// every payer is guaranteed a Permission account (e.g. `RequirePermissionAccounts`
+/// enforced), or activating it would break every payer without one.
 pub(crate) fn build_with_permission(
     program_id: &Pubkey,
     instruction: DoubleZeroInstruction,

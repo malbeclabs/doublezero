@@ -76,6 +76,13 @@ pub fn create_device(
     // panicking is strictly better than emitting a `resource_count` that disagrees
     // with the account list — the exact invariant this crate exists to protect.
     let resource_total = 1 + dz_prefix_count;
+    // The write-back overwrites any caller-set `resource_count`; assert they agree
+    // (or the caller left it zero) to catch confusion cheaply in debug builds.
+    debug_assert!(
+        args.resource_count == 0 || args.resource_count as usize == resource_total,
+        "caller-set resource_count {} disagrees with {resource_total}",
+        args.resource_count
+    );
     args.resource_count =
         u8::try_from(resource_total).expect("device resource_count exceeds u8::MAX");
 

@@ -164,7 +164,10 @@ pub fn delete_device(
         DeviceDeleteResources::Legacy => {
             return common::build_with_permission(
                 program_id,
-                DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs::default()),
+                // Spell out the field (rather than `::default()`) so a future
+                // field addition is a compile error that forces this builder to
+                // take an explicit position on it.
+                DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs { resource_count: 0 }),
                 accounts,
                 payer,
             );
@@ -290,11 +293,17 @@ mod tests {
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
             1,
-            args,
+            args.clone(),
         );
         let decoded = DoubleZeroInstruction::unpack(&ix.data).unwrap();
+        // Assert the full args round-trips: the builder's `mut args` write-back
+        // must touch ONLY `resource_count`, and future fields are pinned too.
+        let expected = DeviceCreateArgs {
+            resource_count: 3,
+            ..args
+        };
         match decoded {
-            DoubleZeroInstruction::CreateDevice(a) => assert_eq!(a.resource_count, 3),
+            DoubleZeroInstruction::CreateDevice(a) => assert_eq!(a, expected),
             other => panic!("unexpected variant: {other:?}"),
         }
         // account list: 7 fixed + 2 dz_prefix + payer + system = 11
@@ -357,7 +366,9 @@ mod tests {
 
         let decoded = DoubleZeroInstruction::unpack(&ix.data).unwrap();
         match decoded {
-            DoubleZeroInstruction::DeleteDevice(a) => assert_eq!(a.resource_count, 2),
+            DoubleZeroInstruction::DeleteDevice(a) => {
+                assert_eq!(a, DeviceDeleteArgs { resource_count: 2 })
+            }
             other => panic!("unexpected variant: {other:?}"),
         }
 

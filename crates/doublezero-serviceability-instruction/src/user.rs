@@ -129,6 +129,7 @@ mod tests {
         let accesspass = Pubkey::new_unique();
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
+        let args = base_args(client_ip);
         let ix = create_subscribe_user(
             &pid,
             &payer,
@@ -137,14 +138,19 @@ mod tests {
             &accesspass,
             1,
             None,
-            base_args(client_ip),
+            args.clone(),
         );
 
         assert_eq!(ix.data[0], 59);
-        // dz_prefix_count is written back into the args.
+        // Assert the full args round-trips: the builder's `mut args` write-back
+        // must touch ONLY `dz_prefix_count`, and future fields are pinned too.
+        let expected = UserCreateSubscribeArgs {
+            dz_prefix_count: 1,
+            ..args
+        };
         let decoded = DoubleZeroInstruction::unpack(&ix.data).unwrap();
         match decoded {
-            DoubleZeroInstruction::CreateSubscribeUser(a) => assert_eq!(a.dz_prefix_count, 1),
+            DoubleZeroInstruction::CreateSubscribeUser(a) => assert_eq!(a, expected),
             other => panic!("unexpected variant: {other:?}"),
         }
 

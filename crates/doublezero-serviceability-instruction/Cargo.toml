@@ -1,0 +1,23 @@
+[package]
+name = "doublezero-serviceability-instruction"
+
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "doublezero_serviceability_instruction"
+
+# Pure, RPC-free instruction builders for the doublezero-serviceability program
+# (RFC-26). Dependencies are deliberately limited to the onchain program crate
+# and lightweight instruction/compute-budget helpers — NO solana-client, tokio,
+# or backon. This acyclic graph is what enforces purity: the crate cannot reach
+# RPC because it never depends on the RPC tree.
+[dependencies]
+doublezero-serviceability.workspace = true
+solana-program.workspace = true
+solana-system-interface.workspace = true
+solana-compute-budget-interface.workspace = true

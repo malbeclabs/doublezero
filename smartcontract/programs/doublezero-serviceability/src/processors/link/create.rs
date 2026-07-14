@@ -1,7 +1,7 @@
 use crate::{
     authorize::authorize,
     error::DoubleZeroError,
-    pda::{get_link_pda, get_topology_pda},
+    pda::{get_link_pda, get_topology_pda, UNICAST_DEFAULT_TOPOLOGY_NAME},
     processors::validation::validate_program_account,
     seeds::{SEED_LINK, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
@@ -251,7 +251,8 @@ pub fn process_create_link(
     // Always validate the PDA derivation to prevent callers passing a wrong account.
     // Tagging is conditional: if the topology hasn't been created yet (e.g. fresh deployment),
     // creation proceeds without the tag rather than failing.
-    let (expected_unicast_default_pda, _) = get_topology_pda(program_id, "unicast-default");
+    let (expected_unicast_default_pda, _) =
+        get_topology_pda(program_id, UNICAST_DEFAULT_TOPOLOGY_NAME);
     if unicast_default_topology_account.key != &expected_unicast_default_pda {
         return Err(DoubleZeroError::InvalidArgument.into());
     }

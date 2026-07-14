@@ -2,8 +2,10 @@ use crate::doublezerocommand::CliCommand;
 use chrono::{TimeZone, Utc};
 use doublezero_sdk::commands::{
     contributor::get::GetContributorCommand, exchange::get::GetExchangeCommand,
-    location::get::GetLocationCommand, tenant::get::GetTenantCommand,
+    location::get::GetLocationCommand, multicastgroup::get::GetMulticastGroupCommand,
+    tenant::get::GetTenantCommand,
 };
+use eyre::WrapErr;
 use std::{
     io::{Read, Write},
     str,
@@ -56,6 +58,9 @@ pub fn resolve_location_pk<C: CliCommand>(
 }
 
 /// Resolve a `--pubkey`/`--code` argument to the exchange's on-chain pubkey.
+///
+/// Always queries the ledger, so a pubkey input is validated to exist. Use
+/// [`parse_or_resolve_exchange`] when pubkey inputs must pass through untouched.
 pub fn resolve_exchange_pk<C: CliCommand>(
     client: &C,
     pubkey_or_code: &str,
@@ -64,6 +69,46 @@ pub fn resolve_exchange_pk<C: CliCommand>(
         pubkey_or_code: pubkey_or_code.to_string(),
     })?;
     Ok(pubkey)
+}
+
+/// Resolve an exchange argument that is either a base58 pubkey or an exchange code.
+///
+/// Unlike [`resolve_exchange_pk`], a pubkey input is used as-is with no onchain
+/// lookup or validation; only a code queries the backend for the account.
+/// Classification uses a full base58 decode rather than [`parse_pubkey`]'s
+/// 43-44 char window so pubkeys with leading zero bytes (shorter encodings)
+/// still pass through.
+pub fn parse_or_resolve_exchange<C: CliCommand>(client: &C, input: &str) -> eyre::Result<Pubkey> {
+    match Pubkey::from_str(input).ok() {
+        Some(pk) => Ok(pk),
+        None => client
+            .get_exchange(GetExchangeCommand {
+                pubkey_or_code: input.to_string(),
+            })
+            .map(|(pubkey, _)| pubkey)
+            .wrap_err_with(|| format!("Exchange not found: {input}")),
+    }
+}
+
+/// Resolve a multicast group argument that is either a base58 pubkey or a group code.
+///
+/// A pubkey input is used as-is with no onchain lookup or validation; only a
+/// code queries the backend for the account. Classification uses a full base58
+/// decode rather than [`parse_pubkey`]'s 43-44 char window so pubkeys with
+/// leading zero bytes (shorter encodings) still pass through.
+pub fn parse_or_resolve_multicastgroup<C: CliCommand>(
+    client: &C,
+    input: &str,
+) -> eyre::Result<Pubkey> {
+    match Pubkey::from_str(input).ok() {
+        Some(pk) => Ok(pk),
+        None => client
+            .get_multicastgroup(GetMulticastGroupCommand {
+                pubkey_or_code: input.to_string(),
+            })
+            .map(|(pubkey, _)| pubkey)
+            .wrap_err_with(|| format!("Multicast group not found: {input}")),
+    }
 }
 
 /// Resolve a `--pubkey`/`--code` argument to the contributor's on-chain pubkey.

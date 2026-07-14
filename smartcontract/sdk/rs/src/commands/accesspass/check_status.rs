@@ -1,9 +1,7 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_accesspass_pda,
-    processors::accesspass::check_status::CheckStatusAccessPassArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use crate::DoubleZeroClient;
+use doublezero_serviceability::processors::accesspass::check_status::CheckStatusAccessPassArgs;
+use doublezero_serviceability_instruction::accesspass::check_status_access_pass;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -14,20 +12,13 @@ pub struct CheckStatusAccessPassCommand {
 
 impl CheckStatusAccessPassCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        let (pda_pubkey, _) =
-            get_accesspass_pda(&client.get_program_id(), &self.client_ip, &self.user_payer);
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::CheckStatusAccessPass(CheckStatusAccessPassArgs {}),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new_readonly(globalstate_pubkey, false),
-            ],
-        )
+        client.send_transaction(check_status_access_pass(
+            &client.get_program_id(),
+            &client.get_payer(),
+            self.client_ip,
+            &self.user_payer,
+            CheckStatusAccessPassArgs {},
+        ))
     }
 }
 
@@ -37,40 +28,35 @@ mod tests {
         commands::accesspass::check_status::CheckStatusAccessPassCommand,
         tests::utils::create_test_client, DoubleZeroClient,
     };
-    use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_accesspass_pda, get_globalstate_pda},
-        processors::accesspass::check_status::CheckStatusAccessPassArgs,
-    };
+    use doublezero_serviceability::processors::accesspass::check_status::CheckStatusAccessPassArgs;
+    use doublezero_serviceability_instruction::accesspass::check_status_access_pass;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_expire_command() {
         let mut client = create_test_client();
 
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
         let client_ip = [10, 0, 0, 1].into();
-        let payer = Pubkey::new_unique();
+        let user_payer = Pubkey::new_unique();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_accesspass_pda(&client.get_program_id(), &client_ip, &payer);
-
+        let expected = check_status_access_pass(
+            &program_id,
+            &payer,
+            client_ip,
+            &user_payer,
+            CheckStatusAccessPassArgs {},
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CheckStatusAccessPass(
-                    CheckStatusAccessPassArgs {},
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new_readonly(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = CheckStatusAccessPassCommand {
             client_ip,
-            user_payer: payer,
+            user_payer,
         }
         .execute(&client);
         assert!(res.is_ok());

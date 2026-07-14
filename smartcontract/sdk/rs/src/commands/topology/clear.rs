@@ -1,15 +1,13 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_topology_pda,
-    processors::topology::clear::TopologyClearArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use crate::DoubleZeroClient;
+use doublezero_serviceability::processors::topology::clear::TopologyClearArgs;
+use doublezero_serviceability_instruction::topology::clear_topology_batched;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 /// Max link accounts per clear transaction. Solana caps transactions at 32
 /// accounts; with 2 fixed accounts (topology PDA, globalstate) plus the payer
-/// and system_program appended by the client, we stay well under that limit at
+/// and system_program appended by the builder, we stay well under that limit at
 /// 16 (same constant as backfill).
-pub const CLEAR_BATCH_SIZE: usize = 16;
+pub use doublezero_serviceability_instruction::topology::CLEAR_BATCH_SIZE;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ClearTopologyCommand {
@@ -19,33 +17,20 @@ pub struct ClearTopologyCommand {
 
 impl ClearTopologyCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Vec<Signature>> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        let (topology_pda, _) = get_topology_pda(&client.get_program_id(), &self.name);
-
-        // payer and system_program are appended by execute_authorized_transaction
-        // after the variable-length link list, so they are not listed here.
-        let fixed_accounts = [
-            AccountMeta::new_readonly(topology_pda, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-        ];
+        // The builder derives the topology and globalstate PDAs and chunks the
+        // link list into per-transaction batches (empty links -> empty vec).
+        let ixs = clear_topology_batched(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.link_pubkeys,
+            TopologyClearArgs {
+                name: self.name.clone(),
+            },
+        );
 
         let mut signatures = Vec::new();
-        for chunk in self.link_pubkeys.chunks(CLEAR_BATCH_SIZE) {
-            let mut accounts = fixed_accounts.to_vec();
-            for link_pk in chunk {
-                accounts.push(AccountMeta::new(*link_pk, false));
-            }
-
-            let sig = client.execute_authorized_transaction(
-                DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
-                    name: self.name.clone(),
-                }),
-                accounts,
-            )?;
-            signatures.push(sig);
+        for ix in ixs {
+            signatures.push(client.send_transaction(ix)?);
         }
 
         Ok(signatures)
@@ -55,17 +40,13 @@ impl ClearTopologyCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::topology::clear::{ClearTopologyCommand, CLEAR_BATCH_SIZE},
-        tests::utils::create_test_client,
+        commands::topology::clear::ClearTopologyCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
-    use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_topology_pda},
-        processors::topology::clear::TopologyClearArgs,
-    };
-    use mockall::{predicate, Sequence};
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use doublezero_serviceability::processors::topology::clear::TopologyClearArgs;
+    use doublezero_serviceability_instruction::topology::clear_topology_batched;
+    use mockall::predicate;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_topology_clear_command_no_links_sends_no_tx() {
@@ -84,25 +65,24 @@ mod tests {
     fn test_commands_topology_clear_command_with_links() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "my-topology");
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
         let link1 = Pubkey::new_unique();
         let link2 = Pubkey::new_unique();
 
+        let expected = clear_topology_batched(
+            &program_id,
+            &payer,
+            &[link1, link2],
+            TopologyClearArgs {
+                name: "my-topology".to_string(),
+            },
+        );
+        assert_eq!(expected.len(), 1);
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
-                    name: "my-topology".to_string(),
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new_readonly(topology_pda, false),
-                    AccountMeta::new_readonly(globalstate_pubkey, false),
-                    AccountMeta::new(link1, false),
-                    AccountMeta::new(link2, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected[0].clone()))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = ClearTopologyCommand {
             name: "my-topology".to_string(),
@@ -117,35 +97,27 @@ mod tests {
     fn test_commands_topology_clear_batches_at_16() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "my-topology");
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
         let links: Vec<Pubkey> = (0..33).map(|_| Pubkey::new_unique()).collect();
 
-        let fixed_accounts = vec![
-            AccountMeta::new_readonly(topology_pda, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-        ];
-
-        let expected_args = DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
-            name: "my-topology".to_string(),
-        });
-
-        let mut seq = Sequence::new();
-        for chunk in links.chunks(CLEAR_BATCH_SIZE) {
-            let mut expected_accounts = fixed_accounts.clone();
-            for link_pk in chunk {
-                expected_accounts.push(AccountMeta::new(*link_pk, false));
-            }
+        // 33 links -> 3 chunks (16 + 16 + 1). Register each expected instruction.
+        let expected = clear_topology_batched(
+            &program_id,
+            &payer,
+            &links,
+            TopologyClearArgs {
+                name: "my-topology".to_string(),
+            },
+        );
+        assert_eq!(expected.len(), 3);
+        for ix in expected {
             client
-                .expect_execute_authorized_transaction()
+                .expect_send_transaction()
                 .times(1)
-                .in_sequence(&mut seq)
-                .with(
-                    predicate::eq(expected_args.clone()),
-                    predicate::eq(expected_accounts),
-                )
-                .returning(|_, _| Ok(Signature::new_unique()));
+                .with(predicate::eq(ix))
+                .returning(|_| Ok(Signature::new_unique()));
         }
 
         let res = ClearTopologyCommand {

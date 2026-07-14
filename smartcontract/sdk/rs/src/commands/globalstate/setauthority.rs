@@ -1,8 +1,7 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::globalstate::setauthority::SetAuthorityArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use crate::DoubleZeroClient;
+use doublezero_serviceability::processors::globalstate::setauthority::SetAuthorityArgs;
+use doublezero_serviceability_instruction::globalstate::set_authority;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetAuthorityCommand {
@@ -14,19 +13,16 @@ pub struct SetAuthorityCommand {
 
 impl SetAuthorityCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
+        client.send_transaction(set_authority(
+            &client.get_program_id(),
+            &client.get_payer(),
+            SetAuthorityArgs {
                 activator_authority_pk: self.activator_authority_pk,
                 sentinel_authority_pk: self.sentinel_authority_pk,
                 health_oracle_pk: self.health_oracle_pk,
                 feed_authority_pk: self.feed_authority_pk,
-            }),
-            vec![AccountMeta::new(globalstate_pubkey, false)],
-        )
+            },
+        ))
     }
 }
 
@@ -36,36 +32,37 @@ mod tests {
         commands::globalstate::setauthority::SetAuthorityCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
-    use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
-        processors::globalstate::setauthority::SetAuthorityArgs,
-    };
+    use doublezero_serviceability::processors::globalstate::setauthority::SetAuthorityArgs;
+    use doublezero_serviceability_instruction::globalstate::set_authority;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_setauthority_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
         let activator_authority_pk = Pubkey::new_unique();
         let sentinel_authority_pk = Pubkey::new_unique();
         let health_oracle_pk = Pubkey::new_unique();
         let feed_authority_pk = Pubkey::new_unique();
 
+        let expected = set_authority(
+            &program_id,
+            &payer,
+            SetAuthorityArgs {
+                activator_authority_pk: Some(activator_authority_pk),
+                sentinel_authority_pk: Some(sentinel_authority_pk),
+                health_oracle_pk: Some(health_oracle_pk),
+                feed_authority_pk: Some(feed_authority_pk),
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
-                    activator_authority_pk: Some(activator_authority_pk),
-                    sentinel_authority_pk: Some(sentinel_authority_pk),
-                    health_oracle_pk: Some(health_oracle_pk),
-                    feed_authority_pk: Some(feed_authority_pk),
-                })),
-                predicate::eq(vec![AccountMeta::new(globalstate_pubkey, false)]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = SetAuthorityCommand {
             activator_authority_pk: Some(activator_authority_pk),

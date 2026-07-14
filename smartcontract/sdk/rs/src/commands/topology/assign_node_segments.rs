@@ -1,16 +1,12 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::{get_resource_extension_pda, get_topology_pda},
-    processors::topology::assign_node_segments::AssignTopologyNodeSegmentsArgs,
-    resource::ResourceType,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use crate::DoubleZeroClient;
+use doublezero_serviceability::processors::topology::assign_node_segments::AssignTopologyNodeSegmentsArgs;
+use doublezero_serviceability_instruction::topology::assign_topology_node_segments_batched;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 /// Max device accounts per backfill transaction. Solana caps transactions at
 /// 32 accounts; with 5 non-device accounts (3 fixed PDAs + payer + system_program
-/// appended by the client) we stay well under that limit at 4.
-pub const BACKFILL_BATCH_SIZE: usize = 4;
+/// appended by the builder) we stay well under that limit at 4.
+pub use doublezero_serviceability_instruction::topology::BACKFILL_BATCH_SIZE;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct AssignTopologyNodeSegmentsCommand {
@@ -20,34 +16,21 @@ pub struct AssignTopologyNodeSegmentsCommand {
 
 impl AssignTopologyNodeSegmentsCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Vec<Signature>> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        let (topology_pda, _) = get_topology_pda(&client.get_program_id(), &self.name);
-        let (segment_routing_ids_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
-
-        let fixed_accounts = [
-            AccountMeta::new_readonly(topology_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-        ];
+        // The builder derives the topology, segment-routing-ids and globalstate
+        // PDAs and chunks the device list into per-transaction batches (empty
+        // devices -> empty vec).
+        let ixs = assign_topology_node_segments_batched(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.device_pubkeys,
+            AssignTopologyNodeSegmentsArgs {
+                name: self.name.clone(),
+            },
+        );
 
         let mut signatures = Vec::new();
-        for chunk in self.device_pubkeys.chunks(BACKFILL_BATCH_SIZE) {
-            let mut accounts = fixed_accounts.to_vec();
-            for device_pk in chunk {
-                accounts.push(AccountMeta::new(*device_pk, false));
-            }
-
-            let sig = client.execute_authorized_transaction(
-                DoubleZeroInstruction::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs {
-                    name: self.name.clone(),
-                }),
-                accounts,
-            )?;
-            signatures.push(sig);
+        for ix in ixs {
+            signatures.push(client.send_transaction(ix)?);
         }
 
         Ok(signatures)
@@ -57,20 +40,13 @@ impl AssignTopologyNodeSegmentsCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::topology::assign_node_segments::{
-            AssignTopologyNodeSegmentsCommand, BACKFILL_BATCH_SIZE,
-        },
-        tests::utils::create_test_client,
-        DoubleZeroClient,
+        commands::topology::assign_node_segments::AssignTopologyNodeSegmentsCommand,
+        tests::utils::create_test_client, DoubleZeroClient,
     };
-    use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
-        processors::topology::assign_node_segments::AssignTopologyNodeSegmentsArgs,
-        resource::ResourceType,
-    };
-    use mockall::{predicate, Sequence};
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use doublezero_serviceability::processors::topology::assign_node_segments::AssignTopologyNodeSegmentsArgs;
+    use doublezero_serviceability_instruction::topology::assign_topology_node_segments_batched;
+    use mockall::predicate;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_topology_backfill_no_devices_sends_no_tx() {
@@ -89,30 +65,24 @@ mod tests {
     fn test_commands_topology_backfill_with_devices() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "algo128");
-        let (sr_ids_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
         let device1 = Pubkey::new_unique();
         let device2 = Pubkey::new_unique();
 
+        let expected = assign_topology_node_segments_batched(
+            &program_id,
+            &payer,
+            &[device1, device2],
+            AssignTopologyNodeSegmentsArgs {
+                name: "algo128".to_string(),
+            },
+        );
+        assert_eq!(expected.len(), 1);
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::AssignTopologyNodeSegments(
-                    AssignTopologyNodeSegmentsArgs {
-                        name: "algo128".to_string(),
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new_readonly(topology_pda, false),
-                    AccountMeta::new(sr_ids_pda, false),
-                    AccountMeta::new_readonly(globalstate_pubkey, false),
-                    AccountMeta::new(device1, false),
-                    AccountMeta::new(device2, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected[0].clone()))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = AssignTopologyNodeSegmentsCommand {
             name: "algo128".to_string(),
@@ -127,39 +97,27 @@ mod tests {
     fn test_commands_topology_backfill_batches_at_16() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "algo128");
-        let (sr_ids_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
         let devices: Vec<Pubkey> = (0..33).map(|_| Pubkey::new_unique()).collect();
 
-        let fixed_accounts = vec![
-            AccountMeta::new_readonly(topology_pda, false),
-            AccountMeta::new(sr_ids_pda, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-        ];
-
-        let expected_args =
-            DoubleZeroInstruction::AssignTopologyNodeSegments(AssignTopologyNodeSegmentsArgs {
+        // 33 devices -> 9 chunks (8 * 4 + 1). Register each expected instruction.
+        let expected = assign_topology_node_segments_batched(
+            &program_id,
+            &payer,
+            &devices,
+            AssignTopologyNodeSegmentsArgs {
                 name: "algo128".to_string(),
-            });
-
-        let mut seq = Sequence::new();
-        for chunk in devices.chunks(BACKFILL_BATCH_SIZE) {
-            let mut expected_accounts = fixed_accounts.clone();
-            for device_pk in chunk {
-                expected_accounts.push(AccountMeta::new(*device_pk, false));
-            }
+            },
+        );
+        assert_eq!(expected.len(), 9);
+        for ix in expected {
             client
-                .expect_execute_authorized_transaction()
+                .expect_send_transaction()
                 .times(1)
-                .in_sequence(&mut seq)
-                .with(
-                    predicate::eq(expected_args.clone()),
-                    predicate::eq(expected_accounts),
-                )
-                .returning(|_, _| Ok(Signature::new_unique()));
+                .with(predicate::eq(ix))
+                .returning(|_| Ok(Signature::new_unique()));
         }
 
         let res = AssignTopologyNodeSegmentsCommand {

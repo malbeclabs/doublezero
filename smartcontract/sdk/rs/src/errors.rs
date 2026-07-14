@@ -98,7 +98,7 @@ impl From<Error> for TransportError {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Error returned by `execute_transaction_quiet` on simulation failure.
+/// Error returned by `send_transaction_quiet` on simulation failure.
 /// Carries the program logs so callers can inspect them and decide whether to print.
 #[derive(ThisError, Debug)]
 #[error("{source}")]

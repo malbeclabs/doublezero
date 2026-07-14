@@ -1,14 +1,7 @@
-use crate::{
-    commands::{
-        globalstate::get::GetGlobalStateCommand, multicastgroup::get::GetMulticastGroupCommand,
-    },
-    DoubleZeroClient,
-};
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
-    processors::multicastgroup::delete::MulticastGroupDeleteArgs, resource::ResourceType,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use crate::{commands::multicastgroup::get::GetMulticastGroupCommand, DoubleZeroClient};
+use doublezero_serviceability::processors::multicastgroup::delete::MulticastGroupDeleteArgs;
+use doublezero_serviceability_instruction::multicastgroup::delete_multicast_group;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteMulticastGroupCommand {
@@ -17,31 +10,21 @@ pub struct DeleteMulticastGroupCommand {
 
 impl DeleteMulticastGroupCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let (_, mgroup) = GetMulticastGroupCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
         .execute(client)
         .map_err(|_err| eyre::eyre!("MulticastGroup not found"))?;
 
-        let (multicast_group_block_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::MulticastGroupBlock);
-        let accounts = vec![
-            AccountMeta::new(self.pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(multicast_group_block_ext, false),
-            AccountMeta::new(mgroup.owner, false),
-        ];
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::DeleteMulticastGroup(MulticastGroupDeleteArgs {
+        client.send_transaction(delete_multicast_group(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            &mgroup.owner,
+            MulticastGroupDeleteArgs {
                 use_onchain_deallocation: true,
-            }),
-            accounts,
-        )
+            },
+        ))
     }
 }
 
@@ -52,18 +35,17 @@ mod tests {
         tests::utils::create_test_client, DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_multicastgroup_pda, get_resource_extension_pda},
+        pda::get_multicastgroup_pda,
         processors::multicastgroup::delete::MulticastGroupDeleteArgs,
-        resource::ResourceType,
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
             multicastgroup::{MulticastGroup, MulticastGroupStatus},
         },
     };
+    use doublezero_serviceability_instruction::multicastgroup::delete_multicast_group;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::net::Ipv4Addr;
 
     fn make_test_mgroup(owner: Pubkey, bump_seed: u8) -> MulticastGroup {
@@ -87,10 +69,8 @@ mod tests {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let payer = client.get_payer();
         let (pda_pubkey, mgroup_bump) = get_multicastgroup_pda(&program_id, 1);
-        let (multicast_group_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
         let owner = Pubkey::new_unique();
         let mgroup = make_test_mgroup(owner, mgroup_bump);
 
@@ -100,22 +80,19 @@ mod tests {
             .with(predicate::eq(pda_pubkey))
             .returning(move |_| Ok(AccountData::MulticastGroup(mgroup_cloned.clone())));
 
+        let expected = delete_multicast_group(
+            &program_id,
+            &payer,
+            &pda_pubkey,
+            &owner,
+            MulticastGroupDeleteArgs {
+                use_onchain_deallocation: true,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::DeleteMulticastGroup(
-                    MulticastGroupDeleteArgs {
-                        use_onchain_deallocation: true,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(multicast_group_block_ext, false),
-                    AccountMeta::new(owner, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = DeleteMulticastGroupCommand { pubkey: pda_pubkey }.execute(&client);
 

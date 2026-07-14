@@ -1,15 +1,12 @@
 use async_trait::async_trait;
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    state::{accountdata::AccountData, accounttype::AccountType},
-};
+use doublezero_serviceability::state::{accountdata::AccountData, accounttype::AccountType};
 use futures::{future::BoxFuture, stream::BoxStream, Future};
 use solana_client::{
     nonblocking::pubsub_client::PubsubClientResult, rpc_config::RpcProgramAccountsConfig,
 };
 use solana_rpc_client_api::response::{Response, RpcKeyedAccount};
 use solana_sdk::{
-    account::Account, instruction::AccountMeta, pubkey::Pubkey, signature::Signature,
+    account::Account, instruction::Instruction, pubkey::Pubkey, signature::Signature,
 };
 use std::collections::HashMap;
 
@@ -37,36 +34,15 @@ pub trait DoubleZeroClient {
         config: RpcProgramAccountsConfig,
     ) -> eyre::Result<Vec<(Pubkey, Account)>>;
 
-    fn execute_transaction(
-        &self,
-        instruction: DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-    ) -> eyre::Result<Signature>;
+    /// Prepend the compute-budget prelude to a pre-built serviceability
+    /// `Instruction` (from a `doublezero-serviceability-instruction` builder),
+    /// then sign and send. The builder owns the trailing `[payer, system]`
+    /// accounts (RFC-26); the send path no longer touches account layout.
+    fn send_transaction(&self, instruction: Instruction) -> eyre::Result<Signature>;
 
-    /// Like `execute_transaction`, but suppresses program log output on simulation failure.
+    /// Like `send_transaction`, but suppresses program log output on simulation failure.
     /// Use this for transactions where simulation failures are expected (e.g., race conditions).
-    fn execute_transaction_quiet(
-        &self,
-        instruction: DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-    ) -> eyre::Result<Signature>;
-
-    /// Like `execute_transaction` but appends the payer's Permission PDA
-    /// (read-only) when it exists on-chain, so `authorize()` can find it.
-    /// Use this for instructions whose processor calls `authorize()`.
-    fn execute_authorized_transaction(
-        &self,
-        instruction: DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-    ) -> eyre::Result<Signature>;
-
-    /// Like `execute_authorized_transaction`, but suppresses program log output on simulation failure.
-    /// Use this for authorized transactions where simulation failures are expected (e.g., race conditions).
-    fn execute_authorized_transaction_quiet(
-        &self,
-        instruction: DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-    ) -> eyre::Result<Signature>;
+    fn send_transaction_quiet(&self, instruction: Instruction) -> eyre::Result<Signature>;
 
     fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>>;
 }

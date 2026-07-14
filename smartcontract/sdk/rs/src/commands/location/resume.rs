@@ -1,8 +1,7 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::location::resume::LocationResumeArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use crate::DoubleZeroClient;
+use doublezero_serviceability::processors::location::resume::LocationResumeArgs;
+use doublezero_serviceability_instruction::location::resume_location;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ResumeLocationCommand {
@@ -11,17 +10,12 @@ pub struct ResumeLocationCommand {
 
 impl ResumeLocationCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {}),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-        )
+        client.send_transaction(resume_location(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            LocationResumeArgs {},
+        ))
     }
 }
 
@@ -32,30 +26,25 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_location_pda},
-        processors::location::resume::LocationResumeArgs,
+        pda::get_location_pda, processors::location::resume::LocationResumeArgs,
     };
+    use doublezero_serviceability_instruction::location::resume_location;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::signature::Signature;
 
     #[test]
     fn test_commands_location_resume_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (pda_pubkey, _) = get_location_pda(&program_id, 1);
 
+        let expected = resume_location(&program_id, &payer, &pda_pubkey, LocationResumeArgs {});
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::ResumeLocation(LocationResumeArgs {})),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = ResumeLocationCommand { pubkey: pda_pubkey }.execute(&client);
 

@@ -3,17 +3,15 @@ use crate::{
         contributor::get::GetContributorCommand, device::get::GetDeviceCommand,
         link::get::GetLinkCommand,
     },
-    DoubleZeroClient, GetGlobalStateCommand,
+    DoubleZeroClient,
 };
 use doublezero_program_common::{types::NetworkV4, validate_account_code};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::get_resource_extension_pda,
     processors::link::update::LinkUpdateArgs,
-    resource::ResourceType,
     state::link::{LinkDesiredStatus, LinkLinkType, LinkStatus},
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::link::{update_link, LinkUpdateAuthority};
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateLinkCommand {
@@ -36,10 +34,6 @@ pub struct UpdateLinkCommand {
 
 impl UpdateLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let (_, link) = GetLinkCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
@@ -73,58 +67,42 @@ impl UpdateLinkCommand {
             .transpose()
             .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 
-        // Tunnel reallocation requires the resource extension accounts; other field updates skip them.
-        let updating_tunnel_resources = self.tunnel_id.is_some() || self.tunnel_net.is_some();
-
-        let mut accounts = if contributor_z.owner == payer {
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(device_z.contributor_pk, false),
-                AccountMeta::new(link.side_z_pk, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ]
+        // The link's own contributor authorizes, unless side-Z's contributor is the
+        // caller (owned by payer), in which case the side-Z preamble is used.
+        let authority = if contributor_z.owner == payer {
+            LinkUpdateAuthority::SideZContributor {
+                contributor: &device_z.contributor_pk,
+            }
         } else {
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(link.contributor_pk, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ]
+            LinkUpdateAuthority::Contributor {
+                contributor: &link.contributor_pk,
+            }
         };
-
-        // Device accounts needed when updating tunnel_net (for interface IP update)
-        if self.tunnel_net.is_some() {
-            accounts.push(AccountMeta::new(link.side_a_pk, false));
-            accounts.push(AccountMeta::new(link.side_z_pk, false));
-        }
-
-        if updating_tunnel_resources {
-            let (device_tunnel_block_ext, _, _) = get_resource_extension_pda(
-                &client.get_program_id(),
-                ResourceType::DeviceTunnelBlock,
-            );
-            let (link_ids_ext, _, _) =
-                get_resource_extension_pda(&client.get_program_id(), ResourceType::LinkIds);
-            accounts.push(AccountMeta::new(device_tunnel_block_ext, false));
-            accounts.push(AccountMeta::new(link_ids_ext, false));
-        }
 
         // When updating link_topologies, the processor diffs old vs new on-chain and
         // adjusts each topology's reference_count. Pass the union of the Link's current
         // link_topologies and the requested new set, all writable.
-        if let Some(ref new_topologies) = self.link_topologies {
+        let topology_union: Vec<Pubkey> = if let Some(ref new_topologies) = self.link_topologies {
             let mut union: Vec<Pubkey> = link.link_topologies.clone();
             for pk in new_topologies {
                 if !union.contains(pk) {
                     union.push(*pk);
                 }
             }
-            for topology_pk in union {
-                accounts.push(AccountMeta::new(topology_pk, false));
-            }
-        }
+            union
+        } else {
+            vec![]
+        };
 
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+        client.send_transaction(update_link(
+            &client.get_program_id(),
+            &payer,
+            &self.pubkey,
+            authority,
+            &link.side_a_pk,
+            &link.side_z_pk,
+            &topology_union,
+            LinkUpdateArgs {
                 code,
                 contributor_pk: self.contributor_pk,
                 tunnel_type: self.tunnel_type,
@@ -137,12 +115,11 @@ impl UpdateLinkCommand {
                 desired_status: self.desired_status,
                 tunnel_id: self.tunnel_id,
                 tunnel_net: self.tunnel_net,
-                use_onchain_allocation: updating_tunnel_resources,
+                use_onchain_allocation: false,
                 link_topologies: self.link_topologies.clone(),
                 unicast_drained: self.unicast_drained,
-            }),
-            accounts,
-        )
+            },
+        ))
     }
 }
 
@@ -150,15 +127,12 @@ impl UpdateLinkCommand {
 mod tests {
     use super::*;
     use crate::{tests::utils::create_test_client, MockDoubleZeroClient};
-    use doublezero_serviceability::{
-        pda::get_globalstate_pda,
-        state::{
-            accountdata::AccountData,
-            accounttype::AccountType,
-            contributor::{Contributor, ContributorStatus},
-            device::Device,
-            link::Link,
-        },
+    use doublezero_serviceability::state::{
+        accountdata::AccountData,
+        accounttype::AccountType,
+        contributor::{Contributor, ContributorStatus},
+        device::Device,
+        link::Link,
     };
     use mockall::predicate;
 
@@ -239,23 +213,34 @@ mod tests {
     #[test]
     fn test_update_link_side_z_uses_4_account_preamble() {
         let mut client = create_test_client();
+        let program_id = client.get_program_id();
         let payer = client.get_payer();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
 
         // contributor_z.owner == payer  =>  SDK should pick the side-Z layout
         let (link_pubkey, _contributor_a_pk, contributor_z_pk, side_z_pk) =
             setup_link_and_contributors(&mut client, payer);
 
+        // No tunnel_net / topologies -> side_a/side_z are not appended, so their
+        // values don't affect the produced instruction.
+        let expected = update_link(
+            &program_id,
+            &payer,
+            &link_pubkey,
+            LinkUpdateAuthority::SideZContributor {
+                contributor: &contributor_z_pk,
+            },
+            &Pubkey::default(),
+            &side_z_pk,
+            &[],
+            LinkUpdateArgs {
+                status: Some(LinkStatus::SoftDrained),
+                ..Default::default()
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .withf(move |_, accounts| {
-                accounts.len() == 4
-                    && accounts[0].pubkey == link_pubkey
-                    && accounts[1].pubkey == contributor_z_pk
-                    && accounts[2].pubkey == side_z_pk
-                    && accounts[3].pubkey == globalstate_pubkey
-            })
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = drain_command(link_pubkey).execute(&client);
         assert!(res.is_ok(), "execute failed: {:?}", res);
@@ -264,21 +249,32 @@ mod tests {
     #[test]
     fn test_update_link_side_a_uses_3_account_preamble() {
         let mut client = create_test_client();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
         // contributor_z.owner != payer  =>  SDK should fall back to the side-A layout
-        let (link_pubkey, contributor_a_pk, _contributor_z_pk, _side_z_pk) =
+        let (link_pubkey, contributor_a_pk, _contributor_z_pk, side_z_pk) =
             setup_link_and_contributors(&mut client, Pubkey::new_unique());
 
+        let expected = update_link(
+            &program_id,
+            &payer,
+            &link_pubkey,
+            LinkUpdateAuthority::Contributor {
+                contributor: &contributor_a_pk,
+            },
+            &Pubkey::default(),
+            &side_z_pk,
+            &[],
+            LinkUpdateArgs {
+                status: Some(LinkStatus::SoftDrained),
+                ..Default::default()
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .withf(move |_, accounts| {
-                accounts.len() == 3
-                    && accounts[0].pubkey == link_pubkey
-                    && accounts[1].pubkey == contributor_a_pk
-                    && accounts[2].pubkey == globalstate_pubkey
-            })
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = drain_command(link_pubkey).execute(&client);
         assert!(res.is_ok(), "execute failed: {:?}", res);

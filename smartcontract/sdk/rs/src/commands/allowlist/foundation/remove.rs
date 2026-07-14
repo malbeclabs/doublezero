@@ -1,8 +1,6 @@
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
-    processors::allowlist::foundation::remove::RemoveFoundationAllowlistArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability::processors::allowlist::foundation::remove::RemoveFoundationAllowlistArgs;
+use doublezero_serviceability_instruction::allowlist::remove_foundation_allowlist;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 use crate::DoubleZeroClient;
 
@@ -13,13 +11,12 @@ pub struct RemoveFoundationAllowlistCommand {
 
 impl RemoveFoundationAllowlistCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (pda_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::RemoveFoundationAllowlist(RemoveFoundationAllowlistArgs {
+        client.send_transaction(remove_foundation_allowlist(
+            &client.get_program_id(),
+            &client.get_payer(),
+            RemoveFoundationAllowlistArgs {
                 pubkey: self.pubkey,
-            }),
-            vec![AccountMeta::new(pda_pubkey, false)],
-        )
+            },
+        ))
     }
 }

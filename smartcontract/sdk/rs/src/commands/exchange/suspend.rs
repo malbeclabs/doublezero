@@ -1,8 +1,7 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::exchange::suspend::ExchangeSuspendArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use crate::DoubleZeroClient;
+use doublezero_serviceability::processors::exchange::suspend::ExchangeSuspendArgs;
+use doublezero_serviceability_instruction::exchange::suspend_exchange;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SuspendExchangeCommand {
@@ -11,17 +10,12 @@ pub struct SuspendExchangeCommand {
 
 impl SuspendExchangeCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::SuspendExchange(ExchangeSuspendArgs {}),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-        )
+        client.send_transaction(suspend_exchange(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            ExchangeSuspendArgs {},
+        ))
     }
 }
 
@@ -32,32 +26,25 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_exchange_pda, get_globalstate_pda},
-        processors::exchange::suspend::ExchangeSuspendArgs,
+        pda::get_exchange_pda, processors::exchange::suspend::ExchangeSuspendArgs,
     };
+    use doublezero_serviceability_instruction::exchange::suspend_exchange;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::signature::Signature;
 
     #[test]
     fn test_commands_exchange_suspend_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (pda_pubkey, _) = get_exchange_pda(&program_id, 1);
 
+        let expected = suspend_exchange(&program_id, &payer, &pda_pubkey, ExchangeSuspendArgs {});
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::SuspendExchange(
-                    ExchangeSuspendArgs {},
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = SuspendExchangeCommand { pubkey: pda_pubkey }.execute(&client);
 

@@ -1,11 +1,7 @@
-use crate::{
-    commands::{contributor::get::GetContributorCommand, globalstate::get::GetGlobalStateCommand},
-    DoubleZeroClient,
-};
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::contributor::delete::ContributorDeleteArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use crate::{commands::contributor::get::GetContributorCommand, DoubleZeroClient};
+use doublezero_serviceability::processors::contributor::delete::ContributorDeleteArgs;
+use doublezero_serviceability_instruction::contributor::delete_contributor;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteContributorCommand {
@@ -14,10 +10,6 @@ pub struct DeleteContributorCommand {
 
 impl DeleteContributorCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand {}
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let (_, contributor) = GetContributorCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
@@ -31,13 +23,12 @@ impl DeleteContributorCommand {
             ));
         }
 
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::DeleteContributor(ContributorDeleteArgs {}),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-        )
+        client.send_transaction(delete_contributor(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            ContributorDeleteArgs {},
+        ))
     }
 }
 
@@ -48,8 +39,7 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_contributor_pda, get_globalstate_pda},
+        pda::get_contributor_pda,
         processors::contributor::delete::ContributorDeleteArgs,
         state::{
             accountdata::AccountData,
@@ -57,15 +47,17 @@ mod tests {
             contributor::{Contributor, ContributorStatus},
         },
     };
+    use doublezero_serviceability_instruction::contributor::delete_contributor;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_contributor_delete_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_contributor_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (pda_pubkey, _) = get_contributor_pda(&program_id, 1);
         let contributor = Contributor {
             account_type: AccountType::Contributor,
             index: 1,
@@ -82,18 +74,12 @@ mod tests {
             .with(predicate::eq(pda_pubkey))
             .returning(move |_| Ok(AccountData::Contributor(contributor.clone())));
 
+        let expected =
+            delete_contributor(&program_id, &payer, &pda_pubkey, ContributorDeleteArgs {});
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::DeleteContributor(
-                    ContributorDeleteArgs {},
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = DeleteContributorCommand { pubkey: pda_pubkey }.execute(&client);
 

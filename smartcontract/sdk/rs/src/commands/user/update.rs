@@ -1,19 +1,14 @@
 use crate::{
-    commands::{
-        device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand,
-        user::get::GetUserCommand,
-    },
+    commands::{device::get::GetDeviceCommand, user::get::GetUserCommand},
     DoubleZeroClient,
 };
 use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::get_resource_extension_pda,
     processors::user::update::UserUpdateArgs,
-    resource::ResourceType,
     state::user::{UserCYOA, UserType},
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::user::update_user;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -31,15 +26,6 @@ pub struct UpdateUserCommand {
 
 impl UpdateUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        let mut accounts = vec![
-            AccountMeta::new(self.pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ];
-
         // UpdateUser always requires the user's resource-extension accounts so the
         // bitmaps stay in sync, even when only updating non-resource fields.
         let (_user_pubkey, user) = GetUserCommand {
@@ -69,48 +55,14 @@ impl UpdateUserCommand {
         })?;
         let multicast_publisher_count = 1u8;
 
-        let (user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
-        accounts.push(AccountMeta::new(user_tunnel_block_ext, false));
-
-        let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
+        client.send_transaction(update_user(
             &client.get_program_id(),
-            ResourceType::MulticastPublisherBlock,
-        );
-        accounts.push(AccountMeta::new(multicast_publisher_block_ext, false));
-
-        let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
-            &client.get_program_id(),
-            ResourceType::TunnelIds(user.device_pk, 0),
-        );
-        accounts.push(AccountMeta::new(device_tunnel_ids_ext, false));
-
-        for idx in 0..count {
-            let (dz_prefix_ext, _, _) = get_resource_extension_pda(
-                &client.get_program_id(),
-                ResourceType::DzPrefixBlock(user.device_pk, idx),
-            );
-            accounts.push(AccountMeta::new(dz_prefix_ext, false));
-        }
-
-        // If updating tenant_pk, add old and new tenant accounts for reference counting
-        if let Some(new_tenant_pk) = self.tenant_pk {
-            let old_tenant_pk = user.tenant_pk;
-
-            // Add tenant accounts (old_tenant, new_tenant).
-            // Initial tenant assignment: old_tenant_pk is Pubkey::default() (system
-            // program). Pass it readonly so the runtime doesn't reject the transaction;
-            // the processor skips it when its key is Pubkey::default().
-            if old_tenant_pk == Pubkey::default() {
-                accounts.push(AccountMeta::new_readonly(old_tenant_pk, false));
-            } else {
-                accounts.push(AccountMeta::new(old_tenant_pk, false));
-            }
-            accounts.push(AccountMeta::new(new_tenant_pk, false));
-        }
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
+            &client.get_payer(),
+            &self.pubkey,
+            &user.device_pk,
+            dz_prefix_count,
+            &user.tenant_pk,
+            UserUpdateArgs {
                 user_type: self.user_type,
                 cyoa_type: self.cyoa_type,
                 dz_ip: self.dz_ip,
@@ -121,9 +73,8 @@ impl UpdateUserCommand {
                 dz_prefix_count,
                 multicast_publisher_count,
                 tunnel_endpoint: self.tunnel_endpoint,
-            }),
-            accounts,
-        )
+            },
+        ))
     }
 }
 
@@ -134,10 +85,7 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_resource_extension_pda},
         processors::user::update::UserUpdateArgs,
-        resource::ResourceType,
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
@@ -145,8 +93,9 @@ mod tests {
             user::{User, UserCYOA, UserStatus, UserType},
         },
     };
+    use doublezero_serviceability_instruction::user::update_user;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::net::Ipv4Addr;
 
     #[test]
@@ -155,7 +104,6 @@ mod tests {
 
         let payer = client.get_payer();
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
         let user_pubkey = Pubkey::new_unique();
         let device_pk = Pubkey::new_unique();
@@ -202,40 +150,31 @@ mod tests {
             .with(predicate::eq(device_pk))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
-        let (user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-        let (multicast_publisher_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-        let (device_tunnel_ids_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
-        let (dz_prefix_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
-
+        // user.tenant_pk is default and tenant_pk is None, so no tenant accounts.
+        let expected = update_user(
+            &program_id,
+            &payer,
+            &user_pubkey,
+            &device_pk,
+            1,
+            &Pubkey::default(),
+            UserUpdateArgs {
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: Some(501),
+                tunnel_net: None,
+                validator_pubkey: None,
+                tenant_pk: None,
+                dz_prefix_count: 1,
+                multicast_publisher_count: 1,
+                tunnel_endpoint: None,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateUser(UserUpdateArgs {
-                    user_type: None,
-                    cyoa_type: None,
-                    dz_ip: None,
-                    tunnel_id: Some(501),
-                    tunnel_net: None,
-                    validator_pubkey: None,
-                    tenant_pk: None,
-                    dz_prefix_count: 1,
-                    multicast_publisher_count: 1,
-                    tunnel_endpoint: None,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(user_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(user_tunnel_block_ext, false),
-                    AccountMeta::new(multicast_publisher_block_ext, false),
-                    AccountMeta::new(device_tunnel_ids_ext, false),
-                    AccountMeta::new(dz_prefix_ext, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = UpdateUserCommand {
             pubkey: user_pubkey,

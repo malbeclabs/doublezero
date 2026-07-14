@@ -1,11 +1,9 @@
 use doublezero_program_common::validate_account_code;
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_feed_pda,
-    processors::feed::create::FeedCreateArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability::{pda::get_feed_pda, processors::feed::create::FeedCreateArgs};
+use doublezero_serviceability_instruction::feed::create_feed;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::DoubleZeroClient;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateFeedCommand {
@@ -22,26 +20,21 @@ impl CreateFeedCommand {
         let code =
             validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+        let program_id = client.get_program_id();
+        let (pda_pubkey, _) = get_feed_pda(&program_id, &code, &self.exchange);
 
-        let (pda_pubkey, _) = get_feed_pda(&client.get_program_id(), &code, &self.exchange);
-
-        // Accounts: [feed, globalstate, (payer, system appended by client)].
+        // The builder derives the feed and globalstate PDAs.
         client
-            .execute_transaction(
-                DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            .send_transaction(create_feed(
+                &program_id,
+                &client.get_payer(),
+                FeedCreateArgs {
                     code,
                     name: self.name.clone(),
                     exchange: self.exchange,
                     groups: self.groups.clone(),
-                }),
-                vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
-            )
+                },
+            ))
             .map(|sig| (sig, pda_pubkey))
     }
 }
@@ -52,38 +45,34 @@ mod tests {
         commands::feed::create::CreateFeedCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
-    use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_feed_pda, get_globalstate_pda},
-        processors::feed::create::FeedCreateArgs,
-    };
+    use doublezero_serviceability::processors::feed::create::FeedCreateArgs;
+    use doublezero_serviceability_instruction::feed::create_feed;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_feed_create_command() {
         let mut client = create_test_client();
 
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
         let exchange = Pubkey::new_unique();
         let group = Pubkey::new_unique();
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_feed_pda(&client.get_program_id(), "test_feed", &exchange);
 
+        let expected = create_feed(
+            &program_id,
+            &payer,
+            FeedCreateArgs {
+                code: "test_feed".to_string(),
+                name: "Test Feed".to_string(),
+                exchange,
+                groups: vec![group],
+            },
+        );
         client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
-                    code: "test_feed".to_string(),
-                    name: "Test Feed".to_string(),
-                    exchange,
-                    groups: vec![group],
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let create_command = CreateFeedCommand {
             code: "test_feed".to_string(),

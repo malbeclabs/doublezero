@@ -1,16 +1,11 @@
-use crate::{
-    commands::{device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand},
-    DoubleZeroClient,
-};
+use crate::{commands::device::get::GetDeviceCommand, DoubleZeroClient};
 use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::{get_resource_extension_pda, get_topology_pda},
     processors::device::interface::DeviceInterfaceUpdateArgs,
-    resource::ResourceType,
     state::interface::{InterfaceCYOA, InterfaceDIA, InterfaceStatus, LoopbackType, RoutingMode},
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::device::update_device_interface;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateDeviceInterfaceCommand {
@@ -36,49 +31,21 @@ pub struct UpdateDeviceInterfaceCommand {
 
 impl UpdateDeviceInterfaceCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let (device_pubkey, device) = GetDeviceCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
         .execute(client)?;
 
-        let mut accounts = vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(device.contributor_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ];
-
-        let update_topologies = self.topology_names.is_some();
-        let needs_seg_ext = self.node_segment_idx.is_some() || update_topologies;
-
-        if needs_seg_ext {
-            let (seg_routing_pda, _, _) = get_resource_extension_pda(
-                &client.get_program_id(),
-                ResourceType::SegmentRoutingIds,
-            );
-            accounts.push(AccountMeta::new(seg_routing_pda, false));
-        }
-
-        let topology_count: u8 = if let Some(names) = self.topology_names.as_ref() {
-            let n = names.len();
-            u8::try_from(n).map_err(|_| {
-                eyre::eyre!("too many topologies for one UpdateDeviceInterface call: {n} > 255")
-            })?
-        } else {
-            0
-        };
-        if update_topologies {
-            for name in self.topology_names.as_ref().unwrap() {
-                let (topology_pda, _) = get_topology_pda(&client.get_program_id(), name);
-                accounts.push(AccountMeta::new_readonly(topology_pda, false));
-            }
-        }
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::UpdateDeviceInterface(DeviceInterfaceUpdateArgs {
+        // The builder appends the SegmentRoutingIds resource (when node_segment_idx
+        // or topologies change) and the topology PDAs, and writes update_topologies /
+        // topology_count from the topology_names choice.
+        client.send_transaction(update_device_interface(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &device_pubkey,
+            &device.contributor_pk,
+            self.topology_names.as_deref(),
+            DeviceInterfaceUpdateArgs {
                 name: self.name.clone(),
                 loopback_type: self.loopback_type,
                 interface_cyoa: self.interface_cyoa,
@@ -92,11 +59,10 @@ impl UpdateDeviceInterfaceCommand {
                 status: self.status,
                 ip_net: self.ip_net,
                 node_segment_idx: self.node_segment_idx,
-                topology_count,
-                update_topologies,
-            }),
-            accounts,
-        )
+                topology_count: 0,
+                update_topologies: false,
+            },
+        ))
     }
 }
 
@@ -104,13 +70,10 @@ impl UpdateDeviceInterfaceCommand {
 mod tests {
     use super::*;
     use crate::tests::utils::create_test_client;
-    use doublezero_serviceability::{
-        pda::get_globalstate_pda,
-        state::{
-            accountdata::AccountData,
-            accounttype::AccountType,
-            device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
-        },
+    use doublezero_serviceability::state::{
+        accountdata::AccountData,
+        accounttype::AccountType,
+        device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
     };
     use mockall::predicate;
 
@@ -151,7 +114,8 @@ mod tests {
     fn test_commands_device_interface_update_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
         let device_pubkey = Pubkey::new_unique();
         let device = make_test_device();
@@ -162,23 +126,22 @@ mod tests {
             .with(predicate::eq(device_pubkey))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
+        let expected = update_device_interface(
+            &program_id,
+            &payer,
+            &device_pubkey,
+            &contributor_pk,
+            None,
+            DeviceInterfaceUpdateArgs {
+                name: "Ethernet0".to_string(),
+                vlan_id: Some(42),
+                ..Default::default()
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateDeviceInterface(
-                    DeviceInterfaceUpdateArgs {
-                        name: "Ethernet0".to_string(),
-                        vlan_id: Some(42),
-                        ..Default::default()
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(device_pubkey, false),
-                    AccountMeta::new(contributor_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let update_command = UpdateDeviceInterfaceCommand {
             pubkey: device_pubkey,
@@ -208,9 +171,7 @@ mod tests {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-        let (seg_routing_pda, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+        let payer = client.get_payer();
 
         let device_pubkey = Pubkey::new_unique();
         let device = make_test_device();
@@ -221,24 +182,22 @@ mod tests {
             .with(predicate::eq(device_pubkey))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
+        let expected = update_device_interface(
+            &program_id,
+            &payer,
+            &device_pubkey,
+            &contributor_pk,
+            None,
+            DeviceInterfaceUpdateArgs {
+                name: "loopback0".to_string(),
+                node_segment_idx: Some(42),
+                ..Default::default()
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateDeviceInterface(
-                    DeviceInterfaceUpdateArgs {
-                        name: "loopback0".to_string(),
-                        node_segment_idx: Some(42),
-                        ..Default::default()
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(device_pubkey, false),
-                    AccountMeta::new(contributor_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(seg_routing_pda, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let update_command = UpdateDeviceInterfaceCommand {
             pubkey: device_pubkey,
@@ -268,7 +227,7 @@ mod tests {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let payer = client.get_payer();
 
         let device_pubkey = Pubkey::new_unique();
         let device = make_test_device();
@@ -279,32 +238,23 @@ mod tests {
             .with(predicate::eq(device_pubkey))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
-        let (seg_routing_pda, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
-        let (topo_a, _) = get_topology_pda(&program_id, "TOPO-A");
-        let (topo_b, _) = get_topology_pda(&program_id, "TOPO-B");
-
+        // The builder writes update_topologies=true / topology_count=2 and appends
+        // the SegmentRoutingIds resource and the two topology PDAs.
+        let expected = update_device_interface(
+            &program_id,
+            &payer,
+            &device_pubkey,
+            &contributor_pk,
+            Some(&["TOPO-A".to_string(), "TOPO-B".to_string()]),
+            DeviceInterfaceUpdateArgs {
+                name: "Loopback256".to_string(),
+                ..Default::default()
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateDeviceInterface(
-                    DeviceInterfaceUpdateArgs {
-                        name: "Loopback256".to_string(),
-                        topology_count: 2,
-                        update_topologies: true,
-                        ..Default::default()
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(device_pubkey, false),
-                    AccountMeta::new(contributor_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(seg_routing_pda, false),
-                    AccountMeta::new_readonly(topo_a, false),
-                    AccountMeta::new_readonly(topo_b, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = UpdateDeviceInterfaceCommand {
             pubkey: device_pubkey,

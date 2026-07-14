@@ -1,9 +1,9 @@
-use crate::{DoubleZeroClient, GetGlobalStateCommand};
+use crate::DoubleZeroClient;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::link::sethealth::LinkSetHealthArgs,
-    state::link::LinkHealth,
+    processors::link::sethealth::LinkSetHealthArgs, state::link::LinkHealth,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::link::set_link_health;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetLinkHealthCommand {
@@ -13,18 +13,13 @@ pub struct SetLinkHealthCommand {
 
 impl SetLinkHealthCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::SetLinkHealth(LinkSetHealthArgs {
+        client.send_transaction(set_link_health(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            LinkSetHealthArgs {
                 health: self.health,
-            }),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-        )
+            },
+        ))
     }
 }

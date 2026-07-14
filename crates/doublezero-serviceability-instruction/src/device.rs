@@ -28,6 +28,11 @@ use solana_program::{
 /// dz_prefix_block[i]    (writable)  — one per args.dz_prefixes entry
 /// ```
 ///
+/// The writable flags mirror the existing SDK command exactly (e.g. `globalconfig`
+/// is only read by the processor but is sent writable there too). Byte-parity is
+/// deliberate — the golden fixtures freeze this layout — so the flags are kept as
+/// the SDK emits them rather than tightened.
+///
 /// The `dz_prefix` blocks and `args.resource_count` are produced from the same
 /// loop, so the declared count can never disagree with the account list.
 ///
@@ -123,6 +128,10 @@ pub enum DeviceDeleteResources<'a> {
 ///   ```
 ///
 /// `owners.len()` drives both the resource-PDA loop and `args.resource_count`.
+///
+/// The writable flags mirror the existing SDK command (e.g. `globalstate` is sent
+/// writable there too, even though the processor validates it `writable = false`).
+/// Byte-parity is deliberate and frozen by the fixtures.
 ///
 /// `process_delete_device` routes through `authorize()` (NETWORK_ADMIN, for the
 /// non-contributor override), so this builder is assigned to

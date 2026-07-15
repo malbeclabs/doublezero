@@ -5,6 +5,7 @@ use doublezero_sdk::commands::{
     accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
     tenant::list::ListTenantCommand,
 };
+use doublezero_serviceability::state::accesspass::AccessPassType;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
@@ -23,12 +24,28 @@ pub struct GetAccessPassCliCommand {
     pub json: bool,
 }
 
+/// Per-feed seat detail for the JSON view of an EdgeSeat pass. The table view and the
+/// `type` summary show only a feed count, so these per-feed user counts and billing
+/// windows are otherwise invisible.
+#[derive(Serialize)]
+struct FeedSeatDisplay {
+    pub feed_key: String,
+    pub max_users: u8,
+    pub max_future_users: u8,
+    pub current_users: u8,
+    pub anniversary_day: u8,
+    pub window_end: i64,
+    pub terminates_at: i64,
+}
+
 #[derive(Tabled, Serialize)]
 struct AccessPassDisplay {
     pub account: String,
     #[tabled(rename = "type")]
     #[serde(rename = "type")]
     pub accesspass_type: String,
+    #[tabled(skip)]
+    pub feed_seats: Vec<FeedSeatDisplay>,
     pub client_ip: String,
     pub user_payer: String,
     pub tenant: String,
@@ -42,6 +59,26 @@ struct AccessPassDisplay {
     pub multicast_users: String,
     pub status: String,
     pub owner: String,
+}
+
+/// The EdgeSeat feed seats as display rows, so `--json` exposes each feed's user
+/// counts and billing windows. Empty for non-EdgeSeat passes.
+fn feed_seat_displays(accesspass_type: &AccessPassType) -> Vec<FeedSeatDisplay> {
+    match accesspass_type {
+        AccessPassType::EdgeSeat(seats) => seats
+            .iter()
+            .map(|seat| FeedSeatDisplay {
+                feed_key: seat.feed_key.to_string(),
+                max_users: seat.max_users,
+                max_future_users: seat.max_future_users,
+                current_users: seat.current_users,
+                anniversary_day: seat.anniversary_day,
+                window_end: seat.window_end,
+                terminates_at: seat.terminates_at,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 impl GetAccessPassCliCommand {
@@ -100,6 +137,7 @@ impl GetAccessPassCliCommand {
         let display = AccessPassDisplay {
             account: pubkey.to_string(),
             accesspass_type: accesspass.accesspass_type.to_string(),
+            feed_seats: feed_seat_displays(&accesspass.accesspass_type),
             client_ip: accesspass.client_ip.to_string(),
             user_payer: accesspass.user_payer.to_string(),
             tenant: tenant_display.join(", "),
@@ -149,7 +187,7 @@ mod tests {
         AccountType, MulticastGroup,
     };
     use doublezero_serviceability::state::{
-        accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat},
         tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
     };
     use mockall::predicate;
@@ -308,5 +346,28 @@ mod tests {
             has_row("owner", &accesspass.owner.to_string()),
             "owner row should contain value"
         );
+    }
+
+    #[test]
+    fn test_edge_seat_feed_seats_expose_per_seat_users() {
+        let feed_key = Pubkey::new_unique();
+        let seats = vec![FeedSeat {
+            feed_key,
+            max_users: 2,
+            max_future_users: 2,
+            current_users: 1,
+            anniversary_day: 15,
+            window_end: 100,
+            terminates_at: 200,
+        }];
+        let displays = super::feed_seat_displays(&AccessPassType::EdgeSeat(seats));
+        assert_eq!(displays.len(), 1);
+        assert_eq!(displays[0].feed_key, feed_key.to_string());
+        assert_eq!(displays[0].max_users, 2);
+        assert_eq!(displays[0].current_users, 1);
+        assert_eq!(displays[0].terminates_at, 200);
+
+        // Non-EdgeSeat passes carry no per-feed seats.
+        assert!(super::feed_seat_displays(&AccessPassType::Prepaid).is_empty());
     }
 }

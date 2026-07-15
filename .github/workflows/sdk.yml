@@ -4,6 +4,9 @@ on:
     branches: [ main, 'hotfix/**' ]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   sdk-version-check:
     runs-on: ubuntu-latest

@@ -222,7 +222,12 @@ generate-fixtures:
 .PHONY: check-fixtures
 check-fixtures: generate-fixtures
 	git diff --exit-code -- 'sdk/*/testdata/fixtures/*.bin' 'sdk/*/testdata/fixtures/*.json'
-
+	@untracked="$$(git ls-files --others --exclude-standard -- 'sdk/*/testdata/fixtures/*.bin' 'sdk/*/testdata/fixtures/*.json')"; \
+	if [ -n "$$untracked" ]; then \
+	  echo "Untracked fixture files (run 'make generate-fixtures' and commit them):"; \
+	  echo "$$untracked"; \
+	  exit 1; \
+	fi
 # -----------------------------------------------------------------------------
 # E2E targets
 #

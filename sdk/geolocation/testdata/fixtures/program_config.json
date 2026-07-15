@@ -1,0 +1,26 @@
+{
+  "name": "GeolocationProgramConfig",
+  "account_type": 1,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "254",
+      "typ": "u8"
+    },
+    {
+      "name": "Version",
+      "value": "3",
+      "typ": "u32"
+    },
+    {
+      "name": "MinCompatibleVersion",
+      "value": "1",
+      "typ": "u32"
+    }
+  ]
+}

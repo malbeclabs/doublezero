@@ -1,0 +1,136 @@
+{
+  "name": "GeolocationUser",
+  "account_type": 3,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "3",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "4ENa2mq3u8mGcCmmRDnRyUmyRU7ztbtX2dodAMtmbcjZ",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Code",
+      "value": "geo-user-01",
+      "typ": "string"
+    },
+    {
+      "name": "TokenAccount",
+      "value": "4JGygGZ8nyFz1ttjvj3ssQXCgUgmbYzRcW7WfZCmKRPu",
+      "typ": "pubkey"
+    },
+    {
+      "name": "PaymentStatus",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "BillingDiscriminant",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "BillingRate",
+      "value": "1000",
+      "typ": "u64"
+    },
+    {
+      "name": "BillingLastDeductionDzEpoch",
+      "value": "42",
+      "typ": "u64"
+    },
+    {
+      "name": "Status",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "TargetsLen",
+      "value": "3",
+      "typ": "u32"
+    },
+    {
+      "name": "Target0Type",
+      "value": "0",
+      "typ": "u8"
+    },
+    {
+      "name": "Target0IP",
+      "value": "8.8.8.8",
+      "typ": "ipv4"
+    },
+    {
+      "name": "Target0LocationOffsetPort",
+      "value": "8923",
+      "typ": "u16"
+    },
+    {
+      "name": "Target0TargetPK",
+      "value": "11111111111111111111111111111111",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Target0GeoProbePK",
+      "value": "4S5nyG1JaeFQqH8gwjamfG1fCVpK1TCEnEjHfwpkm2ib",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Target1Type",
+      "value": "1",
+      "typ": "u8"
+    },
+    {
+      "name": "Target1IP",
+      "value": "0.0.0.0",
+      "typ": "ipv4"
+    },
+    {
+      "name": "Target1LocationOffsetPort",
+      "value": "0",
+      "typ": "u16"
+    },
+    {
+      "name": "Target1TargetPK",
+      "value": "4NBPKmHDgokhRb1iSEKKmLGRwVFYJW6LCNRQAkWm3E4F",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Target1GeoProbePK",
+      "value": "4S5nyG1JaeFQqH8gwjamfG1fCVpK1TCEnEjHfwpkm2ib",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Target2Type",
+      "value": "2",
+      "typ": "u8"
+    },
+    {
+      "name": "Target2IP",
+      "value": "1.1.1.1",
+      "typ": "ipv4"
+    },
+    {
+      "name": "Target2LocationOffsetPort",
+      "value": "0",
+      "typ": "u16"
+    },
+    {
+      "name": "Target2TargetPK",
+      "value": "11111111111111111111111111111111",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Target2GeoProbePK",
+      "value": "4S5nyG1JaeFQqH8gwjamfG1fCVpK1TCEnEjHfwpkm2ib",
+      "typ": "pubkey"
+    },
+    {
+      "name": "ResultDestination",
+      "value": "results.example.com:9000",
+      "typ": "string"
+    }
+  ]
+}

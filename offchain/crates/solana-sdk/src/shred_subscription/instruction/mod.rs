@@ -30,8 +30,9 @@ pub struct ClaimHoldingId {
 pub enum ShredSubscriptionInstructionData {
     /// Initialize a client seat for a (device, client_ip) pair.
     InitializeClientSeat { client_ip: u32 },
-    /// Initialize a payment escrow for a (seat, withdraw_authority) pair.
-    InitializePaymentEscrow,
+    /// Initialize a payment escrow for a (seat, withdraw_authority) pair. The
+    /// argument is the operator key (Pubkey::default() = no separate operator).
+    InitializePaymentEscrow(Pubkey),
     /// Close a payment escrow and refund any remaining USDC.
     ClosePaymentEscrow,
     /// Fund a payment escrow with USDC.
@@ -119,7 +120,10 @@ impl BorshSerialize for ShredSubscriptionInstructionData {
                 Self::INITIALIZE_CLIENT_SEAT.serialize(writer)?;
                 client_ip.serialize(writer)
             }
-            Self::InitializePaymentEscrow => Self::INITIALIZE_PAYMENT_ESCROW.serialize(writer),
+            Self::InitializePaymentEscrow(operator_key) => {
+                Self::INITIALIZE_PAYMENT_ESCROW.serialize(writer)?;
+                operator_key.serialize(writer)
+            }
             Self::ClosePaymentEscrow => Self::CLOSE_PAYMENT_ESCROW.serialize(writer),
             Self::FundPaymentEscrowUsdc(amount) => {
                 Self::FUND_PAYMENT_ESCROW_USDC.serialize(writer)?;
@@ -187,7 +191,31 @@ impl BorshDeserialize for ShredSubscriptionInstructionData {
                 let client_ip = u32::deserialize_reader(reader)?;
                 Ok(Self::InitializeClientSeat { client_ip })
             }
-            Self::INITIALIZE_PAYMENT_ESCROW => Ok(Self::InitializePaymentEscrow),
+            Self::INITIALIZE_PAYMENT_ESCROW => {
+                // Optional trailing argument: absent (legacy tx) -> default key;
+                // exactly 32 bytes -> that key. Any other length is malformed.
+                // We read to end and check the length explicitly rather than
+                // relying on Pubkey::deserialize_reader + borsh's leftover-bytes
+                // guard: a slice reader's read_exact consumes the remaining
+                // bytes before erroring, so 1..=31 trailing bytes would
+                // otherwise decode to the default key — bytes the onchain
+                // program (strict on length) rejects.
+                let mut rest = Vec::new();
+                reader.read_to_end(&mut rest)?;
+                let operator_key = match rest.len() {
+                    0 => Pubkey::default(),
+                    32 => Pubkey::try_from(rest.as_slice()).map_err(|_| {
+                        io::Error::new(io::ErrorKind::InvalidData, "invalid operator key")
+                    })?,
+                    _ => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "InitializePaymentEscrow operator key must be absent or 32 bytes",
+                        ));
+                    }
+                };
+                Ok(Self::InitializePaymentEscrow(operator_key))
+            }
             Self::CLOSE_PAYMENT_ESCROW => Ok(Self::ClosePaymentEscrow),
             Self::FUND_PAYMENT_ESCROW_USDC => {
                 let amount = u64::deserialize_reader(reader)?;
@@ -257,6 +285,50 @@ mod tests {
         let bytes = borsh::to_vec(ix).unwrap();
         let parsed = ShredSubscriptionInstructionData::try_from_slice(&bytes).unwrap();
         assert_eq!(*ix, parsed);
+    }
+
+    #[test]
+    fn test_round_trip_initialize_payment_escrow() {
+        round_trip(&ShredSubscriptionInstructionData::InitializePaymentEscrow(
+            Pubkey::new_unique(),
+        ));
+    }
+
+    #[test]
+    fn test_frozen_bytes_initialize_payment_escrow() {
+        let key = Pubkey::new_unique();
+        let ix = ShredSubscriptionInstructionData::InitializePaymentEscrow(key);
+        let mut expected =
+            borsh::to_vec(&ShredSubscriptionInstructionData::INITIALIZE_PAYMENT_ESCROW)
+                .expect("discriminator serialization");
+        expected.extend_from_slice(&key.to_bytes());
+        assert_eq!(borsh::to_vec(&ix).unwrap(), expected);
+    }
+
+    // An old client that sent only the discriminator (the pre-operator-key
+    // wire form) must still decode — payments.rs decodes historical
+    // transactions. The absent key decodes to the default.
+    #[test]
+    fn test_initialize_payment_escrow_decodes_legacy_wire_form() {
+        let bytes = borsh::to_vec(&ShredSubscriptionInstructionData::INITIALIZE_PAYMENT_ESCROW)
+            .expect("discriminator serialization");
+        let parsed = ShredSubscriptionInstructionData::try_from_slice(&bytes).unwrap();
+        assert_eq!(
+            parsed,
+            ShredSubscriptionInstructionData::InitializePaymentEscrow(Pubkey::default()),
+        );
+    }
+
+    // A truncated operator key (1..=31 trailing bytes) is malformed and must
+    // error, matching the strict onchain program. Without the explicit length
+    // check, a slice reader's read_exact consumes the partial bytes and the
+    // payload decodes to the default key instead of failing.
+    #[test]
+    fn test_initialize_payment_escrow_rejects_truncated_operator_key() {
+        let mut bytes = borsh::to_vec(&ShredSubscriptionInstructionData::INITIALIZE_PAYMENT_ESCROW)
+            .expect("discriminator serialization");
+        bytes.extend_from_slice(&[0xAB; 31]);
+        assert!(ShredSubscriptionInstructionData::try_from_slice(&bytes).is_err());
     }
 
     #[test]

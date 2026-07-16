@@ -117,9 +117,19 @@ fn user_owner_is_acceptable(
     user_owner: Option<Pubkey>,
     oracle_key: Option<Pubkey>,
     wallet_key: Pubkey,
+    operator_key: Pubkey,
+    wallet_owns_escrow: bool,
 ) -> bool {
     let is_shred_oracle_user = oracle_key.zip(user_owner).is_some_and(|(o, u)| o == u);
-    let is_self_owned = user_owner == Some(wallet_key);
+    // Under the operator-key split the oracle provisions the user owned by the
+    // operator key, which may be distinct from the wallet (withdraw authority);
+    // a re-subscribe/top-up must accept either as self-owned. When this wallet
+    // already owns the seat's payment escrow, the user at this IP was
+    // provisioned from that escrow under an operator key chosen at init (not
+    // re-supplied on top-ups), so whatever owner it carries is ours too — the
+    // cross-device case is caught separately by the other-device seat guard.
+    let is_self_owned =
+        user_owner == Some(wallet_key) || user_owner == Some(operator_key) || wallet_owns_escrow;
     is_shred_oracle_user || is_self_owned
 }
 
@@ -171,6 +181,11 @@ pub struct PayCommand {
     /// Serviceability program ID for the multicast user guard (auto-detected; override for e2e)
     #[arg(long, hide = true)]
     serviceability_program_id: Option<Pubkey>,
+    /// Operator key that becomes the DoubleZero operational identity
+    /// (user.owner / access-pass user_payer). Defaults to the payer wallet,
+    /// reproducing today's behavior (owner = the withdraw authority).
+    #[arg(long)]
+    operator_key: Option<Pubkey>,
 
     #[command(flatten)]
     write_opts: crate::command::WriteVerbOptions,
@@ -186,6 +201,7 @@ impl PayCommand {
         let moniker_env = self.write_opts.connection_options.moniker_env();
         let wallet = crate::command::build_wallet(ctx, self.write_opts)?;
         let wallet_key = wallet.pubkey();
+        let operator_key = self.operator_key.unwrap_or(wallet_key);
 
         writeln!(out, "Shred subscription - Pay")?;
 
@@ -199,11 +215,33 @@ impl PayCommand {
             .await?;
         let client_ip_bits = u32::from(self.client_ip);
 
+        // Derive PDAs and check which accounts already exist on-chain up front:
+        // the multicast-user guard below needs escrow_exists to distinguish an
+        // operator-keyed seat this wallet already owns from a genuinely foreign
+        // user, and the escrow-init path needs the existing owner to reconcile
+        // --operator-key.
+        let (client_seat_key, seat_bump) = state::find_client_seat_address(&device, client_ip_bits);
+        let (escrow_key, escrow_bump) =
+            state::find_payment_escrow_address(&client_seat_key, &wallet_key);
+        let (program_config_key, _) = state::find_program_config_address();
+        let accounts = wallet
+            .connection
+            .get_multiple_accounts(&[client_seat_key, escrow_key, program_config_key])
+            .await?;
+        let seat_exists = accounts[0].is_some();
+        let escrow_exists = accounts[1].is_some();
+        let prorated_service_enabled = accounts[2]
+            .as_ref()
+            .is_some_and(|a| state::is_prorated_service_enabled(&a.data));
+
         // Best-effort check: if this client IP already has a Multicast user on
         // serviceability owned by neither the shred oracle nor the wallet
         // running this command, the shred oracle's CreateSubscribeUser would
         // collide on the User PDA. Both oracle-owned (legacy top-up / re-sub)
-        // and self-owned (validator-owned per the new design) are benign.
+        // and self-owned (validator-owned per the new design) are benign. We
+        // also remember the existing owner so the escrow-init path can reconcile
+        // --operator-key against it.
+        let mut existing_user_owner = None;
         let svc_program_id_result = match self.serviceability_program_id {
             Some(id) => Ok(id),
             None => serviceability_program_id(network_env),
@@ -220,13 +258,19 @@ impl PayCommand {
                 .await
                 .map(|r| r.value)
             {
-                let user_owner = if user_account.data.len() >= 33 {
+                existing_user_owner = if user_account.data.len() >= 33 {
                     Pubkey::try_from(&user_account.data[1..33]).ok()
                 } else {
                     None
                 };
 
-                if !user_owner_is_acceptable(user_owner, oracle_key, wallet.pubkey()) {
+                if !user_owner_is_acceptable(
+                    existing_user_owner,
+                    oracle_key,
+                    wallet.pubkey(),
+                    operator_key,
+                    escrow_exists,
+                ) {
                     bail!(
                         "Client IP {} already has a multicast user on serviceability \
                          owned by neither the shred oracle nor your wallet. This IP \
@@ -238,23 +282,6 @@ impl PayCommand {
                 }
             }
         }
-
-        // Derive PDAs.
-        let (client_seat_key, seat_bump) = state::find_client_seat_address(&device, client_ip_bits);
-        let (escrow_key, escrow_bump) =
-            state::find_payment_escrow_address(&client_seat_key, &wallet_key);
-        let (program_config_key, _) = state::find_program_config_address();
-
-        // Check which accounts already exist on-chain.
-        let accounts = wallet
-            .connection
-            .get_multiple_accounts(&[client_seat_key, escrow_key, program_config_key])
-            .await?;
-        let seat_exists = accounts[0].is_some();
-        let escrow_exists = accounts[1].is_some();
-        let prorated_service_enabled = accounts[2]
-            .as_ref()
-            .is_some_and(|a| state::is_prorated_service_enabled(&a.data));
 
         // Block if this client IP already has a seat on a DIFFERENT device.
         // The serviceability User PDA is keyed by (IP, user_type) with no
@@ -411,13 +438,33 @@ impl PayCommand {
             compute_unit_limit += 50_000 + Wallet::compute_units_for_bump_seed(seat_bump);
         }
 
+        // The operator key is only carried by InitializePaymentEscrow and is
+        // immutable once the escrow exists — there is no set-operator-key
+        // instruction, and the escrow stores no key the CLI could read back.
+        // The provisioned user's owner is the source of truth. A top-up that
+        // re-states the same key (or omits the flag) proceeds normally; only a
+        // flag that would *change* an already-set operator key is refused, so
+        // we don't mislead the caller into thinking the change took effect.
+        if escrow_exists && self.operator_key.is_some() && existing_user_owner != self.operator_key
+        {
+            bail!(
+                "This seat's payment escrow already exists; its operator key was set when the \
+                 escrow was created and cannot be changed. Omit --operator-key to top up the \
+                 existing seat."
+            );
+        }
+
         if !escrow_exists {
             let escrow_ix = try_build_instruction(
                 &ID,
                 InitializePaymentEscrowAccounts::new(&client_seat_key, &wallet_key),
-                &ShredSubscriptionInstructionData::InitializePaymentEscrow,
+                &ShredSubscriptionInstructionData::InitializePaymentEscrow(operator_key),
             )?;
             instructions.push(escrow_ix);
+            writeln!(
+                out,
+                "Initializing payment escrow with operator key: {operator_key}"
+            )?;
             compute_unit_limit += 50_000 + Wallet::compute_units_for_bump_seed(escrow_bump);
         }
 
@@ -995,7 +1042,13 @@ mod tests {
     fn user_acceptable_when_owned_by_shred_oracle() {
         let oracle = Pubkey::new_unique();
         let wallet = Pubkey::new_unique();
-        assert!(user_owner_is_acceptable(Some(oracle), Some(oracle), wallet,));
+        assert!(user_owner_is_acceptable(
+            Some(oracle),
+            Some(oracle),
+            wallet,
+            wallet,
+            false,
+        ));
     }
 
     #[test]
@@ -1003,14 +1056,43 @@ mod tests {
         // New behavior: validator-owned (self-owned) Users are benign.
         let oracle = Pubkey::new_unique();
         let wallet = Pubkey::new_unique();
-        assert!(user_owner_is_acceptable(Some(wallet), Some(oracle), wallet,));
+        assert!(user_owner_is_acceptable(
+            Some(wallet),
+            Some(oracle),
+            wallet,
+            wallet,
+            false,
+        ));
+    }
+
+    #[test]
+    fn user_acceptable_when_owned_by_operator_key() {
+        // Operator-key split: the oracle provisions the user owned by the
+        // operator key, distinct from the wallet (withdraw authority). A
+        // re-subscribe/top-up must treat that as self-owned.
+        let oracle = Pubkey::new_unique();
+        let wallet = Pubkey::new_unique();
+        let operator = Pubkey::new_unique();
+        assert!(user_owner_is_acceptable(
+            Some(operator),
+            Some(oracle),
+            wallet,
+            operator,
+            false,
+        ));
     }
 
     #[test]
     fn user_acceptable_self_owned_even_when_oracle_key_unknown() {
         // If we can't resolve the oracle pubkey, self-ownership still passes.
         let wallet = Pubkey::new_unique();
-        assert!(user_owner_is_acceptable(Some(wallet), None, wallet));
+        assert!(user_owner_is_acceptable(
+            Some(wallet),
+            None,
+            wallet,
+            wallet,
+            false,
+        ));
     }
 
     #[test]
@@ -1022,6 +1104,8 @@ mod tests {
             Some(third_party),
             Some(oracle),
             wallet,
+            wallet,
+            false,
         ));
     }
 
@@ -1030,13 +1114,58 @@ mod tests {
         // Malformed account data → user_owner is None → bail (safe default).
         let oracle = Pubkey::new_unique();
         let wallet = Pubkey::new_unique();
-        assert!(!user_owner_is_acceptable(None, Some(oracle), wallet));
+        assert!(!user_owner_is_acceptable(
+            None,
+            Some(oracle),
+            wallet,
+            wallet,
+            false,
+        ));
     }
 
     #[test]
     fn user_rejected_when_third_party_and_oracle_unknown() {
         let wallet = Pubkey::new_unique();
         let third_party = Pubkey::new_unique();
-        assert!(!user_owner_is_acceptable(Some(third_party), None, wallet));
+        assert!(!user_owner_is_acceptable(
+            Some(third_party),
+            None,
+            wallet,
+            wallet,
+            false,
+        ));
+    }
+
+    #[test]
+    fn test_user_acceptable_when_wallet_owns_escrow() {
+        // Top-up of an operator-keyed seat: the user is owned by the operator
+        // key (neither oracle nor wallet), but this wallet already owns the
+        // seat's escrow, so the user was provisioned from it and is benign.
+        let oracle = Pubkey::new_unique();
+        let wallet = Pubkey::new_unique();
+        let operator = Pubkey::new_unique();
+        assert!(user_owner_is_acceptable(
+            Some(operator),
+            Some(oracle),
+            wallet,
+            wallet,
+            true,
+        ));
+    }
+
+    #[test]
+    fn test_user_rejected_when_third_party_and_no_escrow() {
+        // Same foreign owner, but without an escrow this wallet owns, the guard
+        // must still reject — this is the collision case it exists to catch.
+        let oracle = Pubkey::new_unique();
+        let wallet = Pubkey::new_unique();
+        let operator = Pubkey::new_unique();
+        assert!(!user_owner_is_acceptable(
+            Some(operator),
+            Some(oracle),
+            wallet,
+            wallet,
+            false,
+        ));
     }
 }

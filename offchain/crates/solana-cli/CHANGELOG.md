@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - migrate to Solana 3.0: workspace `solana-*` crates and `solana-sdk` move to the 3.0 line, `solana-program-test` to 3.0.12, and the doublezero SDK git-deps repin from `client/v0.27.1` to the malbeclabs/doublezero#3830 merge revision (malbeclabs/infra#1853)
 - release artifact now builds as a static `x86_64-unknown-linux-musl` binary so it runs on older glibc hosts (malbeclabs/infra#1853)
 - TLS for HTTP clients moves from openssl to rustls; trust roots are the bundled webpki Mozilla set plus the host OS certificate store, so OS-installed private CAs remain trusted (malbeclabs/infra#1853)
+- `shreds pay`: add `--operator-key` to set the DoubleZero operational identity (`user.owner` / access-pass `user_payer`) on escrow initialization; defaults to the payer wallet, preserving today's behavior (owner = withdraw authority). The pre-existing-multicast-user guard now also accepts a user owned by the operator key, so a re-subscribe/top-up with a distinct `--operator-key` is not rejected as another wallet's subscription
 
 ## [0.5.10](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-solana/v0.5.10)
 

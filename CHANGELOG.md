@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Documentation only: update `docs/cli-standard.md` to reference the `doublezero-daemon-cli` module crate (final PR of the RFC-20 daemon-cli extraction stack). The transition shims (`client/doublezero/src/servicecontroller.rs`, `client/doublezero/src/command/`) were already removed by the earlier stack PRs; the binary is unchanged. (#4047)
   - The `feed` verbs accept an exchange code for `--exchange` and multicast group codes for `--group`, in addition to pubkeys; pubkey inputs behave exactly as before. (#4027)
+  - `access-pass get --json` includes a `feed_seats` array exposing each EdgeSeat pass's per-feed seat state (user counts and billing windows); the table view is unchanged. (#4063)
 
 ## [v0.30.0](https://github.com/malbeclabs/doublezero/compare/client/v0.29.0...client/v0.30.0) - 2026-07-10
 

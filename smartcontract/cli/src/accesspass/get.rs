@@ -5,6 +5,7 @@ use doublezero_sdk::commands::{
     accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
     tenant::list::ListTenantCommand,
 };
+use doublezero_serviceability::state::accesspass::{AccessPassType, FeedSeat};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
@@ -29,6 +30,8 @@ struct AccessPassDisplay {
     #[tabled(rename = "type")]
     #[serde(rename = "type")]
     pub accesspass_type: String,
+    #[tabled(skip)]
+    pub feed_seats: Vec<FeedSeat>,
     pub client_ip: String,
     pub user_payer: String,
     pub tenant: String,
@@ -100,6 +103,10 @@ impl GetAccessPassCliCommand {
         let display = AccessPassDisplay {
             account: pubkey.to_string(),
             accesspass_type: accesspass.accesspass_type.to_string(),
+            feed_seats: match &accesspass.accesspass_type {
+                AccessPassType::EdgeSeat(seats) => seats.clone(),
+                _ => Vec::new(),
+            },
             client_ip: accesspass.client_ip.to_string(),
             user_payer: accesspass.user_payer.to_string(),
             tenant: tenant_display.join(", "),
@@ -149,7 +156,7 @@ mod tests {
         AccountType, MulticastGroup,
     };
     use doublezero_serviceability::state::{
-        accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat},
         tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
     };
     use mockall::predicate;
@@ -308,5 +315,84 @@ mod tests {
             has_row("owner", &accesspass.owner.to_string()),
             "owner row should contain value"
         );
+    }
+
+    #[test]
+    fn test_cli_accesspass_get_json_renders_edge_seat_feeds() {
+        let mut client = create_test_client();
+
+        let client_ip = Ipv4Addr::new(10, 0, 0, 2);
+        let user_payer = Pubkey::new_unique();
+        let accesspass_pubkey = Pubkey::new_unique();
+        let feed_key = Pubkey::new_unique();
+
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 255,
+            accesspass_type: AccessPassType::EdgeSeat(vec![FeedSeat {
+                feed_key,
+                max_users: 2,
+                max_future_users: 2,
+                current_users: 1,
+                anniversary_day: 15,
+                window_end: 100,
+                terminates_at: 200,
+            }]),
+            client_ip,
+            user_payer,
+            last_access_epoch: u64::MAX,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            owner: Pubkey::new_unique(),
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 0,
+            multicast_user_count: 1,
+            max_multicast_users: 2,
+        };
+        let accesspass_clone = accesspass.clone();
+
+        client
+            .expect_get_accesspass()
+            .with(predicate::eq(GetAccessPassCommand {
+                client_ip,
+                user_payer,
+            }))
+            .returning(move |_| Ok(Some((accesspass_pubkey, accesspass_clone.clone()))));
+        client
+            .expect_list_multicastgroup()
+            .with(predicate::eq(ListMulticastGroupCommand {}))
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_tenant()
+            .with(predicate::eq(ListTenantCommand {}))
+            .returning(|_| Ok(HashMap::new()));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            GetAccessPassCliCommand {
+                client_ip,
+                user_payer,
+                json: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+
+        // Lock in the JSON shape consumers depend on: an EdgeSeat pass emits a feed_seats
+        // array with each seat's per-feed users and billing windows.
+        let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        let feeds = json["feed_seats"].as_array().unwrap();
+        assert_eq!(feeds.len(), 1);
+        assert_eq!(feeds[0]["feed_key"], feed_key.to_string());
+        assert_eq!(feeds[0]["max_users"], 2);
+        assert_eq!(feeds[0]["max_future_users"], 2);
+        assert_eq!(feeds[0]["current_users"], 1);
+        assert_eq!(feeds[0]["window_end"], 100);
+        assert_eq!(feeds[0]["terminates_at"], 200);
     }
 }

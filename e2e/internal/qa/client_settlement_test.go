@@ -2,9 +2,11 @@ package qa
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/gagliardetto/solana-go/rpc"
 	shreds "github.com/malbeclabs/doublezero/sdk/shreds/go"
 )
 
@@ -88,25 +90,28 @@ func TestFilterActiveSeats(t *testing.T) {
 	}
 }
 
-func TestSeatAlreadyWithdrawn(t *testing.T) {
+func TestIsSeatNotFound(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
 		want bool
 	}{
 		{"nil", nil, false},
-		{"seat does not exist", errors.New("seat withdrawal failed: seat account does not exist"), true},
-		{"not found", errors.New("client seat not found onchain"), true},
-		{"no active seat", errors.New("no active seat for client IP"), true},
-		{"nothing to withdraw", errors.New("nothing to withdraw"), true},
-		{"case insensitive", errors.New("Seat Does Not Exist"), true},
-		{"in-flight rejection is retryable, not success", errors.New("instant seat allocation request is in flight"), false},
-		{"transient RPC error is retryable, not success", errors.New("rpc: connection timed out"), false},
+		{"shreds account-not-found sentinel", shreds.ErrAccountNotFound, true},
+		{"rpc not-found sentinel", rpc.ErrNotFound, true},
+		{"wrapped shreds sentinel", fmt.Errorf("deriving client seat PDA: %w", shreds.ErrAccountNotFound), true},
+		{"wrapped rpc sentinel", fmt.Errorf("fetching account: %w", rpc.ErrNotFound), true},
+		// The whole point of matching sentinels rather than error text: a
+		// transient "Blockhash not found" must NOT read as a missing seat, else
+		// a failed withdraw would be silently treated as already-withdrawn.
+		{"blockhash not found is not a missing seat", errors.New("Transaction simulation failed: Blockhash not found"), false},
+		{"jsonrpc method not found is not a missing seat", errors.New("rpc: Method not found"), false},
+		{"generic error", errors.New("connection timed out"), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := seatAlreadyWithdrawn(tt.err); got != tt.want {
-				t.Errorf("seatAlreadyWithdrawn(%v) = %v, want %v", tt.err, got, tt.want)
+			if got := isSeatNotFound(tt.err); got != tt.want {
+				t.Errorf("isSeatNotFound(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
 	}

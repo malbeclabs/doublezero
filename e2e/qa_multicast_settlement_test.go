@@ -66,9 +66,13 @@ func TestQA_MulticastSettlement(t *testing.T) {
 			// leaves the seat active onchain with an open escrow, poisoning
 			// every subsequent hourly run. Retrying over a bounded window heals
 			// the state instead of letting the escrow grow one epoch per run.
-			cleanupCtx := context.Background()
+			// Bound the cleanup so a hung withdraw can't block teardown forever.
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+			defer cancel()
 			if withdrawErr := client.WithdrawSeatWithRetry(cleanupCtx, device.PubKey); withdrawErr != nil {
-				log.Info("Cleanup: seat withdraw failed after retries", "error", withdrawErr)
+				// Warn, not Info: the seat is left active onchain and the escrow
+				// will grow next run, so this must stand out in the run log.
+				log.Warn("Cleanup: seat withdraw failed after retries; seat left active onchain", "error", withdrawErr)
 			}
 		}
 		if t.Failed() {

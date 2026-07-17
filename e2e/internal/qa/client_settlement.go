@@ -296,18 +296,34 @@ func isSeatNotFound(err error) bool {
 
 // seatIsWithdrawn reads authoritative onchain state to decide whether the seat
 // for deviceKey no longer holds an active tenure: the account is gone, or
-// TenureEpochs == 0. Used to confirm a withdraw actually took effect rather than
-// pattern-matching the external CLI's error text (a transient "Blockhash not
-// found" must never read as "already withdrawn").
+// TenureEpochs == 0 with no pending instant allocation request. Withdrawal is
+// blocked onchain while the pending flag is set, so a pending seat is
+// definitionally not withdrawn regardless of what tenure reads. Used to confirm
+// a withdraw actually took effect rather than pattern-matching the external
+// CLI's error text (a transient "Blockhash not found" must never read as
+// "already withdrawn").
+//
+// Withdrawal zeroes TenureEpochs but does not close the seat account, so
+// not-found normally means the seat was never initialized. A seat can also be
+// minutes old (first pay against a device), which a stale endpoint may not see
+// yet, so a single not-found read is not trusted: it counts as withdrawn only
+// when a second read — taken after rotating to a different pool endpoint —
+// agrees.
 func (c *Client) seatIsWithdrawn(ctx context.Context, shredsClient *shreds.Client, deviceKey solana.PublicKey, clientIPBits uint32) (bool, error) {
 	seat, err := shredsClient.FetchClientSeat(ctx, deviceKey, clientIPBits)
 	if isSeatNotFound(err) {
-		return true, nil
+		if c.solanaRPC != nil && c.solanaRPC.EndpointCount() > 1 {
+			c.solanaRPC.Failover()
+		}
+		seat, err = shredsClient.FetchClientSeat(ctx, deviceKey, clientIPBits)
+		if isSeatNotFound(err) {
+			return true, nil
+		}
 	}
 	if err != nil {
 		return false, err
 	}
-	return seat.TenureEpochs == 0, nil
+	return seat.TenureEpochs == 0 && !seat.HasPendingInstantRequest(), nil
 }
 
 // isInFlightPreflightBail reports whether a FeedSeatWithdraw error is the
@@ -368,19 +384,29 @@ func (c *Client) WithdrawSeatWithRetry(ctx context.Context, devicePubkey string)
 			c.log.Info("Seat withdraw succeeded", "host", c.Host, "device", devicePubkey, "attempt", attempt)
 			return nil
 		}
-		if withdrawn, checkErr := c.seatIsWithdrawn(ctx, shredsClient, deviceKey, clientIPBits); checkErr == nil && withdrawn {
+		withdrawn, checkErr := c.seatIsWithdrawn(ctx, shredsClient, deviceKey, clientIPBits)
+		if checkErr == nil && withdrawn {
 			c.log.Info("Seat already withdrawn onchain, nothing to do", "host", c.Host, "device", devicePubkey, "attempt", attempt)
 			return nil
 		}
-		c.log.Warn("Seat withdraw attempt failed, will retry",
+		warnAttrs := []any{
 			"host", c.Host, "device", devicePubkey, "attempt", attempt,
-			"endpoint", redactURL(c.currentSolanaRPCURL()), "error", c.scrubRPCErr(withdrawErr))
+			"endpoint", redactURL(c.currentSolanaRPCURL()), "error", c.scrubRPCErr(withdrawErr),
+		}
+		if checkErr != nil {
+			warnAttrs = append(warnAttrs, "confirm_read_error", c.scrubRPCErr(checkErr))
+		}
+		c.log.Warn("Seat withdraw attempt failed, will retry", warnAttrs...)
 		if time.Now().After(deadline) {
 			return fmt.Errorf("seat withdraw did not succeed within %s on host %s after %d attempts: %s",
 				withdrawRetryTimeout, c.Host, attempt, c.scrubRPCErr(withdrawErr))
 		}
 		// The stale getMultipleAccounts read behind the in-flight bail lives on
 		// this endpoint; rotate so the next submission's preflight reads fresh.
+		// A genuine in-flight rejection (the withdraw racing the oracle's ack)
+		// matches the same marker and also rotates — harmless: every pool
+		// endpoint is valid for the shared reads that follow, and rotation is
+		// bounded by the retry window.
 		if isInFlightPreflightBail(withdrawErr) && c.solanaRPC != nil && c.solanaRPC.EndpointCount() > 1 {
 			c.solanaRPC.Failover()
 			c.log.Info("Rotated Solana RPC endpoint after in-flight preflight bail",
@@ -394,25 +420,8 @@ func (c *Client) WithdrawSeatWithRetry(ctx context.Context, devicePubkey string)
 	}
 }
 
-// ActiveClientSeats returns all onchain client seats for this client's public
-// IP that are still active (TenureEpochs > 0), across any device. It mirrors
-// the conflict scan the pay CLI performs via getProgramAccounts, so a seat left
-// stuck-active on any device is detected — not just one on a specific device.
-func (c *Client) ActiveClientSeats(ctx context.Context) ([]shreds.KeyedClientSeat, error) {
-	shredsClient, clientIPBits, err := c.shredsQuery()
-	if err != nil {
-		return nil, err
-	}
-	seats, err := shredsClient.FetchAllClientSeats(ctx)
-	if err != nil {
-		// Scrub: a fetch error can embed the (possibly API-keyed) endpoint URL.
-		return nil, fmt.Errorf("failed to fetch client seats on host %s: %s", c.Host, c.scrubRPCErr(err))
-	}
-	return filterActiveSeats(seats, clientIPBits), nil
-}
-
 // filterActiveSeats selects seats belonging to clientIPBits that are still
-// active (TenureEpochs > 0). Split out from ActiveClientSeats so the selection
+// active (TenureEpochs > 0). Split out from SelfHealStuckSeats so the selection
 // logic is unit-testable without an RPC.
 func filterActiveSeats(seats []shreds.KeyedClientSeat, clientIPBits uint32) []shreds.KeyedClientSeat {
 	var active []shreds.KeyedClientSeat
@@ -428,21 +437,25 @@ func filterActiveSeats(seats []shreds.KeyedClientSeat, clientIPBits uint32) []sh
 // client's public IP — the poisoned state left when a previous run's withdraw
 // spuriously bailed, leaving TenureEpochs > 0 and an open payment escrow — and
 // withdraws each, polling until it reads TenureEpochs == 0 (or the account
-// vanishes). Returns the number of seats healed; safe to call when there are
-// none (returns 0, nil). Logs the device key, seat pubkey, and tenure of every
-// seat found so a future incident is diagnosable from the run log alone.
+// vanishes). The scan mirrors the conflict scan the pay CLI performs via
+// getProgramAccounts, so a stuck seat on any device is detected — not just one
+// on a specific device. Returns the number of seats healed; safe to call when
+// there are none (returns 0, nil). Logs the device key, seat pubkey, and tenure
+// of every seat found so a future incident is diagnosable from the run log
+// alone.
 func (c *Client) SelfHealStuckSeats(ctx context.Context) (int, error) {
-	seats, err := c.ActiveClientSeats(ctx)
-	if err != nil {
-		return 0, err
-	}
-	if len(seats) == 0 {
-		return 0, nil
-	}
-
 	shredsClient, clientIPBits, err := c.shredsQuery()
 	if err != nil {
 		return 0, err
+	}
+	allSeats, err := shredsClient.FetchAllClientSeats(ctx)
+	if err != nil {
+		// Scrub: a fetch error can embed the (possibly API-keyed) endpoint URL.
+		return 0, fmt.Errorf("failed to fetch client seats on host %s: %s", c.Host, c.scrubRPCErr(err))
+	}
+	seats := filterActiveSeats(allSeats, clientIPBits)
+	if len(seats) == 0 {
+		return 0, nil
 	}
 
 	healed := 0

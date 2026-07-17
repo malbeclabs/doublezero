@@ -11,7 +11,7 @@ use std::fmt;
 ///
 /// The pubkey of this account (`feed_key`) is the SKU identifier carried on EdgeSeat access passes.
 /// `code` and `exchange` are the PDA seeds, so both are immutable; `name` and `groups` are mutable.
-/// One `feed_key` is one feed in one metro (e.g. `hyperliquid@tokyo`); a different metro is a
+/// One `feed_key` is one feed in one metro (e.g. `shreds@tokyo`); a different metro is a
 /// different feed account.
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

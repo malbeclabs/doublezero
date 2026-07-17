@@ -1,0 +1,66 @@
+{
+  "name": "GeoProbe",
+  "account_type": 2,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "2",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "25TXLvcMJNvRY4vb95G9Kpvf9A3LJCdWLswD47xvXsaX",
+      "typ": "pubkey"
+    },
+    {
+      "name": "ExchangePK",
+      "value": "29MvzRLSCDR8wm3ZeaXbDkftQAc719jQvkF6ZKGvFgEs",
+      "typ": "pubkey"
+    },
+    {
+      "name": "PublicIP",
+      "value": "203.0.113.7",
+      "typ": "ipv4"
+    },
+    {
+      "name": "LocationOffsetPort",
+      "value": "8923",
+      "typ": "u16"
+    },
+    {
+      "name": "MetricsPublisherPK",
+      "value": "2DGLdv4X63urMTAYA5o37gR7fBAsi6qKWcYz4WauyUuD",
+      "typ": "pubkey"
+    },
+    {
+      "name": "ReferenceCount",
+      "value": "3",
+      "typ": "u32"
+    },
+    {
+      "name": "Code",
+      "value": "probe-ams-01",
+      "typ": "string"
+    },
+    {
+      "name": "ParentDevicesLen",
+      "value": "2",
+      "typ": "u32"
+    },
+    {
+      "name": "ParentDevices0",
+      "value": "39v3grDhbkqr58rBH9XHeerKHK5fbQG1gksR7Evr4kA3",
+      "typ": "pubkey"
+    },
+    {
+      "name": "ParentDevices1",
+      "value": "3DpTLLwnVbLZUpy9nenjYabYYKeSJMMvGdBJcSEqnYpP",
+      "typ": "pubkey"
+    },
+    {
+      "name": "TargetUpdateCount",
+      "value": "42",
+      "typ": "u32"
+    }
+  ]
+}

@@ -183,8 +183,8 @@ async fn test_feed_same_code_different_exchange_allowed() {
 
     let tokyo = Pubkey::new_unique();
     let london = Pubkey::new_unique();
-    let (tokyo_feed, _) = get_feed_pda(&program_id, "hyperliquid", &tokyo);
-    let (london_feed, _) = get_feed_pda(&program_id, "hyperliquid", &london);
+    let (tokyo_feed, _) = get_feed_pda(&program_id, "shreds", &tokyo);
+    let (london_feed, _) = get_feed_pda(&program_id, "shreds", &london);
     assert_ne!(tokyo_feed, london_feed);
 
     for (exchange, feed_pubkey) in [(tokyo, tokyo_feed), (london, london_feed)] {
@@ -193,8 +193,8 @@ async fn test_feed_same_code_different_exchange_allowed() {
             recent_blockhash,
             program_id,
             DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
-                code: "hyperliquid".to_string(),
-                name: "Hyperliquid".to_string(),
+                code: "shreds".to_string(),
+                name: "Shreds".to_string(),
                 exchange,
                 groups: vec![Pubkey::new_unique()],
             }),
@@ -213,7 +213,7 @@ async fn test_feed_same_code_different_exchange_allowed() {
             .expect("Unable to get Feed")
             .get_feed()
             .unwrap();
-        assert_eq!(feed.code, "hyperliquid");
+        assert_eq!(feed.code, "shreds");
         assert_eq!(feed.exchange, exchange);
     }
 }

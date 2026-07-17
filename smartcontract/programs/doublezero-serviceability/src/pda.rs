@@ -113,6 +113,11 @@ pub fn get_feed_pda(program_id: &Pubkey, code: &str, exchange: &Pubkey) -> (Pubk
     )
 }
 
+/// Name of the default unicast topology that `CreateLink` auto-tags every link
+/// into. This is the canonical spelling; consumers should reference this constant
+/// rather than re-typing the literal.
+pub const UNICAST_DEFAULT_TOPOLOGY_NAME: &str = "unicast-default";
+
 pub fn get_topology_pda(program_id: &Pubkey, name: &str) -> (Pubkey, u8) {
     let upper = name.to_ascii_uppercase();
     Pubkey::find_program_address(&[SEED_PREFIX, SEED_TOPOLOGY, upper.as_bytes()], program_id)

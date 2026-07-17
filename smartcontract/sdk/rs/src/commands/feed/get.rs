@@ -143,11 +143,11 @@ mod tests {
         // Same code in two metros.
         let tokyo = (
             Pubkey::new_unique(),
-            feed_with("hyperliquid", Pubkey::new_unique()),
+            feed_with("shreds", Pubkey::new_unique()),
         );
         let london = (
             Pubkey::new_unique(),
-            feed_with("hyperliquid", Pubkey::new_unique()),
+            feed_with("shreds", Pubkey::new_unique()),
         );
         client
             .expect_gets()
@@ -160,7 +160,7 @@ mod tests {
             });
 
         let err = GetFeedCommand {
-            pubkey_or_code: "hyperliquid".to_string(),
+            pubkey_or_code: "shreds".to_string(),
             exchange: None,
         }
         .execute(&client)

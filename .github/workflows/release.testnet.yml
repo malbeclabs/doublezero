@@ -191,8 +191,10 @@ jobs:
   # Gate 1 — the single approval for the tag phase: approving asserts both
   # version PRs are merged AND authorizes pushing the 9 component tags (the tag
   # workflow carries no environment of its own, so no second prompt follows).
-  # The verification step below fails fast if this is approved before both PRs
-  # are merged.
+  # Belt and suspenders for eager approvals: if this is approved before both
+  # PRs are merged, the job posts a Slack notice and waits up to 30 minutes for
+  # the merges instead of failing outright; a closed PR or the timeout still
+  # fails the gate.
   gate-tags:
     name: "gate 1: approve only after BOTH version PRs are merged — this pushes the tags"
     runs-on: ubuntu-latest
@@ -212,7 +214,8 @@ jobs:
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
           owner: malbeclabs
           repositories: doublezero,infra
-      - name: Verify version PRs are merged
+      - name: Check version PRs
+        id: check
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
@@ -220,13 +223,48 @@ jobs:
           DZ=$(gh pr view ${{ needs.open-prs.outputs.dz_pr }} -R malbeclabs/doublezero --json state --jq .state)
           INFRA=$(gh pr view ${{ needs.open-prs.outputs.infra_pr }} -R malbeclabs/infra --json state --jq .state)
           echo "doublezero PR: $DZ, infra PR: $INFRA"
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            { [ "$DZ" != "CLOSED" ] && [ "$INFRA" != "CLOSED" ]; } || {
-              echo "::error::dry-run PRs were closed"; exit 1; }
-          else
-            { [ "$DZ" = "MERGED" ] && [ "$INFRA" = "MERGED" ]; } || {
-              echo "::error::approve this gate only after BOTH version PRs are merged"; exit 1; }
+          if [ "$DZ" = "CLOSED" ] || [ "$INFRA" = "CLOSED" ]; then
+            echo "::error::a version PR was closed — aborting the release"; exit 1
           fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            # dry-run PRs stay open on purpose; open is all that's required
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+          elif [ "$DZ" = "MERGED" ] && [ "$INFRA" = "MERGED" ]; then
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "merged=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Post early-approval notice to Slack thread
+        if: steps.check.outputs.merged == 'false'
+        uses: ./.github/actions/slack-thread-post
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ env.SLACK_CHANNEL_ID }}
+          thread-ts: ${{ needs.preflight.outputs.thread_ts }}
+          color: warning
+          text: |-
+            Gate 1 was approved before both version PRs were merged — waiting up to 30 minutes; the tags push automatically once both PRs are merged. Close either PR to abort instead.
+      - name: Wait for version PRs to merge
+        if: steps.check.outputs.merged == 'false'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            sleep 30
+            # A transient API error counts as a failed poll attempt, not a job failure.
+            DZ=$(gh pr view ${{ needs.open-prs.outputs.dz_pr }} -R malbeclabs/doublezero --json state --jq .state) || DZ=UNKNOWN
+            INFRA=$(gh pr view ${{ needs.open-prs.outputs.infra_pr }} -R malbeclabs/infra --json state --jq .state) || INFRA=UNKNOWN
+            echo "attempt $i/60: doublezero PR: $DZ, infra PR: $INFRA"
+            if [ "$DZ" = "CLOSED" ] || [ "$INFRA" = "CLOSED" ]; then
+              echo "::error::a version PR was closed — aborting the release"; exit 1
+            fi
+            if [ "$DZ" = "MERGED" ] && [ "$INFRA" = "MERGED" ]; then
+              echo "both version PRs merged"; exit 0
+            fi
+          done
+          echo "::error::gave up waiting for the version PRs after 30 minutes — re-run failed jobs and approve after both PRs are merged"
+          exit 1
       - name: Post tag-push notice to Slack thread
         uses: ./.github/actions/slack-thread-post
         with:

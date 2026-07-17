@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.31.0](https://github.com/malbeclabs/doublezero/compare/client/v0.30.0...client/v0.31.0) - 2026-07-17
+
+### Breaking
+
+### Changes
+
 - CI
   - Fix the event-driven `doublezero-edge-connect` rebuild: the base-image publishers now mint a short-lived, least-privilege token from the release-bot GitHub App (scoped to `doublezero-edge-connect`) to fire the cross-repo `repository_dispatch`, replacing the never-created `EDGE_CONNECT_DISPATCH_TOKEN` secret whose absence silently no-op'd every notify. Also add the missing devnet notify step, so all three variants (testnet, mainnet-beta, devnet) trigger a rebuild on base publish. The mint/notify steps stay non-fatal to the publish and edge-connect's daily poll remains the fallback.
   - Collapse the testnet release tag phase to a single approval: gate 1 now confirms the version-PR merges and authorizes the tag push in one click. The reusable tag workflow no longer carries an environment (it is pure mechanism); the approval prompt lives with its callers — the orchestrator's gate 1, and a new `approve` job (on `testnet`) in the manual components dispatcher, so manual tag pushes prompt exactly as before — and a `github.workflow_ref` caller allowlist makes any other caller fail closed. No new environments. Gate job display names and the Slack posts now spell out what each approval means and that gate 1 must only be approved after both PRs merge.

@@ -202,6 +202,8 @@ jobs:
     # thread_ts output is readable here (needs only exposes direct dependencies).
     needs: [open-prs, preflight]
     environment: testnet
+    outputs:
+      tag_sha: ${{ steps.tag-target.outputs.sha }}
     steps:
       # checkout only to resolve the local composite action
       - uses: actions/checkout@v4
@@ -265,6 +267,26 @@ jobs:
           done
           echo "::error::gave up waiting for the version PRs after 30 minutes — re-run failed jobs and approve after both PRs are merged"
           exit 1
+      # The run is pinned to the sha main had at dispatch, which by construction
+      # predates the version-bump merge. Tag the bump commit itself so the tags
+      # contain the version bump (v0.30.0's tags landed one commit shy of it).
+      - name: Resolve tag target (version-bump merge commit)
+        id: tag-target
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            # dry-run PRs never merge; the tag jobs are no-ops on the default sha
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          SHA=$(gh pr view ${{ needs.open-prs.outputs.dz_pr }} -R malbeclabs/doublezero --json mergeCommit --jq .mergeCommit.oid)
+          if [ -z "$SHA" ] || [ "$SHA" = "null" ]; then
+            echo "::error::could not resolve the version-bump merge commit"; exit 1
+          fi
+          echo "tags will point at $SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
       - name: Post tag-push notice to Slack thread
         uses: ./.github/actions/slack-thread-post
         with:
@@ -298,6 +320,8 @@ jobs:
     with:
       version: v${{ inputs.version }}
       component: ${{ matrix.component }}
+      # the version-bump merge commit, not the pre-bump sha this run is pinned to
+      ref: ${{ needs.gate-tags.outputs.tag_sha }}
       skip_existing: true
       dry_run: ${{ inputs.dry_run }}
     secrets:

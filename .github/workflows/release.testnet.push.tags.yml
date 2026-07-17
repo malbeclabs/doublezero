@@ -11,6 +11,11 @@ on:
         description: 'The component to tag'
         required: true
         type: string
+      ref:
+        description: 'Commit to tag. Empty tags the sha the run is pinned to (the manual dispatcher path: main at dispatch).'
+        required: false
+        type: string
+        default: ''
       skip_existing:
         description: 'Succeed without re-tagging if the tag already exists (for orchestrator re-runs)'
         required: false
@@ -55,6 +60,8 @@ jobs:
         with:
           repository: malbeclabs/doublezero
           token: ${{ secrets.DOUBLEZERO_PAT }}
+          # empty ref = the sha this run is pinned to (actions/checkout default)
+          ref: ${{ inputs.ref }}
           fetch-tags: true
 
       - name: Validate format and push tag

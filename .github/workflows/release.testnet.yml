@@ -100,14 +100,33 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
-          git config user.name "dz-release-bot"
-          git config user.email "dz-release-bot@malbeclabs.com"
           BRANCH="release/v${VERSION}"
           ./scripts/release/bump-version.sh "$VERSION"
-          git checkout -b "$BRANCH"
-          git add Cargo.toml Cargo.lock CHANGELOG.md
-          git commit -m "release: bump version to ${VERSION}"
-          git push -f origin "$BRANCH"
+          BASE=$(git rev-parse HEAD)
+          # Create the release branch at HEAD, or force-reset one left by a previous run.
+          gh api repos/malbeclabs/doublezero/git/refs -f ref="refs/heads/${BRANCH}" -f sha="$BASE" ||
+            gh api -X PATCH "repos/malbeclabs/doublezero/git/refs/heads/${BRANCH}" -f sha="$BASE" -F force=true
+          # Commit via the GraphQL API rather than git: API commits are signed by
+          # GitHub, and main requires verified signatures (the App has no signing key).
+          base64 Cargo.toml   | tr -d '\n' > "$RUNNER_TEMP/toml.b64"
+          base64 Cargo.lock   | tr -d '\n' > "$RUNNER_TEMP/lock.b64"
+          base64 CHANGELOG.md | tr -d '\n' > "$RUNNER_TEMP/changelog.b64"
+          SHA=$(jq -n --arg branch "$BRANCH" --arg oid "$BASE" \
+            --arg msg "release: bump version to ${VERSION}" \
+            --rawfile toml "$RUNNER_TEMP/toml.b64" \
+            --rawfile lock "$RUNNER_TEMP/lock.b64" \
+            --rawfile chlog "$RUNNER_TEMP/changelog.b64" \
+            '{query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: {input: {
+                branch: {repositoryNameWithOwner: "malbeclabs/doublezero", branchName: $branch},
+                expectedHeadOid: $oid,
+                message: {headline: $msg},
+                fileChanges: {additions: [
+                  {path: "Cargo.toml",   contents: $toml},
+                  {path: "Cargo.lock",   contents: $lock},
+                  {path: "CHANGELOG.md", contents: $chlog}]}}}}' \
+            | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.oid')
+          echo "signed version-bump commit: ${SHA}"
           PR=$(gh pr list -R malbeclabs/doublezero --head "$BRANCH" --state open \
             --json number --jq '.[0].number // empty')
           if [ -z "$PR" ]; then

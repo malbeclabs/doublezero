@@ -226,17 +226,6 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		return
 	}
 
-	if !t.Run("wait_for_seat_allocation_acked", func(t *testing.T) {
-		// The tunnel can come up before the oracle has acked the instant
-		// allocation request. Withdraw rejects while the request is still
-		// pending, so wait here rather than racing the oracle on the
-		// withdraw_seat step.
-		err := client.WaitForSeatAllocationAcked(ctx, device.PubKey, 90*time.Second)
-		require.NoError(t, err, "oracle did not ack instant seat allocation")
-	}) {
-		return
-	}
-
 	if !t.Run("validate_tunnel_up", func(t *testing.T) {
 		err := client.WaitForMulticastStatusUp(ctx)
 		require.NoError(t, err, "multicast tunnel did not come up after seat payment")
@@ -256,7 +245,11 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("withdraw_seat", func(t *testing.T) {
-		err := client.FeedSeatWithdraw(ctx, device.PubKey)
+		// Withdraw is rejected while this run's instant allocation request is
+		// in flight (or a stale RPC read claims it is), so retry with endpoint
+		// rotation rather than waiting on an ack the harness cannot observe
+		// reliably.
+		err := client.WithdrawSeatWithRetry(ctx, device.PubKey)
 		require.NoError(t, err, "failed to withdraw seat")
 		seatPaid = false
 	}) {

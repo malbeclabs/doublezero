@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - E2E/QA
-  - `TestQA_MulticastSettlement` self-heals from a seat left stuck-active onchain by a previous run's failed withdraw: `ensure_multicast_disconnected` now scans onchain client seats for the client's public IP (via the shreds SDK `FetchAllClientSeats`) and withdraws any with `TenureEpochs > 0`, and both the cleanup and self-heal withdraws retry over a bounded window instead of a single shot that the spurious "request in flight" preflight bail could fail on every run. (#2002)
+  - `TestQA_MulticastSettlement` self-heals from a seat left stuck-active onchain by a previous run's failed withdraw: `ensure_multicast_disconnected` now scans onchain client seats for the client's public IP (via the shreds SDK `FetchAllClientSeats`) and withdraws any with `TenureEpochs > 0`, and both the cleanup and self-heal withdraws retry over a bounded window instead of a single shot that the spurious "request in flight" preflight bail could fail on every run. The retry rotates to a different Solana RPC endpoint on the in-flight bail (its stale `getMultipleAccounts` read is per-endpoint) and confirms completion against fresh onchain state rather than the CLI's error text. (#2002)
 
 ## [v0.31.0](https://github.com/malbeclabs/doublezero/compare/client/v0.30.0...client/v0.31.0) - 2026-07-17
 

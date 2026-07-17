@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -309,12 +310,29 @@ func (c *Client) seatIsWithdrawn(ctx context.Context, shredsClient *shreds.Clien
 	return seat.TenureEpochs == 0, nil
 }
 
+// isInFlightPreflightBail reports whether a FeedSeatWithdraw error is the
+// client-side preflight rejection that wrongly reports a just-closed
+// InstantSeatAllocationRequest as still "in flight". This is a stale
+// getMultipleAccounts read on the CLI's current Solana RPC endpoint (a fixed
+// endpoint can serve the closed request PDA as existing for seconds to hours),
+// so the fix is to rotate endpoints and retry. It is a pre-submission rejection
+// — no transaction was sent — so rotating is safe from double-submission.
+// Submission timeouts are deliberately NOT matched here: a timed-out submission
+// may have landed onchain, so it must not trigger an endpoint rotation.
+func isInFlightPreflightBail(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "in flight") || strings.Contains(msg, "in-flight")
+}
+
 // WithdrawSeatWithRetry withdraws a seat, retrying over a bounded window on the
 // spurious "request in flight" preflight bail and transient RPC failures. A
 // single-shot withdraw is unsafe for cleanup and self-heal: the same transient
 // rejection failed on every hourly run, leaving the seat active onchain and
-// growing the payment escrow by one epoch price per run. Each attempt is logged
-// so a stuck withdraw is diagnosable from the run log alone.
+// growing the payment escrow by one epoch price per run. Each attempt logs its
+// (redacted) endpoint so a stuck withdraw is diagnosable from the run log alone.
 //
 // When FeedSeatWithdraw reports an error, the seat's authoritative onchain state
 // is consulted before deciding: if the seat is gone or reads TenureEpochs == 0,
@@ -322,13 +340,15 @@ func (c *Client) seatIsWithdrawn(ctx context.Context, shredsClient *shreds.Clien
 // submission, or a prior attempt/run already withdrew it). Otherwise the attempt
 // is retried. Confirming onchain — rather than pattern-matching the external CLI
 // error text — keeps a transient failure (e.g. "Blockhash not found") from being
-// misread as success and silently leaving the seat stuck.
+// misread as success and silently leaving the seat stuck. The onchain read uses
+// getAccountInfo, which stays fresh even on an endpoint whose getMultipleAccounts
+// (used by the CLI preflight) is stale.
 //
-// NOTE: like FeedSeatWithdraw this stays on a single Solana RPC endpoint (no
-// cross-endpoint failover). A withdraw that timed out on submission may have
-// landed onchain, so retrying on the same endpoint (where it reads as
-// already-withdrawn) matches the repo's write-safety discipline; failing over
-// mid-retry is a deliberate non-goal.
+// On the in-flight preflight bail specifically, the loop rotates to a different
+// Solana RPC endpoint (pool Failover) before retrying, so the next submission
+// preflights against fresh state; a fixed endpoint can stay stale far longer than
+// the retry window. This rotation fires only for the pre-submission in-flight
+// bail — never for submission timeouts, which may have landed onchain.
 func (c *Client) WithdrawSeatWithRetry(ctx context.Context, devicePubkey string) error {
 	deviceKey, err := solana.PublicKeyFromBase58(devicePubkey)
 	if err != nil {
@@ -353,10 +373,18 @@ func (c *Client) WithdrawSeatWithRetry(ctx context.Context, devicePubkey string)
 			return nil
 		}
 		c.log.Warn("Seat withdraw attempt failed, will retry",
-			"host", c.Host, "device", devicePubkey, "attempt", attempt, "error", c.scrubRPCErr(withdrawErr))
+			"host", c.Host, "device", devicePubkey, "attempt", attempt,
+			"endpoint", redactURL(c.currentSolanaRPCURL()), "error", c.scrubRPCErr(withdrawErr))
 		if time.Now().After(deadline) {
 			return fmt.Errorf("seat withdraw did not succeed within %s on host %s after %d attempts: %s",
 				withdrawRetryTimeout, c.Host, attempt, c.scrubRPCErr(withdrawErr))
+		}
+		// The stale getMultipleAccounts read behind the in-flight bail lives on
+		// this endpoint; rotate so the next submission's preflight reads fresh.
+		if isInFlightPreflightBail(withdrawErr) && c.solanaRPC != nil && c.solanaRPC.EndpointCount() > 1 {
+			c.solanaRPC.Failover()
+			c.log.Info("Rotated Solana RPC endpoint after in-flight preflight bail",
+				"host", c.Host, "device", devicePubkey, "endpoint", redactURL(c.currentSolanaRPCURL()))
 		}
 		select {
 		case <-ctx.Done():

@@ -116,3 +116,26 @@ func TestIsSeatNotFound(t *testing.T) {
 		})
 	}
 }
+
+func TestIsInFlightPreflightBail(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"in flight (spaced)", errors.New("seat withdrawal failed: instant seat allocation request is in flight"), true},
+		{"in-flight (hyphen)", errors.New("request is in-flight, cannot withdraw"), true},
+		{"case insensitive", errors.New("Request In Flight"), true},
+		// A submission timeout must NOT rotate endpoints: the tx may have landed.
+		{"submission timeout does not rotate", errors.New("Transaction was not confirmed in 30s: Blockhash not found"), false},
+		{"generic rpc error does not rotate", errors.New("rpc: connection timed out"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isInFlightPreflightBail(tt.err); got != tt.want {
+				t.Errorf("isInFlightPreflightBail(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}

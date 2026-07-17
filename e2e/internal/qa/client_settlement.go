@@ -436,8 +436,8 @@ func filterActiveSeats(seats []shreds.KeyedClientSeat, clientIPBits uint32) []sh
 // SelfHealStuckSeats detects client seats stuck active onchain for this
 // client's public IP — the poisoned state left when a previous run's withdraw
 // spuriously bailed, leaving TenureEpochs > 0 and an open payment escrow — and
-// withdraws each, polling until it reads TenureEpochs == 0 (or the account
-// vanishes). The scan mirrors the conflict scan the pay CLI performs via
+// withdraws each, polling until the withdraw confirmation (seatIsWithdrawn)
+// reports the seat cleared. The scan mirrors the conflict scan the pay CLI performs via
 // getProgramAccounts, so a stuck seat on any device is detected — not just one
 // on a specific device. Returns the number of seats healed; safe to call when
 // there are none (returns 0, nil). Logs the device key, seat pubkey, and tenure
@@ -469,11 +469,11 @@ func (c *Client) SelfHealStuckSeats(ctx context.Context) (int, error) {
 		}
 
 		if err := poll.Until(ctx, func() (bool, error) {
-			s, fetchErr := shredsClient.FetchClientSeat(ctx, deviceKey, clientIPBits)
-			// A closed/absent seat account is fully healed.
-			if isSeatNotFound(fetchErr) {
-				return true, nil
-			}
+			// Reuse the withdraw confirmation predicate: tenure cleared, no
+			// pending request, and a not-found trusted only after a second read
+			// on a rotated endpoint (withdrawal does not close the seat account,
+			// so a single not-found here can only be a stale read).
+			withdrawn, fetchErr := c.seatIsWithdrawn(ctx, shredsClient, deviceKey, clientIPBits)
 			if fetchErr != nil {
 				// The withdraw already succeeded; a transient read blip here
 				// shouldn't fail the heal. Log (scrubbed) and keep polling until
@@ -481,7 +481,7 @@ func (c *Client) SelfHealStuckSeats(ctx context.Context) (int, error) {
 				c.log.Debug("Seat heal poll read error, retrying", "host", c.Host, "seat", seat.Pubkey, "error", c.scrubRPCErr(fetchErr))
 				return false, nil
 			}
-			return s.TenureEpochs == 0, nil
+			return withdrawn, nil
 		}, seatHealPollTimeout, seatReadInterval); err != nil {
 			return healed, fmt.Errorf("stuck seat %s on device %s (host %s) did not clear to TenureEpochs==0: %w", seat.Pubkey, deviceKey, c.Host, err)
 		}

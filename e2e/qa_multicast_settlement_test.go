@@ -57,6 +57,7 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	var effectivePrice uint64
 	var balanceBeforePay uint64
 	var balanceAfterPay uint64
+	var seatStartSlotBeforePay uint64
 	seatPaid := false
 
 	t.Cleanup(func() {
@@ -169,7 +170,15 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("pay_for_seat", func(t *testing.T) {
-		err := client.FeedSeatPay(ctx, device.PubKey, amount)
+		// Capture the seat's SubscriptionStartSlot before paying. The oracle
+		// sets this to the allocation clock slot on ack, so waiting for it to
+		// exceed this baseline is a durable signal that this run's request was
+		// acked, independent of catching the transient pending flag.
+		var err error
+		seatStartSlotBeforePay, err = client.SeatSubscriptionStartSlot(ctx, device.PubKey)
+		require.NoError(t, err, "failed to read seat subscription start slot before pay")
+
+		err = client.FeedSeatPay(ctx, device.PubKey, amount)
 		require.NoError(t, err, "failed to pay for seat")
 		seatPaid = true
 	}) {
@@ -210,7 +219,7 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		// allocation request. Withdraw rejects while the request is still
 		// pending, so wait here rather than racing the oracle on the
 		// withdraw_seat step.
-		err := client.WaitForSeatAllocationAcked(ctx, device.PubKey, 90*time.Second)
+		err := client.WaitForSeatAllocationAcked(ctx, device.PubKey, seatStartSlotBeforePay, 90*time.Second)
 		require.NoError(t, err, "oracle did not ack instant seat allocation")
 	}) {
 		return

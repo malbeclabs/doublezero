@@ -343,19 +343,46 @@ func (c *Client) IsProgramPaused(ctx context.Context) (bool, error) {
 	return cfg.IsPaused(), nil
 }
 
+// SeatSubscriptionStartSlot returns the client seat's current
+// SubscriptionStartSlot, or 0 if the seat account does not yet exist. Callers
+// capture this before FeedSeatPay to establish a baseline for
+// WaitForSeatAllocationAcked.
+func (c *Client) SeatSubscriptionStartSlot(ctx context.Context, devicePubkey string) (uint64, error) {
+	deviceKey, err := solana.PublicKeyFromBase58(devicePubkey)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse device pubkey %q: %w", devicePubkey, err)
+	}
+	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
+	}
+	clientIPBits := binary.BigEndian.Uint32(c.publicIP.To4())
+	shredsClient := shreds.New(shreds.NewRPCClient(c.SolanaRPCURL), programID)
+
+	seat, err := shredsClient.FetchClientSeat(ctx, deviceKey, clientIPBits)
+	if err != nil {
+		if errors.Is(err, shreds.ErrAccountNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return seat.SubscriptionStartSlot, nil
+}
+
 // WaitForSeatAllocationAcked waits for the oracle to ack this run's instant
-// allocation request. Withdraw is blocked onchain while the pending flag is set,
+// allocation request. Withdraw is blocked onchain while the request is pending,
 // so callers should wait between FeedSeatPay and FeedSeatWithdraw.
 //
-// The client seat account is reused across runs and FetchClientSeat reads at the
-// default (finalized) commitment, so a read taken right after FeedSeatPay can
-// return the previous run's already-acked (pending=false) state and short-circuit
-// before this run's request is even visible. To avoid mistaking stale state for
-// an ack, we require observing the pending flag set first, then wait for the
-// oracle to clear it. On timeout the error includes whether the request was ever
-// observed and the current program-paused state, to surface a slow oracle or a
-// migration window as the likely cause.
-func (c *Client) WaitForSeatAllocationAcked(ctx context.Context, devicePubkey string, timeout time.Duration) error {
+// prevStartSlot is the seat's SubscriptionStartSlot read before FeedSeatPay. The
+// oracle sets SubscriptionStartSlot to the allocation clock slot on ack, and the
+// value only advances across runs (slots are monotonic), so it is a durable
+// per-run signal: a value strictly greater than prevStartSlot means this run's
+// request was acked. This avoids depending on catching the transient pending
+// flag, which FetchClientSeat reads at the default (finalized) commitment can
+// miss when the oracle acks within a few slots. On timeout the error includes
+// prevStartSlot, the last observed SubscriptionStartSlot, and the program-paused
+// state, to distinguish a request that was never acked from a migration window.
+func (c *Client) WaitForSeatAllocationAcked(ctx context.Context, devicePubkey string, prevStartSlot uint64, timeout time.Duration) error {
 	deviceKey, err := solana.PublicKeyFromBase58(devicePubkey)
 	if err != nil {
 		return fmt.Errorf("failed to parse device pubkey %q: %w", devicePubkey, err)
@@ -367,17 +394,16 @@ func (c *Client) WaitForSeatAllocationAcked(ctx context.Context, devicePubkey st
 	clientIPBits := binary.BigEndian.Uint32(c.publicIP.To4())
 	shredsClient := shreds.New(shreds.NewRPCClient(c.SolanaRPCURL), programID)
 
-	c.log.Debug("Waiting for seat allocation ack", "host", c.Host, "device", devicePubkey, "timeout", timeout)
+	c.log.Debug("Waiting for seat allocation ack", "host", c.Host, "device", devicePubkey, "prevStartSlot", prevStartSlot, "timeout", timeout)
 	deadline := time.Now().Add(timeout)
 	var lastErr error
-	sawPending := false
+	var lastStartSlot uint64
 	for {
 		seat, err := shredsClient.FetchClientSeat(ctx, deviceKey, clientIPBits)
 		if err == nil {
-			if seat.HasPendingInstantRequest() {
-				sawPending = true
-			} else if sawPending {
-				c.log.Debug("Seat allocation acked", "host", c.Host, "device", devicePubkey)
+			lastStartSlot = seat.SubscriptionStartSlot
+			if seat.SubscriptionStartSlot > prevStartSlot {
+				c.log.Debug("Seat allocation acked", "host", c.Host, "device", devicePubkey, "startSlot", seat.SubscriptionStartSlot)
 				return nil
 			}
 		}
@@ -385,8 +411,8 @@ func (c *Client) WaitForSeatAllocationAcked(ctx context.Context, devicePubkey st
 		if time.Now().After(deadline) {
 			cfg, cfgErr := shredsClient.FetchProgramConfig(ctx)
 			paused := cfgErr == nil && cfg.IsPaused()
-			return fmt.Errorf("seat allocation not acked within %s on host %s (saw_pending=%t, program_paused=%t, last_fetch_err=%v)",
-				timeout, c.Host, sawPending, paused, lastErr)
+			return fmt.Errorf("seat allocation not acked within %s on host %s (prev_start_slot=%d, last_start_slot=%d, program_paused=%t, last_fetch_err=%v)",
+				timeout, c.Host, prevStartSlot, lastStartSlot, paused, lastErr)
 		}
 		select {
 		case <-ctx.Done():

@@ -172,6 +172,10 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		err := client.FeedSeatPay(ctx, device.PubKey, amount)
 		require.NoError(t, err, "failed to pay for seat")
 		seatPaid = true
+		// Diagnostic only. A re-fund of an already-active seat creates no new
+		// allocation request; logging tenure/pending here makes that case
+		// visible if a later step fails without an obvious cause.
+		client.LogSeatState(ctx, device.PubKey, "after_pay")
 	}) {
 		return
 	}
@@ -224,8 +228,9 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("withdraw_seat", func(t *testing.T) {
-		// Withdraw is rejected onchain while this run's instant allocation
-		// request is still in flight, so retry until the oracle acks it.
+		// The withdraw preflight rejects while it sees the allocation request in
+		// flight, whether from a slow oracle ack or a stale read of an
+		// already-closed request, so retry until it clears.
 		err := client.WithdrawSeatWaitingForAck(ctx, device.PubKey, 90*time.Second)
 		require.NoError(t, err, "failed to withdraw seat")
 		seatPaid = false

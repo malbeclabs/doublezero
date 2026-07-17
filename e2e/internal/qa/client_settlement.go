@@ -344,20 +344,25 @@ func (c *Client) IsProgramPaused(ctx context.Context) (bool, error) {
 	return cfg.IsPaused(), nil
 }
 
-// inflightRequestMarker is the substring the shred CLI's withdraw emits while
-// this run's instant seat allocation request is still in flight (the oracle has
-// not yet acked or rejected it). Withdraw is rejected onchain until then.
+// inflightRequestMarker is the substring the shred CLI's withdraw preflight emits
+// when it reads the instant seat allocation request PDA as still present. This
+// happens both legitimately (the oracle has not yet acked or rejected the
+// request) and spuriously (a stale/lagging RPC read of a request that was already
+// closed). Withdraw is blocked in the first case and would succeed in the second
+// once the read catches up.
 const inflightRequestMarker = "is in flight for client seat"
 
-// WithdrawSeatWaitingForAck withdraws the seat, retrying while the withdraw is
-// rejected because this run's instant allocation request is still in flight (the
-// oracle has not yet acked it).
+// WithdrawSeatWaitingForAck withdraws the seat, retrying while the withdraw's
+// preflight reports the instant allocation request in flight.
 //
-// The withdraw transaction checks the request state onchain directly, so retrying
-// it is not subject to the read-commitment lag that makes polling the seat's
-// pending flag racy: a fast ack cannot be missed, and an in-flight withdraw bails
-// atomically with no state change. Any error that is not the in-flight rejection
-// fails immediately.
+// The preflight is a client-side existence check on the request PDA (via
+// getMultipleAccounts), so an in-flight rejection has two causes: the oracle
+// genuinely has not acked yet, or the request was already closed but a lagging
+// RPC read still returns the account. Retrying absorbs both: an in-flight
+// withdraw bails atomically with no state change, and the read eventually catches
+// up or the oracle acks. Any error that is not the in-flight rejection fails
+// immediately. An in-flight rejection that persists for the whole timeout points
+// to a stale RPC view of an already-closed request rather than a slow oracle.
 func (c *Client) WithdrawSeatWaitingForAck(ctx context.Context, devicePubkey string, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -367,17 +372,48 @@ func (c *Client) WithdrawSeatWaitingForAck(ctx context.Context, devicePubkey str
 	exp.MaxInterval = 5 * time.Second
 	exp.MaxElapsedTime = timeout
 
-	return backoff.Retry(func() error {
+	err := backoff.Retry(func() error {
 		err := c.FeedSeatWithdraw(ctx, devicePubkey)
 		if err == nil {
 			return nil
 		}
 		if strings.Contains(err.Error(), inflightRequestMarker) {
-			c.log.Debug("Withdraw waiting for oracle to ack instant seat allocation", "host", c.Host, "device", devicePubkey)
+			c.log.Debug("Withdraw rejected as in-flight, retrying", "host", c.Host, "device", devicePubkey)
 			return err
 		}
 		return backoff.Permanent(err)
 	}, backoff.WithContext(exp, ctx))
+	if err != nil && strings.Contains(err.Error(), inflightRequestMarker) {
+		return fmt.Errorf("withdraw still rejected as in-flight after retrying %s on host %s; a rejection persisting this long indicates a stale RPC view of an already-closed request rather than a slow oracle ack: %w", timeout, c.Host, err)
+	}
+	return err
+}
+
+// LogSeatState logs the client seat's tenure and pending-instant-request flag
+// for diagnostics. Best-effort: a read error is logged, not returned, so it
+// never affects the test outcome. A re-fund of an already-active seat
+// (tenure_epochs > 0) creates no allocation request, which otherwise surfaces
+// later as an unexplained withdraw or tunnel failure; logging the state right
+// after pay makes that case visible in the run log.
+func (c *Client) LogSeatState(ctx context.Context, devicePubkey string, label string) {
+	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
+	if err != nil {
+		c.log.Warn("Seat state read skipped: bad program ID", "host", c.Host, "error", err)
+		return
+	}
+	deviceKey, err := solana.PublicKeyFromBase58(devicePubkey)
+	if err != nil {
+		c.log.Warn("Seat state read skipped: bad device pubkey", "host", c.Host, "error", err)
+		return
+	}
+	clientIPBits := binary.BigEndian.Uint32(c.publicIP.To4())
+	seat, err := c.shredsClient(programID).FetchClientSeat(ctx, deviceKey, clientIPBits)
+	if err != nil {
+		c.log.Info("Seat state", "label", label, "host", c.Host, "read_error", c.scrubRPCErr(err))
+		return
+	}
+	c.log.Info("Seat state", "label", label, "host", c.Host,
+		"tenure_epochs", seat.TenureEpochs, "pending_instant_request", seat.HasPendingInstantRequest())
 }
 
 // GetWalletPubkey calls the GetWalletPubkey RPC to read the keypair file on the

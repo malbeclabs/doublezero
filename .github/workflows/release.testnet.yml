@@ -183,10 +183,12 @@ jobs:
           channel: ${{ env.SLACK_CHANNEL_ID }}
           thread-ts: ${{ needs.preflight.outputs.thread_ts }}
           text: |-
-            Version PRs are open:
-            • https://github.com/malbeclabs/doublezero/pull/${{ steps.dzpr.outputs.pr }}
-            • https://github.com/malbeclabs/infra/pull/${{ steps.infrapr.outputs.pr }}
-            Review and merge both. Then approve gate 1 (`testnet` environment prompt) on the run — *approve only once both PRs are merged*; approving confirms the merges and pushes the 9 component tags with no further prompt: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Version PRs are open.
+            *Operator Steps Required*
+            1. Approve and merge <https://github.com/malbeclabs/doublezero/pull/${{ steps.dzpr.outputs.pr }}|doublezero#${{ steps.dzpr.outputs.pr }}>
+            2. Approve and merge <https://github.com/malbeclabs/infra/pull/${{ steps.infrapr.outputs.pr }}|infra#${{ steps.infrapr.outputs.pr }}>
+            3. Approve gate 1 (`testnet` environment prompt) — *only after both PRs merge*: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Approving gate 1 confirms the merges and pushes the 9 component tags with no further prompt.
 
   # Gate 1 — the single approval for the tag phase: approving asserts both
   # version PRs are merged AND authorizes pushing the 9 component tags (the tag
@@ -245,7 +247,11 @@ jobs:
           thread-ts: ${{ needs.preflight.outputs.thread_ts }}
           color: warning
           text: |-
-            Gate 1 was approved before both version PRs were merged — waiting up to 30 minutes; the tags push automatically once both PRs are merged. Close either PR to abort instead.
+            *Gate 1 was approved before both version PRs were merged* — waiting up to 30 minutes.
+            *Operator Steps Required*
+            1. Approve and merge <https://github.com/malbeclabs/doublezero/pull/${{ needs.open-prs.outputs.dz_pr }}|doublezero#${{ needs.open-prs.outputs.dz_pr }}>
+            2. Approve and merge <https://github.com/malbeclabs/infra/pull/${{ needs.open-prs.outputs.infra_pr }}|infra#${{ needs.open-prs.outputs.infra_pr }}>
+            The tags push automatically once both PRs are merged; close either PR to abort instead.
       - name: Wait for version PRs to merge
         if: steps.check.outputs.merged == 'false'
         env:
@@ -470,8 +476,13 @@ jobs:
         run: |
           {
             echo "## Program deploy required"
-            echo "Artifacts staged on nyc-tn-bm2 at /opt/doublezero/program-releases/v${{ inputs.version }}/ (see DEPLOY.md there)."
-            echo "Deploy the three programs with the local keypair, set the onchain version, then approve the waiting 'gate-programs' job (testnet environment)."
+            echo "Artifacts staged on nyc-tn-bm2 at /opt/doublezero/program-releases/v${{ inputs.version }}/."
+            echo ""
+            echo "**Operator Steps Required**"
+            echo "1. SSH into nyc-tn-bm2"
+            echo "2. cd /opt/doublezero/program-releases/v${{ inputs.version }}"
+            echo "3. Deploy the three programs with the local keypair and set the onchain version, following DEPLOY.md there"
+            echo "4. Approve gate 2, the waiting 'gate-programs' job (testnet environment) — only after the deploy"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Ping dev team
         uses: ./.github/actions/slack-thread-post
@@ -482,7 +493,12 @@ jobs:
           color: warning
           text: |-
             *Testnet release v${{ inputs.version }}: program deploy needed*
-            Artifacts staged on nyc-tn-bm2:/opt/doublezero/program-releases/v${{ inputs.version }}/. Deploy programs, then approve the waiting gate-programs job (testnet environment) on the orchestrator run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Artifacts are staged on nyc-tn-bm2 at /opt/doublezero/program-releases/v${{ inputs.version }}/.
+            *Operator Steps Required*
+            1. SSH into nyc-tn-bm2
+            2. cd /opt/doublezero/program-releases/v${{ inputs.version }}
+            3. Deploy the three programs and set the onchain version, following DEPLOY.md there
+            4. Approve gate 2, the waiting gate-programs job (`testnet` environment prompt) — *only after the deploy*: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   # Gate 2: approve only after the programs are deployed on testnet.
   gate-programs:

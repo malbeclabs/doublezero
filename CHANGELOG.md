@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
 - CLI
   - Documentation only: update `docs/cli-standard.md` to reference the `doublezero-daemon-cli` module crate (final PR of the RFC-20 daemon-cli extraction stack). The transition shims (`client/doublezero/src/servicecontroller.rs`, `client/doublezero/src/command/`) were already removed by the earlier stack PRs; the binary is unchanged. (#4047)
   - The `feed` verbs accept an exchange code for `--exchange` and multicast group codes for `--group`, in addition to pubkeys; pubkey inputs behave exactly as before. (#4027)
+- E2E
+  - Fix the multicast settlement QA test's seat-allocation ack wait. It waited to observe the client seat's pending flag flip set→cleared at finalized commitment, which a fast oracle ack (within a few slots) can skip, timing out despite a successful allocation. It now gates on the seat's monotonic `SubscriptionStartSlot` advancing past a pre-pay baseline. (#4065)
 
 ## [v0.30.0](https://github.com/malbeclabs/doublezero/compare/client/v0.29.0...client/v0.30.0) - 2026-07-10
 

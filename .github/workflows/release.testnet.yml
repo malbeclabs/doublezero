@@ -100,14 +100,33 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
-          git config user.name "dz-release-bot"
-          git config user.email "dz-release-bot@malbeclabs.com"
           BRANCH="release/v${VERSION}"
           ./scripts/release/bump-version.sh "$VERSION"
-          git checkout -b "$BRANCH"
-          git add Cargo.toml Cargo.lock CHANGELOG.md
-          git commit -m "release: bump version to ${VERSION}"
-          git push -f origin "$BRANCH"
+          BASE=$(git rev-parse HEAD)
+          # Create the release branch at HEAD, or force-reset one left by a previous run.
+          gh api repos/malbeclabs/doublezero/git/refs -f ref="refs/heads/${BRANCH}" -f sha="$BASE" ||
+            gh api -X PATCH "repos/malbeclabs/doublezero/git/refs/heads/${BRANCH}" -f sha="$BASE" -F force=true
+          # Commit via the GraphQL API rather than git: API commits are signed by
+          # GitHub, and main requires verified signatures (the App has no signing key).
+          base64 Cargo.toml   | tr -d '\n' > "$RUNNER_TEMP/toml.b64"
+          base64 Cargo.lock   | tr -d '\n' > "$RUNNER_TEMP/lock.b64"
+          base64 CHANGELOG.md | tr -d '\n' > "$RUNNER_TEMP/changelog.b64"
+          SHA=$(jq -n --arg branch "$BRANCH" --arg oid "$BASE" \
+            --arg msg "release: bump version to ${VERSION}" \
+            --rawfile toml "$RUNNER_TEMP/toml.b64" \
+            --rawfile lock "$RUNNER_TEMP/lock.b64" \
+            --rawfile chlog "$RUNNER_TEMP/changelog.b64" \
+            '{query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: {input: {
+                branch: {repositoryNameWithOwner: "malbeclabs/doublezero", branchName: $branch},
+                expectedHeadOid: $oid,
+                message: {headline: $msg},
+                fileChanges: {additions: [
+                  {path: "Cargo.toml",   contents: $toml},
+                  {path: "Cargo.lock",   contents: $lock},
+                  {path: "CHANGELOG.md", contents: $chlog}]}}}}' \
+            | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.oid')
+          echo "signed version-bump commit: ${SHA}"
           PR=$(gh pr list -R malbeclabs/doublezero --head "$BRANCH" --state open \
             --json number --jq '.[0].number // empty')
           if [ -z "$PR" ]; then
@@ -164,16 +183,20 @@ jobs:
           channel: ${{ env.SLACK_CHANNEL_ID }}
           thread-ts: ${{ needs.preflight.outputs.thread_ts }}
           text: |-
-            Version PRs are open:
-            • https://github.com/malbeclabs/doublezero/pull/${{ steps.dzpr.outputs.pr }}
-            • https://github.com/malbeclabs/infra/pull/${{ steps.infrapr.outputs.pr }}
-            Review and merge both. Then approve gate 1 (`testnet` environment prompt) on the run — *approve only once both PRs are merged*; approving confirms the merges and pushes the 9 component tags with no further prompt: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Version PRs are open.
+            *Operator Steps Required*
+            1. Approve and merge <https://github.com/malbeclabs/doublezero/pull/${{ steps.dzpr.outputs.pr }}|doublezero#${{ steps.dzpr.outputs.pr }}>
+            2. Approve and merge <https://github.com/malbeclabs/infra/pull/${{ steps.infrapr.outputs.pr }}|infra#${{ steps.infrapr.outputs.pr }}>
+            3. Approve gate 1 (`testnet` environment prompt) — *only after both PRs merge*: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Approving gate 1 confirms the merges and pushes the 9 component tags with no further prompt.
 
   # Gate 1 — the single approval for the tag phase: approving asserts both
   # version PRs are merged AND authorizes pushing the 9 component tags (the tag
   # workflow carries no environment of its own, so no second prompt follows).
-  # The verification step below fails fast if this is approved before both PRs
-  # are merged.
+  # Belt and suspenders for eager approvals: if this is approved before both
+  # PRs are merged, the job posts a Slack notice and waits up to 30 minutes for
+  # the merges instead of failing outright; a closed PR or the timeout still
+  # fails the gate.
   gate-tags:
     name: "gate 1: approve only after BOTH version PRs are merged — this pushes the tags"
     runs-on: ubuntu-latest
@@ -181,6 +204,8 @@ jobs:
     # thread_ts output is readable here (needs only exposes direct dependencies).
     needs: [open-prs, preflight]
     environment: testnet
+    outputs:
+      tag_sha: ${{ steps.tag-target.outputs.sha }}
     steps:
       # checkout only to resolve the local composite action
       - uses: actions/checkout@v4
@@ -193,7 +218,8 @@ jobs:
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
           owner: malbeclabs
           repositories: doublezero,infra
-      - name: Verify version PRs are merged
+      - name: Check version PRs
+        id: check
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
@@ -201,13 +227,72 @@ jobs:
           DZ=$(gh pr view ${{ needs.open-prs.outputs.dz_pr }} -R malbeclabs/doublezero --json state --jq .state)
           INFRA=$(gh pr view ${{ needs.open-prs.outputs.infra_pr }} -R malbeclabs/infra --json state --jq .state)
           echo "doublezero PR: $DZ, infra PR: $INFRA"
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            { [ "$DZ" != "CLOSED" ] && [ "$INFRA" != "CLOSED" ]; } || {
-              echo "::error::dry-run PRs were closed"; exit 1; }
-          else
-            { [ "$DZ" = "MERGED" ] && [ "$INFRA" = "MERGED" ]; } || {
-              echo "::error::approve this gate only after BOTH version PRs are merged"; exit 1; }
+          if [ "$DZ" = "CLOSED" ] || [ "$INFRA" = "CLOSED" ]; then
+            echo "::error::a version PR was closed — aborting the release"; exit 1
           fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            # dry-run PRs stay open on purpose; open is all that's required
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+          elif [ "$DZ" = "MERGED" ] && [ "$INFRA" = "MERGED" ]; then
+            echo "merged=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "merged=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Post early-approval notice to Slack thread
+        if: steps.check.outputs.merged == 'false'
+        uses: ./.github/actions/slack-thread-post
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel: ${{ env.SLACK_CHANNEL_ID }}
+          thread-ts: ${{ needs.preflight.outputs.thread_ts }}
+          color: warning
+          text: |-
+            *Gate 1 was approved before both version PRs were merged* — waiting up to 30 minutes.
+            *Operator Steps Required*
+            1. Approve and merge <https://github.com/malbeclabs/doublezero/pull/${{ needs.open-prs.outputs.dz_pr }}|doublezero#${{ needs.open-prs.outputs.dz_pr }}>
+            2. Approve and merge <https://github.com/malbeclabs/infra/pull/${{ needs.open-prs.outputs.infra_pr }}|infra#${{ needs.open-prs.outputs.infra_pr }}>
+            The tags push automatically once both PRs are merged; close either PR to abort instead.
+      - name: Wait for version PRs to merge
+        if: steps.check.outputs.merged == 'false'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            sleep 30
+            # A transient API error counts as a failed poll attempt, not a job failure.
+            DZ=$(gh pr view ${{ needs.open-prs.outputs.dz_pr }} -R malbeclabs/doublezero --json state --jq .state) || DZ=UNKNOWN
+            INFRA=$(gh pr view ${{ needs.open-prs.outputs.infra_pr }} -R malbeclabs/infra --json state --jq .state) || INFRA=UNKNOWN
+            echo "attempt $i/60: doublezero PR: $DZ, infra PR: $INFRA"
+            if [ "$DZ" = "CLOSED" ] || [ "$INFRA" = "CLOSED" ]; then
+              echo "::error::a version PR was closed — aborting the release"; exit 1
+            fi
+            if [ "$DZ" = "MERGED" ] && [ "$INFRA" = "MERGED" ]; then
+              echo "both version PRs merged"; exit 0
+            fi
+          done
+          echo "::error::gave up waiting for the version PRs after 30 minutes — re-run failed jobs and approve after both PRs are merged"
+          exit 1
+      # The run is pinned to the sha main had at dispatch, which by construction
+      # predates the version-bump merge. Tag the bump commit itself so the tags
+      # contain the version bump (v0.30.0's tags landed one commit shy of it).
+      - name: Resolve tag target (version-bump merge commit)
+        id: tag-target
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            # dry-run PRs never merge; the tag jobs are no-ops on the default sha
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          SHA=$(gh pr view ${{ needs.open-prs.outputs.dz_pr }} -R malbeclabs/doublezero --json mergeCommit --jq .mergeCommit.oid)
+          if [ -z "$SHA" ] || [ "$SHA" = "null" ]; then
+            echo "::error::could not resolve the version-bump merge commit"; exit 1
+          fi
+          echo "tags will point at $SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
       - name: Post tag-push notice to Slack thread
         uses: ./.github/actions/slack-thread-post
         with:
@@ -241,6 +326,8 @@ jobs:
     with:
       version: v${{ inputs.version }}
       component: ${{ matrix.component }}
+      # the version-bump merge commit, not the pre-bump sha this run is pinned to
+      ref: ${{ needs.gate-tags.outputs.tag_sha }}
       skip_existing: true
       dry_run: ${{ inputs.dry_run }}
     secrets:
@@ -389,8 +476,13 @@ jobs:
         run: |
           {
             echo "## Program deploy required"
-            echo "Artifacts staged on nyc-tn-bm2 at /opt/doublezero/program-releases/v${{ inputs.version }}/ (see DEPLOY.md there)."
-            echo "Deploy the three programs with the local keypair, set the onchain version, then approve the waiting 'gate-programs' job (testnet environment)."
+            echo "Artifacts staged on nyc-tn-bm2 at /opt/doublezero/program-releases/v${{ inputs.version }}/."
+            echo ""
+            echo "**Operator Steps Required**"
+            echo "1. SSH into nyc-tn-bm2"
+            echo "2. cd /opt/doublezero/program-releases/v${{ inputs.version }}"
+            echo "3. Deploy the three programs with the local keypair and set the onchain version, following DEPLOY.md there"
+            echo "4. Approve gate 2, the waiting 'gate-programs' job (testnet environment) — only after the deploy"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Ping dev team
         uses: ./.github/actions/slack-thread-post
@@ -401,7 +493,12 @@ jobs:
           color: warning
           text: |-
             *Testnet release v${{ inputs.version }}: program deploy needed*
-            Artifacts staged on nyc-tn-bm2:/opt/doublezero/program-releases/v${{ inputs.version }}/. Deploy programs, then approve the waiting gate-programs job (testnet environment) on the orchestrator run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Artifacts are staged on nyc-tn-bm2 at /opt/doublezero/program-releases/v${{ inputs.version }}/.
+            *Operator Steps Required*
+            1. SSH into nyc-tn-bm2
+            2. cd /opt/doublezero/program-releases/v${{ inputs.version }}
+            3. Deploy the three programs and set the onchain version, following DEPLOY.md there
+            4. Approve gate 2, the waiting gate-programs job (`testnet` environment prompt) — *only after the deploy*: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   # Gate 2: approve only after the programs are deployed on testnet.
   gate-programs:

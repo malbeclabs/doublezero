@@ -61,9 +61,14 @@ func TestQA_MulticastSettlement(t *testing.T) {
 
 	t.Cleanup(func() {
 		if seatPaid && device != nil {
+			// Retry the withdraw: a single-shot withdraw that hit the spurious
+			// "request in flight" preflight bail (or a transient RPC failure)
+			// leaves the seat active onchain with an open escrow, poisoning
+			// every subsequent hourly run. Retrying over a bounded window heals
+			// the state instead of letting the escrow grow one epoch per run.
 			cleanupCtx := context.Background()
-			if withdrawErr := client.FeedSeatWithdraw(cleanupCtx, device.PubKey); withdrawErr != nil {
-				log.Info("Cleanup: seat withdraw failed (may already be withdrawn)", "error", withdrawErr)
+			if withdrawErr := client.WithdrawSeatWithRetry(cleanupCtx, device.PubKey); withdrawErr != nil {
+				log.Info("Cleanup: seat withdraw failed after retries", "error", withdrawErr)
 			}
 		}
 		if t.Failed() {
@@ -86,6 +91,18 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("ensure_multicast_disconnected", func(t *testing.T) {
+		// Self-heal a seat left stuck-active onchain by a previous run whose
+		// withdraw bailed. This is the poisoned state that can't be seen from a
+		// session status: `shreds pay` on an already-active seat only tops up the
+		// escrow and never creates a new allocation request, so the seat never
+		// re-acks and the tunnel never comes up. Detect and withdraw it before
+		// the session check so the run starts from a clean slate.
+		healed, err := client.SelfHealStuckSeats(ctx)
+		require.NoError(t, err, "failed to self-heal stuck-active seats")
+		if healed > 0 {
+			log.Info("Self-healed stuck-active seat(s)", "count", healed)
+		}
+
 		statuses, err := client.GetUserStatuses(ctx)
 		if err != nil {
 			log.Info("No active sessions")
@@ -105,7 +122,7 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		log.Info("Active multicast session found, withdrawing", "device", mcast.CurrentDevice, "status", mcast.SessionStatus)
 		dev, ok := test.Devices()[mcast.CurrentDevice]
 		require.True(t, ok, "device %q not found in devices map", mcast.CurrentDevice)
-		err = client.FeedSeatWithdraw(ctx, dev.PubKey)
+		err = client.WithdrawSeatWithRetry(ctx, dev.PubKey)
 		require.NoError(t, err, "failed to withdraw existing seat")
 		err = client.WaitForMulticastStatusDisconnected(ctx)
 		require.NoError(t, err, "existing multicast session did not disconnect")

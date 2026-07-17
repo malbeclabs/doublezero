@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -24,6 +25,20 @@ const (
 	seatReadTimeout  = 30 * time.Second
 	seatReadInterval = 2 * time.Second
 )
+
+// withdrawRetryTimeout/withdrawRetryInterval bound the cleanup/self-heal
+// withdraw retry loop. The spurious "request in flight" preflight bail (a stale
+// RPC read of a just-closed InstantSeatAllocationRequest) and transient RPC
+// failures both clear within a minute or two, so a few attempts over this
+// window heal them without a single-shot failure poisoning every future run.
+const (
+	withdrawRetryTimeout  = 2 * time.Minute
+	withdrawRetryInterval = 15 * time.Second
+)
+
+// seatHealPollTimeout bounds how long SelfHealStuckSeats waits for a withdrawn
+// seat to read TenureEpochs == 0 (or vanish) onchain.
+const seatHealPollTimeout = 2 * time.Minute
 
 // currentSolanaRPCURL returns the pool's current endpoint URL, falling back to
 // the static SolanaRPCURL field for callers constructed without a pool (e.g.
@@ -254,6 +269,150 @@ func (c *Client) FeedSeatWithdraw(ctx context.Context, devicePubkey string) erro
 	}
 	c.log.Debug("Seat withdrawal successful", "host", c.Host, "device", devicePubkey)
 	return nil
+}
+
+// seatAlreadyWithdrawn reports whether a FeedSeatWithdraw error means there is
+// nothing left to withdraw (the seat is already gone). The retry loop treats
+// this as success rather than burning the remaining budget on a seat that no
+// longer exists.
+func seatAlreadyWithdrawn(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, s := range []string{"does not exist", "not found", "no active seat", "no seat", "nothing to withdraw"} {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
+}
+
+// WithdrawSeatWithRetry withdraws a seat, retrying over a bounded window on the
+// spurious "request in flight" preflight bail and transient RPC failures. A
+// single-shot withdraw is unsafe for cleanup and self-heal: the same transient
+// rejection failed on every hourly run, leaving the seat active onchain and
+// growing the payment escrow by one epoch price per run. Treats "seat does not
+// exist / nothing to withdraw" as success, and logs each attempt so a stuck
+// withdraw is diagnosable from the run log alone.
+//
+// NOTE: this deliberately reuses FeedSeatWithdraw's single-endpoint submission
+// (no cross-endpoint failover) — a withdraw that timed out on submission may
+// have landed onchain, and a blind retry against another endpoint would risk
+// double-submission. The retry here re-runs the full submit against the current
+// endpoint, so a landed-but-timed-out withdraw simply reads as already-gone on
+// the next attempt.
+func (c *Client) WithdrawSeatWithRetry(ctx context.Context, devicePubkey string) error {
+	deadline := time.Now().Add(withdrawRetryTimeout)
+	attempt := 0
+	for {
+		attempt++
+		err := c.FeedSeatWithdraw(ctx, devicePubkey)
+		if err == nil {
+			c.log.Info("Seat withdraw succeeded", "host", c.Host, "device", devicePubkey, "attempt", attempt)
+			return nil
+		}
+		if seatAlreadyWithdrawn(err) {
+			c.log.Info("Seat already withdrawn, nothing to do", "host", c.Host, "device", devicePubkey, "attempt", attempt)
+			return nil
+		}
+		c.log.Warn("Seat withdraw attempt failed, will retry",
+			"host", c.Host, "device", devicePubkey, "attempt", attempt, "error", c.scrubRPCErr(err))
+		if time.Now().After(deadline) {
+			return fmt.Errorf("seat withdraw did not succeed within %s on host %s after %d attempts: %s",
+				withdrawRetryTimeout, c.Host, attempt, c.scrubRPCErr(err))
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(withdrawRetryInterval):
+		}
+	}
+}
+
+// ActiveClientSeats returns all onchain client seats for this client's public
+// IP that are still active (TenureEpochs > 0), across any device. It mirrors
+// the conflict scan the pay CLI performs via getProgramAccounts, so a seat left
+// stuck-active on any device is detected — not just one on a specific device.
+func (c *Client) ActiveClientSeats(ctx context.Context) ([]shreds.KeyedClientSeat, error) {
+	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
+	}
+	clientIPBits := binary.BigEndian.Uint32(c.publicIP.To4())
+	shredsClient := c.shredsClient(programID)
+
+	seats, err := shredsClient.FetchAllClientSeats(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch client seats on host %s: %w", c.Host, err)
+	}
+	return filterActiveSeats(seats, clientIPBits), nil
+}
+
+// filterActiveSeats selects seats belonging to clientIPBits that are still
+// active (TenureEpochs > 0). Split out from ActiveClientSeats so the selection
+// logic is unit-testable without an RPC.
+func filterActiveSeats(seats []shreds.KeyedClientSeat, clientIPBits uint32) []shreds.KeyedClientSeat {
+	var active []shreds.KeyedClientSeat
+	for _, seat := range seats {
+		if seat.ClientIPBits == clientIPBits && seat.TenureEpochs > 0 {
+			active = append(active, seat)
+		}
+	}
+	return active
+}
+
+// SelfHealStuckSeats detects client seats stuck active onchain for this
+// client's public IP — the poisoned state left when a previous run's withdraw
+// spuriously bailed, leaving TenureEpochs > 0 and an open payment escrow — and
+// withdraws each, polling until it reads TenureEpochs == 0 (or the account
+// vanishes). Returns the number of seats healed; safe to call when there are
+// none (returns 0, nil). Logs the device key, seat pubkey, and tenure of every
+// seat found so a future incident is diagnosable from the run log alone.
+func (c *Client) SelfHealStuckSeats(ctx context.Context) (int, error) {
+	seats, err := c.ActiveClientSeats(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if len(seats) == 0 {
+		return 0, nil
+	}
+
+	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
+	}
+	clientIPBits := binary.BigEndian.Uint32(c.publicIP.To4())
+	shredsClient := c.shredsClient(programID)
+
+	healed := 0
+	for _, seat := range seats {
+		deviceKey := seat.DeviceKey
+		c.log.Warn("Found stuck-active client seat, self-healing",
+			"host", c.Host, "seat", seat.Pubkey, "device", deviceKey, "tenure_epochs", seat.TenureEpochs)
+
+		if err := c.WithdrawSeatWithRetry(ctx, deviceKey.String()); err != nil {
+			return healed, fmt.Errorf("failed to withdraw stuck seat %s on device %s (host %s): %w", seat.Pubkey, deviceKey, c.Host, err)
+		}
+
+		if err := poll.Until(ctx, func() (bool, error) {
+			s, fetchErr := shredsClient.FetchClientSeat(ctx, deviceKey, clientIPBits)
+			// A closed/absent seat account is fully healed.
+			if errors.Is(fetchErr, shreds.ErrAccountNotFound) || errors.Is(fetchErr, rpc.ErrNotFound) {
+				return true, nil
+			}
+			if fetchErr != nil {
+				return false, fetchErr
+			}
+			return s.TenureEpochs == 0, nil
+		}, seatHealPollTimeout, seatReadInterval); err != nil {
+			return healed, fmt.Errorf("stuck seat %s on device %s (host %s) did not clear to TenureEpochs==0: %w", seat.Pubkey, deviceKey, c.Host, err)
+		}
+
+		c.log.Info("Stuck-active client seat healed", "host", c.Host, "seat", seat.Pubkey, "device", deviceKey)
+		healed++
+	}
+	return healed, nil
 }
 
 // GetEffectiveSeatPrice returns the effective per-epoch price for the client's

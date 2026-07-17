@@ -57,7 +57,6 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	var effectivePrice uint64
 	var balanceBeforePay uint64
 	var balanceAfterPay uint64
-	var seatStartSlotBeforePay uint64
 	seatPaid := false
 
 	t.Cleanup(func() {
@@ -170,15 +169,7 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("pay_for_seat", func(t *testing.T) {
-		// Capture the seat's SubscriptionStartSlot before paying. The oracle
-		// sets this to the allocation clock slot on ack, so waiting for it to
-		// exceed this baseline is a durable signal that this run's request was
-		// acked, independent of catching the transient pending flag.
-		var err error
-		seatStartSlotBeforePay, err = client.SeatSubscriptionStartSlot(ctx, device.PubKey)
-		require.NoError(t, err, "failed to read seat subscription start slot before pay")
-
-		err = client.FeedSeatPay(ctx, device.PubKey, amount)
+		err := client.FeedSeatPay(ctx, device.PubKey, amount)
 		require.NoError(t, err, "failed to pay for seat")
 		seatPaid = true
 	}) {
@@ -214,17 +205,6 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		return
 	}
 
-	if !t.Run("wait_for_seat_allocation_acked", func(t *testing.T) {
-		// The tunnel can come up before the oracle has acked the instant
-		// allocation request. Withdraw rejects while the request is still
-		// pending, so wait here rather than racing the oracle on the
-		// withdraw_seat step.
-		err := client.WaitForSeatAllocationAcked(ctx, device.PubKey, seatStartSlotBeforePay, 90*time.Second)
-		require.NoError(t, err, "oracle did not ack instant seat allocation")
-	}) {
-		return
-	}
-
 	if !t.Run("validate_tunnel_up", func(t *testing.T) {
 		err := client.WaitForMulticastStatusUp(ctx)
 		require.NoError(t, err, "multicast tunnel did not come up after seat payment")
@@ -244,7 +224,9 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("withdraw_seat", func(t *testing.T) {
-		err := client.FeedSeatWithdraw(ctx, device.PubKey)
+		// Withdraw is rejected onchain while this run's instant allocation
+		// request is still in flight, so retry until the oracle acks it.
+		err := client.WithdrawSeatWaitingForAck(ctx, device.PubKey, 90*time.Second)
 		require.NoError(t, err, "failed to withdraw seat")
 		seatPaid = false
 	}) {

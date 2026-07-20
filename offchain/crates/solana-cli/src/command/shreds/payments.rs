@@ -221,7 +221,7 @@ impl PaymentsCommand {
                         // reason — the wildcard arm below makes the match
                         // robust to future variants in either direction.
                         Ok(
-                            ShredSubscriptionInstructionData::InitializePaymentEscrow(..)
+                            ShredSubscriptionInstructionData::InitializePaymentEscrow
                             | ShredSubscriptionInstructionData::InitializeClientSeat { .. }
                             | ShredSubscriptionInstructionData::RequestInstantSeatAllocation
                             | ShredSubscriptionInstructionData::RequestInstantSeatWithdrawal

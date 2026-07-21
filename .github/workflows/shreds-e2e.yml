@@ -28,6 +28,7 @@ env:
   SHRED_MANAGER_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/manager:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
   SHRED_ORACLE_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/oracle:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
   SHRED_CLIENT_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/client:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
+  SHRED_SUBSCRIPTION_API_IMAGE: ghcr.io/malbeclabs/dz-shreds-e2e/subscription-api:${{ github.event.inputs.image_tag || github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   setup:
@@ -175,6 +176,7 @@ jobs:
           docker push ${{ env.SHRED_IMAGE_REPO }}/manager:${{ env.SHRED_IMAGE_TAG }}
           docker push ${{ env.SHRED_IMAGE_REPO }}/oracle:${{ env.SHRED_IMAGE_TAG }}
           docker push ${{ env.SHRED_IMAGE_REPO }}/client:${{ env.SHRED_IMAGE_TAG }}
+          docker push ${{ env.SHRED_IMAGE_REPO }}/subscription-api:${{ env.SHRED_IMAGE_TAG }}
       - name: Discover tests and distribute across shards
         if: steps.gate.outputs.run-e2e == 'true'
         id: shard
@@ -309,6 +311,7 @@ jobs:
           pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/manager:${{ env.SHRED_IMAGE_TAG }}
           pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/oracle:${{ env.SHRED_IMAGE_TAG }}
           pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/client:${{ env.SHRED_IMAGE_TAG }}
+          pull_with_retry ${{ env.SHRED_IMAGE_REPO }}/subscription-api:${{ env.SHRED_IMAGE_TAG }}
       - name: Run e2e tests
         id: test
         env:

@@ -202,7 +202,9 @@ func (c *Client) WaitForOpenForRequests(ctx context.Context) error {
 	return backoff.Retry(func() error {
 		ec, err := shredsClient.FetchExecutionController(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to fetch execution controller: %w", err)
+			// Scrub: a fetch error can embed the (possibly API-keyed) endpoint
+			// URL, and this message reaches CI logs via require.NoError.
+			return fmt.Errorf("failed to fetch execution controller: %s", c.scrubRPCErr(err))
 		}
 		phase := ec.GetPhase()
 		if phase != shreds.ExecutionPhaseOpenForRequests {

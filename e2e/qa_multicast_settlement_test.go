@@ -173,11 +173,51 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		return
 	}
 
+	// Set when wait_for_open_phase times out inside the epoch-tail closed
+	// window (verified against live chain state), so the parent can skip the
+	// remaining subtests: the program stays closed until the epoch boundary,
+	// which the 2-minute wait cannot bridge, so pay/withdraw below could only
+	// fail and page for a by-design condition.
+	var epochTailWindow *qa.EpochTailWindow
 	if !t.Run("wait_for_open_phase", func(t *testing.T) {
+		// Record where the wait begins: a timeout means the program was closed
+		// for the entire wait, so the classification below can require the
+		// whole span — not just the timeout-time slot — to be inside the
+		// window. Best-effort: on a read failure classification degrades to
+		// the timeout-time slot only.
+		waitStartSlot, slotErr := client.CurrentSolanaSlot(ctx)
+		if slotErr != nil {
+			log.Warn("Failed to read wait-start slot; epoch-tail classification will use the timeout-time slot only", "error", slotErr)
+		}
 		err := client.WaitForOpenForRequests(ctx)
+		if err != nil {
+			// For the last grace-period slots of every epoch the shred oracle
+			// closes the program by design (settle seats, update prices) and
+			// reopens it just after the epoch boundary. Verify against live
+			// chain state — onchain grace period, controller phase, and RPC
+			// epoch schedule — whether this timeout landed in that window; a
+			// timeout outside it must keep failing exactly as loudly as before.
+			win, winErr := client.EpochTailClosedWindow(ctx, waitStartSlot)
+			switch {
+			case winErr != nil:
+				log.Warn("Failed to classify epoch-tail closed window; treating timeout as a real failure", "error", winErr)
+			case win.Benign:
+				epochTailWindow = &win
+				t.Skipf("expected epoch-tail closed window: %s", win)
+			default:
+				// Give on-call the computed window so a real outage's distance
+				// from the benign window is visible in the run log.
+				log.Info("Timeout is not the benign epoch-tail closed window", "window", win.String())
+			}
+		}
 		require.NoError(t, err, "shred-subscription program did not enter OpenForRequests phase within timeout")
 	}) {
 		return
+	}
+	if epochTailWindow != nil {
+		// t.Run reports a skipped subtest as success, so skip the parent
+		// explicitly to stop the run here.
+		t.Skipf("expected epoch-tail closed window: %s", epochTailWindow)
 	}
 
 	if !t.Run("record_balance_before_pay", func(t *testing.T) {

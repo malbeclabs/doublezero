@@ -5,7 +5,7 @@
     {
       "pubkey": "Eibmie8bKSt8huYdDpc4rk1JK1ehnYGGof7Bx3EgoMkG",
       "is_signer": false,
-      "is_writable": false
+      "is_writable": true
     },
     {
       "pubkey": "6jZM9CiKnZoczQYHRDee4Jtxqmzj3B5YnyYgWazYGGeH",

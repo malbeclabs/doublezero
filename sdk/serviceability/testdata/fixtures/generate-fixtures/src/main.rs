@@ -297,7 +297,7 @@ fn generate_ix_fixtures(dir: &Path) {
         &b,
         &c,
         1,
-        Some(d),
+        Some(&d),
         UserCreateSubscribeArgs {
             user_type: UserType::IBRLWithAllocatedIP,
             cyoa_type: UserCYOA::GREOverDIA,

@@ -96,6 +96,13 @@ func classifyEpochTailWindow(info *rpc.GetEpochInfoResult, gracePeriodSlots uint
 	if info.SlotIndex > info.AbsoluteSlot {
 		return EpochTailWindow{}, fmt.Errorf("inconsistent epoch info: slot index %d > current slot %d", info.SlotIndex, info.AbsoluteSlot)
 	}
+	if waitStartSlot > info.AbsoluteSlot {
+		// The wait ran for minutes before this classification, so its start
+		// slot preceding the classification-time slot is an observable
+		// invariant; a violation means the slot view is stale enough that the
+		// window position cannot be trusted.
+		return EpochTailWindow{}, fmt.Errorf("inconsistent slot view: wait start slot %d > current slot %d; refusing to classify", waitStartSlot, info.AbsoluteSlot)
+	}
 	grace := uint64(gracePeriodSlots)
 	if grace >= info.SlotsInEpoch {
 		// A grace period spanning the whole epoch would classify every slot as
@@ -139,7 +146,7 @@ func (c *Client) solanaRPCClient() *rpc.Client {
 	if c.solanaRPC != nil {
 		return c.solanaRPC.RPC()
 	}
-	return rpc.New(c.SolanaRPCURL)
+	return shreds.NewRPCClient(c.SolanaRPCURL)
 }
 
 // CurrentSolanaSlot returns the target cluster's current slot. Used to record

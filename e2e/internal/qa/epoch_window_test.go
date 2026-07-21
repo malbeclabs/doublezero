@@ -338,6 +338,22 @@ func TestClassifyEpochTailWindow(t *testing.T) {
 			wantErr:        "unknown execution phase 3",
 		},
 		{
+			// The wait ran for minutes before classification, so its start slot
+			// ahead of the classification-time slot means the slot view is
+			// provably stale — exactly when the window position can't be
+			// trusted.
+			name:           "error: wait start slot ahead of current slot",
+			epoch:          1004,
+			currentSlot:    closedSlot,
+			slotIndex:      closedSlot - firstSlot,
+			slotsInEpoch:   slotsInEpoch,
+			grace:          grace,
+			phase:          shreds.ExecutionPhaseUpdatingPrices,
+			lastClosedSlot: closedSlot,
+			waitStartSlot:  closedSlot + 1,
+			wantErr:        "wait start slot",
+		},
+		{
 			name:         "error: grace period covers the entire epoch",
 			epoch:        1004,
 			currentSlot:  firstSlot + 10,

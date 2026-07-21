@@ -55,13 +55,20 @@ pub fn set_airdrop(program_id: &Pubkey, payer: &Pubkey, args: SetAirdropArgs) ->
     )
 }
 
-/// `SetMinVersion` (variant 79). Accounts: `[globalstate]`.
+/// `SetMinVersion` (variant 79). Accounts: `[program_config, globalstate]`.
+///
+/// The processor reads `program_config` FIRST (it writes the updated
+/// `min_compatible_version` there), then `globalstate`. Both are writable.
 pub fn set_min_version(program_id: &Pubkey, payer: &Pubkey, args: SetVersionArgs) -> Instruction {
+    let (program_config, _) = get_program_config_pda(program_id);
     let (globalstate, _) = get_globalstate_pda(program_id);
     common::build_with_permission(
         program_id,
         DoubleZeroInstruction::SetMinVersion(args),
-        vec![AccountMeta::new(globalstate, false)],
+        vec![
+            AccountMeta::new(program_config, false),
+            AccountMeta::new(globalstate, false),
+        ],
         payer,
     )
 }
@@ -128,7 +135,6 @@ mod tests {
                 ),
                 68,
             ),
-            (set_min_version(&pid, &payer, SetVersionArgs::default()), 79),
             (
                 set_feature_flags(&pid, &payer, SetFeatureFlagsArgs { feature_flags: 0 }),
                 94,
@@ -137,5 +143,21 @@ mod tests {
             assert_eq!(ix.data[0], tag);
             assert_eq!(ix.accounts, expected);
         }
+
+        // SetMinVersion additionally takes `program_config` as its FIRST account
+        // (the processor writes the updated min version there), so it does not
+        // share the single-globalstate layout above.
+        let (program_config, _) = get_program_config_pda(&pid);
+        let ix = set_min_version(&pid, &payer, SetVersionArgs::default());
+        assert_eq!(ix.data[0], 79);
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(program_config, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
     }
 }

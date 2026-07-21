@@ -72,7 +72,12 @@ pub fn delete_topology(
 }
 
 /// `ClearTopology` (variant 109), single chunk.
-/// Accounts: `[topology(readonly), globalstate(readonly), link[i]...]`.
+/// Accounts: `[topology(writable), globalstate(readonly), link[i]...]`.
+///
+/// `topology` is writable: when the topology account still exists and at least
+/// one link is cleared, the processor asserts `is_writable` and decrements its
+/// `reference_count`. Passing it read-only fails that path; passing it writable
+/// is harmless on the closed-topology path (the processor skips the write).
 pub fn clear_topology(
     program_id: &Pubkey,
     payer: &Pubkey,
@@ -82,7 +87,7 @@ pub fn clear_topology(
     let (topology, _) = get_topology_pda(program_id, &args.name);
     let (globalstate, _) = get_globalstate_pda(program_id);
     let mut accounts = vec![
-        AccountMeta::new_readonly(topology, false),
+        AccountMeta::new(topology, false),
         AccountMeta::new_readonly(globalstate, false),
     ];
     for link in links {
@@ -227,7 +232,8 @@ mod tests {
         assert_eq!(
             single.accounts,
             vec![
-                AccountMeta::new_readonly(topology, false),
+                // topology is writable: the processor decrements its reference_count.
+                AccountMeta::new(topology, false),
                 AccountMeta::new_readonly(globalstate, false),
                 AccountMeta::new(links[0], false),
                 AccountMeta::new(links[1], false),

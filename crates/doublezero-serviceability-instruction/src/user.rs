@@ -202,6 +202,12 @@ pub fn update_user(
     mut args: UserUpdateArgs,
 ) -> Instruction {
     args.dz_prefix_count = dz_prefix_count;
+    // This builder always emits the `multicast_publisher_block` account, so the
+    // declared count MUST be > 0 or the processor (which reads that account only
+    // when `multicast_publisher_count > 0`) would skip it and misread every
+    // following account. Written back here for the same reason as
+    // `dz_prefix_count`: keep the declared count and the account list in lockstep.
+    args.multicast_publisher_count = 1;
 
     let (globalstate, _) = get_globalstate_pda(program_id);
     let (user_tunnel_block, _, _) =
@@ -275,6 +281,12 @@ pub fn delete_user(
     mut args: UserDeleteArgs,
 ) -> Instruction {
     args.dz_prefix_count = dz_prefix_count;
+    // This builder always emits the `multicast_publisher_block` account, so the
+    // declared count MUST be > 0 or the processor (which reads that account only
+    // when `multicast_publisher_count > 0`) would skip it and misread every
+    // following account. Written back here for the same reason as
+    // `dz_prefix_count`: keep the declared count and the account list in lockstep.
+    args.multicast_publisher_count = 1;
 
     let (globalstate, _) = get_globalstate_pda(program_id);
     let (user_tunnel_block, _, _) =
@@ -334,6 +346,12 @@ pub fn request_ban_user(
     mut args: UserRequestBanArgs,
 ) -> Instruction {
     args.dz_prefix_count = dz_prefix_count;
+    // This builder always emits the `multicast_publisher_block` account, so the
+    // declared count MUST be > 0 or the processor (which reads that account only
+    // when `multicast_publisher_count > 0`) would skip it and misread every
+    // following account. Written back here for the same reason as
+    // `dz_prefix_count`: keep the declared count and the account list in lockstep.
+    args.multicast_publisher_count = 1;
 
     let (globalstate, _) = get_globalstate_pda(program_id);
     let (user_tunnel_block, _, _) =
@@ -636,6 +654,14 @@ mod tests {
         // old_tenant default -> appended read-only before new_tenant.
         let ix = update_user(&pid, &payer, &user, &device, 1, &Pubkey::default(), args);
         assert_eq!(ix.data[0], 39);
+        // The builder always emits the mpb account, so it MUST pin
+        // multicast_publisher_count > 0 to keep the declared count and the
+        // account list in lockstep (else the processor skips the mpb slot and
+        // misreads every following account).
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::UpdateUser(a) => assert_eq!(a.multicast_publisher_count, 1),
+            other => panic!("unexpected variant: {other:?}"),
+        }
         let (globalstate, _) = get_globalstate_pda(&pid);
         let (utb, _, _) = get_resource_extension_pda(&pid, ResourceType::UserTunnelBlock);
         let (mpb, _, _) = get_resource_extension_pda(&pid, ResourceType::MulticastPublisherBlock);
@@ -699,6 +725,14 @@ mod tests {
             UserDeleteArgs::default(),
         );
         assert_eq!(ix.data[0], 42);
+        // The builder always emits the mpb account, so it MUST pin
+        // multicast_publisher_count > 0 to keep the declared count and the
+        // account list in lockstep (else the processor skips the mpb slot and
+        // misreads every following account).
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::DeleteUser(a) => assert_eq!(a.multicast_publisher_count, 1),
+            other => panic!("unexpected variant: {other:?}"),
+        }
         let (globalstate, _) = get_globalstate_pda(&pid);
         let (utb, _, _) = get_resource_extension_pda(&pid, ResourceType::UserTunnelBlock);
         let (mpb, _, _) = get_resource_extension_pda(&pid, ResourceType::MulticastPublisherBlock);
@@ -738,6 +772,14 @@ mod tests {
             UserRequestBanArgs::default(),
         );
         assert_eq!(ix.data[0], 44);
+        // The builder always emits the mpb account, so it MUST pin
+        // multicast_publisher_count > 0 to keep the declared count and the
+        // account list in lockstep (else the processor skips the mpb slot and
+        // misreads every following account).
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::RequestBanUser(a) => assert_eq!(a.multicast_publisher_count, 1),
+            other => panic!("unexpected variant: {other:?}"),
+        }
         let (globalstate, _) = get_globalstate_pda(&pid);
         let (utb, _, _) = get_resource_extension_pda(&pid, ResourceType::UserTunnelBlock);
         let (mpb, _, _) = get_resource_extension_pda(&pid, ResourceType::MulticastPublisherBlock);

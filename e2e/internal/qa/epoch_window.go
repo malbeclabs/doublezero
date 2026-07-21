@@ -20,8 +20,9 @@ import (
 type EpochTailWindow struct {
 	// Benign is true when the timeout is consistent with the by-design window:
 	// the current slot is inside [CloseTargetSlot, NextEpochStartSlot), the
-	// wait started at or after the close target (when known), and the program
-	// is observably not in OpenForRequests phase.
+	// wait started at or after the close target (when known), the controller's
+	// last close was this epoch's scheduled one, and the program is observably
+	// in a closed phase.
 	Benign bool
 	// Epoch is the cluster's current epoch at classification time.
 	Epoch uint64
@@ -39,6 +40,9 @@ type EpochTailWindow struct {
 	// GracePeriodSlots is ProgramConfig.ClosedForRequestsGracePeriodSlots as
 	// read onchain.
 	GracePeriodSlots uint32
+	// LastClosedForRequestsSlot is the slot at which the oracle last advanced
+	// the program to ClosedForRequests, as stamped on the execution controller.
+	LastClosedForRequestsSlot uint64
 	// Phase is the execution controller phase at classification time.
 	Phase shreds.ExecutionPhase
 }
@@ -48,8 +52,8 @@ func (w EpochTailWindow) String() string {
 	if w.WaitStartSlot != 0 {
 		start = strconv.FormatUint(w.WaitStartSlot, 10)
 	}
-	return fmt.Sprintf("epoch %d boundary at slot %d, close target slot %d (grace period %d slots), current slot %d, wait started at slot %s, program phase %q",
-		w.Epoch, w.NextEpochStartSlot, w.CloseTargetSlot, w.GracePeriodSlots, w.CurrentSlot, start, w.Phase)
+	return fmt.Sprintf("epoch %d boundary at slot %d, close target slot %d (grace period %d slots), current slot %d, wait started at slot %s, last closed at slot %d, program phase %q",
+		w.Epoch, w.NextEpochStartSlot, w.CloseTargetSlot, w.GracePeriodSlots, w.CurrentSlot, start, w.LastClosedForRequestsSlot, w.Phase)
 }
 
 // classifyEpochTailWindow computes the epoch-tail close window from the
@@ -60,45 +64,71 @@ func (w EpochTailWindow) String() string {
 // the whole epoch (a misclassification here would either page on-call for a
 // benign window or, worse, silence a real outage).
 //
-// Three conditions must all hold for Benign:
+// Four conditions must all hold for Benign:
 //   - currentSlot is inside [close target, epoch boundary);
 //   - waitStartSlot (when known) is at or after the close target: a timeout
 //     means the program was closed for the entire wait, so a wait that began
 //     before the close target observed the program closed before the oracle
 //     was due to close it — an anomaly, not the benign window;
-//   - the program is observably not in OpenForRequests phase: a timeout can
-//     also be minutes of RPC read failures against a program that is in fact
-//     open, which must keep failing loudly.
-func classifyEpochTailWindow(epoch, currentSlot, slotIndex, slotsInEpoch uint64, gracePeriodSlots uint32, phase shreds.ExecutionPhase, waitStartSlot uint64) (EpochTailWindow, error) {
-	if slotsInEpoch == 0 {
+//   - the controller's last close was this epoch's scheduled one:
+//     LastClosedForRequestsSlot is inside [close target, epoch boundary). An
+//     oracle that died mid-epoch leaves the program closed for hours; a wait
+//     landing entirely inside the tail window would otherwise satisfy the two
+//     slot gates and skip a real outage. >= tolerates the oracle's few-slot
+//     landing lag past the target; a close stamped before the target fails
+//     loudly, the safe direction;
+//   - the program is observably in ClosedForRequests or UpdatingPrices phase:
+//     a timeout can also be minutes of RPC read failures against a program
+//     that is in fact open, which must keep failing loudly.
+func classifyEpochTailWindow(info *rpc.GetEpochInfoResult, gracePeriodSlots uint32, ec *shreds.ExecutionController, waitStartSlot uint64) (EpochTailWindow, error) {
+	if info == nil {
+		return EpochTailWindow{}, fmt.Errorf("nil epoch info")
+	}
+	if ec == nil {
+		return EpochTailWindow{}, fmt.Errorf("nil execution controller")
+	}
+	if info.SlotsInEpoch == 0 {
 		return EpochTailWindow{}, fmt.Errorf("invalid epoch info: slots-in-epoch is zero")
 	}
-	if slotIndex >= slotsInEpoch {
-		return EpochTailWindow{}, fmt.Errorf("inconsistent epoch info: slot index %d >= slots in epoch %d", slotIndex, slotsInEpoch)
+	if info.SlotIndex >= info.SlotsInEpoch {
+		return EpochTailWindow{}, fmt.Errorf("inconsistent epoch info: slot index %d >= slots in epoch %d", info.SlotIndex, info.SlotsInEpoch)
 	}
-	if slotIndex > currentSlot {
-		return EpochTailWindow{}, fmt.Errorf("inconsistent epoch info: slot index %d > current slot %d", slotIndex, currentSlot)
+	if info.SlotIndex > info.AbsoluteSlot {
+		return EpochTailWindow{}, fmt.Errorf("inconsistent epoch info: slot index %d > current slot %d", info.SlotIndex, info.AbsoluteSlot)
 	}
 	grace := uint64(gracePeriodSlots)
-	if grace >= slotsInEpoch {
+	if grace >= info.SlotsInEpoch {
 		// A grace period spanning the whole epoch would classify every slot as
 		// benign and permanently mask real outages; refuse rather than guess.
-		return EpochTailWindow{}, fmt.Errorf("grace period (%d slots) covers the entire epoch (%d slots); refusing to classify", grace, slotsInEpoch)
+		return EpochTailWindow{}, fmt.Errorf("grace period (%d slots) covers the entire epoch (%d slots); refusing to classify", grace, info.SlotsInEpoch)
 	}
-	nextEpochStart := currentSlot - slotIndex + slotsInEpoch
+	phase := ec.GetPhase()
+	var closedNow bool
+	switch phase {
+	case shreds.ExecutionPhaseClosedForRequests, shreds.ExecutionPhaseUpdatingPrices:
+		closedNow = true
+	case shreds.ExecutionPhaseOpenForRequests:
+		closedNow = false
+	default:
+		// An unknown phase byte (program upgrade, deserialization drift) must
+		// not gate a benign skip; refuse rather than guess.
+		return EpochTailWindow{}, fmt.Errorf("unknown execution phase %d; refusing to classify", uint8(phase))
+	}
+	nextEpochStart := info.AbsoluteSlot - info.SlotIndex + info.SlotsInEpoch
 	closeTarget := nextEpochStart - grace
-	inWindow := currentSlot >= closeTarget
+	inWindow := info.AbsoluteSlot >= closeTarget
 	startedInWindow := waitStartSlot == 0 || waitStartSlot >= closeTarget
-	closedNow := phase != shreds.ExecutionPhaseOpenForRequests
+	closedThisEpoch := ec.LastClosedForRequestsSlot >= closeTarget && ec.LastClosedForRequestsSlot < nextEpochStart
 	return EpochTailWindow{
-		Benign:             inWindow && startedInWindow && closedNow,
-		Epoch:              epoch,
-		CurrentSlot:        currentSlot,
-		WaitStartSlot:      waitStartSlot,
-		CloseTargetSlot:    closeTarget,
-		NextEpochStartSlot: nextEpochStart,
-		GracePeriodSlots:   gracePeriodSlots,
-		Phase:              phase,
+		Benign:                    inWindow && startedInWindow && closedThisEpoch && closedNow,
+		Epoch:                     info.Epoch,
+		CurrentSlot:               info.AbsoluteSlot,
+		WaitStartSlot:             waitStartSlot,
+		CloseTargetSlot:           closeTarget,
+		NextEpochStartSlot:        nextEpochStart,
+		GracePeriodSlots:          gracePeriodSlots,
+		LastClosedForRequestsSlot: ec.LastClosedForRequestsSlot,
+		Phase:                     phase,
 	}, nil
 }
 
@@ -163,5 +193,5 @@ func (c *Client) EpochTailClosedWindow(ctx context.Context, waitStartSlot uint64
 	if info == nil {
 		return EpochTailWindow{}, fmt.Errorf("getEpochInfo returned no result on host %s", c.Host)
 	}
-	return classifyEpochTailWindow(info.Epoch, info.AbsoluteSlot, info.SlotIndex, info.SlotsInEpoch, cfg.ClosedForRequestsGracePeriodSlots, ec.GetPhase(), waitStartSlot)
+	return classifyEpochTailWindow(info, cfg.ClosedForRequestsGracePeriodSlots, ec, waitStartSlot)
 }

@@ -1,9 +1,8 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::DoubleZeroClient;
 use doublezero_program_common::validate_account_code;
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::location::update::LocationUpdateArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability::processors::location::update::LocationUpdateArgs;
+use doublezero_serviceability_instruction::location::update_location;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateLocationCommand {
@@ -24,24 +23,20 @@ impl UpdateLocationCommand {
             .map(|code| validate_account_code(code))
             .transpose()
             .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
+        client.send_transaction(update_location(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            LocationUpdateArgs {
                 code,
                 name: self.name.to_owned(),
                 country: self.country.to_owned(),
                 lat: self.lat,
                 lng: self.lng,
                 loc_id: self.loc_id,
-            }),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-        )
+            },
+        ))
     }
 }
 
@@ -52,37 +47,37 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_location_pda},
-        processors::location::update::LocationUpdateArgs,
+        pda::get_location_pda, processors::location::update::LocationUpdateArgs,
     };
+    use doublezero_serviceability_instruction::location::update_location;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::signature::Signature;
 
     #[test]
     fn test_commands_location_update_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (pda_pubkey, _) = get_location_pda(&program_id, 1);
 
+        let expected = update_location(
+            &program_id,
+            &payer,
+            &pda_pubkey,
+            LocationUpdateArgs {
+                code: Some("test_location".to_string()),
+                name: Some("Test Location".to_string()),
+                country: Some("Test Country".to_string()),
+                lat: Some(0.0),
+                lng: Some(0.0),
+                loc_id: Some(0),
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateLocation(LocationUpdateArgs {
-                    code: Some("test_location".to_string()),
-                    name: Some("Test Location".to_string()),
-                    country: Some("Test Country".to_string()),
-                    lat: Some(0.0),
-                    lng: Some(0.0),
-                    loc_id: Some(0),
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let update_command = UpdateLocationCommand {
             pubkey: pda_pubkey,

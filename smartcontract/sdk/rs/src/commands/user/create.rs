@@ -1,18 +1,14 @@
 use crate::{
-    commands::{
-        accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
-        globalstate::get::GetGlobalStateCommand,
-    },
+    commands::{accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand},
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::{get_resource_extension_pda, get_user_pda},
+    pda::get_user_pda,
     processors::user::create::UserCreateArgs,
-    resource::ResourceType,
     state::user::{UserCYOA, UserType},
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::user::create_user;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -27,10 +23,6 @@ pub struct CreateUserCommand {
 
 impl CreateUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         // GetAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
         // back to the exact client-IP pass, matching the onchain create_user path.
         let (accesspass_pk, _) = GetAccessPassCommand {
@@ -40,8 +32,8 @@ impl CreateUserCommand {
         .execute(client)?
         .ok_or_else(|| eyre::eyre!("You have no Access Pass"))?;
 
-        let (pda_pubkey, _) =
-            get_user_pda(&client.get_program_id(), &self.client_ip, self.user_type);
+        let program_id = client.get_program_id();
+        let (pda_pubkey, _) = get_user_pda(&program_id, &self.client_ip, self.user_type);
 
         let (_, device) = GetDeviceCommand {
             pubkey_or_code: self.device_pk.to_string(),
@@ -63,53 +55,23 @@ impl CreateUserCommand {
             )
         })?;
 
-        let (user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
-        let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
-            &client.get_program_id(),
-            ResourceType::MulticastPublisherBlock,
+        let ix = create_user(
+            &program_id,
+            &client.get_payer(),
+            &self.device_pk,
+            &accesspass_pk,
+            dz_prefix_count_u8,
+            self.tenant_pk,
+            UserCreateArgs {
+                user_type: self.user_type,
+                cyoa_type: self.cyoa_type,
+                client_ip: self.client_ip,
+                tunnel_endpoint: self.tunnel_endpoint,
+                dz_prefix_count: dz_prefix_count_u8,
+            },
         );
-        let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
-            &client.get_program_id(),
-            ResourceType::TunnelIds(self.device_pk, 0),
-        );
 
-        let mut accounts = vec![
-            AccountMeta::new(pda_pubkey, false),
-            AccountMeta::new(self.device_pk, false),
-            AccountMeta::new(accesspass_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_ext, false),
-            AccountMeta::new(multicast_publisher_block_ext, false),
-            AccountMeta::new(device_tunnel_ids_ext, false),
-        ];
-        for idx in 0..dz_prefix_count {
-            let (dz_prefix_ext, _, _) = get_resource_extension_pda(
-                &client.get_program_id(),
-                ResourceType::DzPrefixBlock(self.device_pk, idx),
-            );
-            accounts.push(AccountMeta::new(dz_prefix_ext, false));
-        }
-
-        // Add tenant account if provided and not default
-        if let Some(tenant_pk) = self.tenant_pk {
-            if tenant_pk != Pubkey::default() {
-                accounts.push(AccountMeta::new(tenant_pk, false));
-            }
-        }
-
-        client
-            .execute_transaction(
-                DoubleZeroInstruction::CreateUser(UserCreateArgs {
-                    user_type: self.user_type,
-                    cyoa_type: self.cyoa_type,
-                    client_ip: self.client_ip,
-                    tunnel_endpoint: self.tunnel_endpoint,
-                    dz_prefix_count: dz_prefix_count_u8,
-                }),
-                accounts,
-            )
-            .map(|sig| (sig, pda_pubkey))
+        client.send_transaction(ix).map(|sig| (sig, pda_pubkey))
     }
 }
 
@@ -120,10 +82,8 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_accesspass_pda, get_globalstate_pda, get_resource_extension_pda, get_user_pda},
+        pda::get_accesspass_pda,
         processors::user::create::UserCreateArgs,
-        resource::ResourceType,
         state::{
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
@@ -132,8 +92,9 @@ mod tests {
             user::{UserCYOA, UserType},
         },
     };
+    use doublezero_serviceability_instruction::user::create_user;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::net::Ipv4Addr;
 
     #[test]
@@ -142,11 +103,8 @@ mod tests {
 
         let program_id = client.get_program_id();
         let payer = client.get_payer();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
         let device_pk = Pubkey::new_unique();
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
-
-        let (pda_pubkey, _) = get_user_pda(&program_id, &client_ip, UserType::IBRLWithAllocatedIP);
 
         let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
         let accesspass = AccessPass {
@@ -192,37 +150,25 @@ mod tests {
             .with(predicate::eq(device_pk))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
-        let (user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-        let (multicast_publisher_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-        let (device_tunnel_ids_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
-        let (dz_prefix_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
-
+        let expected = create_user(
+            &program_id,
+            &payer,
+            &device_pk,
+            &accesspass_pubkey,
+            1,
+            None,
+            UserCreateArgs {
+                user_type: UserType::IBRLWithAllocatedIP,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                dz_prefix_count: 1,
+            },
+        );
         client
-            .expect_execute_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreateUser(UserCreateArgs {
-                    user_type: UserType::IBRLWithAllocatedIP,
-                    cyoa_type: UserCYOA::GREOverDIA,
-                    client_ip,
-                    tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-                    dz_prefix_count: 1,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(device_pk, false),
-                    AccountMeta::new(accesspass_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(user_tunnel_block_ext, false),
-                    AccountMeta::new(multicast_publisher_block_ext, false),
-                    AccountMeta::new(device_tunnel_ids_ext, false),
-                    AccountMeta::new(dz_prefix_ext, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = CreateUserCommand {
             user_type: UserType::IBRLWithAllocatedIP,

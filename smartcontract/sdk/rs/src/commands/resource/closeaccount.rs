@@ -1,12 +1,9 @@
-use crate::{
-    commands::{globalstate::get::GetGlobalStateCommand, resource::get::GetResourceCommand},
-    DoubleZeroClient,
-};
+use crate::{commands::resource::get::GetResourceCommand, DoubleZeroClient};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
     processors::resource::closeaccount::ResourceExtensionCloseAccountArgs, resource::ResourceType,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::resource::close_resource;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CloseResourceCommand {
@@ -40,17 +37,48 @@ pub struct CloseResourceByPubkeyCommand {
 
 impl CloseResourceByPubkeyCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+        client.send_transaction(close_resource(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            &self.owner,
+            ResourceExtensionCloseAccountArgs {},
+        ))
+    }
+}
 
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::CloseResource(ResourceExtensionCloseAccountArgs {}),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(self.owner, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-        )
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::utils::create_test_client;
+    use mockall::predicate;
+    use solana_sdk::signature::Signature;
+
+    #[test]
+    fn test_commands_resource_close_by_pubkey() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let resource = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+
+        let expected = close_resource(
+            &program_id,
+            &payer,
+            &resource,
+            &owner,
+            ResourceExtensionCloseAccountArgs {},
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        assert!(CloseResourceByPubkeyCommand {
+            pubkey: resource,
+            owner,
+        }
+        .execute(&client)
+        .is_ok());
     }
 }

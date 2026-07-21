@@ -1,10 +1,8 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::DoubleZeroClient;
 use doublezero_program_common::validate_account_code;
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_index_pda,
-    processors::index::create::IndexCreateArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability::{pda::get_index_pda, processors::index::create::IndexCreateArgs};
+use doublezero_serviceability_instruction::index::create_index;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateIndexCommand {
@@ -18,27 +16,20 @@ impl CreateIndexCommand {
         let key =
             validate_account_code(&self.key).map_err(|err| eyre::eyre!("invalid key: {err}"))?;
 
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+        let program_id = client.get_program_id();
+        let (index_pda, _) = get_index_pda(&program_id, self.entity_seed.as_bytes(), &key);
 
-        let (index_pda, _) =
-            get_index_pda(&client.get_program_id(), self.entity_seed.as_bytes(), &key);
-
-        let accounts = vec![
-            AccountMeta::new(index_pda, false),
-            AccountMeta::new_readonly(self.entity_pubkey, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-        ];
-
+        // The builder derives the index and globalstate PDAs.
         client
-            .execute_authorized_transaction(
-                DoubleZeroInstruction::CreateIndex(IndexCreateArgs {
+            .send_transaction(create_index(
+                &program_id,
+                &client.get_payer(),
+                &self.entity_pubkey,
+                IndexCreateArgs {
                     entity_seed: self.entity_seed.clone(),
                     key,
-                }),
-                accounts,
-            )
+                },
+            ))
             .map(|sig| (sig, index_pda))
     }
 }

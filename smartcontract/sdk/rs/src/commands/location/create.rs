@@ -1,10 +1,10 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_location_pda,
-    processors::location::create::LocationCreateArgs,
+    pda::get_location_pda, processors::location::create::LocationCreateArgs,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::location::create_location;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateLocationCommand {
@@ -21,66 +21,67 @@ impl CreateLocationCommand {
         let code =
             validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
+        let (_, globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (pda_pubkey, _) =
-            get_location_pda(&client.get_program_id(), globalstate.account_index + 1);
-        client
-            .execute_authorized_transaction(
-                DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
-                    code,
-                    name: self.name.clone(),
-                    country: self.country.clone(),
-                    lat: self.lat,
-                    lng: self.lng,
-                    loc_id: self.loc_id.unwrap_or(0),
-                }),
-                vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
-            )
-            .map(|sig| (sig, pda_pubkey))
+        let program_id = client.get_program_id();
+        let account_index = globalstate.account_index + 1;
+        let (pda_pubkey, _) = get_location_pda(&program_id, account_index);
+
+        let ix = create_location(
+            &program_id,
+            &client.get_payer(),
+            account_index,
+            LocationCreateArgs {
+                code,
+                name: self.name.clone(),
+                country: self.country.clone(),
+                lat: self.lat,
+                lng: self.lng,
+                loc_id: self.loc_id.unwrap_or(0),
+            },
+        );
+
+        client.send_transaction(ix).map(|sig| (sig, pda_pubkey))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{tests::utils::create_test_client, CreateLocationCommand, DoubleZeroClient};
-    use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_location_pda},
-        processors::location::create::LocationCreateArgs,
-    };
+    use doublezero_serviceability::processors::location::create::LocationCreateArgs;
+    use doublezero_serviceability_instruction::location::create_location;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::signature::Signature;
 
     #[test]
     fn test_commands_location_create_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_location_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
+        // create_test_client seeds globalstate.account_index = 0, so the new
+        // location index is 1. The command must hand send_transaction exactly the
+        // builder's instruction.
+        let expected = create_location(
+            &program_id,
+            &payer,
+            1,
+            LocationCreateArgs {
+                code: "test_location".to_string(),
+                name: "Test Location".to_string(),
+                country: "Test Country".to_string(),
+                lat: 0.0,
+                lng: 0.0,
+                loc_id: 0,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
-                    code: "test_location".to_string(),
-                    name: "Test Location".to_string(),
-                    country: "Test Country".to_string(),
-                    lat: 0.0,
-                    lng: 0.0,
-                    loc_id: 0,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let create_command = CreateLocationCommand {
             code: "test_location".to_string(),

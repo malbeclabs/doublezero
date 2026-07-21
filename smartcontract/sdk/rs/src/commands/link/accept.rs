@@ -1,15 +1,12 @@
 use crate::{
-    commands::{
-        device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand,
-        link::get::GetLinkCommand,
-    },
+    commands::{device::get::GetDeviceCommand, link::get::GetLinkCommand},
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
-    processors::link::accept::LinkAcceptArgs, resource::ResourceType, state::link::LinkStatus,
+    processors::link::accept::LinkAcceptArgs, state::link::LinkStatus,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::link::accept_link;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct AcceptLinkCommand {
@@ -19,10 +16,6 @@ pub struct AcceptLinkCommand {
 
 impl AcceptLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let (_, link) = GetLinkCommand {
             pubkey_or_code: self.link_pubkey.to_string(),
         }
@@ -39,27 +32,18 @@ impl AcceptLinkCommand {
         .execute(client)
         .map_err(|_err| eyre::eyre!("Device Z not found"))?;
 
-        let (device_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::DeviceTunnelBlock);
-        let (link_ids_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::LinkIds);
-        let accounts = vec![
-            AccountMeta::new(self.link_pubkey, false),
-            AccountMeta::new(device_z.contributor_pk, false),
-            AccountMeta::new(link.side_z_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(link.side_a_pk, false),
-            AccountMeta::new(device_tunnel_block_ext, false),
-            AccountMeta::new(link_ids_ext, false),
-        ];
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
+        client.send_transaction(accept_link(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.link_pubkey,
+            &device_z.contributor_pk,
+            &link.side_z_pk,
+            &link.side_a_pk,
+            LinkAcceptArgs {
                 side_z_iface_name: self.side_z_iface_name.clone(),
                 use_onchain_allocation: true,
-            }),
-            accounts,
-        )
+            },
+        ))
     }
 }
 
@@ -71,28 +55,23 @@ mod tests {
     };
     use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_resource_extension_pda},
         processors::link::accept::LinkAcceptArgs,
-        resource::ResourceType,
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
             link::{Link, LinkDesiredStatus, LinkHealth, LinkLinkType, LinkStatus},
         },
     };
+    use doublezero_serviceability_instruction::link::accept_link;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_link_accept() {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-        let (device_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-        let (link_ids_ext, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+        let payer = client.get_payer();
         let link_pubkey = Pubkey::new_unique();
         let side_a_pk = Pubkey::new_unique();
         let side_z_pk = Pubkey::new_unique();
@@ -139,24 +118,22 @@ mod tests {
             .with(predicate::eq(side_z_pk))
             .returning(move |_| Ok(AccountData::Device(device_z.clone())));
 
+        let expected = accept_link(
+            &program_id,
+            &payer,
+            &link_pubkey,
+            &contributor_pk,
+            &side_z_pk,
+            &side_a_pk,
+            LinkAcceptArgs {
+                side_z_iface_name: "Ethernet1".to_string(),
+                use_onchain_allocation: true,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::AcceptLink(LinkAcceptArgs {
-                    side_z_iface_name: "Ethernet1".to_string(),
-                    use_onchain_allocation: true,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(link_pubkey, false),
-                    AccountMeta::new(contributor_pk, false),
-                    AccountMeta::new(side_z_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(side_a_pk, false),
-                    AccountMeta::new(device_tunnel_block_ext, false),
-                    AccountMeta::new(link_ids_ext, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = AcceptLinkCommand {
             link_pubkey,

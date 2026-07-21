@@ -1,19 +1,11 @@
-use crate::{
-    commands::{
-        device::get::GetDeviceCommand, globalconfig::get::GetGlobalConfigCommand,
-        globalstate::get::GetGlobalStateCommand,
-    },
-    DoubleZeroClient,
-};
+use crate::{commands::device::get::GetDeviceCommand, DoubleZeroClient};
 use doublezero_program_common::{types::NetworkV4List, validate_account_code};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::get_resource_extension_pda,
     processors::device::update::DeviceUpdateArgs,
-    resource::ResourceType,
     state::device::{DeviceDesiredStatus, DeviceStatus, DeviceType},
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::device::update_device;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -53,41 +45,24 @@ impl UpdateDeviceCommand {
             })
             .transpose()
             .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (globalconfig_pubkey, _globalconfig) = GetGlobalConfigCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalconfig not initialized"))?;
-
-        let (device_pubkey, device) = GetDeviceCommand {
+        let (_device_pubkey, device) = GetDeviceCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
         .execute(client)
         .map_err(|_err| eyre::eyre!("Device not found"))?;
 
-        let mut extra_accounts = vec![];
-        let mut resource_count = 0;
-        if let Some(dz_prefixes) = &self.dz_prefixes {
-            extra_accounts.push(AccountMeta::new(globalconfig_pubkey, false));
-            let old_count = device.dz_prefixes.len();
-            let new_count = dz_prefixes.len();
-            let max_count = old_count.max(new_count);
-            for idx in 0..max_count + 1 {
-                let resource_type = match idx {
-                    0 => ResourceType::TunnelIds(device_pubkey, 0),
-                    _ => ResourceType::DzPrefixBlock(device_pubkey, idx - 1),
-                };
-                let (pda, _, _) =
-                    get_resource_extension_pda(&client.get_program_id(), resource_type);
-                extra_accounts.push(AccountMeta::new(pda, false));
-            }
-            resource_count += max_count + 1;
-        }
+        let new_location = self.location_pk.unwrap_or(device.location_pk);
 
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+        client.send_transaction(update_device(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            &device.contributor_pk,
+            &device.location_pk,
+            &new_location,
+            device.dz_prefixes.len(),
+            DeviceUpdateArgs {
                 code,
                 contributor_pk: self.contributor_pk,
                 device_type: self.device_type,
@@ -99,7 +74,7 @@ impl UpdateDeviceCommand {
                 users_count: self.users_count,
                 status: self.status,
                 desired_status: self.desired_status,
-                resource_count,
+                resource_count: 0,
                 reference_count: self.reference_count,
                 max_unicast_users: self.max_unicast_users,
                 max_multicast_subscribers: self.max_multicast_subscribers,
@@ -108,19 +83,8 @@ impl UpdateDeviceCommand {
                 max_multicast_publishers: self.max_multicast_publishers,
                 multicast_subscribers_count: self.multicast_subscribers_count,
                 multicast_publishers_count: self.multicast_publishers_count,
-            }),
-            [
-                vec![
-                    AccountMeta::new(self.pubkey, false),
-                    AccountMeta::new(device.contributor_pk, false),
-                    AccountMeta::new(device.location_pk, false),
-                    AccountMeta::new(self.location_pk.unwrap_or(device.location_pk), false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
-                extra_accounts,
-            ]
-            .concat(),
-        )
+            },
+        ))
     }
 }
 
@@ -131,7 +95,6 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
         pda::{get_contributor_pda, get_globalconfig_pda},
         processors::device::update::DeviceUpdateArgs,
         state::{
@@ -141,6 +104,7 @@ mod tests {
             globalconfig::GlobalConfig,
         },
     };
+    use doublezero_serviceability_instruction::device::update_device;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -148,8 +112,10 @@ mod tests {
     fn test_commands_device_update_command() {
         let mut client = create_test_client();
 
-        let (pda_pubkey, _) = get_contributor_pda(&client.get_program_id(), 1);
-        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (pda_pubkey, _) = get_contributor_pda(&program_id, 1);
+        let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
 
         let device_pubkey = Pubkey::new_unique();
         let device = Device {
@@ -201,38 +167,50 @@ mod tests {
                 }))
             });
 
+        let device_location_pk = device.location_pk;
+        let device_contributor_pk = device.contributor_pk;
+        let old_dz_prefix_count = device.dz_prefixes.len();
         client
             .expect_get()
             .with(predicate::eq(device_pubkey))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
-        client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-                    code: Some("test_device".to_string()),
-                    device_type: Some(DeviceType::Hybrid),
-                    public_ip: None,
-                    dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),
-                    metrics_publisher_pk: None,
-                    mgmt_vrf: Some("mgmt".to_string()),
-                    contributor_pk: None,
-                    max_users: None,
-                    users_count: None,
-                    status: None,
-                    desired_status: None,
-                    resource_count: 2,
-                    reference_count: None,
-                    max_unicast_users: None,
-                    max_multicast_subscribers: None,
-                    unicast_users_count: None,
 
-                    max_multicast_publishers: None,
-                    multicast_subscribers_count: None,
-                    multicast_publishers_count: None,
-                })),
-                predicate::always(),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+        // new_location defaults to the device's current location (location_pk = None).
+        let expected = update_device(
+            &program_id,
+            &payer,
+            &device_pubkey,
+            &device_contributor_pk,
+            &device_location_pk,
+            &device_location_pk,
+            old_dz_prefix_count,
+            DeviceUpdateArgs {
+                code: Some("test_device".to_string()),
+                device_type: Some(DeviceType::Hybrid),
+                public_ip: None,
+                dz_prefixes: Some("10.0.0.0/8".parse().unwrap()),
+                metrics_publisher_pk: None,
+                mgmt_vrf: Some("mgmt".to_string()),
+                contributor_pk: None,
+                max_users: None,
+                users_count: None,
+                status: None,
+                desired_status: None,
+                resource_count: 0,
+                reference_count: None,
+                max_unicast_users: None,
+                max_multicast_subscribers: None,
+                unicast_users_count: None,
+
+                max_multicast_publishers: None,
+                multicast_subscribers_count: None,
+                multicast_publishers_count: None,
+            },
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         // Use mixed-case input to verify SDK lowercases device codes,
         // preventing duplicates like "Test_Device" vs "test_device"

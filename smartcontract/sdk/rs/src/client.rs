@@ -6,8 +6,7 @@ use std::time::Duration;
 
 use crate::config::default_program_id;
 use doublezero_serviceability::{
-    error::DoubleZeroError, instructions::*, pda::get_permission_pda,
-    state::accounttype::AccountType,
+    error::DoubleZeroError, instructions::*, state::accounttype::AccountType,
 };
 use eyre::{bail, eyre, OptionExt};
 use log::debug;
@@ -26,13 +25,12 @@ use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_rpc_client_api::client_error::{Error as ClientError, ErrorKind as ClientErrorKind};
 use solana_sdk::{
     account::Account,
-    instruction::{AccountMeta, Instruction, InstructionError},
+    instruction::{Instruction, InstructionError},
     program_error::ProgramError,
     pubkey::Pubkey,
     signature::{Keypair, Signature, Signer},
     transaction::{Transaction, TransactionError},
 };
-use solana_system_interface::program;
 use solana_transaction_status::{
     option_serializer::OptionSerializer, EncodedTransaction, TransactionBinaryEncoding,
     UiTransactionEncoding,
@@ -43,7 +41,7 @@ use std::{
     str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc,
     },
 };
 
@@ -70,11 +68,6 @@ pub struct DZClient {
     rpc_ws_url: String,
     payer: Option<Keypair>,
     pub(crate) program_id: Pubkey,
-    /// Memoizes the payer's Permission PDA lookup so authorized transactions
-    /// resolve it at most once per client (the payer is fixed for the client's
-    /// lifetime). `None` = not yet resolved; `Some(None)` = resolved, no
-    /// on-chain Permission account; `Some(Some(meta))` = resolved and present.
-    permission_account_cache: Mutex<Option<Option<AccountMeta>>>,
 }
 
 impl DZClient {
@@ -115,7 +108,6 @@ impl DZClient {
             rpc_ws_url,
             payer,
             program_id,
-            permission_account_cache: Mutex::new(None),
         })
     }
 
@@ -157,7 +149,6 @@ impl DZClient {
             rpc_ws_url,
             payer,
             program_id: ctx.serviceability_program_id,
-            permission_account_cache: Mutex::new(None),
         })
     }
 
@@ -192,259 +183,92 @@ impl DZClient {
             .with_max_delay(Duration::from_secs(5))
     }
 
-    /// Assemble the full instruction list for a serviceability transaction.
-    ///
-    /// Every transaction is prefixed with the protocol-max compute-unit and
-    /// heap-frame requests (serviceability runs on a dedicated private cluster
-    /// where this is always required — see the module-level constants). The main
-    /// instruction's trailing accounts are always `[payer, system]`, optionally
-    /// followed by the payer's Permission PDA. The Permission account MUST stay
-    /// last because `authorize()` reads it as the final account after the
-    /// expected ones have been consumed.
-    fn assemble_instructions(
-        program_id: &Pubkey,
-        payer: &Pubkey,
-        instruction: &DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-        permission: Option<AccountMeta>,
-    ) -> Vec<Instruction> {
-        let data = instruction.pack();
-
-        let mut trailing = vec![
-            AccountMeta::new(*payer, true),
-            AccountMeta::new(program::id(), false),
-        ];
-        if let Some(permission) = permission {
-            trailing.push(permission);
-        }
-
-        vec![
-            ComputeBudgetInstruction::set_compute_unit_limit(MAX_COMPUTE_UNIT_LIMIT),
-            ComputeBudgetInstruction::request_heap_frame(MAX_HEAP_FRAME_BYTES),
-            Instruction::new_with_bytes(*program_id, &data, [accounts, trailing].concat()),
-        ]
-    }
-
-    /// Whether landing `instruction` can change whether the payer's Permission PDA
-    /// exists on-chain, so the memoized lookup must be dropped. `CreatePermission` and
-    /// `DeletePermission` flip existence; `UpdatePermission` only changes the flags
-    /// bitmask, which the cache does not encode (the cached `AccountMeta` records just
-    /// the PDA address and its read-only flags), so it is unaffected.
-    ///
-    /// This is intentionally not scoped to the client's own payer: `CreatePermission`
-    /// may target another `user_payer` and `DeletePermission` carries no pubkey at all
-    /// (the target PDA rides in the accounts list), so an admin doing bulk grants drops
-    /// its own memo each time. That is harmless, conservative over-invalidation (one
-    /// extra `get_account`); do not "optimize" it to payer-scoped, which would
-    /// reintroduce a create/delete asymmetry.
-    fn instruction_invalidates_permission_cache(instruction: &DoubleZeroInstruction) -> bool {
-        matches!(
-            instruction,
-            DoubleZeroInstruction::CreatePermission(_) | DoubleZeroInstruction::DeletePermission(_)
-        )
-    }
-
-    /// Refresh cached state after a transaction has been sent, regardless of the
-    /// reported send result. A `CreatePermission`/`DeletePermission` can flip whether
-    /// the payer's Permission PDA exists on-chain, so drop the memoized lookup to force
-    /// a re-resolution on the next authorized transaction — covering the bootstrap case
-    /// where a long-lived client creates its own Permission account and then performs
-    /// another gated action in the same session.
-    ///
-    /// This runs even when the send reported an `Err`: `skip_preflight=true` means the
-    /// tx can land on-chain while the client observes a confirmation timeout or dropped
-    /// connection, so gating on `Ok` would leave the stale entry — reintroducing the
-    /// silent legacy-allowlist fallback this fix closes. A spurious invalidation (the
-    /// tx never landed) only costs one re-resolution on the next gated transaction.
-    ///
-    /// This handles only create/delete this client itself sends. A cross-process
-    /// create/delete is recovered reactively by the retry loop in
-    /// `execute_transaction_inner` (see [`Self::is_stale_permission_error`]).
-    fn note_transaction_sent(&self, instruction: &DoubleZeroInstruction) {
-        if Self::instruction_invalidates_permission_cache(instruction) {
-            *self.permission_account_cache.lock().unwrap() = None;
-        }
-    }
-
-    /// Resolve the payer's Permission PDA as a read-only [`AccountMeta`], or
-    /// `None` when no Permission account exists on-chain. The lookup is retried
-    /// on transient RPC errors and memoized until invalidated, either by this
-    /// client sending a `CreatePermission` / `DeletePermission` (see
-    /// [`Self::instruction_invalidates_permission_cache`]) or by a gated
-    /// transaction failing with an authorization-shaped error that indicates the
-    /// memo went stale cross-process (see [`Self::is_stale_permission_error`] and
-    /// the retry loop in `execute_transaction_inner`).
-    ///
-    /// Only a *definitive* answer is cached: a successful RPC response — whether
-    /// the account is present or absent — is memoized, but a genuine RPC failure
-    /// is not. Caching a failure as "no account" would latch the legacy allowlist
-    /// path until the next invalidation or restart, which under
-    /// `RequirePermissionAccounts` strict mode surfaces as a spurious `NotAllowed`
-    /// (issue #4011).
-    fn resolve_permission_account(&self, payer: &Pubkey) -> Option<AccountMeta> {
-        let mut cache = self.permission_account_cache.lock().unwrap();
-        if let Some(cached) = cache.as_ref() {
-            return cached.clone();
-        }
-        let (permission_pda, _) = get_permission_pda(&self.program_id, payer);
-        // Use `get_account_with_commitment` so a definitive "account does not exist"
-        // comes back as `Ok(value: None)` rather than an `Err`. Any `Err` here is a
-        // genuine RPC failure (retries exhausted or non-retryable), which must NOT be
-        // cached as "no account": doing so would latch the legacy allowlist path until
-        // the next create/delete invalidation or a restart (see issue #4011). Leave the
-        // cache empty so the next authorized transaction re-resolves.
-        match (|| {
-            self.client
-                .get_account_with_commitment(&permission_pda, self.client.commitment())
-        })
-        .retry(Self::rpc_retry_builder())
-        .when(Self::is_retryable_rpc_error)
-        .call()
-        {
-            Ok(response) => {
-                let meta = response
-                    .value
-                    .map(|_| AccountMeta::new_readonly(permission_pda, false));
-                *cache = Some(meta.clone());
-                meta
-            }
-            Err(_) => None,
-        }
-    }
-
-    fn execute_transaction_inner(
-        &self,
-        instruction: DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-        quiet: bool,
-        with_permission: bool,
-    ) -> eyre::Result<Signature> {
+    /// Send a pre-built serviceability [`Instruction`] (RFC-26): prepend the
+    /// compute-budget prelude, sign with the payer, and send. The builder owns the
+    /// account layout (including the trailing `[payer, system]`), so this path does
+    /// no account assembly and no permission resolution. Single send attempt.
+    fn send_transaction_inner(&self, ix: Instruction, quiet: bool) -> eyre::Result<Signature> {
         let payer = self
             .payer
             .as_ref()
             .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
 
-        let mut permission = with_permission
-            .then(|| self.resolve_permission_account(&payer.pubkey()))
-            .flatten();
+        let instructions = vec![
+            ComputeBudgetInstruction::set_compute_unit_limit(MAX_COMPUTE_UNIT_LIMIT),
+            ComputeBudgetInstruction::request_heap_frame(MAX_HEAP_FRAME_BYTES),
+            ix,
+        ];
 
-        // Send at most twice. A gated transaction can fail because another process
-        // created or deleted the payer's Permission PDA after this client memoized the
-        // lookup (see `resolve_permission_account`): a cross-process delete leaves a
-        // stale `Some(meta)` that appends a now-closed PDA (`InvalidAccountData`), and a
-        // cross-process create leaves a stale negative that omits the account
-        // (`NotAllowed` under strict mode). On such an authorization-shaped failure, drop
-        // the memo, re-resolve, and resend once — but only if the re-resolved account
-        // actually changed, so a genuine denial (unchanged on-chain state) fails fast
-        // without a wasted resend. Retrying is safe because `authorize()` rejects before
-        // any state change, so the first attempt reverted.
-        let mut attempt: u32 = 0;
-        loop {
-            attempt += 1;
+        let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
+        let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
+        transaction.sign(&[&payer], blockhash);
 
-            let instructions = Self::assemble_instructions(
-                &self.program_id,
-                &payer.pubkey(),
-                &instruction,
-                accounts.clone(),
-                permission.clone(),
-            );
+        debug!("Sending transaction: {transaction:?}");
 
-            let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
+        let signature = transaction.signatures[0];
+        let send_config = RpcSendTransactionConfig {
+            skip_preflight: true,
+            ..RpcSendTransactionConfig::default()
+        };
 
-            let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
-            transaction.sign(&[&payer], blockhash);
+        let client_err = match self
+            .client
+            .send_and_confirm_transaction_with_spinner_and_config(
+                &transaction,
+                self.client.commitment(),
+                send_config,
+            ) {
+            Ok(sig) => return Ok(sig),
+            Err(client_err) => client_err,
+        };
 
-            debug!("Sending transaction: {transaction:?}");
+        let Some(err) = Self::parse_transaction_error(&client_err) else {
+            return Err(eyre!(client_err));
+        };
 
-            let signature = transaction.signatures[0];
-            let send_config = RpcSendTransactionConfig {
-                skip_preflight: true,
-                ..RpcSendTransactionConfig::default()
-            };
+        // skip_preflight=true means a failing tx can still land; fetch its logs.
+        let program_logs = self
+            .client
+            .get_transaction_with_config(
+                &signature,
+                RpcTransactionConfig {
+                    encoding: Some(UiTransactionEncoding::Base64),
+                    commitment: Some(self.client.commitment()),
+                    max_supported_transaction_version: Some(0),
+                },
+            )
+            .ok()
+            .and_then(|tx| tx.transaction.meta)
+            .and_then(|meta| match meta.log_messages {
+                OptionSerializer::Some(logs) => Some(logs),
+                _ => None,
+            })
+            .unwrap_or_default();
 
-            let send_result = self
-                .client
-                .send_and_confirm_transaction_with_spinner_and_config(
-                    &transaction,
-                    self.client.commitment(),
-                    send_config,
-                );
-
-            // Maintain the permission cache before inspecting the send result — the tx
-            // may have landed on-chain even on an Err (see `note_transaction_sent`).
-            self.note_transaction_sent(&instruction);
-
-            let client_err = match send_result {
-                Ok(sig) => return Ok(sig),
-                Err(client_err) => client_err,
-            };
-
-            let Some(err) = Self::parse_transaction_error(&client_err) else {
-                return Err(eyre!(client_err));
-            };
-
-            // First attempt of a gated tx: an authorization-shaped failure may be a
-            // stale permission memo. Invalidate, re-resolve, and retry once if the
-            // resolved account changed.
-            if attempt == 1 && with_permission && Self::is_stale_permission_error(&err) {
-                *self.permission_account_cache.lock().unwrap() = None;
-                let refreshed = self.resolve_permission_account(&payer.pubkey());
-                if refreshed != permission {
-                    permission = refreshed;
-                    continue;
-                }
-            }
-
-            // The tx may have landed onchain (skip_preflight=true means failing
-            // txs still land). Fetch logs from the confirmed tx if available.
-            let program_logs = self
-                .client
-                .get_transaction_with_config(
-                    &signature,
-                    RpcTransactionConfig {
-                        encoding: Some(UiTransactionEncoding::Base64),
-                        commitment: Some(self.client.commitment()),
-                        max_supported_transaction_version: Some(0),
-                    },
-                )
-                .ok()
-                .and_then(|tx| tx.transaction.meta)
-                .and_then(|meta| match meta.log_messages {
-                    OptionSerializer::Some(logs) => Some(logs),
-                    _ => None,
-                })
-                .unwrap_or_default();
-
-            if quiet {
-                if let TransactionError::InstructionError(
-                    _index,
-                    InstructionError::Custom(number),
-                ) = err
-                {
-                    return Err(eyre!(SimulationError {
-                        source: DoubleZeroError::from(number),
-                        program_logs,
-                    }));
-                }
-                return Err(eyre!(SimulationTransactionError {
-                    source: err,
-                    program_logs,
-                }));
-            }
-
-            eprintln!("Program Logs:");
-            for log in &program_logs {
-                eprintln!("{log}");
-            }
-
+        if quiet {
             if let TransactionError::InstructionError(_index, InstructionError::Custom(number)) =
                 err
             {
-                return Err(eyre!(DoubleZeroError::from(number)));
+                return Err(eyre!(SimulationError {
+                    source: DoubleZeroError::from(number),
+                    program_logs,
+                }));
             }
-            return Err(eyre!(err));
+            return Err(eyre!(SimulationTransactionError {
+                source: err,
+                program_logs,
+            }));
         }
+
+        eprintln!("Program Logs:");
+        for log in &program_logs {
+            eprintln!("{log}");
+        }
+
+        if let TransactionError::InstructionError(_index, InstructionError::Custom(number)) = err {
+            return Err(eyre!(DoubleZeroError::from(number)));
+        }
+        Err(eyre!(err))
     }
 
     /// Extract the on-chain [`TransactionError`] from a send error, whether it surfaced
@@ -463,22 +287,6 @@ impl DZClient {
                 },
             ) => res.err.clone().map(Into::into),
             _ => None,
-        }
-    }
-
-    /// Whether a failed gated transaction looks like it was rejected by `authorize()`
-    /// because of a stale permission-account memo, and so is worth re-resolving and
-    /// resending once. Two shapes qualify: `InvalidAccountData` (the appended Permission
-    /// PDA was closed cross-process, failing the owner check) and `NotAllowed`
-    /// (`Custom(8)`, the account was created cross-process but the client omitted it and
-    /// hit the strict-mode legacy denial). Any other error is a genuine failure.
-    fn is_stale_permission_error(err: &TransactionError) -> bool {
-        match err {
-            TransactionError::InstructionError(_, InstructionError::InvalidAccountData) => true,
-            TransactionError::InstructionError(_, InstructionError::Custom(number)) => {
-                DoubleZeroError::from(*number) == DoubleZeroError::NotAllowed
-            }
-            _ => false,
         }
     }
 
@@ -740,36 +548,12 @@ impl DoubleZeroClient for DZClient {
         Ok(list)
     }
 
-    fn execute_transaction(
-        &self,
-        instruction: DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-    ) -> eyre::Result<Signature> {
-        self.execute_transaction_inner(instruction, accounts, false, false)
+    fn send_transaction(&self, instruction: Instruction) -> eyre::Result<Signature> {
+        self.send_transaction_inner(instruction, false)
     }
 
-    fn execute_transaction_quiet(
-        &self,
-        instruction: DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-    ) -> eyre::Result<Signature> {
-        self.execute_transaction_inner(instruction, accounts, true, false)
-    }
-
-    fn execute_authorized_transaction(
-        &self,
-        instruction: DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-    ) -> eyre::Result<Signature> {
-        self.execute_transaction_inner(instruction, accounts, false, true)
-    }
-
-    fn execute_authorized_transaction_quiet(
-        &self,
-        instruction: DoubleZeroInstruction,
-        accounts: Vec<AccountMeta>,
-    ) -> eyre::Result<Signature> {
-        self.execute_transaction_inner(instruction, accounts, true, true)
+    fn send_transaction_quiet(&self, instruction: Instruction) -> eyre::Result<Signature> {
+        self.send_transaction_inner(instruction, true)
     }
 
     fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>> {
@@ -937,207 +721,12 @@ impl DoubleZeroClient for DZClient {
 }
 
 #[cfg(test)]
-mod assemble_instructions_tests {
+mod client_tests {
     use super::*;
 
-    // Compute-budget instruction borsh discriminants.
-    const SET_COMPUTE_UNIT_LIMIT: u8 = 2;
-    const REQUEST_HEAP_FRAME: u8 = 1;
-
-    fn base_accounts() -> Vec<AccountMeta> {
-        vec![
-            AccountMeta::new(Pubkey::new_unique(), false),
-            AccountMeta::new_readonly(Pubkey::new_unique(), false),
-        ]
-    }
-
-    /// C1 regression: every transaction must carry the protocol-max compute and
-    /// heap-frame requests as its first two instructions.
-    #[test]
-    fn prepends_compute_budget_instructions() {
-        let program_id = Pubkey::new_unique();
-        let payer = Pubkey::new_unique();
-
-        let ixs = DZClient::assemble_instructions(
-            &program_id,
-            &payer,
-            &DoubleZeroInstruction::InitGlobalState(),
-            base_accounts(),
-            None,
-        );
-
-        assert_eq!(ixs.len(), 3);
-        // First two target the compute-budget program (not the serviceability one).
-        assert_eq!(ixs[0].program_id, ixs[1].program_id);
-        assert_ne!(ixs[0].program_id, program_id);
-        assert_eq!(ixs[0].data[0], SET_COMPUTE_UNIT_LIMIT);
-        assert_eq!(ixs[1].data[0], REQUEST_HEAP_FRAME);
-        // Third is the actual serviceability instruction.
-        assert_eq!(ixs[2].program_id, program_id);
-    }
-
-    #[test]
-    fn trailing_accounts_without_permission_are_payer_then_system() {
-        let program_id = Pubkey::new_unique();
-        let payer = Pubkey::new_unique();
-        let base = base_accounts();
-
-        let ixs = DZClient::assemble_instructions(
-            &program_id,
-            &payer,
-            &DoubleZeroInstruction::InitGlobalState(),
-            base.clone(),
-            None,
-        );
-
-        let metas = &ixs[2].accounts;
-        assert_eq!(metas.len(), base.len() + 2);
-
-        let payer_meta = &metas[base.len()];
-        assert_eq!(payer_meta.pubkey, payer);
-        assert!(payer_meta.is_signer && payer_meta.is_writable);
-
-        assert_eq!(metas[base.len() + 1].pubkey, program::id());
-    }
-
-    /// H2 regression: when present, the Permission account MUST be the trailing
-    /// account — after payer + system — because `authorize()` reads it last.
-    #[test]
-    fn permission_account_is_appended_after_payer_and_system() {
-        let program_id = Pubkey::new_unique();
-        let payer = Pubkey::new_unique();
-        let (permission_pda, _) = get_permission_pda(&program_id, &payer);
-        let base = base_accounts();
-
-        let ixs = DZClient::assemble_instructions(
-            &program_id,
-            &payer,
-            &DoubleZeroInstruction::InitGlobalState(),
-            base.clone(),
-            Some(AccountMeta::new_readonly(permission_pda, false)),
-        );
-
-        let metas = &ixs[2].accounts;
-        assert_eq!(metas.len(), base.len() + 3);
-        assert_eq!(metas[base.len()].pubkey, payer);
-        assert_eq!(metas[base.len() + 1].pubkey, program::id());
-
-        let perm = &metas[base.len() + 2];
-        assert_eq!(perm.pubkey, permission_pda);
-        assert!(!perm.is_signer && !perm.is_writable);
-    }
-
-    /// The permission-account cache must be dropped exactly when an instruction can
-    /// change whether the payer's Permission PDA exists — otherwise a client that
-    /// bootstraps its own Permission account keeps serving the stale "does not exist"
-    /// result for the rest of its lifetime.
-    #[test]
-    fn permission_cache_invalidated_only_by_create_and_delete() {
-        use doublezero_serviceability::processors::permission::{
-            create::PermissionCreateArgs, delete::PermissionDeleteArgs,
-            update::PermissionUpdateArgs,
-        };
-
-        assert!(DZClient::instruction_invalidates_permission_cache(
-            &DoubleZeroInstruction::CreatePermission(PermissionCreateArgs::default())
-        ));
-        assert!(DZClient::instruction_invalidates_permission_cache(
-            &DoubleZeroInstruction::DeletePermission(PermissionDeleteArgs {})
-        ));
-        // UpdatePermission only changes the flags bitmask, not existence.
-        assert!(!DZClient::instruction_invalidates_permission_cache(
-            &DoubleZeroInstruction::UpdatePermission(PermissionUpdateArgs::default())
-        ));
-        // Unrelated instructions never invalidate.
-        assert!(!DZClient::instruction_invalidates_permission_cache(
-            &DoubleZeroInstruction::InitGlobalState()
-        ));
-    }
-
-    /// Behavioral guard: sending a create/delete must actually clear the memoized
-    /// lookup, not merely be classified as invalidating. Protects against a regression
-    /// that drops or misplaces the cache-clear in `execute_transaction_inner` — the
-    /// predicate test above would still pass in that case.
-    #[test]
-    fn note_transaction_sent_clears_cache_only_for_create_and_delete() {
-        use doublezero_serviceability::processors::permission::{
-            create::PermissionCreateArgs, delete::PermissionDeleteArgs,
-            update::PermissionUpdateArgs,
-        };
-
-        let client = DZClient {
-            rpc_url: String::new(),
-            client: RpcClient::new_mock(String::new()),
-            rpc_ws_url: String::new(),
-            payer: None,
-            program_id: Pubkey::new_unique(),
-            // Seed the resolved-but-absent state that the bug served stale forever.
-            permission_account_cache: Mutex::new(Some(None)),
-        };
-
-        // Update and unrelated instructions leave the memo intact.
-        client.note_transaction_sent(&DoubleZeroInstruction::UpdatePermission(
-            PermissionUpdateArgs::default(),
-        ));
-        client.note_transaction_sent(&DoubleZeroInstruction::InitGlobalState());
-        assert_eq!(*client.permission_account_cache.lock().unwrap(), Some(None));
-
-        // Create drops it back to the unresolved state so the next lookup re-resolves.
-        client.note_transaction_sent(&DoubleZeroInstruction::CreatePermission(
-            PermissionCreateArgs::default(),
-        ));
-        assert_eq!(*client.permission_account_cache.lock().unwrap(), None);
-
-        // Same for delete, starting from a resolved-and-present entry.
-        *client.permission_account_cache.lock().unwrap() =
-            Some(Some(AccountMeta::new_readonly(Pubkey::new_unique(), false)));
-        client.note_transaction_sent(&DoubleZeroInstruction::DeletePermission(
-            PermissionDeleteArgs {},
-        ));
-        assert_eq!(*client.permission_account_cache.lock().unwrap(), None);
-    }
-
-    /// The stale-permission classifier decides whether a failed gated tx triggers the
-    /// invalidate-and-retry-once recovery. It must fire for the two cross-process
-    /// signatures — `InvalidAccountData` (deleted PDA fails the owner check) and
-    /// `NotAllowed` (created-but-omitted account hits strict-mode denial) — and for
-    /// nothing else, so genuine failures are not needlessly resent.
-    #[test]
-    fn is_stale_permission_error_matches_only_authorization_shapes() {
-        // Derive NotAllowed's on-chain code rather than hard-coding it, so a renumber
-        // of the error enum is caught here instead of silently disabling recovery.
-        let not_allowed_code = match ProgramError::from(DoubleZeroError::NotAllowed) {
-            ProgramError::Custom(n) => n,
-            other => panic!("NotAllowed did not map to Custom: {other:?}"),
-        };
-
-        // Deleted-PDA owner-check failure.
-        assert!(DZClient::is_stale_permission_error(
-            &TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
-        ));
-        // Created-cross-process, strict-mode denial (index is irrelevant).
-        assert!(DZClient::is_stale_permission_error(
-            &TransactionError::InstructionError(3, InstructionError::Custom(not_allowed_code))
-        ));
-
-        // A different custom error is a genuine failure, not a stale memo.
-        let other_code = not_allowed_code.wrapping_add(1);
-        assert!(!DZClient::is_stale_permission_error(
-            &TransactionError::InstructionError(0, InstructionError::Custom(other_code))
-        ));
-        // Non-authorization instruction errors do not qualify.
-        assert!(!DZClient::is_stale_permission_error(
-            &TransactionError::InstructionError(0, InstructionError::InvalidArgument)
-        ));
-        // Transaction-level (non-instruction) errors do not qualify.
-        assert!(!DZClient::is_stale_permission_error(
-            &TransactionError::AlreadyProcessed
-        ));
-    }
-
-    /// `parse_transaction_error` must surface the program-level `TransactionError` from
-    /// the confirmed-error shape and yield `None` for transport errors that carry no
-    /// on-chain result (which the retry path treats as non-recoverable).
+    /// `parse_transaction_error` must surface the program-level `TransactionError`
+    /// from the confirmed-error shape and yield `None` for transport errors that
+    /// carry no on-chain result.
     #[test]
     fn parse_transaction_error_extracts_program_result() {
         let tx_err = TransactionError::InstructionError(0, InstructionError::InvalidAccountData);
@@ -1147,53 +736,6 @@ mod assemble_instructions_tests {
         // A bare custom (non-transaction) client error has no program result.
         let transport = ClientError::from(ClientErrorKind::Custom("connection reset".into()));
         assert_eq!(DZClient::parse_transaction_error(&transport), None);
-    }
-
-    fn client_with_mock_rpc(url: &str) -> DZClient {
-        DZClient {
-            rpc_url: String::new(),
-            client: RpcClient::new_mock(url.to_string()),
-            rpc_ws_url: String::new(),
-            payer: None,
-            program_id: Pubkey::new_unique(),
-            permission_account_cache: Mutex::new(None),
-        }
-    }
-
-    /// Regression for #4011: a definitive "account does not exist" (a successful
-    /// RPC response with a null account) is cached, so the legacy path is served
-    /// without re-querying on the next call.
-    #[test]
-    fn resolve_permission_account_caches_definitive_absence() {
-        // The mock's default `getAccountInfo` returns `value: null`, i.e. a
-        // successful "account not found" response.
-        let client = client_with_mock_rpc("succeeds");
-
-        assert_eq!(
-            client.resolve_permission_account(&Pubkey::new_unique()),
-            None
-        );
-        // Definitive absence is memoized as `Some(None)`.
-        assert_eq!(*client.permission_account_cache.lock().unwrap(), Some(None));
-    }
-
-    /// Regression for #4011: a genuine RPC failure must NOT be cached as "no
-    /// account". Caching it would latch the legacy path until the next
-    /// create/delete invalidation or a restart. The cache stays unresolved so the
-    /// next call re-queries.
-    #[test]
-    fn resolve_permission_account_does_not_cache_rpc_failure() {
-        // The "fails" mock returns a malformed body that fails to deserialize into
-        // the expected account response — a non-retryable RPC error.
-        let client = client_with_mock_rpc("fails");
-
-        assert_eq!(
-            client.resolve_permission_account(&Pubkey::new_unique()),
-            None
-        );
-        // Not latched: the cache is still unresolved, so the next authorized
-        // transaction re-resolves rather than serving a stale "no account".
-        assert_eq!(*client.permission_account_cache.lock().unwrap(), None);
     }
 }
 

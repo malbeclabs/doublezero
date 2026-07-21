@@ -1,18 +1,18 @@
 use crate::{
     commands::{
-        device::list::ListDeviceCommand, globalstate::get::GetGlobalStateCommand,
+        device::list::ListDeviceCommand,
         topology::assign_node_segments::AssignTopologyNodeSegmentsCommand,
     },
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
     pda::{get_resource_extension_pda, get_topology_pda},
     processors::topology::create::TopologyCreateArgs,
     resource::ResourceType,
     state::{interface::LoopbackType, topology::TopologyConstraint},
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::topology::create_topology;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateTopologyCommand {
@@ -29,13 +29,10 @@ pub struct CreateTopologyResult {
 
 impl CreateTopologyCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<CreateTopologyResult> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        let (topology_pda, _) = get_topology_pda(&client.get_program_id(), &self.name);
+        let program_id = client.get_program_id();
+        let (topology_pda, _) = get_topology_pda(&program_id, &self.name);
         let (admin_group_bits_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::AdminGroupBits);
+            get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
         // Pre-flight: verify admin-group-bits resource account exists
         client.get_account(admin_group_bits_pda).map_err(|_| {
@@ -46,17 +43,15 @@ impl CreateTopologyCommand {
             )
         })?;
 
-        let signature = client.execute_authorized_transaction(
-            DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
+        // The builder derives the topology, admin-group-bits and globalstate PDAs.
+        let signature = client.send_transaction(create_topology(
+            &program_id,
+            &client.get_payer(),
+            TopologyCreateArgs {
                 name: self.name.clone(),
                 constraint: self.constraint,
-            }),
-            vec![
-                AccountMeta::new(topology_pda, false),
-                AccountMeta::new(admin_group_bits_pda, false),
-                AccountMeta::new_readonly(globalstate_pubkey, false),
-            ],
-        )?;
+            },
+        ))?;
 
         // Enumerate devices and backfill FlexAlgoNodeSegment entries on Vpnv4
         // loopbacks. Mirrors the processor's filter at
@@ -97,8 +92,7 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
+        pda::{get_resource_extension_pda, get_topology_pda},
         processors::topology::{
             assign_node_segments::AssignTopologyNodeSegmentsArgs, create::TopologyCreateArgs,
         },
@@ -111,39 +105,39 @@ mod tests {
             topology::TopologyConstraint,
         },
     };
-    use mockall::{predicate, Sequence};
-    use solana_sdk::{
-        account::Account, instruction::AccountMeta, pubkey::Pubkey, signature::Signature,
+    use doublezero_serviceability_instruction::topology::{
+        assign_topology_node_segments, create_topology,
     };
+    use mockall::predicate;
+    use solana_sdk::{account::Account, pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_topology_create_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "unicast-default");
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (topology_pda, _) = get_topology_pda(&program_id, "unicast-default");
         let (admin_group_bits_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::AdminGroupBits);
+            get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
         client
             .expect_get_account()
             .with(predicate::eq(admin_group_bits_pda))
             .returning(|_| Ok(Account::default()));
 
+        let expected_create = create_topology(
+            &program_id,
+            &payer,
+            TopologyCreateArgs {
+                name: "unicast-default".to_string(),
+                constraint: TopologyConstraint::IncludeAny,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
-                    name: "unicast-default".to_string(),
-                    constraint: TopologyConstraint::IncludeAny,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(topology_pda, false),
-                    AccountMeta::new(admin_group_bits_pda, false),
-                    AccountMeta::new_readonly(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected_create))
+            .returning(|_| Ok(Signature::new_unique()));
 
         client
             .expect_gets()
@@ -166,12 +160,11 @@ mod tests {
     fn test_commands_topology_create_runs_backfill_for_vpnv4_devices() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (topology_pda, _) = get_topology_pda(&client.get_program_id(), "algo128");
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (topology_pda, _) = get_topology_pda(&program_id, "algo128");
         let (admin_group_bits_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::AdminGroupBits);
-        let (sr_ids_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
+            get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
         let vpnv4_device_pk = Pubkey::new_unique();
         let vpnv4_device = Device {
@@ -196,24 +189,18 @@ mod tests {
             .with(predicate::eq(admin_group_bits_pda))
             .returning(|_| Ok(Account::default()));
 
-        let mut seq = Sequence::new();
-
+        let expected_create = create_topology(
+            &program_id,
+            &payer,
+            TopologyCreateArgs {
+                name: "algo128".to_string(),
+                constraint: TopologyConstraint::IncludeAny,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .times(1)
-            .in_sequence(&mut seq)
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreateTopology(TopologyCreateArgs {
-                    name: "algo128".to_string(),
-                    constraint: TopologyConstraint::IncludeAny,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(topology_pda, false),
-                    AccountMeta::new(admin_group_bits_pda, false),
-                    AccountMeta::new_readonly(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected_create))
+            .returning(|_| Ok(Signature::new_unique()));
 
         client
             .expect_gets()
@@ -225,24 +212,19 @@ mod tests {
                 Ok(devices)
             });
 
+        // Only the Vpnv4 device is backfilled; the builder derives every PDA.
+        let expected_assign = assign_topology_node_segments(
+            &program_id,
+            &payer,
+            &[vpnv4_device_pk],
+            AssignTopologyNodeSegmentsArgs {
+                name: "algo128".to_string(),
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .times(1)
-            .in_sequence(&mut seq)
-            .with(
-                predicate::eq(DoubleZeroInstruction::AssignTopologyNodeSegments(
-                    AssignTopologyNodeSegmentsArgs {
-                        name: "algo128".to_string(),
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new_readonly(topology_pda, false),
-                    AccountMeta::new(sr_ids_pda, false),
-                    AccountMeta::new_readonly(globalstate_pubkey, false),
-                    AccountMeta::new(vpnv4_device_pk, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected_assign))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = CreateTopologyCommand {
             name: "algo128".to_string(),

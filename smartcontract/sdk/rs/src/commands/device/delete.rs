@@ -1,15 +1,10 @@
 use crate::{
-    commands::{
-        device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand,
-        resource::get::GetResourceCommand,
-    },
+    commands::{device::get::GetDeviceCommand, resource::get::GetResourceCommand},
     DoubleZeroClient,
 };
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::device::delete::DeviceDeleteArgs,
-    resource::ResourceType,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability::resource::ResourceType;
+use doublezero_serviceability_instruction::device::{delete_device, DeviceDeleteResources};
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteDeviceCommand {
@@ -18,67 +13,51 @@ pub struct DeleteDeviceCommand {
 
 impl DeleteDeviceCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let (_, device) = GetDeviceCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
         .execute(client)
         .map_err(|_err| eyre::eyre!("Device not found"))?;
 
-        // Try to discover resource accounts for atomic close
-        let mut resource_accounts = vec![];
-        let mut owner_accounts = vec![];
+        // Try to discover resource accounts for atomic close. Collect the onchain
+        // owner of each resource account, in the order the processor consumes them.
+        let mut owners = vec![];
         for idx in 0..device.dz_prefixes.len() + 1 {
             let resource_type = match idx {
                 0 => ResourceType::TunnelIds(self.pubkey, 0),
                 _ => ResourceType::DzPrefixBlock(self.pubkey, idx - 1),
             };
             match (GetResourceCommand { resource_type }).execute(client) {
-                Ok((pda, resource)) => {
-                    resource_accounts.push(AccountMeta::new(pda, false));
-                    owner_accounts.push(AccountMeta::new(resource.owner, false));
-                }
+                Ok((_pda, resource)) => owners.push(resource.owner),
                 Err(_) => {
                     // Resources don't exist (device never activated) → legacy path
-                    resource_accounts.clear();
-                    owner_accounts.clear();
+                    owners.clear();
                     break;
                 }
             }
         }
 
-        if resource_accounts.is_empty() {
-            // Legacy path
-            client.execute_authorized_transaction(
-                DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs::default()),
-                vec![
-                    AccountMeta::new(self.pubkey, false),
-                    AccountMeta::new(device.contributor_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
-            )
-        } else {
-            // Atomic path
-            let resource_count = resource_accounts.len() as u8;
-            let mut accounts = vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(device.contributor_pk, false),
-                AccountMeta::new(globalstate_pubkey, false),
-                AccountMeta::new(device.location_pk, false),
-                AccountMeta::new(device.exchange_pk, false),
-            ];
-            accounts.extend(resource_accounts);
-            accounts.extend(owner_accounts);
-            accounts.push(AccountMeta::new(device.owner, false));
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
-            client.execute_authorized_transaction(
-                DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs { resource_count }),
-                accounts,
-            )
-        }
+        let resources = if owners.is_empty() {
+            DeviceDeleteResources::Legacy
+        } else {
+            DeviceDeleteResources::Atomic {
+                location: &device.location_pk,
+                exchange: &device.exchange_pk,
+                owners: &owners,
+                device_owner: &device.owner,
+            }
+        };
+
+        client.send_transaction(delete_device(
+            &program_id,
+            &payer,
+            &self.pubkey,
+            &device.contributor_pk,
+            resources,
+        ))
     }
 }
 
@@ -98,6 +77,7 @@ mod tests {
             resource_extension::{Allocator, ResourceExtensionOwned},
         },
     };
+    use doublezero_serviceability_instruction::device::{delete_device, DeviceDeleteResources};
     use mockall::predicate;
     use solana_sdk::signature::Signature;
 
@@ -143,15 +123,15 @@ mod tests {
     fn test_commands_device_delete_legacy() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
         let device_pubkey = Pubkey::new_unique();
         let contributor_pk = Pubkey::new_unique();
         let location_pk = Pubkey::new_unique();
         let exchange_pk = Pubkey::new_unique();
 
         // Device with no resources (never activated)
-        let mut device =
-            make_test_device(client.get_payer(), contributor_pk, location_pk, exchange_pk);
+        let mut device = make_test_device(payer, contributor_pk, location_pk, exchange_pk);
         device.status = DeviceStatus::Activated;
 
         let device_clone = device.clone();
@@ -161,28 +141,24 @@ mod tests {
             .returning(move |_| Ok(AccountData::Device(device_clone.clone())));
 
         // TunnelIds resource lookup should fail (not activated)
-        let (tunnel_ids_pda, _, _) = get_resource_extension_pda(
-            &client.get_program_id(),
-            ResourceType::TunnelIds(device_pubkey, 0),
-        );
+        let (tunnel_ids_pda, _, _) =
+            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
         client
             .expect_get()
             .with(predicate::eq(tunnel_ids_pda))
             .returning(|_| Err(eyre::eyre!("not found")));
 
+        let expected = delete_device(
+            &program_id,
+            &payer,
+            &device_pubkey,
+            &contributor_pk,
+            DeviceDeleteResources::Legacy,
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::DeleteDevice(
-                    DeviceDeleteArgs::default(),
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(device_pubkey, false),
-                    AccountMeta::new(contributor_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = DeleteDeviceCommand {
             pubkey: device_pubkey,
@@ -271,26 +247,22 @@ mod tests {
                 }))
             });
 
+        let expected = delete_device(
+            &program_id,
+            &payer,
+            &device_pubkey,
+            &contributor_pk,
+            DeviceDeleteResources::Atomic {
+                location: &location_pk,
+                exchange: &exchange_pk,
+                owners: &[res_owner, res_owner],
+                device_owner: &payer,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs {
-                    resource_count: 2,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(device_pubkey, false),
-                    AccountMeta::new(contributor_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(location_pk, false),
-                    AccountMeta::new(exchange_pk, false),
-                    AccountMeta::new(tunnel_ids_pda, false),
-                    AccountMeta::new(dz_prefix_pda, false),
-                    AccountMeta::new(res_owner, false),
-                    AccountMeta::new(res_owner, false),
-                    AccountMeta::new(payer, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = DeleteDeviceCommand {
             pubkey: device_pubkey,

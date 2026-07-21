@@ -1,12 +1,7 @@
-use crate::{
-    commands::{globalstate::get::GetGlobalStateCommand, link::get::GetLinkCommand},
-    DoubleZeroClient,
-};
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
-    processors::link::delete::LinkDeleteArgs, resource::ResourceType,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use crate::{commands::link::get::GetLinkCommand, DoubleZeroClient};
+use doublezero_serviceability::processors::link::delete::LinkDeleteArgs;
+use doublezero_serviceability_instruction::link::delete_link;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteLinkCommand {
@@ -15,42 +10,25 @@ pub struct DeleteLinkCommand {
 
 impl DeleteLinkCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let (_, link) = GetLinkCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
         .execute(client)
         .map_err(|_err| eyre::eyre!("Link not found"))?;
 
-        let (device_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::DeviceTunnelBlock);
-        let (link_ids_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::LinkIds);
-        let mut accounts = vec![
-            AccountMeta::new(self.pubkey, false),
-            AccountMeta::new(link.contributor_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(link.side_a_pk, false),
-            AccountMeta::new(link.side_z_pk, false),
-            AccountMeta::new(device_tunnel_block_ext, false),
-            AccountMeta::new(link_ids_ext, false),
-            AccountMeta::new(link.owner, false),
-        ];
-        // Topology accounts for reference_count decrement — one writable account
-        // per entry in link.link_topologies.
-        for topology_pk in &link.link_topologies {
-            accounts.push(AccountMeta::new(*topology_pk, false));
-        }
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+        client.send_transaction(delete_link(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            &link.contributor_pk,
+            &link.side_a_pk,
+            &link.side_z_pk,
+            &link.owner,
+            &link.link_topologies,
+            LinkDeleteArgs {
                 use_onchain_deallocation: true,
-            }),
-            accounts,
-        )
+            },
+        ))
     }
 }
 
@@ -61,18 +39,16 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_resource_extension_pda},
         processors::link::delete::LinkDeleteArgs,
-        resource::ResourceType,
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
             link::{Link, LinkDesiredStatus, LinkHealth, LinkLinkType, LinkStatus},
         },
     };
+    use doublezero_serviceability_instruction::link::delete_link;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     fn make_test_link(owner: Pubkey, side_a_pk: Pubkey, side_z_pk: Pubkey) -> Link {
         Link {
@@ -107,14 +83,11 @@ mod tests {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-        let (device_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-        let (link_ids_ext, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+        let payer = client.get_payer();
         let link_pubkey = Pubkey::new_unique();
         let side_a_pk = Pubkey::new_unique();
         let side_z_pk = Pubkey::new_unique();
-        let link = make_test_link(client.get_payer(), side_a_pk, side_z_pk);
+        let link = make_test_link(payer, side_a_pk, side_z_pk);
         let contributor_pk = link.contributor_pk;
         let owner = link.owner;
 
@@ -123,24 +96,23 @@ mod tests {
             .with(predicate::eq(link_pubkey))
             .returning(move |_| Ok(AccountData::Link(link.clone())));
 
+        let expected = delete_link(
+            &program_id,
+            &payer,
+            &link_pubkey,
+            &contributor_pk,
+            &side_a_pk,
+            &side_z_pk,
+            &owner,
+            &[],
+            LinkDeleteArgs {
+                use_onchain_deallocation: true,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
-                    use_onchain_deallocation: true,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(link_pubkey, false),
-                    AccountMeta::new(contributor_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(side_a_pk, false),
-                    AccountMeta::new(side_z_pk, false),
-                    AccountMeta::new(device_tunnel_block_ext, false),
-                    AccountMeta::new(link_ids_ext, false),
-                    AccountMeta::new(owner, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = DeleteLinkCommand {
             pubkey: link_pubkey,

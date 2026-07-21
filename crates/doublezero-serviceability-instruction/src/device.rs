@@ -350,12 +350,17 @@ pub fn create_device_interface(
             accounts.push(AccountMeta::new_readonly(topology, false));
         }
     }
+    // The processor rejects `use_onchain_allocation == false` as its first
+    // statement (interface/create.rs), and `false` is the struct default — a
+    // caller-supplied value here can only ever fail. This builder owns onchain
+    // allocation, so it forces the flag (as the SDK command does).
+    args.use_onchain_allocation = true;
+
     let topology_count = if is_vpnv4 { topology_names.len() } else { 0 };
-    debug_assert!(
-        topology_count <= u8::MAX as usize,
-        "device interface topology_count {topology_count} exceeds u8::MAX"
-    );
-    args.topology_count = u8::try_from(topology_count).unwrap_or(u8::MAX);
+    // panicking is strictly better than emitting a `topology_count` that
+    // disagrees with the account list (matches the R0 builders in this file)
+    args.topology_count =
+        u8::try_from(topology_count).expect("device interface topology_count exceeds u8::MAX");
 
     common::build_with_permission(
         program_id,
@@ -381,8 +386,13 @@ pub fn delete_device_interface(
     payer: &Pubkey,
     device: &Pubkey,
     contributor: &Pubkey,
-    args: DeviceInterfaceDeleteArgs,
+    mut args: DeviceInterfaceDeleteArgs,
 ) -> Instruction {
+    // The processor rejects `use_onchain_deallocation == false` as its first
+    // statement (interface/delete.rs), and `false` is the struct default — a
+    // caller-supplied value here can only ever fail. Force it, as the SDK does.
+    args.use_onchain_deallocation = true;
+
     let (globalstate, _) = get_globalstate_pda(program_id);
     let (device_tunnel_block, _, _) =
         get_resource_extension_pda(program_id, ResourceType::DeviceTunnelBlock);
@@ -430,12 +440,11 @@ pub fn update_device_interface(
 ) -> Instruction {
     let update_topologies = topology_names.is_some();
     let topology_count = topology_names.map_or(0, <[String]>::len);
-    debug_assert!(
-        topology_count <= u8::MAX as usize,
-        "device interface topology_count {topology_count} exceeds u8::MAX"
-    );
     args.update_topologies = update_topologies;
-    args.topology_count = u8::try_from(topology_count).unwrap_or(u8::MAX);
+    // panicking is strictly better than emitting a `topology_count` that
+    // disagrees with the account list (matches the R0 builders in this file)
+    args.topology_count =
+        u8::try_from(topology_count).expect("device interface topology_count exceeds u8::MAX");
 
     let (globalstate, _) = get_globalstate_pda(program_id);
     let mut accounts = vec![
@@ -771,7 +780,12 @@ mod tests {
             ]
         );
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
-            DoubleZeroInstruction::CreateDeviceInterface(a) => assert_eq!(a.topology_count, 0),
+            DoubleZeroInstruction::CreateDeviceInterface(a) => {
+                assert_eq!(a.topology_count, 0);
+                // The processor rejects use_onchain_allocation == false; the
+                // builder must force it regardless of the caller's default.
+                assert!(a.use_onchain_allocation);
+            }
             other => panic!("unexpected: {other:?}"),
         }
     }
@@ -814,7 +828,10 @@ mod tests {
             ]
         );
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
-            DoubleZeroInstruction::CreateDeviceInterface(a) => assert_eq!(a.topology_count, 2),
+            DoubleZeroInstruction::CreateDeviceInterface(a) => {
+                assert_eq!(a.topology_count, 2);
+                assert!(a.use_onchain_allocation);
+            }
             other => panic!("unexpected: {other:?}"),
         }
     }
@@ -848,6 +865,14 @@ mod tests {
                 AccountMeta::new(system_program::ID, false),
             ]
         );
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::DeleteDeviceInterface(a) => {
+                // The processor rejects use_onchain_deallocation == false; the
+                // builder must force it regardless of the caller's default.
+                assert!(a.use_onchain_deallocation);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 
     #[test]

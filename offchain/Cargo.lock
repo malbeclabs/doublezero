@@ -2655,8 +2655,8 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "doublezero-cli-core"
-version = "0.29.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=8b795a3c876c96d6427d4e0e47dc81ec05199f4a#8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
+version = "0.30.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
 dependencies = [
  "bitflags 2.13.0",
  "clap",
@@ -2674,8 +2674,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-config"
-version = "0.29.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=8b795a3c876c96d6427d4e0e47dc81ec05199f4a#8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
+version = "0.30.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
 dependencies = [
  "eyre",
  "serde",
@@ -2740,8 +2740,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-geolocation"
-version = "0.29.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=8b795a3c876c96d6427d4e0e47dc81ec05199f4a#8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
+version = "0.30.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
 dependencies = [
  "borsh",
  "borsh-incremental",
@@ -2752,7 +2752,7 @@ dependencies = [
  "solana-loader-v3-interface",
  "solana-program",
  "solana-sdk-ids",
- "solana-system-interface 2.0.0",
+ "solana-system-interface 3.2.0",
  "thiserror 2.0.18",
 ]
 
@@ -2857,15 +2857,15 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.29.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=8b795a3c876c96d6427d4e0e47dc81ec05199f4a#8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
+version = "0.30.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
 dependencies = [
  "borsh",
  "byteorder",
  "ipnetwork",
  "serde",
  "solana-program",
- "solana-system-interface 2.0.0",
+ "solana-system-interface 3.2.0",
 ]
 
 [[package]]
@@ -2893,12 +2893,12 @@ dependencies = [
 
 [[package]]
 name = "doublezero-record"
-version = "0.29.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=8b795a3c876c96d6427d4e0e47dc81ec05199f4a#8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
+version = "0.30.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
 dependencies = [
  "bytemuck",
  "solana-program",
- "solana-system-interface 2.0.0",
+ "solana-system-interface 3.2.0",
  "thiserror 2.0.18",
 ]
 
@@ -2954,8 +2954,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.29.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=8b795a3c876c96d6427d4e0e47dc81ec05199f4a#8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
+version = "0.30.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
 dependencies = [
  "bitflags 2.13.0",
  "borsh",
@@ -2966,7 +2966,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "solana-program",
- "solana-system-interface 2.0.0",
+ "solana-system-interface 3.2.0",
  "thiserror 2.0.18",
 ]
 
@@ -3182,8 +3182,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero-telemetry"
-version = "0.29.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=8b795a3c876c96d6427d4e0e47dc81ec05199f4a#8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
+version = "0.30.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
 dependencies = [
  "borsh",
  "borsh-incremental",
@@ -3197,8 +3197,8 @@ dependencies = [
 
 [[package]]
 name = "doublezero_sdk"
-version = "0.29.0"
-source = "git+https://github.com/malbeclabs/doublezero?rev=8b795a3c876c96d6427d4e0e47dc81ec05199f4a#8b795a3c876c96d6427d4e0e47dc81ec05199f4a"
+version = "0.30.0"
+source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
 dependencies = [
  "async-trait",
  "backon",
@@ -3232,7 +3232,7 @@ dependencies = [
  "solana-pubsub-client",
  "solana-rpc-client-api",
  "solana-sdk",
- "solana-system-interface 2.0.0",
+ "solana-system-interface 3.2.0",
  "solana-transaction-status",
  "tempfile",
  "thiserror 2.0.18",

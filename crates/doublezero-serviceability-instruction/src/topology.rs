@@ -248,6 +248,17 @@ mod tests {
         // First chunk: 2 fixed + 16 links + payer + system = 20.
         assert_eq!(batched[0].accounts.len(), 20);
         assert_eq!(batched[1].accounts.len(), 2 + 3 + 2);
+
+        // No links -> no instructions (no empty clear is ever emitted).
+        assert!(clear_topology_batched(
+            &pid,
+            &payer,
+            &[],
+            TopologyClearArgs {
+                name: "topo".to_string()
+            }
+        )
+        .is_empty());
     }
 
     #[test]
@@ -284,5 +295,16 @@ mod tests {
         assert_eq!(batched.len(), 2);
         assert_eq!(batched[0].accounts.len(), 3 + 4 + 2);
         assert_eq!(batched[1].accounts.len(), 3 + 1 + 2);
+
+        // No devices -> no instructions.
+        assert!(assign_topology_node_segments_batched(
+            &pid,
+            &payer,
+            &[],
+            AssignTopologyNodeSegmentsArgs {
+                name: "topo".to_string()
+            }
+        )
+        .is_empty());
     }
 }

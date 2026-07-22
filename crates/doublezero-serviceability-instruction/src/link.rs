@@ -380,11 +380,15 @@ mod tests {
             ]
         );
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
-            DoubleZeroInstruction::AcceptLink(a) => {
-                // The processor rejects use_onchain_allocation == false; the
-                // builder must force it regardless of the caller's default.
-                assert!(a.use_onchain_allocation);
-            }
+            // The processor rejects use_onchain_allocation == false; the builder
+            // must force it while leaving every other arg field untouched.
+            DoubleZeroInstruction::AcceptLink(a) => assert_eq!(
+                a,
+                LinkAcceptArgs {
+                    side_z_iface_name: String::new(),
+                    use_onchain_allocation: true,
+                }
+            ),
             other => panic!("unexpected: {other:?}"),
         }
     }
@@ -399,6 +403,8 @@ mod tests {
         let side_z = Pubkey::new_unique();
 
         // No tunnel fields, no topologies -> just the 4-account side-Z preamble.
+        // Pass use_onchain_allocation: true to prove the builder clears it back to
+        // false when no tunnel resources are being updated.
         let ix = update_link(
             &pid,
             &payer,
@@ -409,7 +415,10 @@ mod tests {
             &side_a,
             &side_z,
             &[],
-            LinkUpdateArgs::default(),
+            LinkUpdateArgs {
+                use_onchain_allocation: true,
+                ..Default::default()
+            },
         );
         assert_eq!(ix.data[0], 31);
         let (globalstate, _) = get_globalstate_pda(&pid);
@@ -424,6 +433,10 @@ mod tests {
                 AccountMeta::new(system_program::ID, false),
             ]
         );
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::UpdateLink(a) => assert!(!a.use_onchain_allocation),
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 
     #[test]
@@ -480,6 +493,57 @@ mod tests {
     }
 
     #[test]
+    fn test_update_link_tunnel_id_only() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let link = Pubkey::new_unique();
+        let contributor = Pubkey::new_unique();
+        let side_a = Pubkey::new_unique();
+        let side_z = Pubkey::new_unique();
+
+        // tunnel_id without tunnel_net: appends the resource accounts but NOT the
+        // side_a/side_z pair, and no topology section.
+        let args = LinkUpdateArgs {
+            tunnel_id: Some(42),
+            ..Default::default()
+        };
+        let ix = update_link(
+            &pid,
+            &payer,
+            &link,
+            LinkUpdateAuthority::Contributor {
+                contributor: &contributor,
+            },
+            &side_a,
+            &side_z,
+            &[],
+            args,
+        );
+        assert_eq!(ix.data[0], 31);
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        let (device_tunnel_block, _, _) =
+            get_resource_extension_pda(&pid, ResourceType::DeviceTunnelBlock);
+        let (link_ids, _, _) = get_resource_extension_pda(&pid, ResourceType::LinkIds);
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(link, false),
+                AccountMeta::new(contributor, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(device_tunnel_block, false),
+                AccountMeta::new(link_ids, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+        // Updating tunnel resources forces use_onchain_allocation on.
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::UpdateLink(a) => assert!(a.use_onchain_allocation),
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_delete_link_with_topologies() {
         let pid = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
@@ -523,11 +587,14 @@ mod tests {
             ]
         );
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
-            DoubleZeroInstruction::DeleteLink(a) => {
-                // The processor rejects use_onchain_deallocation == false; the
-                // builder must force it regardless of the caller's default.
-                assert!(a.use_onchain_deallocation);
-            }
+            // The processor rejects use_onchain_deallocation == false; the builder
+            // must force it while leaving every other arg field untouched.
+            DoubleZeroInstruction::DeleteLink(a) => assert_eq!(
+                a,
+                LinkDeleteArgs {
+                    use_onchain_deallocation: true,
+                }
+            ),
             other => panic!("unexpected: {other:?}"),
         }
     }

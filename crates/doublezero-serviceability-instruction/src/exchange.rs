@@ -122,8 +122,10 @@ pub fn delete_exchange(
 
 /// `SetDeviceExchange` (variant 65). Accounts: `[exchange, device, globalstate]`.
 ///
-/// `device` is the device being set on the exchange (side 1 or 2, selected by
-/// `args.set` / `args.index`).
+/// `device` is on the side selected by `args.index` (1 or 2); `args.set` chooses
+/// set vs remove. On `Remove`, pass the currently-set device (`exchange.deviceN_pk`)
+/// — the processor decrements the passed device's `reference_count` without
+/// checking it matches the exchange's stored key.
 pub fn set_device_exchange(
     program_id: &Pubkey,
     payer: &Pubkey,

@@ -691,6 +691,44 @@ mod tests {
     }
 
     #[test]
+    fn test_update_user_with_non_default_old_tenant_is_writable() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let user = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let old_tenant = Pubkey::new_unique();
+        let new_tenant = Pubkey::new_unique();
+
+        let args = UserUpdateArgs {
+            tenant_pk: Some(new_tenant),
+            ..Default::default()
+        };
+        // old_tenant non-default -> appended WRITABLE (ref-count decrement) before new_tenant.
+        let ix = update_user(&pid, &payer, &user, &device, 1, &old_tenant, args);
+        assert_eq!(ix.data[0], 39);
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        let (utb, _, _) = get_resource_extension_pda(&pid, ResourceType::UserTunnelBlock);
+        let (mpb, _, _) = get_resource_extension_pda(&pid, ResourceType::MulticastPublisherBlock);
+        let (dti, _, _) = get_resource_extension_pda(&pid, ResourceType::TunnelIds(device, 0));
+        let (dz0, _, _) = get_resource_extension_pda(&pid, ResourceType::DzPrefixBlock(device, 0));
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(user, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(utb, false),
+                AccountMeta::new(mpb, false),
+                AccountMeta::new(dti, false),
+                AccountMeta::new(dz0, false),
+                AccountMeta::new(old_tenant, false),
+                AccountMeta::new(new_tenant, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+    }
+
+    #[test]
     fn test_update_user_no_tenant_change() {
         let pid = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
@@ -760,6 +798,69 @@ mod tests {
                 AccountMeta::new(system_program::ID, false),
             ]
         );
+    }
+
+    #[test]
+    fn test_delete_user_with_non_default_tenant() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let user = Pubkey::new_unique();
+        let accesspass = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let tenant = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+
+        // Non-default tenant -> a writable tenant account is inserted between the
+        // dz_prefix accounts and owner.
+        let ix = delete_user(
+            &pid,
+            &payer,
+            &user,
+            &accesspass,
+            &device,
+            1,
+            Some(tenant),
+            &owner,
+            UserDeleteArgs::default(),
+        );
+        assert_eq!(ix.data[0], 42);
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        let (utb, _, _) = get_resource_extension_pda(&pid, ResourceType::UserTunnelBlock);
+        let (mpb, _, _) = get_resource_extension_pda(&pid, ResourceType::MulticastPublisherBlock);
+        let (dti, _, _) = get_resource_extension_pda(&pid, ResourceType::TunnelIds(device, 0));
+        let (dz0, _, _) = get_resource_extension_pda(&pid, ResourceType::DzPrefixBlock(device, 0));
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(user, false),
+                AccountMeta::new(accesspass, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(device, false),
+                AccountMeta::new(utb, false),
+                AccountMeta::new(mpb, false),
+                AccountMeta::new(dti, false),
+                AccountMeta::new(dz0, false),
+                AccountMeta::new(tenant, false),
+                AccountMeta::new(owner, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+
+        // A default tenant is never appended (owner directly follows dz_prefix).
+        let ix2 = delete_user(
+            &pid,
+            &payer,
+            &user,
+            &accesspass,
+            &device,
+            1,
+            Some(Pubkey::default()),
+            &owner,
+            UserDeleteArgs::default(),
+        );
+        assert_eq!(ix2.accounts.len(), 11);
+        assert_eq!(ix2.accounts[ix2.accounts.len() - 3].pubkey, owner);
     }
 
     #[test]

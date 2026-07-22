@@ -1,8 +1,11 @@
 //! Tenant-domain instruction builders.
 //!
 //! All route through `authorize()` -> [`common::build_with_permission`]. Note the
-//! globalstate account is writable on `create` (it seeds the account index) and
-//! read-only on every other verb.
+//! globalstate account is passed writable on `create` and read-only on every
+//! other verb — this mirrors the SDK command byte-for-byte (the golden-fixture
+//! parity target). The create processor itself only *reads* globalstate; the new
+//! tenant's id is allocated from the `VrfIds` resource-extension account, not from
+//! `globalstate.account_index`.
 
 use crate::common;
 use doublezero_serviceability::{

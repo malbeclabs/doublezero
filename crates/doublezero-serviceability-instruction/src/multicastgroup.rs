@@ -39,12 +39,17 @@ pub fn create_multicast_group(
     program_id: &Pubkey,
     payer: &Pubkey,
     account_index: u128,
-    args: MulticastGroupCreateArgs,
+    mut args: MulticastGroupCreateArgs,
 ) -> Instruction {
     let (mgroup, _) = get_multicastgroup_pda(program_id, account_index);
     let (globalstate, _) = get_globalstate_pda(program_id);
     let (multicast_group_block, _, _) =
         get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
+    // The processor rejects `use_onchain_allocation == false` as its first
+    // statement (multicastgroup/create.rs), and `false` is the struct default —
+    // a caller-supplied value here can only ever fail. This builder always emits
+    // the `multicast_group_block` account, so it forces the flag (as the SDK does).
+    args.use_onchain_allocation = true;
     common::build_with_permission(
         program_id,
         DoubleZeroInstruction::CreateMulticastGroup(args),
@@ -131,11 +136,16 @@ pub fn delete_multicast_group(
     payer: &Pubkey,
     mgroup: &Pubkey,
     owner: &Pubkey,
-    args: MulticastGroupDeleteArgs,
+    mut args: MulticastGroupDeleteArgs,
 ) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
     let (multicast_group_block, _, _) =
         get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
+    // The processor rejects `use_onchain_deallocation == false` as its first
+    // statement (multicastgroup/delete.rs), and `false` is the struct default —
+    // a caller-supplied value here can only ever fail. This builder always emits
+    // the `multicast_group_block` account, so it forces the flag (as the SDK does).
+    args.use_onchain_deallocation = true;
     common::build_with_permission(
         program_id,
         DoubleZeroInstruction::DeleteMulticastGroup(args),
@@ -157,11 +167,16 @@ pub fn update_multicast_group_roles(
     group: &Pubkey,
     accesspass: &Pubkey,
     user: &Pubkey,
-    args: UpdateMulticastGroupRolesArgs,
+    mut args: UpdateMulticastGroupRolesArgs,
 ) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
     let (multicast_publisher_block, _, _) =
         get_resource_extension_pda(program_id, ResourceType::MulticastPublisherBlock);
+    // The processor rejects `use_onchain_allocation == false` as its first
+    // statement (multicastgroup/subscribe.rs), and `false` is the struct default —
+    // a caller-supplied value here can only ever fail. This builder always emits
+    // the `multicast_publisher_block` account, so it forces the flag (as the SDK does).
+    args.use_onchain_allocation = true;
     common::build_with_permission(
         program_id,
         DoubleZeroInstruction::UpdateMulticastGroupRoles(args),
@@ -293,6 +308,11 @@ mod tests {
                 AccountMeta::new(system_program::ID, false),
             ]
         );
+        // The builder forces the flag on even though `::default()` leaves it off.
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::CreateMulticastGroup(a) => assert!(a.use_onchain_allocation),
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 
     #[test]
@@ -388,6 +408,11 @@ mod tests {
                 AccountMeta::new(system_program::ID, false),
             ]
         );
+        // The builder forces the flag on even though `::default()` leaves it off.
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::DeleteMulticastGroup(a) => assert!(a.use_onchain_deallocation),
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 
     #[test]
@@ -401,10 +426,17 @@ mod tests {
             client_ip: Ipv4Addr::new(192, 168, 1, 1),
             publisher: true,
             subscriber: false,
-            use_onchain_allocation: true,
+            // Left off deliberately: the builder must force it on.
+            use_onchain_allocation: false,
         };
         let ix = update_multicast_group_roles(&pid, &payer, &group, &accesspass, &user, args);
         assert_eq!(ix.data[0], 58);
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::UpdateMulticastGroupRoles(a) => {
+                assert!(a.use_onchain_allocation)
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
         let (globalstate, _) = get_globalstate_pda(&pid);
         let (mpb, _, _) = get_resource_extension_pda(&pid, ResourceType::MulticastPublisherBlock);
         assert_eq!(

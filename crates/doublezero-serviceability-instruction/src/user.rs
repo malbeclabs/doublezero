@@ -215,6 +215,13 @@ pub fn update_user(
     old_tenant: &Pubkey,
     mut args: UserUpdateArgs,
 ) -> Instruction {
+    // The processor rejects `dz_prefix_count == 0` as its first statement
+    // (update.rs) — UpdateUser requires on-chain allocation — so a zero here can only
+    // ever fail. Catch it cheaply in debug builds.
+    debug_assert!(
+        dz_prefix_count > 0,
+        "dz_prefix_count must be > 0; UpdateUser requires on-chain allocation"
+    );
     args.dz_prefix_count = dz_prefix_count;
     // This builder always emits the `multicast_publisher_block` account, so the
     // declared count MUST be > 0 or the processor (which reads that account only
@@ -294,6 +301,13 @@ pub fn delete_user(
     owner: &Pubkey,
     mut args: UserDeleteArgs,
 ) -> Instruction {
+    // The processor rejects `dz_prefix_count == 0` as its first statement
+    // (delete.rs) — DeleteUser requires on-chain deallocation — so a zero here can
+    // only ever fail. Catch it cheaply in debug builds.
+    debug_assert!(
+        dz_prefix_count > 0,
+        "dz_prefix_count must be > 0; DeleteUser requires on-chain deallocation"
+    );
     args.dz_prefix_count = dz_prefix_count;
     // This builder always emits the `multicast_publisher_block` account, so the
     // declared count MUST be > 0 or the processor (which reads that account only
@@ -359,6 +373,13 @@ pub fn request_ban_user(
     dz_prefix_count: u8,
     mut args: UserRequestBanArgs,
 ) -> Instruction {
+    // The processor rejects `dz_prefix_count == 0` as its first statement
+    // (requestban.rs) — RequestBanUser requires on-chain deallocation — so a zero here
+    // can only ever fail. Catch it cheaply in debug builds.
+    debug_assert!(
+        dz_prefix_count > 0,
+        "dz_prefix_count must be > 0; RequestBanUser requires on-chain deallocation"
+    );
     args.dz_prefix_count = dz_prefix_count;
     // This builder always emits the `multicast_publisher_block` account, so the
     // declared count MUST be > 0 or the processor (which reads that account only

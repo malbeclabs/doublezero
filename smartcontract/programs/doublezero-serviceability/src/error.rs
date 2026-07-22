@@ -208,6 +208,8 @@ pub enum DoubleZeroError {
         "Feed billing window is invalid (window_end must be in the future and <= terminates_at)"
     )]
     FeedInvalidBillingWindow, // variant 100
+    #[error("EdgeSeat access passes require min_compatible_version >= 0.30.0 (older clients cannot decode EdgeSeat feed seats)")]
+    EdgeSeatCompatibilityWindowNotMet, // variant 101
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -314,6 +316,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::FeedMaxFutureUsersBelowMaxUsers => ProgramError::Custom(98),
             DoubleZeroError::FeedInvalidAnniversaryDay => ProgramError::Custom(99),
             DoubleZeroError::FeedInvalidBillingWindow => ProgramError::Custom(100),
+            DoubleZeroError::EdgeSeatCompatibilityWindowNotMet => ProgramError::Custom(101),
         }
     }
 }
@@ -421,6 +424,7 @@ impl From<u32> for DoubleZeroError {
             98 => DoubleZeroError::FeedMaxFutureUsersBelowMaxUsers,
             99 => DoubleZeroError::FeedInvalidAnniversaryDay,
             100 => DoubleZeroError::FeedInvalidBillingWindow,
+            101 => DoubleZeroError::EdgeSeatCompatibilityWindowNotMet,
             _ => DoubleZeroError::Custom(e),
         }
     }

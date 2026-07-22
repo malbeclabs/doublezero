@@ -77,7 +77,7 @@ pub fn process_set_version(
     );
 
     // Authorization: GLOBALSTATE_ADMIN (Permission account) or foundation (legacy).
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let mut globalstate = GlobalState::try_from(globalstate_account)?;
     authorize(
         program_id,
         accounts_iter,
@@ -100,6 +100,11 @@ pub fn process_set_version(
         payer_account,
         accounts,
     )?;
+
+    // Keep the GlobalState mirror in sync so processors that only receive GlobalState can gate
+    // on the admitted client floor (see require_edge_seat_compatible_floor).
+    globalstate.min_compatible_version = value.min_compatible_version.clone();
+    try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
 
     #[cfg(test)]
     msg!("Updated: {:?}", globalstate);

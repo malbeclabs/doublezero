@@ -99,6 +99,7 @@ mod tests {
             qa_allowlist: vec![],
             feature_flags,
             feed_authority_pk: Pubkey::default(),
+            min_compatible_version: Default::default(),
         }
     }
 

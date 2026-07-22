@@ -1,5 +1,6 @@
 use doublezero_serviceability::{
     instructions::*,
+    min_version::EDGE_SEAT_MIN_COMPATIBLE_VERSION,
     pda::*,
     processors::{
         accesspass::{
@@ -1952,6 +1953,15 @@ async fn test_set_accesspass_refills_depleted_user_payer() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+    )
+    .await;
+
+    set_min_compatible_version(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        &payer,
+        EDGE_SEAT_MIN_COMPATIBLE_VERSION,
     )
     .await;
 

@@ -40,6 +40,7 @@ pub mod utils {
             qa_allowlist: vec![],
             feature_flags: 0,
             feed_authority_pk: Pubkey::default(),
+            min_compatible_version: Default::default(),
         };
         client
             .expect_get()

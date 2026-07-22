@@ -2,6 +2,7 @@ use doublezero_serviceability::{
     entrypoint::process_instruction,
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
+    min_version::{EDGE_SEAT_MIN_COMPATIBLE_VERSION, MIN_COMPATIBLE_VERSION},
     pda::{get_accesspass_pda, get_feed_pda, get_globalstate_pda, get_program_config_pda},
     processors::{
         accesspass::{
@@ -92,7 +93,8 @@ fn serialized_account(program_id: Pubkey, data: Vec<u8>) -> Account {
 }
 
 /// Initialize global state so the default payer is on the foundation allowlist and thus authorized
-/// (via the ACCESS_PASS_ADMIN legacy fallback) for SetAccessPassFeeds.
+/// (via the ACCESS_PASS_ADMIN legacy fallback) for SetAccessPassFeeds, then raise
+/// `min_compatible_version` to the EdgeSeat floor so EdgeSeat passes may be written.
 async fn init_globalstate(
     banks_client: &mut BanksClient,
     program_id: Pubkey,
@@ -112,6 +114,15 @@ async fn init_globalstate(
             AccountMeta::new(globalstate_pubkey, false),
         ],
         payer,
+    )
+    .await;
+
+    set_min_compatible_version(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        payer,
+        EDGE_SEAT_MIN_COMPATIBLE_VERSION,
     )
     .await;
 
@@ -581,6 +592,8 @@ async fn test_cannot_set_max_users_below_current_users() {
     let globalstate = GlobalState {
         bump_seed: globalstate_bump,
         foundation_allowlist: vec![authority.pubkey()],
+        // The EdgeSeat compatibility gate reads this; seed it at the floor.
+        min_compatible_version: EDGE_SEAT_MIN_COMPATIBLE_VERSION.parse().unwrap(),
         ..GlobalState::default()
     };
     program_test.add_account(
@@ -965,4 +978,148 @@ async fn test_cannot_set_zero_max_users() {
     )
     .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedMaxUsersZero));
+}
+
+/// While `min_compatible_version` still admits pre-FeedSeat clients, EdgeSeat-typed SetAccessPass
+/// and SetAccessPassFeeds are refused; other pass types are unaffected, and re-raising the floor
+/// re-admits EdgeSeat writes.
+#[tokio::test]
+async fn test_edge_seat_blocked_below_compat_floor() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let feed_a = create_feed(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        "feda",
+    )
+    .await;
+
+    // Created while the floor is at the EdgeSeat level (raised by init_globalstate).
+    let client_ip = Ipv4Addr::new(100, 0, 0, 11);
+    let user_payer = Pubkey::new_unique();
+    let accesspass_pubkey = create_edge_seat_pass(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        client_ip,
+        user_payer,
+        AccessPassType::EdgeSeat(vec![]),
+    )
+    .await;
+
+    // Lower the floor back to the init default: pre-FeedSeat clients are admitted again.
+    set_min_compatible_version(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        &payer,
+        MIN_COMPATIBLE_VERSION,
+    )
+    .await;
+
+    // EdgeSeat-typed SetAccessPass is refused below the floor.
+    let blocked_ip = Ipv4Addr::new(100, 0, 0, 12);
+    let blocked_payer = Pubkey::new_unique();
+    let (blocked_pubkey, _) = get_accesspass_pda(&program_id, &blocked_ip, &blocked_payer);
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::EdgeSeat(vec![]),
+            client_ip: blocked_ip,
+            last_access_epoch: u64::MAX,
+            allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 4,
+        }),
+        vec![
+            AccountMeta::new(blocked_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(blocked_payer, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert_custom_at_ix0(
+        &result,
+        custom_code(DoubleZeroError::EdgeSeatCompatibilityWindowNotMet),
+    );
+
+    // SetAccessPassFeeds on the existing pass is refused below the floor.
+    let feeds = vec![FeedSeatConfig {
+        max_users: 5,
+        max_future_users: 5,
+        anniversary_day: 15,
+        window_end: TEST_WINDOW_END,
+        terminates_at: TEST_TERMINATES_AT,
+    }];
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip,
+            user_payer,
+            feeds: feeds.clone(),
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(feed_a, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert_custom_at_ix0(
+        &result,
+        custom_code(DoubleZeroError::EdgeSeatCompatibilityWindowNotMet),
+    );
+
+    // Non-EdgeSeat passes are unaffected by the floor.
+    create_edge_seat_pass(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        Ipv4Addr::new(100, 0, 0, 13),
+        Pubkey::new_unique(),
+        AccessPassType::Prepaid,
+    )
+    .await;
+
+    // Raising the floor re-admits EdgeSeat writes.
+    set_min_compatible_version(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        &payer,
+        EDGE_SEAT_MIN_COMPATIBLE_VERSION,
+    )
+    .await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip,
+            user_payer,
+            feeds,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(feed_a, false),
+        ],
+        &payer,
+    )
+    .await;
+    let accesspass = read_accesspass(&mut banks_client, accesspass_pubkey).await;
+    assert_eq!(accesspass.feed_seats().len(), 1);
 }

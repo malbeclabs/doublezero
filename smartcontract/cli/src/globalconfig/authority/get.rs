@@ -94,6 +94,7 @@ mod tests {
             qa_allowlist: vec![],
             feature_flags: 0,
             feed_authority_pk: feed_authority,
+            min_compatible_version: Default::default(),
         };
 
         client

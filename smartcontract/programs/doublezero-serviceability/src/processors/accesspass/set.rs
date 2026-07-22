@@ -2,7 +2,7 @@ use crate::{
     authorize::authorize,
     error::DoubleZeroError,
     pda::*,
-    processors::accesspass::airdrop_user_credits,
+    processors::accesspass::{airdrop_user_credits, require_edge_seat_compatible_floor},
     seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -130,6 +130,11 @@ pub fn process_set_access_pass(
     //     authority, feed authority, or a Permission account granting ACCESS_PASS_ADMIN), or
     //   - they are an administrator of the tenant being added (tenant_add_account).
     let globalstate = GlobalState::try_from(globalstate_account)?;
+
+    // EdgeSeat passes may only be written once the admitted client floor can decode them.
+    if matches!(value.accesspass_type, AccessPassType::EdgeSeat(_)) {
+        require_edge_seat_compatible_floor(&globalstate)?;
+    }
 
     // Pre-deserialize the tenant_add account when present so we can both authorize the caller
     // and later increment its reference_count without double-reading it.

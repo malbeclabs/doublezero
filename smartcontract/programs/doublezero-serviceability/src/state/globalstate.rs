@@ -1,6 +1,7 @@
 use crate::{
     error::{DoubleZeroError, Validate},
     helper::deserialize_vec_with_capacity,
+    programversion::ProgramVersion,
     state::accounttype::AccountType,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -30,6 +31,12 @@ pub struct GlobalState {
     pub qa_allowlist: Vec<Pubkey>,         // 4 + 32 * len
     pub feature_flags: u128,               // 16
     pub feed_authority_pk: Pubkey,         // 32
+    // Mirror of ProgramConfig.min_compatible_version, written by SetMinVersion (single writer)
+    // so processors that already receive GlobalState can gate on the admitted client floor
+    // without a ProgramConfig account (see require_edge_seat_compatible_floor). Defaults to
+    // 0.0.0 on accounts written before this field existed — i.e. the gate stays closed until
+    // SetMinVersion runs.
+    pub min_compatible_version: ProgramVersion, // 12
 }
 
 impl Default for GlobalState {
@@ -49,6 +56,7 @@ impl Default for GlobalState {
             qa_allowlist: Vec::new(),
             feature_flags: 0,
             feed_authority_pk: Pubkey::default(),
+            min_compatible_version: ProgramVersion::default(),
         }
     }
 }
@@ -102,6 +110,7 @@ impl TryFrom<&[u8]> for GlobalState {
             qa_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             feature_flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             feed_authority_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            min_compatible_version: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::GlobalState {
@@ -195,6 +204,7 @@ mod tests {
             qa_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             feature_flags: 1,
             feed_authority_pk: Pubkey::new_unique(),
+            min_compatible_version: "0.30.0".parse().unwrap(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -244,6 +254,7 @@ mod tests {
             qa_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             feature_flags: 0,
             feed_authority_pk: Pubkey::new_unique(),
+            min_compatible_version: ProgramVersion::default(),
         };
         let err = val.validate();
         assert!(err.is_err());

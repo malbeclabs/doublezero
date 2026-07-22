@@ -1,5 +1,6 @@
 use doublezero_serviceability::{
     instructions::*,
+    min_version::EDGE_SEAT_MIN_COMPATIBLE_VERSION,
     pda::*,
     processors::{
         accesspass::set::SetAccessPassArgs,
@@ -65,6 +66,15 @@ async fn setup_test_env() -> TestEnv {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+    )
+    .await;
+
+    set_min_compatible_version(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        &payer,
+        EDGE_SEAT_MIN_COMPATIBLE_VERSION,
     )
     .await;
 

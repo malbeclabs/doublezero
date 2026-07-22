@@ -3,10 +3,15 @@ pub mod close;
 pub mod set;
 pub mod set_feeds;
 
+use crate::{
+    error::DoubleZeroError, min_version::EDGE_SEAT_MIN_COMPATIBLE_VERSION,
+    programversion::ProgramVersion, state::globalstate::GlobalState,
+};
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, msg, program::invoke_signed_unchecked,
-    rent::Rent, sysvar::Sysvar,
+    program_error::ProgramError, rent::Rent, sysvar::Sysvar,
 };
+use std::str::FromStr;
 
 // Value to rent exempt three `User` accounts + configurable amount for connect/disconnect txns.
 // `User` account size assumes a single publisher and subscriber pubkey registered (298 bytes each).
@@ -15,6 +20,25 @@ pub const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 298 * 3; // 298 bytes per Us
 /// Default per-user airdrop seeded into `GlobalState.user_airdrop_lamports` at initialization.
 /// Admins can override it via the `SetAirdrop` instruction.
 pub const DEFAULT_USER_AIRDROP_LAMPORTS: u64 = 40_000;
+
+/// EdgeSeat passes serialize as `EdgeSeat(Vec<FeedSeat>)`; clients older than
+/// `EDGE_SEAT_MIN_COMPATIBLE_VERSION` misparse every field after the variant tag and can abort on
+/// a bogus allowlist length. Refuse to write the type until the admitted client floor
+/// (`GlobalState.min_compatible_version`, mirrored from ProgramConfig by SetMinVersion)
+/// guarantees every client can decode it.
+pub fn require_edge_seat_compatible_floor(globalstate: &GlobalState) -> ProgramResult {
+    let required = ProgramVersion::from_str(EDGE_SEAT_MIN_COMPATIBLE_VERSION)
+        .map_err(|_| ProgramError::InvalidArgument)?;
+    if globalstate.min_compatible_version < required {
+        msg!(
+            "EdgeSeat access passes require min_compatible_version >= {}; current {} still admits clients that cannot decode them",
+            required,
+            globalstate.min_compatible_version
+        );
+        return Err(DoubleZeroError::EdgeSeatCompatibilityWindowNotMet.into());
+    }
+    Ok(())
+}
 
 /// Computes the target lamport balance a `user_payer` must hold to cover rent for its `User`
 /// accounts plus the configured per-user airdrop. `multiplier` scales the target for passes that

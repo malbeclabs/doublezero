@@ -8,8 +8,8 @@ use doublezero_serviceability::{
     },
     processors::{
         contributor::create::ContributorCreateArgs, exchange::create::ExchangeCreateArgs,
-        globalconfig::set::SetGlobalConfigArgs, location::create::LocationCreateArgs,
-        topology::create::TopologyCreateArgs,
+        globalconfig::set::SetGlobalConfigArgs, globalstate::setversion::SetVersionArgs,
+        location::create::LocationCreateArgs, topology::create::TopologyCreateArgs,
     },
     resource::ResourceType,
     state::{
@@ -156,6 +156,36 @@ pub async fn transfer(
     let mut tx = Transaction::new_with_payer(&[transfer_ix], Some(&source.pubkey()));
     tx.sign(&[&source], recent_blockhash);
     banks_client.process_transaction(tx).await.unwrap();
+}
+
+/// Set `min_compatible_version` (ProgramConfig + its GlobalState mirror) via SetMinVersion.
+/// EdgeSeat-typed access passes may only be written once the floor reaches
+/// `EDGE_SEAT_MIN_COMPATIBLE_VERSION` (see `require_edge_seat_compatible_floor`), so setups raise
+/// it right after InitGlobalState.
+#[allow(dead_code)]
+pub async fn set_min_compatible_version(
+    banks_client: &mut BanksClient,
+    recent_blockhash: solana_program::hash::Hash,
+    program_id: Pubkey,
+    payer: &Keypair,
+    version: &str,
+) {
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetMinVersion(SetVersionArgs {
+            min_compatible_version: version.parse().unwrap(),
+        }),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
 }
 
 pub async fn execute_transaction(

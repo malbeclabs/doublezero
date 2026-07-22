@@ -183,6 +183,7 @@ fn generate_global_state(dir: &Path) {
         qa_allowlist: vec![qa_pk],
         feature_flags: 1,
         feed_authority_pk: feed_authority_pk,
+        min_compatible_version: Default::default(),
     };
 
     let data = borsh::to_vec(&val).unwrap();

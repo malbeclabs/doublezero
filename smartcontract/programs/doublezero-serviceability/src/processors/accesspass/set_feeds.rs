@@ -2,6 +2,7 @@ use crate::{
     authorize::authorize,
     error::DoubleZeroError,
     pda::get_accesspass_pda,
+    processors::accesspass::require_edge_seat_compatible_floor,
     serializer::try_acc_write,
     state::{
         accesspass::{AccessPass, AccessPassType, FeedSeat},
@@ -107,6 +108,10 @@ pub fn process_set_access_pass_feeds(
 
     // Provisioning actor authorized via ACCESS_PASS_ADMIN (Permission PDA or legacy fallback).
     let globalstate = GlobalState::try_from(globalstate_account)?;
+
+    // Feed seats may only be written once the admitted client floor can decode them.
+    require_edge_seat_compatible_floor(&globalstate)?;
+
     authorize(
         program_id,
         accounts_iter,

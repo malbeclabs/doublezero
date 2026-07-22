@@ -108,6 +108,11 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         qa_allowlist: vec![*payer_account.key],
         feature_flags: 0,
         feed_authority_pk: Pubkey::default(),
+        // Mirrors the ProgramConfig default above; SetMinVersion keeps the two in sync.
+        min_compatible_version: ProgramVersion::from_str(
+            crate::min_version::MIN_COMPATIBLE_VERSION,
+        )
+        .unwrap(),
     };
 
     try_acc_create(

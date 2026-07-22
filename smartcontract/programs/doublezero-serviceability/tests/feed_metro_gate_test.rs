@@ -9,6 +9,7 @@
 use doublezero_serviceability::{
     entrypoint::process_instruction,
     instructions::DoubleZeroInstruction,
+    min_version::EDGE_SEAT_MIN_COMPATIBLE_VERSION,
     pda::{
         get_accesspass_pda, get_contributor_pda, get_device_pda, get_exchange_pda, get_feed_pda,
         get_globalconfig_pda, get_globalstate_pda, get_location_pda, get_multicastgroup_pda,
@@ -82,6 +83,14 @@ async fn setup_feed_fixture(client_ip: [u8; 4]) -> FeedFixture {
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
 
     init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    set_min_compatible_version(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        &payer,
+        EDGE_SEAT_MIN_COMPATIBLE_VERSION,
+    )
+    .await;
 
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);

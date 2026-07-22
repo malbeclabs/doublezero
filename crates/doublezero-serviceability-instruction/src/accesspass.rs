@@ -106,6 +106,16 @@ pub fn set_access_pass_feeds(
     feed_keys: &[Pubkey],
     args: SetAccessPassFeedsArgs,
 ) -> Instruction {
+    // The processor pairs each `args.feeds` entry with a feed account by position
+    // (`value.feeds.iter().zip(feed_accounts)`), so the two must be equal length.
+    // A mismatch shifts the trailing `[payer, system]` and corrupts the layout;
+    // panic here rather than emit a broken instruction (matches the count/args
+    // debug_asserts in `user.rs`/`device.rs`).
+    debug_assert_eq!(
+        feed_keys.len(),
+        args.feeds.len(),
+        "feed_keys must be paired 1:1 with args.feeds"
+    );
     let (accesspass, _) = get_accesspass_pda(program_id, &args.client_ip, &args.user_payer);
     let (globalstate, _) = get_globalstate_pda(program_id);
     let mut accounts = vec![
@@ -126,7 +136,9 @@ pub fn set_access_pass_feeds(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use doublezero_serviceability::state::accesspass::AccessPassType;
+    use doublezero_serviceability::{
+        processors::accesspass::set_feeds::FeedSeatConfig, state::accesspass::AccessPassType,
+    };
     use solana_system_interface::program as system_program;
 
     fn set_args(client_ip: Ipv4Addr) -> SetAccessPassArgs {
@@ -255,7 +267,14 @@ mod tests {
         let args = SetAccessPassFeedsArgs {
             client_ip,
             user_payer,
-            feeds: vec![],
+            // Paired 1:1 with `feed_keys` (one key -> one config).
+            feeds: vec![FeedSeatConfig {
+                max_users: 1,
+                max_future_users: 0,
+                anniversary_day: 1,
+                window_end: 0,
+                terminates_at: 0,
+            }],
         };
         let ix = set_access_pass_feeds(&pid, &payer, &[feed], args);
         assert_eq!(ix.data[0], 115);

@@ -54,6 +54,13 @@ pub fn create_subscribe_user(
     feed: Option<&Pubkey>,
     mut args: UserCreateSubscribeArgs,
 ) -> Instruction {
+    // The processor rejects `dz_prefix_count == 0` as its first statement
+    // (create_subscribe.rs) — CreateSubscribeUser requires on-chain allocation — so a
+    // zero here can only ever fail. Catch it cheaply in debug builds.
+    debug_assert!(
+        dz_prefix_count > 0,
+        "dz_prefix_count must be > 0; CreateSubscribeUser requires on-chain allocation"
+    );
     // The write-back overwrites any caller-set `dz_prefix_count`; assert they agree
     // (or the caller left it zero) to catch confusion cheaply in debug builds.
     debug_assert!(
@@ -135,6 +142,13 @@ pub fn create_user(
     tenant: Option<Pubkey>,
     mut args: UserCreateArgs,
 ) -> Instruction {
+    // The processor rejects `dz_prefix_count == 0` as its first statement (create.rs)
+    // — CreateUser requires on-chain allocation — so a zero here can only ever fail.
+    // Catch it cheaply in debug builds.
+    debug_assert!(
+        dz_prefix_count > 0,
+        "dz_prefix_count must be > 0; CreateUser requires on-chain allocation"
+    );
     args.dz_prefix_count = dz_prefix_count;
 
     let (user, _) = get_user_pda(program_id, &args.client_ip, args.user_type);

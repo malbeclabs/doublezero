@@ -126,9 +126,10 @@ mod tests {
         let err = deserialize_vec_with_capacity::<u8>(&mut &data[..]).unwrap();
         assert_eq!(err, Vec::<u8>::new());
 
-        // Boundary: length prefix exactly matches the number of elements present.
-        let data = [2u8, 0, 0, 0, 7, 0, 0, 0, 9, 0, 0, 0];
-        let result = deserialize_vec_with_capacity::<u32>(&mut &data[..]).unwrap();
+        // Tightest boundary: remaining bytes exactly equal the element count, so
+        // the capacity bound `min(len, data.len())` binds at `len` itself.
+        let data = [2u8, 0, 0, 0, 7, 9];
+        let result = deserialize_vec_with_capacity::<u8>(&mut &data[..]).unwrap();
         assert_eq!(result, vec![7, 9]);
     }
 
@@ -143,7 +144,7 @@ mod tests {
         data.extend_from_slice(&[0u8; 8]);
         let result =
             deserialize_vec_with_capacity::<solana_program::pubkey::Pubkey>(&mut &data[..]);
-        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), ProgramError::BorshIoError);
     }
 
     #[test]

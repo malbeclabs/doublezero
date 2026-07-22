@@ -78,6 +78,12 @@ pub fn delete_topology(
 /// one link is cleared, the processor asserts `is_writable` and decrements its
 /// `reference_count`. Passing it read-only fails that path; passing it writable
 /// is harmless on the closed-topology path (the processor skips the write).
+///
+/// This is the crate's one deliberate byte-parity break with the SDK: the SDK
+/// `ClearTopologyCommand` passes `topology` read-only, which would trip the
+/// processor's `is_writable` assert on the topology-still-exists path. The
+/// builder follows the processor (writable is a strict superset privilege, so no
+/// execution regresses); the SDK command is the one that needs fixing.
 pub fn clear_topology(
     program_id: &Pubkey,
     payer: &Pubkey,

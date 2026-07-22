@@ -36,19 +36,8 @@ use solana_sdk::{
 };
 use solana_system_interface::program as system_program;
 
-/// Re-own the shred oracle's validator-seeded access passes back to the oracle
-/// (malbeclabs/infra#2031). For each pass where `owner == oracle` but
-/// `user_payer != oracle`, this packs — in ONE transaction per pass — the full
-/// re-own sequence: unsubscribe the Multicast user from every group, delete it,
-/// close the old (validator-seeded) pass, recreate the pass oracle-seeded,
-/// restore its subscriber allowlist, and recreate + re-subscribe the user
-/// oracle-owned. Defaults to a dry run that builds and simulates each tx and
-/// prints its serialized size; pass `--execute` to send.
 #[derive(Args, Debug)]
 pub struct MigrateAccessPassToOracleCliCommand {
-    /// The shred oracle pubkey (the passes' current `owner`).
-    #[arg(long)]
-    pub oracle: Pubkey,
     /// Migrate only the pass for this client IP (default: all matching passes).
     #[arg(long)]
     pub client_ip: Option<Ipv4Addr>,
@@ -86,25 +75,17 @@ impl MigrateAccessPassToOracleCliCommand {
 
         let program_id = client.get_program_id();
 
-        // The signer becomes the recreated pass's `owner` (SetAccessPass sets
-        // owner = payer) and must hold ACCESS_PASS_ADMIN + USER_ADMIN, so the
-        // migration MUST be signed by the oracle key itself — not the default
-        // keypair. Refuse otherwise so we can never re-own a pass to the wrong key.
-        let payer = client.get_payer();
-        if payer != self.oracle {
-            eyre::bail!(
-                "this migration must be signed by the oracle key {} (the recreated pass's owner \
-                 is set to the transaction signer), but the configured signer is {}. Re-run with \
-                 the oracle keypair, e.g. `-k <oracle-keypair.json>`.",
-                self.oracle,
-                payer,
-            );
-        }
+        // The oracle is the signing key itself: SetAccessPass sets the recreated
+        // pass's `owner` to the transaction signer, so we re-own to whoever signs
+        // (who must hold ACCESS_PASS_ADMIN + USER_ADMIN). No oracle pubkey argument
+        // is taken — targets are the validator-seeded passes this signer already
+        // owns, so the command can only ever re-own a pass to its existing owner.
+        let oracle = client.get_payer();
 
-        // Resolve the payer's Permission PDA once; include it in authorized
+        // Resolve the signer's Permission PDA once; include it in authorized
         // instructions only when it exists on-chain (mirrors the SDK's
         // execute_authorized_transaction behavior).
-        let (perm_pda, _) = get_permission_pda(&program_id, &payer);
+        let (perm_pda, _) = get_permission_pda(&program_id, &oracle);
         let permission = match client.get_account(perm_pda) {
             Ok(acc) if acc.owner == program_id && !acc.data.is_empty() => Some(perm_pda),
             _ => None,
@@ -124,13 +105,13 @@ impl MigrateAccessPassToOracleCliCommand {
         )?;
 
         const LEGACY_TX_LIMIT: usize = 1232;
-        let mut max_bytes = 0usize;
-        let mut over_limit = 0usize;
-        let mut sim_errors = 0usize;
-        let mut retained = 0usize;
-        let mut done = 0usize;
+        let mut max_bytes = 0;
+        let mut over_limit = 0;
+        let mut sim_errors = 0;
+        let mut retained = 0;
+        let mut done = 0;
 
-        for target in &targets {
+        for target in targets {
             let (_, device) = client.get_device(GetDeviceCommand {
                 pubkey_or_code: target.user.device_pk.to_string(),
             })?;
@@ -163,8 +144,8 @@ impl MigrateAccessPassToOracleCliCommand {
 
             let ixs = build_migration_instructions(
                 &program_id,
-                &self.oracle,
-                target,
+                &oracle,
+                &target,
                 dz_prefix_count,
                 permission,
                 close_old_pass,
@@ -236,11 +217,12 @@ impl MigrateAccessPassToOracleCliCommand {
     /// live Multicast user at the pass's client IP (`User.owner == user_payer`).
     fn discover_targets<C: CliCommand>(&self, client: &C) -> eyre::Result<Vec<Target>> {
         let program_id = client.get_program_id();
+        let oracle = client.get_payer();
         let passes = client.list_accesspass(ListAccessPassCommand)?;
 
         let mut targets = Vec::new();
         for (accesspass_pk, accesspass) in passes {
-            if accesspass.owner != self.oracle || accesspass.user_payer == self.oracle {
+            if accesspass.owner != oracle || accesspass.user_payer == oracle {
                 continue;
             }
             if let Some(ip) = self.client_ip {

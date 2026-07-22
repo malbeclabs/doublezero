@@ -1,7 +1,7 @@
 use crate::accesspass::{
     close::CloseAccessPassCliCommand, fund::FundAccessPassCliCommand, get::GetAccessPassCliCommand,
-    list::ListAccessPassCliCommand, set::SetAccessPassCliCommand,
-    user_balances::UserBalancesAccessPassCliCommand,
+    list::ListAccessPassCliCommand, migrate_to_oracle::MigrateAccessPassToOracleCliCommand,
+    set::SetAccessPassCliCommand, user_balances::UserBalancesAccessPassCliCommand,
 };
 use clap::{Args, Subcommand};
 
@@ -31,4 +31,7 @@ pub enum AccessPassCommands {
     /// Fund user payers that have insufficient balance
     #[clap()]
     Fund(FundAccessPassCliCommand),
+    /// Re-own the shred oracle's validator-seeded access passes to the oracle (infra#2031)
+    #[clap()]
+    MigrateToOracle(MigrateAccessPassToOracleCliCommand),
 }

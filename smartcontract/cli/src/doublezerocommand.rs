@@ -120,8 +120,22 @@ use doublezero_serviceability::state::{
 };
 use mockall::automock;
 use solana_client::rpc_config::RpcProgramAccountsConfig;
-use solana_sdk::{account::Account, pubkey::Pubkey, signature::Signature};
+use solana_sdk::{
+    account::Account, instruction::Instruction, message::Message, pubkey::Pubkey,
+    signature::Signature, signer::Signer, transaction::Transaction,
+};
 use std::collections::HashMap;
+
+/// Result of simulating a locally-assembled transaction: its serialized wire
+/// size plus the RPC simulation outcome.
+#[derive(Debug, Clone)]
+pub struct SimReport {
+    pub tx_bytes: usize,
+    pub instruction_count: usize,
+    pub units_consumed: Option<u64>,
+    pub err: Option<String>,
+    pub logs: Vec<String>,
+}
 
 #[automock]
 pub trait CliCommand {
@@ -328,6 +342,15 @@ pub trait CliCommand {
         cmd: ListAccessPassCommand,
     ) -> eyre::Result<HashMap<Pubkey, AccessPass>>;
     fn close_accesspass(&self, cmd: CloseAccessPassCommand) -> eyre::Result<Signature>;
+
+    /// Assemble `instructions` into a single legacy transaction signed by the
+    /// configured payer, simulate it via RPC, and report its serialized size
+    /// and simulation outcome. Does not send anything.
+    fn simulate_instructions(&self, instructions: Vec<Instruction>) -> eyre::Result<SimReport>;
+
+    /// Assemble `instructions` into a single legacy transaction signed by the
+    /// configured payer and send + confirm it.
+    fn send_instructions(&self, instructions: Vec<Instruction>) -> eyre::Result<Signature>;
 
     fn allocate_resource(&self, cmd: AllocateResourceCommand) -> eyre::Result<Signature>;
     fn create_resource(&self, cmd: CreateResourceCommand) -> eyre::Result<Signature>;
@@ -790,6 +813,51 @@ impl CliCommand for CliCommandImpl<'_> {
     fn close_accesspass(&self, cmd: CloseAccessPassCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
+
+    fn simulate_instructions(&self, instructions: Vec<Instruction>) -> eyre::Result<SimReport> {
+        let payer = self
+            .client
+            .payer_keypair()
+            .ok_or_else(|| eyre::eyre!("no signer keypair configured"))?;
+        let rpc = self.client.rpc_client();
+        let blockhash = rpc.get_latest_blockhash().map_err(|e| eyre::eyre!(e))?;
+
+        let instruction_count = instructions.len();
+        let message = Message::new(&instructions, Some(&payer.pubkey()));
+        let mut tx = Transaction::new_unsigned(message);
+        tx.try_sign(&[payer], blockhash)
+            .map_err(|e| eyre::eyre!(e))?;
+
+        // Wire size = shortvec(signature count) + 64 * sigs + serialized message.
+        let tx_bytes = 1 + tx.signatures.len() * 64 + tx.message_data().len();
+
+        let sim = rpc.simulate_transaction(&tx).map_err(|e| eyre::eyre!(e))?;
+        Ok(SimReport {
+            tx_bytes,
+            instruction_count,
+            units_consumed: sim.value.units_consumed,
+            err: sim.value.err.map(|e| format!("{e:?}")),
+            logs: sim.value.logs.unwrap_or_default(),
+        })
+    }
+
+    fn send_instructions(&self, instructions: Vec<Instruction>) -> eyre::Result<Signature> {
+        let payer = self
+            .client
+            .payer_keypair()
+            .ok_or_else(|| eyre::eyre!("no signer keypair configured"))?;
+        let rpc = self.client.rpc_client();
+        let blockhash = rpc.get_latest_blockhash().map_err(|e| eyre::eyre!(e))?;
+
+        let message = Message::new(&instructions, Some(&payer.pubkey()));
+        let mut tx = Transaction::new_unsigned(message);
+        tx.try_sign(&[payer], blockhash)
+            .map_err(|e| eyre::eyre!(e))?;
+
+        rpc.send_and_confirm_transaction(&tx)
+            .map_err(|e| eyre::eyre!(e))
+    }
+
     fn allocate_resource(&self, cmd: AllocateResourceCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }

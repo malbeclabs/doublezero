@@ -39,7 +39,16 @@ pub fn deserialize_vec_with_capacity<T: BorshDeserialize>(
     });
 
     *data = &data[4..];
-    let mut vec = Vec::with_capacity(len as usize + 1);
+    // Bound the preallocation against the remaining input rather than trusting
+    // the untrusted length prefix directly. Every borsh element consumes at
+    // least one byte, so the remaining byte count is a safe upper bound on the
+    // number of elements. For a valid account of `len` elements the bound never
+    // kicks in (e.g. `len` pubkeys occupy `len * 32 <= data.len()` bytes); a
+    // garbage/attacker-controlled length can no longer request gigabytes and
+    // abort the process via the alloc-error handler. The read loop below still
+    // returns `Err` when the input runs out.
+    let capacity = (len as usize).min(data.len()).saturating_add(1);
+    let mut vec = Vec::with_capacity(capacity);
     for _ in 0..len {
         vec.push(T::deserialize(data)?);
     }
@@ -116,6 +125,26 @@ mod tests {
         let data = [0u8]; // Incomplete length
         let err = deserialize_vec_with_capacity::<u8>(&mut &data[..]).unwrap();
         assert_eq!(err, Vec::<u8>::new());
+
+        // Tightest boundary: remaining bytes exactly equal the element count, so
+        // the capacity bound `min(len, data.len())` binds at `len` itself.
+        let data = [2u8, 0, 0, 0, 7, 9];
+        let result = deserialize_vec_with_capacity::<u8>(&mut &data[..]).unwrap();
+        assert_eq!(result, vec![7, 9]);
+    }
+
+    #[test]
+    fn test_deserialize_vec_with_capacity_length_bomb() {
+        // A u32 length prefix claiming ~1.6B elements followed by only a few
+        // bytes. Before the capacity bound this preallocated tens of GiB and
+        // aborted the process via the alloc-error handler. The bound caps the
+        // preallocation at the remaining byte count, so this returns Err
+        // promptly (the read loop runs out of input) without a huge allocation.
+        let mut data = 1_633_255_425u32.to_le_bytes().to_vec();
+        data.extend_from_slice(&[0u8; 8]);
+        let result =
+            deserialize_vec_with_capacity::<solana_program::pubkey::Pubkey>(&mut &data[..]);
+        assert_eq!(result.unwrap_err(), ProgramError::BorshIoError);
     }
 
     #[test]

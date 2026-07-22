@@ -391,7 +391,10 @@ mod tests {
          */
         let versions = ["C7qqHuIng+xr+jC+xdH+K0McWbY0Sz2o800JnFlfiUXD/wEKMn8sVpVpD9hZLrMBs5vmoZJrEr3Jm/+Bnz0ZNxH2ctRTKz4oucUt7JbWjAqOf/dn7tAFvWQRcKAJn5fTUPSytlyzaP//////////AAAC",
         "Cw/Yc23gE4TGWMth7/U6RH8eyKMyCwPgaOt85q71G6p0/QFzjyfb7L+DkaP2MshouP9HaAlv5WdMR67oUvQEuw1uStGfmm5o6ww5SH/2KjjMhIvhn7m0SqBUWZF0hnxc/wZ9cXaKdP//////////AQAB",
-        "C7qqHuIng+xr+jC+xdH+K0McWbY0Sz2o800JnFlfiUXD/gBD1XgJuqoe4ieD7Gv6ML7F0f4rQxxZtjRLPajzTQmcWV+JRcP//////////wEAAQAAAAAAAAAAAA=="];
+        "C7qqHuIng+xr+jC+xdH+K0McWbY0Sz2o800JnFlfiUXD/gBD1XgJuqoe4ieD7Gv6ML7F0f4rQxxZtjRLPajzTQmcWV+JRcP//////////wEAAQAAAAAAAAAAAA==",
+        // Real testnet EdgeSeat(Vec<FeedSeat>) AccessPass (5x9DTsWCrAQtYKH4W7trEjoaCRHnzywsZp2oFX3sg5Zg,
+        // written under the #3954 schema). Locks in that the current decoder parses it (see #4072).
+        "C8imMUBYIJa5WMpf9Luu7UvorH+G/ke723sUhDJktlcU/wQBAAAAX/j7g5ybAvkQvCA7AvgUw0lZDtq7NnPvFq1KHJ6S12sBAQAXgFlhagAAAACAWWFqAAAAAAAAAACeFLryRCj5fplGhNdUu6rPnzO/B37EOrSOFnz2qLrc6v//////////AAAAAAAAAAAAAAACAAAAAAAAAAAAAAEA"];
 
         crate::helper::base_tests::test_parsing::<AccessPass>(&versions).unwrap();
     }

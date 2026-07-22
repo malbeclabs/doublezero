@@ -82,8 +82,9 @@ mod tests {
         let exchange = Pubkey::new_unique();
         let args = FeedCreateArgs {
             code: "feed".to_string(),
+            name: "Feed".to_string(),
             exchange,
-            ..Default::default()
+            groups: vec![Pubkey::new_unique()],
         };
         let ix = create_feed(&pid, &payer, args);
         assert_eq!(ix.data[0], 112);

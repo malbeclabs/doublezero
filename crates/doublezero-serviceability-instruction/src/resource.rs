@@ -187,7 +187,19 @@ mod tests {
         };
         let ix = deallocate_resource(&pid, &payer, args);
         assert_eq!(ix.data[0], 82);
-        assert_eq!(ix.accounts.len(), 3 + 2);
+        // LinkIds is a global pool -> associated account is the default pubkey.
+        let (resource, _, _) = get_resource_extension_pda(&pid, ResourceType::LinkIds);
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(resource, false),
+                AccountMeta::new(Pubkey::default(), false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
     }
 
     #[test]

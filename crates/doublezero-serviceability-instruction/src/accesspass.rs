@@ -176,18 +176,32 @@ mod tests {
         let user_payer = Pubkey::new_unique();
         let new_tenant = Pubkey::new_unique();
         let client_ip = Ipv4Addr::new(10, 0, 0, 1);
+        let current_tenant = Pubkey::new_unique();
         let ix = set_access_pass(
             &pid,
             &payer,
             &user_payer,
-            &Pubkey::default(),
+            &current_tenant,
             &new_tenant,
             set_args(client_ip),
         );
-        // 3 base + current_tenant(default) + new_tenant + payer + system = 7.
-        assert_eq!(ix.accounts.len(), 7);
-        assert_eq!(ix.accounts[3].pubkey, Pubkey::default());
-        assert_eq!(ix.accounts[4].pubkey, new_tenant);
+        assert_eq!(ix.data[0], 67);
+        let (accesspass, _) = get_accesspass_pda(&pid, &client_ip, &user_payer);
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        // 3 base + current_tenant + new_tenant appended (either non-default), then
+        // the trailing payer/system.
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(accesspass, false),
+                AccountMeta::new_readonly(globalstate, false),
+                AccountMeta::new(user_payer, false),
+                AccountMeta::new(current_tenant, false),
+                AccountMeta::new(new_tenant, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
     }
 
     #[test]

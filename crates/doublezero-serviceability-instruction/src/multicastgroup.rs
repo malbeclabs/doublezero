@@ -352,6 +352,12 @@ mod tests {
         let without_ip =
             update_multicast_group(&pid, &payer, &mgroup, MulticastGroupUpdateArgs::default());
         assert_eq!(without_ip.accounts.len(), 4);
+        // No block emitted -> the flag MUST stay off, or the processor would
+        // consume the trailing payer as the resource-extension account.
+        match DoubleZeroInstruction::unpack(&without_ip.data).unwrap() {
+            DoubleZeroInstruction::UpdateMulticastGroup(a) => assert!(!a.use_onchain_allocation),
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 
     #[test]

@@ -61,9 +61,18 @@ func TestQA_MulticastSettlement(t *testing.T) {
 
 	t.Cleanup(func() {
 		if seatPaid && device != nil {
-			cleanupCtx := context.Background()
-			if withdrawErr := client.FeedSeatWithdraw(cleanupCtx, device.PubKey); withdrawErr != nil {
-				log.Info("Cleanup: seat withdraw failed (may already be withdrawn)", "error", withdrawErr)
+			// Retry the withdraw: a single-shot withdraw that hit the spurious
+			// "request in flight" preflight bail (or a transient RPC failure)
+			// leaves the seat active onchain with an open escrow, poisoning
+			// every subsequent hourly run. Retrying over a bounded window heals
+			// the state instead of letting the escrow grow one epoch per run.
+			// Bound the cleanup so a hung withdraw can't block teardown forever.
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+			defer cancel()
+			if withdrawErr := client.WithdrawSeatWithRetry(cleanupCtx, device.PubKey); withdrawErr != nil {
+				// Warn, not Info: the seat is left active onchain and the escrow
+				// will grow next run, so this must stand out in the run log.
+				log.Warn("Cleanup: seat withdraw failed after retries; seat left active onchain", "error", withdrawErr)
 			}
 		}
 		if t.Failed() {
@@ -86,6 +95,18 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("ensure_multicast_disconnected", func(t *testing.T) {
+		// Self-heal a seat left stuck-active onchain by a previous run whose
+		// withdraw bailed. This is the poisoned state that can't be seen from a
+		// session status: `shreds pay` on an already-active seat only tops up the
+		// escrow and never creates a new allocation request, so the seat never
+		// re-acks and the tunnel never comes up. Detect and withdraw it before
+		// the session check so the run starts from a clean slate.
+		healed, err := client.SelfHealStuckSeats(ctx)
+		require.NoError(t, err, "failed to self-heal stuck-active seats")
+		if healed > 0 {
+			log.Info("Self-healed stuck-active seat(s)", "count", healed)
+		}
+
 		statuses, err := client.GetUserStatuses(ctx)
 		if err != nil {
 			log.Info("No active sessions")
@@ -105,7 +126,7 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		log.Info("Active multicast session found, withdrawing", "device", mcast.CurrentDevice, "status", mcast.SessionStatus)
 		dev, ok := test.Devices()[mcast.CurrentDevice]
 		require.True(t, ok, "device %q not found in devices map", mcast.CurrentDevice)
-		err = client.FeedSeatWithdraw(ctx, dev.PubKey)
+		err = client.WithdrawSeatWithRetry(ctx, dev.PubKey)
 		require.NoError(t, err, "failed to withdraw existing seat")
 		err = client.WaitForMulticastStatusDisconnected(ctx)
 		require.NoError(t, err, "existing multicast session did not disconnect")
@@ -152,11 +173,51 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		return
 	}
 
+	// Set when wait_for_open_phase times out inside the epoch-tail closed
+	// window (verified against live chain state), so the parent can skip the
+	// remaining subtests: the program stays closed until the epoch boundary,
+	// which the 2-minute wait cannot bridge, so pay/withdraw below could only
+	// fail and page for a by-design condition.
+	var epochTailWindow *qa.EpochTailWindow
 	if !t.Run("wait_for_open_phase", func(t *testing.T) {
+		// Record where the wait begins: a timeout means the program was closed
+		// for the entire wait, so the classification below can require the
+		// whole span — not just the timeout-time slot — to be inside the
+		// window. Best-effort: on a read failure classification degrades to
+		// the timeout-time slot only.
+		waitStartSlot, slotErr := client.CurrentSolanaSlot(ctx)
+		if slotErr != nil {
+			log.Warn("Failed to read wait-start slot; epoch-tail classification will use the timeout-time slot only", "error", slotErr)
+		}
 		err := client.WaitForOpenForRequests(ctx)
+		if err != nil {
+			// For the last grace-period slots of every epoch the shred oracle
+			// closes the program by design (settle seats, update prices) and
+			// reopens it just after the epoch boundary. Verify against live
+			// chain state — onchain grace period, controller phase, and RPC
+			// epoch schedule — whether this timeout landed in that window; a
+			// timeout outside it must keep failing exactly as loudly as before.
+			win, winErr := client.EpochTailClosedWindow(ctx, waitStartSlot)
+			switch {
+			case winErr != nil:
+				log.Warn("Failed to classify epoch-tail closed window; treating timeout as a real failure", "error", winErr)
+			case win.Benign:
+				epochTailWindow = &win
+				t.Skipf("expected epoch-tail closed window: %s", win)
+			default:
+				// Give on-call the computed window so a real outage's distance
+				// from the benign window is visible in the run log.
+				log.Info("Timeout is not the benign epoch-tail closed window", "window", win.String())
+			}
+		}
 		require.NoError(t, err, "shred-subscription program did not enter OpenForRequests phase within timeout")
 	}) {
 		return
+	}
+	if epochTailWindow != nil {
+		// t.Run reports a skipped subtest as success, so skip the parent
+		// explicitly to stop the run here.
+		t.Skipf("expected epoch-tail closed window: %s", epochTailWindow)
 	}
 
 	if !t.Run("record_balance_before_pay", func(t *testing.T) {
@@ -205,17 +266,6 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		return
 	}
 
-	if !t.Run("wait_for_seat_allocation_acked", func(t *testing.T) {
-		// The tunnel can come up before the oracle has acked the instant
-		// allocation request. Withdraw rejects while the request is still
-		// pending, so wait here rather than racing the oracle on the
-		// withdraw_seat step.
-		err := client.WaitForSeatAllocationAcked(ctx, device.PubKey, 90*time.Second)
-		require.NoError(t, err, "oracle did not ack instant seat allocation")
-	}) {
-		return
-	}
-
 	if !t.Run("validate_tunnel_up", func(t *testing.T) {
 		err := client.WaitForMulticastStatusUp(ctx)
 		require.NoError(t, err, "multicast tunnel did not come up after seat payment")
@@ -235,7 +285,11 @@ func TestQA_MulticastSettlement(t *testing.T) {
 	}
 
 	if !t.Run("withdraw_seat", func(t *testing.T) {
-		err := client.FeedSeatWithdraw(ctx, device.PubKey)
+		// Withdraw is rejected while this run's instant allocation request is
+		// in flight (or a stale RPC read claims it is), so retry with endpoint
+		// rotation rather than waiting on an ack the harness cannot observe
+		// reliably.
+		err := client.WithdrawSeatWithRetry(ctx, device.PubKey)
 		require.NoError(t, err, "failed to withdraw seat")
 		seatPaid = false
 	}) {

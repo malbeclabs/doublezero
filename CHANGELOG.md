@@ -8,6 +8,16 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- E2E/QA
+  - `TestQA_MulticastSettlement` skips (with an `expected epoch-tail closed window: ...` message) instead of failing when `wait_for_open_phase` times out during the by-design closed window at the tail of every Solana epoch. The classification is verified against live chain state — the `closed_for_requests_grace_period_slots` read from the shred-subscription ProgramConfig, the execution controller phase and last-close slot, and the epoch schedule from the target cluster's RPC — and requires the whole timed-out wait (not just its end) to fall inside the window, so nothing is hardcoded and a timeout outside the window still fails as loudly as before. (#4069)
+  - `TestQA_MulticastSettlement` recovers from the failure modes that kept mainnet-beta QA red: `ensure_multicast_disconnected` self-heals seats left stuck-active onchain by a previous run's failed withdraw (scanning client seats for the client's public IP via the shreds SDK `FetchAllClientSeats` and withdrawing any with `TenureEpochs > 0`), and every withdraw — the `withdraw_seat` step, the self-heal, and the cleanup — retries over a bounded window instead of failing on a single spurious "request in flight" preflight bail. The retry rotates to a different Solana RPC endpoint on the in-flight bail (the stale `getMultipleAccounts` read behind it is per-endpoint) and confirms completion against fresh onchain state rather than the CLI's error text. The `wait_for_seat_allocation_acked` step is removed: polling the seat's pending flag cannot distinguish a fast ack from a re-fund of an active seat that never creates a request; the retrying withdraw instead confirms completion against the seat's onchain tenure and pending-request state. (#4066, supersedes #4065)
+
+## [v0.31.0](https://github.com/malbeclabs/doublezero/compare/client/v0.30.0...client/v0.31.0) - 2026-07-17
+
+### Breaking
+
+### Changes
+
 - CI
   - Fix the event-driven `doublezero-edge-connect` rebuild: the base-image publishers now mint a short-lived, least-privilege token from the release-bot GitHub App (scoped to `doublezero-edge-connect`) to fire the cross-repo `repository_dispatch`, replacing the never-created `EDGE_CONNECT_DISPATCH_TOKEN` secret whose absence silently no-op'd every notify. Also add the missing devnet notify step, so all three variants (testnet, mainnet-beta, devnet) trigger a rebuild on base publish. The mint/notify steps stay non-fatal to the publish and edge-connect's daily poll remains the fallback.
   - Collapse the testnet release tag phase to a single approval: gate 1 now confirms the version-PR merges and authorizes the tag push in one click. The reusable tag workflow no longer carries an environment (it is pure mechanism); the approval prompt lives with its callers — the orchestrator's gate 1, and a new `approve` job (on `testnet`) in the manual components dispatcher, so manual tag pushes prompt exactly as before — and a `github.workflow_ref` caller allowlist makes any other caller fail closed. No new environments. Gate job display names and the Slack posts now spell out what each approval means and that gate 1 must only be approved after both PRs merge.
@@ -18,6 +28,7 @@ All notable changes to this project will be documented in this file.
   - The `feed` verbs accept an exchange code for `--exchange` and multicast group codes for `--group`, in addition to pubkeys; pubkey inputs behave exactly as before. (#4027)
 - Serviceability
   - Add the `doublezero-serviceability-instruction` crate (RFC-26 R0): pure, RPC-free instruction builders for the serviceability program (the SPL `instruction::*` pattern). R0 ships the scaffold, the shared trailing-account keystone, and four exemplar builders (`create_device`, `create_link`, `delete_device`, `create_subscribe_user`). Nothing consumes it yet; remaining domains and golden-fixture / `solana-program-test` coverage land in follow-up PRs. (#4049)
+  - `access-pass get --json` includes a `feed_seats` array exposing each EdgeSeat pass's per-feed seat state (user counts and billing windows); the table view is unchanged. (#4063)
 
 ## [v0.30.0](https://github.com/malbeclabs/doublezero/compare/client/v0.29.0...client/v0.30.0) - 2026-07-10
 

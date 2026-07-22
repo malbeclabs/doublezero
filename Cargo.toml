@@ -21,11 +21,12 @@ exclude = [
     "sdk/revdist/testdata/fixtures/generate-fixtures",
     "sdk/serviceability/testdata/fixtures/generate-fixtures",
     "sdk/telemetry/testdata/fixtures/generate-fixtures",
+    "sdk/geolocation/testdata/fixtures/generate-fixtures",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "0.30.0"
+version = "0.31.0"
 authors = ["Malbec Labs <dev@malbeclabs.com>"]
 readme = "README.md"
 edition = "2021"

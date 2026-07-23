@@ -23,7 +23,7 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-/// `CreateTenant` (variant 88). Accounts: `[tenant, globalstate(w), vrf_ids]`.
+/// `CreateTenant` (variant 88). Accounts: `[tenant, globalstate(w), vrf_ids(w)]`.
 ///
 /// The tenant PDA is derived from `args.code`.
 pub fn create_tenant(program_id: &Pubkey, payer: &Pubkey, args: TenantCreateArgs) -> Instruction {
@@ -61,7 +61,7 @@ pub fn update_tenant(
     )
 }
 
-/// `DeleteTenant` (variant 90). Accounts: `[tenant, globalstate(readonly), vrf_ids]`.
+/// `DeleteTenant` (variant 90). Accounts: `[tenant, globalstate(readonly), vrf_ids(w)]`.
 pub fn delete_tenant(
     program_id: &Pubkey,
     payer: &Pubkey,

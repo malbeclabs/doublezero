@@ -257,6 +257,10 @@ func TestMetroHistoryDeserialization(t *testing.T) {
 	if !mh.IsCurrentPriceFinalized() {
 		t.Error("expected IsCurrentPriceFinalized = true")
 	}
+	// Only bit 1 is set, so the retransmit-only bit (bit 0) must read false.
+	if mh.IsRetransmitOnlyEnabled() {
+		t.Error("expected IsRetransmitOnlyEnabled = false")
+	}
 	if mh.TotalInitializedDevices != 3 {
 		t.Errorf("TotalInitializedDevices = %d, want 3", mh.TotalInitializedDevices)
 	}
@@ -271,6 +275,28 @@ func TestMetroHistoryDeserialization(t *testing.T) {
 	}
 	if mh.Prices.Entries[0].Price.USDCPriceDollars != 5000 {
 		t.Errorf("first entry price = %d, want 5000", mh.Prices.Entries[0].Price.USDCPriceDollars)
+	}
+}
+
+func TestMetroHistoryFlags(t *testing.T) {
+	cases := []struct {
+		flags          uint64
+		retransmitOnly bool
+		priceFinalized bool
+	}{
+		{flags: 0, retransmitOnly: false, priceFinalized: false},
+		{flags: 1 << 0, retransmitOnly: true, priceFinalized: false},
+		{flags: 1 << 1, retransmitOnly: false, priceFinalized: true},
+		{flags: (1 << 0) | (1 << 1), retransmitOnly: true, priceFinalized: true},
+	}
+	for _, tc := range cases {
+		mh := MetroHistory{Flags: tc.flags}
+		if got := mh.IsRetransmitOnlyEnabled(); got != tc.retransmitOnly {
+			t.Errorf("flags=%#b: IsRetransmitOnlyEnabled() = %v, want %v", tc.flags, got, tc.retransmitOnly)
+		}
+		if got := mh.IsCurrentPriceFinalized(); got != tc.priceFinalized {
+			t.Errorf("flags=%#b: IsCurrentPriceFinalized() = %v, want %v", tc.flags, got, tc.priceFinalized)
+		}
 	}
 }
 

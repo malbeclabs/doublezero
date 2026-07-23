@@ -121,6 +121,69 @@ func (c *Client) ClosestDevice(ctx context.Context) (*Device, error) {
 	return device, nil
 }
 
+// RetransmitOnlyExchangeKeys returns the set of metro exchange pubkeys (base58)
+// whose MetroHistory has the retransmit-only flag set. A retransmit-only metro
+// serves the retransmit multicast group only to every device in it. This is one
+// batched read of all MetroHistory accounts.
+func (c *Client) RetransmitOnlyExchangeKeys(ctx context.Context) (map[string]bool, error) {
+	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
+	}
+	metros, err := c.shredsClient(programID).FetchAllMetroHistories(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch metro histories on host %s: %w", c.Host, err)
+	}
+	retransmitOnly := make(map[string]bool)
+	for _, metro := range metros {
+		if metro.IsRetransmitOnlyEnabled() {
+			retransmitOnly[metro.ExchangeKey.String()] = true
+		}
+	}
+	return retransmitOnly, nil
+}
+
+// ClosestRetransmitOnlyDevice returns the reachable device with the lowest
+// average latency whose metro is flagged retransmit-only. It returns (nil, nil)
+// when no such device exists, so the caller can skip when the retransmit-only
+// feature is not configured on this network. Like ClosestDevice, it does not
+// filter on capacity: the QA user pubkey is on the onchain qa_allowlist, which
+// bypasses capacity limits for QA connections.
+func (c *Client) ClosestRetransmitOnlyDevice(ctx context.Context) (*Device, error) {
+	retransmitOnly, err := c.RetransmitOnlyExchangeKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(retransmitOnly) == 0 {
+		return nil, nil
+	}
+
+	latencies, err := c.GetLatency(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latency on host %s: %w", c.Host, err)
+	}
+
+	var bestDevice *Device
+	var bestAvg uint64 = math.MaxUint64
+	for _, l := range latencies {
+		if !l.Reachable {
+			continue
+		}
+		device, ok := c.devices[l.DeviceCode]
+		if !ok || !retransmitOnly[device.ExchangePubKey] {
+			continue
+		}
+		if l.AvgLatencyNs < bestAvg {
+			bestAvg = l.AvgLatencyNs
+			bestDevice = device
+		}
+	}
+	if bestDevice != nil {
+		c.log.Debug("Determined closest retransmit-only device", "host", c.Host, "deviceCode", bestDevice.Code, "avgLatencyNs", bestAvg)
+	}
+	return bestDevice, nil
+}
+
 // FeedSeatPrice calls the FeedSeatPrice RPC to query seat pricing for a single
 // device (by pubkey). Querying by pubkey avoids device-code resolution, which
 // the CLI refuses when it can't classify the cluster (e.g. a private Solana

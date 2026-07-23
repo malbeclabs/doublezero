@@ -144,23 +144,29 @@ func (c *Client) RetransmitOnlyExchangeKeys(ctx context.Context) (map[string]boo
 }
 
 // ClosestRetransmitOnlyDevice returns the reachable device with the lowest
-// average latency whose metro is flagged retransmit-only. It returns (nil, nil)
-// when no such device exists, so the caller can skip when the retransmit-only
-// feature is not configured on this network. Like ClosestDevice, it does not
-// filter on capacity: the QA user pubkey is on the onchain qa_allowlist, which
-// bypasses capacity limits for QA connections.
-func (c *Client) ClosestRetransmitOnlyDevice(ctx context.Context) (*Device, error) {
+// average latency whose metro is flagged retransmit-only, together with the set
+// of retransmit-only metro exchange pubkeys it considered.
+//
+// Returning the set lets the caller distinguish two cases the device alone
+// cannot: an empty set means no metro is flagged retransmit-only (the feature
+// is not configured on this network, so the caller may skip), while a non-empty
+// set with a nil device means metros are flagged but none of their devices is
+// reachable — the feature under test cannot be exercised, so the caller should
+// fail rather than silently skip and lose the alert signal. Like ClosestDevice,
+// it does not filter on capacity: the QA user pubkey is on the onchain
+// qa_allowlist, which bypasses capacity limits for QA connections.
+func (c *Client) ClosestRetransmitOnlyDevice(ctx context.Context) (*Device, map[string]bool, error) {
 	retransmitOnly, err := c.RetransmitOnlyExchangeKeys(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(retransmitOnly) == 0 {
-		return nil, nil
+		return nil, retransmitOnly, nil
 	}
 
 	latencies, err := c.GetLatency(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get latency on host %s: %w", c.Host, err)
+		return nil, retransmitOnly, fmt.Errorf("failed to get latency on host %s: %w", c.Host, err)
 	}
 
 	var bestDevice *Device
@@ -181,7 +187,7 @@ func (c *Client) ClosestRetransmitOnlyDevice(ctx context.Context) (*Device, erro
 	if bestDevice != nil {
 		c.log.Debug("Determined closest retransmit-only device", "host", c.Host, "deviceCode", bestDevice.Code, "avgLatencyNs", bestAvg)
 	}
-	return bestDevice, nil
+	return bestDevice, retransmitOnly, nil
 }
 
 // FeedSeatPrice calls the FeedSeatPrice RPC to query seat pricing for a single

@@ -65,6 +65,10 @@ pub fn create_multicast_group(
 /// `UpdateMulticastGroup` (variant 49).
 /// Accounts: `[mgroup, globalstate]`, plus `multicast_group_block` when
 /// `args.multicast_ip.is_some()` (a multicast-IP reallocation).
+///
+/// `args.use_onchain_allocation` is DERIVED from `args.multicast_ip.is_some()`;
+/// any caller-supplied value is ignored (the flag must stay in lockstep with
+/// whether the block account is emitted).
 pub fn update_multicast_group(
     program_id: &Pubkey,
     payer: &Pubkey,
@@ -82,6 +86,9 @@ pub fn update_multicast_group(
             get_resource_extension_pda(program_id, ResourceType::MulticastGroupBlock);
         accounts.push(AccountMeta::new(multicast_group_block, false));
     }
+    // Derived, not caller-supplied: keep the flag in lockstep with block-account
+    // emission. A stray `true` with no block emitted would make the processor
+    // consume the trailing payer as the resource-extension account.
     args.use_onchain_allocation = updating_multicast_ip;
     common::build_with_permission(
         program_id,
@@ -198,10 +205,13 @@ pub fn add_multicast_group_pub_allowlist(
     payer: &Pubkey,
     mgroup: &Pubkey,
     accesspass: &Pubkey,
-    user_payer: &Pubkey,
     args: AddMulticastGroupPubAllowlistArgs,
 ) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
+    // Single source of truth: the processor derives both the accesspass PDA and
+    // the funded key from `args.user_payer`, so the account meta MUST come from
+    // the same field — never a separate parameter that could diverge.
+    let user_payer = args.user_payer;
     common::build_with_permission(
         program_id,
         DoubleZeroInstruction::AddMulticastGroupPubAllowlist(args),
@@ -209,7 +219,7 @@ pub fn add_multicast_group_pub_allowlist(
             AccountMeta::new(*mgroup, false),
             AccountMeta::new(*accesspass, false),
             AccountMeta::new(globalstate, false),
-            AccountMeta::new(*user_payer, false),
+            AccountMeta::new(user_payer, false),
         ],
         payer,
     )
@@ -244,10 +254,13 @@ pub fn add_multicast_group_sub_allowlist(
     payer: &Pubkey,
     mgroup: &Pubkey,
     accesspass: &Pubkey,
-    user_payer: &Pubkey,
     args: AddMulticastGroupSubAllowlistArgs,
 ) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
+    // Single source of truth: the processor derives both the accesspass PDA and
+    // the funded key from `args.user_payer`, so the account meta MUST come from
+    // the same field — never a separate parameter that could diverge.
+    let user_payer = args.user_payer;
     common::build_with_permission(
         program_id,
         DoubleZeroInstruction::AddMulticastGroupSubAllowlist(args),
@@ -255,7 +268,7 @@ pub fn add_multicast_group_sub_allowlist(
             AccountMeta::new(*mgroup, false),
             AccountMeta::new(*accesspass, false),
             AccountMeta::new(globalstate, false),
-            AccountMeta::new(*user_payer, false),
+            AccountMeta::new(user_payer, false),
         ],
         payer,
     )
@@ -351,7 +364,15 @@ mod tests {
         // No multicast_ip -> no block, no onchain allocation.
         let without_ip =
             update_multicast_group(&pid, &payer, &mgroup, MulticastGroupUpdateArgs::default());
-        assert_eq!(without_ip.accounts.len(), 4);
+        assert_eq!(
+            without_ip.accounts,
+            vec![
+                AccountMeta::new(mgroup, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
         // No block emitted -> the flag MUST stay off, or the processor would
         // consume the trailing payer as the resource-extension account.
         match DoubleZeroInstruction::unpack(&without_ip.data).unwrap() {
@@ -490,7 +511,6 @@ mod tests {
             &payer,
             &mgroup,
             &accesspass,
-            &user_payer,
             AddMulticastGroupPubAllowlistArgs {
                 client_ip,
                 user_payer,
@@ -517,7 +537,6 @@ mod tests {
             &payer,
             &mgroup,
             &accesspass,
-            &user_payer,
             AddMulticastGroupSubAllowlistArgs {
                 client_ip,
                 user_payer,

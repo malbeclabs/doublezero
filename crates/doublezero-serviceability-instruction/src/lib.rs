@@ -43,11 +43,13 @@ mod common;
 pub mod contributor;
 pub mod device;
 pub mod exchange;
+pub mod feed;
 pub mod link;
 pub mod location;
 pub mod multicastgroup;
 pub mod permission;
 pub mod tenant;
+pub mod topology;
 pub mod user;
 
 pub use common::{compute_budget_prelude, MAX_COMPUTE_UNIT_LIMIT, MAX_HEAP_FRAME_BYTES};

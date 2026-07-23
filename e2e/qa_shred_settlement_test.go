@@ -188,6 +188,16 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 	}) {
 		return
 	}
+	if device == nil {
+		// selectDevice skipped its subtest (e.g. no retransmit-only metro is
+		// configured on this network). t.Run reports a skipped subtest as
+		// success, so the skip does not stop the parent — skip it explicitly
+		// here rather than dereferencing a nil device in query_seat_price below.
+		// A nil device after a non-failed subtest can only mean the selector
+		// skipped: a failure would have made t.Run return false and returned
+		// above, and the success path always assigns a device.
+		t.Skip("Skipping: device selection skipped (feature not configured on this network)")
+	}
 
 	if !t.Run("query_seat_price", func(t *testing.T) {
 		prices, err := client.FeedSeatPrice(ctx, device.PubKey)

@@ -83,7 +83,8 @@ pub fn delete_topology(
 /// `ClearTopologyCommand` passes `topology` read-only, which would trip the
 /// processor's `is_writable` assert on the topology-still-exists path. The
 /// builder follows the processor (writable is a strict superset privilege, so no
-/// execution regresses); the SDK command is the one that needs fixing.
+/// execution regresses); the SDK command is the one that needs fixing (tracked in
+/// <https://github.com/malbeclabs/doublezero/issues/4078>).
 pub fn clear_topology(
     program_id: &Pubkey,
     payer: &Pubkey,

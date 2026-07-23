@@ -108,9 +108,11 @@ pub fn set_access_pass_feeds(
 ) -> Instruction {
     // The processor pairs each `args.feeds` entry with a feed account by position
     // (`value.feeds.iter().zip(feed_accounts)`), so the two must be equal length.
-    // A mismatch shifts the trailing `[payer, system]` and corrupts the layout;
-    // panic here rather than emit a broken instruction (matches the count/args
-    // debug_asserts in `user.rs`/`device.rs`).
+    // A mismatch shifts the trailing `[payer, system]` and corrupts the layout.
+    // This panics in debug builds to catch the caller bug cheaply; a release build
+    // relies on the on-chain asserts (the displaced payer trips `is_signer`, or the
+    // feed-owner check fails), so a mismatch fails closed rather than landing
+    // corrupt state. Matches the count/args debug_asserts in `user.rs`/`device.rs`.
     debug_assert_eq!(
         feed_keys.len(),
         args.feeds.len(),

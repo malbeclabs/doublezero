@@ -4,8 +4,10 @@
 //! topology PDA is derived from `args.name`. `clear_topology` and
 //! `assign_topology_node_segments` are batched: a single-chunk builder plus a
 //! `*_batched(...) -> Vec<Instruction>` convenience. The batch-size constants
-//! account for the trailing `[payer, system]` the builder now owns, keeping each
-//! transaction under Solana's 32-account cap.
+//! account for the trailing `[payer, system]` the builder now owns. The chosen
+//! sizes stay well within Solana's real per-transaction limits — the 64-account
+//! lock limit (`MAX_TX_ACCOUNT_LOCKS`) and, the binding constraint as batches
+//! grow, the ~1232-byte packet size.
 
 use crate::common;
 use doublezero_serviceability::{
@@ -23,10 +25,12 @@ use solana_program::{
 };
 
 /// Max link accounts per `clear_topology` transaction (2 fixed + 16 links +
-/// payer + system = 20 < 32).
+/// payer + system = 20 accounts, well under the 64-account lock limit and the
+/// ~1232-byte packet size).
 pub const CLEAR_BATCH_SIZE: usize = 16;
 /// Max device accounts per `assign_topology_node_segments` transaction (3 fixed +
-/// 4 devices + payer + system = 9 < 32).
+/// 4 devices + payer + system = 9 accounts, well under the 64-account lock limit
+/// and the ~1232-byte packet size).
 pub const BACKFILL_BATCH_SIZE: usize = 4;
 
 /// `CreateTopology` (variant 107).

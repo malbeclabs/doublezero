@@ -18,7 +18,10 @@
 //! feed must be added there before the deferred permission append is activated
 //! (see [`common::build_with_permission`]) — otherwise feed-authority keys would
 //! not be guaranteed a Permission account at activation. Closing that gap is a
-//! serviceability-program change, out of scope for this crate.
+//! serviceability-program change, out of scope for this crate; it is tracked in
+//! <https://github.com/malbeclabs/doublezero/issues/4079>. The
+//! `feed_authority_gap_is_still_open` canary test below asserts the gap currently
+//! exists, so closing it forces this note to be revisited.
 
 use crate::common;
 use doublezero_serviceability::{
@@ -129,11 +132,38 @@ mod tests {
             AccountMeta::new(payer, true),
             AccountMeta::new(system_program::ID, false),
         ];
-        let update = update_feed(&pid, &payer, &feed, FeedUpdateArgs::default());
+        // Realistic args: an all-`None` (default) update is rejected by the
+        // processor as a no-op (`InvalidArgument`), so the fixture would not execute.
+        let update = update_feed(
+            &pid,
+            &payer,
+            &feed,
+            FeedUpdateArgs {
+                name: Some("Feed".to_string()),
+                groups: None,
+            },
+        );
         assert_eq!(update.data[0], 113);
         assert_eq!(update.accounts, expected);
         let delete = delete_feed(&pid, &payer, &feed, FeedDeleteArgs {});
         assert_eq!(delete.data[0], 114);
         assert_eq!(delete.accounts, expected);
+    }
+
+    /// Tripwire for the module-doc note: `FEED_AUTHORITY` is currently absent from
+    /// `AUTHORIZE_GATED_FLAGS` even though the feed processors gate on it. When the
+    /// program-side gap (https://github.com/malbeclabs/doublezero/issues/4079) is
+    /// closed, this test fails — a signal that the deferred permission append is
+    /// now safe to activate for feed and that this crate's doc note must be updated.
+    #[test]
+    fn feed_authority_gap_is_still_open() {
+        use doublezero_serviceability::{
+            authorize::AUTHORIZE_GATED_FLAGS, state::permission::permission_flags,
+        };
+        assert!(
+            !AUTHORIZE_GATED_FLAGS.contains(&permission_flags::FEED_AUTHORITY),
+            "FEED_AUTHORITY is now gated: close issue #4079 tracking, then update the \
+             feed.rs module doc and remove this canary"
+        );
     }
 }

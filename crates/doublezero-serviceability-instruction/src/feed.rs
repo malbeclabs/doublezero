@@ -3,6 +3,22 @@
 //! All route through `authorize()` -> [`common::build_with_permission`].
 //! Accounts are `[feed, globalstate]`; create derives the feed PDA from
 //! `args.code` and `args.exchange`.
+//!
+//! **Why `build_with_permission`.** The feed `create`/`update`/`delete`
+//! processors call `authorize(.., FEED_AUTHORITY | FOUNDATION)`, so feed is a
+//! permission-gated instruction like topology/tenant and belongs on the
+//! permission-appending path. This intentionally diverges from today's Rust SDK
+//! feed commands, which use the plain (no-permission) `execute_transaction`;
+//! among authorize()-gated instructions the SDK feed commands are the odd ones
+//! out, not these builders.
+//!
+//! One pre-existing program-side gap, unrelated to these builders: `FEED_AUTHORITY`
+//! is absent from `authorize.rs::AUTHORIZE_GATED_FLAGS`. That list drives
+//! `doublezero permission audit` and the `RequirePermissionAccounts` rollout, so
+//! feed must be added there before the deferred permission append is activated
+//! (see [`common::build_with_permission`]) — otherwise feed-authority keys would
+//! not be guaranteed a Permission account at activation. Closing that gap is a
+//! serviceability-program change, out of scope for this crate.
 
 use crate::common;
 use doublezero_serviceability::{

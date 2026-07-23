@@ -8,6 +8,13 @@ use solana_program::{
     rent::Rent, sysvar::Sysvar,
 };
 
+// Temporary hard switch: EdgeSeat passes serialize as `EdgeSeat(Vec<FeedSeat>)` (#3954), and
+// pre-0.30 client decoders misparse every field after the variant tag, aborting on a bogus
+// allowlist preallocation (the do-tn-rewards1 crash loop). Flip to false — together with the
+// checks in set.rs/set_feeds.rs and the #[ignore]s on the EdgeSeat test suites — in the release
+// after ProgramConfig.min_compatible_version has been raised to >= 0.30.0 everywhere.
+pub const EDGE_SEAT_WRITES_DISABLED: bool = true;
+
 // Value to rent exempt three `User` accounts + configurable amount for connect/disconnect txns.
 // `User` account size assumes a single publisher and subscriber pubkey registered (298 bytes each).
 pub const AIRDROP_USER_RENT_LAMPORTS_BYTES: usize = 298 * 3; // 298 bytes per User account x 3 accounts = 894 bytes

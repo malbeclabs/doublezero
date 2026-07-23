@@ -687,6 +687,7 @@ async fn try_create_user(
 /// pass, a multicast connect is rejected with `FeedAccountRequired`. The pass lives at the UNSPECIFIED PDA
 /// so distinct client IPs all map to the same seat.
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_edge_seat_user_caps_enforced() {
     let mut env = setup_test_env().await;
     let payer_pk = env.payer.pubkey();

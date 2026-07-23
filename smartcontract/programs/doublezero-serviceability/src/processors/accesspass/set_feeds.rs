@@ -60,6 +60,11 @@ pub fn process_set_access_pass_feeds(
     accounts: &[AccountInfo],
     value: &SetAccessPassFeedsArgs,
 ) -> ProgramResult {
+    if crate::processors::accesspass::EDGE_SEAT_WRITES_DISABLED {
+        msg!("SetAccessPassFeeds is disabled pending the 0.30.0 client compatibility floor");
+        return Err(DoubleZeroError::FeatureNotEnabled.into());
+    }
+
     if value.feeds.len() > MAX_ACCESS_PASS_FEEDS {
         msg!(
             "SetAccessPassFeeds accepts at most {} feeds, got {}",

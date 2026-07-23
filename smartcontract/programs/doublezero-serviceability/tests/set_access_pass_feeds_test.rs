@@ -192,6 +192,7 @@ async fn read_accesspass(banks_client: &mut BanksClient, pubkey: Pubkey) -> Acce
 }
 
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_set_access_pass_feeds() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
@@ -332,6 +333,7 @@ async fn test_set_access_pass_feeds() {
 }
 
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_cannot_set_feeds_on_non_edge_seat() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
@@ -388,6 +390,7 @@ async fn test_cannot_set_feeds_on_non_edge_seat() {
 }
 
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_cannot_set_feeds_unauthorized_caller() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
@@ -447,6 +450,7 @@ async fn test_cannot_set_feeds_unauthorized_caller() {
 }
 
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_cannot_set_feeds_exceeds_max() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
@@ -498,6 +502,7 @@ async fn test_cannot_set_feeds_exceeds_max() {
 }
 
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_cannot_set_duplicate_feed_key() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
@@ -565,6 +570,7 @@ async fn test_cannot_set_duplicate_feed_key() {
 }
 
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_cannot_set_max_users_below_current_users() {
     // A seat with live users can't be re-provisioned below its current_users. current_users is only
     // ticked by connect-time enforcement (a later PR), so the pass is seeded directly here.
@@ -684,6 +690,7 @@ async fn test_cannot_set_max_users_below_current_users() {
 }
 
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_cannot_set_feeds_with_invalid_billing_window() {
     // The per-feed billing fields are validated inside the provisioning loop, each with its own
     // error variant: anniversary_day must be 1..=31, and the window must satisfy
@@ -850,6 +857,7 @@ async fn test_cannot_set_feeds_with_invalid_billing_window() {
 }
 
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_cannot_set_max_future_users_below_max_users() {
     // For now the future cap may not drop below the current cap (see set_feeds.rs): shrinking it
     // would force a decision about which live users to drop when the cap flips. Equal or larger is
@@ -912,6 +920,7 @@ async fn test_cannot_set_max_future_users_below_max_users() {
 }
 
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_cannot_set_zero_max_users() {
     // A zero current cap admits no users, so a seat with max_users == 0 is rejected as nonsensical.
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
@@ -965,4 +974,56 @@ async fn test_cannot_set_zero_max_users() {
     )
     .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedMaxUsersZero));
+}
+
+/// While `EDGE_SEAT_WRITES_DISABLED` is set, both EdgeSeat write paths are refused outright.
+/// Un-ignore the suites above when lifting the switch.
+#[tokio::test]
+async fn test_edge_seat_writes_disabled() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    // SetAccessPass with an EdgeSeat type is refused.
+    let client_ip = Ipv4Addr::new(100, 0, 0, 20);
+    let user_payer = Pubkey::new_unique();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::EdgeSeat(vec![]),
+            client_ip,
+            last_access_epoch: u64::MAX,
+            allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_payer, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeatureNotEnabled));
+
+    // SetAccessPassFeeds is refused before any account or argument is inspected.
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip,
+            user_payer,
+            feeds: vec![],
+        }),
+        vec![
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeatureNotEnabled));
 }

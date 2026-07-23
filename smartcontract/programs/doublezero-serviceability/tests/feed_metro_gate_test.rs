@@ -374,6 +374,7 @@ async fn try_subscribe_with_feed(
 }
 
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_right_metro_joins_group_set() {
     let mut f = setup_feed_fixture([100, 0, 0, 20]).await;
     let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
@@ -423,6 +424,7 @@ async fn test_right_metro_joins_group_set() {
 }
 
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_wrong_metro_device_rejected() {
     let mut f = setup_feed_fixture([100, 0, 0, 21]).await;
     let mgroup = f.mgroup_pubkey;
@@ -453,6 +455,7 @@ async fn test_wrong_metro_device_rejected() {
 }
 
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_multi_feed_seat_matching_admits() {
     let mut f = setup_feed_fixture([100, 0, 0, 22]).await;
     let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
@@ -503,6 +506,7 @@ async fn test_multi_feed_seat_matching_admits() {
 }
 
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_group_not_in_feed_rejected() {
     let mut f = setup_feed_fixture([100, 0, 0, 23]).await;
     let exchange = f.exchange_pubkey;

@@ -2,7 +2,7 @@ use crate::{
     authorize::authorize,
     error::DoubleZeroError,
     pda::*,
-    processors::accesspass::airdrop_user_credits,
+    processors::accesspass::{airdrop_user_credits, EDGE_SEAT_WRITES_DISABLED},
     seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -60,6 +60,11 @@ pub fn process_set_access_pass(
     accounts: &[AccountInfo],
     value: &SetAccessPassArgs,
 ) -> ProgramResult {
+    if EDGE_SEAT_WRITES_DISABLED && matches!(value.accesspass_type, AccessPassType::EdgeSeat(_)) {
+        msg!("EdgeSeat access passes are disabled pending the 0.30.0 client compatibility floor");
+        return Err(DoubleZeroError::FeatureNotEnabled.into());
+    }
+
     let accounts_iter = &mut accounts.iter();
 
     let accesspass_account = next_account_info(accounts_iter)?;

@@ -1936,6 +1936,7 @@ async fn test_set_accesspass_airdrop_scales_with_allow_multiple_ip() {
 /// drain the `user_payer`, then re-run SetAccessPass with identical params and confirm the
 /// balance is restored to the rent + airdrop target.
 #[tokio::test]
+#[ignore = "EdgeSeat writes hard-disabled pending the 0.30.0 compat floor (EDGE_SEAT_WRITES_DISABLED)"]
 async fn test_set_accesspass_refills_depleted_user_payer() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
 

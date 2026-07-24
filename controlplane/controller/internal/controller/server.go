@@ -737,10 +737,14 @@ func (c *Controller) swapCache(cache stateCache) {
 }
 
 // nextFetchFailScore updates the sustained-failure score for on-chain fetches:
-// +1 on failure, -0.5 on success, floored at 0.
+// +1 on failure, -0.5 on success, floored at 0 and capped at
+// cacheFetchErrorThreshold. The cap matters during a real outage: without it the
+// score would climb unbounded and then take ~2x the outage duration to decay
+// back below the threshold, keeping the fetch at ERROR long after recovery. With
+// the cap, the first successful poll after recovery drops it below the threshold.
 func nextFetchFailScore(score float64, failed bool) float64 {
 	if failed {
-		return score + 1
+		return min(score+1, cacheFetchErrorThreshold)
 	}
 	score -= 0.5
 	if score < 0 {

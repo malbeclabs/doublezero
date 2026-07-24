@@ -3523,4 +3523,18 @@ func TestController_NextFetchFailScore(t *testing.T) {
 	if crossedAt != 11 {
 		t.Fatalf("alternating fail/success crossed threshold at failure %d, want 11", crossedAt)
 	}
+
+	// A sustained outage pins the score at the threshold rather than growing
+	// unbounded, so the first success after recovery de-escalates below it (back
+	// to WARN) instead of the score taking ~2x the outage length to decay down.
+	score = 0.0
+	for i := 0; i < 100; i++ {
+		score = nextFetchFailScore(score, true)
+	}
+	if score != cacheFetchErrorThreshold {
+		t.Fatalf("100 consecutive failures: got score %v, want capped at %v", score, cacheFetchErrorThreshold)
+	}
+	if got := nextFetchFailScore(score, false); got >= cacheFetchErrorThreshold {
+		t.Fatalf("first success after outage: got score %v, want below threshold %v", got, cacheFetchErrorThreshold)
+	}
 }

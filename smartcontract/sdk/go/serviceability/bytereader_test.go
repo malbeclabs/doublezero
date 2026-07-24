@@ -166,6 +166,61 @@ func TestReadPubkeySlice(t *testing.T) {
 	}
 }
 
+// A garbage length prefix >= 2^27 must not wrap length*32 back under Remaining() and reach a
+// huge make(); the guard returns nil instead.
+func TestReadPubkeySliceRejectsOverflowLength(t *testing.T) {
+	t.Parallel()
+
+	// length = 0x08000001 (> 2^27): length*32 overflows uint32 to 32, but only 4 bytes follow.
+	data := []byte{0x01, 0x00, 0x00, 0x08}
+	reader := NewByteReader(data)
+	if val := reader.ReadPubkeySlice(); val != nil {
+		t.Errorf("ReadPubkeySlice must reject an overflowing length, got %#v", val)
+	}
+}
+
+// A present length prefix of 0 is a valid empty borsh Vec<Pubkey> and must yield an empty
+// non-nil slice; an absent field (EOF before the prefix) must yield nil.
+func TestReadPubkeySliceEmptyVsAbsent(t *testing.T) {
+	t.Parallel()
+
+	empty := NewByteReader([]byte{0x00, 0x00, 0x00, 0x00}).ReadPubkeySlice()
+	if empty == nil || len(empty) != 0 {
+		t.Errorf("present length prefix 0 must yield an empty non-nil slice, got %#v", empty)
+	}
+
+	if absent := NewByteReader(nil).ReadPubkeySlice(); absent != nil {
+		t.Errorf("EOF before the length prefix must yield nil, got %#v", absent)
+	}
+
+	// A truncated prefix (fewer than 4 bytes remaining) is absent, not empty.
+	if truncated := NewByteReader([]byte{0x00, 0x00}).ReadPubkeySlice(); truncated != nil {
+		t.Errorf("truncated length prefix must yield nil, got %#v", truncated)
+	}
+}
+
+// The IPv4/NetworkV4 slice readers share ReadPubkeySlice's uint64 guard: a garbage length
+// whose length*width wraps uint32 back under Remaining() must not reach a huge make().
+func TestReadIPv4SliceRejectsOverflowLength(t *testing.T) {
+	t.Parallel()
+
+	// length = 0x40000001: length*4 overflows uint32 to 4, but only 4 bytes follow.
+	data := []byte{0x01, 0x00, 0x00, 0x40, 0x01, 0x02, 0x03, 0x04}
+	if val := NewByteReader(data).ReadIPv4Slice(); val != nil {
+		t.Errorf("ReadIPv4Slice must reject an overflowing length, got %#v", val)
+	}
+}
+
+func TestReadNetworkV4SliceRejectsOverflowLength(t *testing.T) {
+	t.Parallel()
+
+	// length = 0x33333334: length*5 overflows uint32 to 4, but only 5 bytes follow.
+	data := []byte{0x34, 0x33, 0x33, 0x33, 0x01, 0x02, 0x03, 0x04, 0x05}
+	if val := NewByteReader(data).ReadNetworkV4Slice(); val != nil {
+		t.Errorf("ReadNetworkV4Slice must reject an overflowing length, got %#v", val)
+	}
+}
+
 func TestReadIPv4(t *testing.T) {
 	t.Parallel()
 

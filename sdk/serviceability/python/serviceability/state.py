@@ -866,8 +866,9 @@ class User:
     # Smoothed BGP TCP RTT in nanoseconds, as last reported by the device agent.
     # 0 means no sample. Same unit as Link.delay_ns.
     bgp_rtt_ns: int = 0
-    # EdgeSeat Feed whose per-feed seat this user consumed at connect (default pubkey if none).
-    feed_pk: Pubkey = Pubkey.default()
+    # EdgeSeat Feeds whose per-feed seats this user consumed at connect (empty if none). Occupies
+    # the former scalar feed_pk slot, which was never written with a real feed on any cluster.
+    feed_pks: list[Pubkey] = field(default_factory=list)
 
     @classmethod
     def from_bytes(cls, data: bytes) -> User:
@@ -897,8 +898,10 @@ class User:
         # DefensiveReader returns 0 on EOF, so old accounts that predate
         # bgp_rtt_ns deserialize with the field defaulted to 0.
         u.bgp_rtt_ns = r.read_u64()
-        # _read_pubkey returns the zero pubkey on EOF, so old accounts default feed_pk.
-        u.feed_pk = _read_pubkey(r)
+        # Old-layout accounts carry 32 zero bytes here (the never-written scalar feed_pk slot),
+        # which read as an empty vec with the leftover zero bytes ignored as trailing data.
+        # _read_pubkey_vec returns [] on EOF, so accounts predating the slot default to empty too.
+        u.feed_pks = _read_pubkey_vec(r)
         return u
 
 

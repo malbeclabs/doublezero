@@ -374,7 +374,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-config"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "eyre",
  "serde",
@@ -383,7 +383,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-geolocation"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "borsh",
  "borsh-incremental",
@@ -400,7 +400,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "borsh",
  "byteorder",
@@ -412,7 +412,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "bitflags",
  "borsh",

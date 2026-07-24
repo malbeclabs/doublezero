@@ -6,9 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Serviceability
+  - `User` account: the single-feed slot `feed_pk` is replaced in place by `feed_pks: Vec<Pubkey>` across the Rust struct, serde JSON, and all SDKs (Go `FeedPk` → `FeedPks`, TypeScript `feedPk` → `feedPks`, Python `feed_pk` → `feed_pks`). Consumers reading the old key must update. The vec occupies the former 32-byte scalar slot; this is safe because no account ever recorded a feed there (no EdgeSeat access pass has existed on any cluster — verified against the mainnet-beta data lake), so existing accounts carry 32 zero bytes that parse as an empty vec with the leftover zero bytes ignored as trailing data. Deploy note: confirm no nonzero `feed_pk` account exists on each cluster at upgrade time; an EdgeSeat multicast connect before the upgrade would record a feed the new layout cannot see. (#4080)
+
 ### Changes
 
 - Serviceability
+  - `User` accounts can hold EdgeSeat feed seats on multiple feeds: `feed_pks: Vec<Pubkey>` records every feed whose per-feed seat the user consumed at connect, and delete releases all of them. Added to the Go/TypeScript/Python SDK `User` decoders as well. (#4080)
   - Bound the preallocation in `deserialize_vec_with_capacity` against the remaining input. A garbage or attacker-controlled u32 length prefix in an account (e.g. a pre-FeedSeat SDK misparsing an EdgeSeat AccessPass) could request tens of GiB via `Vec::with_capacity`, aborting the process through the uncatchable alloc-error handler; the capacity is now capped at the remaining byte count. Decoding of valid accounts is unchanged. (#4072)
   - `AccessPass` gains a `dzf_locked` flag (bit 0 of `flags`) marking a pass as foundation-managed so automated reconcilers such as the Feed Oracle leave it alone. A new `SetAccessPassFlags` instruction (gated on `ACCESS_PASS_ADMIN`) sets/clears access-pass flags without disturbing the others, and `SetAccessPass` now preserves the flag across unrelated updates. Set it with the `doublezero access-pass dzf-lock` / `dzf-unlock` verbs or `access-pass set --dzf-locked`. (#4083)
 - Device controller

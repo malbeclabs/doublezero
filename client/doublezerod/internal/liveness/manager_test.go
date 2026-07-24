@@ -1604,6 +1604,10 @@ func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*manager, error)
 }
 
 func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*manager, *prometheus.Registry, error) {
+	return newTestManagerWithRoutesAndMetrics(t, nil, mutate)
+}
+
+func newTestManagerWithRoutesAndMetrics(t *testing.T, cr *routing.ConfiguredRoutes, mutate func(*ManagerConfig)) (*manager, *prometheus.Registry, error) {
 	reg := prometheus.NewRegistry()
 	cfg := &ManagerConfig{
 		Logger:          newTestLogger(t),
@@ -1622,7 +1626,7 @@ func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*mana
 	if mutate != nil {
 		mutate(cfg)
 	}
-	m, err := NewManager(t.Context(), cfg, nil)
+	m, err := NewManager(t.Context(), cfg, cr)
 	return m, reg, err
 }
 
@@ -1688,6 +1692,48 @@ func metricHasLabels(m *prom.Metric, labels prometheus.Labels) bool {
 		}
 	}
 	return true
+}
+
+// TestClient_Liveness_Manager_WithdrawRoute_PassiveClearsInstalledBeforeDelete
+// guards the withdraw ordering: in passive mode WithdrawRoute must clear
+// installed[rk] under the lock *before* issuing the kernel RouteDelete, so
+// concurrent observers of the installed map never see a withdrawn route as
+// installed.
+func TestClient_Liveness_Manager_WithdrawRoute_PassiveClearsInstalledBeforeDelete(t *testing.T) {
+	t.Parallel()
+
+	r := newTestRoute(nil)
+	rk := routeKeyFor("lo", r)
+
+	var installedAtDelete bool
+	var deleteCalled bool
+	var mgr *manager
+	mock := &MockRouteReaderWriter{
+		RouteDeleteFunc: func(*routing.Route) error {
+			deleteCalled = true
+			installedAtDelete = mgr.IsInstalled(rk)
+			return nil
+		},
+	}
+
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = mock
+		cfg.PassiveMode = true
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+	mgr = m
+
+	err = m.RegisterRoute(r, "lo", m.LocalAddr().Port)
+	require.NoError(t, err)
+	require.True(t, mgr.IsInstalled(rk), "route should be installed after RegisterRoute in passive mode")
+
+	err = m.WithdrawRoute(r, "lo")
+	require.NoError(t, err)
+
+	require.True(t, deleteCalled, "passive WithdrawRoute must issue a kernel delete")
+	require.False(t, installedAtDelete, "installed[rk] must be cleared before the kernel RouteDelete")
+	require.False(t, mgr.IsInstalled(rk), "route should not be installed after WithdrawRoute")
 }
 
 func getHistogramCount(t *testing.T, reg *prometheus.Registry, name string, labels prometheus.Labels) float64 {

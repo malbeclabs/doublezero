@@ -415,15 +415,9 @@ func (m *manager) WithdrawRoute(r *Route, iface string) error {
 
 	m.log.Info("liveness: withdrawing route", "route", r.String(), "iface", iface)
 
-	if m.cfg.PassiveMode && !r.NoUninstall {
-		// Passive-mode: caller wants immediate kernel update independent of liveness.
-		if err := m.cfg.Netlinker.RouteDelete(&r.Route); err != nil {
-			m.metrics.RouteUninstallFailures.WithLabelValues(iface, srcIP).Inc()
-			return fmt.Errorf("error withdrawing route: %v", err)
-		}
-		m.metrics.routeWithdraw(iface, srcIP)
-	}
-
+	// Clear desired/installed under the lock *before* issuing any kernel
+	// RouteDelete, mirroring onSessionDown, so concurrent observers of the
+	// installed map never see a withdrawn route as installed.
 	rk := routeKeyFor(iface, r)
 	m.mu.Lock()
 	delete(m.desired, rk)
@@ -448,12 +442,13 @@ func (m *manager) WithdrawRoute(r *Route, iface string) error {
 	m.metrics.SessionsMapSize.Set(float64(len(m.sessions)))
 	m.mu.Unlock()
 
-	// If we previously installed the route (and not in PassiveMode), remove it now.
-	if wasInstalled && !m.cfg.PassiveMode && !r.NoUninstall {
-		err := m.cfg.Netlinker.RouteDelete(&r.Route)
-		if err != nil {
+	// Remove the kernel route. In passive mode the caller wants an immediate
+	// kernel update independent of liveness, so we always delete; otherwise we
+	// only delete a route we previously installed.
+	if !r.NoUninstall && (m.cfg.PassiveMode || wasInstalled) {
+		if err := m.cfg.Netlinker.RouteDelete(&r.Route); err != nil {
 			m.metrics.RouteUninstallFailures.WithLabelValues(iface, srcIP).Inc()
-			return err
+			return fmt.Errorf("error withdrawing route: %v", err)
 		}
 		m.metrics.routeWithdraw(iface, srcIP)
 	}
@@ -834,7 +829,7 @@ func (m *manager) onSessionDown(sess *Session) {
 	}
 
 	if m.cfg.PassiveMode {
-		m.log.Debug("liveness: session down (global passive; keeping route)",
+		m.log.Info("liveness: session down (global passive; keeping route)",
 			"peer", peer.String(),
 			"route", snap.Route.String(),
 			"downSince", snap.DownSince.UTC().String(),
@@ -845,7 +840,7 @@ func (m *manager) onSessionDown(sess *Session) {
 	}
 
 	if effectivelyPassive {
-		m.log.Debug("liveness: session down (peer passive; keeping route)",
+		m.log.Info("liveness: session down (peer passive; keeping route)",
 			"peer", peer.String(),
 			"route", snap.Route.String(),
 			"downSince", snap.DownSince.UTC().String(),

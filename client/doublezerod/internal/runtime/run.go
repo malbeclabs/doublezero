@@ -20,6 +20,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/multicast"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/onchain"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/reconcile"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -30,8 +31,16 @@ const (
 	updateInstalledRoutesGaugeInterval = 10 * time.Second
 )
 
-func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints, latencySingleSocket bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig, clientIP string, reconcilerPollInterval int, reconcilerFetchTimeout int, stateDir string, onchainRPCTimeout time.Duration) error {
-	nlr := routing.Netlink{}
+func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints, latencySingleSocket bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig, clientIP string, reconcilerPollInterval int, reconcilerFetchTimeout int, stateDir string, onchainRPCTimeout time.Duration, routeReconcileInterval time.Duration) error {
+	// The route reconciler decorates raw netlink at the base of the routing
+	// chain, so every kernel route write and tunnel deletion in the daemon flows
+	// through it regardless of which subsystem (route liveness, the BGP server
+	// directly, or services teardown) drives the write. It must sit *below* the
+	// ConfiguredRouteReaderWriter so excluded destinations never reach it.
+	nlr := reconcile.New(slog.Default(), routing.Netlink{}, routeReconcileInterval, nil)
+	nlr.Start(ctx)
+	defer nlr.Stop()
+
 	var crw bgp.RouteReaderWriter
 	var cr *routing.ConfiguredRoutes
 	if _, err := os.Stat(routeConfigPath); os.IsNotExist(err) {

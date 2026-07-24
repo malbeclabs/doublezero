@@ -111,7 +111,9 @@ func (br *ByteReader) ReadPubkey() [32]byte {
 
 func (br *ByteReader) ReadPubkeySlice() [][32]byte {
 	length := br.ReadU32()
-	if length == 0 || (length*32) > br.Remaining() {
+	// Compare in uint64 so a garbage length >= 2^27 cannot wrap length*32 back under
+	// Remaining() and reach a multi-GiB make() — mirrors the Rust deserialize_vec_with_capacity cap.
+	if length == 0 || uint64(length)*32 > uint64(br.Remaining()) {
 		return nil
 	}
 	result := make([][32]byte, length)

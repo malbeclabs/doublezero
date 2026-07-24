@@ -825,7 +825,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let (accesspass1_pubkey, _) =
@@ -873,7 +873,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let (accesspass2_pubkey, _) =
@@ -1072,7 +1072,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let user2 = User {
@@ -1098,7 +1098,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1189,7 +1189,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let user2 = User {
@@ -1215,7 +1215,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1306,7 +1306,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let user2 = User {
@@ -1332,7 +1332,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1423,7 +1423,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let user2 = User {
@@ -1449,7 +1449,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1540,7 +1540,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let user2 = User {
@@ -1566,7 +1566,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1672,7 +1672,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let user2 = User {
@@ -1698,7 +1698,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1827,7 +1827,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let user2 = User {
@@ -1853,7 +1853,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         client.expect_list_user().returning(move |_| {
@@ -2015,7 +2015,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let user2 = User {
@@ -2041,7 +2041,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         client.expect_list_user().returning(move |_| {

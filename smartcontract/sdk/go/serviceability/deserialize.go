@@ -310,9 +310,11 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	// ReadU64 returns 0 on EOF, so old accounts that predate BgpRttNs deserialize
 	// with the field defaulted to 0 — matches the Rust append-only contract.
 	user.BgpRttNs = reader.ReadU64()
-	// ReadPubkey returns the zero pubkey on EOF, so old accounts that predate FeedPk deserialize
-	// with it defaulted — matches the Rust append-only contract.
-	user.FeedPk = reader.ReadPubkey()
+	// FeedPks occupies the former scalar feed_pk slot, which was never written with a real feed on
+	// any cluster: accounts from the old layout carry 32 zero bytes here, which read as an empty
+	// slice (the 28 leftover zero bytes are ignored as trailing data). ReadPubkeySlice returns nil
+	// on EOF, so accounts predating the slot deserialize to an empty slice too.
+	user.FeedPks = reader.ReadPubkeySlice()
 	// Note: user.PubKey is set separately in client.go after deserialization
 }
 

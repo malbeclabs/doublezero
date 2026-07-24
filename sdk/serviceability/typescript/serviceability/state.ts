@@ -853,8 +853,11 @@ export interface User {
    * 0 means no sample. Same unit as Link.delayNs.
    */
   bgpRttNs: bigint;
-  /** EdgeSeat Feed whose per-feed seat this user consumed at connect (default pubkey if none). */
-  feedPk: PublicKey;
+  /**
+   * EdgeSeat Feeds whose per-feed seats this user consumed at connect (empty if none). Occupies
+   * the former scalar feedPk slot, which was never written with a real feed on any cluster.
+   */
+  feedPks: PublicKey[];
 }
 
 export function deserializeUser(data: Uint8Array): User {
@@ -884,8 +887,10 @@ export function deserializeUser(data: Uint8Array): User {
     // DefensiveReader returns 0n on EOF, so old accounts that predate
     // bgpRttNs deserialize with the field defaulted to 0.
     bgpRttNs: r.readU64(),
-    // readPubkey returns the zero pubkey on EOF, so old accounts default feedPk.
-    feedPk: readPubkey(r),
+    // Old-layout accounts carry 32 zero bytes here (the never-written scalar feedPk slot), which
+    // read as an empty vec with the leftover zero bytes ignored as trailing data. readPubkeyVec
+    // returns [] on EOF, so accounts predating the slot default to empty too.
+    feedPks: readPubkeyVec(r),
   };
 }
 

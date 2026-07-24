@@ -166,6 +166,19 @@ func TestReadPubkeySlice(t *testing.T) {
 	}
 }
 
+// A garbage length prefix >= 2^27 must not wrap length*32 back under Remaining() and reach a
+// huge make(); the guard returns nil instead.
+func TestReadPubkeySliceRejectsOverflowLength(t *testing.T) {
+	t.Parallel()
+
+	// length = 0x08000001 (> 2^27): length*32 overflows uint32 to 32, but only 4 bytes follow.
+	data := []byte{0x01, 0x00, 0x00, 0x08}
+	reader := NewByteReader(data)
+	if val := reader.ReadPubkeySlice(); val != nil {
+		t.Errorf("ReadPubkeySlice must reject an overflowing length, got %#v", val)
+	}
+}
+
 func TestReadIPv4(t *testing.T) {
 	t.Parallel()
 

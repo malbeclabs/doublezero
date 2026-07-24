@@ -982,10 +982,10 @@ type User struct {
 	// BgpRttNs is the smoothed BGP TCP RTT in nanoseconds, as last reported by the
 	// device agent. 0 means no sample has been observed yet. Same unit as Link.DelayNs.
 	BgpRttNs uint64
-	// FeedPk is the EdgeSeat Feed whose per-feed seat this user consumed at connect (multicast
-	// only); the zero pubkey for non-EdgeSeat/unicast users.
-	FeedPk [32]byte
-	PubKey [32]byte
+	// FeedPks are the EdgeSeat Feeds whose per-feed seats this user consumed at connect (multicast
+	// only); empty for non-EdgeSeat/unicast users. A user may hold seats on multiple feeds.
+	FeedPks [][32]byte
+	PubKey  [32]byte
 }
 
 func (u User) MarshalJSON() ([]byte, error) {
@@ -999,6 +999,11 @@ func (u User) MarshalJSON() ([]byte, error) {
 	subscribers := make([]string, len(u.Subscribers))
 	for i, s := range u.Subscribers {
 		subscribers[i] = base58.Encode(s[:])
+	}
+
+	feedPks := make([]string, len(u.FeedPks))
+	for i, f := range u.FeedPks {
+		feedPks[i] = base58.Encode(f[:])
 	}
 
 	jsonUser := &struct {
@@ -1017,7 +1022,7 @@ func (u User) MarshalJSON() ([]byte, error) {
 		CyoaType        string   `json:"CyoaType"`
 		UserType        string   `json:"UserType"`
 		PubKey          string   `json:"PubKey"`
-		FeedPk          string   `json:"FeedPk"`
+		FeedPks         []string `json:"FeedPks"`
 	}{
 		UserAlias:       UserAlias(u),
 		Owner:           base58.Encode(u.Owner[:]),
@@ -1034,7 +1039,7 @@ func (u User) MarshalJSON() ([]byte, error) {
 		CyoaType:        u.CyoaType.String(),
 		UserType:        u.UserType.String(),
 		PubKey:          base58.Encode(u.PubKey[:]),
-		FeedPk:          base58.Encode(u.FeedPk[:]),
+		FeedPks:         feedPks,
 	}
 
 	return json.Marshal(jsonUser)

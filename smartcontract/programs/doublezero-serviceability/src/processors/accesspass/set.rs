@@ -282,7 +282,7 @@ pub fn process_set_access_pass(
         };
         accesspass.last_access_epoch = value.last_access_epoch;
         // `flags` here only carries ALLOW_MULTIPLE_IP. The DZF_LOCKED bit is managed solely by
-        // the foundation-gated SetAccessPassFlags instruction, so preserve any existing lock
+        // the `ACCESS_PASS_ADMIN`-gated SetAccessPassFlags instruction, so preserve any existing lock
         // rather than clobbering it on an unrelated update.
         accesspass.flags = (accesspass.flags & DZF_LOCKED) | flags;
         accesspass.max_unicast_users = value.max_unicast_users;

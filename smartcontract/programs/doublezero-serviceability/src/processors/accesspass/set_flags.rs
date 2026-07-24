@@ -41,8 +41,13 @@ pub fn process_set_access_pass_flags(
     let accesspass_account = next_account_info(accounts_iter)?;
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
-    let _system_program = next_account_info(accounts_iter)?;
+    let system_program = next_account_info(accounts_iter)?;
 
+    assert_eq!(
+        *system_program.unsigned_key(),
+        solana_system_interface::program::ID,
+        "Invalid System Program Account Owner"
+    );
     #[cfg(test)]
     msg!("process_set_access_pass_flags({:?})", value);
 

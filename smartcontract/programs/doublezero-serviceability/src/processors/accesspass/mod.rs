@@ -9,7 +9,7 @@ use solana_program::{
 };
 
 // Value to rent exempt three `User` accounts + configurable amount for connect/disconnect txns.
-// 334 bytes is the largest account a single create writes: base (238, empty vecs) + 32 publisher
+// 302 bytes is the largest account a single create writes: base (206, empty vecs) + 32 publisher
 // + 32 subscriber (`CreateSubscribeUser` with both roles pushes the group into both lists; EdgeSeat
 // passes skip the allowlist checks) + 32 for the feed seat the same EdgeSeat create records in
 // `feed_pks`. Accounts that later grow more lists/feeds are rent-topped-up on rewrite (try_acc_write).

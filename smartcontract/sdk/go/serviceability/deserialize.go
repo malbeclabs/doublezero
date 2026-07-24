@@ -313,7 +313,7 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	// FeedPks occupies the former scalar feed_pk slot, which was never written with a real feed on
 	// any cluster: accounts from the old layout carry 32 zero bytes here, which read as an empty
 	// slice (the 28 leftover zero bytes are ignored as trailing data). ReadPubkeySlice returns nil
-	// on EOF, so accounts predating the slot deserialize to an empty slice too.
+	// on EOF, so accounts predating the slot deserialize with the field absent — len 0 either way.
 	user.FeedPks = reader.ReadPubkeySlice()
 	// Note: user.PubKey is set separately in client.go after deserialization
 }

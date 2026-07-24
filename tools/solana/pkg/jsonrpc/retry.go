@@ -131,7 +131,13 @@ func isRetryableJSONRPC(err error) bool {
 	if strings.Contains(msg, "connection reset by peer") ||
 		strings.Contains(msg, "broken pipe") ||
 		strings.Contains(msg, "use of closed network connection") ||
-		strings.Contains(msg, "rate limited") {
+		strings.Contains(msg, "rate limited") ||
+		// Truncated/partial response body (e.g. a 200 whose body is cut off
+		// mid-stream). Matched before the *json.SyntaxError check below so a
+		// truncated body is retried while genuinely malformed but complete JSON
+		// (e.g. "invalid character ...") stays non-retryable.
+		strings.Contains(msg, "unexpected end of json input") ||
+		strings.Contains(msg, "unexpected eof") {
 		return true
 	}
 

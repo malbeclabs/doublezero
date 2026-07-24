@@ -3480,3 +3480,47 @@ func TestStateCache_PrunesOnlyStaleLinkMetric(t *testing.T) {
 		t.Errorf("expected exactly 1 remaining linkMetrics series for device, got %d", got)
 	}
 }
+
+func TestController_NextFetchFailScore(t *testing.T) {
+	t.Parallel()
+
+	// Six consecutive failures reach the escalation threshold.
+	score := 0.0
+	for i := 0; i < 6; i++ {
+		score = nextFetchFailScore(score, true)
+	}
+	if score != cacheFetchErrorThreshold {
+		t.Fatalf("6 consecutive failures: got score %v, want %v", score, cacheFetchErrorThreshold)
+	}
+
+	// A single failure decays back to 0 after two successes (floored, never negative).
+	score = nextFetchFailScore(0, true)
+	score = nextFetchFailScore(score, false)
+	score = nextFetchFailScore(score, false)
+	if score != 0 {
+		t.Fatalf("blip then two successes: got score %v, want 0", score)
+	}
+	if got := nextFetchFailScore(0, false); got != 0 {
+		t.Fatalf("success at score 0: got %v, want 0 (floored)", got)
+	}
+
+	// A sustained every-other-tick failure still crosses the threshold. Each
+	// fail/success pair nets +0.5, so (fail-first) the score after the nth
+	// failure is 0.5n+0.5, reaching 6.0 at the 11th failure (~3.7 min at 10s
+	// ticks). The point is that it escalates rather than staying WARN forever.
+	score = 0.0
+	crossedAt := 0
+	for fails, i := 0, 0; fails < 15; i++ {
+		failed := i%2 == 0
+		score = nextFetchFailScore(score, failed)
+		if failed {
+			fails++
+			if crossedAt == 0 && score >= cacheFetchErrorThreshold {
+				crossedAt = fails
+			}
+		}
+	}
+	if crossedAt != 11 {
+		t.Fatalf("alternating fail/success crossed threshold at failure %d, want 11", crossedAt)
+	}
+}

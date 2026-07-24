@@ -39,6 +39,9 @@ func TestTools_Solana_JSONRPC_IsRetryableJSONRPC(t *testing.T) {
 		{"rpc busy -32005", rpcCodeErr(-32005), true},
 		{"rpc busy -32429", rpcCodeErr(-32429), true},
 		{"json syntax", &json.SyntaxError{Offset: 1}, false},
+		{"truncated body msg", errors.New("could not decode body to rpc response: unexpected end of JSON input"), true},
+		{"truncated body decode", truncatedJSONErr(), true},
+		{"malformed but complete json", malformedJSONErr(), false},
 		{"random non-retryable", errors.New("bad request"), false},
 		{"net.Error non-timeout", net.UnknownNetworkError("wat"), false},
 	}
@@ -227,6 +230,20 @@ type rpcCodeErr int
 
 func (e rpcCodeErr) Error() string { return "rpc code" }
 func (e rpcCodeErr) Code() int     { return int(e) }
+
+// truncatedJSONErr returns the real error produced by decoding a truncated JSON
+// body ("unexpected end of JSON input").
+func truncatedJSONErr() error {
+	var v map[string]any
+	return json.Unmarshal([]byte("{"), &v)
+}
+
+// malformedJSONErr returns the error produced by decoding complete but malformed
+// JSON, which must stay non-retryable.
+func malformedJSONErr() error {
+	var v map[string]any
+	return json.Unmarshal([]byte("{bad}"), &v)
+}
 
 func fastRetryOpt(max int) *RetryOptions {
 	return &RetryOptions{

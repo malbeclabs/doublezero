@@ -40,6 +40,22 @@ const (
 
 	bgpCommunityMinValid = 10000
 	bgpCommunityMaxValid = 10999
+
+	// cacheFetchErrorThreshold is the weighted failure score at which onchain
+	// fetch failures escalate from WARN to ERROR. Each failed fetch adds 1 and
+	// each success subtracts 0.5 (floored at 0), so at the 10s poll interval a
+	// lone blip that recovers decays back to 0 and stays WARN, while a
+	// persistently flaky endpoint — even one failing every other tick — still
+	// crosses the threshold and pages.
+	cacheFetchErrorThreshold = 6.0
+
+	// cacheFetchTimeout bounds a single state-cache fetch. Without it a
+	// blackholed endpoint (accepts the connection, never responds) would block
+	// on the RPC client's 5-minute HTTP timeout across 4 retry attempts (~20
+	// min), so the ticker drops ticks and the failure score climbs far slower
+	// than one-per-tick — delaying the first ERROR by roughly 6x. Bounding each
+	// fetch keeps a failed tick ≈ one failure so the score calibration holds.
+	cacheFetchTimeout = 30 * time.Second
 )
 
 var (
@@ -728,6 +744,23 @@ func (c *Controller) swapCache(cache stateCache) {
 	}
 }
 
+// nextFetchFailScore updates the sustained-failure score for onchain fetches:
+// +1 on failure, -0.5 on success, floored at 0 and capped at
+// cacheFetchErrorThreshold. The cap matters during a real outage: without it the
+// score would climb unbounded and then take ~2x the outage duration to decay
+// back below the threshold, keeping the fetch at ERROR long after recovery. With
+// the cap, the first successful poll after recovery drops it below the threshold.
+func nextFetchFailScore(score float64, failed bool) float64 {
+	if failed {
+		return min(score+1, cacheFetchErrorThreshold)
+	}
+	score -= 0.5
+	if score < 0 {
+		return 0
+	}
+	return score
+}
+
 // Run starts a goroutine for updating the local state cache with on-chain
 // data and another for a gRPC server to service devices.
 func (c *Controller) Run(ctx context.Context) error {
@@ -749,11 +782,32 @@ func (c *Controller) Run(ctx context.Context) error {
 
 	// start on-chain fetcher
 	go func() {
-		c.log.Info("starting fetch of on-chain data", "program-id", c.serviceability.ProgramID())
-		if err := c.updateStateCache(ctx); err != nil {
+		// recordFetch logs the outcome of a state-cache fetch, escalating to
+		// ERROR only once failures are sustained (see cacheFetchErrorThreshold);
+		// transient blips that recover stay at WARN and don't page.
+		var fetchFailScore float64
+		recordFetch := func(err error) {
+			fetchFailScore = nextFetchFailScore(fetchFailScore, err != nil)
+			if err == nil {
+				return
+			}
 			cacheUpdateErrors.Inc()
-			c.log.Error("error fetching accounts", "error", err)
+			if fetchFailScore >= cacheFetchErrorThreshold {
+				c.log.Error("error fetching accounts", "error", err, "fail_score", fetchFailScore)
+			} else {
+				c.log.Warn("error fetching accounts", "error", err, "fail_score", fetchFailScore)
+			}
 		}
+		// fetch bounds a single update with cacheFetchTimeout so a hung endpoint
+		// fails the tick promptly instead of blocking for minutes.
+		fetch := func() error {
+			fetchCtx, cancel := context.WithTimeout(ctx, cacheFetchTimeout)
+			defer cancel()
+			return c.updateStateCache(fetchCtx)
+		}
+
+		c.log.Info("starting fetch of on-chain data", "program-id", c.serviceability.ProgramID())
+		recordFetch(fetch())
 		cacheUpdateOps.Inc()
 		if c.featuresConfig != nil && c.featuresConfig.Features.FlexAlgo.Enabled {
 			c.mu.RLock()
@@ -769,10 +823,7 @@ func (c *Controller) Run(ctx context.Context) error {
 				return
 			case <-ticker.C:
 				c.log.Debug("updating state cache on clock tick")
-				if err := c.updateStateCache(ctx); err != nil {
-					cacheUpdateErrors.Inc()
-					c.log.Error("error fetching accounts", "error", err)
-				}
+				recordFetch(fetch())
 				cacheUpdateOps.Inc()
 			}
 		}

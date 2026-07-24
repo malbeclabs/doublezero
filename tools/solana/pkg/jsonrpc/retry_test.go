@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -13,6 +14,7 @@ import (
 
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/gagliardetto/solana-go/rpc/jsonrpc"
+	gojson "github.com/goccy/go-json"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,6 +41,10 @@ func TestTools_Solana_JSONRPC_IsRetryableJSONRPC(t *testing.T) {
 		{"rpc busy -32005", rpcCodeErr(-32005), true},
 		{"rpc busy -32429", rpcCodeErr(-32429), true},
 		{"json syntax", &json.SyntaxError{Offset: 1}, false},
+		{"truncated body msg", errors.New("could not decode body to rpc response: unexpected end of JSON input"), true},
+		{"truncated body decode", truncatedJSONErr(), true},
+		{"truncated body nul decode", truncatedJSONNulErr(), true},
+		{"malformed but complete json", malformedJSONErr(), false},
 		{"random non-retryable", errors.New("bad request"), false},
 		{"net.Error non-timeout", net.UnknownNetworkError("wat"), false},
 	}
@@ -227,6 +233,30 @@ type rpcCodeErr int
 
 func (e rpcCodeErr) Error() string { return "rpc code" }
 func (e rpcCodeErr) Code() int     { return int(e) }
+
+// goccyDecode mirrors the solana-go rpc/jsonrpc client's decoder configuration
+// (goccy/go-json streaming, DisallowUnknownFields + UseNumber) so these tests
+// exercise the decoder the client actually uses, not stdlib encoding/json (which
+// the client never produces).
+func goccyDecode(body string) error {
+	dec := gojson.NewDecoder(strings.NewReader(body))
+	dec.DisallowUnknownFields()
+	dec.UseNumber()
+	var v any
+	return dec.Decode(&v)
+}
+
+// truncatedJSONErr returns a real goccy decode error for a body cut off
+// mid-stream ("unexpected end of JSON input").
+func truncatedJSONErr() error { return goccyDecode(`{"`) }
+
+// truncatedJSONNulErr returns the other real goccy truncation error: a NUL
+// invalid-character from its leftover decode buffer.
+func truncatedJSONNulErr() error { return goccyDecode(`{`) }
+
+// malformedJSONErr returns a goccy decode error for complete but malformed JSON,
+// which must stay non-retryable.
+func malformedJSONErr() error { return goccyDecode(`{"a" "b"}`) }
 
 func fastRetryOpt(max int) *RetryOptions {
 	return &RetryOptions{

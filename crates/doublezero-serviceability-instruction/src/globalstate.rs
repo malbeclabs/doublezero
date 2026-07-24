@@ -18,6 +18,22 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
+/// Assemble a setter whose only account is GlobalState (writable). Shared by the
+/// single-globalstate setters below; all route through `authorize()`.
+fn build_globalstate_only(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    instruction: DoubleZeroInstruction,
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    common::build_with_permission(
+        program_id,
+        instruction,
+        vec![AccountMeta::new(globalstate, false)],
+        payer,
+    )
+}
+
 /// `InitGlobalState` (variant 1). Accounts: `[program_config, globalstate]`.
 pub fn init_global_state(program_id: &Pubkey, payer: &Pubkey) -> Instruction {
     let (program_config, _) = get_program_config_pda(program_id);
@@ -35,24 +51,12 @@ pub fn init_global_state(program_id: &Pubkey, payer: &Pubkey) -> Instruction {
 
 /// `SetAuthority` (variant 2). Accounts: `[globalstate]`.
 pub fn set_authority(program_id: &Pubkey, payer: &Pubkey, args: SetAuthorityArgs) -> Instruction {
-    let (globalstate, _) = get_globalstate_pda(program_id);
-    common::build_with_permission(
-        program_id,
-        DoubleZeroInstruction::SetAuthority(args),
-        vec![AccountMeta::new(globalstate, false)],
-        payer,
-    )
+    build_globalstate_only(program_id, payer, DoubleZeroInstruction::SetAuthority(args))
 }
 
 /// `SetAirdrop` (variant 68). Accounts: `[globalstate]`.
 pub fn set_airdrop(program_id: &Pubkey, payer: &Pubkey, args: SetAirdropArgs) -> Instruction {
-    let (globalstate, _) = get_globalstate_pda(program_id);
-    common::build_with_permission(
-        program_id,
-        DoubleZeroInstruction::SetAirdrop(args),
-        vec![AccountMeta::new(globalstate, false)],
-        payer,
-    )
+    build_globalstate_only(program_id, payer, DoubleZeroInstruction::SetAirdrop(args))
 }
 
 /// `SetMinVersion` (variant 79). Accounts: `[program_config, globalstate]`.
@@ -79,12 +83,10 @@ pub fn set_feature_flags(
     payer: &Pubkey,
     args: SetFeatureFlagsArgs,
 ) -> Instruction {
-    let (globalstate, _) = get_globalstate_pda(program_id);
-    common::build_with_permission(
+    build_globalstate_only(
         program_id,
-        DoubleZeroInstruction::SetFeatureFlags(args),
-        vec![AccountMeta::new(globalstate, false)],
         payer,
+        DoubleZeroInstruction::SetFeatureFlags(args),
     )
 }
 

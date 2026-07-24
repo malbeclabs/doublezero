@@ -169,9 +169,9 @@ impl Validate for AccessPassType {
 }
 
 pub const ALLOW_MULTIPLE_IP: u8 = 1 << 1; // 0000_0010
-/// Marks an access pass as "DZF controlled": the DoubleZero Foundation manages this pass (and
-/// any side deal it represents) out of band, so automated reconcilers such as the Feed Oracle
-/// must not tear it down. Set/cleared only by an `ACCESS_PASS_ADMIN` authority.
+/// Marks an access pass as "DZF controlled": the DoubleZero Foundation manages this pass out of band,
+/// so automated reconcilers such as the Feed Oracle must not tear it down. Set/cleared only by an
+/// `ACCESS_PASS_ADMIN` authority.
 pub const DZF_LOCKED: u8 = 1 << 0; // 0000_0001
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]

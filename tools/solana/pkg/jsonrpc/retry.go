@@ -2,7 +2,6 @@ package jsonrpc
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -133,11 +132,15 @@ func isRetryableJSONRPC(err error) bool {
 		strings.Contains(msg, "use of closed network connection") ||
 		strings.Contains(msg, "rate limited") ||
 		// Truncated/partial response body (e.g. a 200 whose body is cut off
-		// mid-stream). Matched before the *json.SyntaxError check below so a
-		// truncated body is retried while genuinely malformed but complete JSON
-		// (e.g. "invalid character ...") stays non-retryable.
+		// mid-stream). The solana-go client decodes with goccy/go-json, which
+		// reports most cut points as "unexpected end of JSON input" and some as
+		// a NUL invalid-character from its leftover decode buffer (a raw NUL
+		// never appears in valid JSON, so it's distinctive of a truncated read).
+		// Complete-but-malformed JSON (e.g. "expected colon after object key")
+		// is deliberately not matched and falls through to non-retryable.
 		strings.Contains(msg, "unexpected end of json input") ||
-		strings.Contains(msg, "unexpected eof") {
+		strings.Contains(msg, "unexpected eof") ||
+		strings.Contains(msg, "invalid character '\x00'") {
 		return true
 	}
 
@@ -163,12 +166,6 @@ func isRetryableJSONRPC(err error) bool {
 		case -32005, -32004, -32003, -32429:
 			return true
 		}
-	}
-
-	// Explicit non-retryable: malformed JSON / protocol bugs
-	var syn *json.SyntaxError
-	if errors.As(err, &syn) {
-		return false
 	}
 
 	return false

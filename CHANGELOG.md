@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 - Serviceability
   - Bound the preallocation in `deserialize_vec_with_capacity` against the remaining input. A garbage or attacker-controlled u32 length prefix in an account (e.g. a pre-FeedSeat SDK misparsing an EdgeSeat AccessPass) could request tens of GiB via `Vec::with_capacity`, aborting the process through the uncatchable alloc-error handler; the capacity is now capped at the remaining byte count. Decoding of valid accounts is unchanged. (#4072)
 - Device controller
-  - Escalate on-chain account fetch failures to `ERROR` only when sustained; a transient blip that recovers on the next poll now logs at `WARN`, so a single flaky fetch no longer pages via the generic ERROR-level alert. A weighted score (+1 per failure, -0.5 per success, capped at 0) crosses the threshold on a persistently failing endpoint, so real outages still surface. (#4081)
+  - Escalate onchain account fetch failures to `ERROR` only when sustained; a transient blip that recovers on the next poll now logs at `WARN`, so a single flaky fetch no longer pages via the generic ERROR-level alert. A weighted score (+1 per failure, -0.5 per success, floored at 0, capped at 6) crosses the threshold on a persistently failing endpoint, so real outages still surface. Each fetch is bounded by a 30s timeout so a hung endpoint fails the tick promptly rather than blocking for minutes. (#4081)
 - Tools
   - Treat truncated or partial JSON-RPC response bodies (`unexpected end of JSON input`, `unexpected EOF`) as retryable, so a cut-off 200 response is retried in-call; genuinely malformed but complete responses remain non-retryable. (#4081)
 - E2E/QA

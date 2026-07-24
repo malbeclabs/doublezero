@@ -18,6 +18,7 @@ use doublezero_sdk::{
     },
     Device, User, UserCYOA, UserStatus, UserType,
 };
+use doublezero_serviceability::state::accesspass::AccessPass;
 use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
 
@@ -116,6 +117,147 @@ fn check_accesspass<L: LedgerClient>(
     Ok(accesspass.last_access_epoch >= epoch)
 }
 
+/// Diagnostic run when no valid AccessPass authorizes this connection. Scans
+/// every AccessPass on the ledger for ones referencing the operator's current
+/// IP or DoubleZero ID (payer) and explains, per candidate, why it does not
+/// authorize the connection (wrong DoubleZero ID, wrong IP, or — for a unicast
+/// connect — a multicast-only pass).
+///
+/// `connecting_unicast` reflects the requested mode: `last_access_epoch > 0`
+/// marks a pass as unicast-enabled (multicast passes leave it at 0 and are not
+/// epoch-gated), so a `0` pass cannot serve a unicast connect.
+///
+/// Purely informational: any ledger read error is reported as an unavailable
+/// troubleshooting note rather than propagated, so the caller's original
+/// "no valid AccessPass" error remains the outcome.
+fn troubleshoot_accesspass<L: LedgerClient, W: Write>(
+    ledger: &L,
+    client_ip: Ipv4Addr,
+    payer: Pubkey,
+    connecting_unicast: bool,
+    out: &mut W,
+) -> eyre::Result<()> {
+    let passes = match ledger.list_accesspass() {
+        Ok(passes) => passes,
+        Err(err) => {
+            writeln!(
+                out,
+                "🔍  Troubleshooting unavailable: could not list AccessPasses ({err})"
+            )?;
+            return Ok(());
+        }
+    };
+
+    // Candidates: any pass referencing our current IP or our DoubleZero ID. A
+    // dynamic 0.0.0.0 seat bound to our payer is matched via the payer check.
+    let mut candidates: Vec<&AccessPass> = passes
+        .values()
+        .filter(|ap| ap.client_ip == client_ip || ap.user_payer == payer)
+        .collect();
+
+    if candidates.is_empty() {
+        writeln!(
+            out,
+            "🔍  No existing AccessPass references your IP ({client_ip}) or your DoubleZero ID ({payer})."
+        )?;
+        writeln!(
+            out,
+            "    A new AccessPass must be issued for this IP + DoubleZero ID."
+        )?;
+        return Ok(());
+    }
+
+    // Closest matches first: same DoubleZero ID and IP, then same ID, then same IP.
+    candidates.sort_by_key(|ap| {
+        let payer_match = ap.user_payer == payer;
+        let ip_match = ap.client_ip == client_ip;
+        match (payer_match, ip_match) {
+            (true, true) => 0,
+            (true, false) => 1,
+            (false, true) => 2,
+            (false, false) => 3,
+        }
+    });
+
+    writeln!(
+        out,
+        "🔍  Found {} existing AccessPass(es) referencing your IP or DoubleZero ID, but none authorizes this connection:",
+        candidates.len()
+    )?;
+
+    for ap in candidates {
+        writeln!(out, "    • {} [{}]", ap.accesspass_type, ap.status)?;
+
+        // Client IP.
+        if ap.client_ip == Ipv4Addr::UNSPECIFIED {
+            writeln!(out, "        client_ip:  any (0.0.0.0 dynamic seat)  ✅")?;
+        } else if ap.client_ip == client_ip {
+            writeln!(
+                out,
+                "        client_ip:  {}  ✅ matches your IP",
+                ap.client_ip
+            )?;
+        } else if ap.allow_multiple_ip() {
+            writeln!(
+                out,
+                "        client_ip:  {}  ✅ (allow_multiple_ip set)",
+                ap.client_ip
+            )?;
+        } else {
+            writeln!(
+                out,
+                "        client_ip:  {}  ❌ does not match your IP ({client_ip})",
+                ap.client_ip
+            )?;
+        }
+
+        // DoubleZero ID (payer).
+        if ap.user_payer == payer {
+            writeln!(
+                out,
+                "        user_payer: {}  ✅ matches your DoubleZero ID",
+                ap.user_payer
+            )?;
+        } else {
+            writeln!(
+                out,
+                "        user_payer: {}  ❌ registered to a different DoubleZero ID (yours: {payer})",
+                ap.user_payer
+            )?;
+        }
+
+        // Capability: last_access_epoch > 0 marks the pass as unicast-enabled;
+        // multicast-only passes leave it at 0.
+        let unicast_enabled = ap.last_access_epoch > 0;
+        if unicast_enabled {
+            writeln!(out, "        enables:    unicast + multicast")?;
+        } else {
+            writeln!(out, "        enables:    multicast only")?;
+        }
+
+        // Concise summary of what disqualifies this pass.
+        let ip_ok = ap.client_ip == client_ip
+            || ap.client_ip == Ipv4Addr::UNSPECIFIED
+            || ap.allow_multiple_ip();
+        let payer_ok = ap.user_payer == payer;
+        let mut problems = Vec::new();
+        if !payer_ok {
+            problems.push("wrong DoubleZero ID");
+        }
+        if !ip_ok {
+            problems.push("wrong IP");
+        }
+        if connecting_unicast && !unicast_enabled {
+            problems.push("multicast-only pass (unicast not enabled)");
+        }
+        if !problems.is_empty() {
+            writeln!(out, "        → not usable: {}", problems.join(", "))?;
+        }
+    }
+
+    Ok(())
+}
+
 impl Connect {
     pub async fn execute<D: DaemonClient, L: LedgerClient, W: Write>(
         self,
@@ -156,6 +298,8 @@ impl Connect {
                 "❌  Unable to find a valid AccessPass for the IP: {client_ip_str} UserPayer: {}",
                 ledger.get_payer()
             )?;
+            // enforce_epoch is true exactly for unicast (IBRL) connects.
+            troubleshoot_accesspass(ledger, client_ip, ledger.get_payer(), enforce_epoch, out)?;
             return Err(eyre::eyre!(
                 "A valid AccessPass is required to connect. Please contact support to obtain one."
             ));
@@ -1252,6 +1396,15 @@ mod tests {
                 )
                 .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
 
+            let accesspass = fixture.accesspass.clone();
+            fixture
+                .ledger
+                .expect_list_accesspass()
+                .returning_st(move || {
+                    let ap = accesspass.lock().unwrap().clone();
+                    Ok(HashMap::from([(Pubkey::new_unique(), ap)]))
+                });
+
             let users = fixture.users.clone();
             fixture
                 .ledger
@@ -2281,7 +2434,114 @@ mod tests {
                 "expected AccessPass error, got: {err}"
             );
             assert!(output.contains("Unable to find a valid AccessPass"));
+            // The failure path also runs AccessPass troubleshooting: the fixture
+            // pass matches this IP + DoubleZero ID but has last_access_epoch = 0,
+            // i.e. it is a multicast-only pass that cannot serve this IBRL
+            // (unicast) connect.
+            assert!(
+                output.contains("existing AccessPass(es)"),
+                "expected troubleshooting output, got: {output}"
+            );
+            assert!(output.contains("enables:    multicast only"), "{output}");
+            assert!(output.contains("unicast not enabled"), "{output}");
         });
+    }
+
+    fn troubleshoot_pass(
+        client_ip: Ipv4Addr,
+        user_payer: Pubkey,
+        last_access_epoch: u64,
+    ) -> AccessPass {
+        AccessPass {
+            account_type: AccountType::AccessPass,
+            owner: user_payer,
+            bump_seed: 1,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            user_payer,
+            last_access_epoch,
+            connection_count: 0,
+            status: AccessPassStatus::Requested,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        }
+    }
+
+    #[test]
+    fn test_troubleshoot_accesspass_reports_mismatches() {
+        let my_ip = Ipv4Addr::new(1, 2, 3, 4);
+        let my_payer = Pubkey::new_unique();
+        let other_payer = Pubkey::new_unique();
+        let unrelated_payer = Pubkey::new_unique();
+
+        // Same IP, different DoubleZero ID.
+        let wrong_payer = troubleshoot_pass(my_ip, other_payer, u64::MAX);
+        // My DoubleZero ID, different IP.
+        let wrong_ip = troubleshoot_pass(Ipv4Addr::new(9, 9, 9, 9), my_payer, u64::MAX);
+        // My IP + DoubleZero ID, but multicast-only (last_access_epoch == 0):
+        // cannot serve a unicast connect.
+        let multicast_only = troubleshoot_pass(my_ip, my_payer, 0);
+        // Unrelated — must be excluded from the candidates.
+        let unrelated = troubleshoot_pass(Ipv4Addr::new(8, 8, 8, 8), unrelated_payer, u64::MAX);
+
+        let mut ledger = MockLedgerClient::new();
+        ledger.expect_list_accesspass().returning_st(move || {
+            Ok(HashMap::from([
+                (Pubkey::new_unique(), wrong_payer.clone()),
+                (Pubkey::new_unique(), wrong_ip.clone()),
+                (Pubkey::new_unique(), multicast_only.clone()),
+                (Pubkey::new_unique(), unrelated.clone()),
+            ]))
+        });
+
+        let mut out = Vec::new();
+        // connecting_unicast = true (IBRL connect).
+        troubleshoot_accesspass(&ledger, my_ip, my_payer, true, &mut out).unwrap();
+        let output = String::from_utf8(out).unwrap();
+
+        // Three of the four passes are candidates (the unrelated one is excluded).
+        assert!(
+            output.contains("Found 3 existing AccessPass(es)"),
+            "{output}"
+        );
+        assert!(output.contains("different DoubleZero ID"), "{output}");
+        assert!(output.contains("does not match your IP"), "{output}");
+        assert!(output.contains("enables:    multicast only"), "{output}");
+        assert!(output.contains("unicast not enabled"), "{output}");
+        // The unrelated pass's IP must not appear.
+        assert!(!output.contains("8.8.8.8"), "{output}");
+    }
+
+    #[test]
+    fn test_troubleshoot_accesspass_no_candidates() {
+        let my_ip = Ipv4Addr::new(1, 2, 3, 4);
+        let my_payer = Pubkey::new_unique();
+        let unrelated =
+            troubleshoot_pass(Ipv4Addr::new(8, 8, 8, 8), Pubkey::new_unique(), u64::MAX);
+
+        let mut ledger = MockLedgerClient::new();
+        ledger
+            .expect_list_accesspass()
+            .returning_st(move || Ok(HashMap::from([(Pubkey::new_unique(), unrelated.clone())])));
+
+        let mut out = Vec::new();
+        troubleshoot_accesspass(&ledger, my_ip, my_payer, true, &mut out).unwrap();
+        let output = String::from_utf8(out).unwrap();
+
+        assert!(
+            output.contains("No existing AccessPass references your IP"),
+            "{output}"
+        );
+        assert!(
+            output.contains("A new AccessPass must be issued"),
+            "{output}"
+        );
     }
 
     async fn execute_multicast_test_succeed_adding_second_group(multicast_mode: MulticastMode) {

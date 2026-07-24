@@ -97,6 +97,18 @@ impl<C: CliCommand + Sync> doublezero_daemon_cli::LedgerClient for LedgerAdapter
             .map(|(_, accesspass)| accesspass))
     }
 
+    fn list_accesspass(
+        &self,
+    ) -> eyre::Result<
+        std::collections::HashMap<
+            solana_sdk::pubkey::Pubkey,
+            doublezero_serviceability::state::accesspass::AccessPass,
+        >,
+    > {
+        self.client
+            .list_accesspass(doublezero_sdk::commands::accesspass::list::ListAccessPassCommand)
+    }
+
     fn get_device(&self, pubkey_or_code: String) -> eyre::Result<doublezero_sdk::Device> {
         let (_, device) =
             self.client

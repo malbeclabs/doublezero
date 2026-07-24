@@ -65,6 +65,12 @@ pub trait LedgerClient: Send + Sync {
         user_payer: Pubkey,
     ) -> eyre::Result<Option<AccessPass>>;
 
+    /// List every AccessPass on the ledger, keyed by pubkey. Used by `connect`
+    /// to troubleshoot when no valid pass is found for the operator (scan for
+    /// passes referencing the same IP or DoubleZero ID and explain why they
+    /// don't authorize the connection).
+    fn list_accesspass(&self) -> eyre::Result<HashMap<Pubkey, AccessPass>>;
+
     /// Fetch a device by pubkey or code.
     fn get_device(&self, pubkey_or_code: String) -> eyre::Result<Device>;
 

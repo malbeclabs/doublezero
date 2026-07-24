@@ -268,6 +268,13 @@ func (m *MetroHistory) IsCurrentPriceFinalized() bool {
 	return m.Flags&(1<<1) != 0
 }
 
+// IsRetransmitOnlyEnabled reports whether this metro serves the retransmit
+// group only (leader group excluded) to every device in it. It mirrors the
+// onchain FLAG_RETRANSMIT_ONLY_ENABLED_BIT (bit 0).
+func (m *MetroHistory) IsRetransmitOnlyEnabled() bool {
+	return m.Flags&(1<<0) != 0
+}
+
 // DeviceSubscription is the per-epoch device subscription data.
 type DeviceSubscription struct {
 	USDCMetroPremiumDollars int16

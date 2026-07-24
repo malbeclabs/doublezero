@@ -95,6 +95,7 @@ type Device struct {
 	PubKey                    string
 	Code                      string
 	ExchangeCode              string
+	ExchangePubKey            string
 	MaxUsers                  int
 	UsersCount                int
 	MaxUnicastUsers           int
@@ -488,19 +489,30 @@ func (c *Client) WaitForAllStatusesUp(ctx context.Context, minExpected int) erro
 	return nil
 }
 
-func (c *Client) GetOwnerPubkey(ctx context.Context) (solana.PublicKey, error) {
+// GetServiceabilityUser returns the onchain serviceability User whose client IP
+// matches this client's public IP — the User account backing this client's
+// current tunnel. It returns an error when no matching User exists yet.
+func (c *Client) GetServiceabilityUser(ctx context.Context) (*serviceability.User, error) {
 	data, err := getProgramDataWithRetry(ctx, c.serviceability)
 	if err != nil {
-		return solana.PublicKey{}, fmt.Errorf("failed to get program data on host %s: %w", c.Host, err)
+		return nil, fmt.Errorf("failed to get program data on host %s: %w", c.Host, err)
 	}
 	publicIP := c.publicIP.To4().String()
-	for _, user := range data.Users {
-		userClientIP := net.IP(user.ClientIp[:]).String()
-		if userClientIP == publicIP {
-			return solana.PublicKeyFromBytes(user.PubKey[:]), nil
+	for i := range data.Users {
+		user := &data.Users[i]
+		if net.IP(user.ClientIp[:]).String() == publicIP {
+			return user, nil
 		}
 	}
-	return solana.PublicKey{}, fmt.Errorf("owner pubkey not found on host %s", c.Host)
+	return nil, fmt.Errorf("serviceability user not found for client IP %s on host %s", publicIP, c.Host)
+}
+
+func (c *Client) GetOwnerPubkey(ctx context.Context) (solana.PublicKey, error) {
+	user, err := c.GetServiceabilityUser(ctx)
+	if err != nil {
+		return solana.PublicKey{}, err
+	}
+	return solana.PublicKeyFromBytes(user.PubKey[:]), nil
 }
 
 func (c *Client) WaitForStatusDisconnected(ctx context.Context) error {

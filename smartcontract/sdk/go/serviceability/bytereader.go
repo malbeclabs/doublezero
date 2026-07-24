@@ -110,8 +110,9 @@ func (br *ByteReader) ReadPubkey() [32]byte {
 }
 
 func (br *ByteReader) ReadPubkeySlice() [][32]byte {
-	// nil marks an absent field (EOF, e.g. an account predating it); a present length prefix of 0
-	// yields an empty non-nil slice, preserving the borsh empty-vs-missing distinction.
+	// nil marks an absent field (EOF, e.g. an account predating it) or a corrupt length prefix;
+	// a present length prefix of 0 yields an empty non-nil slice, preserving the borsh
+	// empty-vs-missing distinction.
 	if br.Remaining() < 4 {
 		return nil
 	}
@@ -139,7 +140,9 @@ func (br *ByteReader) ReadIPv4() [4]byte {
 
 func (br *ByteReader) ReadIPv4Slice() [][4]byte {
 	length := br.ReadU32()
-	if length == 0 || (length*4) > br.Remaining() {
+	// Compare in uint64 so a garbage length cannot wrap length*4 back under Remaining()
+	// and reach a multi-GiB make() — same guard as ReadPubkeySlice.
+	if length == 0 || uint64(length)*4 > uint64(br.Remaining()) {
 		return nil
 	}
 	result := make([][4]byte, length)
@@ -160,7 +163,9 @@ func (br *ByteReader) ReadNetworkV4() [5]byte {
 
 func (br *ByteReader) ReadNetworkV4Slice() [][5]byte {
 	length := br.ReadU32()
-	if length == 0 || (length*5) > br.Remaining() {
+	// Compare in uint64 so a garbage length cannot wrap length*5 back under Remaining()
+	// and reach a multi-GiB make() — same guard as ReadPubkeySlice.
+	if length == 0 || uint64(length)*5 > uint64(br.Remaining()) {
 		return nil
 	}
 	result := make([][5]byte, length)

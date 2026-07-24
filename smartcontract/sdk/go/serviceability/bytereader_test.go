@@ -199,6 +199,28 @@ func TestReadPubkeySliceEmptyVsAbsent(t *testing.T) {
 	}
 }
 
+// The IPv4/NetworkV4 slice readers share ReadPubkeySlice's uint64 guard: a garbage length
+// whose length*width wraps uint32 back under Remaining() must not reach a huge make().
+func TestReadIPv4SliceRejectsOverflowLength(t *testing.T) {
+	t.Parallel()
+
+	// length = 0x40000001: length*4 overflows uint32 to 4, but only 4 bytes follow.
+	data := []byte{0x01, 0x00, 0x00, 0x40, 0x01, 0x02, 0x03, 0x04}
+	if val := NewByteReader(data).ReadIPv4Slice(); val != nil {
+		t.Errorf("ReadIPv4Slice must reject an overflowing length, got %#v", val)
+	}
+}
+
+func TestReadNetworkV4SliceRejectsOverflowLength(t *testing.T) {
+	t.Parallel()
+
+	// length = 0x33333334: length*5 overflows uint32 to 4, but only 5 bytes follow.
+	data := []byte{0x34, 0x33, 0x33, 0x33, 0x01, 0x02, 0x03, 0x04, 0x05}
+	if val := NewByteReader(data).ReadNetworkV4Slice(); val != nil {
+		t.Errorf("ReadNetworkV4Slice must reject an overflowing length, got %#v", val)
+	}
+}
+
 func TestReadIPv4(t *testing.T) {
 	t.Parallel()
 

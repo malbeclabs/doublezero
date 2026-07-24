@@ -66,7 +66,7 @@ pub fn process_set_access_pass_flags(
 
     // Reject a no-op call rather than charging for a write that changes nothing.
     if value.allow_multiple_ip.is_none() && value.dzf_locked.is_none() {
-        msg!("SetAccessPassFlags requires at least one flag to set");
+        msg!("SetAccessPassFlags requires at least one flag to update");
         return Err(DoubleZeroError::InvalidArgument.into());
     }
 

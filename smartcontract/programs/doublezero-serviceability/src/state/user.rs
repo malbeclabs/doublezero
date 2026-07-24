@@ -296,6 +296,36 @@ pub struct User {
     pub feed_pks: Vec<Pubkey>, // 4 + 32 * len
 }
 
+impl Default for User {
+    fn default() -> Self {
+        Self {
+            account_type: AccountType::User,
+            owner: Pubkey::default(),
+            index: 0,
+            bump_seed: 0,
+            user_type: UserType::IBRL,
+            tenant_pk: Pubkey::default(),
+            device_pk: Pubkey::default(),
+            cyoa_type: UserCYOA::None,
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            dz_ip: Ipv4Addr::UNSPECIFIED,
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: UserStatus::Activated,
+            publishers: Vec::new(),
+            subscribers: Vec::new(),
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: BGPStatus::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
+            feed_pks: Vec::new(),
+        }
+    }
+}
+
 impl fmt::Display for User {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

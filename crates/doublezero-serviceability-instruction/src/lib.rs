@@ -41,12 +41,17 @@
 mod common;
 
 pub mod accesspass;
+pub mod allowlist;
 pub mod contributor;
 pub mod device;
 pub mod exchange;
 pub mod feed;
+pub mod globalconfig;
+pub mod globalstate;
+pub mod index;
 pub mod link;
 pub mod location;
+pub mod migrate;
 pub mod multicastgroup;
 pub mod permission;
 pub mod resource;

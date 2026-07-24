@@ -1,7 +1,7 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::globalstate::setversion::SetVersionArgs,
-    programversion::ProgramVersion,
+    instructions::DoubleZeroInstruction, pda::get_program_config_pda,
+    processors::globalstate::setversion::SetVersionArgs, programversion::ProgramVersion,
 };
 use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
@@ -15,12 +15,18 @@ impl SetVersionCommand {
         let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+        let (program_config_pubkey, _) = get_program_config_pda(&client.get_program_id());
 
+        // The processor reads `program_config` FIRST (it writes the updated
+        // `min_compatible_version` there), then `globalstate`; both writable.
         client.execute_authorized_transaction(
             DoubleZeroInstruction::SetMinVersion(SetVersionArgs {
                 min_compatible_version: self.min_compatible_version.clone(),
             }),
-            vec![AccountMeta::new(globalstate_pubkey, false)],
+            vec![
+                AccountMeta::new(program_config_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
         )
     }
 }
@@ -32,17 +38,19 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
+        instructions::DoubleZeroInstruction,
+        pda::{get_globalstate_pda, get_program_config_pda},
         processors::globalstate::setversion::SetVersionArgs,
     };
     use mockall::predicate;
     use solana_sdk::{instruction::AccountMeta, signature::Signature};
 
     #[test]
-    fn test_commands_setauthority_command() {
+    fn test_commands_setversion_command() {
         let mut client = create_test_client();
 
         let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
+        let (program_config_pubkey, _) = get_program_config_pda(&client.get_program_id());
 
         client
             .expect_execute_authorized_transaction()
@@ -50,7 +58,10 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::SetMinVersion(SetVersionArgs {
                     min_compatible_version: "1.0.0".parse().unwrap(),
                 })),
-                predicate::eq(vec![AccountMeta::new(globalstate_pubkey, false)]),
+                predicate::eq(vec![
+                    AccountMeta::new(program_config_pubkey, false),
+                    AccountMeta::new(globalstate_pubkey, false),
+                ]),
             )
             .returning(|_, _| Ok(Signature::new_unique()));
 

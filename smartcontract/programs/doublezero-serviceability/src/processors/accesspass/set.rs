@@ -6,7 +6,7 @@ use crate::{
     seeds::{SEED_ACCESS_PASS, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
-        accesspass::{AccessPass, AccessPassStatus, AccessPassType, ALLOW_MULTIPLE_IP},
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType, ALLOW_MULTIPLE_IP, DZF_LOCKED},
         accounttype::AccountType,
         globalstate::GlobalState,
         permission::permission_flags,
@@ -281,7 +281,10 @@ pub fn process_set_access_pass(
             _ => value.accesspass_type.clone(),
         };
         accesspass.last_access_epoch = value.last_access_epoch;
-        accesspass.flags = flags;
+        // `flags` here only carries ALLOW_MULTIPLE_IP. The DZF_LOCKED bit is managed solely by
+        // the `ACCESS_PASS_ADMIN`-gated SetAccessPassFlags instruction, so preserve any existing lock
+        // rather than clobbering it on an unrelated update.
+        accesspass.flags = (accesspass.flags & DZF_LOCKED) | flags;
         accesspass.max_unicast_users = value.max_unicast_users;
         accesspass.max_multicast_users = value.max_multicast_users;
 

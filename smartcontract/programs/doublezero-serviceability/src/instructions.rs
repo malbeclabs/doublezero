@@ -2,6 +2,7 @@ use crate::processors::{
     accesspass::{
         check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs,
         set::SetAccessPassArgs, set_feeds::SetAccessPassFeedsArgs,
+        set_flags::SetAccessPassFlagsArgs,
     },
     allowlist::{
         foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
@@ -251,6 +252,7 @@ pub enum DoubleZeroInstruction {
     UpdateFeed(FeedUpdateArgs),                 // variant 113
     DeleteFeed(FeedDeleteArgs),                 // variant 114
     SetAccessPassFeeds(SetAccessPassFeedsArgs), // variant 115
+    SetAccessPassFlags(SetAccessPassFlagsArgs), // variant 116
 }
 
 impl DoubleZeroInstruction {
@@ -397,6 +399,7 @@ impl DoubleZeroInstruction {
             113 => Ok(Self::UpdateFeed(FeedUpdateArgs::try_from(rest).unwrap())),
             114 => Ok(Self::DeleteFeed(FeedDeleteArgs::try_from(rest).unwrap())),
             115 => Ok(Self::SetAccessPassFeeds(SetAccessPassFeedsArgs::try_from(rest).unwrap())),
+            116 => Ok(Self::SetAccessPassFlags(SetAccessPassFlagsArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -546,6 +549,7 @@ impl DoubleZeroInstruction {
             Self::UpdateFeed(_) => "UpdateFeed".to_string(), // variant 113
             Self::DeleteFeed(_) => "DeleteFeed".to_string(), // variant 114
             Self::SetAccessPassFeeds(_) => "SetAccessPassFeeds".to_string(), // variant 115
+            Self::SetAccessPassFlags(_) => "SetAccessPassFlags".to_string(), // variant 116
         }
     }
 
@@ -687,6 +691,7 @@ impl DoubleZeroInstruction {
             Self::UpdateFeed(args) => format!("{args:?}"), // variant 113
             Self::DeleteFeed(args) => format!("{args:?}"), // variant 114
             Self::SetAccessPassFeeds(args) => format!("{args:?}"), // variant 115
+            Self::SetAccessPassFlags(args) => format!("{args:?}"), // variant 116
         }
     }
 }
@@ -1396,6 +1401,13 @@ mod tests {
                 }],
             }),
             "SetAccessPassFeeds",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetAccessPassFlags(SetAccessPassFlagsArgs {
+                allow_multiple_ip: None,
+                dzf_locked: Some(true),
+            }),
+            "SetAccessPassFlags",
         );
     }
 }

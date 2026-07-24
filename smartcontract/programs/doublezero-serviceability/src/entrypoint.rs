@@ -5,6 +5,7 @@ use crate::{
         accesspass::{
             check_status::process_check_status_access_pass, close::process_close_access_pass,
             set::process_set_access_pass, set_feeds::process_set_access_pass_feeds,
+            set_flags::process_set_access_pass_flags,
         },
         allowlist::{
             foundation::{
@@ -422,6 +423,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::SetAccessPassFeeds(value) => {
             process_set_access_pass_feeds(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetAccessPassFlags(value) => {
+            process_set_access_pass_flags(program_id, accounts, &value)?
         }
     };
     Ok(())

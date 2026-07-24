@@ -169,6 +169,10 @@ impl Validate for AccessPassType {
 }
 
 pub const ALLOW_MULTIPLE_IP: u8 = 1 << 1; // 0000_0010
+/// Marks an access pass as "DZF controlled": the DoubleZero Foundation manages this pass (and
+/// any side deal it represents) out of band, so automated reconcilers such as the Feed Oracle
+/// must not tear it down. Set/cleared only by a foundation authority.
+pub const DZF_LOCKED: u8 = 1 << 0; // 0000_0001
 
 #[derive(BorshSerialize, Debug, PartialEq, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -293,10 +297,16 @@ impl AccessPass {
     pub fn allow_multiple_ip(&self) -> bool {
         (self.flags & ALLOW_MULTIPLE_IP) != 0
     }
+    pub fn dzf_locked(&self) -> bool {
+        (self.flags & DZF_LOCKED) != 0
+    }
     pub fn flags_string(&self) -> String {
         let mut flags = Vec::new();
         if self.allow_multiple_ip() {
             flags.push("allow_multiple_ip");
+        }
+        if self.dzf_locked() {
+            flags.push("dzf_locked");
         }
         flags.join(", ")
     }
@@ -397,6 +407,45 @@ mod tests {
         "C8imMUBYIJa5WMpf9Luu7UvorH+G/ke723sUhDJktlcU/wQBAAAAX/j7g5ybAvkQvCA7AvgUw0lZDtq7NnPvFq1KHJ6S12sBAQAXgFlhagAAAACAWWFqAAAAAAAAAACeFLryRCj5fplGhNdUu6rPnzO/B37EOrSOFnz2qLrc6v//////////AAAAAAAAAAAAAAACAAAAAAAAAAAAAAEA"];
 
         crate::helper::base_tests::test_parsing::<AccessPass>(&versions).unwrap();
+    }
+
+    #[test]
+    fn test_state_accesspass_flags() {
+        let mut ap = AccessPass {
+            account_type: AccountType::AccessPass,
+            owner: Pubkey::new_unique(),
+            bump_seed: 1,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: [1, 2, 3, 4].into(),
+            user_payer: Pubkey::new_unique(),
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: AccessPassStatus::Requested,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        };
+
+        // No bits set.
+        assert!(!ap.allow_multiple_ip());
+        assert!(!ap.dzf_locked());
+        assert_eq!(ap.flags_string(), "");
+
+        // The two flags are independent bits.
+        ap.flags = DZF_LOCKED;
+        assert!(!ap.allow_multiple_ip());
+        assert!(ap.dzf_locked());
+        assert_eq!(ap.flags_string(), "dzf_locked");
+
+        ap.flags = ALLOW_MULTIPLE_IP | DZF_LOCKED;
+        assert!(ap.allow_multiple_ip());
+        assert!(ap.dzf_locked());
+        assert_eq!(ap.flags_string(), "allow_multiple_ip, dzf_locked");
     }
 
     #[test]

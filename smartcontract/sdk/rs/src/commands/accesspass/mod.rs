@@ -4,3 +4,4 @@ pub mod get;
 pub mod list;
 pub mod set;
 pub mod set_feeds;
+pub mod set_flags;

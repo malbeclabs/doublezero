@@ -1,6 +1,10 @@
 use crate::accesspass::{
-    close::CloseAccessPassCliCommand, fund::FundAccessPassCliCommand, get::GetAccessPassCliCommand,
-    list::ListAccessPassCliCommand, set::SetAccessPassCliCommand,
+    close::CloseAccessPassCliCommand,
+    dzf_lock::{DzfLockAccessPassCliCommand, DzfUnlockAccessPassCliCommand},
+    fund::FundAccessPassCliCommand,
+    get::GetAccessPassCliCommand,
+    list::ListAccessPassCliCommand,
+    set::SetAccessPassCliCommand,
     user_balances::UserBalancesAccessPassCliCommand,
 };
 use clap::{Args, Subcommand};
@@ -31,4 +35,10 @@ pub enum AccessPassCommands {
     /// Fund user payers that have insufficient balance
     #[clap()]
     Fund(FundAccessPassCliCommand),
+    /// Mark an access pass as DZF-locked (foundation-managed; ignored by automated reconcilers)
+    #[clap()]
+    DzfLock(DzfLockAccessPassCliCommand),
+    /// Clear the DZF-locked mark on an access pass
+    #[clap()]
+    DzfUnlock(DzfUnlockAccessPassCliCommand),
 }

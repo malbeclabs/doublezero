@@ -4,7 +4,9 @@ use crate::{
 };
 use clap::{Args, ValueEnum};
 use doublezero_cli_core::CliContext;
-use doublezero_sdk::commands::accesspass::set::SetAccessPassCommand;
+use doublezero_sdk::commands::accesspass::{
+    set::SetAccessPassCommand, set_flags::SetAccessPassFlagsCommand,
+};
 use doublezero_serviceability::{
     pda::{get_accesspass_pda, get_tenant_pda},
     state::accesspass::AccessPassType,
@@ -38,9 +40,14 @@ pub struct SetAccessPassCliCommand {
     /// Specifies the solana validator node id for the access pass. Required if accesspass_type is solana-validator
     #[arg(long, required_if_eq("accesspass_type", "solana_validator"))]
     pub solana_validator: Option<Pubkey>, // This will be integrated with identity for all access pass types in future
-    /// Allow multiple IP addresses for this access pass (only for Prepaid type)    
+    /// Allow multiple IP addresses for this access pass (only for Prepaid type)
     #[arg(long, default_value_t = false)]
     pub allow_multiple_ip: bool,
+    /// Mark the access pass as DZF-locked on creation (foundation-managed; ignored by automated
+    /// reconcilers such as the Feed Oracle). Requires `ACCESS_PASS_ADMIN`; applied as a second
+    /// transaction after the pass is created.
+    #[arg(long, default_value_t = false)]
+    pub dzf_locked: bool,
     /// Specifies the name for other access pass types. Required if accesspass_type is others.
     #[arg(long, required_if_eq("accesspass_type", "others"))]
     pub others_name: Option<String>,
@@ -120,9 +127,10 @@ impl SetAccessPassCliCommand {
         );
         writeln!(out, "AccessPass PDA: {accesspass_pubkey}")?;
 
+        let client_ip = self.client_ip.unwrap_or(Ipv4Addr::UNSPECIFIED);
         let signature = client.set_accesspass(SetAccessPassCommand {
             accesspass_type,
-            client_ip: self.client_ip.unwrap_or(Ipv4Addr::UNSPECIFIED),
+            client_ip,
             user_payer,
             last_access_epoch,
             allow_multiple_ip: self.allow_multiple_ip,
@@ -131,6 +139,18 @@ impl SetAccessPassCliCommand {
             max_multicast_users: self.max_multicast_users,
         })?;
         writeln!(out, "Signature: {signature}")?;
+
+        // The dzf_locked flag is owned by the foundation-gated SetAccessPassFlags instruction, so
+        // set it in a second transaction once the pass exists.
+        if self.dzf_locked {
+            let signature = client.set_accesspass_flags(SetAccessPassFlagsCommand {
+                client_ip,
+                user_payer,
+                allow_multiple_ip: None,
+                dzf_locked: Some(true),
+            })?;
+            writeln!(out, "DZF lock signature: {signature}")?;
+        }
 
         Ok(())
     }
@@ -199,6 +219,7 @@ mod tests {
                 epochs: "max".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: None,
@@ -213,6 +234,66 @@ mod tests {
             output_str,
             "AccessPass PDA: 6pw9fvwzjjkkocGuwxhmv1TwHHnYTFjGvV9GKX6nkFMw\nSignature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
         );
+    }
+
+    #[test]
+    fn test_cli_accesspass_set_prepaid_dzf_locked() {
+        let mut client = create_test_client();
+
+        let client_ip = [100, 0, 0, 1].into();
+        let payer = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+
+        client.expect_get_epoch().returning(|| Ok(10));
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_set_accesspass()
+            .with(predicate::eq(SetAccessPassCommand {
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip,
+                user_payer: payer,
+                last_access_epoch: u64::MAX,
+                allow_multiple_ip: false,
+                tenant: Pubkey::default(),
+                max_unicast_users: 1,
+                max_multicast_users: 1,
+            }))
+            .returning(|_| Ok(Signature::new_unique()));
+        // --dzf-locked fires a second transaction to set the flag once the pass exists.
+        client
+            .expect_set_accesspass_flags()
+            .with(predicate::eq(SetAccessPassFlagsCommand {
+                client_ip,
+                user_payer: payer,
+                allow_multiple_ip: None,
+                dzf_locked: Some(true),
+            }))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            SetAccessPassCliCommand {
+                accesspass_type: CliAccessPassType::Prepaid,
+                client_ip: Some(client_ip),
+                user_payer: payer.to_string(),
+                epochs: "max".into(),
+                solana_validator: None,
+                allow_multiple_ip: false,
+                dzf_locked: true,
+                others_name: None,
+                others_key: None,
+                tenant: None,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert!(output_str.contains("DZF lock signature: "));
     }
 
     #[test]
@@ -238,6 +319,7 @@ mod tests {
                 epochs: "1".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: None,
@@ -300,6 +382,7 @@ mod tests {
                 epochs: "1".into(),
                 solana_validator: Some(solana_validator),
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: None,
@@ -361,6 +444,7 @@ mod tests {
                 epochs: "1".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: None,
@@ -419,6 +503,7 @@ mod tests {
                 epochs: "1".into(),
                 solana_validator: Some(solana_validator),
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: None,
@@ -458,6 +543,7 @@ mod tests {
                 epochs: "1".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: None,
@@ -496,6 +582,7 @@ mod tests {
                 epochs: "1".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: Some("custom-name".to_string()),
                 others_key: None,
                 tenant: None,
@@ -559,6 +646,7 @@ mod tests {
                 epochs: "1".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: Some("custom-name".to_string()),
                 others_key: Some("custom-key".to_string()),
                 tenant: None,
@@ -595,6 +683,7 @@ mod tests {
                 epochs: "max".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: None,
@@ -627,6 +716,7 @@ mod tests {
                 epochs: "not-a-number".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: None,
@@ -660,6 +750,7 @@ mod tests {
                 epochs: "max".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: Some(too_long.clone()),
@@ -712,6 +803,7 @@ mod tests {
                 epochs: "max".into(),
                 solana_validator: None,
                 allow_multiple_ip: true,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: None,
@@ -762,6 +854,7 @@ mod tests {
                 epochs: "max".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: Some("acme".to_string()),
@@ -809,6 +902,7 @@ mod tests {
                 epochs: "max".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: None,
@@ -857,6 +951,7 @@ mod tests {
                 epochs: "0".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: None,
@@ -906,6 +1001,7 @@ mod tests {
                 epochs: "max".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: None,
@@ -962,6 +1058,7 @@ mod tests {
                 epochs: "1".into(),
                 solana_validator: None,
                 allow_multiple_ip: false,
+                dzf_locked: false,
                 others_name: None,
                 others_key: None,
                 tenant: None,

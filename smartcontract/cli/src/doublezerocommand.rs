@@ -3,7 +3,7 @@ use doublezero_sdk::{
     commands::{
         accesspass::{
             close::CloseAccessPassCommand, get::GetAccessPassCommand, list::ListAccessPassCommand,
-            set::SetAccessPassCommand,
+            set::SetAccessPassCommand, set_flags::SetAccessPassFlagsCommand,
         },
         allowlist::{
             foundation::{
@@ -319,6 +319,7 @@ pub trait CliCommand {
         cmd: RemoveMulticastGroupSubAllowlistCommand,
     ) -> eyre::Result<Signature>;
     fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature>;
+    fn set_accesspass_flags(&self, cmd: SetAccessPassFlagsCommand) -> eyre::Result<Signature>;
     fn get_accesspass(
         &self,
         cmd: GetAccessPassCommand,
@@ -773,6 +774,9 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn set_accesspass_flags(&self, cmd: SetAccessPassFlagsCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn get_accesspass(

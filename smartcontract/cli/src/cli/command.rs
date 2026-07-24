@@ -258,6 +258,8 @@ impl ServiceabilityCommand {
                     args.execute(ctx, client, out, &mut std::io::stdin().lock())
                         .await
                 }
+                AccessPassCommands::DzfLock(args) => args.execute(ctx, client, out).await,
+                AccessPassCommands::DzfUnlock(args) => args.execute(ctx, client, out).await,
             },
             Self::User(cmd) => match cmd.command {
                 UserCommands::Create(args) => args.execute(ctx, client, out).await,

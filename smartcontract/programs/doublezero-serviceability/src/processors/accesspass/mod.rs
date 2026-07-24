@@ -2,6 +2,7 @@ pub mod check_status;
 pub mod close;
 pub mod set;
 pub mod set_feeds;
+pub mod set_flags;
 
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, msg, program::invoke_signed_unchecked,

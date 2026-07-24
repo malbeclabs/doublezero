@@ -40,6 +40,7 @@
 
 mod common;
 
+pub mod accesspass;
 pub mod contributor;
 pub mod device;
 pub mod exchange;
@@ -48,6 +49,7 @@ pub mod link;
 pub mod location;
 pub mod multicastgroup;
 pub mod permission;
+pub mod resource;
 pub mod tenant;
 pub mod topology;
 pub mod user;

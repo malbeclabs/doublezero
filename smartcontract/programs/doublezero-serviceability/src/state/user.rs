@@ -286,10 +286,6 @@ pub struct User {
     /// Empty for non-EdgeSeat/unicast users. Every entry is released at delete, so the release is
     /// bound to exactly what was ticked rather than a caller-supplied account. A user may hold
     /// seats on multiple feeds (one feed per metro; multiple feeds per pass).
-    ///
-    /// Replaces the former 32-byte `feed_pk` slot at the same serialized position. Safe because no
-    /// account ever recorded a feed there (no EdgeSeat pass has existed on any cluster): existing
-    /// accounts carry 32 zero bytes here, which parse as an empty vec plus ignored trailing bytes.
     #[cfg_attr(
         feature = "serde",
         serde(

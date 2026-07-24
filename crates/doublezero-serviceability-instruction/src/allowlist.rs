@@ -6,30 +6,12 @@
 use crate::common;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::get_globalstate_pda,
     processors::allowlist::{
         foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
         qa::{add::AddQaAllowlistArgs, remove::RemoveQaAllowlistArgs},
     },
 };
-use solana_program::{
-    instruction::{AccountMeta, Instruction},
-    pubkey::Pubkey,
-};
-
-fn build_globalstate_only(
-    program_id: &Pubkey,
-    payer: &Pubkey,
-    instruction: DoubleZeroInstruction,
-) -> Instruction {
-    let (globalstate, _) = get_globalstate_pda(program_id);
-    common::build_with_permission(
-        program_id,
-        instruction,
-        vec![AccountMeta::new(globalstate, false)],
-        payer,
-    )
-}
+use solana_program::{instruction::Instruction, pubkey::Pubkey};
 
 /// `AddFoundationAllowlist` (variant 4). Accounts: `[globalstate]`.
 pub fn add_foundation_allowlist(
@@ -37,7 +19,7 @@ pub fn add_foundation_allowlist(
     payer: &Pubkey,
     args: AddFoundationAllowlistArgs,
 ) -> Instruction {
-    build_globalstate_only(
+    common::build_globalstate_only(
         program_id,
         payer,
         DoubleZeroInstruction::AddFoundationAllowlist(args),
@@ -50,7 +32,7 @@ pub fn remove_foundation_allowlist(
     payer: &Pubkey,
     args: RemoveFoundationAllowlistArgs,
 ) -> Instruction {
-    build_globalstate_only(
+    common::build_globalstate_only(
         program_id,
         payer,
         DoubleZeroInstruction::RemoveFoundationAllowlist(args),
@@ -63,7 +45,7 @@ pub fn add_qa_allowlist(
     payer: &Pubkey,
     args: AddQaAllowlistArgs,
 ) -> Instruction {
-    build_globalstate_only(
+    common::build_globalstate_only(
         program_id,
         payer,
         DoubleZeroInstruction::AddQaAllowlist(args),
@@ -76,7 +58,7 @@ pub fn remove_qa_allowlist(
     payer: &Pubkey,
     args: RemoveQaAllowlistArgs,
 ) -> Instruction {
-    build_globalstate_only(
+    common::build_globalstate_only(
         program_id,
         payer,
         DoubleZeroInstruction::RemoveQaAllowlist(args),
@@ -86,6 +68,8 @@ pub fn remove_qa_allowlist(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use doublezero_serviceability::pda::get_globalstate_pda;
+    use solana_program::instruction::AccountMeta;
     use solana_system_interface::program as system_program;
 
     #[test]

@@ -4,7 +4,7 @@
 //! serviceability instruction shares, so the payer/system convention lives in
 //! exactly one reviewable location instead of being re-encoded per builder.
 
-use doublezero_serviceability::instructions::DoubleZeroInstruction;
+use doublezero_serviceability::{instructions::DoubleZeroInstruction, pda::get_globalstate_pda};
 use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_program::{
     instruction::{AccountMeta, Instruction},
@@ -91,6 +91,23 @@ pub(crate) fn build_with_permission(
     payer: &Pubkey,
 ) -> Instruction {
     build(program_id, instruction, accounts, payer)
+}
+
+/// Assemble a builder whose only instruction-specific account is GlobalState
+/// (writable). Shared by the single-GlobalState setters and allowlist toggles;
+/// all route through `authorize()` -> [`build_with_permission`].
+pub(crate) fn build_globalstate_only(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    instruction: DoubleZeroInstruction,
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    build_with_permission(
+        program_id,
+        instruction,
+        vec![AccountMeta::new(globalstate, false)],
+        payer,
+    )
 }
 
 /// The transaction-level compute-budget prelude: set the compute-unit limit and

@@ -87,6 +87,21 @@ func (t *Test) Devices() map[string]*Device {
 	return t.devices
 }
 
+// DeviceByCodeOrPubkey resolves a device by its code or its base58 pubkey,
+// returning false when neither matches. It backs the -retransmit-only-device
+// pin flag, which accepts either form.
+func (t *Test) DeviceByCodeOrPubkey(codeOrPubkey string) (*Device, bool) {
+	if device, ok := t.devices[codeOrPubkey]; ok {
+		return device, true
+	}
+	for _, device := range t.devices {
+		if device.PubKey == codeOrPubkey {
+			return device, true
+		}
+	}
+	return nil, false
+}
+
 // ValidDevices returns all activated devices except those whose code contains
 // "test" (typically not real hardware). Capacity is not checked here — the QA
 // user pubkey should be on the onchain qa_allowlist so that the smart contract
@@ -146,6 +161,7 @@ func getDevices(ctx context.Context, serviceabilityClient *serviceability.Client
 			PubKey:                    base58.Encode(device.PubKey[:]),
 			Code:                      device.Code,
 			ExchangeCode:              exchangeCode,
+			ExchangePubKey:            base58.Encode(device.ExchangePubKey[:]),
 			MaxUsers:                  int(device.MaxUsers),
 			UsersCount:                int(device.UsersCount),
 			MaxUnicastUsers:           int(device.MaxUnicastUsers),

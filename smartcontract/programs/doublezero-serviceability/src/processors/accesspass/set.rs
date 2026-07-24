@@ -398,8 +398,9 @@ mod tests {
     /// Validates that AIRDROP_USER_RENT_LAMPORTS_BYTES is sufficient to cover
     /// the rent for User accounts with various configurations.
     ///
-    /// The constant is sized for 3 User accounts, each with 1 publisher AND 1 subscriber.
-    /// This ensures sufficient rent even when supporting simultaneous pub/sub in the future.
+    /// The constant is sized for 3 User accounts, each with 1 publisher AND 1 subscriber AND
+    /// 1 feed seat — the largest single create: an EdgeSeat `CreateSubscribeUser` with both
+    /// roles also ticks a feed and records it in `feed_pks`.
     #[test]
     fn test_airdrop_user_rent_lamports_bytes_covers_user_sizes() {
         // User with 1 publisher only (subscriber use case)
@@ -426,7 +427,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         // User with 1 subscriber only (publisher use case)
@@ -453,10 +454,10 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
-        // User with both 1 publisher and 1 subscriber (future simultaneous pub/sub)
+        // User with 1 publisher, 1 subscriber, and 1 feed seat (EdgeSeat both-roles create)
         let user_with_both = User {
             account_type: AccountType::User,
             owner: Pubkey::new_unique(),
@@ -480,7 +481,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![Pubkey::new_unique()],
         };
 
         let size_with_publisher = borsh::object_length(&user_with_publisher).unwrap();
@@ -488,33 +489,33 @@ mod tests {
         let size_with_both = borsh::object_length(&user_with_both).unwrap();
 
         // Verify our understanding of the sizes
-        // Base User size (empty vecs) = 234 bytes (includes tunnel_flags, bgp_status, last_bgp_up_at,
-        // last_bgp_reported_at, bgp_rtt_ns, and the 32-byte feed_pk)
-        // Each Pubkey in publishers/subscribers adds 32 bytes
+        // Base User size (empty vecs) = 206 bytes (includes tunnel_flags, bgp_status, last_bgp_up_at,
+        // last_bgp_reported_at, bgp_rtt_ns, and the 4-byte empty feed_pks vec length prefix)
+        // Each Pubkey in publishers/subscribers/feed_pks adds 32 bytes
         assert_eq!(
-            size_with_publisher, 266,
-            "User with 1 publisher should be 266 bytes"
+            size_with_publisher, 238,
+            "User with 1 publisher should be 238 bytes"
         );
         assert_eq!(
-            size_with_subscriber, 266,
-            "User with 1 subscriber should be 266 bytes"
+            size_with_subscriber, 238,
+            "User with 1 subscriber should be 238 bytes"
         );
         assert_eq!(
-            size_with_both, 298,
-            "User with 1 publisher + 1 subscriber should be 298 bytes"
+            size_with_both, 302,
+            "User with 1 publisher + 1 subscriber + 1 feed should be 302 bytes"
         );
 
-        // The constant should be sized for 3 accounts with both pub+sub (298 * 3 = 894)
+        // The constant should be sized for 3 accounts with pub+sub+feed (302 * 3 = 906)
         assert_eq!(
             AIRDROP_USER_RENT_LAMPORTS_BYTES,
-            298 * 3,
-            "AIRDROP_USER_RENT_LAMPORTS_BYTES should be sized for 3 User accounts with pub+sub"
+            302 * 3,
+            "AIRDROP_USER_RENT_LAMPORTS_BYTES should be sized for 3 User accounts with pub+sub+feed"
         );
 
         // Verify the constant covers at least 3 accounts of the largest expected size
         assert!(
             AIRDROP_USER_RENT_LAMPORTS_BYTES >= size_with_both * 3,
-            "AIRDROP_USER_RENT_LAMPORTS_BYTES ({}) must cover 3 User accounts with pub+sub ({})",
+            "AIRDROP_USER_RENT_LAMPORTS_BYTES ({}) must cover 3 User accounts with pub+sub+feed ({})",
             AIRDROP_USER_RENT_LAMPORTS_BYTES,
             size_with_both * 3
         );

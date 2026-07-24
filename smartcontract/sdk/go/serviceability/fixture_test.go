@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/mr-tron/base58"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -239,6 +240,83 @@ func TestFixtureFeed(t *testing.T) {
 	require.Len(t, feed.Groups, 2)
 	assert.Equal(t, byte(0xE2), feed.Groups[0][0])
 	assert.Equal(t, byte(0xE3), feed.Groups[1][0])
+}
+
+func fixtureFieldValue(t *testing.T, meta fixtureMeta, name string) string {
+	t.Helper()
+	for _, f := range meta.Fields {
+		if f.Name == name {
+			return f.Value
+		}
+	}
+	t.Fatalf("fixture field %q not found", name)
+	return ""
+}
+
+func TestFixtureUser(t *testing.T) {
+	data, meta := loadFixture(t, "user")
+	require.Equal(t, "User", meta.Name)
+	require.Equal(t, uint8(serviceability.UserType), meta.AccountType)
+
+	var u serviceability.User
+	serviceability.DeserializeUser(serviceability.NewByteReader(data), &u)
+
+	assert.Equal(t, serviceability.UserType, u.AccountType)
+	assert.Equal(t, fixtureFieldValue(t, meta, "Owner"), base58.Encode(u.Owner[:]))
+	assert.Equal(t, uint8(248), u.BumpSeed)
+	assert.Equal(t, fixtureFieldValue(t, meta, "TenantPk"), base58.Encode(u.TenantPubKey[:]))
+	assert.Equal(t, fixtureFieldValue(t, meta, "DevicePk"), base58.Encode(u.DevicePubKey[:]))
+	assert.Equal(t, [4]uint8{198, 51, 100, 10}, u.ClientIp)
+	assert.Equal(t, [4]uint8{10, 200, 0, 1}, u.DzIp)
+	assert.Equal(t, uint16(100), u.TunnelId)
+	require.Len(t, u.Publishers, 1)
+	assert.Equal(t, fixtureFieldValue(t, meta, "Publishers0"), base58.Encode(u.Publishers[0][:]))
+	require.Len(t, u.Subscribers, 1)
+	assert.Equal(t, fixtureFieldValue(t, meta, "Subscribers0"), base58.Encode(u.Subscribers[0][:]))
+	assert.Equal(t, fixtureFieldValue(t, meta, "ValidatorPubkey"), base58.Encode(u.ValidatorPubKey[:]))
+	assert.Equal(t, uint8(1), u.BgpStatus)
+	assert.Equal(t, uint64(1700000000), u.LastBgpUpAt)
+	assert.Equal(t, uint64(1700000100), u.LastBgpReportedAt)
+	assert.Equal(t, uint64(5500000), u.BgpRttNs)
+
+	// feed_pks is the trailing pubkey vec, in the former scalar feed_pk slot. Asserting against the
+	// fixture pins the field order.
+	require.Len(t, u.FeedPks, 2)
+	assert.Equal(t, fixtureFieldValue(t, meta, "FeedPks0"), base58.Encode(u.FeedPks[0][:]))
+	assert.Equal(t, fixtureFieldValue(t, meta, "FeedPks1"), base58.Encode(u.FeedPks[1][:]))
+}
+
+// Old on-disk layout: account ends after tunnel_flags — no bgp fields, no feed_pks. New fields
+// must decode to zero values.
+func TestFixtureUserLegacyDefaults(t *testing.T) {
+	data, _ := loadFixture(t, "user")
+	// Strip feed_pks (4 + 2*32 = 68) + bgp_rtt_ns (8) + last_bgp_reported_at (8)
+	// + last_bgp_up_at (8) + bgp_status (1) = 93 bytes.
+	legacy := data[:len(data)-93]
+
+	var u serviceability.User
+	serviceability.DeserializeUser(serviceability.NewByteReader(legacy), &u)
+
+	assert.Equal(t, uint8(0), u.BgpStatus)
+	assert.Equal(t, uint64(0), u.LastBgpUpAt)
+	assert.Equal(t, uint64(0), u.LastBgpReportedAt)
+	assert.Equal(t, uint64(0), u.BgpRttNs)
+	assert.Empty(t, u.FeedPks)
+}
+
+// An account written by the previous layout carries a 32-zero-byte scalar feed_pk slot where
+// feed_pks now lives (never written with a real feed on any cluster). Those bytes must decode as
+// an empty slice, with the 28 leftover zero bytes ignored as trailing data.
+func TestFixtureUserOldLayoutZeroFeedSlot(t *testing.T) {
+	data, _ := loadFixture(t, "user")
+	// Replace feed_pks (4 + 2*32 = 68 bytes) with the old 32-zero-byte scalar slot.
+	old := append([]byte{}, data[:len(data)-68]...)
+	old = append(old, make([]byte, 32)...)
+
+	var u serviceability.User
+	serviceability.DeserializeUser(serviceability.NewByteReader(old), &u)
+
+	assert.Empty(t, u.FeedPks)
 }
 
 // A pre-migration account (lacking the 8 trailing cap bytes) decodes with counts 0 and caps 1,

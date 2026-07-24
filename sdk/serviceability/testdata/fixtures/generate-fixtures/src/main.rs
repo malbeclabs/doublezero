@@ -903,7 +903,8 @@ fn generate_user(dir: &Path) {
     let publisher_pk = pubkey_from_byte(0x63);
     let subscriber_pk = pubkey_from_byte(0x64);
     let validator_pubkey = pubkey_from_byte(0x65);
-    let feed_pk = pubkey_from_byte(0x66);
+    let feed_pk_a = pubkey_from_byte(0x67);
+    let feed_pk_b = pubkey_from_byte(0x68);
 
     let val = User {
         account_type: AccountType::User,
@@ -928,7 +929,7 @@ fn generate_user(dir: &Path) {
         last_bgp_up_at: 1_700_000_000,
         last_bgp_reported_at: 1_700_000_100,
         bgp_rtt_ns: 5_500_000,
-        feed_pk,
+        feed_pks: vec![feed_pk_a, feed_pk_b],
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -961,7 +962,9 @@ fn generate_user(dir: &Path) {
             FieldValue { name: "LastBgpUpAt".into(), value: "1700000000".into(), typ: "u64".into() },
             FieldValue { name: "LastBgpReportedAt".into(), value: "1700000100".into(), typ: "u64".into() },
             FieldValue { name: "BgpRttNs".into(), value: "5500000".into(), typ: "u64".into() },
-            FieldValue { name: "FeedPk".into(), value: pubkey_bs58(&feed_pk), typ: "pubkey".into() },
+            FieldValue { name: "FeedPksLen".into(), value: "2".into(), typ: "u32".into() },
+            FieldValue { name: "FeedPks0".into(), value: pubkey_bs58(&feed_pk_a), typ: "pubkey".into() },
+            FieldValue { name: "FeedPks1".into(), value: pubkey_bs58(&feed_pk_b), typ: "pubkey".into() },
         ],
     };
 

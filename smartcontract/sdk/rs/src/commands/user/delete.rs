@@ -207,7 +207,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let mgroup = MulticastGroup {
@@ -428,7 +428,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let mgroup = MulticastGroup {
@@ -695,7 +695,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let user_activated_final = User {
@@ -914,7 +914,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let owner = user.owner;

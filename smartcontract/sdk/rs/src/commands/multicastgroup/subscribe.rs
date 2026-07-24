@@ -180,7 +180,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user.client_ip, &payer);

@@ -123,8 +123,18 @@
       "typ": "u64"
     },
     {
-      "name": "FeedPk",
-      "value": "7sAawX1cAHVpfZGNtUAYKX2KPzdd1uPUZUTaLteWX4SB",
+      "name": "FeedPksLen",
+      "value": "2",
+      "typ": "u32"
+    },
+    {
+      "name": "FeedPks0",
+      "value": "7w4zb1jh47zY5FPMPyRzDSmYf1CPirVP9LmTr5xWEs6X",
+      "typ": "pubkey"
+    },
+    {
+      "name": "FeedPks1",
+      "value": "7zyQEWTmwxVFUwWKuUhS7NWmv1mARobHjD5MMHGVxfks",
       "typ": "pubkey"
     }
   ]

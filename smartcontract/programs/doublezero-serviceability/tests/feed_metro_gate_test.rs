@@ -414,10 +414,11 @@ async fn test_right_metro_joins_group_set() {
         .unwrap();
     assert_eq!(pass.feed_seats()[0].current_users, 1);
     // The user records which feed it consumed, so delete releases exactly that seat
-    // (`remove_feed_user(user.feed_pk)`); the decrement itself is covered by the AccessPass unit
-    // tests.
+    // (`release_feed_seats` iterates `feed_pks`); the decrement itself is covered by the User and
+    // AccessPass unit tests.
     assert_eq!(
-        user.feed_pk, feed,
+        user.feed_pks,
+        vec![feed],
         "connect records the consumed feed on the user"
     );
 }

@@ -282,17 +282,22 @@ pub struct User {
     /// Smoothed BGP TCP RTT in nanoseconds, sourced from the kernel via INET_DIAG.
     /// 0 means no sample has been observed yet. Same unit as `Link.delay_ns`.
     pub bgp_rtt_ns: u64, // 8
-    /// The EdgeSeat `Feed` whose per-feed seat this user consumed at connect (multicast only).
-    /// `Pubkey::default()` for non-EdgeSeat/unicast users. Used to release exactly that seat at
-    /// delete, so the release is bound to what was ticked rather than a caller-supplied account.
+    /// The EdgeSeat `Feed`s whose per-feed seats this user consumed at connect (multicast only).
+    /// Empty for non-EdgeSeat/unicast users. Every entry is released at delete, so the release is
+    /// bound to exactly what was ticked rather than a caller-supplied account. A user may hold
+    /// seats on multiple feeds (one feed per metro; multiple feeds per pass).
+    ///
+    /// Replaces the former 32-byte `feed_pk` slot at the same serialized position. Safe because no
+    /// account ever recorded a feed there (no EdgeSeat pass has existed on any cluster): existing
+    /// accounts carry 32 zero bytes here, which parse as an empty vec plus ignored trailing bytes.
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
-            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkeylist_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkeylist_from_string"
         )
     )]
-    pub feed_pk: Pubkey, // 32
+    pub feed_pks: Vec<Pubkey>, // 4 + 32 * len
 }
 
 impl fmt::Display for User {
@@ -345,9 +350,10 @@ impl TryFrom<&[u8]> for User {
             last_bgp_up_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             last_bgp_reported_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             bgp_rtt_ns: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            // Appended after the feed metro gate landed; defaults to the zero pubkey (no feed seat)
-            // for users created before this field existed.
-            feed_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            // Occupies the former `feed_pk` slot. Accounts written with the old layout carry 32
+            // zero bytes here (never a real feed), which read as an empty vec; the 28 bytes left
+            // over are trailing data this decoder ignores. Accounts predating the slot default too.
+            feed_pks: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::User {
@@ -481,6 +487,18 @@ impl User {
         groups
     }
 
+    /// Release every EdgeSeat feed seat this user holds back to `accesspass` (each entry in
+    /// `feed_pks`), so the release is bound to exactly what was ticked at connect. No-op for
+    /// non-multicast users (they never hold feed seats).
+    pub fn release_feed_seats(&self, accesspass: &mut AccessPass) {
+        if self.user_type != UserType::Multicast {
+            return;
+        }
+        for feed_pk in &self.feed_pks {
+            accesspass.remove_feed_user(feed_pk);
+        }
+    }
+
     pub fn try_activate(&mut self, accesspass: &mut AccessPass) -> ProgramResult {
         accesspass.update_status()?;
 
@@ -564,7 +582,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![Pubkey::new_unique(), Pubkey::new_unique()],
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -572,6 +590,8 @@ mod tests {
 
         val.validate().unwrap();
         val2.validate().unwrap();
+
+        assert_eq!(val.feed_pks, val2.feed_pks);
 
         assert_eq!(
             borsh::object_length(&val).unwrap(),
@@ -617,7 +637,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         let err = val.validate();
@@ -650,7 +670,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -682,7 +702,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -714,7 +734,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -746,7 +766,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -778,7 +798,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -811,7 +831,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -825,7 +845,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
             ..val.clone()
         };
         let err = val_loopback.validate();
@@ -840,7 +860,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
             ..val.clone()
         };
         let err = val_link_local.validate();
@@ -855,7 +875,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
             ..val.clone()
         };
         assert!(val_unspecified.validate().is_ok());
@@ -868,7 +888,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
             ..val
         };
         assert!(val_global.validate().is_ok());
@@ -903,7 +923,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         }
     }
 
@@ -1047,7 +1067,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
 
         assert!(val.validate().is_ok());
@@ -1106,21 +1126,21 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
         let data = borsh::to_vec(&user).unwrap();
         // Remove tunnel_flags (1) + bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
-        // + bgp_rtt_ns (8) + feed_pk (32) to simulate an old account that predates all of them.
-        let old_data = &data[..data.len() - 58];
+        // + bgp_rtt_ns (8) + feed_pks length prefix (4) to simulate an old account that predates
+        // all of them.
+        let old_data = &data[..data.len() - 30];
         let deserialized = User::try_from(old_data).unwrap();
         assert_eq!(
             deserialized.tunnel_flags, 0,
             "Old accounts must default tunnel_flags to 0"
         );
-        assert_eq!(
-            deserialized.feed_pk,
-            Pubkey::default(),
-            "Old accounts must default feed_pk to the zero pubkey"
+        assert!(
+            deserialized.feed_pks.is_empty(),
+            "Old accounts must default feed_pks to empty"
         );
         assert_eq!(
             deserialized.bgp_status,
@@ -1166,7 +1186,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         };
         let data = borsh::to_vec(&user).unwrap();
         let deserialized = User::try_from(&data[..]).unwrap();
@@ -1176,7 +1196,83 @@ mod tests {
         ));
     }
 
-    use crate::state::accesspass::AccessPassStatus;
+    /// An account written by the previous layout carries a 32-zero-byte scalar `feed_pk` slot
+    /// where `feed_pks` now lives (the slot was never written with a real feed on any cluster).
+    /// Those bytes must read as an empty vec, with the 28 leftover zero bytes ignored as trailing
+    /// data.
+    #[test]
+    fn test_old_layout_zero_feed_slot_reads_as_empty_vec() {
+        let user = User {
+            feed_pks: vec![],
+            ..create_test_user()
+        };
+        let mut data = borsh::to_vec(&user).unwrap();
+        // Replace the trailing empty-vec length prefix (4 zero bytes) with the old 32-zero-byte
+        // scalar slot.
+        data.truncate(data.len() - 4);
+        data.extend_from_slice(&[0u8; 32]);
+        let deserialized = User::try_from(&data[..]).unwrap();
+        assert!(deserialized.feed_pks.is_empty());
+    }
+
+    use crate::state::accesspass::{AccessPassStatus, FeedSeat};
+
+    /// Build an EdgeSeat pass whose seats each start at `current_users = 1`.
+    fn edgeseat_pass(feeds: &[Pubkey]) -> AccessPass {
+        let seats = feeds
+            .iter()
+            .map(|f| FeedSeat {
+                feed_key: *f,
+                max_users: 4,
+                max_future_users: 4,
+                current_users: 1,
+                anniversary_day: 15,
+                window_end: 4_000_000_000,
+                terminates_at: 4_100_000_000,
+            })
+            .collect();
+        AccessPass {
+            accesspass_type: AccessPassType::EdgeSeat(seats),
+            ..accesspass_with_epoch(0)
+        }
+    }
+
+    fn seat_users(pass: &AccessPass, feed: &Pubkey) -> u8 {
+        pass.feed_seats()
+            .iter()
+            .find(|s| s.feed_key == *feed)
+            .map(|s| s.current_users)
+            .unwrap()
+    }
+
+    /// A multicast user releases every feed seat in `feed_pks` at delete.
+    #[test]
+    fn test_release_feed_seats_multi() {
+        let (f1, f2) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let mut pass = edgeseat_pass(&[f1, f2]);
+        let user = User {
+            user_type: UserType::Multicast,
+            feed_pks: vec![f1, f2],
+            ..create_test_user()
+        };
+        user.release_feed_seats(&mut pass);
+        assert_eq!(seat_users(&pass, &f1), 0);
+        assert_eq!(seat_users(&pass, &f2), 0);
+    }
+
+    /// Non-multicast users never hold feed seats, so release is a no-op.
+    #[test]
+    fn test_release_feed_seats_noop_for_unicast() {
+        let f1 = Pubkey::new_unique();
+        let mut pass = edgeseat_pass(&[f1]);
+        let user = User {
+            user_type: UserType::IBRL,
+            feed_pks: vec![f1],
+            ..create_test_user()
+        };
+        user.release_feed_seats(&mut pass);
+        assert_eq!(seat_users(&pass, &f1), 1, "unicast release is a no-op");
+    }
 
     fn user_with_type(user_type: UserType) -> User {
         User {
@@ -1202,7 +1298,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
-            feed_pk: Pubkey::default(),
+            feed_pks: vec![],
         }
     }
 

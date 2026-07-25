@@ -350,7 +350,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability-instruction"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "doublezero-serviceability",
  "solana-compute-budget-interface",

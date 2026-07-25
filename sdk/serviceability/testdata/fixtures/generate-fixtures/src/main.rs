@@ -189,6 +189,7 @@ struct IxAccountMeta {
 
 #[derive(Serialize)]
 struct IxFixtureMeta {
+    program_id: String,
     variant: u8,
     data_hex: String,
     accounts: Vec<IxAccountMeta>,
@@ -197,6 +198,7 @@ struct IxFixtureMeta {
 fn write_ix_fixture(dir: &Path, name: &str, ix: &solana_program::instruction::Instruction) {
     let data_hex: String = ix.data.iter().map(|b| format!("{b:02x}")).collect();
     let meta = IxFixtureMeta {
+        program_id: ix.program_id.to_string(),
         variant: ix.data[0],
         data_hex,
         accounts: ix
@@ -351,9 +353,22 @@ fn generate_ix_fixtures(dir: &Path) {
     );
     write_ix_fixture(dir, "assign_topology_node_segments", &assign);
 
-    // set_global_config (3): the config PDA plus all eight resource pools.
-    let set_global_config =
-        dzi::globalconfig::set_global_config(&program_id, &payer, SetGlobalConfigArgs::default());
+    // set_global_config (3): the config PDA plus all eight resource pools. Distinct
+    // nonzero values per field so the golden pins field order, endianness, the two
+    // u32 ASNs, and the Some-encoding of the optional bgp community (not just length).
+    let set_global_config = dzi::globalconfig::set_global_config(
+        &program_id,
+        &payer,
+        SetGlobalConfigArgs {
+            local_asn: 65000,
+            remote_asn: 65001,
+            device_tunnel_block: "10.100.0.0/16".parse().unwrap(),
+            user_tunnel_block: "10.200.0.0/16".parse().unwrap(),
+            multicastgroup_block: "239.0.0.0/8".parse().unwrap(),
+            next_bgp_community: Some(10042),
+            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
+        },
+    );
     write_ix_fixture(dir, "set_global_config", &set_global_config);
 }
 

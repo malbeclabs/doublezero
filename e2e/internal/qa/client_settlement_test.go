@@ -90,7 +90,7 @@ func TestFilterActiveSeats(t *testing.T) {
 	}
 }
 
-func TestIsSeatNotFound(t *testing.T) {
+func TestIsAccountNotFound(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
@@ -104,14 +104,14 @@ func TestIsSeatNotFound(t *testing.T) {
 		// The whole point of matching sentinels rather than error text: a
 		// transient "Blockhash not found" must NOT read as a missing seat, else
 		// a failed withdraw would be silently treated as already-withdrawn.
-		{"blockhash not found is not a missing seat", errors.New("Transaction simulation failed: Blockhash not found"), false},
-		{"jsonrpc method not found is not a missing seat", errors.New("rpc: Method not found"), false},
+		{"blockhash not found is not a missing account", errors.New("Transaction simulation failed: Blockhash not found"), false},
+		{"jsonrpc method not found is not a missing account", errors.New("rpc: Method not found"), false},
 		{"generic error", errors.New("connection timed out"), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isSeatNotFound(tt.err); got != tt.want {
-				t.Errorf("isSeatNotFound(%v) = %v, want %v", tt.err, got, tt.want)
+			if got := isAccountNotFound(tt.err); got != tt.want {
+				t.Errorf("isAccountNotFound(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
 	}

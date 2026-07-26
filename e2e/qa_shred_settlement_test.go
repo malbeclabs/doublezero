@@ -64,10 +64,12 @@ type shredSettlementParams struct {
 }
 
 // runShredSettlement drives the full shred-pay settlement flow: pick a device,
-// query its seat price, wait for the program's open-for-requests phase, pay,
-// verify the debit and that the multicast tunnel comes up on the right device,
-// (optionally) assert extra invariants, then withdraw and verify the refund
-// accounting. Both settlement QA tests are thin wrappers over this.
+// query its seat price from the CLI and cross-check it against the price the
+// program will charge (read from chain), wait for the program's
+// open-for-requests phase, pay, verify the debit and that the multicast tunnel
+// comes up on the right device, (optionally) assert extra invariants, then
+// withdraw and verify the refund accounting. Both settlement QA tests are thin
+// wrappers over this.
 func runShredSettlement(t *testing.T, p shredSettlementParams) {
 	if !p.enabled {
 		t.Skip(p.skipReason)
@@ -95,7 +97,9 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 	var device *qa.Device
 	var amount string
 	var epochPrice uint64
-	var parsedAmount uint64
+	var onchainPrice uint64
+	var lastSettledEpoch uint64
+	var fundedAmount uint64
 	var effectivePrice uint64
 	var balanceBeforePay uint64
 	var balanceAfterPay uint64
@@ -218,12 +222,42 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 			p.assertPrice(t, device, price.EpochPrice)
 		}
 		epochPrice = price.EpochPrice
-		amount = strconv.FormatUint(epochPrice, 10)
-		parsedAmount = epochPrice * 1_000_000 // convert dollars to USDC raw units (6 decimals)
-		log.Info(p.priceLogMsg, "device", device.Code, "amount", amount)
+		log.Info(p.priceLogMsg, "device", device.Code, "epoch_price", epochPrice)
 	}) {
 		return
 	}
+
+	if !t.Run("query_onchain_seat_price", func(t *testing.T) {
+		// Read the price the program will actually charge straight off the chain.
+		// The escrow is funded from this rather than from the CLI quote, so a
+		// quote/charge divergence surfaces as the named assertion below instead of
+		// killing the run at pay time with a raw simulation dump — and everything
+		// downstream (tunnel up, device assignment, withdraw, prorated refund)
+		// still gets exercised.
+		var err error
+		onchainPrice, lastSettledEpoch, err = client.InstantSeatPriceDollars(ctx, device.PubKey)
+		require.NoError(t, err, "failed to compute the onchain instant-allocation seat price")
+		require.NotZero(t, onchainPrice, "onchain seat price is zero for device %s", device.Code)
+
+		amount = strconv.FormatUint(onchainPrice, 10)
+		fundedAmount = onchainPrice * 1_000_000 // convert dollars to USDC raw units (6 decimals)
+		log.Info("Onchain instant-allocation seat price",
+			"device", device.Code, "amount", amount, "last_settled_epoch", lastSettledEpoch)
+	}) {
+		return
+	}
+
+	// Deliberately not guarded with `if !t.Run(...) { return }`: a quote/charge
+	// divergence is a real product bug and must fail the run loudly, but the
+	// payment below funds from the onchain price, so the rest of the settlement
+	// flow is still worth running. Whole dollars are compared, not prorated
+	// micro-USDC: proration is a function of the current slot, so any exact
+	// comparison against a separately-timed read is inherently racy.
+	t.Run("validate_quoted_price_matches_chain", func(t *testing.T) {
+		require.Equal(t, onchainPrice, epochPrice,
+			"CLI quoted %d USDC (current_subscription_epoch) but instant allocation charges %d USDC (last_settled_epoch=%d); `shreds price` and `shreds pay` read different ring entries",
+			epochPrice, onchainPrice, lastSettledEpoch)
+	})
 
 	// Set when wait_for_open_phase times out inside the epoch-tail closed
 	// window (verified against live chain state), so the parent can skip the
@@ -302,18 +336,22 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 			}
 			balanceAfterPay = bal
 			lastDebit = balanceBeforePay - bal
-			return lastDebit == parsedAmount
+			return lastDebit == fundedAmount
 		}, balanceSettleTimeout, 5*time.Second, "USDC balance should decrease by the paid amount")
-		log.Info("USDC balance after pay", "balance", balanceAfterPay, "debit", lastDebit, "expected_debit", parsedAmount)
+		log.Info("USDC balance after pay", "balance", balanceAfterPay, "debit", lastDebit, "expected_debit", fundedAmount)
 	}) {
 		return
 	}
 
 	if !t.Run("query_effective_seat_price", func(t *testing.T) {
+		// Built on the onchain price, not the CLI quote: this feeds the
+		// non-prorating balance assertion below, which must predict what the
+		// program actually charged. GetEffectiveSeatPrice applies the seat's price
+		// override on top when one is set.
 		var err error
-		effectivePrice, err = client.GetEffectiveSeatPrice(ctx, device.PubKey, epochPrice)
+		effectivePrice, err = client.GetEffectiveSeatPrice(ctx, device.PubKey, onchainPrice)
 		require.NoError(t, err, "failed to get effective seat price")
-		log.Info("Effective seat price", "effective_usdc", effectivePrice, "epoch_usdc", parsedAmount)
+		log.Info("Effective seat price", "effective_usdc", effectivePrice, "funded_usdc", fundedAmount)
 	}) {
 		return
 	}
@@ -409,10 +447,10 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		// wallet-delta proration check is not meaningful, so skip it rather than
 		// fail — the settlement path itself is still covered by the pay/ack/
 		// tunnel/withdraw sub-tests above.
-		if refund > parsedAmount {
+		if refund > fundedAmount {
 			log.Warn("skipping wallet-delta proration check: refund exceeds amount paid this run (pre-existing escrow drained)",
 				"refund", refund,
-				"paid_amount", parsedAmount,
+				"paid_amount", fundedAmount,
 				"before_pay", balanceBeforePay,
 				"after_pay", balanceAfterPay,
 				"after_withdraw", balanceAfterWithdraw,
@@ -421,13 +459,13 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		}
 		// Equivalent to balanceBeforePay - balanceAfterWithdraw, but computed from
 		// the amount paid this run so it cannot underflow given the guard above.
-		retained := parsedAmount - refund
+		retained := fundedAmount - refund
 
 		log.Info("USDC balance after withdraw",
 			"balance", balanceAfterWithdraw,
 			"before_pay", balanceBeforePay,
 			"after_pay", balanceAfterPay,
-			"paid_amount", parsedAmount,
+			"paid_amount", fundedAmount,
 			"effective_price", effectivePrice,
 			"refund", refund,
 			"retained", retained,
@@ -436,10 +474,10 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 
 		// Accounting invariant: regardless of prorating, the sum of what was
 		// refunded to the wallet and what the program retained must equal the
-		// amount debited at pay time. This uses parsedAmount rather than
+		// amount debited at pay time. This uses fundedAmount rather than
 		// effectivePrice because a seat with a zero price override is still
-		// charged parsedAmount at pay and fully refunded on withdraw.
-		require.Equal(t, parsedAmount, refund+retained,
+		// charged fundedAmount at pay and fully refunded on withdraw.
+		require.Equal(t, fundedAmount, refund+retained,
 			"refund + retained must equal the amount paid")
 
 		if !proratingEnabled || effectivePrice == 0 {

@@ -355,13 +355,13 @@ func (c *Client) shredsQuery() (*shreds.Client, uint32, error) {
 	return c.shredsClient(programID), clientIPBits, nil
 }
 
-// isSeatNotFound reports whether a FetchClientSeat error means the seat account
-// does not exist. A missing account surfaces as shreds.ErrAccountNotFound
-// through the shreds nil-result path and as rpc.ErrNotFound through the live RPC
+// isAccountNotFound reports whether a shreds fetch error means the account does
+// not exist. A missing account surfaces as shreds.ErrAccountNotFound through the
+// shreds nil-result path and as rpc.ErrNotFound through the live RPC
 // (GetAccountInfo) path. Note this matches sentinel errors, not error text, so
 // an unrelated "... not found" message (e.g. "Blockhash not found") is not
-// mistaken for a missing seat.
-func isSeatNotFound(err error) bool {
+// mistaken for a missing account.
+func isAccountNotFound(err error) bool {
 	return errors.Is(err, shreds.ErrAccountNotFound) || errors.Is(err, rpc.ErrNotFound)
 }
 
@@ -382,12 +382,12 @@ func isSeatNotFound(err error) bool {
 // agrees.
 func (c *Client) seatIsWithdrawn(ctx context.Context, shredsClient *shreds.Client, deviceKey solana.PublicKey, clientIPBits uint32) (bool, error) {
 	seat, err := shredsClient.FetchClientSeat(ctx, deviceKey, clientIPBits)
-	if isSeatNotFound(err) {
+	if isAccountNotFound(err) {
 		if c.solanaRPC != nil && c.solanaRPC.EndpointCount() > 1 {
 			c.solanaRPC.Failover()
 		}
 		seat, err = shredsClient.FetchClientSeat(ctx, deviceKey, clientIPBits)
-		if isSeatNotFound(err) {
+		if isAccountNotFound(err) {
 			return true, nil
 		}
 	}
@@ -614,6 +614,104 @@ func (c *Client) GetEffectiveSeatPrice(ctx context.Context, devicePubkey string,
 	price := epochPrice * 1_000_000
 	c.log.Debug("Seat using epoch price", "host", c.Host, "epoch_price_dollars", epochPrice, "price_usdc", price)
 	return price, nil
+}
+
+// InstantSeatPriceDollars returns the whole-dollar seat price that
+// request_instant_seat_allocation will charge on the given device, together
+// with the epoch that price was read from.
+//
+// The program charges the metro price recorded at last_settled_epoch (prorated
+// over the remainder of the epoch when prorating is on), while
+// `doublezero-solana shreds price` quotes the entry one epoch newer, at
+// current_subscription_epoch. Computing the charge from chain state here gives
+// QA an oracle independent of the CLI under test, which is the only way the
+// probe can catch that divergence — and it needs no CLI release to reach the
+// version-pinned QA hosts.
+//
+// The unprorated price is returned deliberately: proration only ever reduces
+// the charge, so funding the full price is always sufficient, and a prorated
+// figure is a function of the slot it was read at and would race the payment.
+// The per-seat price override is not applied here — GetEffectiveSeatPrice owns
+// that, mirroring the program's checked_override_usdc_price_dollars().
+func (c *Client) InstantSeatPriceDollars(ctx context.Context, devicePubkey string) (uint64, uint64, error) {
+	deviceKey, err := solana.PublicKeyFromBase58(devicePubkey)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to parse device pubkey %q: %w", devicePubkey, err)
+	}
+	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
+	}
+	shredsClient := c.shredsClient(programID)
+
+	var lastSettledEpoch uint64
+	var deviceHistory *shreds.DeviceHistory
+	var metroHistory *shreds.MetroHistory
+
+	// All three accounts long predate a QA run, but a lagging RPC node can serve
+	// a view in which one is not yet visible. An account-not-found is a valid
+	// empty read rather than an RPC error, so the failover pool does not retry
+	// it — poll until visible instead of failing on a single stale read.
+	if err := poll.Until(ctx, func() (bool, error) {
+		controller, fetchErr := shredsClient.FetchExecutionController(ctx)
+		if fetchErr != nil {
+			if isAccountNotFound(fetchErr) {
+				c.log.Debug("Execution controller not yet visible, polling", "host", c.Host)
+				return false, nil
+			}
+			// Scrub: a fetch error can embed the (possibly API-keyed) endpoint URL.
+			return false, fmt.Errorf("failed to fetch execution controller: %s", c.scrubRPCErr(fetchErr))
+		}
+
+		device, fetchErr := shredsClient.FetchDeviceHistory(ctx, deviceKey)
+		if fetchErr != nil {
+			if isAccountNotFound(fetchErr) {
+				c.log.Debug("Device history not yet visible, polling", "host", c.Host, "device", devicePubkey)
+				return false, nil
+			}
+			return false, fmt.Errorf("failed to fetch device history for %s: %s", devicePubkey, c.scrubRPCErr(fetchErr))
+		}
+
+		// The device history carries its metro's exchange key, so the metro
+		// history needs no separate exchange lookup.
+		metro, fetchErr := shredsClient.FetchMetroHistory(ctx, device.MetroExchangeKey)
+		if fetchErr != nil {
+			if isAccountNotFound(fetchErr) {
+				c.log.Debug("Metro history not yet visible, polling", "host", c.Host, "exchange", device.MetroExchangeKey)
+				return false, nil
+			}
+			return false, fmt.Errorf("failed to fetch metro history for exchange %s: %s", device.MetroExchangeKey, c.scrubRPCErr(fetchErr))
+		}
+
+		lastSettledEpoch = controller.LastSettledEpoch
+		deviceHistory = device
+		metroHistory = metro
+		return true, nil
+	}, seatReadTimeout, seatReadInterval); err != nil {
+		return 0, 0, fmt.Errorf("failed to read shred pricing state on host %s: %w", c.Host, err)
+	}
+
+	// Both ring entries must exist for the settled epoch: this is the same lookup
+	// the program performs, and it rejects the payment when either misses. Never
+	// fall back to the current entry — that is exactly the divergence under test.
+	metroEntry, ok := metroHistory.Prices.Find(lastSettledEpoch)
+	if !ok {
+		return 0, 0, fmt.Errorf("metro exchange %s has no price entry for last settled epoch %d (host %s)",
+			deviceHistory.MetroExchangeKey, lastSettledEpoch, c.Host)
+	}
+	deviceEntry, ok := deviceHistory.Subscriptions.Find(lastSettledEpoch)
+	if !ok {
+		return 0, 0, fmt.Errorf("device %s has no subscription entry for last settled epoch %d (host %s)",
+			devicePubkey, lastSettledEpoch, c.Host)
+	}
+
+	price := deviceEntry.Subscription.USDCPriceDollars(&metroEntry.Price)
+	c.log.Debug("Onchain instant seat price",
+		"host", c.Host, "device", devicePubkey, "last_settled_epoch", lastSettledEpoch,
+		"metro_price_dollars", metroEntry.Price.USDCPriceDollars,
+		"device_premium_dollars", deviceEntry.Subscription.USDCMetroPremiumDollars,
+		"price_dollars", price)
+	return uint64(price), lastSettledEpoch, nil
 }
 
 // IsSeatProratingEnabled returns true if the shred-subscription program config

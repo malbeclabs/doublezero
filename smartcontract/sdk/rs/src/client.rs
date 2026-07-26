@@ -46,13 +46,8 @@ use std::{
 };
 
 use crate::{
-    config::*,
-    doublezeroclient::DoubleZeroClient,
-    dztransaction::DZTransaction,
-    errors::{SimulationError, SimulationTransactionError},
-    keypair::load_keypair,
-    rpckeyedaccount_decode::rpckeyedaccount_decode,
-    AccountData,
+    config::*, doublezeroclient::DoubleZeroClient, dztransaction::DZTransaction,
+    keypair::load_keypair, rpckeyedaccount_decode::rpckeyedaccount_decode, AccountData,
 };
 
 pub struct DZClient {
@@ -180,7 +175,7 @@ impl DZClient {
     /// compute-budget prelude, sign with the payer, and send. The builder owns the
     /// account layout (including the trailing `[payer, system]`), so this path does
     /// no account assembly and no permission resolution. Single send attempt.
-    fn send_transaction_inner(&self, ix: Instruction, quiet: bool) -> eyre::Result<Signature> {
+    fn send_transaction_inner(&self, ix: Instruction) -> eyre::Result<Signature> {
         let payer = self
             .payer
             .as_ref()
@@ -236,21 +231,6 @@ impl DZClient {
                 _ => None,
             })
             .unwrap_or_default();
-
-        if quiet {
-            if let TransactionError::InstructionError(_index, InstructionError::Custom(number)) =
-                err
-            {
-                return Err(eyre!(SimulationError {
-                    source: DoubleZeroError::from(number),
-                    program_logs,
-                }));
-            }
-            return Err(eyre!(SimulationTransactionError {
-                source: err,
-                program_logs,
-            }));
-        }
 
         eprintln!("Program Logs:");
         for log in &program_logs {
@@ -541,11 +521,7 @@ impl DoubleZeroClient for DZClient {
     }
 
     fn send_transaction(&self, instruction: Instruction) -> eyre::Result<Signature> {
-        self.send_transaction_inner(instruction, false)
-    }
-
-    fn send_transaction_quiet(&self, instruction: Instruction) -> eyre::Result<Signature> {
-        self.send_transaction_inner(instruction, true)
+        self.send_transaction_inner(instruction)
     }
 
     fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>> {

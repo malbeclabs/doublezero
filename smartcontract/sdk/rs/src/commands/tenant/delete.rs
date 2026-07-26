@@ -120,9 +120,11 @@ mod tests {
     };
     use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
-        pda::{get_accesspass_pda, get_globalstate_pda, get_resource_extension_pda},
-        processors::tenant::delete::TenantDeleteArgs,
-        resource::ResourceType,
+        pda::get_accesspass_pda,
+        processors::{
+            accesspass::set::SetAccessPassArgs, tenant::delete::TenantDeleteArgs,
+            user::delete::UserDeleteArgs,
+        },
         state::{
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
@@ -132,7 +134,9 @@ mod tests {
             user::{User, UserCYOA, UserStatus, UserType},
         },
     };
-    use doublezero_serviceability_instruction::tenant::delete_tenant;
+    use doublezero_serviceability_instruction::{
+        accesspass::set_access_pass, tenant::delete_tenant, user::delete_user,
+    };
     use mockall::{predicate, Sequence};
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::{collections::HashMap, net::Ipv4Addr};
@@ -142,9 +146,8 @@ mod tests {
         let mut client = create_test_client();
 
         let tenant_pubkey = Pubkey::new_unique();
-        let (_globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (_vrf_ids_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
         // ListAccessPassCommand: gets(AccountType::AccessPass) - no passes for this tenant
         client
@@ -155,12 +158,7 @@ mod tests {
 
         // No cascade: assert the exact DeleteTenant instruction handed to send_transaction
         // (the builder derives globalstate + vrf_ids from program_id).
-        let expected = delete_tenant(
-            &client.get_program_id(),
-            &client.get_payer(),
-            &tenant_pubkey,
-            TenantDeleteArgs {},
-        );
+        let expected = delete_tenant(&program_id, &payer, &tenant_pubkey, TenantDeleteArgs {});
         client
             .expect_send_transaction()
             .with(predicate::eq(expected))
@@ -182,9 +180,8 @@ mod tests {
         let tenant_pubkey = Pubkey::new_unique();
         let user_pubkey = Pubkey::new_unique();
         let device_pk = Pubkey::new_unique();
-        let (_globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (_vrf_ids_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
         let user = User {
@@ -305,10 +302,24 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
-        // 5. DeleteUserCommand internally: send_transaction(DeleteUser)
+        // 5. DeleteUserCommand internally: send_transaction(DeleteUser). The user carries
+        // this tenant, so the builder appends the optional tenant account.
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(delete_user(
+                &program_id,
+                &payer,
+                &user_pubkey,
+                &accesspass_pubkey,
+                &device_pk,
+                1,
+                Some(tenant_pubkey),
+                &payer,
+                UserDeleteArgs {
+                    dz_prefix_count: 1,
+                    multicast_publisher_count: 1,
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
@@ -329,10 +340,25 @@ mod tests {
                 Ok(map)
             });
 
-        // 6. SetAccessPassCommand: send_transaction(SetAccessPass) to reset tenant
+        // 6. SetAccessPassCommand: send_transaction(SetAccessPass) to reset tenant. The
+        // builder appends the [current_tenant, new_tenant] pair; new_tenant is default.
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(set_access_pass(
+                &program_id,
+                &payer,
+                &payer,
+                &tenant_pubkey,
+                &Pubkey::default(),
+                SetAccessPassArgs {
+                    accesspass_type: AccessPassType::Prepaid,
+                    client_ip: Ipv4Addr::UNSPECIFIED,
+                    last_access_epoch: 0,
+                    allow_multiple_ip: false,
+                    max_unicast_users: 1,
+                    max_multicast_users: 1,
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
@@ -349,7 +375,12 @@ mod tests {
         // 8. Final: send_transaction(DeleteTenant)
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(delete_tenant(
+                &program_id,
+                &payer,
+                &tenant_pubkey,
+                TenantDeleteArgs {},
+            )))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
@@ -368,9 +399,8 @@ mod tests {
         let mut client = create_test_client();
 
         let tenant_pubkey = Pubkey::new_unique();
-        let (_globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (_vrf_ids_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
         let client_ip = Ipv4Addr::new(10, 0, 0, 1);
 
         let (accesspass_pubkey, _) =
@@ -435,7 +465,21 @@ mod tests {
         // 2. SetAccessPassCommand: send_transaction(SetAccessPass) to reset tenant
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(set_access_pass(
+                &program_id,
+                &payer,
+                &payer,
+                &tenant_pubkey,
+                &Pubkey::default(),
+                SetAccessPassArgs {
+                    accesspass_type: AccessPassType::Prepaid,
+                    client_ip,
+                    last_access_epoch: 0,
+                    allow_multiple_ip: false,
+                    max_unicast_users: 1,
+                    max_multicast_users: 1,
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
@@ -443,7 +487,12 @@ mod tests {
         // 3. send_transaction(DeleteTenant)
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(delete_tenant(
+                &program_id,
+                &payer,
+                &tenant_pubkey,
+                TenantDeleteArgs {},
+            )))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
@@ -462,9 +511,8 @@ mod tests {
         let mut client = create_test_client();
 
         let tenant_pubkey = Pubkey::new_unique();
-        let (_globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (_vrf_ids_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
         let mut seq = Sequence::new();
 
@@ -479,7 +527,12 @@ mod tests {
         // 2. send_transaction(DeleteTenant) fails because users still connected
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(delete_tenant(
+                &program_id,
+                &payer,
+                &tenant_pubkey,
+                TenantDeleteArgs {},
+            )))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Err(eyre::eyre!("Tenant has active users")));
@@ -502,9 +555,8 @@ mod tests {
         let mut client = create_test_client();
 
         let tenant_pubkey = Pubkey::new_unique();
-        let (_globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (_vrf_ids_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
         let mut seq = Sequence::new();
 
@@ -527,7 +579,12 @@ mod tests {
         // 3. send_transaction(DeleteTenant)
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(delete_tenant(
+                &program_id,
+                &payer,
+                &tenant_pubkey,
+                TenantDeleteArgs {},
+            )))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));

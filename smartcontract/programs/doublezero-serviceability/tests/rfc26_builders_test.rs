@@ -349,7 +349,7 @@ async fn test_builder_create_link_and_clear_topology() {
 
     // CreateLink derives the unicast-default topology PDA and auto-tags the link
     // into it, so the topology must exist first.
-    create_unicast_default_topology(
+    let unicast_default = create_unicast_default_topology(
         &mut banks_client,
         program_id,
         globalstate_pubkey,
@@ -394,13 +394,20 @@ async fn test_builder_create_link_and_clear_topology() {
         .get_tunnel()
         .unwrap();
     assert_eq!(link.status, LinkStatus::Activated);
+    // CreateLink auto-tags the link into the unicast-default topology.
+    assert_eq!(link.link_topologies, vec![unicast_default]);
 
     // clear_topology (batched) drift check. The builder passes the topology
-    // read-only, matching the SDK command's long-standing contract: clear is a
-    // stale-reference cleanup that only writes the topology when a link actually
-    // referenced it. Target a fresh topology the link was never tagged into, so
-    // cleared_count == 0 and the read-only topology is accepted — the point here
-    // is the [topology, globalstate, link] account order.
+    // **writable** — RFC-26's one deliberate byte-parity break with the SDK
+    // `ClearTopologyCommand`, which passes it read-only (issue #4078). The two
+    // cases below cover both processor paths:
+    //
+    //   1. cleared_count == 0 — a fresh topology the link was never tagged into.
+    //      The processor skips the topology write entirely.
+    //   2. cleared_count > 0 — the unicast-default topology the link IS tagged
+    //      into. The processor asserts `topology_account.is_writable` and
+    //      decrements `reference_count`; this is the path the divergence exists
+    //      for, and the one the read-only SDK layout would fail on.
     let (extra_topology, _) = get_topology_pda(&program_id, "extra");
     execute_transaction(
         &mut banks_client,
@@ -422,6 +429,7 @@ async fn test_builder_create_link_and_clear_topology() {
     )
     .await;
 
+    // Case 1: untagged topology -> cleared_count == 0, no topology write.
     let clears = dzi::topology::clear_topology_batched(
         &program_id,
         &payer.pubkey(),
@@ -436,6 +444,65 @@ async fn test_builder_create_link_and_clear_topology() {
             .await
             .expect("clear_topology builder should be accepted by the program");
     }
+    let link = get_account_data(&mut banks_client, link_pubkey)
+        .await
+        .expect("link should exist")
+        .get_tunnel()
+        .unwrap();
+    assert_eq!(
+        link.link_topologies,
+        vec![unicast_default],
+        "clearing an untagged topology must not touch link_topologies"
+    );
+
+    // Case 2: the topology the link IS tagged into -> cleared_count == 1, so the
+    // processor takes the `is_writable` + reference_count-decrement path.
+    let ref_count_before = get_account_data(&mut banks_client, unicast_default)
+        .await
+        .expect("unicast-default topology should exist")
+        .get_topology()
+        .unwrap()
+        .reference_count;
+    assert!(
+        ref_count_before > 0,
+        "the tagged link should hold a topology reference"
+    );
+
+    let clears = dzi::topology::clear_topology_batched(
+        &program_id,
+        &payer.pubkey(),
+        &[link_pubkey],
+        TopologyClearArgs {
+            name: "unicast-default".to_string(),
+        },
+    );
+    assert_eq!(clears.len(), 1, "one link should produce one batch");
+    for ix in clears {
+        submit(&mut banks_client, &payer, ix)
+            .await
+            .expect("clear_topology builder should be accepted on the writable path");
+    }
+
+    let link = get_account_data(&mut banks_client, link_pubkey)
+        .await
+        .expect("link should exist")
+        .get_tunnel()
+        .unwrap();
+    assert!(
+        link.link_topologies.is_empty(),
+        "the cleared topology must be removed from link_topologies"
+    );
+    let ref_count_after = get_account_data(&mut banks_client, unicast_default)
+        .await
+        .expect("unicast-default topology should exist")
+        .get_topology()
+        .unwrap()
+        .reference_count;
+    assert_eq!(
+        ref_count_after,
+        ref_count_before - 1,
+        "the writable topology must have its reference_count decremented"
+    );
 }
 
 /// Highest-cardinality user builder (`create_subscribe_user`, atomic subscriber

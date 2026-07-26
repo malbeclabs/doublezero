@@ -117,12 +117,10 @@ mod tests {
     };
     use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
-        pda::{
-            get_accesspass_pda, get_globalstate_pda, get_multicastgroup_pda,
-            get_resource_extension_pda,
+        pda::{get_accesspass_pda, get_globalstate_pda, get_multicastgroup_pda},
+        processors::{
+            multicastgroup::subscribe::UpdateMulticastGroupRolesArgs, user::delete::UserDeleteArgs,
         },
-        processors::user::delete::UserDeleteArgs,
-        resource::ResourceType,
         state::{
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
@@ -133,7 +131,9 @@ mod tests {
             user::{User, UserCYOA, UserStatus, UserType},
         },
     };
-    use doublezero_serviceability_instruction::user::delete_user;
+    use doublezero_serviceability_instruction::{
+        multicastgroup::update_multicast_group_roles, user::delete_user,
+    };
     use mockall::{predicate, Sequence};
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::net::Ipv4Addr;
@@ -143,7 +143,8 @@ mod tests {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (_globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let payer = client.get_payer();
+
         let user_pubkey = Pubkey::new_unique();
         let device_pk = Pubkey::new_unique();
         let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
@@ -269,12 +270,23 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone1.clone())));
 
-        // Execute transaction for UpdateMulticastGroupRolesCommand (unsubscribe)
-        let (_multicast_publisher_block_ext_unsub, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+        // Execute transaction for UpdateMulticastGroupRolesCommand (unsubscribe):
+        // assert the exact instruction the composed cascade emits.
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(update_multicast_group_roles(
+                &program_id,
+                &payer,
+                &mgroup_pubkey,
+                &accesspass_pubkey,
+                &user_pubkey,
+                UpdateMulticastGroupRolesArgs {
+                    publisher: false,
+                    subscriber: false,
+                    client_ip,
+                    use_onchain_allocation: true,
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
@@ -301,20 +313,25 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
-        let (_user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-        let (_multicast_publisher_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-        let (_device_tunnel_ids_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
-        let (_dz_prefix_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
-        let _user_owner = client.get_payer();
-
-        // Execute transaction for DeleteUser
+        // Execute transaction for DeleteUser: assert the exact instruction (the builder
+        // derives globalstate + every resource-extension PDA; tenant is None, owner is
+        // the payer, and the device advertises one dz_prefix).
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(delete_user(
+                &program_id,
+                &payer,
+                &user_pubkey,
+                &accesspass_pubkey,
+                &device_pk,
+                1,
+                None,
+                &payer,
+                UserDeleteArgs {
+                    dz_prefix_count: 1,
+                    multicast_publisher_count: 1,
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
@@ -332,7 +349,8 @@ mod tests {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (_globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let payer = client.get_payer();
+
         let user_pubkey = Pubkey::new_unique();
         let device_pk = Pubkey::new_unique();
         let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
@@ -456,11 +474,22 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone1.clone())));
 
-        let (_multicast_publisher_block_ext_unsub, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+        // The single (deduplicated) unsubscribe: assert the exact instruction.
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(update_multicast_group_roles(
+                &program_id,
+                &payer,
+                &mgroup_pubkey,
+                &accesspass_pubkey,
+                &user_pubkey,
+                UpdateMulticastGroupRolesArgs {
+                    publisher: false,
+                    subscriber: false,
+                    client_ip,
+                    use_onchain_allocation: true,
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
@@ -487,20 +516,23 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
-        let (_user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-        let (_multicast_publisher_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-        let (_device_tunnel_ids_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
-        let (_dz_prefix_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
-        let _user_owner = client.get_payer();
-
-        // DeleteUser transaction
+        // DeleteUser transaction: assert the exact instruction.
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(delete_user(
+                &program_id,
+                &payer,
+                &user_pubkey,
+                &accesspass_pubkey,
+                &device_pk,
+                1,
+                None,
+                &payer,
+                UserDeleteArgs {
+                    dz_prefix_count: 1,
+                    multicast_publisher_count: 1,
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
@@ -683,12 +715,23 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone1.clone())));
 
-        // Call 6: Execute unsubscribe transaction
-        let (_multicast_publisher_block_ext_unsub, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+        // Call 6: Execute unsubscribe transaction — the foundation key is the payer, but
+        // the access pass and the user's client_ip come from the user's owner.
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(update_multicast_group_roles(
+                &program_id,
+                &foundation_key,
+                &mgroup_pubkey,
+                &accesspass_pubkey,
+                &user_pubkey,
+                UpdateMulticastGroupRolesArgs {
+                    publisher: false,
+                    subscriber: false,
+                    client_ip,
+                    use_onchain_allocation: true,
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
@@ -724,19 +767,24 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
-        let (_user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-        let (_multicast_publisher_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-        let (_device_tunnel_ids_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
-        let (_dz_prefix_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
-
-        // Call 8: Execute DeleteUser transaction
+        // Call 8: Execute DeleteUser transaction — payer is the foundation key, but the
+        // trailing owner account is the user's own owner, not the payer.
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(delete_user(
+                &program_id,
+                &foundation_key,
+                &user_pubkey,
+                &accesspass_pubkey,
+                &device_pk,
+                1,
+                None,
+                &user_owner,
+                UserDeleteArgs {
+                    dz_prefix_count: 1,
+                    multicast_publisher_count: 1,
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
@@ -755,7 +803,6 @@ mod tests {
 
         let payer = client.get_payer();
         let program_id = client.get_program_id();
-        let (_globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
         let user_pubkey = Pubkey::new_unique();
         let device_pk = Pubkey::new_unique();
@@ -835,16 +882,6 @@ mod tests {
             .expect_gets()
             .with(predicate::eq(AccountType::MulticastGroup))
             .returning(|_| Ok(std::collections::HashMap::new()));
-
-        // Compute ResourceExtension PDAs
-        let (_user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-        let (_multicast_publisher_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-        let (_device_tunnel_ids_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
-        let (_dz_prefix_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
 
         // Single-send path (no multicast subscriptions): assert the exact DeleteUser
         // instruction the command hands to send_transaction. tenant is None (default),

@@ -36,6 +36,18 @@ impl UpdateDeviceInterfaceCommand {
         }
         .execute(client)?;
 
+        // The builder writes `topology_count` and panics if it overflows a u8.
+        // Reject over-long input here so the command surfaces an error instead of
+        // aborting the process (the builder is infallible by RFC-26 contract).
+        if let Some(names) = self.topology_names.as_deref() {
+            if u8::try_from(names.len()).is_err() {
+                return Err(eyre::eyre!(
+                    "too many topologies for one UpdateDeviceInterface call: {} > 255",
+                    names.len()
+                ));
+            }
+        }
+
         // The builder appends the SegmentRoutingIds resource (when node_segment_idx
         // or topologies change) and the topology PDAs, and writes update_topologies /
         // topology_count from the topology_names choice.
@@ -275,5 +287,45 @@ mod tests {
         }
         .execute(&client);
         assert!(res.is_ok());
+    }
+
+    /// The builder panics on a `topology_count` that overflows a u8, so the command
+    /// must reject over-long input as an error before it ever reaches the builder.
+    #[test]
+    fn test_commands_device_interface_update_rejects_too_many_topologies() {
+        let mut client = create_test_client();
+
+        let device_pubkey = Pubkey::new_unique();
+        let device = make_test_device();
+        client
+            .expect_get()
+            .with(predicate::eq(device_pubkey))
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
+        // No send_transaction expectation: the command must bail before building.
+
+        let err = UpdateDeviceInterfaceCommand {
+            pubkey: device_pubkey,
+            name: "Loopback256".to_string(),
+            loopback_type: None,
+            interface_cyoa: None,
+            interface_dia: None,
+            bandwidth: None,
+            cir: None,
+            mtu: None,
+            routing_mode: None,
+            vlan_id: None,
+            user_tunnel_endpoint: None,
+            status: None,
+            ip_net: None,
+            node_segment_idx: None,
+            topology_names: Some((0..256).map(|i| format!("t{i}")).collect()),
+        }
+        .execute(&client)
+        .expect_err("256 topologies must be rejected");
+
+        assert_eq!(
+            err.to_string(),
+            "too many topologies for one UpdateDeviceInterface call: 256 > 255"
+        );
     }
 }

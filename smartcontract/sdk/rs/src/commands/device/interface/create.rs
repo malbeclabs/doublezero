@@ -33,6 +33,16 @@ impl CreateDeviceInterfaceCommand {
         }
         .execute(client)?;
 
+        // The builder writes `topology_count` and panics if it overflows a u8.
+        // Reject over-long input here so the command surfaces an error instead of
+        // aborting the process (the builder is infallible by RFC-26 contract).
+        if u8::try_from(self.topology_names.len()).is_err() {
+            return Err(eyre::eyre!(
+                "too many topologies for one CreateDeviceInterface call: {} > 255",
+                self.topology_names.len()
+            ));
+        }
+
         // The builder appends topology PDAs (and writes topology_count) only for
         // Vpnv4 loopbacks; topology_names is ignored otherwise.
         let ix = create_device_interface(
@@ -167,5 +177,43 @@ mod tests {
         .execute(&client);
 
         assert!(res.is_ok());
+    }
+
+    /// The builder panics on a `topology_count` that overflows a u8, so the command
+    /// must reject over-long input as an error before it ever reaches the builder.
+    #[test]
+    fn test_commands_device_create_interface_rejects_too_many_topologies() {
+        let mut client = create_test_client();
+
+        let device_pubkey = Pubkey::new_unique();
+        let device = make_test_device();
+        client
+            .expect_get()
+            .with(predicate::eq(device_pubkey))
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
+        // No send_transaction expectation: the command must bail before building.
+
+        let err = CreateDeviceInterfaceCommand {
+            pubkey: device_pubkey,
+            name: "Loopback0".to_string(),
+            loopback_type: LoopbackType::Vpnv4,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            ip_net: None,
+            bandwidth: 0,
+            cir: 0,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+            topology_names: (0..256).map(|i| format!("t{i}")).collect(),
+        }
+        .execute(&client)
+        .expect_err("256 topologies must be rejected");
+
+        assert_eq!(
+            err.to_string(),
+            "too many topologies for one CreateDeviceInterface call: 256 > 255"
+        );
     }
 }

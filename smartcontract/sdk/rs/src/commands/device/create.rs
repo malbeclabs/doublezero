@@ -38,6 +38,18 @@ impl CreateDeviceCommand {
         let account_index = globalstate.account_index + 1;
         let (pda_pubkey, _) = get_device_pda(&program_id, account_index);
 
+        // The builder writes `resource_count` from its own loop and panics if it
+        // overflows a u8. Reject over-long input here so the command surfaces an
+        // error instead of aborting the process (the builder is infallible by
+        // RFC-26 contract, so the bound has to be checked by the caller).
+        let resource_total = 1usize.saturating_add(self.dz_prefixes.len());
+        if u8::try_from(resource_total).is_err() {
+            return Err(eyre::eyre!(
+                "Device resource_count ({}) exceeds u8::MAX",
+                resource_total
+            ));
+        }
+
         // The builder derives every PDA (globalconfig, tunnel_ids, dz_prefix blocks)
         // and writes `resource_count` from its own loop, so the command only supplies
         // the resolved account_index and the resource-count-agnostic args.

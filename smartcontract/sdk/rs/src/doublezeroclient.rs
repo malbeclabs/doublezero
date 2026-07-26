@@ -40,10 +40,6 @@ pub trait DoubleZeroClient {
     /// accounts (RFC-26); the send path no longer touches account layout.
     fn send_transaction(&self, instruction: Instruction) -> eyre::Result<Signature>;
 
-    /// Like `send_transaction`, but suppresses program log output on simulation failure.
-    /// Use this for transactions where simulation failures are expected (e.g., race conditions).
-    fn send_transaction_quiet(&self, instruction: Instruction) -> eyre::Result<Signature>;
-
     fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>>;
 }
 

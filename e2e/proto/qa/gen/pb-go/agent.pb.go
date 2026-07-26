@@ -2038,8 +2038,19 @@ type DevicePrice struct {
 	BasePrice      uint64                 `protobuf:"varint,8,opt,name=base_price,json=basePrice,proto3" json:"base_price,omitempty"`
 	Premium        uint64                 `protobuf:"varint,9,opt,name=premium,proto3" json:"premium,omitempty"`
 	EpochPrice     uint64                 `protobuf:"varint,10,opt,name=epoch_price,json=epochPrice,proto3" json:"epoch_price,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// Price an instant seat allocation is charged, read at the settled epoch.
+	// Distinct from epoch_price, which is what a recurring subscriber pays next
+	// epoch. Explicit presence keeps "the CLI reported no price" apart from a
+	// legitimate 0: the CLI declares it Option<u16> and emits null when the
+	// settled-epoch ring entry is missing.
+	InstantAllocationPrice *uint64 `protobuf:"varint,11,opt,name=instant_allocation_price,json=instantAllocationPrice,proto3,oneof" json:"instant_allocation_price,omitempty"`
+	// Whether the CLI's JSON carried the instant_allocation_price key at all.
+	// QA hosts pin doublezero-solana by apt, so a CLI predating the field omits
+	// the key entirely; that rollout gap must not read the same as the CLI
+	// reporting the price as unavailable.
+	ReportsInstantAllocationPrice bool `protobuf:"varint,12,opt,name=reports_instant_allocation_price,json=reportsInstantAllocationPrice,proto3" json:"reports_instant_allocation_price,omitempty"`
+	unknownFields                 protoimpl.UnknownFields
+	sizeCache                     protoimpl.SizeCache
 }
 
 func (x *DevicePrice) Reset() {
@@ -2140,6 +2151,20 @@ func (x *DevicePrice) GetEpochPrice() uint64 {
 		return x.EpochPrice
 	}
 	return 0
+}
+
+func (x *DevicePrice) GetInstantAllocationPrice() uint64 {
+	if x != nil && x.InstantAllocationPrice != nil {
+		return *x.InstantAllocationPrice
+	}
+	return 0
+}
+
+func (x *DevicePrice) GetReportsInstantAllocationPrice() bool {
+	if x != nil {
+		return x.ReportsInstantAllocationPrice
+	}
+	return false
 }
 
 type FeedSeatPriceResponse struct {
@@ -2431,7 +2456,7 @@ const file_agent_proto_rawDesc = "" +
 	"\tusdc_mint\x18\x03 \x01(\tR\busdcMint\x12\x18\n" +
 	"\akeypair\x18\x04 \x01(\tR\akeypair\x12A\n" +
 	"\x1dshred_subscription_program_id\x18\x05 \x01(\tR\x1ashredSubscriptionProgramId\x12#\n" +
-	"\rdevice_pubkey\x18\x06 \x01(\tR\fdevicePubkey\"\xd1\x02\n" +
+	"\rdevice_pubkey\x18\x06 \x01(\tR\fdevicePubkey\"\xf6\x03\n" +
 	"\vDevicePrice\x12\x1f\n" +
 	"\vdevice_code\x18\x01 \x01(\tR\n" +
 	"deviceCode\x12#\n" +
@@ -2448,7 +2473,10 @@ const file_agent_proto_rawDesc = "" +
 	"\apremium\x18\t \x01(\x04R\apremium\x12\x1f\n" +
 	"\vepoch_price\x18\n" +
 	" \x01(\x04R\n" +
-	"epochPrice\"@\n" +
+	"epochPrice\x12=\n" +
+	"\x18instant_allocation_price\x18\v \x01(\x04H\x00R\x16instantAllocationPrice\x88\x01\x01\x12G\n" +
+	" reports_instant_allocation_price\x18\f \x01(\bR\x1dreportsInstantAllocationPriceB\x1b\n" +
+	"\x19_instant_allocation_price\"@\n" +
 	"\x15FeedSeatPriceResponse\x12'\n" +
 	"\x06prices\x18\x01 \x03(\v2\x0f.qa.DevicePriceR\x06prices\"2\n" +
 	"\x16GetWalletPubkeyRequest\x12\x18\n" +
@@ -2619,6 +2647,7 @@ func file_agent_proto_init() {
 	if File_agent_proto != nil {
 		return
 	}
+	file_agent_proto_msgTypes[29].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

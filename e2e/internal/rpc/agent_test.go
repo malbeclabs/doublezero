@@ -198,3 +198,59 @@ func (d *DummyNetlinker) RouteByProtocol(protocol int) ([]Route, error) {
 		},
 	}, nil
 }
+
+func TestParseDevicePricesInstantAllocationPrice(t *testing.T) {
+	// The three states the QA probe has to tell apart. Absent means the pinned
+	// doublezero-solana predates the field (a rollout gap, so the probe skips its
+	// quote check); null means the CLI could not find the settled-epoch ring
+	// entry (a real condition, so the probe fails); a number is the price, and 0
+	// is a legitimate one that must not read as either.
+	tests := []struct {
+		name         string
+		json         string
+		wantReported bool
+		wantPrice    *uint64
+	}{
+		{
+			name:         "field absent (older CLI)",
+			json:         `[{"device":"dev1","epoch_price":10}]`,
+			wantReported: false,
+		},
+		{
+			name:         "field null (settled-epoch entry missing)",
+			json:         `[{"device":"dev1","epoch_price":10,"instant_allocation_price":null}]`,
+			wantReported: true,
+		},
+		{
+			name:         "field set",
+			json:         `[{"device":"dev1","epoch_price":10,"instant_allocation_price":43}]`,
+			wantReported: true,
+			wantPrice:    ptr(uint64(43)),
+		},
+		{
+			name:         "field set to zero",
+			json:         `[{"device":"dev1","epoch_price":10,"instant_allocation_price":0}]`,
+			wantReported: true,
+			wantPrice:    ptr(uint64(0)),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prices, err := parseDevicePrices([]byte(tt.json))
+			require.NoError(t, err)
+			require.Len(t, prices, 1)
+			require.Equal(t, tt.wantReported, prices[0].GetReportsInstantAllocationPrice())
+			require.Equal(t, tt.wantPrice, prices[0].InstantAllocationPrice)
+			// Unrelated fields must still decode.
+			require.Equal(t, uint64(10), prices[0].GetEpochPrice())
+			require.Equal(t, "dev1", prices[0].GetDevicePubkey())
+		})
+	}
+}
+
+func TestParseDevicePricesRejectsMalformedInstantAllocationPrice(t *testing.T) {
+	_, err := parseDevicePrices([]byte(`[{"device":"dev1","instant_allocation_price":"43"}]`))
+	require.Error(t, err)
+}
+
+func ptr[T any](v T) *T { return &v }

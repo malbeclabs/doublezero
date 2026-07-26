@@ -3,10 +3,10 @@ use doublezero_serviceability::processors::topology::clear::TopologyClearArgs;
 use doublezero_serviceability_instruction::topology::clear_topology_batched;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-/// Max link accounts per clear transaction. Solana caps transactions at 32
-/// accounts; with 2 fixed accounts (topology PDA, globalstate) plus the payer
-/// and system_program appended by the builder, we stay well under that limit at
-/// 16 (same constant as backfill).
+/// Max link accounts per clear transaction, re-exported for existing callers.
+/// The builder crate owns the constant and its headroom math (the 64-account
+/// lock limit and the ~1232-byte packet size) — see
+/// [`doublezero_serviceability_instruction::topology::CLEAR_BATCH_SIZE`].
 pub use doublezero_serviceability_instruction::topology::CLEAR_BATCH_SIZE;
 
 #[derive(Debug, PartialEq, Clone)]

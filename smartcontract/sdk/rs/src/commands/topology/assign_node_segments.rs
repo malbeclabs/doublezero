@@ -3,9 +3,10 @@ use doublezero_serviceability::processors::topology::assign_node_segments::Assig
 use doublezero_serviceability_instruction::topology::assign_topology_node_segments_batched;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-/// Max device accounts per backfill transaction. Solana caps transactions at
-/// 32 accounts; with 5 non-device accounts (3 fixed PDAs + payer + system_program
-/// appended by the builder) we stay well under that limit at 4.
+/// Max device accounts per backfill transaction, re-exported for existing
+/// callers. The builder crate owns the constant and its headroom math (the
+/// 64-account lock limit and the ~1232-byte packet size) — see
+/// [`doublezero_serviceability_instruction::topology::BACKFILL_BATCH_SIZE`].
 pub use doublezero_serviceability_instruction::topology::BACKFILL_BATCH_SIZE;
 
 #[derive(Debug, PartialEq, Clone)]

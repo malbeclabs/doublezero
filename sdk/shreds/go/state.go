@@ -1,6 +1,10 @@
 package shreds
 
-import "github.com/gagliardetto/solana-go"
+import (
+	"math"
+
+	"github.com/gagliardetto/solana-go"
+)
 
 // MaxHistoryCount is the number of epoch entries in each ring buffer.
 const MaxHistoryCount = 32
@@ -102,7 +106,7 @@ type ExecutionController struct {
 	UpdatedDevicePricesCount  uint16
 	SettledDevicesCount       uint16
 	SettledClientSeatsCount   uint16
-	Padding2                  [2]byte
+	TotalDevices              uint16
 	LastSettledSlot           uint64
 	LastUpdatingPricesSlot    uint64
 	LastOpenForRequestsSlot   uint64
@@ -110,6 +114,7 @@ type ExecutionController struct {
 	EpochRoundCommitment      [32]byte
 	EpochRoundReveal          [32]byte
 	NextSeatFundingIndex      uint64
+	LastSettledEpoch          uint64
 }
 
 // GetPhase returns the execution phase as a typed enum.
@@ -253,6 +258,21 @@ type MetroPriceRingBuffer struct {
 	Entries      [MaxHistoryCount]MetroPriceEntry
 }
 
+// Find returns the entry stamped with epoch, scanning backwards from the
+// current slot. It mirrors the onchain RingBuffer::find: the scan is bounded by
+// TotalCount, not by the ring capacity, so zero-initialized slots never match
+// epoch 0. TotalCount is additionally clamped to the capacity so an
+// out-of-range value read off a corrupt account cannot index out of bounds.
+func (r *MetroPriceRingBuffer) Find(epoch uint64) (*MetroPriceEntry, bool) {
+	for i := 0; i < int(r.TotalCount) && i < MaxHistoryCount; i++ {
+		index := (int(r.CurrentIndex) + MaxHistoryCount - i) % MaxHistoryCount
+		if r.Entries[index].Epoch == epoch {
+			return &r.Entries[index], true
+		}
+	}
+	return nil, false
+}
+
 // MetroHistory tracks pricing history for a metro area.
 type MetroHistory struct {
 	ExchangeKey             solana.PublicKey
@@ -284,6 +304,26 @@ type DeviceSubscription struct {
 	Gap                     [2][32]byte // StorageGap<2>
 }
 
+// USDCPriceDollars returns the whole-dollar seat price for this device
+// subscription: the metro base price adjusted by the signed device premium
+// (negative premiums are discounts). Mirrors the onchain
+// DeviceSubscription::usdc_price_dollars, saturation included.
+func (s *DeviceSubscription) USDCPriceDollars(metroPrice *MetroPrice) uint16 {
+	base := metroPrice.USDCPriceDollars
+	if s.USDCMetroPremiumDollars < 0 {
+		discount := uint16(-int32(s.USDCMetroPremiumDollars))
+		if base < discount {
+			return 0
+		}
+		return base - discount
+	}
+	sum := uint32(base) + uint32(s.USDCMetroPremiumDollars)
+	if sum > math.MaxUint16 {
+		return math.MaxUint16
+	}
+	return uint16(sum)
+}
+
 // DeviceSubscriptionEntry is an epoch-stamped device subscription.
 type DeviceSubscriptionEntry struct {
 	Epoch        uint64
@@ -297,6 +337,18 @@ type DeviceSubscriptionRingBuffer struct {
 	TotalCount   uint8
 	Padding0     [6]byte
 	Entries      [MaxHistoryCount]DeviceSubscriptionEntry
+}
+
+// Find returns the entry stamped with epoch, scanning backwards from the
+// current slot. See MetroPriceRingBuffer.Find for the bounding semantics.
+func (r *DeviceSubscriptionRingBuffer) Find(epoch uint64) (*DeviceSubscriptionEntry, bool) {
+	for i := 0; i < int(r.TotalCount) && i < MaxHistoryCount; i++ {
+		index := (int(r.CurrentIndex) + MaxHistoryCount - i) % MaxHistoryCount
+		if r.Entries[index].Epoch == epoch {
+			return &r.Entries[index], true
+		}
+	}
+	return nil, false
 }
 
 // DeviceHistory tracks subscription history for a device.

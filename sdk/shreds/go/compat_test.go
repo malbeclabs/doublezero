@@ -97,14 +97,23 @@ func TestCompatExecutionController(t *testing.T) {
 	assertU16(t, raw, 14, ec.TotalEnabledDevices, "TotalEnabledDevices")
 	assertU32(t, raw, 16, ec.TotalClientSeats, "TotalClientSeats")
 	assertU64(t, raw, 32, ec.CurrentSubscriptionEpoch, "CurrentSubscriptionEpoch")
+	assertU16(t, raw, 46, ec.TotalDevices, "TotalDevices")
+	assertU64(t, raw, 152, ec.LastSettledEpoch, "LastSettledEpoch")
 
 	if ec.CurrentSubscriptionEpoch == 0 {
 		t.Error("CurrentSubscriptionEpoch is 0, expected > 0 on mainnet")
 	}
+	// LastSettledEpoch is the final field of the account body, so a truncated
+	// struct would silently read zero here rather than fail to deserialize.
+	// It normally trails CurrentSubscriptionEpoch by exactly one.
+	if ec.LastSettledEpoch == 0 || ec.LastSettledEpoch > ec.CurrentSubscriptionEpoch {
+		t.Errorf("LastSettledEpoch = %d, expected 0 < epoch <= CurrentSubscriptionEpoch (%d)",
+			ec.LastSettledEpoch, ec.CurrentSubscriptionEpoch)
+	}
 
-	t.Logf("epoch=%d, phase=%s, metros=%d, devices=%d, seats=%d",
-		ec.CurrentSubscriptionEpoch, ec.GetPhase(), ec.TotalMetros,
-		ec.TotalEnabledDevices, ec.TotalClientSeats)
+	t.Logf("epoch=%d, last_settled_epoch=%d, phase=%s, metros=%d, devices=%d (total %d), seats=%d",
+		ec.CurrentSubscriptionEpoch, ec.LastSettledEpoch, ec.GetPhase(), ec.TotalMetros,
+		ec.TotalEnabledDevices, ec.TotalDevices, ec.TotalClientSeats)
 }
 
 func TestCompatMetroHistories(t *testing.T) {

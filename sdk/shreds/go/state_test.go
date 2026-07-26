@@ -14,7 +14,7 @@ func TestStructSizes(t *testing.T) {
 		expected uintptr
 	}{
 		{"ProgramConfig", unsafe.Sizeof(ProgramConfig{}), 248},
-		{"ExecutionController", unsafe.Sizeof(ExecutionController{}), 144},
+		{"ExecutionController", unsafe.Sizeof(ExecutionController{}), 152},
 		{"ClientSeat", unsafe.Sizeof(ClientSeat{}), 232},
 		{"PaymentEscrow", unsafe.Sizeof(PaymentEscrow{}), 136},
 		{"ShredDistribution", unsafe.Sizeof(ShredDistribution{}), 392},
@@ -49,7 +49,9 @@ func TestExecutionControllerDeserialization(t *testing.T) {
 	binary.LittleEndian.PutUint16(data[6:], 10)    // TotalEnabledDevices
 	binary.LittleEndian.PutUint32(data[8:], 100)   // TotalClientSeats
 	binary.LittleEndian.PutUint64(data[24:], 42)   // CurrentSubscriptionEpoch
+	binary.LittleEndian.PutUint16(data[38:], 12)   // TotalDevices
 	binary.LittleEndian.PutUint64(data[136:], 999) // NextSeatFundingIndex
+	binary.LittleEndian.PutUint64(data[144:], 41)  // LastSettledEpoch
 
 	var ec ExecutionController
 	if err := binary.Read(bytes.NewReader(data), binary.LittleEndian, &ec); err != nil {
@@ -73,8 +75,14 @@ func TestExecutionControllerDeserialization(t *testing.T) {
 	if ec.CurrentSubscriptionEpoch != 42 {
 		t.Errorf("CurrentSubscriptionEpoch = %d, want 42", ec.CurrentSubscriptionEpoch)
 	}
+	if ec.TotalDevices != 12 {
+		t.Errorf("TotalDevices = %d, want 12", ec.TotalDevices)
+	}
 	if ec.NextSeatFundingIndex != 999 {
 		t.Errorf("NextSeatFundingIndex = %d, want 999", ec.NextSeatFundingIndex)
+	}
+	if ec.LastSettledEpoch != 41 {
+		t.Errorf("LastSettledEpoch = %d, want 41", ec.LastSettledEpoch)
 	}
 }
 

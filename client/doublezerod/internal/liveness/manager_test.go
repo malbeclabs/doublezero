@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -120,6 +121,160 @@ func TestClient_Liveness_Manager_RegisterRoute_PropagatesBackoffMax(t *testing.T
 			require.Equal(t, tc.want, sess.backoffMax)
 		})
 	}
+}
+
+// TestClient_Liveness_Manager_HandleRx_StateChangeTriggersImmediateTX pins the
+// reconvergence contract from rfcs/rfc7-client-route-liveness.md: an implementation
+// must "resume normal cadence on first valid RX", bounding restoration at roughly one
+// transmit interval plus a round trip.
+//
+// Recovering from a transient loss takes three packets (peer->us Down->Init, us->peer
+// Init, peer->us Up). Each of our replies used to wait out the TX that was scheduled
+// while we were Down, which is exponentially backed off up to backoffMax — so each
+// handshake step cost up to a full backoffMax and restoration took ~3x backoffMax
+// (issue #3935: a 60s cap produced a ~63s route restoration in e2e).
+//
+// backoffMax here is far larger than the assertion windows, so the fast path can only
+// come from the state-change-driven immediate TX, not from the periodic timer.
+func TestClient_Liveness_Manager_HandleRx_StateChangeTriggersImmediateTX(t *testing.T) {
+	t.Parallel()
+
+	const interval = 30 * time.Second
+
+	udp := newRecordingUDPConn("127.0.0.1", 12345)
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.UDP = udp
+		// Pin every interval to `interval` so the first Down-state probe gap is
+		// already at the cap; any TX inside a 250ms window must be state-driven.
+		cfg.TxMin, cfg.RxMin = interval, interval
+		cfg.MinTxFloor, cfg.MaxTxCeil, cfg.BackoffMax = interval, interval, interval
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
+
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
+	require.Equal(t, StateDown, sess.GetState())
+
+	// Establish the precondition: registration schedules the first Down-state probe a
+	// full `interval` out, so nothing is transmitted on its own inside our windows.
+	require.Nil(t, udp.next(250*time.Millisecond),
+		"first Down-state probe should still be pending, not sent")
+
+	// Down -> Init: the peer does not know our discriminator yet, so it echoes
+	// PeerDiscr=0 and we can only reach Init. This is step 1 of a real recovery.
+	m.HandleRx(&ControlPacket{Version: 1, State: StateDown, LocalDiscr: 7777, PeerDiscr: 0}, peer)
+	require.Equal(t, StateInit, sess.GetState())
+	require.NotNil(t, udp.next(250*time.Millisecond),
+		"state-changing RX must TX promptly instead of waiting out the backed-off Down interval")
+	udp.drain()
+
+	// A peer in Init that has not yet learned our discriminator keeps us in Init
+	// (promotion to Up needs PeerDiscr == our localDiscr), so it must not trigger
+	// another immediate TX.
+	m.HandleRx(&ControlPacket{Version: 1, State: StateInit, LocalDiscr: 7777, PeerDiscr: 0}, peer)
+	require.Equal(t, StateInit, sess.GetState())
+	require.Nil(t, udp.next(250*time.Millisecond),
+		"RX that does not change state must not trigger an immediate TX")
+
+	// Init -> Up: the peer now echoes our discriminator. Step 3 of the recovery.
+	m.HandleRx(&ControlPacket{Version: 1, State: StateInit, LocalDiscr: 7777, PeerDiscr: sess.localDiscr}, peer)
+	require.Equal(t, StateUp, sess.GetState())
+	require.NotNil(t, udp.next(250*time.Millisecond),
+		"promotion to Up must TX promptly")
+}
+
+// recordingUDPConn is a UDPService that records transmitted packets and never
+// delivers any. ReadFrom honors the read deadline so the receiver loop idles.
+type recordingUDPConn struct {
+	local *net.UDPAddr
+	tx    chan []byte
+
+	mu     sync.Mutex
+	dl     time.Time
+	closed bool
+}
+
+func newRecordingUDPConn(ip string, port int) *recordingUDPConn {
+	return &recordingUDPConn{
+		local: &net.UDPAddr{IP: net.ParseIP(ip), Port: port},
+		tx:    make(chan []byte, 256),
+	}
+}
+
+// next returns the next transmitted packet, or nil if none arrives within d.
+func (c *recordingUDPConn) next(d time.Duration) []byte {
+	select {
+	case pkt := <-c.tx:
+		return pkt
+	case <-time.After(d):
+		return nil
+	}
+}
+
+// drain discards any already-transmitted packets.
+func (c *recordingUDPConn) drain() {
+	for {
+		select {
+		case <-c.tx:
+		default:
+			return
+		}
+	}
+}
+
+func (c *recordingUDPConn) WriteTo(pkt []byte, _ *net.UDPAddr, _ string, _ net.IP) (int, error) {
+	c.mu.Lock()
+	closed := c.closed
+	c.mu.Unlock()
+	if closed {
+		return 0, net.ErrClosed
+	}
+	cp := make([]byte, len(pkt))
+	copy(cp, pkt)
+	select {
+	case c.tx <- cp:
+	default: // never block the scheduler if the test stops reading
+	}
+	return len(pkt), nil
+}
+
+func (c *recordingUDPConn) ReadFrom([]byte) (int, *net.UDPAddr, net.IP, string, error) {
+	c.mu.Lock()
+	dl, closed := c.dl, c.closed
+	c.mu.Unlock()
+	if closed {
+		return 0, nil, nil, "", net.ErrClosed
+	}
+	if dl.IsZero() {
+		time.Sleep(10 * time.Millisecond)
+	} else {
+		time.Sleep(time.Until(dl))
+	}
+	return 0, nil, nil, "", os.ErrDeadlineExceeded
+}
+
+func (c *recordingUDPConn) SetReadDeadline(t time.Time) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.dl = t
+	return nil
+}
+
+func (c *recordingUDPConn) LocalAddr() net.Addr { return c.local }
+
+func (c *recordingUDPConn) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.closed = true
+	return nil
 }
 
 func TestClient_Liveness_Manager_RegisterRoute_Deduplicates(t *testing.T) {

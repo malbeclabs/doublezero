@@ -140,6 +140,11 @@ type Scheduler struct {
 	eq            *EventQueue     // global time-ordered event queue
 	maxEvents     int             // 0 = unlimited
 
+	// wake interrupts Run's sleep when an event is pushed that is due sooner than
+	// the deadline Run is currently sleeping on. Buffered so a push that races the
+	// sleep is not lost, and coalescing: Run re-polls the queue after any wake.
+	wake chan struct{}
+
 	writeErrWarnEvery time.Duration // min interval between repeated write warnings
 	writeErrWarnLast  time.Time     // last time a warning was logged
 	writeErrWarnMu    sync.Mutex    // guards writeErrWarnLast
@@ -162,6 +167,7 @@ func NewScheduler(log *slog.Logger, udp UDPService, onSessionDown SessionDownFun
 		eq:                eq,
 		writeErrWarnEvery: 5 * time.Second,
 		maxEvents:         maxEvents,
+		wake:              make(chan struct{}, 1),
 		enablePeerMetrics: enablePeerMetrics,
 		metrics:           metrics,
 		passiveMode:       passiveMode,
@@ -207,6 +213,9 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				s.log.Debug("liveness.scheduler: stopped by context done", "reason", ctx.Err())
 				return nil
+			case <-s.wake:
+				// An event was pushed that may be due before our sleep deadline.
+				continue
 			case <-t.C:
 				continue
 			}
@@ -412,6 +421,34 @@ func (s *Scheduler) doTX(ctx context.Context, sess *Session) {
 	}
 }
 
+// scheduleTxNow enqueues a TX event due immediately, so a state change is
+// advertised without waiting out the session's current transmit interval.
+//
+// This is deliberately additive: any already-scheduled periodic TX stays in the
+// queue (an event's time cannot be moved earlier once pushed), so a transition
+// may cost one extra packet. That is cheap next to the alternative — while Down
+// the transmit interval is exponentially backed off up to backoffMax, so a
+// handshake step that waits for the pending TX stalls for up to backoffMax.
+func (s *Scheduler) scheduleTxNow(now time.Time, sess *Session) {
+	sess.mu.Lock()
+	alive := sess.alive
+	sess.mu.Unlock()
+	if !alive {
+		return
+	}
+	s.eq.Push(&event{when: now, eventType: eventTypeTX, session: sess})
+	s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
+
+	// Run may be sleeping until a much later deadline (up to backoffMax while Down),
+	// and pushing an earlier event does not by itself shorten that sleep. Nudge it.
+	// Non-blocking: a pending wake already achieves the same re-poll, and s.wake is
+	// nil in tests that construct a Scheduler without Run.
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+}
+
 // tryExpire checks whether the session’s detect deadline has passed.
 // If so, it transitions the session to Down, triggers an immediate TX
 // to advertise the Down state, and returns true to signal expiration.
@@ -424,8 +461,7 @@ func (s *Scheduler) tryExpire(sess *Session) bool {
 		s.log.Debug("liveness.scheduler: detect timeout -> Down",
 			"peer", peer.String(),
 		)
-		s.eq.Push(&event{when: now, eventType: eventTypeTX, session: sess})
-		s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
+		s.scheduleTxNow(now, sess)
 		return true
 	}
 	return false

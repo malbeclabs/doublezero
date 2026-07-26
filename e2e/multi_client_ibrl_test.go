@@ -17,6 +17,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -488,16 +489,29 @@ func hasRoute(t *testing.T, from *devnet.Client, ip string) (bool, error) {
 	return strings.Contains(string(out), ip), nil
 }
 
-func requireEventuallyRoute(t *testing.T, from *devnet.Client, ip string, want bool, wait, tick time.Duration, msg string) {
+// requireEventuallyRoute asserts that a route to ip is present (want=true) or absent
+// (want=false) in name's doublezero0 route table within the timeout, dumping diagnostics
+// and failing the test on timeout.
+//
+// msg/args follow the fmt.Sprintf convention (testify's msgAndArgs style) so callers can
+// render loop counters such as the liveness matrix pass number. Passing a preformatted
+// string with unrendered verbs would otherwise put a literal "pass %d" in the CI log.
+func requireEventuallyRoute(t *testing.T, log *slog.Logger, from *devnet.Client, name string, ip string, want bool, wait, tick time.Duration, msg string, args ...any) {
 	t.Helper()
-	require.Eventually(t, func() bool {
+	desc := fmt.Sprintf("%s (%s route to %s, want present=%v)", fmt.Sprintf(msg, args...), name, ip, want)
+	ok := assert.Eventually(t, func() bool {
 		has, err := hasRoute(t, from, ip)
 		if err != nil {
 			t.Logf("hasRoute error (will retry): %v", err)
 			return false
 		}
 		return has == want
-	}, wait, tick, msg)
+	}, wait, tick, "%s", desc)
+	if ok {
+		return
+	}
+	dumpClientRouteDiag(t, log, name, from, ip)
+	t.Fatalf("%s", desc)
 }
 
 func requireUDPLivenessOnDZ0(t *testing.T, c *devnet.Client, host string, msg string) {

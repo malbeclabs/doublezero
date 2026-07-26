@@ -67,6 +67,48 @@ func TestClient_Liveness_Scheduler_TryExpireEnqueuesImmediateTX(t *testing.T) {
 	require.True(t, sess.detectDeadline.IsZero())
 }
 
+func TestClient_Liveness_Scheduler_ScheduleTxNow_EnqueuesImmediateTX(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}
+	sess := &Session{
+		state:      StateDown,
+		alive:      true,
+		detectMult: 1,
+		minTxFloor: time.Millisecond,
+		peer:       &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
+		// A TX is already scheduled far in the future — the backed-off Down-state
+		// interval that scheduleTxNow exists to bypass.
+		nextTxScheduled: now.Add(time.Hour),
+	}
+
+	s.scheduleTxNow(now, sess)
+
+	ev := s.eq.Pop()
+	require.NotNil(t, ev)
+	require.Equal(t, eventTypeTX, ev.eventType)
+	require.Equal(t, now, ev.when)
+	// The pending far-future TX marker is left alone; the immediate event is additive.
+	require.Equal(t, now.Add(time.Hour), sess.nextTxScheduled)
+}
+
+func TestClient_Liveness_Scheduler_ScheduleTxNow_SkipsDeadSession(t *testing.T) {
+	t.Parallel()
+
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}
+	sess := &Session{
+		state:      StateDown,
+		alive:      false,
+		detectMult: 1,
+		minTxFloor: time.Millisecond,
+		peer:       &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
+	}
+
+	s.scheduleTxNow(time.Now(), sess)
+	require.Nil(t, s.eq.Pop())
+}
+
 func TestClient_Liveness_Scheduler_ScheduleDetect_NoArmNoEnqueue(t *testing.T) {
 	t.Parallel()
 	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}

@@ -233,6 +233,12 @@ func NewManager(ctx context.Context, cfg *ManagerConfig, cr *routing.ConfiguredR
 		"txMin", cfg.TxMin.String(),
 		"rxMin", cfg.RxMin.String(),
 		"detectMult", cfg.DetectMult,
+		// Effective (post-Validate) timing bounds. Logged because a wrong
+		// backoffMax is invisible otherwise and shows up only as slow
+		// reconvergence after a transient loss.
+		"minTxFloor", cfg.MinTxFloor.String(),
+		"maxTxCeil", cfg.MaxTxCeil.String(),
+		"backoffMax", cfg.BackoffMax.String(),
 		"passiveMode", cfg.PassiveMode,
 		"peerMetrics", cfg.EnablePeerMetrics,
 		"honorPeerAdvertisedPassive", cfg.HonorPeerAdvertisedPassive,
@@ -633,6 +639,18 @@ func (m *manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 		)
 
 		m.metrics.sessionStateTransition(peer, &prevSnap.State, newSnap.State, "handle_rx", m.cfg.EnablePeerMetrics)
+
+		// Advertise the new state immediately rather than waiting for the TX that
+		// was scheduled while we were in the previous state. While Down that TX is
+		// exponentially backed off up to backoffMax, so without this each step of
+		// the Down->Init->Up handshake would stall for a full backed-off interval
+		// and reconvergence would take up to ~3x backoffMax instead of one
+		// interval plus a couple of round trips. Session.HandleRx has already reset
+		// backoffFactor, but that only takes effect on the *next* scheduleTx, and
+		// scheduleTx cannot pull an already-queued event earlier.
+		// See rfcs/rfc7-client-route-liveness.md: "resume normal cadence on first
+		// valid RX".
+		m.sched.scheduleTxNow(now, sess)
 
 		switch sess.GetState() {
 		case StateUp:

@@ -54,6 +54,15 @@ func dumpClientRouteDiag(t *testing.T, log *slog.Logger, name string, client *de
 		{"doublezero", "status"},
 		{"ip", "route", "show"},
 		{"ip", "r", "list", "dev", "doublezero0"},
+		// The daemon's /routes response carries the per-peer liveness_state,
+		// liveness_state_reason, liveness_expected_kernel_state and liveness_peer_mode
+		// fields, which say whether liveness (rather than BGP) is withholding the route.
+		{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/routes"},
+		// Liveness counters from the daemon's prometheus endpoint (the e2e client
+		// entrypoint runs doublezerod with -metrics-addr 0.0.0.0:8080).
+		{"bash", "-c", "curl -s http://localhost:8080/metrics | grep -E '^doublezero_liveness_'"},
+		// Packet counters show whether an unblock of the liveness UDP port took effect.
+		{"iptables", "-L", "INPUT", "-n", "-v"},
 	} {
 		out, err := client.Exec(ctx, cmd)
 		log.Error("route-diag",

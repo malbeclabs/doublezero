@@ -48,10 +48,12 @@ func TestQA_RetransmitOnlySettlement(t *testing.T) {
 		selectDevice:      selectRetransmitOnlyDevice,
 
 		priceLogMsg: "Found discounted epoch price",
-		assertPrice: func(t *testing.T, device *qa.Device, epochPrice uint64) {
+		assertPrice: func(t *testing.T, device *qa.Device, price uint64) {
 			// The retransmit-only metro is priced at the discount, so the seat
 			// price must equal the expected retransmit price (default 10 USDC).
-			require.Equal(t, *retransmitPriceFlag, epochPrice,
+			// This is the price the program charges, read from chain, not the CLI
+			// quote — the quote is checked against chain separately.
+			require.Equal(t, *retransmitPriceFlag, price,
 				"retransmit-only device %s should be priced at the discounted retransmit price", device.Code)
 		},
 

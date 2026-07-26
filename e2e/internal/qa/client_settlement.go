@@ -616,35 +616,50 @@ func (c *Client) GetEffectiveSeatPrice(ctx context.Context, devicePubkey string,
 	return price, nil
 }
 
-// InstantSeatPriceDollars returns the whole-dollar seat price that
-// request_instant_seat_allocation will charge on the given device, together
-// with the epoch that price was read from.
+// SeatPrices are the whole-dollar seat prices the shred-subscription program
+// computes for a device, at the two epochs a settlement probe has to tell
+// apart. Prices are unprorated: proration only ever reduces the charge, so
+// funding the full price is always sufficient, and a prorated figure is a
+// function of the slot it was read at and would race the payment. The per-seat
+// price override is not applied — GetEffectiveSeatPrice owns that, mirroring
+// the program's checked_override_usdc_price_dollars().
+type SeatPrices struct {
+	// InstantAllocationDollars is what request_instant_seat_allocation charges,
+	// read at LastSettledEpoch.
+	InstantAllocationDollars uint64
+	LastSettledEpoch         uint64
+
+	// CurrentEpochDollars is what a recurring subscriber pays for
+	// CurrentSubscriptionEpoch — the figure `shreds price` reports as
+	// epoch_price. Valid only when HasCurrentEpoch is set: during the
+	// UpdatingPrices phase the ring entry for the current epoch may not have
+	// been written yet for this metro or device.
+	CurrentEpochDollars      uint64
+	HasCurrentEpoch          bool
+	CurrentSubscriptionEpoch uint64
+}
+
+// SeatPrices reads the chain and computes both seat prices for the given
+// device.
 //
-// The program charges the metro price recorded at last_settled_epoch (prorated
-// over the remainder of the epoch when prorating is on), while
-// `doublezero-solana shreds price` quotes the entry one epoch newer, at
-// current_subscription_epoch. Computing the charge from chain state here gives
-// QA an oracle independent of the CLI under test, which is the only way the
-// probe can catch that divergence — and it needs no CLI release to reach the
-// version-pinned QA hosts.
-//
-// The unprorated price is returned deliberately: proration only ever reduces
-// the charge, so funding the full price is always sufficient, and a prorated
-// figure is a function of the slot it was read at and would race the payment.
-// The per-seat price override is not applied here — GetEffectiveSeatPrice owns
-// that, mirroring the program's checked_override_usdc_price_dollars().
-func (c *Client) InstantSeatPriceDollars(ctx context.Context, devicePubkey string) (uint64, uint64, error) {
+// The program charges the price recorded at last_settled_epoch, while
+// `doublezero-solana shreds price` reports the entry one epoch newer as
+// epoch_price. Computing both from chain state gives QA an oracle independent
+// of the CLI under test, which is the only way the probe can check that the
+// CLI's two figures point at the ring entries they claim to — and it needs no
+// CLI release to reach the version-pinned QA hosts.
+func (c *Client) SeatPrices(ctx context.Context, devicePubkey string) (*SeatPrices, error) {
 	deviceKey, err := solana.PublicKeyFromBase58(devicePubkey)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse device pubkey %q: %w", devicePubkey, err)
+		return nil, fmt.Errorf("failed to parse device pubkey %q: %w", devicePubkey, err)
 	}
 	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
+		return nil, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
 	}
 	shredsClient := c.shredsClient(programID)
 
-	var lastSettledEpoch uint64
+	var prices SeatPrices
 	var deviceHistory *shreds.DeviceHistory
 	var metroHistory *shreds.MetroHistory
 
@@ -683,35 +698,57 @@ func (c *Client) InstantSeatPriceDollars(ctx context.Context, devicePubkey strin
 			return false, fmt.Errorf("failed to fetch metro history for exchange %s: %s", device.MetroExchangeKey, c.scrubRPCErr(fetchErr))
 		}
 
-		lastSettledEpoch = controller.LastSettledEpoch
+		prices.LastSettledEpoch = controller.LastSettledEpoch
+		prices.CurrentSubscriptionEpoch = controller.CurrentSubscriptionEpoch
 		deviceHistory = device
 		metroHistory = metro
 		return true, nil
 	}, seatReadTimeout, seatReadInterval); err != nil {
-		return 0, 0, fmt.Errorf("failed to read shred pricing state on host %s: %w", c.Host, err)
+		return nil, fmt.Errorf("failed to read shred pricing state on host %s: %w", c.Host, err)
 	}
 
-	// Both ring entries must exist for the settled epoch: this is the same lookup
-	// the program performs, and it rejects the payment when either misses. Never
-	// fall back to the current entry — that is exactly the divergence under test.
-	metroEntry, ok := metroHistory.Prices.Find(lastSettledEpoch)
-	if !ok {
-		return 0, 0, fmt.Errorf("metro exchange %s has no price entry for last settled epoch %d (host %s)",
-			deviceHistory.MetroExchangeKey, lastSettledEpoch, c.Host)
-	}
-	deviceEntry, ok := deviceHistory.Subscriptions.Find(lastSettledEpoch)
-	if !ok {
-		return 0, 0, fmt.Errorf("device %s has no subscription entry for last settled epoch %d (host %s)",
-			devicePubkey, lastSettledEpoch, c.Host)
+	// Combine the metro price with the device's signed premium at a specific
+	// epoch, exactly as the program does. Never fall back to the ring's current
+	// entry on a miss — reading a different entry than the one asked for is
+	// precisely the divergence this probe exists to catch.
+	priceAt := func(epoch uint64) (uint64, error) {
+		metroEntry, ok := metroHistory.Prices.Find(epoch)
+		if !ok {
+			return 0, fmt.Errorf("metro exchange %s has no price entry for epoch %d", deviceHistory.MetroExchangeKey, epoch)
+		}
+		deviceEntry, ok := deviceHistory.Subscriptions.Find(epoch)
+		if !ok {
+			return 0, fmt.Errorf("device %s has no subscription entry for epoch %d", devicePubkey, epoch)
+		}
+		return uint64(deviceEntry.Subscription.USDCPriceDollars(&metroEntry.Price)), nil
 	}
 
-	price := deviceEntry.Subscription.USDCPriceDollars(&metroEntry.Price)
-	c.log.Debug("Onchain instant seat price",
-		"host", c.Host, "device", devicePubkey, "last_settled_epoch", lastSettledEpoch,
-		"metro_price_dollars", metroEntry.Price.USDCPriceDollars,
-		"device_premium_dollars", deviceEntry.Subscription.USDCMetroPremiumDollars,
-		"price_dollars", price)
-	return uint64(price), lastSettledEpoch, nil
+	// The settled-epoch lookup is the same one the program performs, and the
+	// program rejects the allocation when either ring misses, so a miss here is
+	// fatal.
+	prices.InstantAllocationDollars, err = priceAt(prices.LastSettledEpoch)
+	if err != nil {
+		return nil, fmt.Errorf("cannot compute the instant-allocation seat price on host %s: %w", c.Host, err)
+	}
+
+	// A miss on the current epoch is expected part-way through the UpdatingPrices
+	// phase, when the ring has not yet been advanced for this metro or device, so
+	// report it as unavailable rather than failing the whole read.
+	if current, currentErr := priceAt(prices.CurrentSubscriptionEpoch); currentErr == nil {
+		prices.CurrentEpochDollars = current
+		prices.HasCurrentEpoch = true
+	} else {
+		c.log.Debug("No onchain price for the current subscription epoch",
+			"host", c.Host, "device", devicePubkey, "reason", currentErr)
+	}
+
+	c.log.Debug("Onchain seat prices", "host", c.Host, "device", devicePubkey,
+		"instant_allocation_dollars", prices.InstantAllocationDollars,
+		"last_settled_epoch", prices.LastSettledEpoch,
+		"current_epoch_dollars", prices.CurrentEpochDollars,
+		"has_current_epoch", prices.HasCurrentEpoch,
+		"current_subscription_epoch", prices.CurrentSubscriptionEpoch)
+	return &prices, nil
 }
 
 // IsSeatProratingEnabled returns true if the shred-subscription program config

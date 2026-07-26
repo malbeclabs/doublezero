@@ -48,12 +48,14 @@ type shredSettlementParams struct {
 	// fail, and is expected to log its own selection detail.
 	selectDevice func(t *testing.T, ctx context.Context, log *slog.Logger, test *qa.Test, client *qa.Client) *qa.Device
 
-	// priceLogMsg is logged after the seat price is queried, e.g. "Found epoch
-	// price" or "Found discounted epoch price".
+	// priceLogMsg is logged after the CLI seat price is queried, e.g. "Found
+	// epoch price" or "Found discounted epoch price".
 	priceLogMsg string
-	// assertPrice, when non-nil, runs an extra assertion on the queried epoch
-	// price (whole USDC dollars) inside the query_seat_price subtest.
-	assertPrice func(t *testing.T, device *qa.Device, epochPrice uint64)
+	// assertPrice, when non-nil, runs an extra assertion on the seat price the
+	// program will charge (whole USDC dollars, read from chain) inside the
+	// query_onchain_seat_price subtest. It deliberately does not see the CLI
+	// quote: what a caller means to pin is what the seat actually costs.
+	assertPrice func(t *testing.T, device *qa.Device, price uint64)
 
 	// extraSubtestName / extraAssertion, when both set, run as a gated subtest
 	// after the tunnel is up and the device assignment is validated, before the
@@ -96,9 +98,8 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 	// Shared state across subtests.
 	var device *qa.Device
 	var amount string
-	var epochPrice uint64
-	var onchainPrice uint64
-	var lastSettledEpoch uint64
+	var quoted *pb.DevicePrice
+	var onchain *qa.SeatPrices
 	var fundedAmount uint64
 	var effectivePrice uint64
 	var balanceBeforePay uint64
@@ -209,54 +210,98 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 
 		// Match by pubkey, not code: querying by --device skips code resolution,
 		// so the returned rows may not carry a device_code.
-		var price *pb.DevicePrice
 		for _, pr := range prices {
 			if pr.DevicePubkey == device.PubKey {
-				price = pr
+				quoted = pr
 				break
 			}
 		}
-		require.NotNil(t, price, "no price found for device %s", device.Code)
-		require.NotZero(t, price.EpochPrice, "epoch price is zero for device %s", device.Code)
-		if p.assertPrice != nil {
-			p.assertPrice(t, device, price.EpochPrice)
-		}
-		epochPrice = price.EpochPrice
-		log.Info(p.priceLogMsg, "device", device.Code, "epoch_price", epochPrice)
+		require.NotNil(t, quoted, "no price found for device %s", device.Code)
+		require.NotZero(t, quoted.EpochPrice, "epoch price is zero for device %s", device.Code)
+		log.Info(p.priceLogMsg, "device", device.Code,
+			"epoch_price", quoted.EpochPrice,
+			"instant_allocation_price", quoted.GetInstantAllocationPrice(),
+			"reports_instant_allocation_price", quoted.GetReportsInstantAllocationPrice())
 	}) {
 		return
 	}
 
 	if !t.Run("query_onchain_seat_price", func(t *testing.T) {
-		// Read the price the program will actually charge straight off the chain.
-		// The escrow is funded from this rather than from the CLI quote, so a
-		// quote/charge divergence surfaces as the named assertion below instead of
-		// killing the run at pay time with a raw simulation dump — and everything
-		// downstream (tunnel up, device assignment, withdraw, prorated refund)
-		// still gets exercised.
+		// Read the prices the program itself computes straight off the chain. The
+		// escrow is funded from the instant-allocation figure rather than from the
+		// CLI quote, so a quote/charge divergence surfaces as a named assertion
+		// below instead of killing the run at pay time with a raw simulation dump
+		// — and everything downstream (tunnel up, device assignment, withdraw,
+		// prorated refund) still gets exercised.
 		var err error
-		onchainPrice, lastSettledEpoch, err = client.InstantSeatPriceDollars(ctx, device.PubKey)
-		require.NoError(t, err, "failed to compute the onchain instant-allocation seat price")
-		require.NotZero(t, onchainPrice, "onchain seat price is zero for device %s", device.Code)
+		onchain, err = client.SeatPrices(ctx, device.PubKey)
+		require.NoError(t, err, "failed to compute the onchain seat prices")
+		require.NotZero(t, onchain.InstantAllocationDollars, "onchain instant-allocation price is zero for device %s", device.Code)
 
-		amount = strconv.FormatUint(onchainPrice, 10)
-		fundedAmount = onchainPrice * 1_000_000 // convert dollars to USDC raw units (6 decimals)
-		log.Info("Onchain instant-allocation seat price",
-			"device", device.Code, "amount", amount, "last_settled_epoch", lastSettledEpoch)
+		amount = strconv.FormatUint(onchain.InstantAllocationDollars, 10)
+		fundedAmount = onchain.InstantAllocationDollars * 1_000_000 // dollars to USDC raw units (6 decimals)
+
+		// The price assertion belongs here, not on the CLI quote: what a caller
+		// means by "this seat costs the discounted price" is what the program
+		// charges, and that is the onchain figure.
+		if p.assertPrice != nil {
+			p.assertPrice(t, device, onchain.InstantAllocationDollars)
+		}
+		log.Info("Onchain seat prices", "device", device.Code, "amount", amount,
+			"last_settled_epoch", onchain.LastSettledEpoch,
+			"current_epoch_price", onchain.CurrentEpochDollars,
+			"current_subscription_epoch", onchain.CurrentSubscriptionEpoch)
 	}) {
 		return
 	}
 
-	// Deliberately not guarded with `if !t.Run(...) { return }`: a quote/charge
-	// divergence is a real product bug and must fail the run loudly, but the
-	// payment below funds from the onchain price, so the rest of the settlement
-	// flow is still worth running. Whole dollars are compared, not prorated
-	// micro-USDC: proration is a function of the current slot, so any exact
-	// comparison against a separately-timed read is inherently racy.
-	t.Run("validate_quoted_price_matches_chain", func(t *testing.T) {
-		require.Equal(t, onchainPrice, epochPrice,
-			"CLI quoted %d USDC (current_subscription_epoch) but instant allocation charges %d USDC (last_settled_epoch=%d); `shreds price` and `shreds pay` read different ring entries",
-			epochPrice, onchainPrice, lastSettledEpoch)
+	// The next two subtests are deliberately not guarded with
+	// `if !t.Run(...) { return }`: a CLI/chain divergence is a real product bug
+	// and must fail the run loudly, but the payment below funds from the onchain
+	// price, so the rest of the settlement flow is still worth running. Both
+	// compare whole dollars, never prorated micro-USDC: proration is a function
+	// of the current slot, so an exact comparison against a separately-timed read
+	// is inherently racy.
+	t.Run("validate_instant_allocation_price_matches_chain", func(t *testing.T) {
+		switch {
+		case !quoted.GetReportsInstantAllocationPrice():
+			// QA hosts install doublezero-solana from a version-pinned apt package
+			// (doublezero_solana_version in malbeclabs/infra
+			// ansible/inventory/*/group_vars/all.yml, 0.5.10-1 at time of writing),
+			// so the field only appears once a release carrying it is published and
+			// the pin bumped. Asserting against an absent field would read 0 and
+			// fail as "quoted 0, chain 43" — a misleading failure that looks like a
+			// new bug rather than a rollout gap.
+			t.Skipf("Skipping: installed doublezero-solana does not report instant_allocation_price (needs a release newer than the pinned 0.5.10-1); chain says %d USDC at last_settled_epoch=%d",
+				onchain.InstantAllocationDollars, onchain.LastSettledEpoch)
+		case quoted.InstantAllocationPrice == nil:
+			// Reported, but null: the CLI could not find the settled-epoch ring
+			// entry. That is a real condition, not a rollout artifact — the program
+			// performs the same lookup and would reject the allocation.
+			t.Fatalf("`shreds price` reported instant_allocation_price as unavailable for device %s, but the chain has a price of %d USDC at last_settled_epoch=%d",
+				device.Code, onchain.InstantAllocationDollars, onchain.LastSettledEpoch)
+		default:
+			require.Equal(t, onchain.InstantAllocationDollars, quoted.GetInstantAllocationPrice(),
+				"CLI quoted %d USDC for an instant allocation but the program charges %d USDC (last_settled_epoch=%d); `shreds price` and `shreds pay` read different ring entries",
+				quoted.GetInstantAllocationPrice(), onchain.InstantAllocationDollars, onchain.LastSettledEpoch)
+		}
+	})
+
+	t.Run("validate_epoch_price_matches_chain", func(t *testing.T) {
+		// The other half of the invariant: epoch_price must keep meaning the
+		// current-epoch price a recurring subscriber pays. Without this, someone
+		// "fixing" the divergence by repointing epoch_price at last_settled_epoch
+		// would go green here while silently breaking recurring subscribers.
+		if !onchain.HasCurrentEpoch {
+			// Part-way through UpdatingPrices the ring has not been advanced to the
+			// current epoch for every metro and device yet, so there is nothing to
+			// compare against. Transient by design, not a regression.
+			t.Skipf("Skipping: no onchain price entry yet for current_subscription_epoch=%d (prices are still being updated)",
+				onchain.CurrentSubscriptionEpoch)
+		}
+		require.Equal(t, onchain.CurrentEpochDollars, quoted.EpochPrice,
+			"CLI quoted epoch_price %d USDC but the chain has %d USDC at current_subscription_epoch=%d; epoch_price must stay the price a recurring subscriber pays next epoch",
+			quoted.EpochPrice, onchain.CurrentEpochDollars, onchain.CurrentSubscriptionEpoch)
 	})
 
 	// Set when wait_for_open_phase times out inside the epoch-tail closed
@@ -349,7 +394,7 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		// program actually charged. GetEffectiveSeatPrice applies the seat's price
 		// override on top when one is set.
 		var err error
-		effectivePrice, err = client.GetEffectiveSeatPrice(ctx, device.PubKey, onchainPrice)
+		effectivePrice, err = client.GetEffectiveSeatPrice(ctx, device.PubKey, onchain.InstantAllocationDollars)
 		require.NoError(t, err, "failed to get effective seat price")
 		log.Info("Effective seat price", "effective_usdc", effectivePrice, "funded_usdc", fundedAmount)
 	}) {

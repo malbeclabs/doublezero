@@ -57,10 +57,14 @@ func dumpClientRouteDiag(t *testing.T, log *slog.Logger, name string, client *de
 		// The daemon's /routes response carries the per-peer liveness_state,
 		// liveness_state_reason, liveness_expected_kernel_state and liveness_peer_mode
 		// fields, which say whether liveness (rather than BGP) is withholding the route.
-		{"curl", "-s", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/routes"},
+		// --max-time bounds each curl: these commands share one 30s budget, and a hung
+		// request against a wedged daemon would starve the iptables dump below, which is
+		// the line that says whether the unblock actually took effect.
+		{"curl", "-s", "--max-time", "5", "--unix-socket", "/var/run/doublezerod/doublezerod.sock", "http://doublezero/routes"},
 		// Liveness counters from the daemon's prometheus endpoint (the e2e client
-		// entrypoint runs doublezerod with -metrics-addr 0.0.0.0:8080).
-		{"bash", "-c", "curl -s http://localhost:8080/metrics | grep -E '^doublezero_liveness_'"},
+		// entrypoint runs doublezerod with -metrics-addr 0.0.0.0:8080). The `|| true`
+		// keeps a no-match grep from being reported as a command error.
+		{"bash", "-c", "curl -s --max-time 5 http://localhost:8080/metrics | grep -E '^doublezero_liveness_' || true"},
 		// Packet counters show whether an unblock of the liveness UDP port took effect.
 		{"iptables", "-L", "INPUT", "-n", "-v"},
 	} {

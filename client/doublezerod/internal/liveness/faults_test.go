@@ -356,6 +356,141 @@ func TestClient_Liveness_Faults_HardLoss_PermanentOutage(t *testing.T) {
 	}
 }
 
+// TestClient_Liveness_Faults_HardLoss_NoFlapAfterRecovery pins that a session which
+// recovers from a long outage stays Up, at the altitude of two real managers exchanging
+// packets over the fake switch.
+//
+// The failure this guards against: an RX-driven state change enqueues an immediate TX so
+// the Down->Init->Up handshake does not wait out the backed-off Down interval. If that
+// immediate TX is enqueued *alongside* sess.nextTxScheduled instead of taking the marker
+// over, the marker still points at the old backed-off deadline. Scheduler.Run only clears
+// the marker when the popped event matches it, and scheduleTx bails while it is set, so
+// after recovery we advertise Up and then transmit nothing until the stale deadline fires
+// — up to backoffMax. The peer's detect timer is only detectMult x rxInterval, so the peer
+// times us out, both sides drop to Down and withdraw the route, then re-handshake via the
+// same immediate TX: a route withdraw/reinstall flap repeating every detectTime for as
+// long as the stale deadline lasts.
+//
+// Two things make that visible here and not in the rest of this suite:
+//   - The timing is pinned in the test body rather than taken from the -backoff-max /
+//     -clients / -tx-min flags. With the flag defaults backoffMax == detectTime, so the
+//     silence window is one interval wide and indistinguishable from normal cadence.
+//     Production has backoffMax >> detectTime; this uses the same shape (20x).
+//   - The transition count is snapshotted while both sessions are still Down, before the
+//     fault is cleared. Snapshotting after they come back Up would race the flap: the
+//     wait-for-Up poll can land in a Down window and only observe Up once the stale
+//     deadline has expired and the flapping already stopped.
+func TestClient_Liveness_Faults_HardLoss_NoFlapAfterRecovery(t *testing.T) {
+	t.Parallel()
+
+	if testing.Short() {
+		t.Skip("Skipping hard-loss recovery flap test in short mode")
+	}
+
+	// Pinned, deliberately not flag-derived: backoffMax must be far larger than
+	// detectTime for the stale-deadline silence to be observable. Scaled down from
+	// production (1s/3/60s) to keep the test to ~20s.
+	cfg := livenessTestConfig{
+		clientCount: 2,
+		txMin:       100 * time.Millisecond,
+		rxMin:       100 * time.Millisecond,
+		detectMult:  3,
+		backoffMax:  6 * time.Second, // 20x detectTime
+	}
+	detectTime := cfg.rxMin * time.Duration(cfg.detectMult) // 300ms
+
+	clients, sw, cfg := setupLivenessClientsWithConfig(t, 25000, cfg)
+
+	nextHop := net.IPv4(10, 5, 0, 1)
+	registerFullMeshRoutes(t, clients, nextHop)
+	requireFullMeshUp(t, clients, cfg.clientCount-1, 30*time.Second)
+
+	cA, cB := clients[0], clients[1]
+	ipA := cA.mgr.LocalAddr().IP
+	ipB := cB.mgr.LocalAddr().IP
+
+	peerAB := Peer{Interface: cA.iface, LocalIP: ipA.To4().String(), PeerIP: ipB.To4().String()}
+	peerBA := Peer{Interface: cB.iface, LocalIP: ipB.To4().String(), PeerIP: ipA.To4().String()}
+
+	sessAB, ok := cA.mgr.GetSession(peerAB)
+	require.True(t, ok)
+	sessBA, ok := cB.mgr.GetSession(peerBA)
+	require.True(t, ok)
+	sessions := []*Session{sessAB, sessBA}
+
+	bothInState := func(want State, wantReason DownReason, checkReason bool) func() bool {
+		return func() bool {
+			for _, s := range sessions {
+				snap := s.Snapshot()
+				if snap.State != want {
+					return false
+				}
+				if checkReason && snap.LastDownReason != wantReason {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	bothUp := bothInState(StateUp, DownReasonNone, false)
+
+	require.Eventually(t, bothUp, 10*time.Second, 50*time.Millisecond,
+		"both sessions must reach Up before the outage")
+
+	// Break the link and wait for both sides to time out.
+	sw.SetHardLoss(ipA, ipB)
+	require.Eventually(t, bothInState(StateDown, DownReasonTimeout, true), 10*detectTime, 20*time.Millisecond,
+		"both sessions must go Down with a timeout under hard loss")
+
+	// Let the Down-state backoff saturate at backoffMax. This is the precondition for
+	// the bug: the pending TX deadline has to be far enough out that going silent until
+	// it fires outlasts the peer's detect timer. ComputeNextTx doubles the interval each
+	// Down TX (100ms, 200ms, ... capped at 6s), so saturation takes ~6.3s; require the
+	// pending deadline to be past 4s, which only the capped 6s interval (+/-10% jitter)
+	// can satisfy.
+	require.Eventually(t, func() bool {
+		for _, s := range sessions {
+			s.mu.Lock()
+			pending := time.Until(s.nextTxScheduled)
+			s.mu.Unlock()
+			if pending <= 4*time.Second {
+				return false
+			}
+		}
+		return true
+	}, 30*time.Second, 50*time.Millisecond,
+		"Down-state backoff should saturate at backoffMax (%v) before recovery", cfg.backoffMax)
+
+	// Snapshot Up->Down transitions while still Down: everything counted from here on is
+	// a post-recovery flap. Taken before clearing the fault so no flap can slip past the
+	// wait-for-Up poll below.
+	before := map[*testClient]float64{
+		cA: sessionUpToDownTransitions(t, cA),
+		cB: sessionUpToDownTransitions(t, cB),
+	}
+
+	// Heal the link. The first probe is still bounded by the backed-off interval, so
+	// allow generously more than backoffMax for the handshake to complete.
+	sw.SetNoFault(ipA, ipB)
+	require.Eventually(t, bothUp, 30*time.Second, 20*time.Millisecond,
+		"both sessions must return to Up after the fault clears")
+
+	// The session must now hold Up. A stale far-future TX deadline would show up as
+	// repeated Up->Down transitions every detectTime until it expires, so watch for
+	// longer than the backoff window that deadline was drawn from.
+	stableDeadline := time.Now().Add(2 * cfg.backoffMax)
+	for time.Now().Before(stableDeadline) {
+		for c, v := range before {
+			require.Equalf(t, v, sessionUpToDownTransitions(t, c),
+				"client %d flapped after recovery: session must keep transmitting at the Up cadence, "+
+					"not stay silent until the backed-off Down deadline", c.id)
+		}
+		time.Sleep(detectTime / 2)
+	}
+
+	require.True(t, bothUp(), "both sessions must still be Up at the end of the stability window")
+}
+
 func TestClient_Liveness_Faults_SoftLoss_TimeoutAtHighLoss(t *testing.T) {
 	t.Parallel()
 
@@ -664,7 +799,16 @@ func (c *testClient) Close() error {
 func setupLivenessClients(t *testing.T, basePort int) ([]*testClient, *fakeUDPSwitch, livenessTestConfig) {
 	t.Helper()
 
-	cfg := getLivenessTestConfig(t)
+	return setupLivenessClientsWithConfig(t, basePort, getLivenessTestConfig(t))
+}
+
+// setupLivenessClientsWithConfig is setupLivenessClients with the timing and client
+// count supplied explicitly instead of read from the command-line flags. Tests that
+// depend on a specific relationship between the intervals (e.g. backoffMax >> detectTime)
+// must pin their own config so CI exercises that shape regardless of flag defaults.
+func setupLivenessClientsWithConfig(t *testing.T, basePort int, cfg livenessTestConfig) ([]*testClient, *fakeUDPSwitch, livenessTestConfig) {
+	t.Helper()
+
 	log := newTestLoggerWith(t, !*notQuietFlag, *debugFlag)
 	sw := newFakeUDPSwitch()
 

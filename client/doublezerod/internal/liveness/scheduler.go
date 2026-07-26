@@ -282,6 +282,22 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	}
 }
 
+// push enqueues an event, updates the queue-length gauge, and nudges Run.
+//
+// The nudge matters because Run sleeps until the deadline of the queue head it last
+// observed; an event pushed from outside the loop (route registration, or an RX-driven
+// state change) is otherwise not noticed until that sleep ends, which while a peer is
+// Down can be as long as backoffMax. The send is non-blocking: a pending token already
+// forces the re-poll, and s.wake is nil in tests that construct a Scheduler without Run.
+func (s *Scheduler) push(ev *event) {
+	s.eq.Push(ev)
+	s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+}
+
 func (s *Scheduler) maybeDropOnOverflow(et eventType, peer Peer) bool {
 	if s.maxEvents <= 0 {
 		return false
@@ -320,8 +336,7 @@ func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
 	sess.nextTxScheduled = next
 	sess.mu.Unlock()
 
-	s.eq.Push(&event{when: next, eventType: eventTypeTX, session: sess})
-	s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
+	s.push(&event{when: next, eventType: eventTypeTX, session: sess})
 }
 
 // scheduleDetect arms or re-arms a session’s detection timer and enqueues a detect event.
@@ -351,8 +366,7 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 		return
 	}
 
-	s.eq.Push(&event{when: ddl, eventType: eventTypeDetect, session: sess})
-	s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
+	s.push(&event{when: ddl, eventType: eventTypeDetect, session: sess})
 }
 
 // doTX builds and transmits a ControlPacket representing the session’s current state.
@@ -424,29 +438,38 @@ func (s *Scheduler) doTX(ctx context.Context, sess *Session) {
 // scheduleTxNow enqueues a TX event due immediately, so a state change is
 // advertised without waiting out the session's current transmit interval.
 //
-// This is deliberately additive: any already-scheduled periodic TX stays in the
-// queue (an event's time cannot be moved earlier once pushed), so a transition
-// may cost one extra packet. That is cheap next to the alternative — while Down
-// the transmit interval is exponentially backed off up to backoffMax, so a
-// handshake step that waits for the pending TX stalls for up to backoffMax.
+// It takes over sess.nextTxScheduled rather than adding alongside it. That marker
+// is what Run clears before re-arming the periodic cadence, so leaving the old
+// (possibly heavily backed-off) deadline in place would make Run's scheduleTx bail
+// and starve the session: after a Down->Init->Up recovery we would advertise Up and
+// then go silent for up to backoffMax, while the peer's detect timer is only
+// detectMult x rxInterval — the peer times us out, withdraws the route, and the
+// session flaps. Taking over the marker means popping this event re-arms the cadence
+// at the new state's interval instead.
+//
+// Claiming the marker also coalesces: while an immediate TX is already pending there
+// is nothing to gain from queueing another, which keeps a burst of state-changing RX
+// packets from driving our TX rate 1:1.
+//
+// The displaced far-future event stays in the queue and costs one extra packet when
+// it eventually pops (its when no longer matches the marker, so it will not disturb
+// the cadence). Rewriting queued events instead would mean mutating the heap from a
+// concurrent hot path.
 func (s *Scheduler) scheduleTxNow(now time.Time, sess *Session) {
 	sess.mu.Lock()
-	alive := sess.alive
-	sess.mu.Unlock()
-	if !alive {
+	if !sess.alive {
+		sess.mu.Unlock()
 		return
 	}
-	s.eq.Push(&event{when: now, eventType: eventTypeTX, session: sess})
-	s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
-
-	// Run may be sleeping until a much later deadline (up to backoffMax while Down),
-	// and pushing an earlier event does not by itself shorten that sleep. Nudge it.
-	// Non-blocking: a pending wake already achieves the same re-poll, and s.wake is
-	// nil in tests that construct a Scheduler without Run.
-	select {
-	case s.wake <- struct{}{}:
-	default:
+	if !sess.nextTxScheduled.IsZero() && !sess.nextTxScheduled.After(now) {
+		// An immediate (or already overdue) TX is pending; it will carry this state.
+		sess.mu.Unlock()
+		return
 	}
+	sess.nextTxScheduled = now
+	sess.mu.Unlock()
+
+	s.push(&event{when: now, eventType: eventTypeTX, session: sess})
 }
 
 // tryExpire checks whether the session’s detect deadline has passed.

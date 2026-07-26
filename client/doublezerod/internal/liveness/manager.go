@@ -643,13 +643,15 @@ func (m *manager) HandleRx(ctrl *ControlPacket, peer Peer) {
 		// Advertise the new state immediately rather than waiting for the TX that
 		// was scheduled while we were in the previous state. While Down that TX is
 		// exponentially backed off up to backoffMax, so without this each step of
-		// the Down->Init->Up handshake would stall for a full backed-off interval
-		// and reconvergence would take up to ~3x backoffMax instead of one
-		// interval plus a couple of round trips. Session.HandleRx has already reset
-		// backoffFactor, but that only takes effect on the *next* scheduleTx, and
-		// scheduleTx cannot pull an already-queued event earlier.
-		// See rfcs/rfc7-client-route-liveness.md: "resume normal cadence on first
-		// valid RX".
+		// the Down->Init->Up handshake would stall for a full backed-off interval,
+		// taking recovery to ~3x that interval instead of one plus a couple of round
+		// trips. Session.HandleRx has already reset backoffFactor, but that only
+		// takes effect on the *next* scheduleTx, and scheduleTx cannot pull an
+		// already-queued event earlier.
+		//
+		// Note this does not shorten the *first* probe after the path recovers,
+		// which is still bounded by the backed-off interval; see rfcs/
+		// rfc7-client-route-liveness.md "resume normal cadence on first valid RX".
 		m.sched.scheduleTxNow(now, sess)
 
 		switch sess.GetState() {

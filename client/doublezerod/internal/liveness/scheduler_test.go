@@ -89,8 +89,33 @@ func TestClient_Liveness_Scheduler_ScheduleTxNow_EnqueuesImmediateTX(t *testing.
 	require.NotNil(t, ev)
 	require.Equal(t, eventTypeTX, ev.eventType)
 	require.Equal(t, now, ev.when)
-	// The pending far-future TX marker is left alone; the immediate event is additive.
-	require.Equal(t, now.Add(time.Hour), sess.nextTxScheduled)
+	// The marker must move to the immediate event, otherwise Run would not clear it
+	// when the event pops and scheduleTx would refuse to re-arm the periodic cadence,
+	// leaving the session silent until the displaced far-future deadline.
+	require.Equal(t, now, sess.nextTxScheduled)
+}
+
+func TestClient_Liveness_Scheduler_ScheduleTxNow_CoalescesPendingImmediateTX(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	s := &Scheduler{log: newTestLogger(t), eq: NewEventQueue(), metrics: newMetrics()}
+	sess := &Session{
+		state:      StateDown,
+		alive:      true,
+		detectMult: 1,
+		minTxFloor: time.Millisecond,
+		peer:       &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
+	}
+
+	// A burst of state changes must not queue a TX each: the first pending immediate
+	// TX carries the latest state, so our TX rate stays decoupled from the RX rate.
+	s.scheduleTxNow(now, sess)
+	s.scheduleTxNow(now.Add(time.Millisecond), sess)
+	s.scheduleTxNow(now.Add(2*time.Millisecond), sess)
+
+	require.NotNil(t, s.eq.Pop())
+	require.Nil(t, s.eq.Pop())
 }
 
 func TestClient_Liveness_Scheduler_ScheduleTxNow_SkipsDeadSession(t *testing.T) {

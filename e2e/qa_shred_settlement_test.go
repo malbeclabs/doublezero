@@ -68,10 +68,10 @@ type shredSettlementParams struct {
 // runShredSettlement drives the full shred-pay settlement flow: pick a device,
 // query its seat price from the CLI and cross-check it against the price the
 // program will charge (read from chain), wait for the program's
-// open-for-requests phase, pay, verify the debit and that the multicast tunnel
-// comes up on the right device, (optionally) assert extra invariants, then
-// withdraw and verify the refund accounting. Both settlement QA tests are thin
-// wrappers over this.
+// open-for-requests phase, re-read that price and pay it, verify the debit and
+// that the multicast tunnel comes up on the right device, (optionally) assert
+// extra invariants, then withdraw and verify the refund accounting. Both
+// settlement QA tests are thin wrappers over this.
 func runShredSettlement(t *testing.T, p shredSettlementParams) {
 	if !p.enabled {
 		t.Skip(p.skipReason)
@@ -227,19 +227,15 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 	}
 
 	if !t.Run("query_onchain_seat_price", func(t *testing.T) {
-		// Read the prices the program itself computes straight off the chain. The
-		// escrow is funded from the instant-allocation figure rather than from the
-		// CLI quote, so a quote/charge divergence surfaces as a named assertion
-		// below instead of killing the run at pay time with a raw simulation dump
-		// — and everything downstream (tunnel up, device assignment, withdraw,
-		// prorated refund) still gets exercised.
+		// Read the prices the program itself computes straight off the chain, as
+		// an oracle for the CLI quote. This snapshot is taken next to the quote so
+		// the two comparisons below are as close to simultaneous as possible; the
+		// amount actually funded is re-read just before paying, since the wait for
+		// the open phase can outlive this read.
 		var err error
 		onchain, err = client.SeatPrices(ctx, device.PubKey)
 		require.NoError(t, err, "failed to compute the onchain seat prices")
 		require.NotZero(t, onchain.InstantAllocationDollars, "onchain instant-allocation price is zero for device %s", device.Code)
-
-		amount = strconv.FormatUint(onchain.InstantAllocationDollars, 10)
-		fundedAmount = onchain.InstantAllocationDollars * 1_000_000 // dollars to USDC raw units (6 decimals)
 
 		// The price assertion belongs here, not on the CLI quote: what a caller
 		// means by "this seat costs the discounted price" is what the program
@@ -247,7 +243,8 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		if p.assertPrice != nil {
 			p.assertPrice(t, device, onchain.InstantAllocationDollars)
 		}
-		log.Info("Onchain seat prices", "device", device.Code, "amount", amount,
+		log.Info("Onchain seat prices", "device", device.Code,
+			"instant_allocation_price", onchain.InstantAllocationDollars,
 			"last_settled_epoch", onchain.LastSettledEpoch,
 			"current_epoch_price", onchain.CurrentEpochDollars,
 			"current_subscription_epoch", onchain.CurrentSubscriptionEpoch)
@@ -349,6 +346,39 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		// t.Run reports a skipped subtest as success, so skip the parent
 		// explicitly to stop the run here.
 		t.Skipf("expected epoch-tail closed window: %s", epochTailWindow)
+	}
+
+	if !t.Run("refresh_onchain_seat_price", func(t *testing.T) {
+		// wait_for_open_phase blocks for up to two minutes, and a settlement
+		// completing inside that window advances last_settled_epoch — the very
+		// read the charge is derived from. Funding a price captured before the
+		// wait would underfund the escrow and reproduce the opaque pay-time
+		// rejection this test exists to avoid, so the funded amount comes from a
+		// read taken here, immediately before paying. A rollover between this read
+		// and the transaction landing is irreducible (any payer races it), but the
+		// window shrinks from minutes to seconds.
+		refreshed, err := client.SeatPrices(ctx, device.PubKey)
+		require.NoError(t, err, "failed to re-read the onchain seat prices before paying")
+		require.NotZero(t, refreshed.InstantAllocationDollars, "onchain instant-allocation price is zero for device %s", device.Code)
+
+		if refreshed.LastSettledEpoch != onchain.LastSettledEpoch ||
+			refreshed.InstantAllocationDollars != onchain.InstantAllocationDollars {
+			// Warn, not Info: this means the quote comparisons above were made
+			// against a snapshot the payment no longer uses, so a failure up there
+			// should be read in that light.
+			log.Warn("Onchain seat price moved while waiting for the open-for-requests phase; funding the refreshed price",
+				"device", device.Code,
+				"before_price", onchain.InstantAllocationDollars, "before_last_settled_epoch", onchain.LastSettledEpoch,
+				"after_price", refreshed.InstantAllocationDollars, "after_last_settled_epoch", refreshed.LastSettledEpoch)
+		}
+
+		onchain = refreshed
+		amount = strconv.FormatUint(onchain.InstantAllocationDollars, 10)
+		fundedAmount = onchain.InstantAllocationDollars * 1_000_000 // dollars to USDC raw units (6 decimals)
+		log.Info("Funding the seat escrow from the onchain price", "device", device.Code,
+			"amount", amount, "last_settled_epoch", onchain.LastSettledEpoch)
+	}) {
+		return
 	}
 
 	if !t.Run("record_balance_before_pay", func(t *testing.T) {

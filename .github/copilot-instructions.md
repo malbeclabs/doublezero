@@ -6,8 +6,8 @@ deploy devices and register them and their links onchain; users connect over GRE
 optimized routes via BGP, in unicast (IBRL) or multicast modes.
 
 Two distinct chains are in play. The **DoubleZero Ledger** is the protocol's own Solana-based
-cluster, run by its own validators; the serviceability, telemetry, geolocation, and
-internet-latency programs in this repo are deployed there, reached via `ledger_rpc_url`.
+cluster, run by its own validators; the serviceability, telemetry, geolocation, and record
+programs in this repo are deployed there, reached via `ledger_rpc_url`.
 **Solana L1** is a separate network reached via `solana_l1_rpc_url`: it carries the 2Z utility
 token and hosts the shred-subscription program. The environment mapping between the two is not the
 identity — DZ testnet's shred-subscription program lives on Solana devnet, not Solana testnet (see

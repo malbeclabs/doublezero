@@ -1,5 +1,5 @@
 ---
-applyTo: "smartcontract/sdk/rs/**,smartcontract/cli/**,crates/**,client/doublezero/**"
+applyTo: "smartcontract/sdk/rs/**,smartcontract/cli/**,crates/**,client/doublezero/**,config/src/**"
 description: "Review rules for the Rust SDK, instruction builders, and the doublezero CLI"
 ---
 

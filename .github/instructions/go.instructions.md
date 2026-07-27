@@ -1,6 +1,6 @@
 ---
-applyTo: "client/**/*.go,controlplane/**/*.go,telemetry/**/*.go,api/**/*.go,tools/**/*.go"
-description: "Review rules for the Go daemon, controller, telemetry, and tooling"
+applyTo: "client/**/*.go,controlplane/**/*.go,telemetry/**/*.go,api/**/*.go,tools/**/*.go,config/**/*.go"
+description: "Review rules for the Go daemon, controller, telemetry, tooling, and shared env config"
 ---
 
 # Go

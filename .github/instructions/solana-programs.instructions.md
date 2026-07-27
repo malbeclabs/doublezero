@@ -20,9 +20,10 @@ description: "Review rules for the onchain serviceability and geolocation progra
 - Optional trailing accounts must be disambiguated by PDA match (`split_trailing_permission` in
   `authorize.rs`), never by position. The on-wire tail is
   `[...command accounts, payer, system, permission?]`. The Rust SDK's Permission append is currently
-  deferred — `build_with_permission` delegates to `build`, and `SDK_ATTACHES_PERMISSION_ACCOUNTS`
-  is `false` — so a trailing Permission arrives only from external clients today, and the processor
-  must still handle both shapes.
+  deferred — `build_with_permission` in `crates/doublezero-serviceability-instruction/src/common.rs`
+  delegates to `build`, and `SDK_ATTACHES_PERMISSION_ACCOUNTS` in
+  `smartcontract/cli/src/permission/audit.rs` is `false` — so a trailing Permission arrives only from
+  external clients today, and the processor must still handle both shapes.
 - Flag any change that broadens who may call an instruction — a legacy-authority mapping that adds
   the sentinel, the activator, or a new flag — even when the broadening is plausibly intended. Say
   which authorities gain access and ask for it to be confirmed and documented.

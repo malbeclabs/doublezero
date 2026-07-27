@@ -4,13 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DoubleZero is a decentralized high-performance network built on Solana. Contributors register network devices and links onchain; clients (e.g., Solana validators) connect via GRE tunnels and receive optimized routes via BGP. The codebase is a hybrid Rust/Go monorepo with TypeScript and Python SDKs.
+DoubleZero is a protocol for building and operating high-performance, permissionless networks — a global dedicated-fiber network for distributed systems like blockchains. Service contributors deploy devices and register them and their links onchain; users connect via GRE tunnels and receive optimized routes via BGP, in unicast (IBRL) or multicast modes. The codebase is a hybrid Rust/Go monorepo with TypeScript and Python SDKs.
+
+**Two distinct chains.** The **DoubleZero Ledger** is the protocol's own Solana-based cluster, run by its own validators; the serviceability, telemetry, geolocation, and internet-latency programs in this repo are deployed there, reached via `ledger_rpc_url`. **Solana L1** is a separate network reached via `solana_l1_rpc_url`: it carries the 2Z utility token and hosts the shred-subscription program. The environment mapping is not the identity — DZ testnet's shred-subscription program lives on Solana devnet, not Solana testnet (see `config/src/constants.rs`). A lookup pointed at the wrong cluster does not error; the account simply is not there, so the caller silently takes its not-found path.
 
 ### Architecture (key components)
 
 | Component        | Language                                            | Purpose                                                                                      |
 | ---------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `smartcontract/` | Rust                                                | Solana programs (serviceability, telemetry, revenue distribution) + CLI                      |
+| `smartcontract/` | Rust                                                | DoubleZero Ledger programs (serviceability, telemetry, geolocation, record) + CLI            |
 | `client/`        | Rust (`doublezero` CLI) + Go (`doublezerod` daemon) | End-user connectivity — GRE tunnels, BGP sessions                                            |
 | `controlplane/`  | Go                                                  | Controller pushes configs to devices; agent runs on Arista EOS; funder, monitor, admin tools |
 | `telemetry/`     | Go                                                  | Flow ingestion (NetFlow/IPFIX), gNMI writer, global monitor → ClickHouse/InfluxDB            |

@@ -119,7 +119,7 @@ pub fn process_set_access_pass_flags(
     // guarantee. The durable fix is to fence *any* non-foundation/sentinel ACCESS_PASS_ADMIN caller
     // to passes it owns, which belongs with the feed-authority -> Permission migration because the
     // same guard is duplicated in accesspass/set.rs and accesspass/close.rs. Revisit all three
-    // together at that point.
+    // together at that point. Tracked in #4092.
     if globalstate.feed_authority_pk == *payer_account.key && accesspass.owner != *payer_account.key
     {
         msg!("Feed authority can only modify access passes they own");

@@ -479,7 +479,7 @@ async fn test_accesspass_dzf_locked_requires_permission_account_in_strict_mode()
     // `payer`. That is correct today — an ACCESS_PASS_ADMIN holder may target any pass — but it is
     // also the exact shape the oracle takes after the feed-authority -> Permission migration. When
     // that migration lands, revisit this assertion together with the DEPENDENCY comment on that
-    // guard: what reads as an expected success here would then be the regression.
+    // guard: what reads as an expected success here would then be the regression. Tracked in #4092.
     execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,

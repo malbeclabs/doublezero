@@ -92,12 +92,15 @@ pub fn process_set_access_pass_flags(
 
     // Reject a no-op call rather than charging for a write that changes nothing. Runs after
     // authorize() so an unauthenticated caller gets NotAllowed rather than a payload diagnostic.
-    // Destructured rather than compared against a Default, so adding a flag field is a compile
-    // error here instead of a silently incomplete check.
+    //
+    // Destructured rather than compared against a Default so a future flag field cannot be
+    // silently omitted here: adding one is a hard error at this pattern (E0027), and forgetting to
+    // fold the new binding into the condition below is an unused-variable warning, which CI fails
+    // on under `-Dwarnings`.
     let SetAccessPassFlagsArgs {
         allow_multiple_ip,
         dzf_locked,
-    } = value;
+    } = *value;
     if allow_multiple_ip.is_none() && dzf_locked.is_none() {
         msg!("SetAccessPassFlags requires at least one flag to update");
         return Err(DoubleZeroError::InvalidArgument.into());
@@ -108,20 +111,29 @@ pub fn process_set_access_pass_flags(
     // Mirror the sibling accesspass handlers: the feed authority may only touch passes it owns.
     // This is what stops the oracle (which holds ACCESS_PASS_ADMIN) from clearing dzf_locked on a
     // pass it did not create.
+    //
+    // DEPENDENCY: this holds only while the oracle's key lives in the legacy
+    // `globalstate.feed_authority_pk`. Once the oracle authorizes purely via a Permission account
+    // granting ACCESS_PASS_ADMIN and this legacy field is cleared or reassigned, the condition is
+    // never true and the guard silently no-ops — losing exactly the property dzf_locked exists to
+    // guarantee. The durable fix is to fence *any* non-foundation/sentinel ACCESS_PASS_ADMIN caller
+    // to passes it owns, which belongs with the feed-authority -> Permission migration because the
+    // same guard is duplicated in accesspass/set.rs and accesspass/close.rs. Revisit all three
+    // together at that point.
     if globalstate.feed_authority_pk == *payer_account.key && accesspass.owner != *payer_account.key
     {
         msg!("Feed authority can only modify access passes they own");
         return Err(DoubleZeroError::NotAllowed.into());
     }
 
-    if let Some(allow_multiple_ip) = *allow_multiple_ip {
+    if let Some(allow_multiple_ip) = allow_multiple_ip {
         if allow_multiple_ip {
             accesspass.flags |= ALLOW_MULTIPLE_IP;
         } else {
             accesspass.flags &= !ALLOW_MULTIPLE_IP;
         }
     }
-    if let Some(dzf_locked) = *dzf_locked {
+    if let Some(dzf_locked) = dzf_locked {
         if dzf_locked {
             accesspass.flags |= DZF_LOCKED;
         } else {

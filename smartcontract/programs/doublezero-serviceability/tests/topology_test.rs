@@ -560,7 +560,12 @@ async fn delete_topology(
     payer: &Keypair,
 ) -> Result<(), BanksClientError> {
     let (topology_pda, _) = get_topology_pda(&program_id, name);
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    // Must be a *new* blockhash, not merely the latest. Tests delete the same topology
+    // twice — once expecting `ReferenceCountNotZero`, then again after clearing the
+    // reference — and both transactions carry the same instruction, accounts and payer.
+    // On the same blockhash they are byte-identical, so the second one hits the bank's
+    // status cache and returns the first one's cached failure without ever executing.
+    let recent_blockhash = wait_for_new_blockhash(banks_client).await;
     let base_accounts = vec![
         AccountMeta::new(topology_pda, false),
         AccountMeta::new_readonly(globalstate_pubkey, false),

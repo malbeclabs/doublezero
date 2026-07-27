@@ -38,9 +38,21 @@ struct Gap {
     legacy_source: String,
 }
 
+/// Whether the Rust SDK attaches the payer's Permission PDA to serviceability
+/// transactions. While this is `false`, `authorize()` never sees a Permission
+/// account through the CLI/SDK send path and falls back to the GlobalState
+/// allowlists — so a key whose ONLY grant is a Permission account is denied.
+///
+/// This is the inverse of the gap analysis above (which asks who would lose access
+/// under strict mode), and the audit is where an operator looks for it. Flip to
+/// `true` and drop the rendered paragraph when the builder-side append is re-enabled.
+const SDK_ATTACHES_PERMISSION_ACCOUNTS: bool = false;
+
 #[derive(Serialize, Debug)]
 struct AuditReport {
     strict_mode_enabled: bool,
+    /// See [`SDK_ATTACHES_PERMISSION_ACCOUNTS`].
+    sdk_attaches_permission_accounts: bool,
     gaps: Vec<Gap>,
     permission_admin_holders: Vec<String>,
     foundation_flag_holders: Vec<String>,
@@ -121,6 +133,7 @@ fn build_report(gs: &GlobalState, permissions: &HashMap<Pubkey, Permission>) -> 
 
     AuditReport {
         strict_mode_enabled,
+        sdk_attaches_permission_accounts: SDK_ATTACHES_PERMISSION_ACCOUNTS,
         gaps,
         permission_admin_holders,
         foundation_flag_holders,
@@ -228,6 +241,34 @@ fn render_text<W: Write>(out: &mut W, report: &AuditReport) -> eyre::Result<()> 
         writeln!(out, "  - {s}")?;
     }
     writeln!(out)?;
+
+    if !report.sdk_attaches_permission_accounts {
+        writeln!(
+            out,
+            "Permission accounts are not yet attached by the CLI / Rust SDK"
+        )?;
+        writeln!(
+            out,
+            "-----------------------------------------------------------"
+        )?;
+        writeln!(
+            out,
+            "Serviceability transactions sent through this CLI carry no Permission account, so"
+        )?;
+        writeln!(
+            out,
+            "authorize() falls back to the GlobalState allowlists. A key whose ONLY grant is a"
+        )?;
+        writeln!(
+            out,
+            "Permission account is denied on every gated command — granting one with"
+        )?;
+        writeln!(
+            out,
+            "`permission set` is not sufficient on its own until the append is re-enabled."
+        )?;
+        writeln!(out)?;
+    }
     writeln!(
         out,
         "foundation_allowlist ({} member(s)): {}",

@@ -40,15 +40,21 @@ impl AddMulticastGroupPubAllowlistCommand {
 mod tests {
     use crate::{
         commands::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistCommand,
-        tests::utils::create_test_client,
+        tests::utils::create_test_client, DoubleZeroClient,
     };
-    use doublezero_serviceability::state::{
-        accountdata::AccountData,
-        accounttype::AccountType,
-        multicastgroup::{MulticastGroup, MulticastGroupStatus},
+    use doublezero_serviceability::{
+        pda::get_accesspass_pda,
+        processors::multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
+        state::{
+            accountdata::AccountData,
+            accounttype::AccountType,
+            multicastgroup::{MulticastGroup, MulticastGroupStatus},
+        },
     };
+    use doublezero_serviceability_instruction::multicastgroup::add_multicast_group_pub_allowlist;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use std::net::Ipv4Addr;
 
     #[test]
     fn test_commands_multicastgroup_allowlist_publisher_add() {
@@ -87,15 +93,34 @@ mod tests {
                 map.insert(pubkey, AccountData::MulticastGroup(cloned_mgroup.clone()));
                 Ok(map)
             });
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let client_ip: Ipv4Addr = [192, 168, 1, 1].into();
+        // `user_payer` is deliberately distinct from the group pubkey so the assertion below
+        // catches a swap between the mgroup and user_payer account metas.
+        let user_payer = Pubkey::new_unique();
+        // No dynamic (`0.0.0.0`) pass is seeded above, so resolve_accesspass_pda falls back to
+        // the static PDA.
+        let (accesspass_pk, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+        let expected = add_multicast_group_pub_allowlist(
+            &program_id,
+            &payer,
+            &pubkey,
+            &accesspass_pk,
+            AddMulticastGroupPubAllowlistArgs {
+                client_ip,
+                user_payer,
+            },
+        );
         client
             .expect_send_transaction()
-            .with(predicate::always())
+            .with(predicate::eq(expected))
             .returning(|_| Ok(Signature::new_unique()));
 
         let res = AddMulticastGroupPubAllowlistCommand {
             pubkey_or_code: "test_code".to_string(),
-            client_ip: [192, 168, 1, 1].into(),
-            user_payer: pubkey,
+            client_ip,
+            user_payer,
         }
         .execute(&client);
 

@@ -396,12 +396,17 @@ pub fn process_update_link(
         }
 
         let old_topologies = link.link_topologies.clone();
+        // `added` cannot contain duplicates: the new vector is rejected above if it does.
         let added: Vec<Pubkey> = new_topologies
             .iter()
             .filter(|pk| !old_topologies.contains(pk))
             .copied()
             .collect();
-        let removed: Vec<Pubkey> = old_topologies
+        // `removed` is deduped because the *stored* vector may hold duplicates from before
+        // the check above existed. A link only ever contributed one reference per topology,
+        // so dropping it must decrement once — otherwise repairing a skewed link zeroes a
+        // count another link still contributes to, which is the bug the check prevents.
+        let removed: BTreeSet<Pubkey> = old_topologies
             .iter()
             .filter(|pk| !new_topologies.contains(pk))
             .copied()

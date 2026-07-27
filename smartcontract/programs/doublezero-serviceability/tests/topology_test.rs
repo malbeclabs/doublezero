@@ -2697,28 +2697,32 @@ async fn test_link_update_rejects_duplicate_topologies() {
     println!("[PASS] test_link_update_rejects_duplicate_topologies");
 }
 
-/// Regression for the full exploit path in issue #4090.
-///
-/// A link that *already* holds `[T, T]` — state `LinkUpdate` no longer accepts, but which
-/// could have been stored before the fix — must decrement `T.reference_count` by exactly 1
-/// on delete. Decrementing per entry would zero a count that a second link still
-/// contributes to and let `TopologyDelete` close the PDA out from under it.
-///
-/// The duplicate is seeded with `set_account` because no instruction can produce it anymore.
-#[tokio::test]
-async fn test_link_delete_with_duplicate_topology_decrements_once() {
-    println!("[TEST] test_link_delete_with_duplicate_topology_decrements_once");
+/// Two links both tagged into `topo-a` (`reference_count` 2), with link1's stored
+/// `link_topologies` seeded to `[topo-a, topo-a]` — the skew that could be written before
+/// `LinkUpdate` rejected duplicates. link1 still contributed only one reference.
+struct SkewedTopologyScenario {
+    context: ProgramTestContext,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    topo_a_pda: Pubkey,
+    link1_pubkey: Pubkey,
+    link2_pubkey: Pubkey,
+    contributor_pubkey: Pubkey,
+    device_a_pubkey: Pubkey,
+    device_z_pubkey: Pubkey,
+}
 
+/// Builds [`SkewedTopologyScenario`]. The duplicate entry is seeded with `set_account`
+/// rather than through an instruction because, with the fix in place, no instruction can
+/// produce it — the point of these tests is that state already stored this way is handled
+/// safely.
+async fn setup_skewed_topology_scenario() -> SkewedTopologyScenario {
     let (mut context, program_id, globalstate_pubkey, _globalconfig_pubkey) =
         setup_program_with_globalconfig_context().await;
     let payer = context.payer.insecure_clone();
-    let recent_blockhash = context.last_blockhash;
 
     let (admin_group_bits_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
 
     create_topology(
         &mut context.banks_client,
@@ -2779,7 +2783,7 @@ async fn test_link_delete_with_duplicate_topology_decrements_once() {
         2
     );
 
-    // Seed the pre-fix skew: link1 holds [topo-a, topo-a] while having contributed only 1.
+    // Seed the skew: link1 holds [topo-a, topo-a] while having contributed only 1.
     let mut link1_account = context
         .banks_client
         .get_account(link1_pubkey)
@@ -2795,6 +2799,80 @@ async fn test_link_delete_with_duplicate_topology_decrements_once() {
         .max(link1_account.lamports);
     context.set_account(&link1_pubkey, &AccountSharedData::from(link1_account));
 
+    SkewedTopologyScenario {
+        context,
+        program_id,
+        globalstate_pubkey,
+        topo_a_pda,
+        link1_pubkey,
+        link2_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+    }
+}
+
+/// Asserts `TopologyDelete` on `topo-a` is still refused because link2 references it.
+async fn assert_topology_delete_blocked(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    link2_pubkey: Pubkey,
+    topo_a_pda: Pubkey,
+    payer: &Keypair,
+) {
+    let result = delete_topology(
+        banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        vec![],
+        payer,
+    )
+    .await;
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(13),
+        ))) => {}
+        _ => panic!(
+            "Expected ReferenceCountNotZero (Custom(13)), got {:?}",
+            result
+        ),
+    }
+    assert_eq!(
+        get_link(banks_client, link2_pubkey).await.link_topologies,
+        vec![topo_a_pda]
+    );
+}
+
+/// Regression for the full exploit path in issue #4090, via `LinkDelete`.
+///
+/// A link that already holds `[T, T]` must decrement `T.reference_count` by exactly 1 on
+/// delete. Decrementing per entry would zero a count that a second link still contributes
+/// to and let `TopologyDelete` close the PDA out from under it.
+#[tokio::test]
+async fn test_link_delete_with_duplicate_topology_decrements_once() {
+    println!("[TEST] test_link_delete_with_duplicate_topology_decrements_once");
+
+    let SkewedTopologyScenario {
+        mut context,
+        program_id,
+        globalstate_pubkey,
+        topo_a_pda,
+        link1_pubkey,
+        link2_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+    } = setup_skewed_topology_scenario().await;
+    let payer = context.payer.insecure_clone();
+    let recent_blockhash = context.last_blockhash;
+
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+
     // A link holding duplicates must stay writable — the duplicate check lives on the
     // instruction argument, not in Link::validate(), so repair remains possible.
     execute_transaction(
@@ -2803,7 +2881,6 @@ async fn test_link_delete_with_duplicate_topology_decrements_once() {
         program_id,
         DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
             status: Some(LinkStatus::SoftDrained),
-            use_onchain_allocation: true,
             ..Default::default()
         }),
         vec![
@@ -2815,8 +2892,9 @@ async fn test_link_delete_with_duplicate_topology_decrements_once() {
     )
     .await;
 
-    // Delete link1. One writable account per *unique* topology entry.
+    // Delete link1, passing a writable account per *unique* topology entry.
     let link1 = get_link(&mut context.banks_client, link1_pubkey).await;
+    assert_eq!(link1.link_topologies, vec![topo_a_pda, topo_a_pda]);
     execute_transaction(
         &mut context.banks_client,
         recent_blockhash,
@@ -2847,33 +2925,80 @@ async fn test_link_delete_with_duplicate_topology_decrements_once() {
         1,
         "delete must decrement once per unique topology, not once per entry"
     );
-
-    // And TopologyDelete stays blocked while link2 still lists topo-a.
-    let result = delete_topology(
+    assert_topology_delete_blocked(
         &mut context.banks_client,
         program_id,
         globalstate_pubkey,
-        "topo-a",
-        vec![],
+        link2_pubkey,
+        topo_a_pda,
         &payer,
     )
     .await;
-    match result {
-        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
-            0,
-            InstructionError::Custom(13),
-        ))) => {}
-        _ => panic!(
-            "Expected ReferenceCountNotZero (Custom(13)), got {:?}",
-            result
-        ),
-    }
-    assert_eq!(
-        get_link(&mut context.banks_client, link2_pubkey)
-            .await
-            .link_topologies,
-        vec![topo_a_pda]
-    );
 
     println!("[PASS] test_link_delete_with_duplicate_topology_decrements_once");
+}
+
+/// The same exploit path via `LinkUpdate`, which is the natural *repair* action for a
+/// skewed link (`doublezero link update --link-topology default` sends an empty vec).
+/// `removed` is built from the stored vector, so it must be deduped too — otherwise
+/// repairing the skew is what closes the topology out from under the surviving link.
+#[tokio::test]
+async fn test_link_update_clearing_duplicate_topology_decrements_once() {
+    println!("[TEST] test_link_update_clearing_duplicate_topology_decrements_once");
+
+    let SkewedTopologyScenario {
+        mut context,
+        program_id,
+        globalstate_pubkey,
+        topo_a_pda,
+        link1_pubkey,
+        link2_pubkey,
+        contributor_pubkey,
+        ..
+    } = setup_skewed_topology_scenario().await;
+    let payer = context.payer.insecure_clone();
+    let recent_blockhash = context.last_blockhash;
+
+    execute_transaction(
+        &mut context.banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            link_topologies: Some(vec![]),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link1_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+            AccountMeta::new(topo_a_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert_eq!(
+        get_link(&mut context.banks_client, link1_pubkey)
+            .await
+            .link_topologies,
+        Vec::<Pubkey>::new()
+    );
+    assert_eq!(
+        get_topology(&mut context.banks_client, topo_a_pda)
+            .await
+            .reference_count,
+        1,
+        "update must decrement once per unique removed topology, not once per entry"
+    );
+    assert_topology_delete_blocked(
+        &mut context.banks_client,
+        program_id,
+        globalstate_pubkey,
+        link2_pubkey,
+        topo_a_pda,
+        &payer,
+    )
+    .await;
+
+    println!("[PASS] test_link_update_clearing_duplicate_topology_decrements_once");
 }

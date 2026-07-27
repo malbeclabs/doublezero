@@ -383,6 +383,20 @@ func (q *QAAgent) FeedSeatPrice(ctx context.Context, req *pb.FeedSeatPriceReques
 		return nil, fmt.Errorf("failed to get seat prices: %w, output: %s", err, string(out))
 	}
 
+	prices, err := parseDevicePrices(out)
+	if err != nil {
+		q.log.Error("Failed to parse seat prices", "output", string(out), "error", err)
+		return nil, err
+	}
+
+	q.log.Debug("Seat prices retrieved", "count", len(prices))
+	return &pb.FeedSeatPriceResponse{Prices: prices}, nil
+}
+
+// parseDevicePrices converts the JSON emitted by `doublezero-solana shreds
+// price --json` into DevicePrice messages. Split out from FeedSeatPrice so the
+// three-state handling of instant_allocation_price is directly testable.
+func parseDevicePrices(out []byte) ([]*pb.DevicePrice, error) {
 	var rawPrices []struct {
 		DeviceCode     string `json:"device_code"`
 		Device         string `json:"device"`
@@ -394,15 +408,21 @@ func (q *QAAgent) FeedSeatPrice(ctx context.Context, req *pb.FeedSeatPriceReques
 		BasePrice      uint64 `json:"base_price"`
 		Premium        uint64 `json:"premium"`
 		EpochPrice     uint64 `json:"epoch_price"`
+		// Raw, not *uint64: three states have to survive the hop to the test. An
+		// absent key means the installed CLI predates the field (QA hosts pin
+		// doublezero-solana by apt, so that lags a release); an explicit null
+		// means the CLI could not find the settled-epoch ring entry, which is a
+		// real condition rather than a rollout gap; a number is the price, and 0
+		// is a legitimate one. A *uint64 would collapse absent and null into nil.
+		InstantAllocationPrice json.RawMessage `json:"instant_allocation_price"`
 	}
 	if err := json.Unmarshal(out, &rawPrices); err != nil {
-		q.log.Error("Failed to parse seat prices", "output", string(out), "error", err)
 		return nil, fmt.Errorf("failed to parse seat prices: %w", err)
 	}
 
 	prices := make([]*pb.DevicePrice, 0, len(rawPrices))
 	for _, p := range rawPrices {
-		prices = append(prices, &pb.DevicePrice{
+		price := &pb.DevicePrice{
 			DeviceCode:     p.DeviceCode,
 			DevicePubkey:   p.Device,
 			MetroCode:      p.MetroCode,
@@ -413,11 +433,20 @@ func (q *QAAgent) FeedSeatPrice(ctx context.Context, req *pb.FeedSeatPriceReques
 			BasePrice:      p.BasePrice,
 			Premium:        p.Premium,
 			EpochPrice:     p.EpochPrice,
-		})
+		}
+		if raw := strings.TrimSpace(string(p.InstantAllocationPrice)); raw != "" {
+			price.ReportsInstantAllocationPrice = true
+			if raw != "null" {
+				var instant uint64
+				if err := json.Unmarshal(p.InstantAllocationPrice, &instant); err != nil {
+					return nil, fmt.Errorf("failed to parse instant_allocation_price %q: %w", raw, err)
+				}
+				price.InstantAllocationPrice = &instant
+			}
+		}
+		prices = append(prices, price)
 	}
-
-	q.log.Debug("Seat prices retrieved", "count", len(prices))
-	return &pb.FeedSeatPriceResponse{Prices: prices}, nil
+	return prices, nil
 }
 
 // FeedSeatPay implements the FeedSeatPay RPC, which pays for a seat on a device.

@@ -252,6 +252,17 @@ message DevicePrice {
   uint64 base_price = 8;
   uint64 premium = 9;
   uint64 epoch_price = 10;
+  // Price an instant seat allocation is charged, read at the settled epoch.
+  // Distinct from epoch_price, which is what a recurring subscriber pays next
+  // epoch. Explicit presence keeps "the CLI reported no price" apart from a
+  // legitimate 0: the CLI declares it Option<u16> and emits null when the
+  // settled-epoch ring entry is missing.
+  optional uint64 instant_allocation_price = 11;
+  // Whether the CLI's JSON carried the instant_allocation_price key at all.
+  // QA hosts pin doublezero-solana by apt, so a CLI predating the field omits
+  // the key entirely; that rollout gap must not read the same as the CLI
+  // reporting the price as unavailable.
+  bool reports_instant_allocation_price = 12;
 }
 
 message FeedSeatPriceResponse {

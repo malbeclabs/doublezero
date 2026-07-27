@@ -48,12 +48,14 @@ type shredSettlementParams struct {
 	// fail, and is expected to log its own selection detail.
 	selectDevice func(t *testing.T, ctx context.Context, log *slog.Logger, test *qa.Test, client *qa.Client) *qa.Device
 
-	// priceLogMsg is logged after the seat price is queried, e.g. "Found epoch
-	// price" or "Found discounted epoch price".
+	// priceLogMsg is logged after the CLI seat price is queried, e.g. "Found
+	// epoch price" or "Found discounted epoch price".
 	priceLogMsg string
-	// assertPrice, when non-nil, runs an extra assertion on the queried epoch
-	// price (whole USDC dollars) inside the query_seat_price subtest.
-	assertPrice func(t *testing.T, device *qa.Device, epochPrice uint64)
+	// assertPrice, when non-nil, runs an extra assertion on the seat price the
+	// program will charge (whole USDC dollars, read from chain) inside the
+	// query_onchain_seat_price subtest. It deliberately does not see the CLI
+	// quote: what a caller means to pin is what the seat actually costs.
+	assertPrice func(t *testing.T, device *qa.Device, price uint64)
 
 	// extraSubtestName / extraAssertion, when both set, run as a gated subtest
 	// after the tunnel is up and the device assignment is validated, before the
@@ -64,10 +66,12 @@ type shredSettlementParams struct {
 }
 
 // runShredSettlement drives the full shred-pay settlement flow: pick a device,
-// query its seat price, wait for the program's open-for-requests phase, pay,
-// verify the debit and that the multicast tunnel comes up on the right device,
-// (optionally) assert extra invariants, then withdraw and verify the refund
-// accounting. Both settlement QA tests are thin wrappers over this.
+// query its seat price from the CLI and cross-check it against the price the
+// program will charge (read from chain), wait for the program's
+// open-for-requests phase, re-read that price and pay it, verify the debit and
+// that the multicast tunnel comes up on the right device, (optionally) assert
+// extra invariants, then withdraw and verify the refund accounting. Both
+// settlement QA tests are thin wrappers over this.
 func runShredSettlement(t *testing.T, p shredSettlementParams) {
 	if !p.enabled {
 		t.Skip(p.skipReason)
@@ -94,8 +98,9 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 	// Shared state across subtests.
 	var device *qa.Device
 	var amount string
-	var epochPrice uint64
-	var parsedAmount uint64
+	var quoted *pb.DevicePrice
+	var onchain *qa.SeatPrices
+	var fundedAmount uint64
 	var effectivePrice uint64
 	var balanceBeforePay uint64
 	var balanceAfterPay uint64
@@ -205,25 +210,96 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 
 		// Match by pubkey, not code: querying by --device skips code resolution,
 		// so the returned rows may not carry a device_code.
-		var price *pb.DevicePrice
 		for _, pr := range prices {
 			if pr.DevicePubkey == device.PubKey {
-				price = pr
+				quoted = pr
 				break
 			}
 		}
-		require.NotNil(t, price, "no price found for device %s", device.Code)
-		require.NotZero(t, price.EpochPrice, "epoch price is zero for device %s", device.Code)
-		if p.assertPrice != nil {
-			p.assertPrice(t, device, price.EpochPrice)
-		}
-		epochPrice = price.EpochPrice
-		amount = strconv.FormatUint(epochPrice, 10)
-		parsedAmount = epochPrice * 1_000_000 // convert dollars to USDC raw units (6 decimals)
-		log.Info(p.priceLogMsg, "device", device.Code, "amount", amount)
+		require.NotNil(t, quoted, "no price found for device %s", device.Code)
+		require.NotZero(t, quoted.EpochPrice, "epoch price is zero for device %s", device.Code)
+		log.Info(p.priceLogMsg, "device", device.Code,
+			"epoch_price", quoted.EpochPrice,
+			"instant_allocation_price", quoted.GetInstantAllocationPrice(),
+			"reports_instant_allocation_price", quoted.GetReportsInstantAllocationPrice())
 	}) {
 		return
 	}
+
+	if !t.Run("query_onchain_seat_price", func(t *testing.T) {
+		// Read the prices the program itself computes straight off the chain, as
+		// an oracle for the CLI quote. This snapshot is taken next to the quote so
+		// the two comparisons below are as close to simultaneous as possible; the
+		// amount actually funded is re-read just before paying, since the wait for
+		// the open phase can outlive this read.
+		var err error
+		onchain, err = client.SeatPrices(ctx, device.PubKey)
+		require.NoError(t, err, "failed to compute the onchain seat prices")
+		require.NotZero(t, onchain.InstantAllocationDollars, "onchain instant-allocation price is zero for device %s", device.Code)
+
+		// The price assertion belongs here, not on the CLI quote: what a caller
+		// means by "this seat costs the discounted price" is what the program
+		// charges, and that is the onchain figure.
+		if p.assertPrice != nil {
+			p.assertPrice(t, device, onchain.InstantAllocationDollars)
+		}
+		log.Info("Onchain seat prices", "device", device.Code,
+			"instant_allocation_price", onchain.InstantAllocationDollars,
+			"last_settled_epoch", onchain.LastSettledEpoch,
+			"current_epoch_price", onchain.CurrentEpochDollars,
+			"current_subscription_epoch", onchain.CurrentSubscriptionEpoch)
+	}) {
+		return
+	}
+
+	// The next two subtests are deliberately not guarded with
+	// `if !t.Run(...) { return }`: a CLI/chain divergence is a real product bug
+	// and must fail the run loudly, but the payment below funds from the onchain
+	// price, so the rest of the settlement flow is still worth running. Both
+	// compare whole dollars, never prorated micro-USDC: proration is a function
+	// of the current slot, so an exact comparison against a separately-timed read
+	// is inherently racy.
+	t.Run("validate_instant_allocation_price_matches_chain", func(t *testing.T) {
+		switch {
+		case !quoted.GetReportsInstantAllocationPrice():
+			// QA hosts install doublezero-solana from a version-pinned apt package
+			// (doublezero_solana_version in malbeclabs/infra
+			// ansible/inventory/*/group_vars/all.yml, 0.5.10-1 at time of writing),
+			// so the field only appears once a release carrying it is published and
+			// the pin bumped. Asserting against an absent field would read 0 and
+			// fail as "quoted 0, chain 43" — a misleading failure that looks like a
+			// new bug rather than a rollout gap.
+			t.Skipf("Skipping: installed doublezero-solana does not report instant_allocation_price (needs a release newer than the pinned 0.5.10-1); chain says %d USDC at last_settled_epoch=%d",
+				onchain.InstantAllocationDollars, onchain.LastSettledEpoch)
+		case quoted.InstantAllocationPrice == nil:
+			// Reported, but null: the CLI could not find the settled-epoch ring
+			// entry. That is a real condition, not a rollout artifact — the program
+			// performs the same lookup and would reject the allocation.
+			t.Fatalf("`shreds price` reported instant_allocation_price as unavailable for device %s, but the chain has a price of %d USDC at last_settled_epoch=%d",
+				device.Code, onchain.InstantAllocationDollars, onchain.LastSettledEpoch)
+		default:
+			require.Equal(t, onchain.InstantAllocationDollars, quoted.GetInstantAllocationPrice(),
+				"CLI quoted %d USDC for an instant allocation but the program charges %d USDC (last_settled_epoch=%d); `shreds price` and `shreds pay` read different ring entries",
+				quoted.GetInstantAllocationPrice(), onchain.InstantAllocationDollars, onchain.LastSettledEpoch)
+		}
+	})
+
+	t.Run("validate_epoch_price_matches_chain", func(t *testing.T) {
+		// The other half of the invariant: epoch_price must keep meaning the
+		// current-epoch price a recurring subscriber pays. Without this, someone
+		// "fixing" the divergence by repointing epoch_price at last_settled_epoch
+		// would go green here while silently breaking recurring subscribers.
+		if !onchain.HasCurrentEpoch {
+			// Part-way through UpdatingPrices the ring has not been advanced to the
+			// current epoch for every metro and device yet, so there is nothing to
+			// compare against. Transient by design, not a regression.
+			t.Skipf("Skipping: no onchain price entry yet for current_subscription_epoch=%d (prices are still being updated)",
+				onchain.CurrentSubscriptionEpoch)
+		}
+		require.Equal(t, onchain.CurrentEpochDollars, quoted.EpochPrice,
+			"CLI quoted epoch_price %d USDC but the chain has %d USDC at current_subscription_epoch=%d; epoch_price must stay the price a recurring subscriber pays next epoch",
+			quoted.EpochPrice, onchain.CurrentEpochDollars, onchain.CurrentSubscriptionEpoch)
+	})
 
 	// Set when wait_for_open_phase times out inside the epoch-tail closed
 	// window (verified against live chain state), so the parent can skip the
@@ -272,6 +348,39 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		t.Skipf("expected epoch-tail closed window: %s", epochTailWindow)
 	}
 
+	if !t.Run("refresh_onchain_seat_price", func(t *testing.T) {
+		// wait_for_open_phase blocks for up to two minutes, and a settlement
+		// completing inside that window advances last_settled_epoch — the very
+		// read the charge is derived from. Funding a price captured before the
+		// wait would underfund the escrow and reproduce the opaque pay-time
+		// rejection this test exists to avoid, so the funded amount comes from a
+		// read taken here, immediately before paying. A rollover between this read
+		// and the transaction landing is irreducible (any payer races it), but the
+		// window shrinks from minutes to seconds.
+		refreshed, err := client.SeatPrices(ctx, device.PubKey)
+		require.NoError(t, err, "failed to re-read the onchain seat prices before paying")
+		require.NotZero(t, refreshed.InstantAllocationDollars, "onchain instant-allocation price is zero for device %s", device.Code)
+
+		if refreshed.LastSettledEpoch != onchain.LastSettledEpoch ||
+			refreshed.InstantAllocationDollars != onchain.InstantAllocationDollars {
+			// Warn, not Info: this means the quote comparisons above were made
+			// against a snapshot the payment no longer uses, so a failure up there
+			// should be read in that light.
+			log.Warn("Onchain seat price moved while waiting for the open-for-requests phase; funding the refreshed price",
+				"device", device.Code,
+				"before_price", onchain.InstantAllocationDollars, "before_last_settled_epoch", onchain.LastSettledEpoch,
+				"after_price", refreshed.InstantAllocationDollars, "after_last_settled_epoch", refreshed.LastSettledEpoch)
+		}
+
+		onchain = refreshed
+		amount = strconv.FormatUint(onchain.InstantAllocationDollars, 10)
+		fundedAmount = onchain.InstantAllocationDollars * 1_000_000 // dollars to USDC raw units (6 decimals)
+		log.Info("Funding the seat escrow from the onchain price", "device", device.Code,
+			"amount", amount, "last_settled_epoch", onchain.LastSettledEpoch)
+	}) {
+		return
+	}
+
 	if !t.Run("record_balance_before_pay", func(t *testing.T) {
 		var err error
 		balanceBeforePay, err = client.GetUSDCBalance(ctx)
@@ -302,18 +411,22 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 			}
 			balanceAfterPay = bal
 			lastDebit = balanceBeforePay - bal
-			return lastDebit == parsedAmount
+			return lastDebit == fundedAmount
 		}, balanceSettleTimeout, 5*time.Second, "USDC balance should decrease by the paid amount")
-		log.Info("USDC balance after pay", "balance", balanceAfterPay, "debit", lastDebit, "expected_debit", parsedAmount)
+		log.Info("USDC balance after pay", "balance", balanceAfterPay, "debit", lastDebit, "expected_debit", fundedAmount)
 	}) {
 		return
 	}
 
 	if !t.Run("query_effective_seat_price", func(t *testing.T) {
+		// Built on the onchain price, not the CLI quote: this feeds the
+		// non-prorating balance assertion below, which must predict what the
+		// program actually charged. GetEffectiveSeatPrice applies the seat's price
+		// override on top when one is set.
 		var err error
-		effectivePrice, err = client.GetEffectiveSeatPrice(ctx, device.PubKey, epochPrice)
+		effectivePrice, err = client.GetEffectiveSeatPrice(ctx, device.PubKey, onchain.InstantAllocationDollars)
 		require.NoError(t, err, "failed to get effective seat price")
-		log.Info("Effective seat price", "effective_usdc", effectivePrice, "epoch_usdc", parsedAmount)
+		log.Info("Effective seat price", "effective_usdc", effectivePrice, "funded_usdc", fundedAmount)
 	}) {
 		return
 	}
@@ -409,10 +522,10 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		// wallet-delta proration check is not meaningful, so skip it rather than
 		// fail — the settlement path itself is still covered by the pay/ack/
 		// tunnel/withdraw sub-tests above.
-		if refund > parsedAmount {
+		if refund > fundedAmount {
 			log.Warn("skipping wallet-delta proration check: refund exceeds amount paid this run (pre-existing escrow drained)",
 				"refund", refund,
-				"paid_amount", parsedAmount,
+				"paid_amount", fundedAmount,
 				"before_pay", balanceBeforePay,
 				"after_pay", balanceAfterPay,
 				"after_withdraw", balanceAfterWithdraw,
@@ -421,13 +534,13 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		}
 		// Equivalent to balanceBeforePay - balanceAfterWithdraw, but computed from
 		// the amount paid this run so it cannot underflow given the guard above.
-		retained := parsedAmount - refund
+		retained := fundedAmount - refund
 
 		log.Info("USDC balance after withdraw",
 			"balance", balanceAfterWithdraw,
 			"before_pay", balanceBeforePay,
 			"after_pay", balanceAfterPay,
-			"paid_amount", parsedAmount,
+			"paid_amount", fundedAmount,
 			"effective_price", effectivePrice,
 			"refund", refund,
 			"retained", retained,
@@ -436,10 +549,10 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 
 		// Accounting invariant: regardless of prorating, the sum of what was
 		// refunded to the wallet and what the program retained must equal the
-		// amount debited at pay time. This uses parsedAmount rather than
+		// amount debited at pay time. This uses fundedAmount rather than
 		// effectivePrice because a seat with a zero price override is still
-		// charged parsedAmount at pay and fully refunded on withdraw.
-		require.Equal(t, parsedAmount, refund+retained,
+		// charged fundedAmount at pay and fully refunded on withdraw.
+		require.Equal(t, fundedAmount, refund+retained,
 			"refund + retained must equal the amount paid")
 
 		if !proratingEnabled || effectivePrice == 0 {

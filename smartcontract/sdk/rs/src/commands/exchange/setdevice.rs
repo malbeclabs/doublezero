@@ -1,13 +1,10 @@
-use crate::{
-    commands::{exchange::get::GetExchangeCommand, globalstate::get::GetGlobalStateCommand},
-    DoubleZeroClient,
-};
+use crate::{commands::exchange::get::GetExchangeCommand, DoubleZeroClient};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
     processors::exchange::setdevice::{ExchangeSetDeviceArgs, SetDeviceOption},
     state::exchange::ExchangeStatus,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::exchange::set_device_exchange;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetDeviceExchangeCommand {
@@ -19,10 +16,6 @@ pub struct SetDeviceExchangeCommand {
 
 impl SetDeviceExchangeCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let (_, exchange) = GetExchangeCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
@@ -32,46 +25,47 @@ impl SetDeviceExchangeCommand {
             return Err(eyre::eyre!("Exchange is not active"));
         }
 
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+
         let mut signature: Signature = Signature::default();
 
         if (exchange.device1_pk == Pubkey::default() && self.device1_pubkey.is_some())
             || (exchange.device1_pk != Pubkey::default() && self.device1_pubkey.is_none())
         {
-            signature = client.execute_authorized_transaction(
-                DoubleZeroInstruction::SetDeviceExchange(ExchangeSetDeviceArgs {
+            signature = client.send_transaction(set_device_exchange(
+                &program_id,
+                &payer,
+                &self.pubkey,
+                &self.device1_pubkey.unwrap_or(exchange.device1_pk),
+                ExchangeSetDeviceArgs {
                     index: 1,
                     set: if self.device1_pubkey.is_some() {
                         SetDeviceOption::Set
                     } else {
                         SetDeviceOption::Remove
                     },
-                }),
-                vec![
-                    AccountMeta::new(self.pubkey, false),
-                    AccountMeta::new(self.device1_pubkey.unwrap_or(exchange.device1_pk), false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
-            )?;
+                },
+            ))?;
         }
 
         if (exchange.device2_pk == Pubkey::default() && self.device2_pubkey.is_some())
             || (exchange.device2_pk != Pubkey::default() && self.device2_pubkey.is_none())
         {
-            signature = client.execute_authorized_transaction(
-                DoubleZeroInstruction::SetDeviceExchange(ExchangeSetDeviceArgs {
+            signature = client.send_transaction(set_device_exchange(
+                &program_id,
+                &payer,
+                &self.pubkey,
+                &self.device2_pubkey.unwrap_or(exchange.device2_pk),
+                ExchangeSetDeviceArgs {
                     index: 2,
                     set: if self.device2_pubkey.is_some() {
                         SetDeviceOption::Set
                     } else {
                         SetDeviceOption::Remove
                     },
-                }),
-                vec![
-                    AccountMeta::new(self.pubkey, false),
-                    AccountMeta::new(self.device2_pubkey.unwrap_or(exchange.device2_pk), false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
-            )?;
+                },
+            ))?;
         }
 
         Ok(signature)
@@ -85,8 +79,7 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_exchange_pda, get_globalstate_pda},
+        pda::get_exchange_pda,
         processors::exchange::setdevice::{ExchangeSetDeviceArgs, SetDeviceOption},
         state::{
             accountdata::AccountData,
@@ -94,15 +87,17 @@ mod tests {
             exchange::{Exchange, ExchangeStatus},
         },
     };
+    use doublezero_serviceability_instruction::exchange::set_device_exchange;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_exchange_setdevice1_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (exchange_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (exchange_pubkey, _) = get_exchange_pda(&program_id, 1);
         let device_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
 
         let exchange = Exchange {
@@ -130,24 +125,22 @@ mod tests {
             .with(predicate::eq(exchange_pubkey))
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
+        let expected = set_device_exchange(
+            &program_id,
+            &payer,
+            &exchange_pubkey,
+            &device_pubkey,
+            ExchangeSetDeviceArgs {
+                index: 1,
+                set: SetDeviceOption::Set,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
+            .expect_send_transaction()
             .times(1)
             .in_sequence(&mut seq)
-            .with(
-                predicate::eq(DoubleZeroInstruction::SetDeviceExchange(
-                    ExchangeSetDeviceArgs {
-                        index: 1,
-                        set: SetDeviceOption::Set,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(exchange_pubkey, false),
-                    AccountMeta::new(device_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = SetDeviceExchangeCommand {
             pubkey: exchange_pubkey,
@@ -163,8 +156,9 @@ mod tests {
     fn test_commands_exchange_setdevice2_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (exchange_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (exchange_pubkey, _) = get_exchange_pda(&program_id, 1);
         let device_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
 
         let exchange = Exchange {
@@ -192,24 +186,22 @@ mod tests {
             .with(predicate::eq(exchange_pubkey))
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
+        let expected = set_device_exchange(
+            &program_id,
+            &payer,
+            &exchange_pubkey,
+            &device_pubkey,
+            ExchangeSetDeviceArgs {
+                index: 1,
+                set: SetDeviceOption::Remove,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
+            .expect_send_transaction()
             .times(1)
             .in_sequence(&mut seq)
-            .with(
-                predicate::eq(DoubleZeroInstruction::SetDeviceExchange(
-                    ExchangeSetDeviceArgs {
-                        index: 1,
-                        set: SetDeviceOption::Remove,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(exchange_pubkey, false),
-                    AccountMeta::new(device_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = SetDeviceExchangeCommand {
             pubkey: exchange_pubkey,
@@ -225,8 +217,9 @@ mod tests {
     fn test_commands_exchange_setdevice3_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (exchange_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (exchange_pubkey, _) = get_exchange_pda(&program_id, 1);
 
         let device1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let device2_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzdvYqNpaRAUo");
@@ -256,43 +249,39 @@ mod tests {
             .with(predicate::eq(exchange_pubkey))
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
+        let expected1 = set_device_exchange(
+            &program_id,
+            &payer,
+            &exchange_pubkey,
+            &device1_pubkey,
+            ExchangeSetDeviceArgs {
+                index: 1,
+                set: SetDeviceOption::Remove,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
+            .expect_send_transaction()
             .times(1)
             .in_sequence(&mut seq)
-            .with(
-                predicate::eq(DoubleZeroInstruction::SetDeviceExchange(
-                    ExchangeSetDeviceArgs {
-                        index: 1,
-                        set: SetDeviceOption::Remove,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(exchange_pubkey, false),
-                    AccountMeta::new(device1_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .with(predicate::eq(expected1))
+            .returning(|_| Ok(Signature::new_unique()));
 
+        let expected2 = set_device_exchange(
+            &program_id,
+            &payer,
+            &exchange_pubkey,
+            &device2_pubkey,
+            ExchangeSetDeviceArgs {
+                index: 2,
+                set: SetDeviceOption::Remove,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
+            .expect_send_transaction()
             .times(1)
             .in_sequence(&mut seq)
-            .with(
-                predicate::eq(DoubleZeroInstruction::SetDeviceExchange(
-                    ExchangeSetDeviceArgs {
-                        index: 2,
-                        set: SetDeviceOption::Remove,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(exchange_pubkey, false),
-                    AccountMeta::new(device2_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .with(predicate::eq(expected2))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = SetDeviceExchangeCommand {
             pubkey: exchange_pubkey,
@@ -308,8 +297,9 @@ mod tests {
     fn test_commands_exchange_setdevice4_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (exchange_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (exchange_pubkey, _) = get_exchange_pda(&program_id, 1);
 
         let device1_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let device2_pubkey = Pubkey::new_unique();
@@ -339,41 +329,37 @@ mod tests {
             .with(predicate::eq(exchange_pubkey))
             .returning(move |_| Ok(AccountData::Exchange(exchange.clone())));
 
+        let expected1 = set_device_exchange(
+            &program_id,
+            &payer,
+            &exchange_pubkey,
+            &device1_pubkey,
+            ExchangeSetDeviceArgs {
+                index: 1,
+                set: SetDeviceOption::Set,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::SetDeviceExchange(
-                    ExchangeSetDeviceArgs {
-                        index: 1,
-                        set: SetDeviceOption::Set,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(exchange_pubkey, false),
-                    AccountMeta::new(device1_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected1))
+            .returning(|_| Ok(Signature::new_unique()));
 
+        let expected2 = set_device_exchange(
+            &program_id,
+            &payer,
+            &exchange_pubkey,
+            &device2_pubkey,
+            ExchangeSetDeviceArgs {
+                index: 2,
+                set: SetDeviceOption::Set,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
+            .expect_send_transaction()
             .times(1)
             .in_sequence(&mut seq)
-            .with(
-                predicate::eq(DoubleZeroInstruction::SetDeviceExchange(
-                    ExchangeSetDeviceArgs {
-                        index: 2,
-                        set: SetDeviceOption::Set,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(exchange_pubkey, false),
-                    AccountMeta::new(device2_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .with(predicate::eq(expected2))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = SetDeviceExchangeCommand {
             pubkey: exchange_pubkey,

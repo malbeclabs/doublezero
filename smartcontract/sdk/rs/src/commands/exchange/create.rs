@@ -1,10 +1,9 @@
 use doublezero_program_common::validate_account_code;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::{get_exchange_pda, get_globalconfig_pda},
-    processors::exchange::create::ExchangeCreateArgs,
+    pda::get_exchange_pda, processors::exchange::create::ExchangeCreateArgs,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::exchange::create_exchange;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 
@@ -22,29 +21,28 @@ impl CreateExchangeCommand {
         let code =
             validate_account_code(&self.code).map_err(|err| eyre::eyre!("invalid code: {err}"))?;
 
-        let (globalstate_pubkey, globalstate) = GetGlobalStateCommand
+        let (_, globalstate) = GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
-        let (pda_pubkey, _) =
-            get_exchange_pda(&client.get_program_id(), globalstate.account_index + 1);
-        client
-            .execute_authorized_transaction(
-                DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-                    code,
-                    name: self.name.clone(),
-                    lat: self.lat,
-                    lng: self.lng,
-                    reserved: 0, // BGP community is auto-assigned
-                }),
-                vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalconfig_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ],
-            )
-            .map(|sig| (sig, pda_pubkey))
+        let program_id = client.get_program_id();
+        let account_index = globalstate.account_index + 1;
+        let (pda_pubkey, _) = get_exchange_pda(&program_id, account_index);
+
+        let ix = create_exchange(
+            &program_id,
+            &client.get_payer(),
+            account_index,
+            ExchangeCreateArgs {
+                code,
+                name: self.name.clone(),
+                lat: self.lat,
+                lng: self.lng,
+                reserved: 0, // BGP community is auto-assigned
+            },
+        );
+
+        client.send_transaction(ix).map(|sig| (sig, pda_pubkey))
     }
 }
 
@@ -54,39 +52,34 @@ mod tests {
         commands::exchange::create::CreateExchangeCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
-    use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_exchange_pda, get_globalconfig_pda, get_globalstate_pda},
-        processors::exchange::create::ExchangeCreateArgs,
-    };
+    use doublezero_serviceability::processors::exchange::create::ExchangeCreateArgs;
+    use doublezero_serviceability_instruction::exchange::create_exchange;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::signature::Signature;
 
     #[test]
     fn test_commands_exchange_create_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
+        let expected = create_exchange(
+            &program_id,
+            &payer,
+            1,
+            ExchangeCreateArgs {
+                code: "test_exchange".to_string(),
+                name: "Test Exchange".to_string(),
+                lat: 0.0,
+                lng: 0.0,
+                reserved: 0,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-                    code: "test_exchange".to_string(),
-                    name: "Test Exchange".to_string(),
-                    lat: 0.0,
-                    lng: 0.0,
-                    reserved: 0,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalconfig_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let create_command = CreateExchangeCommand {
             code: "test_exchange".to_string(),

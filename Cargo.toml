@@ -119,6 +119,7 @@ doublezero-geolocation-cli = { path = "crates/doublezero-geolocation-cli" }
 # the `doublezero` CLI.
 doublezero-sentinel = { path = "crates/sentinel", default-features = false }
 doublezero-serviceability-cli = { path = "smartcontract/cli" }
+doublezero-serviceability-instruction = { path = "crates/doublezero-serviceability-instruction" }
 doublezero-program-common = { path = "smartcontract/programs/common" }
 doublezero_sdk = { path = "smartcontract/sdk/rs" }
 

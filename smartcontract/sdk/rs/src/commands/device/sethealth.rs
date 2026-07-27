@@ -1,9 +1,9 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::DoubleZeroClient;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, processors::device::sethealth::DeviceSetHealthArgs,
-    state::device::DeviceHealth,
+    processors::device::sethealth::DeviceSetHealthArgs, state::device::DeviceHealth,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::device::set_device_health;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetDeviceHealthCommand {
@@ -13,19 +13,14 @@ pub struct SetDeviceHealthCommand {
 
 impl SetDeviceHealthCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::SetDeviceHealth(DeviceSetHealthArgs {
+        client.send_transaction(set_device_health(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            DeviceSetHealthArgs {
                 health: self.health,
-            }),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-        )
+            },
+        ))
     }
 }
 
@@ -33,33 +28,28 @@ impl SetDeviceHealthCommand {
 mod tests {
     use super::*;
     use crate::tests::utils::create_test_client;
-    use doublezero_serviceability::pda::get_globalstate_pda;
     use mockall::predicate;
+    use solana_sdk::signature::Signature;
 
     #[test]
     fn test_commands_device_set_health_command() {
-        // create_test_client already mocks the GlobalState `get` that
-        // GetGlobalStateCommand reads before building the instruction.
         let mut client = create_test_client();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
 
         let device_pubkey = Pubkey::new_unique();
         let health = DeviceHealth::ReadyForUsers;
 
+        let expected = set_device_health(
+            &program_id,
+            &payer,
+            &device_pubkey,
+            DeviceSetHealthArgs { health },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::SetDeviceHealth(
-                    DeviceSetHealthArgs { health },
-                )),
-                // Instruction accounts: [device, globalstate].
-                predicate::function(move |accounts: &Vec<AccountMeta>| {
-                    accounts.len() == 2
-                        && accounts[0].pubkey == device_pubkey
-                        && accounts[1].pubkey == globalstate_pubkey
-                }),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let command = SetDeviceHealthCommand {
             pubkey: device_pubkey,

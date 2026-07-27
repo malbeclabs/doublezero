@@ -4,18 +4,15 @@ use crate::{
     commands::{
         accesspass::get::GetAccessPassCommand,
         device::get::GetDeviceCommand,
-        globalstate::get::GetGlobalStateCommand,
         multicastgroup::{
             list::ListMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
         },
     },
     DoubleZeroClient,
 };
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
-    processors::user::delete::UserDeleteArgs, resource::ResourceType,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability::processors::user::delete::UserDeleteArgs;
+use doublezero_serviceability_instruction::user::delete_user;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteUserCommand {
@@ -30,10 +27,6 @@ impl DeleteUserCommand {
 
 impl DeleteUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let user = client
             .get(self.pubkey)
             .map_err(|_| eyre::eyre!("User not found ({})", self.pubkey))?
@@ -93,51 +86,26 @@ impl DeleteUserCommand {
             )
         })?;
 
-        let (user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
-        let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
+        // The builder derives globalstate + all resource-extension PDAs and the
+        // dz_prefix block loop. The optional tenant account is appended only when
+        // the user carries a non-default tenant. The on-chain DeleteUser releases
+        // the EdgeSeat feed seat from the feed recorded on the User, so no trailing
+        // Feed account is needed here.
+        let tenant = (user.tenant_pk != Pubkey::default()).then_some(user.tenant_pk);
+        client.send_transaction(delete_user(
             &client.get_program_id(),
-            ResourceType::MulticastPublisherBlock,
-        );
-        let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
-            &client.get_program_id(),
-            ResourceType::TunnelIds(user.device_pk, 0),
-        );
-
-        let mut accounts = vec![
-            AccountMeta::new(self.pubkey, false),
-            AccountMeta::new(accesspass_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user.device_pk, false),
-            AccountMeta::new(user_tunnel_block_ext, false),
-            AccountMeta::new(multicast_publisher_block_ext, false),
-            AccountMeta::new(device_tunnel_ids_ext, false),
-        ];
-
-        for idx in 0..dz_prefix_count {
-            let (dz_prefix_ext, _, _) = get_resource_extension_pda(
-                &client.get_program_id(),
-                ResourceType::DzPrefixBlock(user.device_pk, idx),
-            );
-            accounts.push(AccountMeta::new(dz_prefix_ext, false));
-        }
-
-        if user.tenant_pk != Pubkey::default() {
-            accounts.push(AccountMeta::new(user.tenant_pk, false));
-        }
-
-        accounts.push(AccountMeta::new(user.owner, false));
-
-        // The on-chain DeleteUser releases the EdgeSeat feed seat from the feed recorded on the
-        // User (set when the seat was ticked at connect), so no trailing Feed account is needed
-        // here.
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            &client.get_payer(),
+            &self.pubkey,
+            &accesspass_pk,
+            &user.device_pk,
+            dz_prefix_count_u8,
+            tenant,
+            &user.owner,
+            UserDeleteArgs {
                 dz_prefix_count: dz_prefix_count_u8,
                 multicast_publisher_count: 1,
-            }),
-            accounts,
-        )
+            },
+        ))
     }
 }
 
@@ -149,15 +117,10 @@ mod tests {
     };
     use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{
-            get_accesspass_pda, get_globalstate_pda, get_multicastgroup_pda,
-            get_resource_extension_pda,
-        },
+        pda::{get_accesspass_pda, get_globalstate_pda, get_multicastgroup_pda},
         processors::{
             multicastgroup::subscribe::UpdateMulticastGroupRolesArgs, user::delete::UserDeleteArgs,
         },
-        resource::ResourceType,
         state::{
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
@@ -168,8 +131,11 @@ mod tests {
             user::{User, UserCYOA, UserStatus, UserType},
         },
     };
+    use doublezero_serviceability_instruction::{
+        multicastgroup::update_multicast_group_roles, user::delete_user,
+    };
     use mockall::{predicate, Sequence};
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::net::Ipv4Addr;
 
     #[test]
@@ -177,7 +143,8 @@ mod tests {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let payer = client.get_payer();
+
         let user_pubkey = Pubkey::new_unique();
         let device_pk = Pubkey::new_unique();
         let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
@@ -303,31 +270,26 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone1.clone())));
 
-        // Execute transaction for UpdateMulticastGroupRolesCommand (unsubscribe)
-        let (multicast_publisher_block_ext_unsub, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+        // Execute transaction for UpdateMulticastGroupRolesCommand (unsubscribe):
+        // assert the exact instruction the composed cascade emits.
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateMulticastGroupRoles(
-                    UpdateMulticastGroupRolesArgs {
-                        publisher: false,
-                        subscriber: false,
-                        client_ip,
-                        use_onchain_allocation: true,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(mgroup_pubkey, false),
-                    AccountMeta::new(accesspass_pubkey, false),
-                    AccountMeta::new(user_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(multicast_publisher_block_ext_unsub, false),
-                ]),
-            )
+            .expect_send_transaction()
+            .with(predicate::eq(update_multicast_group_roles(
+                &program_id,
+                &payer,
+                &mgroup_pubkey,
+                &accesspass_pubkey,
+                &user_pubkey,
+                UpdateMulticastGroupRolesArgs {
+                    publisher: false,
+                    subscriber: false,
+                    client_ip,
+                    use_onchain_allocation: true,
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .returning(|_| Ok(Signature::new_unique()));
 
         // Call 6: AccessPass fetch for DeleteUserCommand
         let accesspass_clone2 = accesspass.clone();
@@ -351,39 +313,28 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
-        let (user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-        let (multicast_publisher_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-        let (device_tunnel_ids_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
-        let (dz_prefix_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
-        let user_owner = client.get_payer();
-
-        // Execute transaction for DeleteUser
+        // Execute transaction for DeleteUser: assert the exact instruction (the builder
+        // derives globalstate + every resource-extension PDA; tenant is None, owner is
+        // the payer, and the device advertises one dz_prefix).
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            .expect_send_transaction()
+            .with(predicate::eq(delete_user(
+                &program_id,
+                &payer,
+                &user_pubkey,
+                &accesspass_pubkey,
+                &device_pk,
+                1,
+                None,
+                &payer,
+                UserDeleteArgs {
                     dz_prefix_count: 1,
                     multicast_publisher_count: 1,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(user_pubkey, false),
-                    AccountMeta::new(accesspass_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(device_pk, false),
-                    AccountMeta::new(user_tunnel_block_ext, false),
-                    AccountMeta::new(multicast_publisher_block_ext, false),
-                    AccountMeta::new(device_tunnel_ids_ext, false),
-                    AccountMeta::new(dz_prefix_ext, false),
-                    AccountMeta::new(user_owner, false),
-                ]),
-            )
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
@@ -398,7 +349,8 @@ mod tests {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let payer = client.get_payer();
+
         let user_pubkey = Pubkey::new_unique();
         let device_pk = Pubkey::new_unique();
         let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
@@ -522,30 +474,25 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone1.clone())));
 
-        let (multicast_publisher_block_ext_unsub, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+        // The single (deduplicated) unsubscribe: assert the exact instruction.
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateMulticastGroupRoles(
-                    UpdateMulticastGroupRolesArgs {
-                        publisher: false,
-                        subscriber: false,
-                        client_ip,
-                        use_onchain_allocation: true,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(mgroup_pubkey, false),
-                    AccountMeta::new(accesspass_pubkey, false),
-                    AccountMeta::new(user_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(multicast_publisher_block_ext_unsub, false),
-                ]),
-            )
+            .expect_send_transaction()
+            .with(predicate::eq(update_multicast_group_roles(
+                &program_id,
+                &payer,
+                &mgroup_pubkey,
+                &accesspass_pubkey,
+                &user_pubkey,
+                UpdateMulticastGroupRolesArgs {
+                    publisher: false,
+                    subscriber: false,
+                    client_ip,
+                    use_onchain_allocation: true,
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .returning(|_| Ok(Signature::new_unique()));
 
         // AccessPass fetch for DeleteUser
         let accesspass_clone2 = accesspass.clone();
@@ -569,39 +516,26 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
-        let (user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-        let (multicast_publisher_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-        let (device_tunnel_ids_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
-        let (dz_prefix_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
-        let user_owner = client.get_payer();
-
-        // DeleteUser transaction
+        // DeleteUser transaction: assert the exact instruction.
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            .expect_send_transaction()
+            .with(predicate::eq(delete_user(
+                &program_id,
+                &payer,
+                &user_pubkey,
+                &accesspass_pubkey,
+                &device_pk,
+                1,
+                None,
+                &payer,
+                UserDeleteArgs {
                     dz_prefix_count: 1,
                     multicast_publisher_count: 1,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(user_pubkey, false),
-                    AccountMeta::new(accesspass_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(device_pk, false),
-                    AccountMeta::new(user_tunnel_block_ext, false),
-                    AccountMeta::new(multicast_publisher_block_ext, false),
-                    AccountMeta::new(device_tunnel_ids_ext, false),
-                    AccountMeta::new(dz_prefix_ext, false),
-                    AccountMeta::new(user_owner, false),
-                ]),
-            )
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
@@ -781,31 +715,26 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone1.clone())));
 
-        // Call 6: Execute unsubscribe transaction
-        let (multicast_publisher_block_ext_unsub, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
+        // Call 6: Execute unsubscribe transaction — the foundation key is the payer, but
+        // the access pass and the user's client_ip come from the user's owner.
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateMulticastGroupRoles(
-                    UpdateMulticastGroupRolesArgs {
-                        publisher: false,
-                        subscriber: false,
-                        client_ip,
-                        use_onchain_allocation: true,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(mgroup_pubkey, false),
-                    AccountMeta::new(accesspass_pubkey, false),
-                    AccountMeta::new(user_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(multicast_publisher_block_ext_unsub, false),
-                ]),
-            )
+            .expect_send_transaction()
+            .with(predicate::eq(update_multicast_group_roles(
+                &program_id,
+                &foundation_key,
+                &mgroup_pubkey,
+                &accesspass_pubkey,
+                &user_pubkey,
+                UpdateMulticastGroupRolesArgs {
+                    publisher: false,
+                    subscriber: false,
+                    client_ip,
+                    use_onchain_allocation: true,
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .returning(|_| Ok(Signature::new_unique()));
 
         // Call 7a: UNSPECIFIED AccessPass lookup fails (fallback path) — DeleteUserCommand
         let user_clone_fallback2 = user_activated_final.clone();
@@ -838,38 +767,27 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
-        let (user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-        let (multicast_publisher_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-        let (device_tunnel_ids_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
-        let (dz_prefix_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
-
-        // Call 8: Execute DeleteUser transaction
+        // Call 8: Execute DeleteUser transaction — payer is the foundation key, but the
+        // trailing owner account is the user's own owner, not the payer.
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+            .expect_send_transaction()
+            .with(predicate::eq(delete_user(
+                &program_id,
+                &foundation_key,
+                &user_pubkey,
+                &accesspass_pubkey,
+                &device_pk,
+                1,
+                None,
+                &user_owner,
+                UserDeleteArgs {
                     dz_prefix_count: 1,
                     multicast_publisher_count: 1,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(user_pubkey, false),
-                    AccountMeta::new(accesspass_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(device_pk, false),
-                    AccountMeta::new(user_tunnel_block_ext, false),
-                    AccountMeta::new(multicast_publisher_block_ext, false),
-                    AccountMeta::new(device_tunnel_ids_ext, false),
-                    AccountMeta::new(dz_prefix_ext, false),
-                    AccountMeta::new(user_owner, false),
-                ]),
-            )
+                },
+            )))
             .times(1)
             .in_sequence(&mut seq)
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
@@ -885,7 +803,6 @@ mod tests {
 
         let payer = client.get_payer();
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
 
         let user_pubkey = Pubkey::new_unique();
         let device_pk = Pubkey::new_unique();
@@ -917,7 +834,6 @@ mod tests {
             ..Default::default()
         };
 
-        let owner = user.owner;
         client
             .expect_get()
             .with(predicate::eq(user_pubkey))
@@ -967,36 +883,27 @@ mod tests {
             .with(predicate::eq(AccountType::MulticastGroup))
             .returning(|_| Ok(std::collections::HashMap::new()));
 
-        // Compute ResourceExtension PDAs
-        let (user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-        let (multicast_publisher_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-        let (device_tunnel_ids_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
-        let (dz_prefix_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
-
+        // Single-send path (no multicast subscriptions): assert the exact DeleteUser
+        // instruction the command hands to send_transaction. tenant is None (default),
+        // owner is the payer, and the device advertises one dz_prefix.
+        let expected = delete_user(
+            &program_id,
+            &payer,
+            &user_pubkey,
+            &accesspass_pubkey,
+            &device_pk,
+            1,
+            None,
+            &payer,
+            UserDeleteArgs {
+                dz_prefix_count: 1,
+                multicast_publisher_count: 1,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-                    dz_prefix_count: 1,
-                    multicast_publisher_count: 1,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(user_pubkey, false),
-                    AccountMeta::new(accesspass_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(device_pk, false),
-                    AccountMeta::new(user_tunnel_block_ext, false),
-                    AccountMeta::new(multicast_publisher_block_ext, false),
-                    AccountMeta::new(device_tunnel_ids_ext, false),
-                    AccountMeta::new(dz_prefix_ext, false),
-                    AccountMeta::new(owner, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,

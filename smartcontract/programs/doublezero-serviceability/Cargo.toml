@@ -29,6 +29,10 @@ thiserror.workspace = true
 bitflags.workspace = true
 
 [dev-dependencies]
+# RFC-26 R10 safety net: build instructions via the pure builder crate and run them
+# against the real program to catch account-order drift. Dev-dep only — the cycle
+# (serviceability --[dev]--> instruction-builder --> serviceability) is allowed by cargo.
+doublezero-serviceability-instruction.workspace = true
 solana-sdk.workspace = true
 solana-sdk-ids.workspace = true
 solana-system-interface.workspace = true

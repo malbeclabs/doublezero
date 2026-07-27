@@ -1,10 +1,8 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::DoubleZeroClient;
 use doublezero_program_common::validate_account_code;
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_globalconfig_pda,
-    processors::exchange::update::ExchangeUpdateArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability::processors::exchange::update::ExchangeUpdateArgs;
+use doublezero_serviceability_instruction::exchange::update_exchange;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateExchangeCommand {
@@ -24,26 +22,19 @@ impl UpdateExchangeCommand {
             .map(|code| validate_account_code(code))
             .transpose()
             .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
+        client.send_transaction(update_exchange(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            ExchangeUpdateArgs {
                 code,
                 name: self.name.to_owned(),
                 lat: self.lat,
                 lng: self.lng,
                 bgp_community: self.bgp_community,
-            }),
-            vec![
-                AccountMeta::new(self.pubkey, false),
-                AccountMeta::new(globalconfig_pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-            ],
-        )
+            },
+        ))
     }
 }
 
@@ -54,38 +45,36 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_exchange_pda, get_globalconfig_pda, get_globalstate_pda},
-        processors::exchange::update::ExchangeUpdateArgs,
+        pda::get_exchange_pda, processors::exchange::update::ExchangeUpdateArgs,
     };
+    use doublezero_serviceability_instruction::exchange::update_exchange;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::signature::Signature;
 
     #[test]
     fn test_commands_exchange_update_command() {
         let mut client = create_test_client();
 
-        let (globalstate_pubkey, _globalstate) = get_globalstate_pda(&client.get_program_id());
-        let (globalconfig_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
-        let (pda_pubkey, _) = get_exchange_pda(&client.get_program_id(), 1);
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (pda_pubkey, _) = get_exchange_pda(&program_id, 1);
 
+        let expected = update_exchange(
+            &program_id,
+            &payer,
+            &pda_pubkey,
+            ExchangeUpdateArgs {
+                code: Some("test_exchange".to_string()),
+                name: Some("Test Exchange".to_string()),
+                lat: Some(0.0),
+                lng: Some(0.0),
+                bgp_community: Some(0),
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateExchange(ExchangeUpdateArgs {
-                    code: Some("test_exchange".to_string()),
-                    name: Some("Test Exchange".to_string()),
-                    lat: Some(0.0),
-                    lng: Some(0.0),
-                    bgp_community: Some(0),
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalconfig_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let update_command = UpdateExchangeCommand {
             pubkey: pda_pubkey,

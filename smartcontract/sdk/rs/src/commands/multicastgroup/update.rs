@@ -1,10 +1,8 @@
-use crate::{DoubleZeroClient, GetGlobalStateCommand};
+use crate::DoubleZeroClient;
 use doublezero_program_common::validate_account_code;
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
-    processors::multicastgroup::update::MulticastGroupUpdateArgs, resource::ResourceType,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability::processors::multicastgroup::update::MulticastGroupUpdateArgs;
+use doublezero_serviceability_instruction::multicastgroup::update_multicast_group;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -26,38 +24,23 @@ impl UpdateMulticastGroupCommand {
             .map(|code| validate_account_code(code))
             .transpose()
             .map_err(|err| eyre::eyre!("invalid code: {err}"))?;
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        // multicast_ip changes require the resource extension; other field updates skip it.
-        let updating_multicast_ip = self.multicast_ip.is_some();
-
-        let mut accounts = vec![
-            AccountMeta::new(self.pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ];
-
-        if updating_multicast_ip {
-            let (multicast_group_block_ext, _, _) = get_resource_extension_pda(
-                &client.get_program_id(),
-                ResourceType::MulticastGroupBlock,
-            );
-            accounts.push(AccountMeta::new(multicast_group_block_ext, false));
-        }
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
+        // The builder decides whether the multicast_group_block resource extension is needed and
+        // sets `use_onchain_allocation` from `multicast_ip.is_some()`.
+        client.send_transaction(update_multicast_group(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &self.pubkey,
+            MulticastGroupUpdateArgs {
                 code,
                 multicast_ip: self.multicast_ip,
                 max_bandwidth: self.max_bandwidth,
                 publisher_count: self.publisher_count,
                 subscriber_count: self.subscriber_count,
-                use_onchain_allocation: updating_multicast_ip,
+                use_onchain_allocation: self.multicast_ip.is_some(),
                 owner: self.owner,
-            }),
-            accounts,
-        )
+            },
+        ))
     }
 }
 
@@ -68,45 +51,38 @@ mod tests {
         tests::utils::create_test_client, DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_location_pda, get_resource_extension_pda},
-        processors::multicastgroup::update::MulticastGroupUpdateArgs,
-        resource::ResourceType,
+        pda::get_location_pda, processors::multicastgroup::update::MulticastGroupUpdateArgs,
     };
+    use doublezero_serviceability_instruction::multicastgroup::update_multicast_group;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, signature::Signature};
+    use solana_sdk::signature::Signature;
 
     #[test]
     fn test_commands_multicastgroup_update_with_multicast_ip() {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let payer = client.get_payer();
         let (pda_pubkey, _) = get_location_pda(&program_id, 1);
-        let (multicast_group_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
 
+        let expected = update_multicast_group(
+            &program_id,
+            &payer,
+            &pda_pubkey,
+            MulticastGroupUpdateArgs {
+                code: Some("test_group".to_string()),
+                multicast_ip: Some("239.0.0.1".parse().unwrap()),
+                max_bandwidth: Some(1000),
+                publisher_count: Some(10),
+                subscriber_count: Some(100),
+                use_onchain_allocation: true,
+                owner: None,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateMulticastGroup(
-                    MulticastGroupUpdateArgs {
-                        code: Some("test_group".to_string()),
-                        multicast_ip: Some("239.0.0.1".parse().unwrap()),
-                        max_bandwidth: Some(1000),
-                        publisher_count: Some(10),
-                        subscriber_count: Some(100),
-                        use_onchain_allocation: true,
-                        owner: None,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(multicast_group_block_ext, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let update_command = UpdateMulticastGroupCommand {
             pubkey: pda_pubkey,
@@ -135,29 +111,27 @@ mod tests {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let payer = client.get_payer();
         let (pda_pubkey, _) = get_location_pda(&program_id, 1);
 
+        let expected = update_multicast_group(
+            &program_id,
+            &payer,
+            &pda_pubkey,
+            MulticastGroupUpdateArgs {
+                code: None,
+                multicast_ip: None,
+                max_bandwidth: Some(2000),
+                publisher_count: None,
+                subscriber_count: None,
+                use_onchain_allocation: false,
+                owner: None,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::UpdateMulticastGroup(
-                    MulticastGroupUpdateArgs {
-                        code: None,
-                        multicast_ip: None,
-                        max_bandwidth: Some(2000),
-                        publisher_count: None,
-                        subscriber_count: None,
-                        use_onchain_allocation: false,
-                        owner: None,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(pda_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = UpdateMulticastGroupCommand {
             pubkey: pda_pubkey,

@@ -1,16 +1,11 @@
-use crate::{
-    commands::{device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand},
-    DoubleZeroClient,
-};
+use crate::{commands::device::get::GetDeviceCommand, DoubleZeroClient};
 use doublezero_program_common::types::network_v4::NetworkV4;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::{get_resource_extension_pda, get_topology_pda},
     processors::device::interface::create::DeviceInterfaceCreateArgs,
-    resource::ResourceType,
     state::interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::device::create_device_interface;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateDeviceInterfaceCommand {
@@ -33,64 +28,47 @@ pub struct CreateDeviceInterfaceCommand {
 
 impl CreateDeviceInterfaceCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let (device_pubkey, device) = GetDeviceCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
         .execute(client)?;
 
-        let (device_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::DeviceTunnelBlock);
-        let (segment_routing_ids_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
-        let mut accounts = vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(device.contributor_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_tunnel_block_ext, false),
-            AccountMeta::new(segment_routing_ids_ext, false),
-        ];
-
-        // For Vpnv4 loopbacks, append topology PDAs so the onchain program
-        // can allocate FlexAlgoNodeSegment entries atomically.
-        let topology_count: u8 = if self.loopback_type == LoopbackType::Vpnv4 {
-            let n = self.topology_names.len();
-            u8::try_from(n).map_err(|_| {
-                eyre::eyre!("too many topologies for one CreateDeviceInterface call: {n} > 255")
-            })?
-        } else {
-            0
-        };
-        if self.loopback_type == LoopbackType::Vpnv4 {
-            for name in &self.topology_names {
-                let (topology_pda, _) = get_topology_pda(&client.get_program_id(), name);
-                accounts.push(AccountMeta::new_readonly(topology_pda, false));
-            }
+        // The builder writes `topology_count` and panics if it overflows a u8.
+        // Reject over-long input here so the command surfaces an error instead of
+        // aborting the process (the builder is infallible by RFC-26 contract).
+        if u8::try_from(self.topology_names.len()).is_err() {
+            return Err(eyre::eyre!(
+                "too many topologies for one CreateDeviceInterface call: {} > 255",
+                self.topology_names.len()
+            ));
         }
 
-        client
-            .execute_authorized_transaction(
-                DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
-                    name: self.name.clone(),
-                    loopback_type: self.loopback_type,
-                    interface_cyoa: self.interface_cyoa,
-                    interface_dia: self.interface_dia,
-                    bandwidth: self.bandwidth,
-                    cir: self.cir,
-                    ip_net: self.ip_net,
-                    mtu: self.mtu,
-                    routing_mode: self.routing_mode,
-                    vlan_id: self.vlan_id,
-                    user_tunnel_endpoint: self.user_tunnel_endpoint,
-                    use_onchain_allocation: true,
-                    topology_count,
-                }),
-                accounts,
-            )
-            .map(|sig| (sig, device_pubkey))
+        // The builder appends topology PDAs (and writes topology_count) only for
+        // Vpnv4 loopbacks; topology_names is ignored otherwise.
+        let ix = create_device_interface(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &device_pubkey,
+            &device.contributor_pk,
+            &self.topology_names,
+            DeviceInterfaceCreateArgs {
+                name: self.name.clone(),
+                loopback_type: self.loopback_type,
+                interface_cyoa: self.interface_cyoa,
+                interface_dia: self.interface_dia,
+                bandwidth: self.bandwidth,
+                cir: self.cir,
+                ip_net: self.ip_net,
+                mtu: self.mtu,
+                routing_mode: self.routing_mode,
+                vlan_id: self.vlan_id,
+                user_tunnel_endpoint: self.user_tunnel_endpoint,
+                use_onchain_allocation: true,
+                topology_count: 0,
+            },
+        );
+
+        client.send_transaction(ix).map(|sig| (sig, device_pubkey))
     }
 }
 
@@ -98,13 +76,10 @@ impl CreateDeviceInterfaceCommand {
 mod tests {
     use super::*;
     use crate::tests::utils::create_test_client;
-    use doublezero_serviceability::{
-        pda::get_globalstate_pda,
-        state::{
-            accountdata::AccountData,
-            accounttype::AccountType,
-            device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
-        },
+    use doublezero_serviceability::state::{
+        accountdata::AccountData,
+        accounttype::AccountType,
+        device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
     };
     use mockall::predicate;
 
@@ -146,11 +121,7 @@ mod tests {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-        let (device_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-        let (segment_routing_ids_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+        let payer = client.get_payer();
 
         let device_pubkey = Pubkey::new_unique();
         let device = make_test_device();
@@ -161,35 +132,32 @@ mod tests {
             .with(predicate::eq(device_pubkey))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
+        let expected = create_device_interface(
+            &program_id,
+            &payer,
+            &device_pubkey,
+            &contributor_pk,
+            &[],
+            DeviceInterfaceCreateArgs {
+                name: "Loopback0".to_string(),
+                loopback_type: LoopbackType::Vpnv4,
+                interface_cyoa: InterfaceCYOA::None,
+                interface_dia: InterfaceDIA::None,
+                bandwidth: 0,
+                cir: 0,
+                ip_net: None,
+                mtu: 1500,
+                routing_mode: RoutingMode::Static,
+                vlan_id: 0,
+                user_tunnel_endpoint: false,
+                use_onchain_allocation: true,
+                topology_count: 0,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreateDeviceInterface(
-                    DeviceInterfaceCreateArgs {
-                        name: "Loopback0".to_string(),
-                        loopback_type: LoopbackType::Vpnv4,
-                        interface_cyoa: InterfaceCYOA::None,
-                        interface_dia: InterfaceDIA::None,
-                        bandwidth: 0,
-                        cir: 0,
-                        ip_net: None,
-                        mtu: 1500,
-                        routing_mode: RoutingMode::Static,
-                        vlan_id: 0,
-                        user_tunnel_endpoint: false,
-                        use_onchain_allocation: true,
-                        topology_count: 0,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(device_pubkey, false),
-                    AccountMeta::new(contributor_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(device_tunnel_block_ext, false),
-                    AccountMeta::new(segment_routing_ids_ext, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = CreateDeviceInterfaceCommand {
             pubkey: device_pubkey,
@@ -209,5 +177,43 @@ mod tests {
         .execute(&client);
 
         assert!(res.is_ok());
+    }
+
+    /// The builder panics on a `topology_count` that overflows a u8, so the command
+    /// must reject over-long input as an error before it ever reaches the builder.
+    #[test]
+    fn test_commands_device_create_interface_rejects_too_many_topologies() {
+        let mut client = create_test_client();
+
+        let device_pubkey = Pubkey::new_unique();
+        let device = make_test_device();
+        client
+            .expect_get()
+            .with(predicate::eq(device_pubkey))
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
+        // No send_transaction expectation: the command must bail before building.
+
+        let err = CreateDeviceInterfaceCommand {
+            pubkey: device_pubkey,
+            name: "Loopback0".to_string(),
+            loopback_type: LoopbackType::Vpnv4,
+            interface_cyoa: InterfaceCYOA::None,
+            interface_dia: InterfaceDIA::None,
+            ip_net: None,
+            bandwidth: 0,
+            cir: 0,
+            mtu: 1500,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 0,
+            user_tunnel_endpoint: false,
+            topology_names: (0..256).map(|i| format!("t{i}")).collect(),
+        }
+        .execute(&client)
+        .expect_err("256 topologies must be rejected");
+
+        assert_eq!(
+            err.to_string(),
+            "too many topologies for one CreateDeviceInterface call: 256 > 255"
+        );
     }
 }

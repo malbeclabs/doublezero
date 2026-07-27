@@ -1,13 +1,10 @@
-use crate::{DoubleZeroClient, GetGlobalConfigCommand, GetGlobalStateCommand};
+use crate::{DoubleZeroClient, GetGlobalConfigCommand};
 use doublezero_program_common::types::NetworkV4;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::{get_globalconfig_pda, get_resource_extension_pda},
-    processors::globalconfig::set::SetGlobalConfigArgs,
-    resource::ResourceType,
-    state::globalconfig::GlobalConfig,
+    processors::globalconfig::set::SetGlobalConfigArgs, state::globalconfig::GlobalConfig,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::globalconfig::set_global_config;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetGlobalConfigCommand {
@@ -22,48 +19,16 @@ pub struct SetGlobalConfigCommand {
 
 impl SetGlobalConfigCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let global_config = GetGlobalConfigCommand.execute(client).ok();
         let set_config_args = self.merge_config_updates(global_config)?;
 
-        let (pda_pubkey, _) = get_globalconfig_pda(&client.get_program_id());
-        let (device_tunnel_block_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::DeviceTunnelBlock);
-        let (user_tunnel_block_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
-        let (multicastgroup_block_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::MulticastGroupBlock);
-        let (link_ids_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::LinkIds);
-        let (segment_routing_ids_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
-        let (multicast_publisher_block_pda, _, _) = get_resource_extension_pda(
+        // The builder derives the globalconfig, globalstate and every
+        // resource-extension pool PDA.
+        client.send_transaction(set_global_config(
             &client.get_program_id(),
-            ResourceType::MulticastPublisherBlock,
-        );
-        let (vrf_ids_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::VrfIds);
-        let (admin_group_bits_pda, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::AdminGroupBits);
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::SetGlobalConfig(set_config_args),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(globalstate_pubkey, false),
-                AccountMeta::new(device_tunnel_block_pda, false),
-                AccountMeta::new(user_tunnel_block_pda, false),
-                AccountMeta::new(multicastgroup_block_pda, false),
-                AccountMeta::new(link_ids_pda, false),
-                AccountMeta::new(segment_routing_ids_pda, false),
-                AccountMeta::new(multicast_publisher_block_pda, false),
-                AccountMeta::new(vrf_ids_pda, false),
-                AccountMeta::new(admin_group_bits_pda, false),
-            ],
-        )
+            &client.get_payer(),
+            set_config_args,
+        ))
     }
 
     fn merge_config_updates(
@@ -142,9 +107,9 @@ mod tests {
             .returning(|_| Err(eyre::eyre!("not initialized")));
 
         client
-            .expect_execute_authorized_transaction()
+            .expect_send_transaction()
             .times(1)
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = SetGlobalConfigCommand {
             local_asn: Some(65000),

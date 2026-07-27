@@ -173,7 +173,7 @@ No `Err`/panic stubs are emitted — builders are infallible; excluded variants 
 
 ### Migrating `commands/*` (final, riskiest phase)
 
-- Add to the `DoubleZeroClient` trait: `send_transaction(Instruction) -> Result<Signature>` (plus a quiet variant). The permission cache (`note_transaction_sent`/invalidation) stays; since migrated builders derive the Permission PDA internally, the command layer no longer resolves or passes a permission pubkey (see Open Questions).
+- Add to the `DoubleZeroClient` trait: `send_transaction(Instruction) -> Result<Signature>`. The permission cache (`resolve_permission_account` / `note_transaction_sent` / stale-retry) is **removed**: the builder derives the Permission PDA offline, so the RPC-based runtime path has no remaining caller (see Open Questions).
 - `client.rs::assemble_instructions` stops appending payer/system (that now lives in `common::build`); it only prepends the compute-budget prelude over a pre-built `Instruction`. This leaves exactly one owner of the trailing accounts, removing the risk of the two layers disagreeing.
 - Each `execute()` becomes: validate → resolve RPC values → call the builder → `client.send_transaction(ix)`. The `mockall` command tests change shape to assert on the built `Instruction` (now including payer/system).
 
@@ -241,6 +241,6 @@ The remaining API change is additive/internal to the Rust SDK: the new `DoubleZe
 
 - **Go/Python/TS parity.** Out of scope here. The golden fixtures are designed to drive parity checks for the other SDKs later; the concrete cross-language builder API is deferred.
 - **`clear_topology` / `assign_topology_node_segments` batch-size constants.** The exact home for the moved consts and whether the 32-account cap math needs adjustment once the builder owns the trailing accounts should be confirmed during R7.
-- **Naming of the trait send method.** `send_transaction` (plus a quiet variant) is proposed; the final name/shape is to be settled in R10 review.
-- **Permission append: static activation vs. runtime existence.** This RFC replaces today's runtime existence check (the memoized cache / foundation-lockout fallback) with a static, per-instruction "is `authorize()` activated" decision (see Backward Compatibility). Whether any instruction still needs the runtime check once its builder append is on must be settled as the model rolls out.
+- **Naming of the trait send method.** `send_transaction` (plus a quiet variant) was proposed. Settled in R10: the trait carries `send_transaction(Instruction)` only — the quiet variant's sole caller was the deleted `activator/` crate, so it is not carried forward.
+- **Permission append: static activation vs. runtime existence.** This RFC replaces today's runtime existence check (the memoized cache / foundation-lockout fallback) with a static, per-instruction "is `authorize()` activated" decision (see Backward Compatibility). Whether any instruction still needs the runtime check once its builder append is on must be settled as the model rolls out. **R10 shipped with the builder Permission append deferred (commented) for every instruction** and the SDK's runtime resolve/cache/retry removed, so the SDK attaches no Permission account and `authorize()` takes the legacy GlobalState-allowlist path; per-instruction activation is future work sequenced against the permission-model rollout.
 - **Fixture naming collisions.** Whether any two builders map to the same `ix_<name>` base (e.g. create vs. create-subscribe) needs a disambiguation convention when the generator is extended in RF.

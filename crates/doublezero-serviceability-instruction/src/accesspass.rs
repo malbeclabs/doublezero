@@ -10,6 +10,7 @@ use doublezero_serviceability::{
     processors::accesspass::{
         check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs,
         set::SetAccessPassArgs, set_feeds::SetAccessPassFeedsArgs,
+        set_flags::SetAccessPassFlagsArgs,
     },
 };
 use solana_program::{
@@ -131,6 +132,37 @@ pub fn set_access_pass_feeds(
         program_id,
         DoubleZeroInstruction::SetAccessPassFeeds(args),
         accounts,
+        payer,
+    )
+}
+
+/// `SetAccessPassFlags` (variant 116).
+/// Accounts: `[accesspass, globalstate(readonly)]`.
+///
+/// The access-pass PDA is derived from `(client_ip, user_payer)`; the args carry
+/// only the tri-state flag fields, so both are explicit parameters.
+pub fn set_access_pass_flags(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    client_ip: Ipv4Addr,
+    user_payer: &Pubkey,
+    args: SetAccessPassFlagsArgs,
+) -> Instruction {
+    // The processor rejects a call that names no flag (`InvalidArgument`); catch
+    // that caller bug in debug builds rather than paying for a doomed transaction.
+    debug_assert!(
+        args.allow_multiple_ip.is_some() || args.dzf_locked.is_some(),
+        "SetAccessPassFlags requires at least one flag to update"
+    );
+    let (accesspass, _) = get_accesspass_pda(program_id, &client_ip, user_payer);
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFlags(args),
+        vec![
+            AccountMeta::new(accesspass, false),
+            AccountMeta::new_readonly(globalstate, false),
+        ],
         payer,
     )
 }
@@ -288,6 +320,36 @@ mod tests {
                 AccountMeta::new(accesspass, false),
                 AccountMeta::new_readonly(globalstate, false),
                 AccountMeta::new_readonly(feed, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_set_access_pass_flags() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let user_payer = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(10, 0, 0, 1);
+        let ix = set_access_pass_flags(
+            &pid,
+            &payer,
+            client_ip,
+            &user_payer,
+            SetAccessPassFlagsArgs {
+                allow_multiple_ip: None,
+                dzf_locked: Some(true),
+            },
+        );
+        assert_eq!(ix.data[0], 116);
+        let (accesspass, _) = get_accesspass_pda(&pid, &client_ip, &user_payer);
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(accesspass, false),
+                AccountMeta::new_readonly(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
             ]

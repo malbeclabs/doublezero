@@ -1,9 +1,9 @@
-use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
+use crate::DoubleZeroClient;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_permission_pda,
-    processors::permission::create::PermissionCreateArgs,
+    pda::get_permission_pda, processors::permission::create::PermissionCreateArgs,
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability_instruction::permission::create_permission;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreatePermissionCommand {
@@ -13,24 +13,21 @@ pub struct CreatePermissionCommand {
 
 impl CreatePermissionCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
+        let program_id = client.get_program_id();
+        // The builder derives the target permission PDA from args.user_payer; we
+        // derive it here too for the returned pubkey.
+        let (permission_pda, _) = get_permission_pda(&program_id, &self.user_payer);
 
-        let (permission_pda, _) = get_permission_pda(&client.get_program_id(), &self.user_payer);
+        let ix = create_permission(
+            &program_id,
+            &client.get_payer(),
+            PermissionCreateArgs {
+                user_payer: self.user_payer,
+                permissions: self.permissions,
+            },
+        );
 
-        client
-            .execute_authorized_transaction(
-                DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
-                    user_payer: self.user_payer,
-                    permissions: self.permissions,
-                }),
-                vec![
-                    AccountMeta::new(permission_pda, false),
-                    AccountMeta::new_readonly(globalstate_pubkey, false),
-                ],
-            )
-            .map(|sig| (sig, permission_pda))
+        client.send_transaction(ix).map(|sig| (sig, permission_pda))
     }
 }
 
@@ -41,37 +38,34 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_permission_pda},
-        processors::permission::create::PermissionCreateArgs,
+        pda::get_permission_pda, processors::permission::create::PermissionCreateArgs,
     };
+    use doublezero_serviceability_instruction::permission::create_permission;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_commands_permission_create_command() {
         let mut client = create_test_client();
 
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
         let user_payer = Pubkey::new_unique();
         let permissions: u128 = 0b11;
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-        let (permission_pda, _) = get_permission_pda(&client.get_program_id(), &user_payer);
+        let (permission_pda, _) = get_permission_pda(&program_id, &user_payer);
 
+        let expected = create_permission(
+            &program_id,
+            &payer,
+            PermissionCreateArgs {
+                user_payer,
+                permissions,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::CreatePermission(
-                    PermissionCreateArgs {
-                        user_payer,
-                        permissions,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(permission_pda, false),
-                    AccountMeta::new_readonly(globalstate_pubkey, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = CreatePermissionCommand {
             user_payer,

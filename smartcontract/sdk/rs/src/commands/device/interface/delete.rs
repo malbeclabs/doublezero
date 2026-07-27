@@ -1,12 +1,7 @@
-use crate::{
-    commands::{device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand},
-    DoubleZeroClient,
-};
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
-    processors::device::interface::DeviceInterfaceDeleteArgs, resource::ResourceType,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use crate::{commands::device::get::GetDeviceCommand, DoubleZeroClient};
+use doublezero_serviceability::processors::device::interface::DeviceInterfaceDeleteArgs;
+use doublezero_serviceability_instruction::device::delete_device_interface;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteDeviceInterfaceCommand {
@@ -16,34 +11,21 @@ pub struct DeleteDeviceInterfaceCommand {
 
 impl DeleteDeviceInterfaceCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let (device_pubkey, device) = GetDeviceCommand {
             pubkey_or_code: self.pubkey.to_string(),
         }
         .execute(client)?;
 
-        let (device_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::DeviceTunnelBlock);
-        let (segment_routing_ids_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::SegmentRoutingIds);
-        let accounts = vec![
-            AccountMeta::new(device_pubkey, false),
-            AccountMeta::new(device.contributor_pk, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_tunnel_block_ext, false),
-            AccountMeta::new(segment_routing_ids_ext, false),
-        ];
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::DeleteDeviceInterface(DeviceInterfaceDeleteArgs {
+        client.send_transaction(delete_device_interface(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &device_pubkey,
+            &device.contributor_pk,
+            DeviceInterfaceDeleteArgs {
                 name: self.name.clone(),
                 use_onchain_deallocation: true,
-            }),
-            accounts,
-        )
+            },
+        ))
     }
 }
 
@@ -51,13 +33,10 @@ impl DeleteDeviceInterfaceCommand {
 mod tests {
     use super::*;
     use crate::tests::utils::create_test_client;
-    use doublezero_serviceability::{
-        pda::get_globalstate_pda,
-        state::{
-            accountdata::AccountData,
-            accounttype::AccountType,
-            device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
-        },
+    use doublezero_serviceability::state::{
+        accountdata::AccountData,
+        accounttype::AccountType,
+        device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
     };
     use mockall::predicate;
 
@@ -99,11 +78,7 @@ mod tests {
         let mut client = create_test_client();
 
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-        let (device_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
-        let (segment_routing_ids_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+        let payer = client.get_payer();
 
         let device_pubkey = Pubkey::new_unique();
         let device = make_test_device();
@@ -114,24 +89,20 @@ mod tests {
             .with(predicate::eq(device_pubkey))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
+        let expected = delete_device_interface(
+            &program_id,
+            &payer,
+            &device_pubkey,
+            &contributor_pk,
+            DeviceInterfaceDeleteArgs {
+                name: "Loopback0".to_string(),
+                use_onchain_deallocation: true,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::DeleteDeviceInterface(
-                    DeviceInterfaceDeleteArgs {
-                        name: "Loopback0".to_string(),
-                        use_onchain_deallocation: true,
-                    },
-                )),
-                predicate::eq(vec![
-                    AccountMeta::new(device_pubkey, false),
-                    AccountMeta::new(contributor_pk, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(device_tunnel_block_ext, false),
-                    AccountMeta::new(segment_routing_ids_ext, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = DeleteDeviceInterfaceCommand {
             pubkey: device_pubkey,

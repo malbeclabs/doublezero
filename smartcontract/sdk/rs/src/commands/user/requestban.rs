@@ -3,18 +3,15 @@ use std::collections::HashSet;
 use crate::{
     commands::{
         device::get::GetDeviceCommand,
-        globalstate::get::GetGlobalStateCommand,
         multicastgroup::{
             list::ListMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
         },
     },
     DoubleZeroClient,
 };
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_resource_extension_pda,
-    processors::user::requestban::UserRequestBanArgs, resource::ResourceType,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability::processors::user::requestban::UserRequestBanArgs;
+use doublezero_serviceability_instruction::user::request_ban_user;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct RequestBanUserCommand {
@@ -23,10 +20,6 @@ pub struct RequestBanUserCommand {
 
 impl RequestBanUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (globalstate_pubkey, _) = GetGlobalStateCommand
-            .execute(client)
-            .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
-
         let user = client
             .get(self.pubkey)
             .map_err(|_| eyre::eyre!("User not found ({})", self.pubkey))?
@@ -77,40 +70,19 @@ impl RequestBanUserCommand {
             )
         })?;
 
-        let (user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&client.get_program_id(), ResourceType::UserTunnelBlock);
-        let (multicast_publisher_block_ext, _, _) = get_resource_extension_pda(
+        // The builder derives globalstate + resource-extension PDAs + the dz_prefix
+        // block loop.
+        client.send_transaction(request_ban_user(
             &client.get_program_id(),
-            ResourceType::MulticastPublisherBlock,
-        );
-        let (device_tunnel_ids_ext, _, _) = get_resource_extension_pda(
-            &client.get_program_id(),
-            ResourceType::TunnelIds(user.device_pk, 0),
-        );
-
-        let mut accounts = vec![
-            AccountMeta::new(self.pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(user_tunnel_block_ext, false),
-            AccountMeta::new(multicast_publisher_block_ext, false),
-            AccountMeta::new(device_tunnel_ids_ext, false),
-        ];
-
-        for idx in 0..dz_prefix_count {
-            let (dz_prefix_ext, _, _) = get_resource_extension_pda(
-                &client.get_program_id(),
-                ResourceType::DzPrefixBlock(user.device_pk, idx),
-            );
-            accounts.push(AccountMeta::new(dz_prefix_ext, false));
-        }
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
+            &client.get_payer(),
+            &self.pubkey,
+            &user.device_pk,
+            dz_prefix_count_u8,
+            UserRequestBanArgs {
                 dz_prefix_count: dz_prefix_count_u8,
                 multicast_publisher_count: 1,
-            }),
-            accounts,
-        )
+            },
+        ))
     }
 }
 
@@ -121,10 +93,7 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
-        pda::{get_globalstate_pda, get_resource_extension_pda},
         processors::user::requestban::UserRequestBanArgs,
-        resource::ResourceType,
         state::{
             accountdata::AccountData,
             accounttype::AccountType,
@@ -132,17 +101,17 @@ mod tests {
             user::{User, UserCYOA, UserStatus, UserType},
         },
     };
+    use doublezero_serviceability_instruction::user::request_ban_user;
     use mockall::predicate;
-    use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::net::Ipv4Addr;
 
     #[test]
     fn test_request_ban_user() {
         let mut client = create_test_client();
 
-        let payer = client.get_payer();
         let program_id = client.get_program_id();
-        let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+        let payer = client.get_payer();
 
         let user_pubkey = Pubkey::new_unique();
         let device_pk = Pubkey::new_unique();
@@ -194,32 +163,22 @@ mod tests {
             .with(predicate::eq(AccountType::MulticastGroup))
             .returning(|_| Ok(std::collections::HashMap::new()));
 
-        let (user_tunnel_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-        let (multicast_publisher_block_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-        let (device_tunnel_ids_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pk, 0));
-        let (dz_prefix_ext, _, _) =
-            get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pk, 0));
-
+        // The device advertises one dz_prefix ("10.0.0.0/24"), so dz_prefix_count = 1.
+        let expected = request_ban_user(
+            &program_id,
+            &payer,
+            &user_pubkey,
+            &device_pk,
+            1,
+            UserRequestBanArgs {
+                dz_prefix_count: 1,
+                multicast_publisher_count: 1,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
-                    dz_prefix_count: 1,
-                    multicast_publisher_count: 1,
-                })),
-                predicate::eq(vec![
-                    AccountMeta::new(user_pubkey, false),
-                    AccountMeta::new(globalstate_pubkey, false),
-                    AccountMeta::new(user_tunnel_block_ext, false),
-                    AccountMeta::new(multicast_publisher_block_ext, false),
-                    AccountMeta::new(device_tunnel_ids_ext, false),
-                    AccountMeta::new(dz_prefix_ext, false),
-                ]),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         let res = RequestBanUserCommand {
             pubkey: user_pubkey,

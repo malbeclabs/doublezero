@@ -1,10 +1,8 @@
 use std::net::Ipv4Addr;
 
-use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
-    processors::multicastgroup::allowlist::subscriber::add::AddMulticastGroupSubAllowlistArgs,
-};
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use doublezero_serviceability::processors::multicastgroup::allowlist::subscriber::add::AddMulticastGroupSubAllowlistArgs;
+use doublezero_serviceability_instruction::multicastgroup::add_multicast_group_sub_allowlist;
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 use crate::{
     commands::multicastgroup::{allowlist::resolve_accesspass_pda, get::GetMulticastGroupCommand},
@@ -27,22 +25,16 @@ impl AddMulticastGroupSubAllowlistCommand {
 
         let accesspass_pk = resolve_accesspass_pda(client, &self.client_ip, &self.user_payer);
 
-        let (globalstate_pubkey, _) = get_globalstate_pda(&client.get_program_id());
-
-        client.execute_authorized_transaction(
-            DoubleZeroInstruction::AddMulticastGroupSubAllowlist(
-                AddMulticastGroupSubAllowlistArgs {
-                    client_ip: self.client_ip,
-                    user_payer: self.user_payer,
-                },
-            ),
-            vec![
-                AccountMeta::new(pda_pubkey, false),
-                AccountMeta::new(accesspass_pk, false),
-                AccountMeta::new(globalstate_pubkey, false),
-                AccountMeta::new(self.user_payer, false),
-            ],
-        )
+        client.send_transaction(add_multicast_group_sub_allowlist(
+            &client.get_program_id(),
+            &client.get_payer(),
+            &pda_pubkey,
+            &accesspass_pk,
+            AddMulticastGroupSubAllowlistArgs {
+                client_ip: self.client_ip,
+                user_payer: self.user_payer,
+            },
+        ))
     }
 }
 
@@ -50,10 +42,10 @@ impl AddMulticastGroupSubAllowlistCommand {
 mod tests {
     use crate::{
         commands::multicastgroup::allowlist::subscriber::add::AddMulticastGroupSubAllowlistCommand,
-        tests::utils::create_test_client,
+        tests::utils::create_test_client, DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction,
+        pda::get_accesspass_pda,
         processors::multicastgroup::allowlist::subscriber::add::AddMulticastGroupSubAllowlistArgs,
         state::{
             accountdata::AccountData,
@@ -61,8 +53,10 @@ mod tests {
             multicastgroup::{MulticastGroup, MulticastGroupStatus},
         },
     };
+    use doublezero_serviceability_instruction::multicastgroup::add_multicast_group_sub_allowlist;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use std::net::Ipv4Addr;
 
     #[test]
     fn test_commands_multicastgroup_allowlist_subscriber_add() {
@@ -101,24 +95,35 @@ mod tests {
                 map.insert(pubkey, AccountData::MulticastGroup(cloned_mgroup.clone()));
                 Ok(map)
             });
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let client_ip: Ipv4Addr = [192, 168, 1, 1].into();
+        // `user_payer` is deliberately distinct from the group pubkey so the assertion below
+        // catches a swap between the mgroup and user_payer account metas.
+        let user_payer = Pubkey::new_unique();
+        // No dynamic (`0.0.0.0`) pass is seeded above, so resolve_accesspass_pda falls back to
+        // the static PDA.
+        let (accesspass_pk, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+        let expected = add_multicast_group_sub_allowlist(
+            &program_id,
+            &payer,
+            &pubkey,
+            &accesspass_pk,
+            AddMulticastGroupSubAllowlistArgs {
+                client_ip,
+                user_payer,
+            },
+        );
         client
-            .expect_execute_authorized_transaction()
-            .with(
-                predicate::eq(DoubleZeroInstruction::AddMulticastGroupSubAllowlist(
-                    AddMulticastGroupSubAllowlistArgs {
-                        client_ip: [192, 168, 1, 1].into(),
-                        user_payer: pubkey,
-                    },
-                )),
-                predicate::always(),
-            )
-            .returning(|_, _| Ok(Signature::new_unique()));
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
 
         // add using valid code
         let res = AddMulticastGroupSubAllowlistCommand {
             pubkey_or_code: "test_code".to_string(),
-            client_ip: [192, 168, 1, 1].into(),
-            user_payer: pubkey,
+            client_ip,
+            user_payer,
         }
         .execute(&client);
         assert!(res.is_ok());
@@ -126,8 +131,8 @@ mod tests {
         // error attempting to add code with invalid char(s)
         let res = AddMulticastGroupSubAllowlistCommand {
             pubkey_or_code: "test code".to_string(),
-            client_ip: [192, 168, 1, 1].into(),
-            user_payer: pubkey,
+            client_ip,
+            user_payer,
         }
         .execute(&client);
         assert!(res.is_err());

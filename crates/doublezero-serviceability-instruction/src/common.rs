@@ -84,6 +84,14 @@ pub(crate) fn build(
 /// pure builder cannot replicate. The append MUST therefore stay deferred until
 /// every payer is guaranteed a Permission account (e.g. `RequirePermissionAccounts`
 /// enforced), or activating it would break every payer without one.
+///
+/// Prior art for whoever resumes this: the shred oracle hit the same constraint
+/// and solved it caller-side, appending its own read-only Permission meta only
+/// after an RPC existence check that it memoizes per process
+/// (`doublezero-shreds`, `crates/shred-oracle/src/dz_ledger.rs`,
+/// `permission_account_meta`). That is the shape a pure builder cannot own, so
+/// activation here needs either the guarantee above or a caller-supplied
+/// "permission exists" input threaded in from the command layer.
 pub(crate) fn build_with_permission(
     program_id: &Pubkey,
     instruction: DoubleZeroInstruction,

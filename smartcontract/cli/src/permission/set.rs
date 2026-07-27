@@ -7,7 +7,7 @@ use doublezero_cli_core::{require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::permission::{
     create::CreatePermissionCommand, get::GetPermissionCommand, update::UpdatePermissionCommand,
 };
-use doublezero_serviceability::pda::get_permission_pda;
+use doublezero_serviceability::{authorize::AUTHORIZE_GATED_FLAGS, pda::get_permission_pda};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, str::FromStr};
 
@@ -105,8 +105,35 @@ impl SetPermissionCliCommand {
             bitmask_to_names(new_permissions).join(", ")
         )?;
 
+        if let Some(warning) = inert_grant_warning(new_permissions) {
+            tracing::warn!("{warning}");
+        }
+
         Ok(())
     }
+}
+
+/// Warn that an `authorize()`-gated grant is currently inert through this CLI.
+///
+/// The Rust SDK does not attach the payer's Permission PDA to serviceability
+/// transactions (the RFC-26 builders derive account layout offline and their
+/// Permission append is still deferred), so `authorize()` never sees the account
+/// and falls back to the GlobalState allowlists. A key whose only grant is a
+/// Permission account therefore still gets `NotAllowed`. Note `permission audit`
+/// reports the inverse (strict-mode) direction only, so nothing else surfaces this.
+///
+/// Returns `None` when the resulting bitmask carries no `authorize()`-gated flag,
+/// so grants that only touch un-migrated subsystems stay quiet.
+///
+/// Remove this once the builder-side Permission append is re-enabled.
+fn inert_grant_warning(permissions: u128) -> Option<&'static str> {
+    let gated: u128 = AUTHORIZE_GATED_FLAGS.iter().fold(0, |acc, f| acc | f);
+    (permissions & gated != 0).then_some(
+        "this grant does not take effect through the doublezero CLI or Rust SDK yet: they do \
+         not attach Permission accounts to serviceability transactions, so authorize() falls \
+         back to the GlobalState allowlists. The key still needs a foundation_allowlist / \
+         qa_allowlist / authority entry to exercise gated commands.",
+    )
 }
 
 #[cfg(test)]
@@ -414,6 +441,29 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("cannot modify your own permission account"));
+    }
+
+    #[test]
+    fn test_inert_grant_warning_fires_only_for_authorize_gated_flags() {
+        // Gated: the grant is real on-chain but unusable through this CLI until the
+        // builder-side Permission append is re-enabled.
+        for &flag in AUTHORIZE_GATED_FLAGS {
+            assert!(
+                inert_grant_warning(flag).is_some(),
+                "expected a warning for gated flag {flag:#x}"
+            );
+        }
+        // Not gated: no processor hands these to authorize(), so a Permission account
+        // never authorized them in the first place — nothing to warn about.
+        assert!(inert_grant_warning(permission_flags::SENTINEL).is_none());
+        assert!(inert_grant_warning(permission_flags::QA).is_none());
+        assert!(inert_grant_warning(permission_flags::FEED_AUTHORITY).is_none());
+        assert!(inert_grant_warning(0).is_none());
+        // A mixed bitmask still warns on the gated bit.
+        assert!(
+            inert_grant_warning(permission_flags::SENTINEL | permission_flags::NETWORK_ADMIN)
+                .is_some()
+        );
     }
 
     #[test]

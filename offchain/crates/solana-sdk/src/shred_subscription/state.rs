@@ -429,6 +429,52 @@ pub fn parse_payment_escrow(data: &[u8]) -> Option<(Pubkey, Pubkey, u64)> {
 }
 
 // ---------------------------------------------------------------------------
+// Ring buffer epoch lookup, shared by DeviceHistory and MetroHistory.
+//
+// Both accounts embed a `RingBuffer<_, 32>` laid out as:
+//   [ring_offset]                     current_index: u8
+//   [ring_offset + 1]                 total_count: u8
+//   [ring_offset + 2..ring_offset + 8) padding
+//   [ring_offset + 8..)               entries, each starting with epoch: u64
+// ---------------------------------------------------------------------------
+
+const RING_BUFFER_CAPACITY: usize = 32;
+
+/// Returns the byte offset of the entry holding `epoch`, or `None` when no
+/// entry matches. Mirrors the onchain `RingBuffer::find`: walk backwards from
+/// `current_index`, bounded by `total_count`. The bound matters — scanning all
+/// 32 slots would make `epoch == 0` match a zero-initialized slot.
+fn find_ring_buffer_entry_offset(
+    data: &[u8],
+    ring_offset: usize,
+    entry_size: usize,
+    epoch: u64,
+) -> Option<usize> {
+    let current_index = *data.get(ring_offset)? as usize;
+    let total_count = (*data.get(ring_offset + 1)? as usize).min(RING_BUFFER_CAPACITY);
+    let entries_offset = ring_offset + 8;
+
+    (0..total_count).find_map(|steps_back| {
+        let index = (current_index + RING_BUFFER_CAPACITY - steps_back) % RING_BUFFER_CAPACITY;
+        let entry_offset = entries_offset + index * entry_size;
+        let entry_epoch = u64::from_le_bytes(
+            <[u8; 8]>::try_from(data.get(entry_offset..entry_offset + 8)?).ok()?,
+        );
+        (entry_epoch == epoch).then_some(entry_offset)
+    })
+}
+
+/// Combines a metro base price with a device's signed premium, mirroring the
+/// onchain `DeviceSubscription::usdc_price_dollars`.
+pub fn seat_usdc_price_dollars(metro_price_dollars: u16, device_premium_dollars: i16) -> u16 {
+    if device_premium_dollars < 0 {
+        metro_price_dollars.saturating_sub(device_premium_dollars.unsigned_abs())
+    } else {
+        metro_price_dollars.saturating_add(device_premium_dollars.unsigned_abs())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // DeviceHistory raw-byte parsing.
 //
 // Layout (ZeroCopy with 8-byte discriminator prefix):
@@ -548,6 +594,22 @@ pub fn parse_device_history(data: &[u8]) -> Option<DeviceHistoryInfo> {
     })
 }
 
+/// Returns the device's `usdc_metro_premium_dollars` for `epoch`, or `None`
+/// when the ring buffer holds no entry for that epoch. Callers that price an
+/// instant seat allocation want this rather than `parse_device_history`: the
+/// program charges from the entry at `last_settled_epoch`, which during
+/// `OpenForRequests` is one epoch behind the newest entry.
+pub fn parse_device_history_premium_at_epoch(data: &[u8], epoch: u64) -> Option<i16> {
+    let entry_offset = find_ring_buffer_entry_offset(
+        data,
+        DEVICE_HISTORY_RING_OFFSET,
+        DEVICE_HISTORY_ENTRY_SIZE,
+        epoch,
+    )?;
+    let bytes = <[u8; 2]>::try_from(data.get(entry_offset + 8..entry_offset + 10)?).ok()?;
+    Some(i16::from_le_bytes(bytes))
+}
+
 // ---------------------------------------------------------------------------
 // MetroHistory raw-byte parsing.
 //
@@ -619,6 +681,21 @@ pub fn parse_metro_history(data: &[u8]) -> Option<MetroHistoryInfo> {
         current_epoch,
         current_usdc_price,
     })
+}
+
+/// Returns the metro's `usdc_price_dollars` for `epoch`, or `None` when the
+/// ring buffer holds no entry for that epoch. See
+/// [`parse_device_history_premium_at_epoch`] for why instant-allocation
+/// pricing needs a specific epoch rather than the newest entry.
+pub fn parse_metro_history_price_at_epoch(data: &[u8], epoch: u64) -> Option<u16> {
+    let entry_offset = find_ring_buffer_entry_offset(
+        data,
+        METRO_HISTORY_RING_OFFSET,
+        METRO_HISTORY_ENTRY_SIZE,
+        epoch,
+    )?;
+    let bytes = <[u8; 2]>::try_from(data.get(entry_offset + 8..entry_offset + 10)?).ok()?;
+    Some(u16::from_le_bytes(bytes))
 }
 
 // ---------------------------------------------------------------------------
@@ -1124,6 +1201,113 @@ mod tests {
     fn parse_program_config_shred_oracle_key_short_buffer_returns_none() {
         let data = vec![0u8; PROGRAM_CONFIG_SHRED_ORACLE_KEY_OFFSET + 31];
         assert_eq!(parse_program_config_shred_oracle_key(&data), None);
+    }
+
+    /// Build a `MetroHistory` buffer whose ring holds `entries` as
+    /// `(ring_slot, epoch, usdc_price_dollars)`.
+    fn metro_history_data(
+        current_index: u8,
+        total_count: u8,
+        entries: &[(usize, u64, u16)],
+    ) -> Vec<u8> {
+        let mut data =
+            vec![
+                0;
+                METRO_HISTORY_RING_OFFSET + 8 + RING_BUFFER_CAPACITY * METRO_HISTORY_ENTRY_SIZE
+            ];
+        data[METRO_HISTORY_RING_OFFSET] = current_index;
+        data[METRO_HISTORY_RING_OFFSET + 1] = total_count;
+        for (ring_slot, epoch, price_dollars) in entries {
+            let offset = METRO_HISTORY_RING_OFFSET + 8 + ring_slot * METRO_HISTORY_ENTRY_SIZE;
+            data[offset..offset + 8].copy_from_slice(&epoch.to_le_bytes());
+            data[offset + 8..offset + 10].copy_from_slice(&price_dollars.to_le_bytes());
+        }
+        data
+    }
+
+    #[test]
+    fn test_metro_price_at_epoch_exact_hit() {
+        // Slots 0..3 written, newest at 2 (epoch 12).
+        let data = metro_history_data(2, 3, &[(0, 10, 30), (1, 11, 43), (2, 12, 10)]);
+        assert_eq!(parse_metro_history_price_at_epoch(&data, 12), Some(10));
+        assert_eq!(parse_metro_history_price_at_epoch(&data, 11), Some(43));
+        assert_eq!(parse_metro_history_price_at_epoch(&data, 10), Some(30));
+    }
+
+    #[test]
+    fn test_metro_price_at_epoch_wraps_past_index_zero() {
+        // current_index 0 with 3 written entries: the two older ones live in
+        // slots 31 and 30, so the search has to wrap backwards.
+        let data = metro_history_data(0, 3, &[(30, 10, 30), (31, 11, 43), (0, 12, 10)]);
+        assert_eq!(parse_metro_history_price_at_epoch(&data, 11), Some(43));
+        assert_eq!(parse_metro_history_price_at_epoch(&data, 10), Some(30));
+    }
+
+    #[test]
+    fn test_metro_price_at_epoch_respects_total_count_bound() {
+        // Epoch 9 sits in slot 31, one step beyond the two written entries.
+        // The onchain `find` never reaches it, so neither may this.
+        let data = metro_history_data(1, 2, &[(31, 9, 60), (0, 10, 30), (1, 11, 43)]);
+        assert_eq!(parse_metro_history_price_at_epoch(&data, 11), Some(43));
+        assert_eq!(parse_metro_history_price_at_epoch(&data, 10), Some(30));
+        assert_eq!(parse_metro_history_price_at_epoch(&data, 9), None);
+    }
+
+    #[test]
+    fn test_metro_price_at_epoch_zero_on_uninitialized_buffer() {
+        // total_count 0: every slot is zeroed, and epoch 0 must not match.
+        let data = metro_history_data(0, 0, &[]);
+        assert_eq!(parse_metro_history_price_at_epoch(&data, 0), None);
+    }
+
+    #[test]
+    fn test_metro_price_at_epoch_zero_matches_written_entry() {
+        // Epoch 0 is a legitimate epoch once written.
+        let data = metro_history_data(0, 1, &[(0, 0, 30)]);
+        assert_eq!(parse_metro_history_price_at_epoch(&data, 0), Some(30));
+    }
+
+    #[test]
+    fn test_metro_price_at_epoch_miss_returns_none() {
+        let data = metro_history_data(1, 2, &[(0, 10, 30), (1, 11, 43)]);
+        assert_eq!(parse_metro_history_price_at_epoch(&data, 12), None);
+        assert_eq!(parse_metro_history_price_at_epoch(&data, 9), None);
+    }
+
+    #[test]
+    fn test_metro_price_at_epoch_short_buffer_returns_none() {
+        assert_eq!(parse_metro_history_price_at_epoch(&[], 10), None);
+        let truncated = vec![0; METRO_HISTORY_RING_OFFSET];
+        assert_eq!(parse_metro_history_price_at_epoch(&truncated, 10), None);
+    }
+
+    #[test]
+    fn test_device_premium_at_epoch_reads_signed_premium() {
+        let mut data =
+            vec![
+                0;
+                DEVICE_HISTORY_RING_OFFSET + 8 + RING_BUFFER_CAPACITY * DEVICE_HISTORY_ENTRY_SIZE
+            ];
+        data[DEVICE_HISTORY_RING_OFFSET] = 1;
+        data[DEVICE_HISTORY_RING_OFFSET + 1] = 2;
+        for (ring_slot, epoch, premium_dollars) in [(0, 10, -5), (1, 11, 7)] {
+            let offset = DEVICE_HISTORY_RING_OFFSET + 8 + ring_slot * DEVICE_HISTORY_ENTRY_SIZE;
+            data[offset..offset + 8].copy_from_slice(&<u64>::to_le_bytes(epoch));
+            data[offset + 8..offset + 10].copy_from_slice(&<i16>::to_le_bytes(premium_dollars));
+        }
+        assert_eq!(parse_device_history_premium_at_epoch(&data, 11), Some(7));
+        assert_eq!(parse_device_history_premium_at_epoch(&data, 10), Some(-5));
+        assert_eq!(parse_device_history_premium_at_epoch(&data, 12), None);
+    }
+
+    #[test]
+    fn test_seat_usdc_price_dollars_applies_signed_premium() {
+        assert_eq!(seat_usdc_price_dollars(30, 13), 43);
+        assert_eq!(seat_usdc_price_dollars(30, -20), 10);
+        assert_eq!(seat_usdc_price_dollars(30, 0), 30);
+        // Floors at zero rather than wrapping.
+        assert_eq!(seat_usdc_price_dollars(10, -30), 0);
+        assert_eq!(seat_usdc_price_dollars(u16::MAX, 5), u16::MAX);
     }
 
     #[test]

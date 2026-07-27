@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- add `parse_metro_history_price_at_epoch` and `parse_device_history_premium_at_epoch` for reading a `MetroHistory`/`DeviceHistory` ring entry at a specific epoch, mirroring the onchain `RingBuffer::find` (backwards walk from `current_index` bounded by `total_count`, so `epoch == 0` cannot match a zero-initialized slot), plus `seat_usdc_price_dollars` mirroring `DeviceSubscription::usdc_price_dollars`. `parse_metro_history` / `parse_device_history` keep returning the newest entry (#405)
 - migrate to Solana 3.0: workspace `solana-*` crates and `solana-sdk` move to the 3.0 line, `solana-program-test` to 3.0.12, and the doublezero SDK git-deps repin from `client/v0.27.1` to the malbeclabs/doublezero#3830 merge revision (malbeclabs/infra#1853)
 - remove `build_memo_instruction` (moved to `Wallet::build_memo_instruction` in `solana-client-tools`, alongside the memo compute-unit helpers)
 - add `find_claim_holding_address` PDA helper and `CLAIM_HOLDING_SEED_PREFIX` constant for `ValidatorClientRewards` claim holding accounts

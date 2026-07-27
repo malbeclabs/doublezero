@@ -1,6 +1,6 @@
 use std::{io::Write, net::Ipv4Addr};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_serviceability::{pda::get_user_pda, state::user::UserType};
@@ -100,6 +100,77 @@ fn epoch_warning_prompt(input: &EpochWarningInput) -> Option<String> {
         format_duration(remaining_secs),
         format_duration(remaining_secs),
     ))
+}
+
+// Inputs for the `--amount` floor, separated from I/O for testability.
+struct SeatPriceInput {
+    amount_micro: u64,
+    seat_price_override: Option<u64>,
+    // What the program charges, and the epoch that payment covers. For a new
+    // instant seat allocation this is the ring entry at `last_settled_epoch`,
+    // because the seat covers the remainder of the epoch currently being
+    // served. For an already-active seat it is the newest ring entry, because
+    // no `RequestInstantSeatAllocation` is submitted and the payment funds the
+    // next settlement.
+    charged_price_dollars: u16,
+    charged_epoch: u64,
+    is_instant_allocation: bool,
+    // The newest ring entry: what the next settlement charges. Used only to
+    // explain a divergence on the instant-allocation path, where a metro that
+    // repriced at the epoch boundary charges more than `shreds price` quotes.
+    next_settlement_epoch: u64,
+    next_settlement_price_dollars: u16,
+}
+
+/// Returns `Some(message)` when `amount_micro` is below the price the program
+/// will charge, or `None` when the amount covers it.
+///
+/// The floor is deliberately not prorated. With `prorated_service_enabled` the
+/// program charges only for the remainder of the epoch, so a full-price floor
+/// is stricter than required — but it is always >= what the program requires,
+/// and any surplus stays in the escrow.
+fn seat_price_shortfall_message(input: &SeatPriceInput) -> Option<String> {
+    let required_micro = input
+        .seat_price_override
+        .unwrap_or(input.charged_price_dollars as u64 * 1_000_000);
+
+    if input.amount_micro >= required_micro {
+        return None;
+    }
+
+    let amount_usdc = input.amount_micro as f64 / 1_000_000.0;
+    let required_usdc = required_micro as f64 / 1_000_000.0;
+    let required_dollars = required_micro / 1_000_000;
+    let charged_epoch = input.charged_epoch;
+
+    if !input.is_instant_allocation {
+        return Some(format!(
+            "Amount ({amount_usdc:.6} USDC) is below the seat price for the next epoch \
+             ({required_usdc:.6} USDC).\n  \
+             Your seat is already active, so this payment funds the escrow for epoch \
+             {charged_epoch}, priced at {required_dollars} USDC."
+        ));
+    }
+
+    let mut message = format!(
+        "Amount ({amount_usdc:.6} USDC) is below the seat price charged for this epoch \
+         ({required_usdc:.6} USDC).\n  \
+         The seat you are buying covers the remainder of epoch {charged_epoch}, priced at \
+         {required_dollars} USDC."
+    );
+
+    // A per-seat override applies regardless of epoch, so there is no
+    // divergence to explain in that case.
+    if input.seat_price_override.is_none()
+        && input.next_settlement_price_dollars != input.charged_price_dollars
+    {
+        message.push_str(&format!(
+            "\n  The price changes to {} USDC in epoch {}.",
+            input.next_settlement_price_dollars, input.next_settlement_epoch,
+        ));
+    }
+
+    Some(message)
 }
 
 /// Given raw account data from a `getProgramAccounts` query filtered by
@@ -244,11 +315,18 @@ impl PayCommand {
         let (escrow_key, escrow_bump) =
             state::find_payment_escrow_address(&client_seat_key, &wallet_key);
         let (program_config_key, _) = state::find_program_config_address();
+        let (execution_controller_key, _) = state::find_execution_controller_address();
 
-        // Check which accounts already exist on-chain.
+        // Check which accounts already exist onchain, and read the epoch the
+        // program prices an instant seat allocation from.
         let mut accounts = wallet
             .connection
-            .get_multiple_accounts(&[client_seat_key, escrow_key, program_config_key])
+            .get_multiple_accounts(&[
+                client_seat_key,
+                escrow_key,
+                program_config_key,
+                execution_controller_key,
+            ])
             .await?
             .into_iter();
         let seat_account = accounts.next().flatten();
@@ -258,6 +336,13 @@ impl PayCommand {
             .next()
             .flatten()
             .is_some_and(|a| state::is_prorated_service_enabled(&a.data));
+        let last_settled_epoch = accounts
+            .next()
+            .flatten()
+            .and_then(|a| state::parse_execution_controller_last_settled_epoch(&a.data))
+            .with_context(|| {
+                format!("Execution controller {execution_controller_key} missing or unparseable")
+            })?;
 
         // Block if this client IP already has a seat on a DIFFERENT device.
         // The serviceability User PDA is keyed by (IP, user_type) with no
@@ -357,36 +442,82 @@ impl PayCommand {
         }
         let amount_micro = (self.amount * 1_000_000.0).round() as u64;
 
-        // Derive the exchange key from the on-chain DeviceHistory account.
+        // Derive the exchange key from the onchain DeviceHistory account.
         let device_history_key = state::find_device_history_address(&device).0;
         let device_history_account = wallet.connection.get_account(&device_history_key).await?;
         let device_info = state::parse_device_history(&device_history_account.data)
             .ok_or_else(|| anyhow::anyhow!("Failed to parse DeviceHistory account"))?;
         let exchange_key = device_info.exchange_key;
 
-        // Check the current price so the user gets a friendly error instead of
-        // an opaque on-chain revert. If the seat has a per-seat price
-        // override, use that instead of the metro base + device premium.
+        // Check the price the program will charge so the user gets a friendly
+        // error instead of an opaque onchain revert. If the seat has a
+        // per-seat price override, use that instead of the metro base + device
+        // premium.
         let seat_price_override = seat_account
             .as_ref()
             .and_then(|a| state::parse_client_seat_price_override(&a.data));
 
         let metro_history_key = state::find_metro_history_address(&exchange_key).0;
         let metro_history_account = wallet.connection.get_account(&metro_history_key).await?;
-        if let Some(metro_info) = state::parse_metro_history(&metro_history_account.data) {
-            let min_price = seat_price_override.unwrap_or_else(|| {
-                (metro_info.current_usdc_price as i32 + device_info.current_premium as i32).max(0)
-                    as u64
-                    * 1_000_000
-            });
-            if amount_micro < min_price {
-                let min_usdc = min_price as f64 / 1_000_000.0;
-                bail!(
-                    "Amount ({:.6} USDC) is below the current price ({:.6} USDC)",
-                    self.amount,
-                    min_usdc,
-                );
-            }
+        let metro_info = state::parse_metro_history(&metro_history_account.data)
+            .with_context(|| format!("Failed to parse MetroHistory {metro_history_key}"))?;
+
+        // Price from the newest ring entries: what the next settlement charges.
+        let next_settlement_price_dollars = state::seat_usdc_price_dollars(
+            metro_info.current_usdc_price,
+            device_info.current_premium,
+        );
+
+        // Only a new instant seat allocation is charged from the ring entries
+        // at `last_settled_epoch` — that seat covers the remainder of the epoch
+        // currently being served. An already-active seat submits no
+        // `RequestInstantSeatAllocation`, so this pay is a pure escrow top-up
+        // and the next settlement charges the newest entry's price.
+        let (charged_price_dollars, charged_epoch) = if seat_already_active {
+            (next_settlement_price_dollars, metro_info.current_epoch)
+        } else {
+            // Refuse to submit when either ring lacks the settled epoch —
+            // `RequestInstantSeatAllocation` fails the same way.
+            let settled_metro_price_dollars = state::parse_metro_history_price_at_epoch(
+                &metro_history_account.data,
+                last_settled_epoch,
+            )
+            .with_context(|| {
+                format!(
+                    "Metro history {metro_history_key} has no price for the last settled epoch \
+                     {last_settled_epoch}, so the instant seat allocation would be rejected onchain"
+                )
+            })?;
+            let settled_device_premium_dollars = state::parse_device_history_premium_at_epoch(
+                &device_history_account.data,
+                last_settled_epoch,
+            )
+            .with_context(|| {
+                format!(
+                    "Device history {device_history_key} has no subscription for the last settled \
+                     epoch {last_settled_epoch}, so the instant seat allocation would be rejected \
+                     onchain"
+                )
+            })?;
+            (
+                state::seat_usdc_price_dollars(
+                    settled_metro_price_dollars,
+                    settled_device_premium_dollars,
+                ),
+                last_settled_epoch,
+            )
+        };
+
+        if let Some(message) = seat_price_shortfall_message(&SeatPriceInput {
+            amount_micro,
+            seat_price_override,
+            charged_price_dollars,
+            charged_epoch,
+            is_instant_allocation: !seat_already_active,
+            next_settlement_epoch: metro_info.current_epoch,
+            next_settlement_price_dollars,
+        }) {
+            bail!(message);
         }
 
         if !seat_already_active
@@ -990,6 +1121,132 @@ mod tests {
         let other = Pubkey::new_unique();
         let accounts = vec![(Pubkey::new_unique(), make_seat_with_device(&other, 0))];
         assert!(other_device_keys_for_ip(&accounts, &target).is_empty());
+    }
+
+    // --- seat_price_shortfall_message tests ---
+
+    /// The production incident, buying a new seat: metro `lax-dz001` repriced
+    /// 43 -> 10, so the entry at `last_settled_epoch` charges 43 while the
+    /// newest entry quotes 10. The floor must be 43.
+    fn repriced_metro_input(amount_micro: u64) -> SeatPriceInput {
+        SeatPriceInput {
+            amount_micro,
+            seat_price_override: None,
+            charged_price_dollars: 43,
+            charged_epoch: 946,
+            is_instant_allocation: true,
+            next_settlement_epoch: 947,
+            next_settlement_price_dollars: 10,
+        }
+    }
+
+    #[test]
+    fn test_shortfall_rejects_amount_at_the_newest_entry_price() {
+        let message =
+            seat_price_shortfall_message(&repriced_metro_input(10_000_000)).expect("should reject");
+        assert!(
+            message.contains("Amount (10.000000 USDC) is below the seat price charged for this epoch (43.000000 USDC)."),
+            "got: {message}"
+        );
+        assert!(
+            message.contains("covers the remainder of epoch 946, priced at 43 USDC"),
+            "got: {message}"
+        );
+        assert!(
+            message.contains("The price changes to 10 USDC in epoch 947."),
+            "got: {message}"
+        );
+    }
+
+    #[test]
+    fn test_shortfall_accepts_the_settled_epoch_price() {
+        assert!(seat_price_shortfall_message(&repriced_metro_input(43_000_000)).is_none());
+        assert!(seat_price_shortfall_message(&repriced_metro_input(50_000_000)).is_none());
+        assert!(seat_price_shortfall_message(&repriced_metro_input(42_999_999)).is_some());
+    }
+
+    // An already-active seat submits no instant allocation request, so the
+    // floor is the next settlement's price. After the same 43 -> 10 decrease,
+    // topping up at the new price must be accepted — the settled-epoch floor
+    // applies only to the seat purchase.
+    #[test]
+    fn test_shortfall_active_seat_top_up_uses_the_next_settlement_price() {
+        let input = SeatPriceInput {
+            amount_micro: 10_000_000,
+            seat_price_override: None,
+            charged_price_dollars: 10,
+            charged_epoch: 947,
+            is_instant_allocation: false,
+            next_settlement_epoch: 947,
+            next_settlement_price_dollars: 10,
+        };
+        assert!(seat_price_shortfall_message(&input).is_none());
+    }
+
+    #[test]
+    fn test_shortfall_active_seat_top_up_message_describes_the_escrow() {
+        let input = SeatPriceInput {
+            amount_micro: 9_000_000,
+            seat_price_override: None,
+            charged_price_dollars: 10,
+            charged_epoch: 947,
+            is_instant_allocation: false,
+            next_settlement_epoch: 947,
+            next_settlement_price_dollars: 10,
+        };
+        let message = seat_price_shortfall_message(&input).expect("should reject");
+        assert!(
+            message.contains(
+                "Amount (9.000000 USDC) is below the seat price for the next epoch (10.000000 USDC)."
+            ),
+            "got: {message}"
+        );
+        assert!(
+            message.contains("funds the escrow for epoch 947, priced at 10 USDC"),
+            "got: {message}"
+        );
+        // The user is not buying a seat, so the purchase wording must not appear.
+        assert!(
+            !message.contains("The seat you are buying"),
+            "got: {message}"
+        );
+    }
+
+    #[test]
+    fn test_shortfall_omits_divergence_line_when_price_is_stable() {
+        let mut input = repriced_metro_input(5_000_000);
+        input.next_settlement_price_dollars = 43;
+        let message = seat_price_shortfall_message(&input).expect("should reject");
+        assert!(
+            !message.contains("The price changes"),
+            "unexpected divergence line: {message}"
+        );
+    }
+
+    #[test]
+    fn test_shortfall_seat_price_override_takes_precedence() {
+        // Override (5 USDC) wins over the epoch-derived price (43 USDC).
+        let mut input = repriced_metro_input(5_000_000);
+        input.seat_price_override = Some(5_000_000);
+        assert!(seat_price_shortfall_message(&input).is_none());
+
+        let mut input = repriced_metro_input(4_000_000);
+        input.seat_price_override = Some(5_000_000);
+        let message = seat_price_shortfall_message(&input).expect("should reject");
+        assert!(message.contains("priced at 5 USDC"), "got: {message}");
+        // The override applies every epoch, so there is no divergence to note.
+        assert!(
+            !message.contains("The price changes"),
+            "unexpected divergence line: {message}"
+        );
+    }
+
+    #[test]
+    fn test_shortfall_accepts_any_amount_when_seat_is_free() {
+        let mut input = repriced_metro_input(0);
+        input.charged_price_dollars = 0;
+        input.next_settlement_price_dollars = 0;
+        assert!(seat_price_shortfall_message(&input).is_none());
     }
 
     // --- user_owner_is_acceptable tests ---

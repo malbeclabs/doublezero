@@ -13,6 +13,7 @@ use borsh_incremental::BorshDeserializeIncremental;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    instruction::AccountMeta,
     msg,
     pubkey::Pubkey,
 };
@@ -20,6 +21,35 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserializeIncremental, Debug, Clone, PartialEq)]
 pub struct TopologyClearArgs {
     pub name: String,
+}
+
+/// Canonical account list for one `ClearTopology` instruction, excluding the
+/// payer/system_program/permission accounts the transaction builder appends.
+///
+/// The topology PDA is **writable**: `process_topology_clear` decrements its
+/// `reference_count` for every link that actually drops a reference. The Rust SDK
+/// builder and the program integration tests both build their account list here, so a
+/// writability divergence between client and processor fails a test instead of a live
+/// transaction.
+///
+/// This lives in the program crate rather than `doublezero-serviceability-instruction`
+/// because topology builders are RFC-26 R7 and that crate's shape is
+/// `build_xxx(..) -> Instruction`, not `-> Vec<AccountMeta>`. When R7 moves it, keep
+/// the program integration tests building from whatever becomes canonical — a Cargo
+/// dev-dependency cycle on the instruction crate is legal (dev-deps feed only test
+/// targets) — or the anti-drift property this exists for is lost.
+pub fn clear_topology_account_metas(
+    program_id: &Pubkey,
+    name: &str,
+    link_pubkeys: &[Pubkey],
+) -> Vec<AccountMeta> {
+    let (topology_pda, _) = get_topology_pda(program_id, name);
+    let (globalstate_pda, _) = get_globalstate_pda(program_id);
+    let mut accounts = Vec::with_capacity(2 + link_pubkeys.len());
+    accounts.push(AccountMeta::new(topology_pda, false));
+    accounts.push(AccountMeta::new_readonly(globalstate_pda, false));
+    accounts.extend(link_pubkeys.iter().map(|pk| AccountMeta::new(*pk, false)));
+    accounts
 }
 
 /// Accounts layout:
@@ -79,20 +109,20 @@ pub fn process_topology_clear(
         permission_flags::TOPOLOGY_ADMIN,
     )?;
 
-    // Validate topology PDA. Clear is tolerant of an already-closed topology,
-    // so we cannot call validate_program_account! (it asserts non-empty). If
-    // the account does carry data, also verify it belongs to this program.
+    // Validate topology PDA. Clear is tolerant of an already-closed topology, so the
+    // PDA match is the only unconditional check — validate_program_account! asserts
+    // non-empty and would reject that case.
     let (expected_pda, _) = get_topology_pda(program_id, &value.name);
     assert_eq!(
         topology_account.key, &expected_pda,
         "TopologyClear: invalid topology PDA for name '{}'",
         value.name
     );
+    // A topology that still carries data has its reference_count decremented below, so
+    // it must be program-owned and writable. Checked here, before the link loop, so a
+    // readonly topology account fails up front instead of part-way through the writes.
     if !topology_account.data_is_empty() {
-        assert_eq!(
-            topology_account.owner, program_id,
-            "Invalid Topology Account Owner"
-        );
+        validate_program_account!(topology_account, program_id, writable = true, "Topology");
     }
 
     let topology_key = topology_account.key;
@@ -119,10 +149,6 @@ pub fn process_topology_clear(
     // a reference removed. Skip when the topology is already closed — in that case
     // clear is purely a stale-reference cleanup on the link side.
     if !topology_account.data_is_empty() && cleared_count > 0 {
-        assert!(
-            topology_account.is_writable,
-            "Topology Account is not writable"
-        );
         let mut topology = TopologyInfo::try_from(topology_account)?;
         topology.reference_count = topology
             .reference_count
@@ -130,10 +156,21 @@ pub fn process_topology_clear(
         try_acc_write(&topology, topology_account, payer_account, accounts)?;
     }
 
-    msg!(
-        "TopologyClear: removed topology '{}' from {} link(s)",
-        value.name,
-        cleared_count
-    );
+    // Distinguish the stale-reference GC path: an already-closed (or never-created)
+    // topology otherwise logs the same line as a live one, so a typo'd --name reads as
+    // a successful clear.
+    if topology_account.data_is_empty() {
+        msg!(
+            "TopologyClear: topology '{}' is already closed; cleaned stale references from {} link(s)",
+            value.name,
+            cleared_count
+        );
+    } else {
+        msg!(
+            "TopologyClear: removed topology '{}' from {} link(s)",
+            value.name,
+            cleared_count
+        );
+    }
     Ok(())
 }

@@ -1,14 +1,15 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction, pda::get_topology_pda,
-    processors::topology::clear::TopologyClearArgs,
+    instructions::DoubleZeroInstruction,
+    processors::topology::clear::{clear_topology_account_metas, TopologyClearArgs},
 };
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-/// Max link accounts per clear transaction. Solana caps transactions at 32
-/// accounts; with 2 fixed accounts (topology PDA, globalstate) plus the payer
-/// and system_program appended by the client, we stay well under that limit at
-/// 16 (same constant as backfill).
+/// Max link accounts per clear transaction. The binding constraint is the 1232-byte
+/// packet limit on a legacy transaction (~35 account keys at 32 bytes each), not
+/// `MAX_TX_ACCOUNT_LOCKS` (128); with 2 fixed accounts (topology PDA, globalstate)
+/// plus the payer, system_program, and optional Permission account appended by the
+/// client, 16 stays well clear (same constant as assign).
 pub const CLEAR_BATCH_SIZE: usize = 16;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -19,25 +20,17 @@ pub struct ClearTopologyCommand {
 
 impl ClearTopologyCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Vec<Signature>> {
-        let (globalstate_pubkey, _globalstate) = GetGlobalStateCommand
+        // Pre-flight only: the builder derives the globalstate PDA itself.
+        GetGlobalStateCommand
             .execute(client)
             .map_err(|_err| eyre::eyre!("Globalstate not initialized"))?;
 
-        let (topology_pda, _) = get_topology_pda(&client.get_program_id(), &self.name);
-
-        // payer and system_program are appended by execute_authorized_transaction
-        // after the variable-length link list, so they are not listed here.
-        let fixed_accounts = [
-            AccountMeta::new_readonly(topology_pda, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-        ];
-
         let mut signatures = Vec::new();
         for chunk in self.link_pubkeys.chunks(CLEAR_BATCH_SIZE) {
-            let mut accounts = fixed_accounts.to_vec();
-            for link_pk in chunk {
-                accounts.push(AccountMeta::new(*link_pk, false));
-            }
+            // payer and system_program are appended by execute_authorized_transaction
+            // after the variable-length link list, so they are not listed here.
+            let accounts =
+                clear_topology_account_metas(&client.get_program_id(), &self.name, chunk);
 
             let sig = client.execute_authorized_transaction(
                 DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
@@ -95,8 +88,10 @@ mod tests {
                 predicate::eq(DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
                     name: "my-topology".to_string(),
                 })),
+                // The topology PDA MUST be writable: the processor decrements its
+                // reference_count for every link that drops a reference.
                 predicate::eq(vec![
-                    AccountMeta::new_readonly(topology_pda, false),
+                    AccountMeta::new(topology_pda, false),
                     AccountMeta::new_readonly(globalstate_pubkey, false),
                     AccountMeta::new(link1, false),
                     AccountMeta::new(link2, false),
@@ -123,7 +118,7 @@ mod tests {
         let links: Vec<Pubkey> = (0..33).map(|_| Pubkey::new_unique()).collect();
 
         let fixed_accounts = vec![
-            AccountMeta::new_readonly(topology_pda, false),
+            AccountMeta::new(topology_pda, false),
             AccountMeta::new_readonly(globalstate_pubkey, false),
         ];
 

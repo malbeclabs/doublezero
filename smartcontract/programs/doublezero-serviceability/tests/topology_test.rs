@@ -15,8 +15,10 @@ use doublezero_serviceability::{
         location::create::LocationCreateArgs,
         permission::create::PermissionCreateArgs,
         topology::{
-            assign_node_segments::AssignTopologyNodeSegmentsArgs, clear::TopologyClearArgs,
-            create::TopologyCreateArgs, delete::TopologyDeleteArgs,
+            assign_node_segments::AssignTopologyNodeSegmentsArgs,
+            clear::{clear_topology_account_metas, TopologyClearArgs},
+            create::TopologyCreateArgs,
+            delete::TopologyDeleteArgs,
         },
     },
     resource::ResourceType,
@@ -579,29 +581,22 @@ async fn delete_topology(
     banks_client.process_transaction(tx).await
 }
 
-/// Creates a clear topology instruction, passing the given link accounts as writable.
+/// Creates a clear topology instruction from the given link pubkeys.
 ///
-/// Uses the production on-wire layout (`[topology, globalstate, links.., payer,
-/// system, permission?]`) so the variable-length link list comes before the
-/// payer/system_program that the SDK appends — exactly what the CLI emits.
+/// The account list comes from [`clear_topology_account_metas`] — the same function
+/// the Rust SDK's `ClearTopologyCommand` builds from — so a client/processor
+/// writability divergence fails here instead of on a live transaction. It carries the
+/// production on-wire layout (`[topology, globalstate, links.., payer, system,
+/// permission?]`), with the variable-length link list ahead of the trailing
+/// payer/system_program.
 async fn clear_topology(
     banks_client: &mut BanksClient,
     program_id: Pubkey,
-    globalstate_pubkey: Pubkey,
     name: &str,
-    link_accounts: Vec<AccountMeta>,
+    link_pubkeys: &[Pubkey],
     payer: &Keypair,
 ) {
-    clear_topology_with_permission(
-        banks_client,
-        program_id,
-        globalstate_pubkey,
-        name,
-        link_accounts,
-        payer,
-        None,
-    )
-    .await
+    clear_topology_with_permission(banks_client, program_id, name, link_pubkeys, payer, None).await
 }
 
 /// Like [`clear_topology`], but allows passing the payer's Permission PDA as the
@@ -609,19 +604,13 @@ async fn clear_topology(
 async fn clear_topology_with_permission(
     banks_client: &mut BanksClient,
     program_id: Pubkey,
-    globalstate_pubkey: Pubkey,
     name: &str,
-    link_accounts: Vec<AccountMeta>,
+    link_pubkeys: &[Pubkey],
     payer: &Keypair,
     permission: Option<AccountMeta>,
 ) {
-    let (topology_pda, _) = get_topology_pda(&program_id, name);
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-    let mut accounts = vec![
-        AccountMeta::new(topology_pda, false),
-        AccountMeta::new_readonly(globalstate_pubkey, false),
-    ];
-    accounts.extend(link_accounts);
+    let accounts = clear_topology_account_metas(&program_id, name, link_pubkeys);
     let mut tx = create_authorized_transaction(
         program_id,
         &DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
@@ -1197,9 +1186,8 @@ async fn test_topology_reference_count_lifecycle() {
     clear_topology(
         &mut banks_client,
         program_id,
-        globalstate_pubkey,
         "topo-a",
-        vec![AccountMeta::new(link_pubkey, false)],
+        &[link_pubkey],
         &payer,
     )
     .await;
@@ -1341,9 +1329,8 @@ async fn test_topology_clear_removes_from_links() {
     clear_topology(
         &mut banks_client,
         program_id,
-        globalstate_pubkey,
         "test-topology",
-        vec![AccountMeta::new(link_pubkey, false)],
+        &[link_pubkey],
         &payer,
     )
     .await;
@@ -1444,9 +1431,8 @@ async fn test_topology_clear_with_permission_account_allowed() {
     clear_topology_with_permission(
         &mut banks_client,
         program_id,
-        globalstate_pubkey,
         "test-topology",
-        vec![AccountMeta::new(link_pubkey, false)],
+        &[link_pubkey],
         &topology_admin,
         Some(AccountMeta::new_readonly(permission_pda, false)),
     )
@@ -1517,9 +1503,8 @@ async fn test_topology_clear_is_idempotent() {
     clear_topology(
         &mut banks_client,
         program_id,
-        globalstate_pubkey,
         "test-topology",
-        vec![AccountMeta::new(link_pubkey, false)],
+        &[link_pubkey],
         &payer,
     )
     .await;
@@ -1533,6 +1518,295 @@ async fn test_topology_clear_is_idempotent() {
     );
 
     println!("[PASS] test_topology_clear_is_idempotent");
+}
+
+/// Submits a `ClearTopology` whose topology account has been downgraded to readonly,
+/// leaving the rest of the canonical layout intact. Returns the transaction result.
+///
+/// Locates the topology meta by pubkey rather than by index, so adding an account ahead
+/// of it in the canonical layout cannot silently turn this into a test of some other
+/// account's validation.
+async fn clear_topology_with_readonly_topology(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    name: &str,
+    link_pubkeys: &[Pubkey],
+    payer: &Keypair,
+) -> Result<(), BanksClientError> {
+    let (topology_pda, _) = get_topology_pda(&program_id, name);
+    let mut accounts = clear_topology_account_metas(&program_id, name, link_pubkeys);
+    let topology_meta = accounts
+        .iter_mut()
+        .find(|meta| meta.pubkey == topology_pda)
+        .expect("canonical layout must contain the topology account");
+    *topology_meta = AccountMeta::new_readonly(topology_pda, false);
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let mut tx = create_authorized_transaction(
+        program_id,
+        &DoubleZeroInstruction::ClearTopology(TopologyClearArgs {
+            name: name.to_string(),
+        }),
+        &accounts,
+        payer,
+        None,
+    );
+    tx.try_sign(&[&payer], recent_blockhash).unwrap();
+    banks_client.process_transaction(tx).await
+}
+
+/// Asserts a transaction failed with the panic that `validate_program_account!` raises.
+///
+/// The processor runs under `processor!()`, so an `assert!` surfaces as
+/// `ProgramFailedToComplete` at instruction index 0.
+fn assert_program_panicked(result: Result<(), BanksClientError>, context: &str) {
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::ProgramFailedToComplete,
+        ))) => {}
+        _ => panic!("expected ProgramFailedToComplete ({context}), got {result:?}"),
+    }
+}
+
+/// Regression: a readonly topology account is rejected up front, whether or not any
+/// link actually holds a reference.
+///
+/// `clear` decrements the topology's `reference_count`, so the account must be writable
+/// whenever it still carries data. The SDK builder passed it readonly before
+/// [`clear_topology_account_metas`] became the single source of the account list.
+///
+/// The second case is the one that pins the fix. Before it, the writability check sat
+/// *after* the link loop and was guarded by `cleared_count > 0`, so a readonly topology
+/// plus a link holding no reference **succeeded** as a silent no-op. The first case
+/// alone does not discriminate: the old code also failed there (on the late assert) and
+/// Solana rolled the staged link write back, so no post-hoc state assertion can tell
+/// the two versions apart.
+#[tokio::test]
+async fn test_topology_clear_readonly_topology_rejected() {
+    println!("[TEST] test_topology_clear_readonly_topology_rejected");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    let topology_pda = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "test-topology",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // unicast-default topology is required for link activation.
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    let (link_pubkey, contributor_pubkey, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    // Case 1: the link does NOT hold a reference. Pre-fix this succeeded as a no-op.
+    let link_before = get_link(&mut banks_client, link_pubkey).await;
+    let topology_before = get_topology(&mut banks_client, topology_pda).await;
+    assert!(
+        !link_before.link_topologies.contains(&topology_pda),
+        "link must not reference test-topology yet"
+    );
+
+    assert_program_panicked(
+        clear_topology_with_readonly_topology(
+            &mut banks_client,
+            program_id,
+            "test-topology",
+            &[link_pubkey],
+            &payer,
+        )
+        .await,
+        "readonly topology account, no link holding a reference",
+    );
+
+    assert_eq!(
+        get_link(&mut banks_client, link_pubkey).await,
+        link_before,
+        "the Link account must be untouched when clear is rejected"
+    );
+    assert_eq!(
+        get_topology(&mut banks_client, topology_pda).await,
+        topology_before,
+        "the Topology account must be untouched when clear is rejected"
+    );
+
+    // Case 2: the link DOES hold a reference, so a write would otherwise be staged
+    // before the check. Nothing may be committed.
+    assign_link_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        link_pubkey,
+        contributor_pubkey,
+        vec![topology_pda],
+        &payer,
+    )
+    .await;
+
+    let link_before = get_link(&mut banks_client, link_pubkey).await;
+    let topology_before = get_topology(&mut banks_client, topology_pda).await;
+    assert!(
+        link_before.link_topologies.contains(&topology_pda),
+        "link must reference test-topology for the staged-write case"
+    );
+
+    assert_program_panicked(
+        clear_topology_with_readonly_topology(
+            &mut banks_client,
+            program_id,
+            "test-topology",
+            &[link_pubkey],
+            &payer,
+        )
+        .await,
+        "readonly topology account, link holding a reference",
+    );
+
+    assert_eq!(
+        get_link(&mut banks_client, link_pubkey).await,
+        link_before,
+        "the Link account must be untouched when clear is rejected"
+    );
+    assert_eq!(
+        get_topology(&mut banks_client, topology_pda).await,
+        topology_before,
+        "the Topology account must be untouched when clear is rejected"
+    );
+
+    println!("[PASS] test_topology_clear_readonly_topology_rejected");
+}
+
+/// The `reference_count` decrement across several links in one instruction.
+///
+/// `saturating_sub(cleared_count)` with `cleared_count > 1` was unreachable before this
+/// fix (every invocation where a link held a reference aborted), so the arithmetic the
+/// `TopologyDelete` guard depends on had never executed. Also covers the same link
+/// passed twice in one instruction — the runtime aliases duplicate accounts onto one
+/// data buffer, so the second pass re-reads the already-cleared link and must not
+/// double-decrement.
+#[tokio::test]
+async fn test_topology_clear_multi_link_reference_count() {
+    println!("[TEST] test_topology_clear_multi_link_reference_count");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    let topology_pda = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "test-topology",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // Two links tagged with the topology, plus a third left untagged so the instruction
+    // carries a link that contributes nothing to cleared_count.
+    let (link_a, contributor_a, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+    let (link_b, contributor_b, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+    let (link_c, _, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    for (link, contributor) in [(link_a, contributor_a), (link_b, contributor_b)] {
+        assign_link_topology(
+            &mut banks_client,
+            program_id,
+            globalstate_pubkey,
+            link,
+            contributor,
+            vec![topology_pda],
+            &payer,
+        )
+        .await;
+    }
+
+    assert_eq!(
+        get_topology(&mut banks_client, topology_pda)
+            .await
+            .reference_count,
+        2,
+        "both tagged links must be counted"
+    );
+
+    // link_a twice (duplicate) + link_b + untagged link_c: exactly two links hold a
+    // reference, so the count must drop by 2, not 3.
+    clear_topology(
+        &mut banks_client,
+        program_id,
+        "test-topology",
+        &[link_a, link_b, link_a, link_c],
+        &payer,
+    )
+    .await;
+
+    assert_eq!(
+        get_topology(&mut banks_client, topology_pda)
+            .await
+            .reference_count,
+        0,
+        "reference_count must drop by the number of links that held a reference"
+    );
+    for link in [link_a, link_b] {
+        assert!(
+            get_link(&mut banks_client, link)
+                .await
+                .link_topologies
+                .is_empty(),
+            "cleared link must no longer reference the topology"
+        );
+    }
+
+    // With the count at zero the topology is deletable — the property the counter exists
+    // to gate.
+    delete_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        "test-topology",
+        vec![],
+        &payer,
+    )
+    .await
+    .expect("delete should succeed once reference_count reaches 0");
+
+    println!("[PASS] test_topology_clear_multi_link_reference_count");
 }
 
 #[tokio::test]

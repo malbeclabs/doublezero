@@ -95,7 +95,7 @@ func TestClient_Liveness_Scheduler_ScheduleTxNow_EnqueuesImmediateTX(t *testing.
 	require.Equal(t, now, sess.nextTxScheduled)
 }
 
-func TestClient_Liveness_Scheduler_ScheduleTxNow_CoalescesPendingImmediateTX(t *testing.T) {
+func TestClient_Liveness_Scheduler_ScheduleTxNow_PacedByTransmitFloor(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
@@ -104,18 +104,107 @@ func TestClient_Liveness_Scheduler_ScheduleTxNow_CoalescesPendingImmediateTX(t *
 		state:      StateDown,
 		alive:      true,
 		detectMult: 1,
-		minTxFloor: time.Millisecond,
+		localTxMin: time.Second,
+		minTxFloor: time.Second,
+		maxTxCeil:  time.Second,
 		peer:       &Peer{Interface: "eth0", LocalIP: "192.0.2.1"},
+		// We transmitted 100ms ago, so the floor still has 900ms to run.
+		lastTx: now.Add(-100 * time.Millisecond),
 	}
 
-	// A burst of state changes must not queue a TX each: the first pending immediate
-	// TX carries the latest state, so our TX rate stays decoupled from the RX rate.
+	// The TX is scheduled at lastTx+txInterval, not at now: a state change short-circuits
+	// a backed-off deadline but must not transmit faster than the configured floor.
 	s.scheduleTxNow(now, sess)
-	s.scheduleTxNow(now.Add(time.Millisecond), sess)
-	s.scheduleTxNow(now.Add(2*time.Millisecond), sess)
 
-	require.NotNil(t, s.eq.Pop())
+	ev := s.eq.Pop()
+	require.NotNil(t, ev)
+	require.Equal(t, eventTypeTX, ev.eventType)
+	wantWhen := sess.lastTx.Add(time.Second)
+	require.Equal(t, wantWhen, ev.when)
+	require.Equal(t, wantWhen, sess.nextTxScheduled)
+
+	// A further state change inside the floor adds nothing: the pending TX is already
+	// no later than the earliest we are allowed to send, so it carries the new state.
+	// (Rate decoupling under a live scheduler is covered by
+	// TestClient_Liveness_Manager_HandleRx_RateFloorBoundsStateChangeTX, which this
+	// static-queue test cannot substantiate on its own.)
+	s.scheduleTxNow(now.Add(10*time.Millisecond), sess)
 	require.Nil(t, s.eq.Pop())
+}
+
+// TestClient_Liveness_Scheduler_Run_DropsStaleTX pins that a TX event whose time no
+// longer matches the session marker is rejected instead of transmitting, mirroring what
+// the detect branch already does.
+//
+// scheduleTxNow displaces the pending backed-off TX by taking the marker over. Firing
+// the displaced event would emit a duplicate packet, and because maybeDropOnOverflow
+// exempts TX from maxEvents these orphans cannot be shed under queue pressure either.
+func TestClient_Liveness_Scheduler_Run_DropsStaleTX(t *testing.T) {
+	t.Parallel()
+
+	srv, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	require.NoError(t, err)
+	defer srv.Close()
+	cl, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
+	require.NoError(t, err)
+	defer cl.Close()
+	w, err := NewUDPService(cl)
+	require.NoError(t, err)
+
+	got := make(chan struct{}, 16)
+	go func() {
+		buf := make([]byte, 128)
+		for {
+			if err := srv.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+				return
+			}
+			if _, _, err := srv.ReadFromUDP(buf); err != nil {
+				return
+			}
+			got <- struct{}{}
+		}
+	}()
+
+	s := NewScheduler(newTestLogger(t), w, func(*Session) {}, 0, false, newMetrics(), false,
+		mustParseClientVersion(t, "1.2.3-dev"))
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go func() { _ = s.Run(ctx) }()
+
+	sess := &Session{
+		state:         StateDown,
+		alive:         true,
+		detectMult:    3,
+		localTxMin:    time.Hour, // keep the periodic cadence out of the way
+		localRxMin:    time.Hour,
+		minTxFloor:    time.Hour,
+		maxTxCeil:     time.Hour,
+		backoffMax:    time.Hour,
+		backoffFactor: 1,
+		peer:          &Peer{Interface: "", LocalIP: cl.LocalAddr().(*net.UDPAddr).IP.String()},
+		peerAddr:      srv.LocalAddr().(*net.UDPAddr),
+	}
+
+	// A TX event that does not match the marker (which is zero) is stale.
+	s.push(&event{when: time.Now(), eventType: eventTypeTX, session: sess})
+	select {
+	case <-got:
+		t.Fatal("a stale TX event must not transmit")
+	case <-time.After(500 * time.Millisecond):
+	}
+
+	// A matching event does transmit, so the drop above is the marker check and not
+	// simply a wedged scheduler.
+	when := time.Now()
+	sess.mu.Lock()
+	sess.nextTxScheduled = when
+	sess.mu.Unlock()
+	s.push(&event{when: when, eventType: eventTypeTX, session: sess})
+	select {
+	case <-got:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a TX event matching the marker must transmit")
+	}
 }
 
 func TestClient_Liveness_Scheduler_ScheduleTxNow_SkipsDeadSession(t *testing.T) {

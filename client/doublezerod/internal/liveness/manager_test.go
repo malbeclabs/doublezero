@@ -135,7 +135,10 @@ func TestClient_Liveness_Manager_RegisterRoute_PropagatesBackoffMax(t *testing.T
 // (issue #3935: a 60s cap produced a ~63s route restoration in e2e).
 //
 // backoffMax here is far larger than the assertion windows, so the fast path can only
-// come from the state-change-driven immediate TX, not from the periodic timer.
+// come from the state-change-driven immediate TX, not from the periodic timer. Every
+// interval is pinned to the same value, which also makes the transmit floor equal to
+// backoffMax — so this test sees the floor gate the *second* state change, which the
+// tail of the test pins deliberately.
 func TestClient_Liveness_Manager_HandleRx_StateChangeTriggersImmediateTX(t *testing.T) {
 	t.Parallel()
 
@@ -185,10 +188,86 @@ func TestClient_Liveness_Manager_HandleRx_StateChangeTriggersImmediateTX(t *test
 		"RX that does not change state must not trigger an immediate TX")
 
 	// Init -> Up: the peer now echoes our discriminator. Step 3 of the recovery.
+	//
+	// The state change is applied immediately, but the TX advertising it is paced: we
+	// transmitted a moment ago and every interval here is `interval`, so the floor puts
+	// the next packet that far out. This is the rate floor doing its job — without it,
+	// a peer flipping our state on every packet would drive our transmit rate 1:1 with
+	// its send rate. In production txInterval is 1s, so this costs one second, not the
+	// 30s contrived here.
 	m.HandleRx(&ControlPacket{Version: 1, State: StateInit, LocalDiscr: 7777, PeerDiscr: sess.localDiscr}, peer)
 	require.Equal(t, StateUp, sess.GetState())
-	require.NotNil(t, udp.next(250*time.Millisecond),
-		"promotion to Up must TX promptly")
+	require.Nil(t, udp.next(250*time.Millisecond),
+		"a state change within the transmit floor of the last TX must be paced, not sent immediately")
+}
+
+// TestClient_Liveness_Manager_HandleRx_RateFloorBoundsStateChangeTX pins that our
+// transmit rate is bounded by txInterval() and not by the peer's send rate.
+//
+// Session.HandleRx reports a state change on *every* packet of a repeating peer-Down
+// stream: from Down a packet with PeerDiscr=0 promotes us to Init, and the next
+// identical packet hits the "peer says Down while we are Up/Init" branch and puts us
+// back to Down. The stale-Down suppression above it only covers prev==StateUp, so the
+// pair alternates indefinitely, one state change per received packet. That oscillation
+// is pre-existing; what is new is that a state change now triggers a TX, so without a
+// floor each received packet would produce a transmitted one — bypassing MinTxFloor,
+// MaxTxCeil and the peer's advertised RX interval.
+//
+// This is the scenario the PR targets, not a hostile one: a client whose inbound
+// liveness traffic is blocked keeps emitting Down.
+//
+// The scheduler is live here, which matters — the marker-takeover coalescing alone does
+// not bound this, because the wake nudge makes Run drain the queued event almost
+// immediately and collapses the coalescing window to microseconds.
+func TestClient_Liveness_Manager_HandleRx_RateFloorBoundsStateChangeTX(t *testing.T) {
+	t.Parallel()
+
+	const interval = 5 * time.Second
+
+	udp := newRecordingUDPConn("127.0.0.1", 12348)
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.UDP = udp
+		cfg.TxMin, cfg.RxMin = interval, interval
+		cfg.MinTxFloor, cfg.MaxTxCeil, cfg.BackoffMax = interval, interval, interval
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
+
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
+
+	// Feed a repeating peer-Down stream fast, well inside one transmit interval.
+	const packets = 500
+	down := &ControlPacket{Version: 1, State: StateDown, LocalDiscr: 7777, PeerDiscr: 0}
+	flips := 0
+	prev := sess.GetState()
+	for i := 0; i < packets; i++ {
+		m.HandleRx(down, peer)
+		if st := sess.GetState(); st != prev {
+			flips++
+			prev = st
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	// Confirm we actually exercised the oscillation rather than a no-op path.
+	require.Greater(t, flips, packets/4,
+		"expected the Down<->Init oscillation this test is about (got %d flips)", flips)
+
+	// One transmit interval elapsed at most, so the floor allows very few packets.
+	// Without it this tracks the RX count (the reviewer measured 256+, clipped only by
+	// the recorder's buffer).
+	sent := udp.recorded()
+	require.LessOrEqual(t, sent, 3,
+		"transmit rate must be bounded by txInterval (%v), not by the %d received packets (sent %d)",
+		interval, packets, sent)
 }
 
 // TestClient_Liveness_Manager_HandleRx_ResumesCadenceAfterRecovery pins the other half

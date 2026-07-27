@@ -235,10 +235,22 @@ func (s *Scheduler) Run(ctx context.Context) error {
 
 		switch ev.eventType {
 		case eventTypeTX:
+			// Drop stale TX events, mirroring the detect branch below. An event is
+			// stale when scheduleTxNow displaced it by taking the marker over; firing
+			// it would emit a duplicate packet, and under a sustained state-change
+			// stream the orphans would accumulate (maybeDropOnOverflow exempts TX from
+			// maxEvents, so they cannot be shed under queue pressure either).
+			//
+			// Safe because every marker write is paired with a push and every clear is
+			// followed by a re-arm, so a dropped event always has a live successor.
 			ev.session.mu.Lock()
-			if ev.when.Equal(ev.session.nextTxScheduled) {
-				ev.session.nextTxScheduled = time.Time{}
+			if !ev.when.Equal(ev.session.nextTxScheduled) {
+				ev.session.mu.Unlock()
+				s.metrics.SchedulerEventsDropped.WithLabelValues(peer.Interface, peer.LocalIP, "stale").Inc()
+				s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
+				continue
 			}
+			ev.session.nextTxScheduled = time.Time{}
 			ev.session.mu.Unlock()
 			s.doTX(ctx, ev.session)
 			// Do not reschedule periodic TX while AdminDown; we only want the explicit one
@@ -378,6 +390,9 @@ func (s *Scheduler) doTX(ctx context.Context, sess *Session) {
 		sess.mu.Unlock()
 		return
 	}
+	// Record the transmit time for pacing before we drop the lock. Set on attempt
+	// rather than on success so a failing socket cannot be spun on either.
+	sess.lastTx = time.Now()
 	state := sess.state
 	localDiscr := sess.localDiscr
 	peerDiscr := sess.peerDiscr
@@ -447,29 +462,43 @@ func (s *Scheduler) doTX(ctx context.Context, sess *Session) {
 // session flaps. Taking over the marker means popping this event re-arms the cadence
 // at the new state's interval instead.
 //
-// Claiming the marker also coalesces: while an immediate TX is already pending there
-// is nothing to gain from queueing another, which keeps a burst of state-changing RX
-// packets from driving our TX rate 1:1.
+// The TX is paced by txInterval() measured from the last transmit, not sent
+// unconditionally at now. Session.HandleRx treats a repeating peer-Down stream as a
+// state change on every packet (Down->Init on one, Init->Down on the next, since the
+// stale-Down suppression only covers prev==StateUp), so without a floor our transmit
+// rate would track the peer's send rate 1:1 and bypass MinTxFloor/MaxTxCeil entirely.
+// Clamping rather than dropping keeps the point of the fix: the state change still
+// short-circuits a backed-off deadline, it just cannot outrun the configured floor.
 //
-// The displaced far-future event stays in the queue and costs one extra packet when
-// it eventually pops (its when no longer matches the marker, so it will not disturb
-// the cadence). Rewriting queued events instead would mean mutating the heap from a
-// concurrent hot path.
+// Claiming the marker also coalesces: if a TX is already pending no later than the
+// time we would pick, that one carries the new state and there is nothing to queue.
+//
+// A displaced far-future event stays in the queue but is dropped as stale when it pops
+// (Run compares its when against the marker), so a takeover costs no extra packet and
+// leaves no backlog. Rewriting queued events instead would mean mutating the heap from
+// a concurrent hot path.
 func (s *Scheduler) scheduleTxNow(now time.Time, sess *Session) {
 	sess.mu.Lock()
 	if !sess.alive {
 		sess.mu.Unlock()
 		return
 	}
-	if !sess.nextTxScheduled.IsZero() && !sess.nextTxScheduled.After(now) {
-		// An immediate (or already overdue) TX is pending; it will carry this state.
+
+	when := now
+	if !sess.lastTx.IsZero() {
+		if earliest := sess.lastTx.Add(sess.txInterval()); earliest.After(when) {
+			when = earliest
+		}
+	}
+	if !sess.nextTxScheduled.IsZero() && !sess.nextTxScheduled.After(when) {
+		// A TX is already pending no later than this; it will carry the new state.
 		sess.mu.Unlock()
 		return
 	}
-	sess.nextTxScheduled = now
+	sess.nextTxScheduled = when
 	sess.mu.Unlock()
 
-	s.push(&event{when: now, eventType: eventTypeTX, session: sess})
+	s.push(&event{when: when, eventType: eventTypeTX, session: sess})
 }
 
 // tryExpire checks whether the session’s detect deadline has passed.

@@ -26,7 +26,7 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::resource_onchain_helpers;
 
@@ -204,7 +204,12 @@ pub fn process_delete_link(
             validate_program_account!(*acc, program_id, writable = true, "Topology");
             acc_map.insert(*acc.key, *acc);
         }
-        for pk in &link.link_topologies {
+        // Decrement once per *unique* topology. A link only ever contributes a single
+        // reference per topology (LinkUpdate diffs old vs new as a set), so a link that
+        // already holds a duplicate entry must not decrement that topology twice — that
+        // would zero a count another link still contributes to and let TopologyDelete
+        // close the PDA out from under it.
+        for pk in link.link_topologies.iter().collect::<BTreeSet<_>>() {
             let acc = *acc_map.get(pk).ok_or(DoubleZeroError::InvalidArgument)?;
             let mut topo = TopologyInfo::try_from(acc)?;
             topo.reference_count = topo.reference_count.saturating_sub(1);

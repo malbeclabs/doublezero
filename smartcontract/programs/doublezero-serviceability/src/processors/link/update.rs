@@ -17,7 +17,7 @@ use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::{types::NetworkV4, validate_account_code};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -151,10 +151,22 @@ pub fn process_update_link(
         None
     };
 
-    // Validate cap on the caller-supplied new vector before walking accounts.
+    // Validate the caller-supplied new vector before walking accounts.
+    //
+    // Duplicates are rejected here, on the inbound instruction argument, and deliberately
+    // NOT in Link::validate(): validate() runs inside try_acc_write, so a link that already
+    // holds duplicates would become permanently unwritable — and therefore unrepairable,
+    // since repairing it requires a write.
     if let Some(ref link_topologies) = value.link_topologies {
         if link_topologies.len() > 8 {
             msg!("link_topologies exceeds maximum of 8 entries");
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+        // link_topologies is a set: the reference_count diff below counts each topology
+        // once, so a duplicate would store two entries against a single increment.
+        let mut seen = BTreeSet::new();
+        if let Some(dup) = link_topologies.iter().find(|pk| !seen.insert(**pk)) {
+            msg!("link_topologies contains duplicate topology {}", dup);
             return Err(DoubleZeroError::InvalidArgument.into());
         }
     }

@@ -201,6 +201,97 @@ func TestClient_Liveness_Manager_HandleRx_StateChangeTriggersImmediateTX(t *test
 		"a state change within the transmit floor of the last TX must be paced, not sent immediately")
 }
 
+// TestClient_Liveness_Manager_HandleRx_SurvivesDisplacedTXOrphan pins the no-wedge
+// invariant that the stale-TX drop depends on: a session must keep transmitting after
+// the TX event its recovery displaced actually pops.
+//
+// scheduleTxNow takes the pending marker over but cannot remove the already-queued
+// event, so a real recovery leaves an orphan in the heap at the old backed-off deadline.
+// Run drops it as stale instead of transmitting it. That drop is only safe because every
+// marker clear is followed by a re-arm — if a future change to the marker bookkeeping
+// cleared a live marker on the stale path (or skipped the re-arm), the session would go
+// permanently silent and its route would never come back.
+//
+// The orphan has to be driven past its deadline for this to mean anything, which is what
+// separates this from the sibling tests: Run_DropsStaleTX fabricates a marker-zero orphan
+// on a session with hour-long intervals and no cadence to lose, and
+// ResumesCadenceAfterRecovery produces a genuine orphan but stops measuring before its
+// deadline arrives.
+func TestClient_Liveness_Manager_HandleRx_SurvivesDisplacedTXOrphan(t *testing.T) {
+	t.Parallel()
+
+	const cadence = 100 * time.Millisecond
+
+	udp := newRecordingUDPConn("127.0.0.1", 12349)
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.UDP = udp
+		cfg.TxMin, cfg.RxMin = cadence, cadence
+		cfg.MinTxFloor, cfg.MaxTxCeil = cadence, cadence
+		// Small enough that the orphan's deadline lands within the test's runtime.
+		cfg.BackoffMax = 2 * time.Second
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *Route) {
+		r.Src = net.IPv4(127, 0, 0, 1)
+		r.Dst = &net.IPNet{IP: net.IPv4(127, 0, 0, 2), Mask: net.CIDRMask(32, 32)}
+	})
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
+
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
+
+	// Let the Down-state backoff push the pending TX well out. This queued event is the
+	// one the recovery below orphans.
+	require.Eventually(t, func() bool {
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
+		return time.Until(sess.nextTxScheduled) > 1500*time.Millisecond
+	}, 20*time.Second, 20*time.Millisecond, "Down-state backoff should push the pending TX past 1.5s")
+
+	sess.mu.Lock()
+	orphanDeadline := sess.nextTxScheduled
+	sess.mu.Unlock()
+
+	// Recover for real: Down -> Init -> Up. The takeover moves the marker off
+	// orphanDeadline, leaving the event queued there with nothing pointing at it.
+	m.HandleRx(&ControlPacket{Version: 1, State: StateDown, LocalDiscr: 7777, PeerDiscr: 0}, peer)
+	require.Equal(t, StateInit, sess.GetState())
+	m.HandleRx(&ControlPacket{Version: 1, State: StateInit, LocalDiscr: 7777, PeerDiscr: sess.localDiscr}, peer)
+	require.Equal(t, StateUp, sess.GetState())
+
+	sess.mu.Lock()
+	marker := sess.nextTxScheduled
+	sess.mu.Unlock()
+	require.True(t, marker.Before(orphanDeadline),
+		"the recovery must have displaced the queued event, leaving a genuine orphan")
+
+	up := &ControlPacket{Version: 1, State: StateUp, LocalDiscr: 7777, PeerDiscr: sess.localDiscr}
+	feedUntil := func(deadline time.Time) {
+		for time.Now().Before(deadline) {
+			time.Sleep(cadence / 2)
+			m.HandleRx(up, peer)
+		}
+	}
+
+	// Hold the session Up until the orphan has definitely popped.
+	feedUntil(orphanDeadline.Add(300 * time.Millisecond))
+	require.True(t, time.Now().After(orphanDeadline), "must have run past the orphan's deadline")
+	require.Equal(t, StateUp, sess.GetState(), "session should have stayed Up across the orphan")
+
+	// Now measure. A wedge introduced on the stale path shows up here as silence.
+	udp.drain()
+	const measure = time.Second
+	feedUntil(time.Now().Add(measure))
+
+	require.Equal(t, StateUp, sess.GetState())
+	sent := udp.recorded()
+	require.Greater(t, sent, int(measure/cadence)/2,
+		"session must keep transmitting after its displaced orphan popped (sent %d)", sent)
+}
+
 // TestClient_Liveness_Manager_HandleRx_RateFloorBoundsStateChangeTX pins that our
 // transmit rate is bounded by txInterval() and not by the peer's send rate.
 //

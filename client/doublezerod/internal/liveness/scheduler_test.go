@@ -139,6 +139,11 @@ func TestClient_Liveness_Scheduler_ScheduleTxNow_PacedByTransmitFloor(t *testing
 // scheduleTxNow displaces the pending backed-off TX by taking the marker over. Firing
 // the displaced event would emit a duplicate packet, and because maybeDropOnOverflow
 // exempts TX from maxEvents these orphans cannot be shed under queue pressure either.
+//
+// This covers only the "does not transmit" half, on a fabricated marker-zero orphan.
+// That a session survives a *genuinely displaced* orphan popping — the no-wedge
+// invariant the drop depends on — is pinned by
+// TestClient_Liveness_Manager_HandleRx_SurvivesDisplacedTXOrphan.
 func TestClient_Liveness_Scheduler_Run_DropsStaleTX(t *testing.T) {
 	t.Parallel()
 

@@ -1402,10 +1402,25 @@ mod tests {
             }),
             "SetAccessPassFeeds",
         );
+        // Each field is tri-state, so cover a mixed payload, both-Some, and all-None.
         test_instruction(
             DoubleZeroInstruction::SetAccessPassFlags(SetAccessPassFlagsArgs {
                 allow_multiple_ip: None,
                 dzf_locked: Some(true),
+            }),
+            "SetAccessPassFlags",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetAccessPassFlags(SetAccessPassFlagsArgs {
+                allow_multiple_ip: Some(true),
+                dzf_locked: Some(false),
+            }),
+            "SetAccessPassFlags",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetAccessPassFlags(SetAccessPassFlagsArgs {
+                allow_multiple_ip: None,
+                dzf_locked: None,
             }),
             "SetAccessPassFlags",
         );

@@ -1295,7 +1295,11 @@ mod tests {
             ..create_test_user()
         };
         user.release_feed_seats(&mut pass);
-        assert_eq!(seat_users(&pass, &f1), 1, "another user's seat is untouched");
+        assert_eq!(
+            seat_users(&pass, &f1),
+            1,
+            "another user's seat is untouched"
+        );
     }
 
     /// Release follows `feed_pks`, not `user_type`. Were a tick site ever to record a feed against a

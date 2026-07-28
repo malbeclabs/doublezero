@@ -10,8 +10,8 @@ use crate::{
 use doublezero_serviceability::{
     processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
     state::{
-        accesspass::AccessPassType, accountdata::AccountData,
-        multicastgroup::MulticastGroupStatus, user::UserType,
+        accesspass::AccessPassType, accountdata::AccountData, multicastgroup::MulticastGroupStatus,
+        user::UserType,
     },
 };
 use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles;

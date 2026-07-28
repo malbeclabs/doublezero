@@ -296,7 +296,12 @@ pub fn process_update_multicastgroup_roles(
         && user.user_type == UserType::Multicast;
     if is_feed_gated {
         // Only an EdgeSeat role change writes the pass; other types leave it read-only.
-        validate_program_account!(accesspass_account, program_id, writable = true, "AccessPass");
+        validate_program_account!(
+            accesspass_account,
+            program_id,
+            writable = true,
+            "AccessPass"
+        );
     }
 
     // Classify against current membership rather than the flags: dropping one role while keeping the
@@ -319,7 +324,8 @@ pub fn process_update_multicastgroup_roles(
         if device_account.key != &user.device_pk {
             msg!(
                 "Device {} is not the user's device {}",
-                device_account.key, user.device_pk
+                device_account.key,
+                user.device_pk
             );
             return Err(DoubleZeroError::UserDeviceMismatch.into());
         }

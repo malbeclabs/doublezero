@@ -345,7 +345,12 @@ async fn create_mgroup(f: &mut FeedFixture, code: &str) -> Pubkey {
 }
 
 /// Replace a feed's joinable group set, as the catalog admin would.
-async fn update_feed_groups(f: &mut FeedFixture, code: &str, exchange: Pubkey, groups: Vec<Pubkey>) {
+async fn update_feed_groups(
+    f: &mut FeedFixture,
+    code: &str,
+    exchange: Pubkey,
+    groups: Vec<Pubkey>,
+) {
     let (feed_pubkey, _) = get_feed_pda(&f.program_id, code, &exchange);
     let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
     execute_transaction(

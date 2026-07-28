@@ -215,7 +215,7 @@ pub fn update_link(
 /// device_tunnel_block   (writable)  — ResourceType::DeviceTunnelBlock
 /// link_ids              (writable)  — ResourceType::LinkIds
 /// owner                 (writable)  — link.owner
-/// topology[i]           (writable)  — one per link.link_topologies entry
+/// topology[i]           (writable)  — one per unique link.link_topologies entry
 /// ```
 #[allow(clippy::too_many_arguments)]
 pub fn delete_link(

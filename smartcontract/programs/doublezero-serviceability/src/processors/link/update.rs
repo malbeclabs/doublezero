@@ -17,7 +17,7 @@ use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
 use doublezero_program_common::{types::NetworkV4, validate_account_code};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -151,10 +151,22 @@ pub fn process_update_link(
         None
     };
 
-    // Validate cap on the caller-supplied new vector before walking accounts.
+    // Validate the caller-supplied new vector before walking accounts.
+    //
+    // Duplicates are rejected here, on the inbound instruction argument, and deliberately
+    // NOT in Link::validate(): validate() runs inside try_acc_write, so a link that already
+    // holds duplicates would become permanently unwritable — and therefore unrepairable,
+    // since repairing it requires a write.
     if let Some(ref link_topologies) = value.link_topologies {
         if link_topologies.len() > 8 {
             msg!("link_topologies exceeds maximum of 8 entries");
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+        // link_topologies is a set: the reference_count diff below counts each topology
+        // once, so a duplicate would store two entries against a single increment.
+        let mut seen = BTreeSet::new();
+        if let Some(dup) = link_topologies.iter().find(|pk| !seen.insert(**pk)) {
+            msg!("link_topologies contains duplicate topology {}", dup);
             return Err(DoubleZeroError::InvalidArgument.into());
         }
     }
@@ -384,12 +396,17 @@ pub fn process_update_link(
         }
 
         let old_topologies = link.link_topologies.clone();
+        // `added` cannot contain duplicates: the new vector is rejected above if it does.
         let added: Vec<Pubkey> = new_topologies
             .iter()
             .filter(|pk| !old_topologies.contains(pk))
             .copied()
             .collect();
-        let removed: Vec<Pubkey> = old_topologies
+        // `removed` is deduped because the *stored* vector may hold duplicates from before
+        // the check above existed. A link only ever contributed one reference per topology,
+        // so dropping it must decrement once — otherwise repairing a skewed link zeroes a
+        // count another link still contributes to, which is the bug the check prevents.
+        let removed: BTreeSet<Pubkey> = old_topologies
             .iter()
             .filter(|pk| !new_topologies.contains(pk))
             .copied()

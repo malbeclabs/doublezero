@@ -104,11 +104,17 @@ use doublezero_sdk::{
             list::ListTopologyCommand,
         },
         user::{
-            create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand,
-            delete::DeleteUserCommand, get::GetUserCommand, list::ListUserCommand,
-            requestban::RequestBanUserCommand, update::UpdateUserCommand,
+            create::CreateUserCommand,
+            create_subscribe::CreateSubscribeUserCommand,
+            delete::DeleteUserCommand,
+            get::GetUserCommand,
+            list::ListUserCommand,
+            recreate::{RecreatePlan, RecreateUserCommand},
+            requestban::RequestBanUserCommand,
+            update::UpdateUserCommand,
         },
     },
+    doublezeroclient::SimulationOutcome,
     telemetry::LinkLatencyStats,
     DZClient, DZTransaction, Device, DoubleZeroClient, Exchange, Feed, GetGlobalConfigCommand,
     GetGlobalStateCommand, GlobalConfig, GlobalState, Link, Location, MulticastGroup,
@@ -268,6 +274,17 @@ pub trait CliCommand {
     fn update_user(&self, cmd: UpdateUserCommand) -> eyre::Result<Signature>;
     fn delete_user(&self, cmd: DeleteUserCommand) -> eyre::Result<Signature>;
     fn request_ban_user(&self, cmd: RequestBanUserCommand) -> eyre::Result<Signature>;
+    fn plan_recreate_user(&self, cmd: RecreateUserCommand) -> eyre::Result<RecreatePlan>;
+    fn simulate_recreate_user(
+        &self,
+        cmd: RecreateUserCommand,
+        plan: &RecreatePlan,
+    ) -> eyre::Result<SimulationOutcome>;
+    fn recreate_user(
+        &self,
+        cmd: RecreateUserCommand,
+        plan: &RecreatePlan,
+    ) -> eyre::Result<Signature>;
 
     fn list_foundation_allowlist(
         &self,
@@ -691,6 +708,23 @@ impl CliCommand for CliCommandImpl<'_> {
     }
     fn request_ban_user(&self, cmd: RequestBanUserCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
+    }
+    fn plan_recreate_user(&self, cmd: RecreateUserCommand) -> eyre::Result<RecreatePlan> {
+        cmd.plan(self.client)
+    }
+    fn simulate_recreate_user(
+        &self,
+        cmd: RecreateUserCommand,
+        plan: &RecreatePlan,
+    ) -> eyre::Result<SimulationOutcome> {
+        cmd.simulate(self.client, plan)
+    }
+    fn recreate_user(
+        &self,
+        cmd: RecreateUserCommand,
+        plan: &RecreatePlan,
+    ) -> eyre::Result<Signature> {
+        cmd.send(self.client, plan)
     }
     fn list_foundation_allowlist(
         &self,

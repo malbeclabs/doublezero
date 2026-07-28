@@ -113,7 +113,7 @@ impl CreateSubscribeUserCliCommand {
                             pubkey_or_code: feed.clone(),
                             exchange: None,
                         })
-                        .map_err(|_| eyre::eyre!("Feed not found ({})", feed))?;
+                        .map_err(|e| eyre::eyre!("Feed lookup failed ({feed}): {e}"))?;
                     Some(pubkey)
                 }
             },
@@ -536,5 +536,121 @@ mod tests {
             .execute(&ctx, &client, &mut output),
         );
         assert!(res.is_ok(), "{res:?}");
+    }
+
+    // A get_feed failure (e.g. an ambiguous code spanning metros) is surfaced with the
+    // underlying cause, not collapsed into a flat "not found" that hides the remedy.
+    #[test]
+    fn test_cli_user_create_subscribe_surfaces_feed_lookup_error() {
+        let mut client = create_test_client();
+
+        let device_pubkey = Pubkey::new_unique();
+        let device = Device {
+            account_type: AccountType::Device,
+            index: 1,
+            bump_seed: 255,
+            reference_count: 0,
+            code: "device1".to_string(),
+            contributor_pk: Pubkey::default(),
+            location_pk: Pubkey::default(),
+            exchange_pk: Pubkey::default(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [10, 0, 0, 1].into(),
+            dz_prefixes: "10.0.0.1/24".parse().unwrap(),
+            owner: device_pubkey,
+            metrics_publisher_pk: Pubkey::default(),
+            status: DeviceStatus::Activated,
+            mgmt_vrf: "default".to_string(),
+            interfaces: vec![],
+            max_users: 255,
+            users_count: 0,
+            device_health: doublezero_serviceability::state::device::DeviceHealth::ReadyForUsers,
+            desired_status:
+                doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
+            unicast_users_count: 0,
+            multicast_subscribers_count: 0,
+            max_unicast_users: 0,
+            max_multicast_subscribers: 0,
+            reserved_seats: 0,
+            multicast_publishers_count: 0,
+            max_multicast_publishers: 0,
+            ..Default::default()
+        };
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: "device1".to_string(),
+            }))
+            .times(1)
+            .returning(move |_| Ok((device_pubkey, device.clone())));
+
+        let mgroup_pubkey = Pubkey::new_unique();
+        let mgroup = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            owner: Pubkey::default(),
+            index: 1,
+            bump_seed: 1,
+            tenant_pk: Pubkey::default(),
+            code: "mg1".to_string(),
+            multicast_ip: [239, 0, 0, 1].into(),
+            max_bandwidth: 1_000_000_000,
+            status: MulticastGroupStatus::Activated,
+            publisher_count: 0,
+            subscriber_count: 0,
+        };
+        client
+            .expect_get_multicastgroup()
+            .with(predicate::eq(GetMulticastGroupCommand {
+                pubkey_or_code: mgroup_pubkey.to_string(),
+            }))
+            .times(1)
+            .returning(move |_| Ok((mgroup_pubkey, mgroup.clone())));
+
+        // The SDK rejects an ambiguous code; the CLI must pass that cause through, not
+        // mask it. create_subscribe_user is never reached, so it is not expected.
+        client
+            .expect_get_feed()
+            .with(predicate::eq(GetFeedCommand {
+                pubkey_or_code: "shreds-nyc".to_string(),
+                exchange: None,
+            }))
+            .times(1)
+            .returning(|_| {
+                Err(eyre::eyre!(
+                    "Feed code shreds-nyc is ambiguous: it exists in 2 metros"
+                ))
+            });
+
+        let mut output = Vec::new();
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            CreateSubscribeUserCliCommand {
+                device: "device1".to_string(),
+                client_ip: [100, 0, 0, 1].into(),
+                allocate_addr: false,
+                publisher: None,
+                subscriber: Some(mgroup_pubkey.to_string()),
+                wait: false,
+                owner: None,
+                feed: Some("shreds-nyc".to_string()),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        let message = format!(
+            "{}",
+            res.expect_err("a feed lookup failure must surface as an error")
+        );
+        assert!(
+            message.contains("shreds-nyc"),
+            "error names the feed: {message}"
+        );
+        assert!(
+            message.contains("ambiguous"),
+            "error preserves the underlying cause: {message}"
+        );
     }
 }

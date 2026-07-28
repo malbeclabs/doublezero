@@ -1,5 +1,6 @@
 //! Tests for TopologyInfo and FlexAlgoNodeSegment (RFC-18 / Link Classification).
 
+use borsh::to_vec;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
@@ -11,7 +12,7 @@ use doublezero_serviceability::{
         device::{create::DeviceCreateArgs, interface::create::DeviceInterfaceCreateArgs},
         exchange::create::ExchangeCreateArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
-        link::{create::LinkCreateArgs, update::LinkUpdateArgs},
+        link::{create::LinkCreateArgs, delete::LinkDeleteArgs, update::LinkUpdateArgs},
         location::create::LocationCreateArgs,
         permission::create::PermissionCreateArgs,
         topology::{
@@ -25,7 +26,7 @@ use doublezero_serviceability::{
         device::{DeviceDesiredStatus, DeviceType},
         feature_flags::FeatureFlag,
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
-        link::{Link, LinkDesiredStatus, LinkLinkType},
+        link::{Link, LinkDesiredStatus, LinkLinkType, LinkStatus},
         permission::permission_flags,
         topology::{TopologyConstraint, TopologyInfo},
     },
@@ -33,8 +34,8 @@ use doublezero_serviceability::{
 use solana_program::instruction::InstructionError;
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::AccountMeta, pubkey::Pubkey, signature::Keypair, signer::Signer,
-    transaction::TransactionError,
+    account::AccountSharedData, instruction::AccountMeta, pubkey::Pubkey, rent::Rent,
+    signature::Keypair, signer::Signer, transaction::TransactionError,
 };
 
 mod test_helpers;
@@ -560,7 +561,12 @@ async fn delete_topology(
     payer: &Keypair,
 ) -> Result<(), BanksClientError> {
     let (topology_pda, _) = get_topology_pda(&program_id, name);
-    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    // Must be a *new* blockhash, not merely the latest. Tests delete the same topology
+    // twice — once expecting `ReferenceCountNotZero`, then again after clearing the
+    // reference — and both transactions carry the same instruction, accounts and payer.
+    // On the same blockhash they are byte-identical, so the second one hits the bank's
+    // status cache and returns the first one's cached failure without ever executing.
+    let recent_blockhash = wait_for_new_blockhash(banks_client).await;
     let base_accounts = vec![
         AccountMeta::new(topology_pda, false),
         AccountMeta::new_readonly(globalstate_pubkey, false),
@@ -2504,4 +2510,500 @@ async fn test_link_unicast_drained_orthogonal_to_status_and_topologies() {
     );
 
     println!("[PASS] test_link_unicast_drained_orthogonal_to_status_and_topologies");
+}
+
+// ============================================================================
+// link_topologies duplicate handling (issue #4090)
+// ============================================================================
+
+/// Creates a second WAN link between the two devices `setup_wan_link` already created,
+/// using a fresh interface pair. Returns the new link pubkey.
+async fn add_second_wan_link(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    contributor_pubkey: Pubkey,
+    device_a_pubkey: Pubkey,
+    device_z_pubkey: Pubkey,
+    payer: &Keypair,
+) -> Pubkey {
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+
+    for (device_pubkey, iface_name) in [
+        (device_a_pubkey, "Ethernet2"),
+        (device_z_pubkey, "Ethernet3"),
+    ] {
+        execute_transaction(
+            banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+                name: iface_name.to_string(),
+                interface_dia: InterfaceDIA::None,
+                loopback_type: LoopbackType::None,
+                interface_cyoa: InterfaceCYOA::None,
+                bandwidth: 100_000_000_000,
+                ip_net: None,
+                cir: 0,
+                mtu: 9000,
+                routing_mode: RoutingMode::Static,
+                vlan_id: 0,
+                user_tunnel_endpoint: false,
+                use_onchain_allocation: true,
+                topology_count: 0,
+            }),
+            vec![
+                AccountMeta::new(device_pubkey, false),
+                AccountMeta::new(contributor_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(device_tunnel_block_pda, false),
+                AccountMeta::new(segment_routing_ids_pda, false),
+            ],
+            payer,
+        )
+        .await;
+    }
+
+    let globalstate_account = get_globalstate(banks_client, globalstate_pubkey).await;
+    let (link_pubkey, _) = get_link_pda(&program_id, globalstate_account.account_index + 1);
+    let (unicast_default_pda, _) = get_topology_pda(&program_id, "unicast-default");
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateLink(LinkCreateArgs {
+            code: "dza-dzb-2".to_string(),
+            link_type: LinkLinkType::WAN,
+            bandwidth: 20_000_000_000,
+            mtu: 9000,
+            delay_ns: 1_000_000,
+            jitter_ns: 100_000,
+            side_a_iface_name: "Ethernet2".to_string(),
+            side_z_iface_name: Some("Ethernet3".to_string()),
+            desired_status: Some(LinkDesiredStatus::Activated),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(unicast_default_pda, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+        ],
+        payer,
+    )
+    .await;
+
+    link_pubkey
+}
+
+/// `link update --link-topology "TOPO-A,TOPO-A"` must be rejected. A duplicate is invisible
+/// to the set-difference the processor uses to adjust reference_count, so storing it would
+/// leave the link holding two entries against a single increment.
+#[tokio::test]
+async fn test_link_update_rejects_duplicate_topologies() {
+    println!("[TEST] test_link_update_rejects_duplicate_topologies");
+
+    let (mut banks_client, payer, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+    let topo_a_pda = create_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "topo-a",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    let (link_pubkey, contributor_pubkey, _, _) =
+        setup_wan_link(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    // Step 1 of the exploit: tag the link with topo-a. reference_count → 1.
+    assign_link_topology(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        link_pubkey,
+        contributor_pubkey,
+        vec![topo_a_pda],
+        &payer,
+    )
+    .await;
+    assert_eq!(
+        get_topology(&mut banks_client, topo_a_pda)
+            .await
+            .reference_count,
+        1
+    );
+
+    // Step 2: re-submit it as a duplicate. old ∪ new is just {topo-a}, so nothing is
+    // added or removed and the missing-account check cannot fire — the rejection has to
+    // come from the duplicate check itself.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            link_topologies: Some(vec![topo_a_pda, topo_a_pda]),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+            AccountMeta::new(topo_a_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(65),
+        ))) => {}
+        _ => panic!("Expected InvalidArgument (Custom(65)), got {:?}", result),
+    }
+
+    // The link is untouched: one entry, one reference.
+    let link = get_link(&mut banks_client, link_pubkey).await;
+    assert_eq!(link.link_topologies, vec![topo_a_pda]);
+    assert_eq!(
+        get_topology(&mut banks_client, topo_a_pda)
+            .await
+            .reference_count,
+        1
+    );
+
+    println!("[PASS] test_link_update_rejects_duplicate_topologies");
+}
+
+/// Two links both tagged into `topo-a` (`reference_count` 2), with link1's stored
+/// `link_topologies` seeded to `[topo-a, topo-a]` — the skew that could be written before
+/// `LinkUpdate` rejected duplicates. link1 still contributed only one reference.
+struct SkewedTopologyScenario {
+    context: ProgramTestContext,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    topo_a_pda: Pubkey,
+    link1_pubkey: Pubkey,
+    link2_pubkey: Pubkey,
+    contributor_pubkey: Pubkey,
+    device_a_pubkey: Pubkey,
+    device_z_pubkey: Pubkey,
+}
+
+/// Builds [`SkewedTopologyScenario`]. The duplicate entry is seeded with `set_account`
+/// rather than through an instruction because, with the fix in place, no instruction can
+/// produce it — the point of these tests is that state already stored this way is handled
+/// safely.
+async fn setup_skewed_topology_scenario() -> SkewedTopologyScenario {
+    let (mut context, program_id, globalstate_pubkey, _globalconfig_pubkey) =
+        setup_program_with_globalconfig_context().await;
+    let payer = context.payer.insecure_clone();
+
+    let (admin_group_bits_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
+
+    create_topology(
+        &mut context.banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "unicast-default",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+    let topo_a_pda = create_topology(
+        &mut context.banks_client,
+        program_id,
+        globalstate_pubkey,
+        admin_group_bits_pda,
+        "topo-a",
+        TopologyConstraint::IncludeAny,
+        &payer,
+    )
+    .await;
+
+    // Two links, both tagged into topo-a → reference_count 2.
+    let (link1_pubkey, contributor_pubkey, device_a_pubkey, device_z_pubkey) = setup_wan_link(
+        &mut context.banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+    )
+    .await;
+    let link2_pubkey = add_second_wan_link(
+        &mut context.banks_client,
+        program_id,
+        globalstate_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+        &payer,
+    )
+    .await;
+
+    for link_pubkey in [link1_pubkey, link2_pubkey] {
+        assign_link_topology(
+            &mut context.banks_client,
+            program_id,
+            globalstate_pubkey,
+            link_pubkey,
+            contributor_pubkey,
+            vec![topo_a_pda],
+            &payer,
+        )
+        .await;
+    }
+    assert_eq!(
+        get_topology(&mut context.banks_client, topo_a_pda)
+            .await
+            .reference_count,
+        2
+    );
+
+    // Seed the skew: link1 holds [topo-a, topo-a] while having contributed only 1.
+    let mut link1_account = context
+        .banks_client
+        .get_account(link1_pubkey)
+        .await
+        .unwrap()
+        .expect("link1 account should exist");
+    let mut link1 = Link::try_from(&link1_account.data[..]).unwrap();
+    link1.link_topologies.push(topo_a_pda);
+    assert_eq!(link1.link_topologies, vec![topo_a_pda, topo_a_pda]);
+    link1_account.data = to_vec(&link1).unwrap();
+    link1_account.lamports = Rent::default()
+        .minimum_balance(link1_account.data.len())
+        .max(link1_account.lamports);
+    context.set_account(&link1_pubkey, &AccountSharedData::from(link1_account));
+
+    SkewedTopologyScenario {
+        context,
+        program_id,
+        globalstate_pubkey,
+        topo_a_pda,
+        link1_pubkey,
+        link2_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+    }
+}
+
+/// Asserts `TopologyDelete` on `topo-a` is still refused because link2 references it.
+async fn assert_topology_delete_blocked(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    link2_pubkey: Pubkey,
+    topo_a_pda: Pubkey,
+    payer: &Keypair,
+) {
+    let result = delete_topology(
+        banks_client,
+        program_id,
+        globalstate_pubkey,
+        "topo-a",
+        vec![],
+        payer,
+    )
+    .await;
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(13),
+        ))) => {}
+        _ => panic!(
+            "Expected ReferenceCountNotZero (Custom(13)), got {:?}",
+            result
+        ),
+    }
+    assert_eq!(
+        get_link(banks_client, link2_pubkey).await.link_topologies,
+        vec![topo_a_pda]
+    );
+}
+
+/// Regression for the full exploit path in issue #4090, via `LinkDelete`.
+///
+/// A link that already holds `[T, T]` must decrement `T.reference_count` by exactly 1 on
+/// delete. Decrementing per entry would zero a count that a second link still contributes
+/// to and let `TopologyDelete` close the PDA out from under it.
+#[tokio::test]
+async fn test_link_delete_with_duplicate_topology_decrements_once() {
+    println!("[TEST] test_link_delete_with_duplicate_topology_decrements_once");
+
+    let SkewedTopologyScenario {
+        mut context,
+        program_id,
+        globalstate_pubkey,
+        topo_a_pda,
+        link1_pubkey,
+        link2_pubkey,
+        contributor_pubkey,
+        device_a_pubkey,
+        device_z_pubkey,
+    } = setup_skewed_topology_scenario().await;
+    let payer = context.payer.insecure_clone();
+    let recent_blockhash = context.last_blockhash;
+
+    let (device_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
+    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
+
+    // A link holding duplicates must stay writable — the duplicate check lives on the
+    // instruction argument, not in Link::validate(), so repair remains possible.
+    execute_transaction(
+        &mut context.banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            status: Some(LinkStatus::SoftDrained),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link1_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Delete link1, passing a writable account per *unique* topology entry.
+    let link1 = get_link(&mut context.banks_client, link1_pubkey).await;
+    assert_eq!(link1.link_topologies, vec![topo_a_pda, topo_a_pda]);
+    execute_transaction(
+        &mut context.banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteLink(LinkDeleteArgs {
+            use_onchain_deallocation: true,
+        }),
+        vec![
+            AccountMeta::new(link1_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(device_a_pubkey, false),
+            AccountMeta::new(device_z_pubkey, false),
+            AccountMeta::new(device_tunnel_block_pda, false),
+            AccountMeta::new(link_ids_pda, false),
+            AccountMeta::new(link1.owner, false),
+            AccountMeta::new(topo_a_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // link1 contributed exactly one reference, so link2's reference must survive.
+    assert_eq!(
+        get_topology(&mut context.banks_client, topo_a_pda)
+            .await
+            .reference_count,
+        1,
+        "delete must decrement once per unique topology, not once per entry"
+    );
+    assert_topology_delete_blocked(
+        &mut context.banks_client,
+        program_id,
+        globalstate_pubkey,
+        link2_pubkey,
+        topo_a_pda,
+        &payer,
+    )
+    .await;
+
+    println!("[PASS] test_link_delete_with_duplicate_topology_decrements_once");
+}
+
+/// The same exploit path via `LinkUpdate`, which is the natural *repair* action for a
+/// skewed link (`doublezero link update --link-topology default` sends an empty vec).
+/// `removed` is built from the stored vector, so it must be deduped too — otherwise
+/// repairing the skew is what closes the topology out from under the surviving link.
+#[tokio::test]
+async fn test_link_update_clearing_duplicate_topology_decrements_once() {
+    println!("[TEST] test_link_update_clearing_duplicate_topology_decrements_once");
+
+    let SkewedTopologyScenario {
+        mut context,
+        program_id,
+        globalstate_pubkey,
+        topo_a_pda,
+        link1_pubkey,
+        link2_pubkey,
+        contributor_pubkey,
+        ..
+    } = setup_skewed_topology_scenario().await;
+    let payer = context.payer.insecure_clone();
+    let recent_blockhash = context.last_blockhash;
+
+    execute_transaction(
+        &mut context.banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateLink(LinkUpdateArgs {
+            link_topologies: Some(vec![]),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(link1_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+            AccountMeta::new(topo_a_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert_eq!(
+        get_link(&mut context.banks_client, link1_pubkey)
+            .await
+            .link_topologies,
+        Vec::<Pubkey>::new()
+    );
+    assert_eq!(
+        get_topology(&mut context.banks_client, topo_a_pda)
+            .await
+            .reference_count,
+        1,
+        "update must decrement once per unique removed topology, not once per entry"
+    );
+    assert_topology_delete_blocked(
+        &mut context.banks_client,
+        program_id,
+        globalstate_pubkey,
+        link2_pubkey,
+        topo_a_pda,
+        &payer,
+    )
+    .await;
+
+    println!("[PASS] test_link_update_clearing_duplicate_topology_decrements_once");
 }

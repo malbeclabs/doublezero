@@ -140,6 +140,11 @@ type Scheduler struct {
 	eq            *EventQueue     // global time-ordered event queue
 	maxEvents     int             // 0 = unlimited
 
+	// wake interrupts Run's sleep when an event is pushed that is due sooner than
+	// the deadline Run is currently sleeping on. Buffered so a push that races the
+	// sleep is not lost, and coalescing: Run re-polls the queue after any wake.
+	wake chan struct{}
+
 	writeErrWarnEvery time.Duration // min interval between repeated write warnings
 	writeErrWarnLast  time.Time     // last time a warning was logged
 	writeErrWarnMu    sync.Mutex    // guards writeErrWarnLast
@@ -162,6 +167,7 @@ func NewScheduler(log *slog.Logger, udp UDPService, onSessionDown SessionDownFun
 		eq:                eq,
 		writeErrWarnEvery: 5 * time.Second,
 		maxEvents:         maxEvents,
+		wake:              make(chan struct{}, 1),
 		enablePeerMetrics: enablePeerMetrics,
 		metrics:           metrics,
 		passiveMode:       passiveMode,
@@ -207,6 +213,9 @@ func (s *Scheduler) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				s.log.Debug("liveness.scheduler: stopped by context done", "reason", ctx.Err())
 				return nil
+			case <-s.wake:
+				// An event was pushed that may be due before our sleep deadline.
+				continue
 			case <-t.C:
 				continue
 			}
@@ -226,10 +235,22 @@ func (s *Scheduler) Run(ctx context.Context) error {
 
 		switch ev.eventType {
 		case eventTypeTX:
+			// Drop stale TX events, mirroring the detect branch below. An event is
+			// stale when scheduleTxNow displaced it by taking the marker over; firing
+			// it would emit a duplicate packet, and under a sustained state-change
+			// stream the orphans would accumulate (maybeDropOnOverflow exempts TX from
+			// maxEvents, so they cannot be shed under queue pressure either).
+			//
+			// Safe because every marker write is paired with a push and every clear is
+			// followed by a re-arm, so a dropped event always has a live successor.
 			ev.session.mu.Lock()
-			if ev.when.Equal(ev.session.nextTxScheduled) {
-				ev.session.nextTxScheduled = time.Time{}
+			if !ev.when.Equal(ev.session.nextTxScheduled) {
+				ev.session.mu.Unlock()
+				s.metrics.SchedulerEventsDropped.WithLabelValues(peer.Interface, peer.LocalIP, "stale").Inc()
+				s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
+				continue
 			}
+			ev.session.nextTxScheduled = time.Time{}
 			ev.session.mu.Unlock()
 			s.doTX(ctx, ev.session)
 			// Do not reschedule periodic TX while AdminDown; we only want the explicit one
@@ -273,6 +294,22 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	}
 }
 
+// push enqueues an event, updates the queue-length gauge, and nudges Run.
+//
+// The nudge matters because Run sleeps until the deadline of the queue head it last
+// observed; an event pushed from outside the loop (route registration, or an RX-driven
+// state change) is otherwise not noticed until that sleep ends, which while a peer is
+// Down can be as long as backoffMax. The send is non-blocking: a pending token already
+// forces the re-poll, and s.wake is nil in tests that construct a Scheduler without Run.
+func (s *Scheduler) push(ev *event) {
+	s.eq.Push(ev)
+	s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+}
+
 func (s *Scheduler) maybeDropOnOverflow(et eventType, peer Peer) bool {
 	if s.maxEvents <= 0 {
 		return false
@@ -311,8 +348,7 @@ func (s *Scheduler) scheduleTx(now time.Time, sess *Session) {
 	sess.nextTxScheduled = next
 	sess.mu.Unlock()
 
-	s.eq.Push(&event{when: next, eventType: eventTypeTX, session: sess})
-	s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
+	s.push(&event{when: next, eventType: eventTypeTX, session: sess})
 }
 
 // scheduleDetect arms or re-arms a session’s detection timer and enqueues a detect event.
@@ -342,8 +378,7 @@ func (s *Scheduler) scheduleDetect(now time.Time, sess *Session) {
 		return
 	}
 
-	s.eq.Push(&event{when: ddl, eventType: eventTypeDetect, session: sess})
-	s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
+	s.push(&event{when: ddl, eventType: eventTypeDetect, session: sess})
 }
 
 // doTX builds and transmits a ControlPacket representing the session’s current state.
@@ -355,6 +390,9 @@ func (s *Scheduler) doTX(ctx context.Context, sess *Session) {
 		sess.mu.Unlock()
 		return
 	}
+	// Record the transmit time for pacing before we drop the lock. Set on attempt
+	// rather than on success so a failing socket cannot be spun on either.
+	sess.lastTx = time.Now()
 	state := sess.state
 	localDiscr := sess.localDiscr
 	peerDiscr := sess.peerDiscr
@@ -412,6 +450,57 @@ func (s *Scheduler) doTX(ctx context.Context, sess *Session) {
 	}
 }
 
+// scheduleTxNow enqueues a TX event due immediately, so a state change is
+// advertised without waiting out the session's current transmit interval.
+//
+// It takes over sess.nextTxScheduled rather than adding alongside it. That marker
+// is what Run clears before re-arming the periodic cadence, so leaving the old
+// (possibly heavily backed-off) deadline in place would make Run's scheduleTx bail
+// and starve the session: after a Down->Init->Up recovery we would advertise Up and
+// then go silent for up to backoffMax, while the peer's detect timer is only
+// detectMult x rxInterval — the peer times us out, withdraws the route, and the
+// session flaps. Taking over the marker means popping this event re-arms the cadence
+// at the new state's interval instead.
+//
+// The TX is paced by txInterval() measured from the last transmit, not sent
+// unconditionally at now. Session.HandleRx treats a repeating peer-Down stream as a
+// state change on every packet (Down->Init on one, Init->Down on the next, since the
+// stale-Down suppression only covers prev==StateUp), so without a floor our transmit
+// rate would track the peer's send rate 1:1 and bypass MinTxFloor/MaxTxCeil entirely.
+// Clamping rather than dropping keeps the point of the fix: the state change still
+// short-circuits a backed-off deadline, it just cannot outrun the configured floor.
+//
+// Claiming the marker also coalesces: if a TX is already pending no later than the
+// time we would pick, that one carries the new state and there is nothing to queue.
+//
+// A displaced far-future event stays in the queue but is dropped as stale when it pops
+// (Run compares its when against the marker), so a takeover costs no extra packet and
+// leaves no backlog. Rewriting queued events instead would mean mutating the heap from
+// a concurrent hot path.
+func (s *Scheduler) scheduleTxNow(now time.Time, sess *Session) {
+	sess.mu.Lock()
+	if !sess.alive {
+		sess.mu.Unlock()
+		return
+	}
+
+	when := now
+	if !sess.lastTx.IsZero() {
+		if earliest := sess.lastTx.Add(sess.txInterval()); earliest.After(when) {
+			when = earliest
+		}
+	}
+	if !sess.nextTxScheduled.IsZero() && !sess.nextTxScheduled.After(when) {
+		// A TX is already pending no later than this; it will carry the new state.
+		sess.mu.Unlock()
+		return
+	}
+	sess.nextTxScheduled = when
+	sess.mu.Unlock()
+
+	s.push(&event{when: when, eventType: eventTypeTX, session: sess})
+}
+
 // tryExpire checks whether the session’s detect deadline has passed.
 // If so, it transitions the session to Down, triggers an immediate TX
 // to advertise the Down state, and returns true to signal expiration.
@@ -424,8 +513,7 @@ func (s *Scheduler) tryExpire(sess *Session) bool {
 		s.log.Debug("liveness.scheduler: detect timeout -> Down",
 			"peer", peer.String(),
 		)
-		s.eq.Push(&event{when: now, eventType: eventTypeTX, session: sess})
-		s.metrics.SchedulerTotalQueueLen.Set(float64(s.eq.Len()))
+		s.scheduleTxNow(now, sess)
 		return true
 	}
 	return false

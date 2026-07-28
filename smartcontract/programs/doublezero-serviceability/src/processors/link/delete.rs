@@ -26,7 +26,7 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::resource_onchain_helpers;
 
@@ -65,8 +65,9 @@ pub fn process_delete_link(
 
     // Account layout: [link, contributor, globalstate, side_a, side_z, device_tunnel_block,
     //                  link_ids, owner, topology_0..topology_N (writable), payer, system]
-    // N = link.link_topologies.len(); the topology accounts decrement each referenced topology's
-    // reference_count before the link is closed.
+    // N = the number of *unique* entries in link.link_topologies; the topology accounts
+    // decrement each referenced topology's reference_count before the link is closed.
+    // Passing one account per entry also works — duplicates collapse in the lookup map.
     let side_a_account = next_account_info(accounts_iter)?;
     let side_z_account = next_account_info(accounts_iter)?;
     let device_tunnel_block_ext = next_account_info(accounts_iter)?;
@@ -197,14 +198,19 @@ pub fn process_delete_link(
     try_acc_write(&side_z_dev, side_z_account, payer_account, accounts)?;
 
     // Decrement reference_count on every Topology this link was tagged into.
-    // Caller must provide exactly one writable account per entry in link.link_topologies.
+    // Caller must provide a writable account for every unique entry in link.link_topologies.
     if !link.link_topologies.is_empty() {
         let mut acc_map: BTreeMap<Pubkey, &AccountInfo> = BTreeMap::new();
         for acc in topology_accounts.iter() {
             validate_program_account!(*acc, program_id, writable = true, "Topology");
             acc_map.insert(*acc.key, *acc);
         }
-        for pk in &link.link_topologies {
+        // Decrement once per *unique* topology. A link only ever contributes a single
+        // reference per topology (LinkUpdate diffs old vs new as a set), so a link that
+        // already holds a duplicate entry must not decrement that topology twice — that
+        // would zero a count another link still contributes to and let TopologyDelete
+        // close the PDA out from under it.
+        for pk in link.link_topologies.iter().collect::<BTreeSet<_>>() {
             let acc = *acc_map.get(pk).ok_or(DoubleZeroError::InvalidArgument)?;
             let mut topo = TopologyInfo::try_from(acc)?;
             topo.reference_count = topo.reference_count.saturating_sub(1);

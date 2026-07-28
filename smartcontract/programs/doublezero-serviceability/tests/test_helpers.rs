@@ -593,6 +593,38 @@ pub async fn init_globalstate_and_config(
     .await;
 }
 
+/// Like [`setup_program_with_globalconfig`], but returns the whole `ProgramTestContext` so
+/// tests can call `set_account` to seed account state no instruction can produce.
+/// Returns (context, program_id, globalstate_pubkey, globalconfig_pubkey).
+#[allow(dead_code)]
+pub async fn setup_program_with_globalconfig_context(
+) -> (ProgramTestContext, Pubkey, Pubkey, Pubkey) {
+    let program_id = Pubkey::new_unique();
+
+    let mut program_test = ProgramTest::new(
+        "doublezero_serviceability",
+        program_id,
+        processor!(process_instruction),
+    );
+    program_test.set_compute_max_units(1_000_000);
+    let mut context = program_test.start_with_context().await;
+
+    let payer = context.payer.insecure_clone();
+    let recent_blockhash = context.last_blockhash;
+    init_globalstate_and_config(
+        &mut context.banks_client,
+        program_id,
+        &payer,
+        recent_blockhash,
+    )
+    .await;
+
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
+
+    (context, program_id, globalstate_pubkey, globalconfig_pubkey)
+}
+
 #[allow(dead_code)]
 pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey) {
     let program_id = Pubkey::new_unique();

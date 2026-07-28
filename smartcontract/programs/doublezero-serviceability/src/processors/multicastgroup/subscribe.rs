@@ -91,6 +91,14 @@ pub fn update_user_multicastgroup_roles(
     // metro→group map (the feed metro gate), which supersedes the mgroup allowlist; the caller is
     // responsible for running the feed metro gate for EdgeSeat role adds.
     let is_edge_seat = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_));
+
+    // A feed is a receive-only SKU, so an EdgeSeat pass grants subscriber roles only. Publishing is
+    // group-level and belongs to a pass type that sells it. Dropping a publisher role stays allowed
+    // so a user granted one before this rule can be cleaned up.
+    if publisher && is_edge_seat {
+        msg!("EdgeSeat access pass cannot grant a publisher role");
+        return Err(DoubleZeroError::EdgeSeatIsSubscribeOnly.into());
+    }
     if publisher && !is_edge_seat && !accesspass.mgroup_pub_allowlist.contains(mgroup_account.key) {
         msg!("{:?}", accesspass);
         return Err(DoubleZeroError::NotAllowed.into());

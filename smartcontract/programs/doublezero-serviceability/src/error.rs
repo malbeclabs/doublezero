@@ -218,6 +218,8 @@ pub enum DoubleZeroError {
     UserFeedLimitExceeded, // variant 104
     #[error("A Device account is required for this EdgeSeat access pass")]
     DeviceAccountRequired, // variant 105
+    #[error("EdgeSeat access passes grant subscriber roles only")]
+    EdgeSeatIsSubscribeOnly, // variant 106
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -329,6 +331,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::EdgeSeatIsMulticastOnly => ProgramError::Custom(103),
             DoubleZeroError::UserFeedLimitExceeded => ProgramError::Custom(104),
             DoubleZeroError::DeviceAccountRequired => ProgramError::Custom(105),
+            DoubleZeroError::EdgeSeatIsSubscribeOnly => ProgramError::Custom(106),
         }
     }
 }
@@ -441,6 +444,7 @@ impl From<u32> for DoubleZeroError {
             103 => DoubleZeroError::EdgeSeatIsMulticastOnly,
             104 => DoubleZeroError::UserFeedLimitExceeded,
             105 => DoubleZeroError::DeviceAccountRequired,
+            106 => DoubleZeroError::EdgeSeatIsSubscribeOnly,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -475,7 +479,7 @@ mod tests {
         }
 
         // EnumIter generates Custom(0) by default, so we explicitly test values
-        // outside the known variant range (currently 0-105) to ensure the conversion
+        // outside the known variant range (currently 0-106) to ensure the conversion
         // logic handles arbitrary custom codes correctly.
         for code in [1000u32, 100_000, u32::MAX] {
             let err = DoubleZeroError::Custom(code);

@@ -67,6 +67,9 @@ impl UpdateMulticastGroupRolesCommand {
         // An EdgeSeat pass bypasses the mgroup allowlists onchain (the feed metro gate below admits
         // it instead), so checking them here would reject every EdgeSeat role change.
         let is_edge_seat = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_));
+        if is_edge_seat && self.publisher {
+            eyre::bail!("EdgeSeat access passes grant subscriber roles only");
+        }
         if !is_edge_seat {
             if self.publisher && !accesspass.mgroup_pub_allowlist.contains(&self.group_pk) {
                 eyre::bail!("User not allowed to publish multicast group");

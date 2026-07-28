@@ -596,27 +596,33 @@ mod tests {
     }
 
     #[test]
-    fn test_edge_seat_unicast_cap_retained() {
+    fn test_edge_seat_admits_multicast_only() {
         let mut ap = test_accesspass(AccessPassType::EdgeSeat(vec![]));
 
-        // Unicast: per-category cap is still enforced (cap is 2).
-        ap.try_add_user(UserType::IBRL).unwrap();
-        ap.try_add_user(UserType::EdgeFiltering).unwrap();
-        assert_eq!(ap.unicast_user_count, 2);
+        // Unicast has no feed to bill against, so it is rejected outright rather than admitted
+        // against max_unicast_users (2 here), which is no longer enforced.
         assert_eq!(
             ap.try_add_user(UserType::IBRL).unwrap_err(),
-            DoubleZeroError::AccessPassMaxUnicastUsersExceeded
+            DoubleZeroError::EdgeSeatIsMulticastOnly
         );
+        assert_eq!(
+            ap.try_add_user(UserType::EdgeFiltering).unwrap_err(),
+            DoubleZeroError::EdgeSeatIsMulticastOnly
+        );
+        assert_eq!(ap.unicast_user_count, 0);
 
-        // Multicast: max_multicast_users is vestigial under supersede — try_add_user is a no-op
-        // and never errors, regardless of max_multicast_users.
+        // Multicast: max_multicast_users is vestigial under supersede, so try_add_user is a no-op
+        // and never errors regardless of its value. Capacity comes from the per-feed seats.
         ap.max_multicast_users = 0;
         ap.try_add_user(UserType::Multicast).unwrap();
         ap.try_add_user(UserType::Multicast).unwrap();
         assert_eq!(ap.multicast_user_count, 0);
 
+        // A pass that admitted a unicast user before this rule must still be able to delete it back
+        // down to zero, so remove_user keeps decrementing.
+        ap.unicast_user_count = 1;
         ap.remove_user(UserType::IBRL);
-        assert_eq!(ap.unicast_user_count, 1);
+        assert_eq!(ap.unicast_user_count, 0);
 
         // connection_count is never touched by the seat helpers.
         assert_eq!(ap.connection_count, 0);

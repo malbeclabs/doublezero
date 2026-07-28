@@ -78,10 +78,7 @@ pub fn update_user_multicastgroup_roles(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    // Only a multicast user can hold multicast roles. The device controller programs group
-    // membership solely for UserType::Multicast, so roles on any other type are state the device
-    // never sees. Removal stays allowed for every type so a user already carrying them can be
-    // cleaned up before delete.
+    // Only a multicast user can hold multicast roles.
     if (publisher || subscriber) && user.user_type != UserType::Multicast {
         msg!("UserType {} cannot hold multicast roles", user.user_type);
         return Err(DoubleZeroError::UserNotMulticast.into());
@@ -185,9 +182,7 @@ pub fn process_update_multicastgroup_roles(
     // Permission PDA last (via execute_authorized_transaction); the optional EdgeSeat device/feed
     // accounts for the metro re-gate precede payer/system, because the client pushes them into the
     // instruction's account list ahead of the [payer, system, permission] trailer that
-    // assemble_instructions always appends. split_trailing_permission identifies the Permission by
-    // PDA match rather than by position, so it never mistakes device/feed for the Permission
-    // account regardless of which optional accounts are present.
+    // assemble_instructions always appends.
     let remaining: Vec<&AccountInfo> = accounts_iter.collect();
     let (payer_account, system_program, leading, permission_account) =
         split_trailing_permission(program_id, &remaining)?;

@@ -884,8 +884,9 @@ async fn test_no_op_removal_keeps_the_seat() {
     assert_eq!(seat_users(&mut f, feed).await, 1);
 }
 
-/// A partial removal keeps the other role and must not be treated as an add, so it does not re-run
-/// the group-in-feed gate. Here the feed no longer carries the group, which would otherwise wedge it.
+/// A partial removal keeps the other role, so it neither re-runs the group-in-feed gate nor frees the
+/// seat. Here the feed no longer carries the group, which would otherwise wedge it and, once the
+/// intersection came out empty, hand back a seat the user is still using.
 #[tokio::test]
 async fn test_partial_removal_survives_feed_group_rotation() {
     let mut f = setup_feed_fixture([100, 0, 0, 35]).await;
@@ -908,4 +909,6 @@ async fn test_partial_removal_survives_feed_group_rotation() {
     let user = user_state(&mut f).await;
     assert!(user.publishers.is_empty());
     assert_eq!(user.subscribers, vec![group1]);
+    assert_eq!(user.feed_pks, vec![feed]);
+    assert_eq!(seat_users(&mut f, feed).await, 1);
 }

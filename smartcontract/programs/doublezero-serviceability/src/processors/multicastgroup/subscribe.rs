@@ -311,8 +311,9 @@ pub fn process_update_multicastgroup_roles(
     let held_group = held_publisher || held_subscriber;
     let granting_role =
         (value.publisher && !held_publisher) || (value.subscriber && !held_subscriber);
-    let revoking_role =
-        (!value.publisher && held_publisher) || (!value.subscriber && held_subscriber);
+    // Only losing the group frees its feed seat. Dropping one role while keeping the other leaves the
+    // user in the group, even if a catalog rotation has since emptied the feed's group set.
+    let dropping_group = held_group && !value.publisher && !value.subscriber;
     let mut accesspass_changed = false;
 
     // EdgeSeat passes derive joinable groups from their feeds' metro→group map, so a role add is
@@ -359,12 +360,10 @@ pub fn process_update_multicastgroup_roles(
         value.subscriber,
     )?;
 
-    // A removal that retires the user's last group in the covering feed releases that feed's seat.
-    // Gated on a role actually being revoked, or a no-op call could free a seat the user still uses
-    // once the group rotates out of the feed. Neither the device nor a coverage check is consulted:
-    // a feed de-provisioned from the pass would then wedge every removal and strand its `feed_pks`
-    // entry, so the feed is taken as the last optional account and a removal may pass it alone.
-    let releasing_feed = if is_feed_gated && revoking_role {
+    // Losing the last group the user held in a feed releases that feed's seat. No coverage check: a
+    // feed de-provisioned from the pass would then wedge every removal and strand its `feed_pks`
+    // entry. That leaves the device unused here, so a release may pass the feed alone.
+    let releasing_feed = if is_feed_gated && dropping_group {
         leading.last().copied()
     } else {
         None

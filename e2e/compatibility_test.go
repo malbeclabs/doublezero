@@ -34,14 +34,14 @@ import (
 // given environment and you don't want to wait for a min_compatible_version
 // bump onchain.
 
-// The 0.15.0 floor matches the program's MIN_COMPATIBLE_VERSION. Note that
-// the `client/v0.14.1` git tag was a patch release built from a commit whose
-// workspace Cargo version was still "0.14.0", so the v0.14.1 CLI binary
-// self-reports its embedded version as 0.14.0 in the startup version check —
-// v0.15.0 is the first release whose embedded version is actually ≥ 0.14.1.
+// This floor sits one release above the program's MIN_COMPATIBLE_VERSION (0.30.0) because the
+// `client/v0.30.0` tag was cut before its version-bump commit merged, so those binaries
+// self-report 0.29.0 and the 0.30.0 gate rejects them -- that tag can never pass the matrix.
+// v0.31.0 self-reports 0.30.0 and does pass. Tagging was fixed for v0.32.0 onward in #4068, so
+// this floor should track MIN_COMPATIBLE_VERSION again once v0.30.0 falls out of range.
 var globalMinVersions = map[string]string{
-	"mainnet-beta": "0.21.0",
-	"testnet":      "0.21.0",
+	"mainnet-beta": "0.31.0",
+	"testnet":      "0.31.0",
 }
 
 // =============================================================================

@@ -132,6 +132,7 @@ func TestE2E_MultiClientIBRL_RouteLiveness(t *testing.T) {
 		CYOANetworkIPHostID:       100,
 		RouteLivenessEnableActive: true,
 		RouteLivenessBackoffMax:   3 * time.Second,
+		RouteLivenessDebug:        true,
 	})
 	require.NoError(t, err)
 	log.Debug("--> Client1 added", "client1Pubkey", client1.Pubkey, "client1IP", client1.CYOANetworkIP)
@@ -142,6 +143,7 @@ func TestE2E_MultiClientIBRL_RouteLiveness(t *testing.T) {
 		CYOANetworkIPHostID:        110,
 		RouteLivenessEnablePassive: true, // route liveness in passive mode for this client
 		RouteLivenessBackoffMax:    3 * time.Second,
+		RouteLivenessDebug:         true,
 	})
 	require.NoError(t, err)
 	log.Debug("--> Client2 added", "client2Pubkey", client2.Pubkey, "client2IP", client2.CYOANetworkIP)
@@ -152,6 +154,7 @@ func TestE2E_MultiClientIBRL_RouteLiveness(t *testing.T) {
 		CYOANetworkIPHostID:       120,
 		RouteLivenessEnableActive: true,
 		RouteLivenessBackoffMax:   3 * time.Second,
+		RouteLivenessDebug:        true,
 	})
 	require.NoError(t, err)
 	log.Debug("--> Client3 added", "client3Pubkey", client3.Pubkey, "client3IP", client3.CYOANetworkIP)
@@ -343,12 +346,12 @@ func runMultiClientIBRLRouteLivenessTest(t *testing.T, log *slog.Logger, dn *dev
 		//   - c1 has routes to c2,c3
 		//   - c2 has route to c1, NOT to c3
 		//   - c3 has route to c1, NOT to c2
-		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "baseline c1->c2")
-		requireEventuallyRoute(t, client1, client3DZIP, true, wait, tick, "baseline c1->c3")
-		requireEventuallyRoute(t, client2, client1DZIP, true, wait, tick, "baseline c2->c1")
-		requireEventuallyRoute(t, client2, client3DZIP, false, wait, tick, "baseline c2->c3")
-		requireEventuallyRoute(t, client3, client1DZIP, true, wait, tick, "baseline c3->c1")
-		requireEventuallyRoute(t, client3, client2DZIP, false, wait, tick, "baseline c3->c2")
+		requireEventuallyRoute(t, log, client1, "client1", client2DZIP, true, wait, tick, "baseline c1->c2")
+		requireEventuallyRoute(t, log, client1, "client1", client3DZIP, true, wait, tick, "baseline c1->c3")
+		requireEventuallyRoute(t, log, client2, "client2", client1DZIP, true, wait, tick, "baseline c2->c1")
+		requireEventuallyRoute(t, log, client2, "client2", client3DZIP, false, wait, tick, "baseline c2->c3")
+		requireEventuallyRoute(t, log, client3, "client3", client1DZIP, true, wait, tick, "baseline c3->c1")
+		requireEventuallyRoute(t, log, client3, "client3", client2DZIP, false, wait, tick, "baseline c3->c2")
 
 		// Baseline liveness packets (dz0 present where peers exist; never on eth0/eth1)
 		requireUDPLivenessOnDZ0(t, client1, client2DZIP, "baseline c1 liveness packets -> c2 on dz0")
@@ -369,23 +372,23 @@ func runMultiClientIBRLRouteLivenessTest(t *testing.T, log *slog.Logger, dn *dev
 		blockUDPLiveness(t, client1)
 
 		// Routes after blocking
-		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: block c1: c1->c2 remains")
-		requireEventuallyRoute(t, client1, client3DZIP, false, wait, tick, "pass %d: block c1: c1->c3 removed")
-		requireEventuallyRoute(t, client1, client4DZIP, false, wait, tick, "pass %d: block c1: c1->c4 removed")
-		requireEventuallyRoute(t, client3, client1DZIP, false, wait, tick, "pass %d: block c1: c3->c1 removed")
-		requireEventuallyRoute(t, client2, client1DZIP, true, wait, tick, "pass %d: block c1: c2->c1 remains")
-		requireEventuallyRoute(t, client2, client3DZIP, false, wait, tick, "pass %d: block c1: c2->c3 remains absent")
-		requireEventuallyRoute(t, client3, client2DZIP, false, wait, tick, "pass %d: block c1: c3->c2 remains absent")
-		requireEventuallyRoute(t, client4, client1DZIP, true, wait, tick, "pass %d: block c1: c4->c1 remains")
+		requireEventuallyRoute(t, log, client1, "client1", client2DZIP, true, wait, tick, "pass %d: block c1: c1->c2 remains", pass)
+		requireEventuallyRoute(t, log, client1, "client1", client3DZIP, false, wait, tick, "pass %d: block c1: c1->c3 removed", pass)
+		requireEventuallyRoute(t, log, client1, "client1", client4DZIP, false, wait, tick, "pass %d: block c1: c1->c4 removed", pass)
+		requireEventuallyRoute(t, log, client3, "client3", client1DZIP, false, wait, tick, "pass %d: block c1: c3->c1 removed", pass)
+		requireEventuallyRoute(t, log, client2, "client2", client1DZIP, true, wait, tick, "pass %d: block c1: c2->c1 remains", pass)
+		requireEventuallyRoute(t, log, client2, "client2", client3DZIP, false, wait, tick, "pass %d: block c1: c2->c3 remains absent", pass)
+		requireEventuallyRoute(t, log, client3, "client3", client2DZIP, false, wait, tick, "pass %d: block c1: c3->c2 remains absent", pass)
+		requireEventuallyRoute(t, log, client4, "client4", client1DZIP, true, wait, tick, "pass %d: block c1: c4->c1 remains", pass)
 
 		unblockUDPLiveness(t, client1)
 
 		// Routes restored after unblocking; wait for full stability before Case B.
 		// Note: c1->c4 is not checked here — client4 has liveness disabled and does not
 		// respond to probes, so c1 cannot restore that route via liveness after a block.
-		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: unblock c1: c1->c2 remains")
-		requireEventuallyRoute(t, client1, client3DZIP, true, wait, tick, "pass %d: unblock c1: c1->c3 restored")
-		requireEventuallyRoute(t, client3, client1DZIP, true, wait, tick, "pass %d: unblock c1: c3->c1 restored")
+		requireEventuallyRoute(t, log, client1, "client1", client2DZIP, true, wait, tick, "pass %d: unblock c1: c1->c2 remains", pass)
+		requireEventuallyRoute(t, log, client1, "client1", client3DZIP, true, wait, tick, "pass %d: unblock c1: c1->c3 restored", pass)
+		requireEventuallyRoute(t, log, client3, "client3", client1DZIP, true, wait, tick, "pass %d: unblock c1: c3->c1 restored", pass)
 	}
 
 	doRouteLivenessCaseB := func(pass int) {
@@ -394,19 +397,19 @@ func runMultiClientIBRLRouteLivenessTest(t *testing.T, log *slog.Logger, dn *dev
 		blockUDPLiveness(t, client2)
 
 		// Routes after blocking
-		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: block c2: c1->c2 remains")
-		requireEventuallyRoute(t, client2, client1DZIP, true, wait, tick, "pass %d: block c2: c2->c1 remains")
-		requireEventuallyRoute(t, client2, client3DZIP, false, wait, tick, "pass %d: block c2: c2->c3 remains absent")
-		requireEventuallyRoute(t, client3, client2DZIP, false, wait, tick, "pass %d: block c2: c3->c2 remains absent")
-		requireEventuallyRoute(t, client1, client3DZIP, true, wait, tick, "pass %d: block c2: c1->c3 remains")
-		requireEventuallyRoute(t, client3, client1DZIP, true, wait, tick, "pass %d: block c2: c3->c1 remains")
+		requireEventuallyRoute(t, log, client1, "client1", client2DZIP, true, wait, tick, "pass %d: block c2: c1->c2 remains", pass)
+		requireEventuallyRoute(t, log, client2, "client2", client1DZIP, true, wait, tick, "pass %d: block c2: c2->c1 remains", pass)
+		requireEventuallyRoute(t, log, client2, "client2", client3DZIP, false, wait, tick, "pass %d: block c2: c2->c3 remains absent", pass)
+		requireEventuallyRoute(t, log, client3, "client3", client2DZIP, false, wait, tick, "pass %d: block c2: c3->c2 remains absent", pass)
+		requireEventuallyRoute(t, log, client1, "client1", client3DZIP, true, wait, tick, "pass %d: block c2: c1->c3 remains", pass)
+		requireEventuallyRoute(t, log, client3, "client3", client1DZIP, true, wait, tick, "pass %d: block c2: c3->c1 remains", pass)
 
 		unblockUDPLiveness(t, client2)
 
 		// Routes restored after unblocking; wait for full stability before Case C.
-		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: unblock c2: c1->c2 remains")
-		requireEventuallyRoute(t, client1, client3DZIP, true, wait, tick, "pass %d: unblock c2: c1->c3 remains stable")
-		requireEventuallyRoute(t, client3, client1DZIP, true, wait, tick, "pass %d: unblock c2: c3->c1 remains stable")
+		requireEventuallyRoute(t, log, client1, "client1", client2DZIP, true, wait, tick, "pass %d: unblock c2: c1->c2 remains", pass)
+		requireEventuallyRoute(t, log, client1, "client1", client3DZIP, true, wait, tick, "pass %d: unblock c2: c1->c3 remains stable", pass)
+		requireEventuallyRoute(t, log, client3, "client3", client1DZIP, true, wait, tick, "pass %d: unblock c2: c3->c1 remains stable", pass)
 	}
 
 	doRouteLivenessCaseC := func(pass int) {
@@ -415,18 +418,18 @@ func runMultiClientIBRLRouteLivenessTest(t *testing.T, log *slog.Logger, dn *dev
 		blockUDPLiveness(t, client3)
 
 		// Routes after blocking
-		requireEventuallyRoute(t, client1, client3DZIP, false, wait, tick, "pass %d: block c3: c1->c3 removed")
-		requireEventuallyRoute(t, client3, client1DZIP, false, wait, tick, "pass %d: block c3: c3->c1 removed")
-		requireEventuallyRoute(t, client1, client2DZIP, true, wait, tick, "pass %d: block c3: c1->c2 remains")
-		requireEventuallyRoute(t, client2, client1DZIP, true, wait, tick, "pass %d: block c3: c2->c1 remains")
-		requireEventuallyRoute(t, client2, client3DZIP, false, wait, tick, "pass %d: block c3: c2->c3 remains absent")
-		requireEventuallyRoute(t, client3, client2DZIP, false, wait, tick, "pass %d: block c3: c3->c2 remains absent")
+		requireEventuallyRoute(t, log, client1, "client1", client3DZIP, false, wait, tick, "pass %d: block c3: c1->c3 removed", pass)
+		requireEventuallyRoute(t, log, client3, "client3", client1DZIP, false, wait, tick, "pass %d: block c3: c3->c1 removed", pass)
+		requireEventuallyRoute(t, log, client1, "client1", client2DZIP, true, wait, tick, "pass %d: block c3: c1->c2 remains", pass)
+		requireEventuallyRoute(t, log, client2, "client2", client1DZIP, true, wait, tick, "pass %d: block c3: c2->c1 remains", pass)
+		requireEventuallyRoute(t, log, client2, "client2", client3DZIP, false, wait, tick, "pass %d: block c3: c2->c3 remains absent", pass)
+		requireEventuallyRoute(t, log, client3, "client3", client2DZIP, false, wait, tick, "pass %d: block c3: c3->c2 remains absent", pass)
 
 		unblockUDPLiveness(t, client3)
 
 		// Routes restored after unblocking
-		requireEventuallyRoute(t, client1, client3DZIP, true, wait, tick, "pass %d: unblock c3: c1->c3 restored")
-		requireEventuallyRoute(t, client3, client1DZIP, true, wait, tick, "pass %d: unblock c3: c3->c1 restored")
+		requireEventuallyRoute(t, log, client1, "client1", client3DZIP, true, wait, tick, "pass %d: unblock c3: c1->c3 restored", pass)
+		requireEventuallyRoute(t, log, client3, "client3", client1DZIP, true, wait, tick, "pass %d: unblock c3: c3->c1 restored", pass)
 	}
 
 	// Run the route liveness matrix.

@@ -100,6 +100,11 @@ type Session struct {
 
 	nextTx, detectDeadline, lastRx time.Time // computed next transmit time, detect timeout, last RX time
 
+	// lastTx is when we last transmitted a control packet. It paces the immediate TX
+	// that a state change triggers, so a peer that flips our state on every received
+	// packet cannot drive our transmit rate past txInterval().
+	lastTx time.Time
+
 	peer     *Peer
 	peerAddr *net.UDPAddr
 

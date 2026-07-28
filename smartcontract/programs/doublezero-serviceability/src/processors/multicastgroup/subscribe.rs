@@ -3,6 +3,7 @@ use crate::{
     error::DoubleZeroError,
     pda::{get_accesspass_pda, get_globalstate_pda, get_resource_extension_pda},
     processors::{
+        accesspass::set_feeds::MAX_ACCESS_PASS_FEEDS,
         feed::check_feed_metro_coverage,
         resource::{allocate_ip, deallocate_ip},
         validation::validate_program_account,
@@ -204,7 +205,7 @@ pub fn process_update_multicastgroup_roles(
     validate_program_account!(
         accesspass_account,
         program_id,
-        writable = true,
+        writable = false,
         "AccessPass"
     );
     validate_program_account!(user_account, program_id, writable = true, "User");
@@ -293,14 +294,27 @@ pub fn process_update_multicastgroup_roles(
     // in create_user_core. Unicast stays on the pass's per-category cap and is never feed-gated.
     let is_feed_gated = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_))
         && user.user_type == UserType::Multicast;
-    let adding_role = value.publisher || value.subscriber;
+    if is_feed_gated {
+        // Only an EdgeSeat role change writes the pass; other types leave it read-only.
+        validate_program_account!(accesspass_account, program_id, writable = true, "AccessPass");
+    }
+
+    // Classify against current membership rather than the flags: dropping one role while keeping the
+    // other is a removal, not an add, and re-asserting what the user already holds is neither.
+    let held_publisher = user.publishers.contains(mgroup_account.key);
+    let held_subscriber = user.subscribers.contains(mgroup_account.key);
+    let held_group = held_publisher || held_subscriber;
+    let granting_role =
+        (value.publisher && !held_publisher) || (value.subscriber && !held_subscriber);
+    let revoking_role =
+        (!value.publisher && held_publisher) || (!value.subscriber && held_subscriber);
     let mut accesspass_changed = false;
 
     // EdgeSeat passes derive joinable groups from their feeds' metro→group map, so a role add is
     // gated on a feed that is provisioned on the pass, serves the user's metro, and carries the
     // target group.
-    if is_feed_gated && adding_role {
-        let device_account = device_account.ok_or(DoubleZeroError::MetroMismatch)?;
+    if is_feed_gated && granting_role {
+        let device_account = device_account.ok_or(DoubleZeroError::DeviceAccountRequired)?;
         validate_program_account!(device_account, program_id, writable = false, "Device");
         if device_account.key != &user.device_pk {
             msg!(
@@ -318,9 +332,13 @@ pub fn process_update_multicastgroup_roles(
             Some(mgroup_account.key),
             Some(feed_account),
         )?;
-        // A seat is held per feed, not per group: joining a second group inside a feed the user
-        // already holds must not tick again.
-        if !user.feed_pks.contains(feed_account.key) {
+        // One seat per feed, charged only by the call that first joins the group. Ticking on any
+        // covering feed would double-charge a group two feeds both carry, and ticking on a role
+        // upgrade would charge a group the user already holds.
+        if !held_group && !user.feed_pks.contains(feed_account.key) {
+            if user.feed_pks.len() >= MAX_ACCESS_PASS_FEEDS {
+                return Err(DoubleZeroError::UserFeedLimitExceeded.into());
+            }
             accesspass.try_add_feed_user(feed_account.key)?;
             user.feed_pks.push(*feed_account.key);
             accesspass_changed = true;
@@ -335,33 +353,20 @@ pub fn process_update_multicastgroup_roles(
         value.subscriber,
     )?;
 
-    // A removal may retire the user's last group in the covering feed, releasing that feed's seat.
-    // The accounts stay optional so removal-only cleanup keeps working without them; the seat then
-    // stays held until delete drains `feed_pks`.
-    let releasing_seat = if is_feed_gated && !adding_role {
-        device_account.zip(feed_account)
+    // A removal that retires the user's last group in the covering feed releases that feed's seat.
+    // Gated on a role actually being revoked, or a no-op call could free a seat the user still uses
+    // once the group rotates out of the feed. Neither the device nor a coverage check is consulted:
+    // a feed de-provisioned from the pass would then wedge every removal and strand its `feed_pks`
+    // entry, so the feed is taken as the last optional account and a removal may pass it alone.
+    let releasing_feed = if is_feed_gated && revoking_role {
+        leading.last().copied()
     } else {
         None
     };
-    if let Some((device_account, feed_account)) = releasing_seat {
-        validate_program_account!(device_account, program_id, writable = false, "Device");
-        if device_account.key != &user.device_pk {
-            msg!(
-                "Device {} is not the user's device {}",
-                device_account.key, user.device_pk
-            );
-            return Err(DoubleZeroError::UserDeviceMismatch.into());
+    if let Some(feed_account) = releasing_feed {
+        if feed_account.owner != program_id {
+            return Err(DoubleZeroError::InvalidAccountOwner.into());
         }
-        let device = Device::try_from(device_account)?;
-        // Coverage is checked without a target group: the group being removed may already have been
-        // dropped from the feed's mutable group set, and that must not wedge the removal.
-        check_feed_metro_coverage(
-            program_id,
-            &accesspass,
-            &device.exchange_pk,
-            None,
-            Some(feed_account),
-        )?;
         let feed = Feed::try_from(feed_account)?;
         let holds_group_in_feed = user
             .get_multicast_groups()

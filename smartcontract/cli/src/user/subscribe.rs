@@ -81,16 +81,29 @@ impl SubscribeUserCliCommand {
             group_pks.push(group_pk);
         }
 
+        // One feed cannot cover an arbitrary set of groups, and each group is its own transaction, so
+        // allowing both would commit the covered groups before failing on the rest.
+        if self.feed.is_some() && group_pks.len() > 1 {
+            eyre::bail!("--feed applies to a single --group; run one command per group");
+        }
+
         // An omitted --feed leaves the metro gate to the SDK, which picks the pass's feed serving
-        // the user's metro.
+        // the user's metro. A feed code is ambiguous across metros so it resolves against the user's
+        // device metro; a pubkey needs no exchange.
         let feed_pk = match &self.feed {
             Some(feed) => {
-                let (_, device) = client.get_device(GetDeviceCommand {
-                    pubkey_or_code: user.device_pk.to_string(),
-                })?;
+                let exchange = match parse_pubkey(feed) {
+                    Some(_) => None,
+                    None => {
+                        let (_, device) = client.get_device(GetDeviceCommand {
+                            pubkey_or_code: user.device_pk.to_string(),
+                        })?;
+                        Some(device.exchange_pk)
+                    }
+                };
                 let (feed_pk, _) = client.get_feed(GetFeedCommand {
                     pubkey_or_code: feed.to_string(),
-                    exchange: Some(device.exchange_pk),
+                    exchange,
                 })?;
                 Some(feed_pk)
             }
@@ -121,7 +134,6 @@ impl SubscribeUserCliCommand {
                     client_ip: user.client_ip,
                     publisher,
                     subscriber,
-                    device_pk: None,
                     feed_pk,
                 })?;
             writeln!(out, "Updated roles for {group_pk}: {signature}")?;
@@ -245,7 +257,6 @@ mod tests {
                 client_ip,
                 publisher: false,
                 subscriber: true,
-                device_pk: None,
                 feed_pk: None,
             }))
             .times(1)
@@ -469,7 +480,6 @@ mod tests {
                 client_ip,
                 publisher: false,
                 subscriber: true,
-                device_pk: None,
                 feed_pk: None,
             }))
             .times(1)
@@ -572,7 +582,6 @@ mod tests {
                 client_ip,
                 publisher: true,
                 subscriber: false,
-                device_pk: None,
                 feed_pk: None,
             }))
             .times(1)
@@ -723,7 +732,6 @@ mod tests {
                 client_ip,
                 publisher: false,
                 subscriber: true,
-                device_pk: None,
                 feed_pk: Some(feed_pubkey),
             }))
             .times(1)

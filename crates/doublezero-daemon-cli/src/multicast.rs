@@ -183,7 +183,6 @@ impl Subscribe {
                 client_ip,
                 publisher: carry_pub,
                 subscriber: true,
-                device_pk: None,
                 feed_pk: None,
             }) {
                 Ok(()) => writeln!(out, "    subscribed to {code}")?,
@@ -238,7 +237,6 @@ impl Unsubscribe {
                 client_ip,
                 publisher: carry_pub,
                 subscriber: false,
-                device_pk: None,
                 feed_pk: None,
             }) {
                 Ok(()) => writeln!(out, "    unsubscribed from {code}")?,
@@ -283,7 +281,6 @@ impl Publish {
                 client_ip,
                 publisher: true,
                 subscriber: carry_sub,
-                device_pk: None,
                 feed_pk: None,
             }) {
                 Ok(()) => writeln!(out, "    publishing to {code}")?,
@@ -348,7 +345,6 @@ impl Unpublish {
                 client_ip,
                 publisher: false,
                 subscriber: carry_sub,
-                device_pk: None,
                 feed_pk: None,
             }) {
                 Ok(()) => writeln!(out, "    unpublished from {code}")?,

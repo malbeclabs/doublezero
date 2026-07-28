@@ -3,14 +3,16 @@ use std::net::Ipv4Addr;
 use crate::{
     commands::{
         accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
-        feed::get::GetFeedCommand, multicastgroup::get::GetMulticastGroupCommand,
-        user::get::GetUserCommand,
+        multicastgroup::get::GetMulticastGroupCommand, user::get::GetUserCommand,
     },
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
     processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
-    state::{accesspass::AccessPassType, multicastgroup::MulticastGroupStatus, user::UserType},
+    state::{
+        accesspass::AccessPassType, accountdata::AccountData,
+        multicastgroup::MulticastGroupStatus, user::UserType,
+    },
 };
 use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -22,9 +24,7 @@ pub struct UpdateMulticastGroupRolesCommand {
     pub user_pk: Pubkey,
     pub publisher: bool,
     pub subscriber: bool,
-    /// EdgeSeat feed metro gate. Left as `None`, this command resolves the device from
-    /// `user.device_pk` and the feed from the pass's seats; set either to override.
-    pub device_pk: Option<Pubkey>,
+    /// EdgeSeat feed metro gate. Left as `None`, the feed is resolved from the pass's seats.
     pub feed_pk: Option<Pubkey>,
 }
 
@@ -77,7 +77,7 @@ impl UpdateMulticastGroupRolesCommand {
         }
 
         let metro_gate = if is_edge_seat {
-            let device_pk = self.device_pk.unwrap_or(user.device_pk);
+            let device_pk = user.device_pk;
             let (_, device) = GetDeviceCommand {
                 pubkey_or_code: device_pk.to_string(),
             }
@@ -97,21 +97,19 @@ impl UpdateMulticastGroupRolesCommand {
                     let mut fallback = None;
                     let mut held = None;
                     for seat in accesspass.feed_seats() {
-                        let (candidate_pk, feed) = GetFeedCommand {
-                            pubkey_or_code: seat.feed_key.to_string(),
-                            exchange: None,
-                        }
-                        .execute(client)?;
+                        let AccountData::Feed(feed) = client.get(seat.feed_key)? else {
+                            continue;
+                        };
                         if feed.exchange != device.exchange_pk
                             || !feed.groups.contains(&self.group_pk)
                         {
                             continue;
                         }
-                        if user.feed_pks.contains(&candidate_pk) {
-                            held = Some(candidate_pk);
+                        if user.feed_pks.contains(&seat.feed_key) {
+                            held = Some(seat.feed_key);
                             break;
                         }
-                        fallback = fallback.or(Some(candidate_pk));
+                        fallback = fallback.or(Some(seat.feed_key));
                     }
                     held.or(fallback)
                 }
@@ -292,7 +290,6 @@ mod tests {
             client_ip,
             publisher: true,
             subscriber: false,
-            device_pk: None,
             feed_pk: None,
         }
         .execute(&client);
@@ -464,7 +461,6 @@ mod tests {
             client_ip,
             publisher: false,
             subscriber: true,
-            device_pk: None,
             feed_pk: None,
         }
         .execute(&client);
@@ -632,7 +628,6 @@ mod tests {
             client_ip,
             publisher: false,
             subscriber: true,
-            device_pk: None,
             feed_pk: None,
         }
         .execute(&client);

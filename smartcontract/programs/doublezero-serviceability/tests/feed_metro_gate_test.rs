@@ -11,6 +11,8 @@
 //! - a second group inside a feed already held does not tick again
 //! - missing metro gate, feed not on the pass, and group not in the feed are all rejected
 //! - a removal releases the seat once the user's last group in that feed goes away
+//! - a second feed covering a group already held charges nothing, and a no-op removal frees nothing
+//! - a partial removal survives the group being rotated out of its feed
 
 use doublezero_serviceability::{
     entrypoint::process_instruction,
@@ -28,7 +30,7 @@ use doublezero_serviceability::{
         contributor::create::ContributorCreateArgs,
         device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
         exchange::create::ExchangeCreateArgs,
-        feed::create::FeedCreateArgs,
+        feed::{create::FeedCreateArgs, update::FeedUpdateArgs},
         location::create::LocationCreateArgs,
         multicastgroup::{
             create::MulticastGroupCreateArgs, subscribe::UpdateMulticastGroupRolesArgs,
@@ -342,6 +344,27 @@ async fn create_mgroup(f: &mut FeedFixture, code: &str) -> Pubkey {
     mgroup_pubkey
 }
 
+/// Replace a feed's joinable group set, as the catalog admin would.
+async fn update_feed_groups(f: &mut FeedFixture, code: &str, exchange: Pubkey, groups: Vec<Pubkey>) {
+    let (feed_pubkey, _) = get_feed_pda(&f.program_id, code, &exchange);
+    let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut f.banks_client,
+        recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            name: None,
+            groups: Some(groups),
+        }),
+        vec![
+            AccountMeta::new(feed_pubkey, false),
+            AccountMeta::new(f.globalstate_pubkey, false),
+        ],
+        &f.payer,
+    )
+    .await;
+}
+
 /// Provision the given feed seats onto the access pass via SetAccessPassFeeds.
 async fn set_pass_feeds(f: &mut FeedFixture, seats: Vec<FeedSeat>) {
     let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
@@ -649,8 +672,8 @@ async fn test_post_activation_missing_metro_gate_rejected() {
         .await
         .expect_err("a role add without device/feed should be rejected");
     assert!(
-        format!("{err:?}").contains("Custom(91)"),
-        "expected MetroMismatch (Custom(91)), got: {err:?}"
+        format!("{err:?}").contains("Custom(105)"),
+        "expected DeviceAccountRequired (Custom(105)), got: {err:?}"
     );
 }
 
@@ -807,4 +830,77 @@ async fn test_removal_without_metro_gate_keeps_seat() {
     assert!(user.subscribers.is_empty());
     assert_eq!(user.feed_pks, vec![feed]);
     assert_eq!(seat_users(&mut f, feed).await, 1);
+}
+
+/// Two feeds on the pass both carry the group. Adding a second role while the gate resolves to the
+/// other covering feed must not charge a second seat for a group the user already holds.
+#[tokio::test]
+async fn test_second_covering_feed_does_not_charge_again() {
+    let mut f = setup_feed_fixture([100, 0, 0, 33]).await;
+    let (exchange, device, group1) = (f.exchange_pubkey, f.device_pubkey, f.mgroup_pubkey);
+    let feed1 = create_feed(&mut f, "shreds", exchange, vec![group1]).await;
+    let feed2 = create_feed(&mut f, "gossip", exchange, vec![group1]).await;
+    set_pass_feeds(&mut f, vec![seat(feed1, 2), seat(feed2, 2)]).await;
+
+    try_subscribe_with_feed(&mut f, feed1)
+        .await
+        .expect("connect through the first feed should succeed");
+    try_update_roles(&mut f, group1, true, true, Some((device, feed2)))
+        .await
+        .expect("adding a role via the other covering feed should succeed");
+
+    let user = user_state(&mut f).await;
+    assert_eq!(user.publishers, vec![group1]);
+    assert_eq!(user.feed_pks, vec![feed1]);
+    assert_eq!(seat_users(&mut f, feed1).await, 1);
+    assert_eq!(seat_users(&mut f, feed2).await, 0);
+}
+
+/// A removal for a group the user never held changes no membership, so it must not release the seat
+/// the user is still using. Reachable once the held group rotates out of the feed's mutable set.
+#[tokio::test]
+async fn test_no_op_removal_keeps_the_seat() {
+    let mut f = setup_feed_fixture([100, 0, 0, 34]).await;
+    let (exchange, device, group1) = (f.exchange_pubkey, f.device_pubkey, f.mgroup_pubkey);
+    let group2 = create_mgroup(&mut f, "group2").await;
+    let feed = create_feed(&mut f, "shreds", exchange, vec![group1]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 2)]).await;
+    try_subscribe_with_feed(&mut f, feed)
+        .await
+        .expect("connect should succeed");
+
+    try_update_roles(&mut f, group2, false, false, Some((device, feed)))
+        .await
+        .expect("a removal for an unheld group should succeed as a no-op");
+
+    let user = user_state(&mut f).await;
+    assert_eq!(user.subscribers, vec![group1]);
+    assert_eq!(user.feed_pks, vec![feed]);
+    assert_eq!(seat_users(&mut f, feed).await, 1);
+}
+
+/// A partial removal keeps the other role and must not be treated as an add, so it does not re-run
+/// the group-in-feed gate. Here the feed no longer carries the group, which would otherwise wedge it.
+#[tokio::test]
+async fn test_partial_removal_survives_feed_group_rotation() {
+    let mut f = setup_feed_fixture([100, 0, 0, 35]).await;
+    let (exchange, device, group1) = (f.exchange_pubkey, f.device_pubkey, f.mgroup_pubkey);
+    let feed = create_feed(&mut f, "shreds", exchange, vec![group1]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 2)]).await;
+    try_subscribe_with_feed(&mut f, feed)
+        .await
+        .expect("connect should succeed");
+    try_update_roles(&mut f, group1, true, true, Some((device, feed)))
+        .await
+        .expect("adding the publisher role should succeed");
+
+    // The catalog admin rotates the group out of the feed.
+    update_feed_groups(&mut f, "shreds", exchange, vec![]).await;
+
+    try_update_roles(&mut f, group1, false, true, Some((device, feed)))
+        .await
+        .expect("dropping just the publisher role should still succeed");
+    let user = user_state(&mut f).await;
+    assert!(user.publishers.is_empty());
+    assert_eq!(user.subscribers, vec![group1]);
 }

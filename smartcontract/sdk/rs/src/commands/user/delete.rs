@@ -50,7 +50,6 @@ impl DeleteUserCommand {
                     client_ip: user.client_ip,
                     publisher: false,
                     subscriber: false,
-                    device_pk: None,
                     feed_pk: None,
                 }
                 .execute(client)?;

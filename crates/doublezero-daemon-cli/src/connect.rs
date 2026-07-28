@@ -736,7 +736,6 @@ impl Connect {
                         client_ip: *client_ip,
                         publisher: pub_group_pks.contains(group_pk),
                         subscriber: sub_group_pks.contains(group_pk),
-                        device_pk: None,
                         feed_pk: None,
                     })?;
                 }
@@ -764,7 +763,6 @@ impl Connect {
                                 client_ip: *client_ip,
                                 publisher: true,
                                 subscriber: false,
-                                device_pk: None,
                                 feed_pk: None,
                             });
 
@@ -797,7 +795,6 @@ impl Connect {
                                 client_ip: *client_ip,
                                 publisher: false,
                                 subscriber: true,
-                                device_pk: None,
                                 feed_pk: None,
                             });
 
@@ -881,7 +878,6 @@ impl Connect {
                         client_ip: *client_ip,
                         publisher: pub_group_pks.contains(group_pk),
                         subscriber: sub_group_pks.contains(group_pk),
-                        device_pk: None,
                         feed_pk: None,
                     })?;
                 }
@@ -1579,7 +1575,6 @@ mod tests {
                 client_ip,
                 publisher,
                 subscriber,
-                device_pk: None,
                 feed_pk: None,
             };
 

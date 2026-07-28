@@ -21,6 +21,7 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/monitor/internal/worker"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	dzrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -129,13 +130,13 @@ func main() {
 	}
 
 	// Initialize ledger clients.
-	rpcClient := solanarpc.New(networkConfig.LedgerPublicRPCURL)
+	rpcClient := dzrpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil)
 	serviceabilityClient := serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID)
 	telemetryClient := telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID)
 
 	var solanaRPCClient *solanarpc.Client
 	if networkConfig.SolanaRPCURL != "" {
-		solanaRPCClient = solanarpc.New(networkConfig.SolanaRPCURL)
+		solanaRPCClient = dzrpc.NewWithRetries(networkConfig.SolanaRPCURL, nil)
 	}
 
 	// Initialize prometheus metrics server.

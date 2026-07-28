@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
@@ -23,6 +22,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	dzrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 	"golang.org/x/sys/unix"
 )
 
@@ -77,7 +77,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	if err != nil {
 		return fmt.Errorf("error parsing program ID: %v", err)
 	}
-	svcClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), pid)
+	svcClient := serviceability.New(dzrpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil), pid)
 	cachingFetcher := onchain.NewCachingFetcher(svcClient, onchain.DefaultCacheTTL, onchainRPCTimeout)
 
 	ip, method, err := DiscoverClientIP(clientIP)

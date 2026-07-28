@@ -19,6 +19,7 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/epoch"
+	dzrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
@@ -263,7 +264,7 @@ func newDeviceProvider(log *slog.Logger, env string) (devicedata.Provider, *sola
 		return nil, nil, fmt.Errorf("failed to get network config: %w", err)
 	}
 
-	rpcClient := solanarpc.New(networkConfig.LedgerPublicRPCURL)
+	rpcClient := dzrpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil)
 
 	epochFinder, err := epoch.NewFinder(log, rpcClient)
 	if err != nil {

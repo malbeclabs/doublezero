@@ -1,43 +1,27 @@
 package shreds
 
 import (
-	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 )
 
-func TestNewHTTPClient_HasBoundedTimeout(t *testing.T) {
-	c := newHTTPClient(defaultRequestTimeout, defaultMaxConns)
-	if c.Timeout == 0 {
-		t.Fatal("http client must have a bounded timeout, not http.DefaultClient's infinite one")
-	}
-	if c.Timeout != defaultRequestTimeout {
-		t.Fatalf("expected timeout %s, got %s", defaultRequestTimeout, c.Timeout)
-	}
-	tr, ok := c.Transport.(*http.Transport)
-	if !ok {
-		t.Fatalf("expected *http.Transport, got %T", c.Transport)
-	}
-	if tr.MaxConnsPerHost != defaultMaxConns {
-		t.Fatalf("expected MaxConnsPerHost %d, got %d", defaultMaxConns, tr.MaxConnsPerHost)
-	}
-}
+// A finalized blockhash is valid for roughly 56s. NewRPCClient must bound each
+// request well inside that window, or a request queued behind a slow endpoint can
+// outlive its blockhash and surface as a BlockhashNotFound preflight failure.
+// Enforcement of the bound itself is tested in tools/solana/pkg/rpc; this pins that
+// shreds still passes one.
+const blockhashValidity = 56 * time.Second
 
-func TestNewHTTPClient_TimesOutSlowRequest(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(3 * time.Second)
-	}))
-	defer srv.Close()
+func TestRPCOptions_RequestBoundedInsideBlockhashWindow(t *testing.T) {
+	opts := rpcOptions()
 
-	c := newHTTPClient(200*time.Millisecond, defaultMaxConns)
-	start := time.Now()
-	resp, err := c.Get(srv.URL)
-	if err == nil {
-		resp.Body.Close()
-		t.Fatal("expected request to time out, but it succeeded")
+	if opts.RequestTimeout <= 0 {
+		t.Fatal("request timeout must be bounded, not the 5-minute default")
 	}
-	if elapsed := time.Since(start); elapsed > time.Second {
-		t.Fatalf("request should have timed out near 200ms, took %s (client not bounding requests)", elapsed)
+	if opts.RequestTimeout >= blockhashValidity {
+		t.Fatalf("request timeout %s must be well under the %s blockhash window", opts.RequestTimeout, blockhashValidity)
+	}
+	if opts.MaxConnsPerHost != defaultMaxConns {
+		t.Fatalf("expected MaxConnsPerHost %d, got %d", defaultMaxConns, opts.MaxConnsPerHost)
 	}
 }

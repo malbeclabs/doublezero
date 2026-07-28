@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/device-health-oracle/internal/worker"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	dzrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -124,7 +124,7 @@ func main() {
 	log.Info("Signer public key", "pubkey", signer.PublicKey().String())
 
 	// Initialize ledger clients.
-	rpcClient := solanarpc.New(networkConfig.LedgerPublicRPCURL)
+	rpcClient := dzrpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil)
 	serviceabilityClient := serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID)
 	serviceabilityExecutor := serviceability.NewExecutor(log, rpcClient, &signer, networkConfig.ServiceabilityProgramID)
 	telemetryClient := telemetry.New(log, rpcClient, nil, networkConfig.TelemetryProgramID)

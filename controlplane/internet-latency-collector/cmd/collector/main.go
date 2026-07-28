@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -15,8 +13,6 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
-	"github.com/gagliardetto/solana-go/rpc/jsonrpc"
-	"github.com/klauspost/compress/gzhttp"
 	"github.com/spf13/cobra"
 
 	"github.com/malbeclabs/doublezero/config"
@@ -28,6 +24,7 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/epoch"
+	dzrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 )
 
 const (
@@ -408,28 +405,15 @@ func loadLocations(ctx context.Context, logger *slog.Logger, serviceabilityClien
 }
 
 // newLedgerRPCClient builds a Solana RPC client with a bounded per-request timeout and a
-// connection pool sized for the submitter's concurrency. The solana-go default client uses a
+// connection pool sized for the submitter's concurrency. The default client uses a
 // 5-minute timeout and caps connections per host at 9, which under concurrent submission lets a
 // fetched finalized blockhash (valid only ~56s) expire while the send is queued or in flight,
 // surfacing as a BlockhashNotFound preflight failure.
 func newLedgerRPCClient(url string, timeout time.Duration, maxConns int) *solanarpc.Client {
-	transport := &http.Transport{
-		MaxConnsPerHost:     maxConns,
-		MaxIdleConns:        maxConns,
-		MaxIdleConnsPerHost: maxConns,
-		IdleConnTimeout:     90 * time.Second,
-		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		TLSHandshakeTimeout: 10 * time.Second,
-	}
-	httpClient := &http.Client{
-		Timeout:   timeout,
-		Transport: gzhttp.Transport(transport),
-	}
-	rpcClient := jsonrpc.NewClientWithOpts(url, &jsonrpc.RPCClientOpts{HTTPClient: httpClient})
-	return solanarpc.NewWithCustomRPCClient(rpcClient)
+	return dzrpc.New(url, dzrpc.Options{
+		RequestTimeout:  timeout,
+		MaxConnsPerHost: maxConns,
+	})
 }
 
 func init() {

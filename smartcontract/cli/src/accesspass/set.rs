@@ -57,7 +57,8 @@ pub struct SetAccessPassCliCommand {
     /// Tenant code allowed for this access pass
     #[arg(long = "tenant")]
     pub tenant: Option<String>,
-    /// Max unicast users admitted by an EdgeSeat access pass.
+    /// Retained for compatibility and no longer enforced: an EdgeSeat access pass admits multicast
+    /// users only, capped per feed.
     #[arg(long, default_value_t = 1)]
     pub max_unicast_users: u16,
     /// Max multicast users admitted by an EdgeSeat access pass.

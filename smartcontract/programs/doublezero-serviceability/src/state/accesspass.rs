@@ -311,33 +311,29 @@ impl AccessPass {
         flags.join(", ")
     }
 
-    /// Admit a user against the per-category seat caps. EdgeSeat-only: for all other access-pass
-    /// types this is a no-op and always succeeds. Does NOT touch `connection_count` — that counter
-    /// is maintained independently by the user create/delete processors.
+    /// Admit a user. EdgeSeat-only: for all other access-pass types this is a no-op and always
+    /// succeeds. Does NOT touch `connection_count` — that counter is maintained independently by the
+    /// user create/delete processors.
     ///
-    /// Per the feed-scoped supersede model (#1700): for EdgeSeat **multicast** the authoritative
-    /// cap is the per-feed [`FeedSeat`] (see [`Self::try_add_feed_user`]), so `max_multicast_users`
-    /// is no longer enforced here and is retained only for layout/back-compat. The per-category
-    /// **unicast** cap is still enforced.
+    /// An EdgeSeat pass sells feed seats, so it admits **only** multicast users; a unicast user has
+    /// no feed to bill against and is rejected. Capacity for the multicast users it does admit is the
+    /// per-feed [`FeedSeat`] (see [`Self::try_add_feed_user`]), so neither `max_multicast_users` nor
+    /// `max_unicast_users` is enforced here; both are retained for layout/back-compat only.
     pub fn try_add_user(&mut self, user_type: UserType) -> Result<(), DoubleZeroError> {
         if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
             return Ok(());
         }
-        match user_type {
-            // Vestigial: gated by FeedSeat caps instead. See try_add_feed_user.
-            UserType::Multicast => Ok(()),
-            _ => {
-                if self.unicast_user_count >= self.max_unicast_users {
-                    return Err(DoubleZeroError::AccessPassMaxUnicastUsersExceeded);
-                }
-                self.unicast_user_count += 1;
-                Ok(())
-            }
+        if user_type != UserType::Multicast {
+            return Err(DoubleZeroError::EdgeSeatIsMulticastOnly);
         }
+        Ok(())
     }
 
     /// Release a seat held by a user. EdgeSeat-only: no-op for all other access-pass types. Does NOT
     /// touch `connection_count`. Multicast release is feed-scoped (see [`Self::remove_feed_user`]).
+    ///
+    /// The unicast decrement stays even though [`Self::try_add_user`] no longer admits unicast users:
+    /// passes that admitted one before that rule must still be able to delete it back down to zero.
     pub fn remove_user(&mut self, user_type: UserType) {
         if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
             return;

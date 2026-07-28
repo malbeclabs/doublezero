@@ -313,8 +313,8 @@ pub fn create_user_core(
         }
     }
 
-    // Enforce per-category seat caps (EdgeSeat only; no-op otherwise). On error the processor
-    // returns before any account is written, so no state is persisted.
+    // Admit against the access pass (EdgeSeat only; no-op otherwise): EdgeSeat takes multicast users
+    // only. On error the processor returns before any account is written, so no state is persisted.
     accesspass.try_add_user(user_type)?;
 
     // EdgeSeat multicast metro gate: the device's exchange must be covered by a feed on the pass,

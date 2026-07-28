@@ -212,6 +212,8 @@ pub enum DoubleZeroError {
     UserDeviceMismatch, // variant 101
     #[error("Multicast roles require a Multicast user")]
     UserNotMulticast, // variant 102
+    #[error("EdgeSeat access passes admit only Multicast users")]
+    EdgeSeatIsMulticastOnly, // variant 103
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -320,6 +322,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::FeedInvalidBillingWindow => ProgramError::Custom(100),
             DoubleZeroError::UserDeviceMismatch => ProgramError::Custom(101),
             DoubleZeroError::UserNotMulticast => ProgramError::Custom(102),
+            DoubleZeroError::EdgeSeatIsMulticastOnly => ProgramError::Custom(103),
         }
     }
 }
@@ -429,6 +432,7 @@ impl From<u32> for DoubleZeroError {
             100 => DoubleZeroError::FeedInvalidBillingWindow,
             101 => DoubleZeroError::UserDeviceMismatch,
             102 => DoubleZeroError::UserNotMulticast,
+            103 => DoubleZeroError::EdgeSeatIsMulticastOnly,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -463,7 +467,7 @@ mod tests {
         }
 
         // EnumIter generates Custom(0) by default, so we explicitly test values
-        // outside the known variant range (currently 0-102) to ensure the conversion
+        // outside the known variant range (currently 0-103) to ensure the conversion
         // logic handles arbitrary custom codes correctly.
         for code in [1000u32, 100_000, u32::MAX] {
             let err = DoubleZeroError::Custom(code);

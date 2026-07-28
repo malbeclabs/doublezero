@@ -626,7 +626,9 @@ func (c *Client) DumpDiagnostics() {
 	logsReader, err := c.dn.dockerClient.ContainerLogs(ctx, c.ContainerID, dockercontainer.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
-		Tail:       "100",
+		// Debug-level route-liveness logging is chatty enough to bury the interesting
+		// window within the last 100 lines.
+		Tail: "500",
 	})
 	if err != nil {
 		fmt.Fprintf(&buf, "\n--- Client: doublezerod container logs (ERROR: %v)\n", err)

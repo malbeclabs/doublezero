@@ -2024,6 +2024,14 @@ async fn test_set_accesspass_refills_depleted_user_payer() {
     );
 
     // Second SetAccessPass with identical params: the refill restores the target balance.
+    //
+    // The wait is load-bearing. This call has the same instruction, accounts and payer as the
+    // first one, and `execute_transaction` signs with whatever `get_latest_blockhash` returns
+    // (it ignores the blockhash argument). On an unchanged blockhash the two transactions are
+    // byte-identical, so this one hits the bank's status cache and returns the first one's
+    // cached success without ever executing — no refill happens and the assertion below fails.
+    wait_for_new_blockhash(&mut banks_client).await;
+
     execute_transaction(
         &mut banks_client,
         recent_blockhash,

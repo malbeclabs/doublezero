@@ -513,12 +513,11 @@ impl User {
     }
 
     /// Release every EdgeSeat feed seat this user holds back to `accesspass` (each entry in
-    /// `feed_pks`), so the release is bound to exactly what was ticked. No-op for non-multicast
-    /// users (they never hold feed seats).
+    /// `feed_pks`), so the release is bound to exactly what was ticked. Deliberately not gated on
+    /// `user_type`: `feed_pks` is the record of what a tick site actually consumed, and gating here
+    /// would leak a seat for good if any tick site ever disagreed. It is empty for unicast users, so
+    /// this is a no-op for them.
     pub fn release_feed_seats(&self, accesspass: &mut AccessPass) {
-        if self.user_type != UserType::Multicast {
-            return;
-        }
         for feed_pk in &self.feed_pks {
             accesspass.remove_feed_user(feed_pk);
         }
@@ -1285,9 +1284,24 @@ mod tests {
         assert_eq!(seat_users(&pass, &f2), 0);
     }
 
-    /// Non-multicast users never hold feed seats, so release is a no-op.
+    /// A unicast user holds no feed seat, so `feed_pks` is empty and release is a no-op.
     #[test]
     fn test_release_feed_seats_noop_for_unicast() {
+        let f1 = Pubkey::new_unique();
+        let mut pass = edgeseat_pass(&[f1]);
+        let user = User {
+            user_type: UserType::IBRL,
+            feed_pks: vec![],
+            ..create_test_user()
+        };
+        user.release_feed_seats(&mut pass);
+        assert_eq!(seat_users(&pass, &f1), 1, "another user's seat is untouched");
+    }
+
+    /// Release follows `feed_pks`, not `user_type`. Were a tick site ever to record a feed against a
+    /// non-multicast user, the seat must still come back rather than stay consumed forever.
+    #[test]
+    fn test_release_feed_seats_follows_feed_pks_not_user_type() {
         let f1 = Pubkey::new_unique();
         let mut pass = edgeseat_pass(&[f1]);
         let user = User {
@@ -1296,7 +1310,7 @@ mod tests {
             ..create_test_user()
         };
         user.release_feed_seats(&mut pass);
-        assert_eq!(seat_users(&pass, &f1), 1, "unicast release is a no-op");
+        assert_eq!(seat_users(&pass, &f1), 0);
     }
 
     fn user_with_type(user_type: UserType) -> User {

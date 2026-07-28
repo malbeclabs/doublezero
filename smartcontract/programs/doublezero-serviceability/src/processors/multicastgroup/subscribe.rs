@@ -16,7 +16,7 @@ use crate::{
         globalstate::GlobalState,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         permission::permission_flags,
-        user::{User, UserStatus},
+        user::{User, UserStatus, UserType},
     },
 };
 use borsh::BorshSerialize;
@@ -280,18 +280,25 @@ pub fn process_update_multicastgroup_roles(
         }
     }
 
-    let is_edge_seat = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_));
+    // Feed seats exist only for multicast users on an EdgeSeat pass, matching the connect-time gate
+    // in create_user_core. Unicast stays on the pass's per-category cap and is never feed-gated.
+    let is_feed_gated =
+        matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_))
+            && user.user_type == UserType::Multicast;
     let adding_role = value.publisher || value.subscriber;
     let mut accesspass_changed = false;
 
     // EdgeSeat passes derive joinable groups from their feeds' metro→group map, so a role add is
     // gated on a feed that is provisioned on the pass, serves the user's metro, and carries the
     // target group.
-    if is_edge_seat && adding_role {
+    if is_feed_gated && adding_role {
         let device_account = device_account.ok_or(DoubleZeroError::MetroMismatch)?;
         validate_program_account!(device_account, program_id, writable = false, "Device");
         if device_account.key != &user.device_pk {
-            msg!("Device {} is not the user's device", device_account.key);
+            msg!(
+                "Device {} is not the user's device {}",
+                device_account.key, user.device_pk
+            );
             return Err(DoubleZeroError::UserDeviceMismatch.into());
         }
         let device = Device::try_from(device_account)?;
@@ -323,7 +330,7 @@ pub fn process_update_multicastgroup_roles(
     // A removal may retire the user's last group in the covering feed, releasing that feed's seat.
     // The accounts stay optional so removal-only cleanup keeps working without them; the seat then
     // stays held until delete drains `feed_pks`.
-    let releasing_seat = if is_edge_seat && !adding_role {
+    let releasing_seat = if is_feed_gated && !adding_role {
         device_account.zip(feed_account)
     } else {
         None
@@ -331,7 +338,10 @@ pub fn process_update_multicastgroup_roles(
     if let Some((device_account, feed_account)) = releasing_seat {
         validate_program_account!(device_account, program_id, writable = false, "Device");
         if device_account.key != &user.device_pk {
-            msg!("Device {} is not the user's device", device_account.key);
+            msg!(
+                "Device {} is not the user's device {}",
+                device_account.key, user.device_pk
+            );
             return Err(DoubleZeroError::UserDeviceMismatch.into());
         }
         let device = Device::try_from(device_account)?;

@@ -1880,6 +1880,7 @@ name = "doublezero-serviceability-cli"
 version = "0.31.0"
 dependencies = [
  "anyhow",
+ "bincode 2.0.1",
  "borsh",
  "chrono",
  "clap",

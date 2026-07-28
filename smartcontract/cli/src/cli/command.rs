@@ -269,6 +269,7 @@ impl ServiceabilityCommand {
                 UserCommands::List(args) => args.execute(ctx, client, out).await,
                 UserCommands::Get(args) => args.execute(ctx, client, out).await,
                 UserCommands::Delete(args) => args.execute(ctx, client, out).await,
+                UserCommands::Recreate(args) => args.execute(ctx, client, out).await,
                 UserCommands::RequestBan(args) => args.execute(ctx, client, out).await,
             },
             Self::Resource(cmd) => match cmd.command {

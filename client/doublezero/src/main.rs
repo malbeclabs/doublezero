@@ -625,6 +625,21 @@ mod tests {
         .expect("create parses");
     }
 
+    // `hide = true` must not gate parsing - operators and automation rely on
+    // these verbs being reachable even though they do not appear in --help.
+    #[test]
+    fn parses_hidden_user_recreate() {
+        App::try_parse_from([
+            "doublezero",
+            "user",
+            "recreate",
+            "--pubkey",
+            "11111111111111111111111111111111",
+            "--dry-run",
+        ])
+        .expect("hidden user recreate parses");
+    }
+
     use super::resolve_environment;
     use doublezero_config::Environment;
 

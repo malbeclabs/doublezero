@@ -3,8 +3,8 @@ use clap::{Args, Subcommand};
 use crate::user::{
     create::CreateUserCliCommand, create_subscribe::CreateSubscribeUserCliCommand,
     delete::DeleteUserCliCommand, get::GetUserCliCommand, list::ListUserCliCommand,
-    request_ban::RequestBanUserCliCommand, subscribe::SubscribeUserCliCommand,
-    update::UpdateUserCliCommand,
+    recreate::RecreateUserCliCommand, request_ban::RequestBanUserCliCommand,
+    subscribe::SubscribeUserCliCommand, update::UpdateUserCliCommand,
 };
 
 #[derive(Args, Debug)]
@@ -36,6 +36,9 @@ pub enum UserCommands {
     /// Delete a user
     #[command(hide = true)]
     Delete(DeleteUserCliCommand),
+    /// Delete and recreate a user in one transaction (testnet only)
+    #[command(hide = true)]
+    Recreate(RecreateUserCliCommand),
     /// Request a ban for a user
     #[command(hide = true)]
     RequestBan(RequestBanUserCliCommand),

@@ -78,16 +78,25 @@ pub fn update_user_multicastgroup_roles(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    // Only a multicast user can hold multicast roles.
-    if (publisher || subscriber) && user.user_type != UserType::Multicast {
-        msg!("UserType {} cannot hold multicast roles", user.user_type);
-        return Err(DoubleZeroError::UserNotMulticast.into());
-    }
-
     // Check allowlists for additions. EdgeSeat passes derive joinable groups from their feeds'
     // metro→group map (the feed metro gate), which supersedes the mgroup allowlist; the caller is
     // responsible for running the feed metro gate for EdgeSeat role adds.
     let is_edge_seat = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_));
+
+    // An EdgeSeat pass bills capacity per feed seat and only a multicast user takes one, so it does
+    // not grant roles to any other type. Without this, such an add would be admitted with neither
+    // gate applying: the mgroup allowlist is bypassed for EdgeSeat, and the feed metro gate below is
+    // multicast-only. This is scoped to EdgeSeat deliberately. On every other pass type a multicast
+    // role on a non-multicast user stays allowed, gated by the allowlist as it always has been, and
+    // is inert state the device controller ignores. Removal stays allowed everywhere so a user
+    // already holding one can be cleaned up.
+    if (publisher || subscriber) && is_edge_seat && user.user_type != UserType::Multicast {
+        msg!(
+            "EdgeSeat access pass cannot grant a multicast role to a {} user",
+            user.user_type
+        );
+        return Err(DoubleZeroError::EdgeSeatIsMulticastOnly.into());
+    }
 
     // A feed is a receive-only SKU, so an EdgeSeat pass grants subscriber roles only. Publishing is
     // group-level and belongs to a pass type that sells it. Dropping a publisher role stays allowed

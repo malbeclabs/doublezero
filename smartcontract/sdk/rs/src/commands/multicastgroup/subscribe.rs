@@ -55,20 +55,23 @@ impl UpdateMulticastGroupRolesCommand {
         .execute(client)?
         .ok_or_else(|| eyre::eyre!("AccessPass not found"))?;
 
-        // Only a multicast user can hold multicast roles; the processor rejects an add otherwise.
-        if (self.publisher || self.subscriber) && user.user_type != UserType::Multicast {
-            eyre::bail!(
-                "User {} is a {} user; multicast roles require a Multicast user",
-                self.user_pk,
-                user.user_type
-            );
-        }
-
         // An EdgeSeat pass bypasses the mgroup allowlists onchain (the feed metro gate below admits
         // it instead), so checking them here would reject every EdgeSeat role change.
         let is_edge_seat = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_));
         if is_edge_seat && self.publisher {
             eyre::bail!("EdgeSeat access passes grant subscriber roles only");
+        }
+        // An EdgeSeat seat is per feed and only a multicast user takes one, so the pass grants no
+        // role to any other type. Other pass types still allow it, gated by the allowlist.
+        if is_edge_seat
+            && (self.publisher || self.subscriber)
+            && user.user_type != UserType::Multicast
+        {
+            eyre::bail!(
+                "User {} is a {} user; an EdgeSeat access pass admits Multicast users only",
+                self.user_pk,
+                user.user_type
+            );
         }
         if !is_edge_seat {
             if self.publisher && !accesspass.mgroup_pub_allowlist.contains(&self.group_pk) {

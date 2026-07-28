@@ -34,12 +34,14 @@ import (
 // given environment and you don't want to wait for a min_compatible_version
 // bump onchain.
 
-// The 0.30.0 floor matches the program's MIN_COMPATIBLE_VERSION. Until each cluster is
-// redeployed, its onchain min_compatible_version still admits older clients, so this floor
-// is what keeps the matrix off them.
+// This floor sits one release above the program's MIN_COMPATIBLE_VERSION (0.30.0) because the
+// `client/v0.30.0` tag was cut before its version-bump commit merged, so those binaries
+// self-report 0.29.0 and the 0.30.0 gate rejects them -- that tag can never pass the matrix.
+// v0.31.0 self-reports 0.30.0 and does pass. Tagging was fixed for v0.32.0 onward in #4068, so
+// this floor should track MIN_COMPATIBLE_VERSION again once v0.30.0 falls out of range.
 var globalMinVersions = map[string]string{
-	"mainnet-beta": "0.30.0",
-	"testnet":      "0.30.0",
+	"mainnet-beta": "0.31.0",
+	"testnet":      "0.31.0",
 }
 
 // =============================================================================

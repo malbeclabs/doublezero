@@ -43,7 +43,19 @@ impl RecreateUserCliCommand {
         if ctx.env == Environment::MainnetBeta {
             eyre::bail!("user recreate is not permitted on mainnet-beta");
         }
-        tracing::debug!(pubkey = %self.pubkey, dry_run = self.dry_run, "user recreate");
+        tracing::debug!(env = %ctx.env, pubkey = %self.pubkey, dry_run = self.dry_run, "user recreate");
+
+        // Mainnet guard, continued: `--url`/`--program-id` can move the resolved
+        // program ID to mainnet-beta independently of `--env`, so the check above is
+        // bypassable by flag combination. Catch it via the resolved program ID too,
+        // before anything is planned, simulated, or sent.
+        let program_id = client.get_program_id();
+        if matches!(
+            Environment::from_program_id(&program_id.to_string()),
+            Ok(Environment::MainnetBeta)
+        ) {
+            eyre::bail!("user recreate is not permitted on mainnet-beta");
+        }
 
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
@@ -56,7 +68,6 @@ impl RecreateUserCliCommand {
         // index-derived user whose supplied pubkey does not match that PDA would otherwise
         // either fail loudly (the multicast case) or silently relocate to a different
         // address (the plain two-instruction case). Refuse both up front.
-        let program_id = client.get_program_id();
         let (expected_pda, _) =
             get_user_pda(&program_id, &user_before.client_ip, user_before.user_type);
         if plan.user_pk != expected_pda {
@@ -196,6 +207,34 @@ enum FieldChange {
 ///   landing on the same value or a different one is fine.
 /// - everything else: must round-trip exactly.
 fn classify(before: &User, after: &User) -> Vec<(&'static str, FieldChange)> {
+    // Exhaustive destructure: adding a field to `User` must break this build rather
+    // than silently escape classification, because an unclassified field would be
+    // reported as a clean round trip.
+    let User {
+        account_type: _,
+        owner: _,
+        index: _,
+        bump_seed: _,
+        user_type: _,
+        tenant_pk: _,
+        device_pk: _,
+        cyoa_type: _,
+        client_ip: _,
+        dz_ip: _,
+        tunnel_id: _,
+        tunnel_net: _,
+        status: _,
+        publishers: _,
+        subscribers: _,
+        validator_pubkey: _,
+        tunnel_endpoint: _,
+        tunnel_flags: _,
+        bgp_status: _,
+        last_bgp_up_at: _,
+        last_bgp_reported_at: _,
+        bgp_rtt_ns: _,
+        feed_pks: _,
+    } = before;
     vec![
         reset_expected_field("bgp_status", &before.bgp_status, &after.bgp_status),
         reset_expected_field(
@@ -457,6 +496,44 @@ mod tests {
 
         let ctx = cli_context_for_tests()
             .with_env(Environment::MainnetBeta)
+            .build()
+            .unwrap();
+        let mut output = Vec::new();
+        let res = block_on(
+            RecreateUserCliCommand {
+                pubkey: Pubkey::new_unique().to_string(),
+                dry_run: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        let err = res.unwrap_err();
+        assert!(
+            err.to_string().contains("mainnet"),
+            "error should mention mainnet: {err}"
+        );
+    }
+
+    // Mainnet refusal via resolved program ID: `--url`/`--program-id` can move the
+    // resolved program ID to mainnet-beta independently of `--env`, so the `ctx.env`
+    // check alone is bypassable. The guard must catch that too, before any I/O.
+    #[test]
+    fn recreate_refuses_when_program_id_resolves_to_mainnet() {
+        let mainnet_program_id = Environment::MainnetBeta
+            .config()
+            .unwrap()
+            .serviceability_program_id;
+
+        let mut client = crate::doublezerocommand::MockCliCommand::new();
+        client
+            .expect_get_program_id()
+            .returning(move || mainnet_program_id);
+        client.expect_check_requirements().times(0);
+        client.expect_plan_recreate_user().times(0);
+        client.expect_recreate_user().times(0);
+
+        let ctx = cli_context_for_tests()
+            .with_env(Environment::Testnet)
+            .with_serviceability_program_id(mainnet_program_id)
             .build()
             .unwrap();
         let mut output = Vec::new();

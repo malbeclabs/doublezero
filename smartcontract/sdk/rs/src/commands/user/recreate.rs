@@ -178,7 +178,7 @@ mod tests {
     use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
         instructions::DoubleZeroInstruction,
-        pda::get_accesspass_pda,
+        pda::{get_accesspass_pda, get_user_pda},
         state::{
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
@@ -191,14 +191,17 @@ mod tests {
     use std::net::Ipv4Addr;
 
     /// Builds a client stubbed with `user`, its access pass (keyed on `user.owner`),
-    /// and a device with exactly one dz_prefix.
+    /// and a device with exactly one dz_prefix. `user` is addressed at
+    /// `get_user_pda(client_ip, user_type)`, the address `create_user` derives
+    /// internally, so the returned pubkey matches what the create leg of a plan
+    /// will target. Returns the client and that address.
     fn stub_client_for(
         user: &User,
-        user_pubkey: Pubkey,
         device_pubkey: Pubkey,
-    ) -> crate::MockDoubleZeroClient {
+    ) -> (crate::MockDoubleZeroClient, Pubkey) {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
+        let (user_pubkey, _) = get_user_pda(&program_id, &user.client_ip, user.user_type);
 
         let user_for_get = user.clone();
         client
@@ -250,7 +253,7 @@ mod tests {
             .with(predicate::eq(device_pubkey))
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
-        client
+        (client, user_pubkey)
     }
 
     /// Decode instruction `idx` and return its `UpdateMulticastGroupRoles` args,
@@ -273,7 +276,6 @@ mod tests {
     /// account does not exist until then.
     #[test]
     fn test_plan_orders_instructions_and_restores_roles() {
-        let user_pubkey = Pubkey::new_unique();
         let device_pubkey = Pubkey::new_unique();
         let owner = Pubkey::new_unique();
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
@@ -296,7 +298,7 @@ mod tests {
             ..Default::default()
         };
 
-        let client = stub_client_for(&user, user_pubkey, device_pubkey);
+        let (client, user_pubkey) = stub_client_for(&user, device_pubkey);
         let plan = RecreateUserCommand {
             pubkey: user_pubkey,
         }
@@ -330,6 +332,13 @@ mod tests {
             other => panic!("instruction[3]: expected CreateUser, got {other:?}"),
         }
 
+        // The delete leg and the create leg must target the same account: this is
+        // the address-preservation invariant the whole feature exists to guarantee.
+        assert_eq!(
+            plan.instructions[2].accounts[0].pubkey,
+            plan.instructions[3].accounts[0].pubkey
+        );
+
         // [4], [5]: additions restoring subscriber = true, publisher = false.
         for (idx, group) in [(4, group_a), (5, group_b)] {
             let args = expect_roles_args(&plan.instructions, idx);
@@ -345,7 +354,6 @@ mod tests {
     /// A user with no multicast membership degenerates to the two-instruction case.
     #[test]
     fn test_plan_without_multicast_is_delete_then_create() {
-        let user_pubkey = Pubkey::new_unique();
         let device_pubkey = Pubkey::new_unique();
         let owner = Pubkey::new_unique();
         let client_ip = Ipv4Addr::new(192, 168, 1, 20);
@@ -363,7 +371,7 @@ mod tests {
             ..Default::default()
         };
 
-        let client = stub_client_for(&user, user_pubkey, device_pubkey);
+        let (client, user_pubkey) = stub_client_for(&user, device_pubkey);
         let plan = RecreateUserCommand {
             pubkey: user_pubkey,
         }
@@ -379,13 +387,19 @@ mod tests {
             DoubleZeroInstruction::CreateUser(_) => {}
             other => panic!("instruction[1]: expected CreateUser, got {other:?}"),
         }
+
+        // The delete leg and the create leg must target the same account: this is
+        // the address-preservation invariant the whole feature exists to guarantee.
+        assert_eq!(
+            plan.instructions[0].accounts[0].pubkey,
+            plan.instructions[1].accounts[0].pubkey
+        );
     }
 
     /// A group the user both publishes to and subscribes to must have both roles
     /// restored, not just one.
     #[test]
     fn test_plan_restores_dual_role_group() {
-        let user_pubkey = Pubkey::new_unique();
         let device_pubkey = Pubkey::new_unique();
         let owner = Pubkey::new_unique();
         let client_ip = Ipv4Addr::new(192, 168, 1, 30);
@@ -405,7 +419,7 @@ mod tests {
             ..Default::default()
         };
 
-        let client = stub_client_for(&user, user_pubkey, device_pubkey);
+        let (client, user_pubkey) = stub_client_for(&user, device_pubkey);
         let plan = RecreateUserCommand {
             pubkey: user_pubkey,
         }
@@ -415,6 +429,13 @@ mod tests {
         // get_multicast_groups() dedupes publishers+subscribers to a single entry, so
         // this is: 1 removal, delete, create, 1 (dual-role) addition.
         assert_eq!(plan.instructions.len(), 4);
+
+        // The delete leg and the create leg must target the same account: this is
+        // the address-preservation invariant the whole feature exists to guarantee.
+        assert_eq!(
+            plan.instructions[1].accounts[0].pubkey,
+            plan.instructions[2].accounts[0].pubkey
+        );
 
         let removal_args = expect_roles_args(&plan.instructions, 0);
         assert_eq!(plan.instructions[0].accounts[0].pubkey, group_a);

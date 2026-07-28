@@ -36,7 +36,7 @@ pub enum UserCommands {
     /// Delete a user
     #[command(hide = true)]
     Delete(DeleteUserCliCommand),
-    /// Delete and recreate a user in one transaction (testnet only)
+    /// Delete and recreate a user in one transaction (not on mainnet-beta)
     #[command(hide = true)]
     Recreate(RecreateUserCliCommand),
     /// Request a ban for a user

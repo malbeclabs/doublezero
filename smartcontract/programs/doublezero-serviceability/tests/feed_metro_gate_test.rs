@@ -896,14 +896,16 @@ async fn test_no_op_removal_keeps_the_seat() {
 async fn test_removal_survives_feed_group_rotation() {
     let mut f = setup_feed_fixture([100, 0, 0, 35]).await;
     let (exchange, device, group1) = (f.exchange_pubkey, f.device_pubkey, f.mgroup_pubkey);
+    let group2 = create_mgroup(&mut f, "group2").await;
     let feed = create_feed(&mut f, "shreds", exchange, vec![group1]).await;
     set_pass_feeds(&mut f, vec![seat(feed, 2)]).await;
     try_subscribe_with_feed(&mut f, feed)
         .await
         .expect("connect should succeed");
 
-    // The catalog admin rotates the group out of the feed.
-    update_feed_groups(&mut f, "shreds", exchange, vec![]).await;
+    // The catalog admin rotates the group out of the feed, replacing it rather than emptying the
+    // set: validate_feed_groups requires a feed to carry at least one group.
+    update_feed_groups(&mut f, "shreds", exchange, vec![group2]).await;
 
     try_update_roles(&mut f, group1, false, false, Some((device, feed)))
         .await

@@ -670,11 +670,32 @@ mod tests {
             groups: vec![mgroup_pubkey],
             ..Default::default()
         };
+        // This pubkey is 41 chars, below the 43 `parse_pubkey` requires, so the verb resolves the
+        // group through the backend as a code.
+        let mgroup = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            index: 1,
+            bump_seed: 255,
+            tenant_pk: Pubkey::new_unique(),
+            multicast_ip: [239, 1, 1, 1].into(),
+            max_bandwidth: 1000,
+            status: MulticastGroupStatus::Activated,
+            code: "group1".to_string(),
+            owner: mgroup_pubkey,
+            publisher_count: 0,
+            subscriber_count: 0,
+        };
 
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
+        client
+            .expect_get_multicastgroup()
+            .with(predicate::eq(GetMulticastGroupCommand {
+                pubkey_or_code: mgroup_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((mgroup_pubkey, mgroup.clone())));
         client
             .expect_get_user()
             .with(predicate::eq(GetUserCommand {

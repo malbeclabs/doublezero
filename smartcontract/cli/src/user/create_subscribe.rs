@@ -9,6 +9,7 @@ use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
     commands::{
         device::get::GetDeviceCommand,
+        feed::get::GetFeedCommand,
         multicastgroup::get::GetMulticastGroupCommand,
         user::{create_subscribe::CreateSubscribeUserCommand, get::GetUserCommand},
     },
@@ -33,6 +34,10 @@ pub struct CreateSubscribeUserCliCommand {
     /// Multicast group subscriber Pubkey or code
     #[arg(long)]
     pub subscriber: Option<String>,
+    /// Feed Pubkey or code covering the group. Required for an EdgeSeat access pass, which admits
+    /// the connection through its feeds rather than the multicast-group allowlists.
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub feed: Option<String>,
     /// Wait for the user to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -99,6 +104,22 @@ impl CreateSubscribeUserCliCommand {
             .map(|s| parse_pubkey(s).ok_or_else(|| eyre::eyre!("Invalid owner pubkey: {}", s)))
             .transpose()?;
 
+        let feed_pk = match &self.feed {
+            Some(feed) => {
+                let (_, device) = client
+                    .get_device(GetDeviceCommand {
+                        pubkey_or_code: device_pk.to_string(),
+                    })
+                    .map_err(|_| eyre::eyre!("Device not found"))?;
+                let (feed_pk, _) = client.get_feed(GetFeedCommand {
+                    pubkey_or_code: feed.to_string(),
+                    exchange: Some(device.exchange_pk),
+                })?;
+                Some(feed_pk)
+            }
+            None => None,
+        };
+
         let (signature, pubkey) = client.create_subscribe_user(CreateSubscribeUserCommand {
             user_type: UserType::Multicast,
             device_pk,
@@ -111,7 +132,7 @@ impl CreateSubscribeUserCliCommand {
                 .ok_or(eyre::eyre!("Subscriber is required if publisher is not"))?,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             owner: owner_pk,
-            feed_pk: None,
+            feed_pk,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -250,6 +271,7 @@ mod tests {
                 allocate_addr: false,
                 publisher: None,
                 subscriber: Some(mgroup_pubkey.to_string()),
+                feed: None,
                 wait: false,
                 owner: None,
             }

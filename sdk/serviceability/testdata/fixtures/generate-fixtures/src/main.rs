@@ -48,7 +48,9 @@ use serde::Serialize;
 // RFC-26 instruction-builder fixtures.
 use doublezero_serviceability::processors::{
     device::create::DeviceCreateArgs, globalconfig::set::SetGlobalConfigArgs,
-    link::create::LinkCreateArgs, topology::assign_node_segments::AssignTopologyNodeSegmentsArgs,
+    link::create::LinkCreateArgs,
+    multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
+    topology::assign_node_segments::AssignTopologyNodeSegmentsArgs,
     topology::clear::TopologyClearArgs, user::create_subscribe::UserCreateSubscribeArgs,
 };
 use doublezero_serviceability_instruction as dzi;
@@ -312,6 +314,27 @@ fn generate_ix_fixtures(dir: &Path) {
         },
     );
     write_ix_fixture(dir, "create_subscribe_user", &create_subscribe_user);
+
+    // update_multicast_group_roles (58): split_trailing_permission family, optional metro-gate pair.
+    let update_multicast_group_roles = dzi::multicastgroup::update_multicast_group_roles(
+        &program_id,
+        &payer,
+        &a,
+        &b,
+        &c,
+        Some((&d, &pubkey_from_byte(6))),
+        UpdateMulticastGroupRolesArgs {
+            client_ip: Ipv4Addr::new(10, 11, 12, 13),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+        },
+    );
+    write_ix_fixture(
+        dir,
+        "update_multicast_group_roles",
+        &update_multicast_group_roles,
+    );
 
     // create_user (36): the length-detected family — build (no Permission), tenant appended.
     let create_user = dzi::user::create_user(

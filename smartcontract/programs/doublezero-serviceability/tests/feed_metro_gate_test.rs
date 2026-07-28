@@ -1,10 +1,16 @@
-//! Integration tests for the EdgeSeat feed metro gate (#1700).
+//! Integration tests for the EdgeSeat feed metro gate.
 //!
-//! Scenarios:
+//! Connect (CreateSubscribeUser) scenarios:
 //! - wrong-metro device rejected (MetroMismatch)
 //! - right-metro joins the metro's group set
 //! - multi-feed seat (matching feed admits)
 //! - group not in the feed's set rejected (GroupNotInFeed)
+//!
+//! Post-activation (UpdateMulticastGroupRoles) scenarios:
+//! - a group from a second feed ticks that feed's own seat
+//! - a second group inside a feed already held does not tick again
+//! - missing metro gate, feed not on the pass, and group not in the feed are all rejected
+//! - a removal releases the seat once the user's last group in that feed goes away
 
 use doublezero_serviceability::{
     entrypoint::process_instruction,
@@ -24,14 +30,16 @@ use doublezero_serviceability::{
         exchange::create::ExchangeCreateArgs,
         feed::create::FeedCreateArgs,
         location::create::LocationCreateArgs,
-        multicastgroup::create::MulticastGroupCreateArgs,
+        multicastgroup::{
+            create::MulticastGroupCreateArgs, subscribe::UpdateMulticastGroupRolesArgs,
+        },
         user::create_subscribe::UserCreateSubscribeArgs,
     },
     resource::ResourceType,
     state::{
         accesspass::{AccessPassType, FeedSeat},
         device::DeviceType,
-        user::{UserCYOA, UserStatus, UserType},
+        user::{User, UserCYOA, UserStatus, UserType},
     },
 };
 use solana_program_test::*;
@@ -292,6 +300,48 @@ async fn create_feed(
     feed_pubkey
 }
 
+/// A seat with matching current and future caps, on the shared far-future billing window.
+fn seat(feed_key: Pubkey, max_users: u8) -> FeedSeat {
+    FeedSeat {
+        feed_key,
+        max_users,
+        max_future_users: max_users,
+        current_users: 0,
+        anniversary_day: 15,
+        window_end: TEST_WINDOW_END,
+        terminates_at: TEST_TERMINATES_AT,
+    }
+}
+
+/// Create a second Activated multicast group alongside the fixture's `mgroup_pubkey`.
+async fn create_mgroup(f: &mut FeedFixture, code: &str) -> Pubkey {
+    let gs = get_globalstate(&mut f.banks_client, f.globalstate_pubkey).await;
+    let (mgroup_pubkey, _) = get_multicastgroup_pda(&f.program_id, gs.account_index + 1);
+    let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut f.banks_client,
+        recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: code.to_string(),
+            max_bandwidth: 1000,
+            owner: f.payer.pubkey(),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(f.globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&f.program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
+        ],
+        &f.payer,
+    )
+    .await;
+    mgroup_pubkey
+}
+
 /// Provision the given feed seats onto the access pass via SetAccessPassFeeds.
 async fn set_pass_feeds(f: &mut FeedFixture, seats: Vec<FeedSeat>) {
     let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
@@ -373,25 +423,74 @@ async fn try_subscribe_with_feed(
     f.banks_client.process_transaction(tx).await
 }
 
+/// Attempt a post-activation role change, optionally passing the `(device, feed)` metro-gate pair.
+/// Like the connect path, the pair sits ahead of the [payer, system] trailer.
+async fn try_update_roles(
+    f: &mut FeedFixture,
+    mgroup: Pubkey,
+    publisher: bool,
+    subscriber: bool,
+    metro_gate: Option<(Pubkey, Pubkey)>,
+) -> Result<(), BanksClientError> {
+    // try_execute_transaction waits for a fresh blockhash itself.
+    let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
+    let (user_pubkey, _) = get_user_pda(&f.program_id, &f.user_ip, UserType::Multicast);
+    let mut accounts = vec![
+        AccountMeta::new(mgroup, false),
+        AccountMeta::new(f.accesspass_pubkey, false),
+        AccountMeta::new(user_pubkey, false),
+        AccountMeta::new(f.globalstate_pubkey, false),
+        AccountMeta::new(f.multicast_publisher_block, false),
+    ];
+    if let Some((device, feed)) = metro_gate {
+        accounts.push(AccountMeta::new_readonly(device, false));
+        accounts.push(AccountMeta::new_readonly(feed, false));
+    }
+    try_execute_transaction(
+        &mut f.banks_client,
+        recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: f.user_ip,
+            publisher,
+            subscriber,
+            use_onchain_allocation: true,
+        }),
+        accounts,
+        &f.payer,
+    )
+    .await
+}
+
+async fn user_state(f: &mut FeedFixture) -> User {
+    let (user_pubkey, _) = get_user_pda(&f.program_id, &f.user_ip, UserType::Multicast);
+    get_account_data(&mut f.banks_client, user_pubkey)
+        .await
+        .expect("user exists")
+        .get_user()
+        .unwrap()
+}
+
+async fn seat_users(f: &mut FeedFixture, feed: Pubkey) -> u8 {
+    get_account_data(&mut f.banks_client, f.accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap()
+        .feed_seats()
+        .iter()
+        .find(|s| s.feed_key == feed)
+        .expect("feed is on the pass")
+        .current_users
+}
+
 #[tokio::test]
 async fn test_right_metro_joins_group_set() {
     let mut f = setup_feed_fixture([100, 0, 0, 20]).await;
     let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
     // Feed serves the device's exchange with [mgroup].
     let feed = create_feed(&mut f, "shreds", exchange, vec![mgroup]).await;
-    set_pass_feeds(
-        &mut f,
-        vec![FeedSeat {
-            feed_key: feed,
-            max_users: 2,
-            max_future_users: 2,
-            current_users: 0,
-            anniversary_day: 15,
-            window_end: TEST_WINDOW_END,
-            terminates_at: TEST_TERMINATES_AT,
-        }],
-    )
-    .await;
+    set_pass_feeds(&mut f, vec![seat(feed, 2)]).await;
 
     try_subscribe_with_feed(&mut f, feed)
         .await
@@ -430,19 +529,7 @@ async fn test_wrong_metro_device_rejected() {
     // Feed serves a DIFFERENT exchange, so the device's metro is not covered.
     let other_exchange = Pubkey::new_unique();
     let feed = create_feed(&mut f, "shreds", other_exchange, vec![mgroup]).await;
-    set_pass_feeds(
-        &mut f,
-        vec![FeedSeat {
-            feed_key: feed,
-            max_users: 2,
-            max_future_users: 2,
-            current_users: 0,
-            anniversary_day: 15,
-            window_end: TEST_WINDOW_END,
-            terminates_at: TEST_TERMINATES_AT,
-        }],
-    )
-    .await;
+    set_pass_feeds(&mut f, vec![seat(feed, 2)]).await;
 
     let err = try_subscribe_with_feed(&mut f, feed)
         .await
@@ -460,30 +547,7 @@ async fn test_multi_feed_seat_matching_admits() {
     // Two feeds: one serving a bogus metro, one serving the device's metro.
     let feed_other = create_feed(&mut f, "tokyo", Pubkey::new_unique(), vec![mgroup]).await;
     let feed_match = create_feed(&mut f, "fra", exchange, vec![mgroup]).await;
-    set_pass_feeds(
-        &mut f,
-        vec![
-            FeedSeat {
-                feed_key: feed_other,
-                max_users: 1,
-                max_future_users: 1,
-                current_users: 0,
-                anniversary_day: 15,
-                window_end: TEST_WINDOW_END,
-                terminates_at: TEST_TERMINATES_AT,
-            },
-            FeedSeat {
-                feed_key: feed_match,
-                max_users: 1,
-                max_future_users: 1,
-                current_users: 0,
-                anniversary_day: 15,
-                window_end: TEST_WINDOW_END,
-                terminates_at: TEST_TERMINATES_AT,
-            },
-        ],
-    )
-    .await;
+    set_pass_feeds(&mut f, vec![seat(feed_other, 1), seat(feed_match, 1)]).await;
 
     // Subscribing with the matching feed succeeds.
     try_subscribe_with_feed(&mut f, feed_match)
@@ -511,19 +575,7 @@ async fn test_group_not_in_feed_rejected() {
     // joinable.
     let other_group = Pubkey::new_unique();
     let feed = create_feed(&mut f, "shreds", exchange, vec![other_group]).await;
-    set_pass_feeds(
-        &mut f,
-        vec![FeedSeat {
-            feed_key: feed,
-            max_users: 2,
-            max_future_users: 2,
-            current_users: 0,
-            anniversary_day: 15,
-            window_end: TEST_WINDOW_END,
-            terminates_at: TEST_TERMINATES_AT,
-        }],
-    )
-    .await;
+    set_pass_feeds(&mut f, vec![seat(feed, 2)]).await;
 
     let err = try_subscribe_with_feed(&mut f, feed)
         .await
@@ -532,4 +584,227 @@ async fn test_group_not_in_feed_rejected() {
         format!("{err:?}").contains("Custom(94)"),
         "expected GroupNotInFeed (Custom(94)), got: {err:?}"
     );
+}
+
+#[tokio::test]
+async fn test_post_activation_second_feed_ticks_its_own_seat() {
+    let mut f = setup_feed_fixture([100, 0, 0, 24]).await;
+    let (exchange, device, group1) = (f.exchange_pubkey, f.device_pubkey, f.mgroup_pubkey);
+    let group2 = create_mgroup(&mut f, "group2").await;
+    // Two feeds serving the device's metro, one group each.
+    let feed1 = create_feed(&mut f, "shreds", exchange, vec![group1]).await;
+    let feed2 = create_feed(&mut f, "gossip", exchange, vec![group2]).await;
+    set_pass_feeds(&mut f, vec![seat(feed1, 2), seat(feed2, 2)]).await;
+
+    try_subscribe_with_feed(&mut f, feed1)
+        .await
+        .expect("connect through the first feed should succeed");
+    try_update_roles(&mut f, group2, false, true, Some((device, feed2)))
+        .await
+        .expect("a group drawn from the second feed should be admitted");
+
+    let user = user_state(&mut f).await;
+    assert_eq!(user.subscribers, vec![group1, group2]);
+    assert_eq!(user.feed_pks, vec![feed1, feed2]);
+    assert_eq!(seat_users(&mut f, feed1).await, 1);
+    assert_eq!(seat_users(&mut f, feed2).await, 1);
+}
+
+#[tokio::test]
+async fn test_second_group_in_same_feed_does_not_tick_again() {
+    let mut f = setup_feed_fixture([100, 0, 0, 25]).await;
+    let (exchange, device, group1) = (f.exchange_pubkey, f.device_pubkey, f.mgroup_pubkey);
+    let group2 = create_mgroup(&mut f, "group2").await;
+    let feed = create_feed(&mut f, "shreds", exchange, vec![group1, group2]).await;
+    // A single seat: a second tick against the same feed would be rejected as FeedSeatFull, so this
+    // succeeding is what proves the seat is held per feed rather than per group.
+    set_pass_feeds(&mut f, vec![seat(feed, 1)]).await;
+
+    try_subscribe_with_feed(&mut f, feed)
+        .await
+        .expect("connect should succeed");
+    try_update_roles(&mut f, group2, false, true, Some((device, feed)))
+        .await
+        .expect("a second group inside the held feed should be admitted");
+
+    let user = user_state(&mut f).await;
+    assert_eq!(user.subscribers, vec![group1, group2]);
+    assert_eq!(user.feed_pks, vec![feed]);
+    assert_eq!(seat_users(&mut f, feed).await, 1);
+}
+
+/// A role add without the metro-gate accounts is rejected. This is the shape of the instruction
+/// callers that predate the gate still send, so an EdgeSeat pass needs them to start passing it.
+#[tokio::test]
+async fn test_post_activation_missing_metro_gate_rejected() {
+    let mut f = setup_feed_fixture([100, 0, 0, 26]).await;
+    let (exchange, group1) = (f.exchange_pubkey, f.mgroup_pubkey);
+    let feed = create_feed(&mut f, "shreds", exchange, vec![group1]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 2)]).await;
+    try_subscribe_with_feed(&mut f, feed)
+        .await
+        .expect("connect should succeed");
+
+    let err = try_update_roles(&mut f, group1, true, false, None)
+        .await
+        .expect_err("a role add without device/feed should be rejected");
+    assert!(
+        format!("{err:?}").contains("Custom(91)"),
+        "expected MetroMismatch (Custom(91)), got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_post_activation_feed_not_on_pass_rejected() {
+    let mut f = setup_feed_fixture([100, 0, 0, 27]).await;
+    let (exchange, device, group1) = (f.exchange_pubkey, f.device_pubkey, f.mgroup_pubkey);
+    let group2 = create_mgroup(&mut f, "group2").await;
+    let feed = create_feed(&mut f, "shreds", exchange, vec![group1]).await;
+    // Created in the catalog but never provisioned onto the pass.
+    let unprovisioned_feed = create_feed(&mut f, "gossip", exchange, vec![group2]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 2)]).await;
+    try_subscribe_with_feed(&mut f, feed)
+        .await
+        .expect("connect should succeed");
+
+    let err = try_update_roles(
+        &mut f,
+        group2,
+        false,
+        true,
+        Some((device, unprovisioned_feed)),
+    )
+    .await
+    .expect_err("a feed outside the pass should be rejected");
+    assert!(
+        format!("{err:?}").contains("Custom(93)"),
+        "expected FeedNotOnAccessPass (Custom(93)), got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_post_activation_group_not_in_feed_rejected() {
+    let mut f = setup_feed_fixture([100, 0, 0, 28]).await;
+    let (exchange, device, group1) = (f.exchange_pubkey, f.device_pubkey, f.mgroup_pubkey);
+    let group2 = create_mgroup(&mut f, "group2").await;
+    let feed = create_feed(&mut f, "shreds", exchange, vec![group1]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 2)]).await;
+    try_subscribe_with_feed(&mut f, feed)
+        .await
+        .expect("connect should succeed");
+
+    let err = try_update_roles(&mut f, group2, false, true, Some((device, feed)))
+        .await
+        .expect_err("a group outside the feed should be rejected");
+    assert!(
+        format!("{err:?}").contains("Custom(94)"),
+        "expected GroupNotInFeed (Custom(94)), got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_post_activation_wrong_device_rejected() {
+    let mut f = setup_feed_fixture([100, 0, 0, 29]).await;
+    let (exchange, group1) = (f.exchange_pubkey, f.mgroup_pubkey);
+    let feed = create_feed(&mut f, "shreds", exchange, vec![group1]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 2)]).await;
+    try_subscribe_with_feed(&mut f, feed)
+        .await
+        .expect("connect should succeed");
+
+    // The handler compares the account key against `user.device_pk` before deserializing it, so any
+    // program-owned account that is not the user's device exercises the mismatch.
+    let not_the_users_device = f.accesspass_pubkey;
+    let err = try_update_roles(
+        &mut f,
+        group1,
+        true,
+        false,
+        Some((not_the_users_device, feed)),
+    )
+    .await
+    .expect_err("a device that is not the user's should be rejected");
+    assert!(
+        format!("{err:?}").contains("Custom(101)"),
+        "expected UserDeviceMismatch (Custom(101)), got: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_removal_releases_seat_for_last_group_in_feed() {
+    let mut f = setup_feed_fixture([100, 0, 0, 30]).await;
+    let (exchange, device, group1) = (f.exchange_pubkey, f.device_pubkey, f.mgroup_pubkey);
+    let group2 = create_mgroup(&mut f, "group2").await;
+    let feed1 = create_feed(&mut f, "shreds", exchange, vec![group1]).await;
+    let feed2 = create_feed(&mut f, "gossip", exchange, vec![group2]).await;
+    set_pass_feeds(&mut f, vec![seat(feed1, 2), seat(feed2, 2)]).await;
+
+    try_subscribe_with_feed(&mut f, feed1)
+        .await
+        .expect("connect should succeed");
+    try_update_roles(&mut f, group2, false, true, Some((device, feed2)))
+        .await
+        .expect("second feed should be admitted");
+
+    try_update_roles(&mut f, group2, false, false, Some((device, feed2)))
+        .await
+        .expect("removal should succeed");
+    let user = user_state(&mut f).await;
+    assert_eq!(user.subscribers, vec![group1]);
+    assert_eq!(user.feed_pks, vec![feed1]);
+    assert_eq!(seat_users(&mut f, feed2).await, 0);
+    assert_eq!(seat_users(&mut f, feed1).await, 1);
+
+    try_update_roles(&mut f, group1, false, false, Some((device, feed1)))
+        .await
+        .expect("removal should succeed");
+    let user = user_state(&mut f).await;
+    assert!(user.subscribers.is_empty());
+    assert!(user.feed_pks.is_empty());
+    assert_eq!(seat_users(&mut f, feed1).await, 0);
+}
+
+#[tokio::test]
+async fn test_removal_keeps_seat_while_another_group_in_feed_remains() {
+    let mut f = setup_feed_fixture([100, 0, 0, 31]).await;
+    let (exchange, device, group1) = (f.exchange_pubkey, f.device_pubkey, f.mgroup_pubkey);
+    let group2 = create_mgroup(&mut f, "group2").await;
+    let feed = create_feed(&mut f, "shreds", exchange, vec![group1, group2]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 1)]).await;
+
+    try_subscribe_with_feed(&mut f, feed)
+        .await
+        .expect("connect should succeed");
+    try_update_roles(&mut f, group2, false, true, Some((device, feed)))
+        .await
+        .expect("second group in the same feed should be admitted");
+
+    try_update_roles(&mut f, group1, false, false, Some((device, feed)))
+        .await
+        .expect("removal should succeed");
+    let user = user_state(&mut f).await;
+    assert_eq!(user.subscribers, vec![group2]);
+    assert_eq!(user.feed_pks, vec![feed]);
+    assert_eq!(seat_users(&mut f, feed).await, 1);
+}
+
+/// Without the metro-gate accounts a removal still succeeds and the seat stays held until delete, so
+/// the removal-only cleanup preceding DeleteUser/RequestBanUser keeps working.
+#[tokio::test]
+async fn test_removal_without_metro_gate_keeps_seat() {
+    let mut f = setup_feed_fixture([100, 0, 0, 32]).await;
+    let (exchange, group1) = (f.exchange_pubkey, f.mgroup_pubkey);
+    let feed = create_feed(&mut f, "shreds", exchange, vec![group1]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 2)]).await;
+    try_subscribe_with_feed(&mut f, feed)
+        .await
+        .expect("connect should succeed");
+
+    try_update_roles(&mut f, group1, false, false, None)
+        .await
+        .expect("removal without device/feed should succeed");
+    let user = user_state(&mut f).await;
+    assert!(user.subscribers.is_empty());
+    assert_eq!(user.feed_pks, vec![feed]);
+    assert_eq!(seat_users(&mut f, feed).await, 1);
 }

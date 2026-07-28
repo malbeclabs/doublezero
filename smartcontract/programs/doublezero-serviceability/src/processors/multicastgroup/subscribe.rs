@@ -12,6 +12,7 @@ use crate::{
     state::{
         accesspass::{AccessPass, AccessPassType},
         device::Device,
+        feed::Feed,
         globalstate::GlobalState,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         permission::permission_flags,
@@ -78,7 +79,7 @@ pub fn update_user_multicastgroup_roles(
 
     // Check allowlists for additions. EdgeSeat passes derive joinable groups from their feeds'
     // metro→group map (the feed metro gate), which supersedes the mgroup allowlist; the caller is
-    // responsible for running enforce_feed_metro_gate for EdgeSeat connects.
+    // responsible for running the feed metro gate for EdgeSeat role adds.
     let is_edge_seat = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_));
     if publisher && !is_edge_seat && !accesspass.mgroup_pub_allowlist.contains(mgroup_account.key) {
         msg!("{:?}", accesspass);
@@ -164,11 +165,11 @@ pub fn process_update_multicastgroup_roles(
 
     // Trailing layout: [device?, feed?, payer, system, permission?]. The SDK appends the payer's
     // Permission PDA last (via execute_authorized_transaction); the optional EdgeSeat device/feed
-    // accounts for post-activation metro re-gating precede payer/system, because the client pushes
-    // them into the instruction's account list ahead of the [payer, system, permission] trailer
-    // that assemble_instructions always appends. split_trailing_permission identifies the
-    // Permission by PDA match rather than by position, so it never mistakes device/feed for the
-    // Permission account regardless of which optional accounts are present.
+    // accounts for the metro re-gate precede payer/system, because the client pushes them into the
+    // instruction's account list ahead of the [payer, system, permission] trailer that
+    // assemble_instructions always appends. split_trailing_permission identifies the Permission by
+    // PDA match rather than by position, so it never mistakes device/feed for the Permission
+    // account regardless of which optional accounts are present.
     let remaining: Vec<&AccountInfo> = accounts_iter.collect();
     let (payer_account, system_program, leading, permission_account) =
         split_trailing_permission(program_id, &remaining)?;
@@ -194,7 +195,7 @@ pub fn process_update_multicastgroup_roles(
     validate_program_account!(
         accesspass_account,
         program_id,
-        writable = false,
+        writable = true,
         "AccessPass"
     );
     validate_program_account!(user_account, program_id, writable = true, "User");
@@ -214,7 +215,7 @@ pub fn process_update_multicastgroup_roles(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    let accesspass = AccessPass::try_from(accesspass_account)?;
+    let mut accesspass = AccessPass::try_from(accesspass_account)?;
 
     let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
     let (accesspass_dynamic_pda, _) =
@@ -279,25 +280,36 @@ pub fn process_update_multicastgroup_roles(
         }
     }
 
-    // EdgeSeat passes derive joinable groups from their feeds' metro→group map. The seat was
-    // ticked at connect (CreateSubscribeUser), so post-activation role adds only re-validate
-    // coverage; they do not re-tick.
-    if matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_))
-        && (value.publisher || value.subscriber)
-    {
+    let is_edge_seat = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_));
+    let adding_role = value.publisher || value.subscriber;
+    let mut accesspass_changed = false;
+
+    // EdgeSeat passes derive joinable groups from their feeds' metro→group map, so a role add is
+    // gated on a feed that is provisioned on the pass, serves the user's metro, and carries the
+    // target group.
+    if is_edge_seat && adding_role {
         let device_account = device_account.ok_or(DoubleZeroError::MetroMismatch)?;
         validate_program_account!(device_account, program_id, writable = false, "Device");
-        if user.device_pk != *device_account.key {
-            return Err(ProgramError::InvalidAccountData);
+        if device_account.key != &user.device_pk {
+            msg!("Device {} is not the user's device", device_account.key);
+            return Err(DoubleZeroError::UserDeviceMismatch.into());
         }
         let device = Device::try_from(device_account)?;
+        let feed_account = feed_account.ok_or(DoubleZeroError::FeedAccountRequired)?;
         check_feed_metro_coverage(
             program_id,
             &accesspass,
             &device.exchange_pk,
             Some(mgroup_account.key),
-            feed_account,
+            Some(feed_account),
         )?;
+        // A seat is held per feed, not per group: joining a second group inside a feed the user
+        // already holds must not tick again.
+        if !user.feed_pks.contains(feed_account.key) {
+            accesspass.try_add_feed_user(feed_account.key)?;
+            user.feed_pks.push(*feed_account.key);
+            accesspass_changed = true;
+        }
     }
 
     let result = update_user_multicastgroup_roles(
@@ -307,6 +319,42 @@ pub fn process_update_multicastgroup_roles(
         value.publisher,
         value.subscriber,
     )?;
+
+    // A removal may retire the user's last group in the covering feed, releasing that feed's seat.
+    // The accounts stay optional so removal-only cleanup keeps working without them; the seat then
+    // stays held until delete drains `feed_pks`.
+    let releasing_seat = if is_edge_seat && !adding_role {
+        device_account.zip(feed_account)
+    } else {
+        None
+    };
+    if let Some((device_account, feed_account)) = releasing_seat {
+        validate_program_account!(device_account, program_id, writable = false, "Device");
+        if device_account.key != &user.device_pk {
+            msg!("Device {} is not the user's device", device_account.key);
+            return Err(DoubleZeroError::UserDeviceMismatch.into());
+        }
+        let device = Device::try_from(device_account)?;
+        // Coverage is checked without a target group: the group being removed may already have been
+        // dropped from the feed's mutable group set, and that must not wedge the removal.
+        check_feed_metro_coverage(
+            program_id,
+            &accesspass,
+            &device.exchange_pk,
+            None,
+            Some(feed_account),
+        )?;
+        let feed = Feed::try_from(feed_account)?;
+        let holds_group_in_feed = user
+            .get_multicast_groups()
+            .iter()
+            .any(|group| feed.groups.contains(group));
+        if !holds_group_in_feed && user.feed_pks.contains(feed_account.key) {
+            accesspass.remove_feed_user(feed_account.key);
+            user.feed_pks.retain(|feed_pk| feed_pk != feed_account.key);
+            accesspass_changed = true;
+        }
+    }
 
     // Allocate dz_ip when gaining first publisher
     if result.publisher_list_transitioned
@@ -348,6 +396,9 @@ pub fn process_update_multicastgroup_roles(
 
     try_acc_write(&result.mgroup, mgroup_account, payer_account, accounts)?;
     try_acc_write(&user, user_account, payer_account, accounts)?;
+    if accesspass_changed {
+        try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
+    }
 
     Ok(())
 }

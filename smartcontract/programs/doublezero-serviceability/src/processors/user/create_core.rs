@@ -320,8 +320,7 @@ pub fn create_user_core(
     // EdgeSeat multicast metro gate: the device's exchange must be covered by a feed on the pass,
     // the target group must be joinable there, and that feed's seat is ticked. Unicast retains the
     // per-category cap above and is not feed-gated. The ticked feed is recorded on the User below so
-    // delete releases exactly that seat. A user may accumulate more feeds post-activation (multiple
-    // metros per pass); that re-gating is deferred to doublezero#1699.
+    // delete releases exactly that seat; UpdateMulticastGroupRoles runs the same gate to append more.
     let feed_pks = if matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_))
         && user_type == UserType::Multicast
     {

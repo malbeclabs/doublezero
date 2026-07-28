@@ -167,13 +167,17 @@ pub fn delete_multicast_group(
 }
 
 /// `UpdateMulticastGroupRoles` (variant 58) — publisher/subscriber role change.
-/// Accounts: `[group, accesspass, user, globalstate, multicast_publisher_block]`.
+/// Accounts: `[group, accesspass, user, globalstate, multicast_publisher_block, device?, feed?]`.
+///
+/// `metro_gate` is the EdgeSeat `(device, feed)` pair, required to add a role on such a pass and
+/// optional to remove one. One arg, not two options: the processor reads them positionally.
 pub fn update_multicast_group_roles(
     program_id: &Pubkey,
     payer: &Pubkey,
     group: &Pubkey,
     accesspass: &Pubkey,
     user: &Pubkey,
+    metro_gate: Option<(&Pubkey, &Pubkey)>,
     mut args: UpdateMulticastGroupRolesArgs,
 ) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
@@ -184,16 +188,23 @@ pub fn update_multicast_group_roles(
     // a caller-supplied value here can only ever fail. This builder always emits
     // the `multicast_publisher_block` account, so it forces the flag (as the SDK does).
     args.use_onchain_allocation = true;
+
+    let mut accounts = vec![
+        AccountMeta::new(*group, false),
+        AccountMeta::new(*accesspass, false),
+        AccountMeta::new(*user, false),
+        AccountMeta::new(globalstate, false),
+        AccountMeta::new(multicast_publisher_block, false),
+    ];
+    if let Some((device, feed)) = metro_gate {
+        accounts.push(AccountMeta::new_readonly(*device, false));
+        accounts.push(AccountMeta::new_readonly(*feed, false));
+    }
+
     common::build_with_permission(
         program_id,
         DoubleZeroInstruction::UpdateMulticastGroupRoles(args),
-        vec![
-            AccountMeta::new(*group, false),
-            AccountMeta::new(*accesspass, false),
-            AccountMeta::new(*user, false),
-            AccountMeta::new(globalstate, false),
-            AccountMeta::new(multicast_publisher_block, false),
-        ],
+        accounts,
         payer,
     )
 }
@@ -456,7 +467,7 @@ mod tests {
             // Left off deliberately: the builder must force it on.
             use_onchain_allocation: false,
         };
-        let ix = update_multicast_group_roles(&pid, &payer, &group, &accesspass, &user, args);
+        let ix = update_multicast_group_roles(&pid, &payer, &group, &accesspass, &user, None, args);
         assert_eq!(ix.data[0], 58);
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
             DoubleZeroInstruction::UpdateMulticastGroupRoles(a) => {
@@ -474,6 +485,49 @@ mod tests {
                 AccountMeta::new(user, false),
                 AccountMeta::new(globalstate, false),
                 AccountMeta::new(mpb, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+    }
+
+    /// The EdgeSeat metro-gate pair is readonly, ordered device-then-feed (the processor reads it
+    /// positionally), and sits last before the `[payer, system]` trailer.
+    #[test]
+    fn test_update_multicast_group_roles_metro_gate_is_readonly_and_last_before_trailing() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let group = Pubkey::new_unique();
+        let accesspass = Pubkey::new_unique();
+        let user = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let feed = Pubkey::new_unique();
+        let ix = update_multicast_group_roles(
+            &pid,
+            &payer,
+            &group,
+            &accesspass,
+            &user,
+            Some((&device, &feed)),
+            UpdateMulticastGroupRolesArgs {
+                client_ip: Ipv4Addr::new(192, 168, 1, 1),
+                publisher: false,
+                subscriber: true,
+                use_onchain_allocation: true,
+            },
+        );
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        let (mpb, _, _) = get_resource_extension_pda(&pid, ResourceType::MulticastPublisherBlock);
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(group, false),
+                AccountMeta::new(accesspass, false),
+                AccountMeta::new(user, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(mpb, false),
+                AccountMeta::new_readonly(device, false),
+                AccountMeta::new_readonly(feed, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
             ]

@@ -282,10 +282,9 @@ pub struct User {
     /// Smoothed BGP TCP RTT in nanoseconds, sourced from the kernel via INET_DIAG.
     /// 0 means no sample has been observed yet. Same unit as `Link.delay_ns`.
     pub bgp_rtt_ns: u64, // 8
-    /// The EdgeSeat `Feed`s whose per-feed seats this user consumed at connect (multicast only).
-    /// Empty for non-EdgeSeat/unicast users. Every entry is released at delete, so the release is
-    /// bound to exactly what was ticked rather than a caller-supplied account. A user may hold
-    /// seats on multiple feeds (one feed per metro; multiple feeds per pass).
+    /// The EdgeSeat `Feed`s whose per-feed seats this user holds (multicast only): the feed it
+    /// connected through, plus any feed a later role add drew a group from. One entry per feed
+    /// however many of its groups the user joined, and every entry is released at delete.
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -514,8 +513,8 @@ impl User {
     }
 
     /// Release every EdgeSeat feed seat this user holds back to `accesspass` (each entry in
-    /// `feed_pks`), so the release is bound to exactly what was ticked at connect. No-op for
-    /// non-multicast users (they never hold feed seats).
+    /// `feed_pks`), so the release is bound to exactly what was ticked. No-op for non-multicast
+    /// users (they never hold feed seats).
     pub fn release_feed_seats(&self, accesspass: &mut AccessPass) {
         if self.user_type != UserType::Multicast {
             return;

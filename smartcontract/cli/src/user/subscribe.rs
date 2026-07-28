@@ -7,6 +7,8 @@ use crate::{
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::{
+    device::get::GetDeviceCommand,
+    feed::get::GetFeedCommand,
     multicastgroup::{get::GetMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand},
     user::get::GetUserCommand,
 };
@@ -28,6 +30,10 @@ pub struct SubscribeUserCliCommand {
     /// subscriber role. When omitted, the current subscriber role is left unchanged.
     #[arg(long, num_args = 0..=1, default_missing_value = "true")]
     pub subscriber: Option<bool>,
+    /// Feed Pubkey or code covering the group, for an EdgeSeat access pass. Defaults to the pass's
+    /// feed that serves the user's metro and carries the group.
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub feed: Option<String>,
     /// Wait for the subscription to complete.
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -75,6 +81,22 @@ impl SubscribeUserCliCommand {
             group_pks.push(group_pk);
         }
 
+        // An omitted --feed leaves the metro gate to the SDK, which picks the pass's feed serving
+        // the user's metro.
+        let feed_pk = match &self.feed {
+            Some(feed) => {
+                let (_, device) = client.get_device(GetDeviceCommand {
+                    pubkey_or_code: user.device_pk.to_string(),
+                })?;
+                let (feed_pk, _) = client.get_feed(GetFeedCommand {
+                    pubkey_or_code: feed.to_string(),
+                    exchange: Some(device.exchange_pk),
+                })?;
+                Some(feed_pk)
+            }
+            None => None,
+        };
+
         // Update roles for each group. An omitted flag preserves the user's
         // current role for that group; the processor sets absolute state
         // (idempotent add when true, idempotent remove when false), not a
@@ -84,7 +106,7 @@ impl SubscribeUserCliCommand {
         // processor re-checks against the current onchain allowlist before the
         // idempotent add/remove. If that allowlist drifted since the user
         // subscribed, an unrelated role removal can be rejected with NotAllowed.
-        // This is an inherited processor property, not a regression here.
+        // This is an inherited processor property, not a regression.
         for group_pk in &group_pks {
             let publisher = self
                 .publisher
@@ -100,7 +122,7 @@ impl SubscribeUserCliCommand {
                     publisher,
                     subscriber,
                     device_pk: None,
-                    feed_pk: None,
+                    feed_pk,
                 })?;
             writeln!(out, "Updated roles for {group_pk}: {signature}")?;
         }
@@ -132,12 +154,14 @@ mod tests {
     };
     use doublezero_sdk::{
         commands::{
+            device::get::GetDeviceCommand,
+            feed::get::GetFeedCommand,
             multicastgroup::{
                 get::GetMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
             },
             user::get::GetUserCommand,
         },
-        AccountType, MulticastGroup, MulticastGroupStatus, User, UserCYOA, UserType,
+        AccountType, Device, Feed, MulticastGroup, MulticastGroupStatus, User, UserCYOA, UserType,
     };
     use doublezero_serviceability::pda::get_user_old_pda;
     use mockall::predicate;
@@ -236,6 +260,7 @@ mod tests {
                 groups: vec![mgroup_pubkey.to_string()],
                 publisher: Some(false),
                 subscriber: Some(true),
+                feed: None,
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -354,6 +379,7 @@ mod tests {
                 groups: vec![mgroup_pubkey1.to_string(), mgroup_pubkey2.to_string()],
                 publisher: Some(false),
                 subscriber: Some(true),
+                feed: None,
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -457,6 +483,7 @@ mod tests {
                 groups: vec![mgroup_pubkey.to_string()],
                 publisher: Some(false),
                 subscriber: None,
+                feed: None,
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -559,6 +586,7 @@ mod tests {
                 groups: vec![mgroup_pubkey.to_string()],
                 publisher: None,
                 subscriber: Some(false),
+                feed: None,
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -591,6 +619,7 @@ mod tests {
                 groups: vec![mgroup_pubkey.to_string()],
                 publisher: None,
                 subscriber: None,
+                feed: None,
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -600,6 +629,99 @@ mod tests {
             err.contains("Specify at least one of --publisher"),
             "expected role-flag guidance, got: {err}"
         );
+    }
+
+    /// `--feed <code>` resolves against the user's device metro (a bare code is ambiguous across
+    /// metros) and reaches the SDK as `feed_pk`.
+    #[test]
+    fn test_cli_user_subscribe_resolves_feed_code_against_device_metro() {
+        let mut client = create_test_client();
+
+        let (user_pubkey, _bump_seed) = get_user_old_pda(&client.get_program_id(), 1);
+        let signature = Signature::new_unique();
+        let client_ip = [192, 168, 1, 100].into();
+        let device_pubkey = Pubkey::new_unique();
+        let exchange_pubkey = Pubkey::new_unique();
+        let feed_pubkey = Pubkey::new_unique();
+        let mgroup_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
+
+        let user = User {
+            account_type: AccountType::User,
+            index: 1,
+            bump_seed: 255,
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            device_pk: device_pubkey,
+            owner: client.get_payer(),
+            client_ip,
+            dz_ip: client_ip,
+            status: doublezero_sdk::UserStatus::Activated,
+            ..Default::default()
+        };
+        let device = Device {
+            account_type: AccountType::Device,
+            exchange_pk: exchange_pubkey,
+            ..Default::default()
+        };
+        let feed = Feed {
+            account_type: AccountType::Feed,
+            code: "shreds".to_string(),
+            exchange: exchange_pubkey,
+            groups: vec![mgroup_pubkey],
+            ..Default::default()
+        };
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_user()
+            .with(predicate::eq(GetUserCommand {
+                pubkey: user_pubkey,
+            }))
+            .returning(move |_| Ok((user_pubkey, user.clone())));
+        client
+            .expect_get_device()
+            .with(predicate::eq(GetDeviceCommand {
+                pubkey_or_code: device_pubkey.to_string(),
+            }))
+            .returning(move |_| Ok((device_pubkey, device.clone())));
+        client
+            .expect_get_feed()
+            .with(predicate::eq(GetFeedCommand {
+                pubkey_or_code: "shreds".to_string(),
+                exchange: Some(exchange_pubkey),
+            }))
+            .returning(move |_| Ok((feed_pubkey, feed.clone())));
+        client
+            .expect_update_multicastgroup_roles()
+            .with(predicate::eq(UpdateMulticastGroupRolesCommand {
+                user_pk: user_pubkey,
+                group_pk: mgroup_pubkey,
+                client_ip,
+                publisher: false,
+                subscriber: true,
+                device_pk: None,
+                feed_pk: Some(feed_pubkey),
+            }))
+            .times(1)
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SubscribeUserCliCommand {
+                user: user_pubkey.to_string(),
+                groups: vec![mgroup_pubkey.to_string()],
+                publisher: None,
+                subscriber: Some(true),
+                feed: Some("shreds".to_string()),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok(), "{:?}", res.unwrap_err());
     }
 
     #[test]

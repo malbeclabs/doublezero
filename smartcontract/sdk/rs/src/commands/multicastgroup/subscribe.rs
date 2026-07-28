@@ -2,14 +2,15 @@ use std::net::Ipv4Addr;
 
 use crate::{
     commands::{
-        accesspass::get::GetAccessPassCommand, multicastgroup::get::GetMulticastGroupCommand,
+        accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
+        feed::get::GetFeedCommand, multicastgroup::get::GetMulticastGroupCommand,
         user::get::GetUserCommand,
     },
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
     processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
-    state::multicastgroup::MulticastGroupStatus,
+    state::{accesspass::AccessPassType, multicastgroup::MulticastGroupStatus},
 };
 use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -21,9 +22,8 @@ pub struct UpdateMulticastGroupRolesCommand {
     pub user_pk: Pubkey,
     pub publisher: bool,
     pub subscriber: bool,
-    /// Reserved for the EdgeSeat feed metro gate (the user's device + covering Feed). Not appended
-    /// by this builder — the authorized-transaction layout has no slot after the trailing
-    /// `[payer, system, permission]`; post-activation re-gating is deferred to #1699.
+    /// EdgeSeat feed metro gate. Left as `None`, this command resolves the device from
+    /// `user.device_pk` and the feed from the pass's seats; set either to override.
     pub device_pk: Option<Pubkey>,
     pub feed_pk: Option<Pubkey>,
 }
@@ -55,24 +55,68 @@ impl UpdateMulticastGroupRolesCommand {
         .execute(client)?
         .ok_or_else(|| eyre::eyre!("AccessPass not found"))?;
 
-        if self.publisher && !accesspass.mgroup_pub_allowlist.contains(&self.group_pk) {
-            eyre::bail!("User not allowed to publish multicast group");
-        }
-        if self.subscriber && !accesspass.mgroup_sub_allowlist.contains(&self.group_pk) {
-            eyre::bail!("User not allowed to subscribe multicast group");
+        // An EdgeSeat pass bypasses the mgroup allowlists onchain (the feed metro gate below admits
+        // it instead), so checking them here would reject every EdgeSeat role change.
+        let is_edge_seat = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_));
+        if !is_edge_seat {
+            if self.publisher && !accesspass.mgroup_pub_allowlist.contains(&self.group_pk) {
+                eyre::bail!("User not allowed to publish multicast group");
+            }
+            if self.subscriber && !accesspass.mgroup_sub_allowlist.contains(&self.group_pk) {
+                eyre::bail!("User not allowed to subscribe multicast group");
+            }
         }
 
-        // The EdgeSeat feed metro gate is enforced at connect (CreateSubscribeUser). The optional
-        // `device_pk`/`feed_pk` for post-activation re-gating are NOT passed to the builder here:
-        // the `update_multicast_group_roles` layout has no slot for them via this path.
-        // Post-activation re-gating is deferred to the oracle lifecycle
-        // (see malbeclabs/infra#1700 / doublezero #1699).
+        let metro_gate = if is_edge_seat {
+            let device_pk = self.device_pk.unwrap_or(user.device_pk);
+            let (_, device) = GetDeviceCommand {
+                pubkey_or_code: device_pk.to_string(),
+            }
+            .execute(client)?;
+
+            // Pick the pass's feed that serves the device's metro and carries the target group. A
+            // role add needs one; a removal does not, since the group may already have been dropped
+            // from its feed's group set.
+            let feed_pk = match self.feed_pk {
+                Some(feed_pk) => Some(feed_pk),
+                None => {
+                    let mut resolved = None;
+                    for seat in accesspass.feed_seats() {
+                        let (candidate_pk, feed) = GetFeedCommand {
+                            pubkey_or_code: seat.feed_key.to_string(),
+                            exchange: None,
+                        }
+                        .execute(client)?;
+                        if feed.exchange == device.exchange_pk
+                            && feed.groups.contains(&self.group_pk)
+                        {
+                            resolved = Some(candidate_pk);
+                            break;
+                        }
+                    }
+                    resolved
+                }
+            };
+            match feed_pk {
+                Some(feed_pk) => Some((device_pk, feed_pk)),
+                None if self.publisher || self.subscriber => eyre::bail!(
+                    "No feed on the access pass serves device {} with multicast group {}",
+                    device_pk,
+                    self.group_pk
+                ),
+                None => None,
+            }
+        } else {
+            None
+        };
+
         client.send_transaction(update_multicast_group_roles(
             &client.get_program_id(),
             &client.get_payer(),
             &self.group_pk,
             &accesspass_pubkey,
             &self.user_pk,
+            metro_gate.as_ref().map(|(device, feed)| (device, feed)),
             UpdateMulticastGroupRolesArgs {
                 publisher: self.publisher,
                 subscriber: self.subscriber,
@@ -94,8 +138,11 @@ mod tests {
         pda::{get_accesspass_pda, get_multicastgroup_pda},
         processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
         state::{
+            accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat},
             accountdata::AccountData,
             accounttype::AccountType,
+            device::Device,
+            feed::Feed,
             multicastgroup::{MulticastGroup, MulticastGroupStatus},
             user::{User, UserCYOA, UserStatus, UserType},
         },
@@ -207,6 +254,7 @@ mod tests {
             &mgroup_pubkey,
             &accesspass_pubkey,
             &user_pubkey,
+            None,
             UpdateMulticastGroupRolesArgs {
                 client_ip,
                 publisher: true,
@@ -231,5 +279,177 @@ mod tests {
         .execute(&client);
 
         assert!(res.is_ok());
+    }
+
+    /// An EdgeSeat pass is admitted by its feeds, not by the mgroup allowlists (both empty here), and
+    /// the command resolves the metro-gate pair itself.
+    #[test]
+    fn test_commands_multicastgroup_subscribe_resolves_edge_seat_metro_gate() {
+        let mut client = create_test_client();
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
+        let mgroup = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            owner: payer,
+            bump_seed: 0,
+            index: 1,
+            code: "test".to_string(),
+            max_bandwidth: 1000,
+            status: MulticastGroupStatus::Activated,
+            tenant_pk: Pubkey::default(),
+            multicast_ip: "223.0.0.1".parse().unwrap(),
+            publisher_count: 0,
+            subscriber_count: 0,
+        };
+
+        let exchange_pubkey = Pubkey::new_unique();
+        let device_pubkey = Pubkey::new_unique();
+        let device = Device {
+            account_type: AccountType::Device,
+            exchange_pk: exchange_pubkey,
+            ..Default::default()
+        };
+
+        // The pass carries the group's feed in another metro first, so resolution has to skip it.
+        let other_metro_feed_pubkey = Pubkey::new_unique();
+        let other_metro_feed = Feed {
+            account_type: AccountType::Feed,
+            code: "shreds".to_string(),
+            exchange: Pubkey::new_unique(),
+            groups: vec![mgroup_pubkey],
+            ..Default::default()
+        };
+        let feed_pubkey = Pubkey::new_unique();
+        let feed = Feed {
+            account_type: AccountType::Feed,
+            code: "shreds".to_string(),
+            exchange: exchange_pubkey,
+            groups: vec![mgroup_pubkey],
+            ..Default::default()
+        };
+
+        let user_pubkey = Pubkey::new_unique();
+        let user = User {
+            account_type: AccountType::User,
+            owner: payer,
+            bump_seed: 0,
+            index: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::Multicast,
+            device_pk: device_pubkey,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip,
+            dz_ip: client_ip,
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: UserStatus::Activated,
+            ..Default::default()
+        };
+
+        let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user.client_ip, &payer);
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 0,
+            accesspass_type: AccessPassType::EdgeSeat(vec![
+                FeedSeat {
+                    feed_key: other_metro_feed_pubkey,
+                    max_users: 2,
+                    ..Default::default()
+                },
+                FeedSeat {
+                    feed_key: feed_pubkey,
+                    max_users: 2,
+                    ..Default::default()
+                },
+            ]),
+            client_ip: user.client_ip,
+            user_payer: payer,
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            owner: payer,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        };
+
+        client
+            .expect_get()
+            .with(predicate::eq(mgroup_pubkey))
+            .returning(move |_| Ok(AccountData::MulticastGroup(mgroup.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .returning({
+                let user = user.clone();
+                move |_| Ok(AccountData::User(user.clone()))
+            });
+        // The dynamic (UNSPECIFIED) pass must miss so the lookup falls back to the client-IP pass.
+        let (dynamic_accesspass_pubkey, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_accesspass_pubkey))
+            .returning({
+                let user = user.clone();
+                move |_| Ok(AccountData::User(user.clone()))
+            });
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(device_pubkey))
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(other_metro_feed_pubkey))
+            .returning(move |_| Ok(AccountData::Feed(other_metro_feed.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(feed_pubkey))
+            .returning(move |_| Ok(AccountData::Feed(feed.clone())));
+
+        let expected = update_multicast_group_roles(
+            &program_id,
+            &payer,
+            &mgroup_pubkey,
+            &accesspass_pubkey,
+            &user_pubkey,
+            Some((&device_pubkey, &feed_pubkey)),
+            UpdateMulticastGroupRolesArgs {
+                client_ip,
+                publisher: false,
+                subscriber: true,
+                use_onchain_allocation: true,
+            },
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        let res = UpdateMulticastGroupRolesCommand {
+            group_pk: mgroup_pubkey,
+            user_pk: user_pubkey,
+            client_ip,
+            publisher: false,
+            subscriber: true,
+            device_pk: None,
+            feed_pk: None,
+        }
+        .execute(&client);
+
+        assert!(res.is_ok(), "{:?}", res.unwrap_err());
     }
 }

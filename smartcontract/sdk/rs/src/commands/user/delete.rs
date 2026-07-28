@@ -280,6 +280,7 @@ mod tests {
                 &mgroup_pubkey,
                 &accesspass_pubkey,
                 &user_pubkey,
+                None,
                 UpdateMulticastGroupRolesArgs {
                     publisher: false,
                     subscriber: false,
@@ -483,6 +484,7 @@ mod tests {
                 &mgroup_pubkey,
                 &accesspass_pubkey,
                 &user_pubkey,
+                None,
                 UpdateMulticastGroupRolesArgs {
                     publisher: false,
                     subscriber: false,
@@ -725,6 +727,7 @@ mod tests {
                 &mgroup_pubkey,
                 &accesspass_pubkey,
                 &user_pubkey,
+                None,
                 UpdateMulticastGroupRolesArgs {
                     publisher: false,
                     subscriber: false,

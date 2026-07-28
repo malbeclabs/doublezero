@@ -208,6 +208,8 @@ pub enum DoubleZeroError {
         "Feed billing window is invalid (window_end must be in the future and <= terminates_at)"
     )]
     FeedInvalidBillingWindow, // variant 100
+    #[error("Provided Device account is not the user's device")]
+    UserDeviceMismatch, // variant 101
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -314,6 +316,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::FeedMaxFutureUsersBelowMaxUsers => ProgramError::Custom(98),
             DoubleZeroError::FeedInvalidAnniversaryDay => ProgramError::Custom(99),
             DoubleZeroError::FeedInvalidBillingWindow => ProgramError::Custom(100),
+            DoubleZeroError::UserDeviceMismatch => ProgramError::Custom(101),
         }
     }
 }
@@ -421,6 +424,7 @@ impl From<u32> for DoubleZeroError {
             98 => DoubleZeroError::FeedMaxFutureUsersBelowMaxUsers,
             99 => DoubleZeroError::FeedInvalidAnniversaryDay,
             100 => DoubleZeroError::FeedInvalidBillingWindow,
+            101 => DoubleZeroError::UserDeviceMismatch,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -455,7 +459,7 @@ mod tests {
         }
 
         // EnumIter generates Custom(0) by default, so we explicitly test values
-        // outside the known variant range (currently 0-100) to ensure the conversion
+        // outside the known variant range (currently 0-101) to ensure the conversion
         // logic handles arbitrary custom codes correctly.
         for code in [1000u32, 100_000, u32::MAX] {
             let err = DoubleZeroError::Custom(code);

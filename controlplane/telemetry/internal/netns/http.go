@@ -12,8 +12,11 @@ import (
 	"strings"
 	"time"
 
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/gagliardetto/solana-go/rpc/jsonrpc"
 	"github.com/klauspost/compress/gzhttp"
+
+	dzjsonrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/jsonrpc"
 )
 
 type JSONRPCClientOptions struct {
@@ -64,36 +67,27 @@ func NewNamespacedHTTPClient(namespace string, opts *HTTPClientOptions) (*http.C
 // operations within the context of a given network namespace. It constructs a
 // custom HTTP transport using a single-threaded dialer wrapped in RunInNamespace,
 // allowing requests to be issued from inside the specified namespace.
-func NewNamespacedJSONRPCClient(url string, namespace string, opts *JSONRPCClientOptions) (jsonrpc.RPCClient, error) {
-	if opts == nil {
-		opts = defaultJSONRPCClientOptions
+func NewNamespacedJSONRPCClient(url string, namespace string, opts *JSONRPCClientOptions) (solanarpc.JSONRPCClient, error) {
+	httpClient, err := NewNamespacedHTTPClient(namespace, opts)
+	if err != nil {
+		return nil, err
 	}
+	return newRetryingJSONRPCClient(url, httpClient), nil
+}
 
-	transport := &SingleThreadTransport{
-		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return RunInNamespace(namespace, func() (net.Conn, error) {
-				return (&net.Dialer{
-					Timeout:   opts.DialTimeout,
-					KeepAlive: opts.DialKeepAlive,
-					// Disable DualStack and FallbackDelay to avoid "Happy Eyeballs" behavior,
-					// which races IPv6 and IPv4 connection attempts in separate goroutines.
-					DualStack:     false,
-					FallbackDelay: -1,
-				}).DialContext(ctx, network, address)
-			})
-		},
-	}
-
-	httpClient := &http.Client{
-		Transport: gzhttp.Transport(transport),
-		Timeout:   opts.HTTPTimeout,
-	}
-
-	client := jsonrpc.NewClientWithOpts(url, &jsonrpc.RPCClientOpts{
+// newRetryingJSONRPCClient wraps httpClient in a Solana JSON-RPC client carrying the
+// shared retry policy.
+//
+// The transport is built here rather than by tools/solana/pkg/rpc.New, which owns
+// its own and cannot take a netns-bound one. Retry is independent of the transport,
+// so it still applies: without it a device agent gives up on the first 503 from the
+// ledger endpoint, which is the failure this whole path exists to survive. Retries
+// are sequential, which SingleThreadTransport requires, and each attempt rebuilds
+// its request body from scratch.
+func newRetryingJSONRPCClient(url string, httpClient *http.Client) solanarpc.JSONRPCClient {
+	return dzjsonrpc.WithRetry(jsonrpc.NewClientWithOpts(url, &jsonrpc.RPCClientOpts{
 		HTTPClient: httpClient,
-	})
-
-	return client, nil
+	}), nil)
 }
 
 // SingleThreadTransport is a minimal, non-concurrent HTTP transport that uses a

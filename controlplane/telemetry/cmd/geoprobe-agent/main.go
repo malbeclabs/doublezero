@@ -23,6 +23,7 @@ import (
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
 	geolocation "github.com/malbeclabs/doublezero/sdk/geolocation/go"
+	dzrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/malbeclabs/doublezero/tools/twamp/pkg/signed"
 	"github.com/prometheus/client_golang/prometheus"
@@ -427,7 +428,7 @@ func main() {
 		log.Error("Failed to create offset signer", "error", err)
 		os.Exit(1)
 	}
-	rpcClient := solanarpc.New(*ledgerRPCURL)
+	rpcClient := dzrpc.NewWithRetries(*ledgerRPCURL, nil)
 
 	// Slot cache for reducing RPC load.
 	var (

@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
-	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/funder/internal/funder"
 	"github.com/malbeclabs/doublezero/controlplane/funder/internal/metrics"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	dzrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -155,7 +155,7 @@ func main() {
 	defer cancel()
 
 	// Build solana RPC client.
-	rpcClient := solanarpc.New(*ledgerRPCURL)
+	rpcClient := dzrpc.NewWithRetries(*ledgerRPCURL, nil)
 
 	// Set up serviceability program client.
 	serviceabilityProgramID, err := solana.PublicKeyFromBase58(*serviceabilityProgramID)

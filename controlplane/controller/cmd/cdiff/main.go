@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	dzrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 	"github.com/mr-tron/base58"
 
 	controllerpb "github.com/malbeclabs/doublezero/controlplane/proto/controller/gen/pb-go"
@@ -32,7 +32,7 @@ func main() {
 		log.Fatalf("failed to get network config for env %s: %v", *env, err)
 	}
 
-	rpcClient := rpc.New(networkConfig.LedgerPublicRPCURL)
+	rpcClient := dzrpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil)
 	svcClient := serviceability.New(rpcClient, networkConfig.ServiceabilityProgramID)
 
 	data, err := svcClient.GetProgramData(ctx)

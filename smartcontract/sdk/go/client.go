@@ -5,12 +5,12 @@ import (
 	"log/slog"
 
 	"github.com/gagliardetto/solana-go"
-	solanarpc "github.com/gagliardetto/solana-go/rpc"
 
 	"github.com/malbeclabs/doublezero/config"
 	revdist "github.com/malbeclabs/doublezero/sdk/revdist/go"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	dzrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 )
 
 type Client struct {
@@ -49,7 +49,7 @@ func New(log *slog.Logger, endpoint string, opts ...Option) (*Client, error) {
 		cfg.TelemetryProgramID = solana.MustPublicKeyFromBase58(config.TestnetTelemetryProgramID)
 	}
 
-	rpcClient := solanarpc.New(cfg.Endpoint)
+	rpcClient := dzrpc.NewWithRetries(cfg.Endpoint, nil)
 
 	c := &Client{
 		Serviceability: serviceability.New(rpcClient, cfg.ServiceabilityProgramID),

@@ -17,7 +17,7 @@ use solana_client::{
     rpc_client::RpcClient,
     rpc_config::{
         RpcAccountInfoConfig, RpcProgramAccountsConfig, RpcSendTransactionConfig,
-        RpcTransactionConfig,
+        RpcSimulateTransactionAccountsConfig, RpcSimulateTransactionConfig, RpcTransactionConfig,
     },
     rpc_filter::{Memcmp, MemcmpEncodedBytes, RpcFilterType},
 };
@@ -46,8 +46,12 @@ use std::{
 };
 
 use crate::{
-    config::*, doublezeroclient::DoubleZeroClient, dztransaction::DZTransaction,
-    keypair::load_keypair, rpckeyedaccount_decode::rpckeyedaccount_decode, AccountData,
+    config::*,
+    doublezeroclient::{DoubleZeroClient, SimulationOutcome},
+    dztransaction::DZTransaction,
+    keypair::load_keypair,
+    rpckeyedaccount_decode::rpckeyedaccount_decode,
+    AccountData,
 };
 
 pub struct DZClient {
@@ -176,15 +180,22 @@ impl DZClient {
     /// account layout (including the trailing `[payer, system]`), so this path does
     /// no account assembly and no permission resolution. Single send attempt.
     fn send_transaction_inner(&self, ix: Instruction) -> eyre::Result<Signature> {
+        self.send_transaction_many_inner(vec![ix])
+    }
+
+    /// Send pre-built serviceability [`Instruction`]s (RFC-26) as a single atomic
+    /// transaction: prepend the compute-budget prelude, sign with the payer, and
+    /// send, preserving caller order. Single send attempt.
+    fn send_transaction_many_inner(
+        &self,
+        instructions: Vec<Instruction>,
+    ) -> eyre::Result<Signature> {
         let payer = self
             .payer
             .as_ref()
             .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
 
-        // Prepend the shared RFC-26 compute-budget prelude (protocol-max compute
-        // and heap) over the built instruction — same helper the builders document.
-        let mut instructions = compute_budget_prelude().to_vec();
-        instructions.push(ix);
+        let instructions = assemble_many(instructions);
 
         let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
         let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
@@ -241,6 +252,53 @@ impl DZClient {
             return Err(eyre!(DoubleZeroError::from(number)));
         }
         Err(eyre!(err))
+    }
+
+    /// Simulate `instructions` (with the compute-budget prelude prepended) and read back
+    /// post-simulation state for `accounts`, in the order requested.
+    fn simulate_transaction_many_inner(
+        &self,
+        instructions: Vec<Instruction>,
+        accounts: Vec<Pubkey>,
+    ) -> eyre::Result<SimulationOutcome> {
+        let payer = self
+            .payer
+            .as_ref()
+            .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
+
+        let assembled = assemble_many(instructions);
+        let mut transaction = Transaction::new_with_payer(&assembled, Some(&payer.pubkey()));
+        let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
+        transaction.sign(&[&payer], blockhash);
+
+        let config = RpcSimulateTransactionConfig {
+            sig_verify: false,
+            replace_recent_blockhash: true,
+            commitment: Some(self.client.commitment()),
+            accounts: Some(RpcSimulateTransactionAccountsConfig {
+                addresses: accounts.iter().map(|k| k.to_string()).collect(),
+                encoding: Some(UiAccountEncoding::Base64),
+            }),
+            ..RpcSimulateTransactionConfig::default()
+        };
+
+        let result = self
+            .client
+            .simulate_transaction_with_config(&transaction, config)
+            .map_err(|e| eyre!(e))?
+            .value;
+
+        Ok(SimulationOutcome {
+            units_consumed: result.units_consumed,
+            err: result.err.map(|e| e.to_string()),
+            logs: result.logs.unwrap_or_default(),
+            accounts: result
+                .accounts
+                .unwrap_or_default()
+                .into_iter()
+                .map(|maybe| maybe.and_then(|ui| ui.data.decode()))
+                .collect(),
+        })
     }
 
     /// Extract the on-chain [`TransactionError`] from a send error, whether it surfaced
@@ -437,6 +495,14 @@ impl DZClient {
     }
 }
 
+/// Prepend the shared RFC-26 compute-budget prelude to `instructions`, preserving
+/// caller order. Shared by the single- and multi-instruction send and simulate paths.
+fn assemble_many(instructions: Vec<Instruction>) -> Vec<Instruction> {
+    let mut out = compute_budget_prelude().to_vec();
+    out.extend(instructions);
+    out
+}
+
 impl DoubleZeroClient for DZClient {
     fn get_program_id(&self) -> Pubkey {
         self.program_id
@@ -522,6 +588,18 @@ impl DoubleZeroClient for DZClient {
 
     fn send_transaction(&self, instruction: Instruction) -> eyre::Result<Signature> {
         self.send_transaction_inner(instruction)
+    }
+
+    fn send_transaction_many(&self, instructions: Vec<Instruction>) -> eyre::Result<Signature> {
+        self.send_transaction_many_inner(instructions)
+    }
+
+    fn simulate_transaction_many(
+        &self,
+        instructions: Vec<Instruction>,
+        accounts: Vec<Pubkey>,
+    ) -> eyre::Result<SimulationOutcome> {
+        self.simulate_transaction_many_inner(instructions, accounts)
     }
 
     fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>> {
@@ -704,6 +782,22 @@ mod client_tests {
         // A bare custom (non-transaction) client error has no program result.
         let transport = ClientError::from(ClientErrorKind::Custom("connection reset".into()));
         assert_eq!(DZClient::parse_transaction_error(&transport), None);
+    }
+
+    /// send_transaction_many must prepend the RFC-26 compute prelude exactly once and
+    /// preserve caller instruction order. Order matters: the recreate sequence relies on
+    /// unsubscribe preceding delete and create preceding resubscribe.
+    #[test]
+    fn test_assemble_many_prepends_prelude_once_and_preserves_order() {
+        let a = Instruction::new_with_bytes(Pubkey::new_unique(), &[1], vec![]);
+        let b = Instruction::new_with_bytes(Pubkey::new_unique(), &[2], vec![]);
+
+        let assembled = assemble_many(vec![a.clone(), b.clone()]);
+
+        assert_eq!(assembled.len(), 4, "2 prelude + 2 caller instructions");
+        assert_eq!(assembled[0..2], compute_budget_prelude()[..]);
+        assert_eq!(assembled[2], a);
+        assert_eq!(assembled[3], b);
     }
 }
 

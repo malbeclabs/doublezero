@@ -40,7 +40,31 @@ pub trait DoubleZeroClient {
     /// accounts (RFC-26); the send path no longer touches account layout.
     fn send_transaction(&self, instruction: Instruction) -> eyre::Result<Signature>;
 
+    /// Prepend the compute-budget prelude to `instructions`, preserving caller order,
+    /// then sign and send as a single atomic transaction. Used where multiple
+    /// serviceability instructions must land together (e.g. delete-then-create).
+    fn send_transaction_many(&self, instructions: Vec<Instruction>) -> eyre::Result<Signature>;
+
+    /// Simulate `instructions` (with the compute-budget prelude prepended) and read
+    /// back post-simulation state for `accounts`, in the order requested.
+    fn simulate_transaction_many(
+        &self,
+        instructions: Vec<Instruction>,
+        accounts: Vec<Pubkey>,
+    ) -> eyre::Result<SimulationOutcome>;
+
     fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>>;
+}
+
+/// Result of simulating a transaction, including post-simulation account state.
+#[derive(Debug, Clone)]
+pub struct SimulationOutcome {
+    pub units_consumed: Option<u64>,
+    pub err: Option<String>,
+    pub logs: Vec<String>,
+    /// Post-simulation account data, in the order requested. `None` per entry
+    /// when the account does not exist after the transaction.
+    pub accounts: Vec<Option<Vec<u8>>>,
 }
 
 pub type RpcKeyedAccountResponse = Response<RpcKeyedAccount>;

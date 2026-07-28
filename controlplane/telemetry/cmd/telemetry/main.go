@@ -31,6 +31,7 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	stateingest "github.com/malbeclabs/doublezero/telemetry/state-ingest/pkg/client"
+	dzrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
@@ -273,7 +274,7 @@ func main() {
 		}
 		rpcClient = solanarpc.NewWithCustomRPCClient(jsonrpcClient)
 	} else {
-		rpcClient = solanarpc.New(*ledgerRPCURL)
+		rpcClient = dzrpc.NewWithRetries(*ledgerRPCURL, nil)
 	}
 
 	// Set up real peer discovery.

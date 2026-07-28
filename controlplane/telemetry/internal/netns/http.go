@@ -89,6 +89,9 @@ func NewNamespacedJSONRPCClient(url string, namespace string, opts *JSONRPCClien
 		Timeout:   opts.HTTPTimeout,
 	}
 
+	// Built directly rather than via the shared retrying constructor in
+	// tools/solana/pkg/rpc, which builds its own transport and cannot take this
+	// netns-bound one.
 	client := jsonrpc.NewClientWithOpts(url, &jsonrpc.RPCClientOpts{
 		HTTPClient: httpClient,
 	})

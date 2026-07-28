@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/gagliardetto/solana-go/rpc/jsonrpc"
 	gojson "github.com/goccy/go-json"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,10 +38,31 @@ func TestTools_Solana_JSONRPC_IsRetryableJSONRPC(t *testing.T) {
 		{"broken pipe msg", errors.New("write: broken pipe"), true},
 		{"closed conn msg", errors.New("use of closed network connection"), true},
 		{"rate limited msg", errors.New("rate limited"), true},
-		{"http 429", statusCodeErr(http.StatusTooManyRequests), true},
-		{"http 503", statusCodeErr(http.StatusServiceUnavailable), true},
-		{"rpc busy -32005", rpcCodeErr(-32005), true},
-		{"rpc busy -32429", rpcCodeErr(-32429), true},
+
+		// Real solana-go *jsonrpc.HTTPError values. This is what the client returns
+		// when a >=400 response body does not decode as a JSON-RPC envelope.
+		{"HTTPError 429", httpError(http.StatusTooManyRequests), true},
+		{"HTTPError 500", httpError(http.StatusInternalServerError), true},
+		{"HTTPError 502", httpError(http.StatusBadGateway), true},
+		{"HTTPError 503", httpError(http.StatusServiceUnavailable), true},
+		{"HTTPError 504", httpError(http.StatusGatewayTimeout), true},
+		{"HTTPError 400", httpError(http.StatusBadRequest), false},
+		{"HTTPError 404", httpError(http.StatusNotFound), false},
+		{"HTTPError 503 wrapped", fmt.Errorf("fetching program accounts: %w", httpError(http.StatusServiceUnavailable)), true},
+
+		// Real solana-go *jsonrpc.RPCError values. This is what the client returns
+		// when a >=400 response *does* carry a JSON-RPC error body — the shape
+		// RPCPool's load-balancer 503s arrived in.
+		{"RPCError 503 service unavailable", &jsonrpc.RPCError{Code: 503, Message: "Service unavailable"}, true},
+		{"RPCError 429", &jsonrpc.RPCError{Code: 429, Message: "Too many requests"}, true},
+		{"RPCError 502", &jsonrpc.RPCError{Code: 502, Message: "Bad gateway"}, true},
+		{"RPCError busy -32005", &jsonrpc.RPCError{Code: -32005, Message: "Node is behind by 42 slots"}, true},
+		{"RPCError busy -32429", &jsonrpc.RPCError{Code: -32429, Message: "Rate limit"}, true},
+		{"RPCError transient message, no code", &jsonrpc.RPCError{Code: -32603, Message: "Service Unavailable"}, true},
+		{"RPCError invalid params", &jsonrpc.RPCError{Code: -32602, Message: "Invalid param: not a Pubkey"}, false},
+		{"RPCError preflight failure", &jsonrpc.RPCError{Code: -32002, Message: "Transaction simulation failed: Blockhash not found"}, false},
+		{"RPCError method not found", &jsonrpc.RPCError{Code: -32601, Message: "Method not found"}, false},
+
 		{"json syntax", &json.SyntaxError{Offset: 1}, false},
 		{"truncated body msg", errors.New("could not decode body to rpc response: unexpected end of JSON input"), true},
 		{"truncated body decode", truncatedJSONErr(), true},
@@ -50,7 +73,6 @@ func TestTools_Solana_JSONRPC_IsRetryableJSONRPC(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tc.want, isRetryableJSONRPC(tc.err))
@@ -181,6 +203,130 @@ func TestTools_Solana_JSONRPC_CallWithCallback_Retries(t *testing.T) {
 	require.Equal(t, int32(2), inner.callWithCbN.Load())
 }
 
+// A retryable failure on a non-idempotent write must not be resent: the endpoint may
+// already have accepted the transaction, and the resend surfaces as "already
+// processed" instead of the signature that actually landed. This holds even when the
+// caller explicitly asks for retries.
+func TestTools_Solana_JSONRPC_NonIdempotentMethodsAreNeverRetried(t *testing.T) {
+	t.Parallel()
+
+	for _, method := range []string{"sendTransaction", "requestAirdrop"} {
+		t.Run(method, func(t *testing.T) {
+			t.Parallel()
+
+			inner := &seqClient{callForIntoSeq: []error{syscall.ECONNRESET, nil}}
+			c := WithRetry(inner, fastRetryOpt(5))
+
+			var out any
+			err := c.CallForInto(context.Background(), &out, method, nil)
+			require.Error(t, err)
+			require.Equal(t, int32(1), inner.callForIntoN.Load())
+		})
+	}
+}
+
+func TestTools_Solana_JSONRPC_IdempotentMethodsAreRetried(t *testing.T) {
+	t.Parallel()
+
+	// simulateTransaction only asks the endpoint what would happen, so repeating it
+	// is safe even though it carries a transaction.
+	for _, method := range []string{"getProgramAccounts", "getAccountInfo", "simulateTransaction"} {
+		t.Run(method, func(t *testing.T) {
+			t.Parallel()
+
+			inner := &seqClient{callForIntoSeq: []error{syscall.ECONNRESET, nil}}
+			c := WithRetry(inner, fastRetryOpt(5))
+
+			var out any
+			require.NoError(t, c.CallForInto(context.Background(), &out, method, nil))
+			require.Equal(t, int32(2), inner.callForIntoN.Load())
+		})
+	}
+}
+
+func TestTools_Solana_JSONRPC_CallBatch_NotRetriedWhenAnyRequestIsNonIdempotent(t *testing.T) {
+	t.Parallel()
+
+	inner := &seqClient{callBatchSeq: []error{syscall.ECONNRESET, nil}}
+	c := WithRetry(inner, fastRetryOpt(5))
+
+	_, err := c.CallBatch(context.Background(), jsonrpc.RPCRequests{
+		{Method: "getAccountInfo"},
+		{Method: "sendTransaction"},
+	})
+	require.Error(t, err)
+	require.Equal(t, int32(1), inner.callBatchN.Load())
+}
+
+func TestTools_Solana_JSONRPC_CallWithCallback_NonIdempotentNotRetried(t *testing.T) {
+	t.Parallel()
+
+	inner := &seqClient{callWithCbSeq: []error{syscall.ETIMEDOUT, nil}}
+	c := WithRetry(inner, fastRetryOpt(5))
+
+	err := c.CallWithCallback(context.Background(), "sendTransaction", nil, func(*http.Request, *http.Response) error { return nil })
+	require.Error(t, err)
+	require.Equal(t, int32(1), inner.callWithCbN.Load())
+}
+
+func TestTools_Solana_JSONRPC_RetryMetrics(t *testing.T) {
+	// Not parallel: asserts on package-level counters. Each subtest uses its own
+	// method label so it cannot be perturbed by the other tests in this package.
+	t.Run("retries counted, exhaustion not", func(t *testing.T) {
+		const method = "metricsRetryThenSucceed"
+		inner := &seqClient{callForIntoSeq: []error{syscall.ECONNRESET, syscall.ECONNRESET, nil}}
+		c := WithRetry(inner, fastRetryOpt(5))
+
+		var out any
+		require.NoError(t, c.CallForInto(context.Background(), &out, method, nil))
+		require.Equal(t, 2.0, testutil.ToFloat64(retriesTotal.WithLabelValues(method)))
+		require.Equal(t, 0.0, testutil.ToFloat64(exhaustedTotal.WithLabelValues(method)))
+	})
+
+	t.Run("exhaustion counted", func(t *testing.T) {
+		const method = "metricsExhaust"
+		inner := &seqClient{callForIntoSeq: []error{syscall.ECONNRESET, syscall.ECONNRESET, syscall.ECONNRESET}}
+		c := WithRetry(inner, fastRetryOpt(3))
+
+		var out any
+		require.Error(t, c.CallForInto(context.Background(), &out, method, nil))
+		require.Equal(t, 2.0, testutil.ToFloat64(retriesTotal.WithLabelValues(method)))
+		require.Equal(t, 1.0, testutil.ToFloat64(exhaustedTotal.WithLabelValues(method)))
+	})
+
+	t.Run("non-idempotent method records neither", func(t *testing.T) {
+		const method = "sendTransaction"
+		before := testutil.ToFloat64(exhaustedTotal.WithLabelValues(method))
+		inner := &seqClient{callForIntoSeq: []error{syscall.ECONNRESET}}
+		c := WithRetry(inner, fastRetryOpt(3))
+
+		var out any
+		require.Error(t, c.CallForInto(context.Background(), &out, method, nil))
+		require.Equal(t, 0.0, testutil.ToFloat64(retriesTotal.WithLabelValues(method)))
+		require.Equal(t, before, testutil.ToFloat64(exhaustedTotal.WithLabelValues(method)))
+	})
+}
+
+// Backoff must stay inside the configured ceiling per attempt, and jitter must not
+// push it above it. Callers poll on a 10s (controller) or 60s (state-ingest) ticker
+// and a read budget that overran would overlap ticks.
+func TestTools_Solana_JSONRPC_SleepBackoff_JitteredWithinBounds(t *testing.T) {
+	t.Parallel()
+
+	opt := RetryOptions{BaseBackoff: 20 * time.Millisecond, MaxBackoff: 40 * time.Millisecond}
+	var sawBelowCeiling bool
+	for i := 0; i < 20; i++ {
+		start := time.Now()
+		require.NoError(t, sleepBackoff(context.Background(), opt, 3)) // nominal 40ms, capped at 40ms
+		elapsed := time.Since(start)
+		require.GreaterOrEqual(t, elapsed, 20*time.Millisecond, "jitter must not drop below half the interval")
+		if elapsed < 40*time.Millisecond {
+			sawBelowCeiling = true
+		}
+	}
+	require.True(t, sawBelowCeiling, "backoff is not jittered; every wait hit the ceiling")
+}
+
 // compile-time: ensure wrapper still satisfies interface
 var _ solanarpc.JSONRPCClient = (*retryingJSONRPCClient)(nil)
 
@@ -224,15 +370,13 @@ func (timeoutErr) Error() string   { return "i/o timeout" }
 func (timeoutErr) Timeout() bool   { return true }
 func (timeoutErr) Temporary() bool { return false } // satisfies net.Error; not used by prod code
 
-type statusCodeErr int
-
-func (e statusCodeErr) Error() string   { return "http status" }
-func (e statusCodeErr) StatusCode() int { return int(e) }
-
-type rpcCodeErr int
-
-func (e rpcCodeErr) Error() string { return "rpc code" }
-func (e rpcCodeErr) Code() int     { return int(e) }
+// httpError builds the same *jsonrpc.HTTPError solana-go returns for a >=400
+// response whose body did not decode as a JSON-RPC envelope. It must be built via
+// the exported constructor: the wrapped error is a private field and Error() panics
+// on a zero value.
+func httpError(code int) error {
+	return jsonrpc.NewHTTPError(code, fmt.Errorf("rpc call getProgramAccounts() on http://ledger status code: %d", code))
+}
 
 // goccyDecode mirrors the solana-go rpc/jsonrpc client's decoder configuration
 // (goccy/go-json streaming, DisallowUnknownFields + UseNumber) so these tests

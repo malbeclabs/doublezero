@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/lmittmann/tint"
 	"github.com/malbeclabs/doublezero/config"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/data"
@@ -20,6 +19,7 @@ import (
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/epoch"
+	dzrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 )
 
 func main() {
@@ -114,7 +114,7 @@ func newDeviceProvider(log *slog.Logger, env string) (devicedata.Provider, error
 		return nil, fmt.Errorf("failed to get network config: %w", err)
 	}
 
-	rpcClient := solanarpc.New(networkConfig.LedgerPublicRPCURL)
+	rpcClient := dzrpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil)
 
 	epochFinder, err := epoch.NewFinder(log, rpcClient)
 	if err != nil {
@@ -135,7 +135,7 @@ func newInternetProvider(log *slog.Logger, env string) (inetdata.Provider, error
 		return nil, fmt.Errorf("failed to get network config: %w", err)
 	}
 
-	rpcClient := solanarpc.New(networkConfig.LedgerPublicRPCURL)
+	rpcClient := dzrpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil)
 
 	epochFinder, err := epoch.NewFinder(log, rpcClient)
 	if err != nil {

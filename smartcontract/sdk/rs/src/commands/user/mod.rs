@@ -4,5 +4,6 @@ pub mod create_subscribe;
 pub mod delete;
 pub mod get;
 pub mod list;
+pub mod recreate;
 pub mod requestban;
 pub mod update;

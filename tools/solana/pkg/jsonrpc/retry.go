@@ -116,7 +116,11 @@ func doRetry(ctx context.Context, opt RetryOptions, label string, idempotent boo
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if attempt > 1 {
 			if err := sleepBackoff(ctx, opt, attempt); err != nil {
-				return err
+				// Keep the error that caused the retry. A caller whose deadline is
+				// shorter than the retry budget would otherwise log only "context
+				// deadline exceeded" and lose the 503 behind it — the one thing
+				// worth seeing during an endpoint outage.
+				return errors.Join(err, lastErr)
 			}
 			retriesTotal.WithLabelValues(label).Inc()
 		}
@@ -136,9 +140,11 @@ func doRetry(ctx context.Context, opt RetryOptions, label string, idempotent boo
 }
 
 // sleepBackoff waits before the given attempt, honoring ctx cancellation and
-// deadlines. Jitter is applied over the full interval so that the ~60 doublezerod
-// hosts and dozen services reading the same ledger endpoint do not retry in
-// lockstep and re-spike an endpoint that is already shedding load.
+// deadlines. The wait is jittered over [d/2, d] so that the ~60 doublezerod hosts
+// and dozen services reading the same ledger endpoint do not retry in lockstep and
+// re-spike an endpoint that is already shedding load. Jitter keeps a floor at half
+// the interval rather than reaching down to zero, so the total budget stays
+// predictable against the caller's poll interval.
 func sleepBackoff(ctx context.Context, opt RetryOptions, attempt int) error {
 	d := opt.BaseBackoff * time.Duration(attempt-1)
 	if d > opt.MaxBackoff {
@@ -207,6 +213,12 @@ func isRetryableJSONRPC(err error) bool {
 		return true
 	}
 
+	//
+	// Neither branch returns false on a non-matching code: an unrecognized code
+	// falls through to the transport checks below, which also match transient
+	// wording from providers that set no machine-readable code. A code we do
+	// recognize as an onchain or request-level rejection (-32002, -32602, …) has no
+	// transient wording to match and ends up non-retryable there.
 	var rpcErr *jsonrpc.RPCError
 	if errors.As(err, &rpcErr) && (isRetryableHTTPStatus(rpcErr.Code) || isRetryableRPCCode(rpcErr.Code)) {
 		return true

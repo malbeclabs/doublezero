@@ -156,6 +156,9 @@ func TestTools_Solana_JSONRPC_DoRetry_ContextCancelDuringBackoff(t *testing.T) {
 	var out any
 	err := c.CallForInto(ctx, &out, "m", nil)
 	require.ErrorIs(t, err, context.Canceled)
+	// The error that triggered the retry must survive, or an operator whose caller
+	// deadline is shorter than the retry budget sees only the ctx error.
+	require.ErrorIs(t, err, syscall.ECONNRESET)
 	require.Equal(t, int32(1), inner.callForIntoN.Load())
 }
 

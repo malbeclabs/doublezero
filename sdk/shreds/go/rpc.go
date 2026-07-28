@@ -19,11 +19,15 @@ const (
 	defaultMaxConns = 128
 )
 
+func rpcOptions() dzrpc.Options {
+	return dzrpc.Options{
+		RequestTimeout:  defaultRequestTimeout,
+		MaxConnsPerHost: defaultMaxConns,
+	}
+}
+
 // NewRPCClient creates a Solana RPC client with a bounded request timeout and automatic retry on
 // transient errors.
 func NewRPCClient(url string) *rpc.Client {
-	return dzrpc.New(url, dzrpc.Options{
-		RequestTimeout:  defaultRequestTimeout,
-		MaxConnsPerHost: defaultMaxConns,
-	})
+	return dzrpc.New(url, rpcOptions())
 }

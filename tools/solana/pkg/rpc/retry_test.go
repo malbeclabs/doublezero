@@ -282,3 +282,29 @@ func TestNew_ZeroOptionsUsesDefaults(t *testing.T) {
 	require.Equal(t, defaultTimeout, hc.Timeout)
 	require.NotNil(t, New("http://127.0.0.1:1", Options{}))
 }
+
+// RequestTimeout must actually abort a slow request, not just be stored on the
+// client: callers that send transactions depend on a bound well under the ~56s
+// blockhash validity window so a queued request cannot outlive its blockhash.
+func TestNew_RequestTimeoutAbortsSlowRequest(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	t.Cleanup(func() {
+		close(release)
+		srv.Close()
+	})
+
+	cl := New(srv.URL, Options{
+		RequestTimeout: 200 * time.Millisecond,
+		Retry:          &jsonrpc.RetryOptions{MaxAttempts: 1},
+	})
+
+	start := time.Now()
+	_, err := cl.GetVersion(context.Background())
+	require.Error(t, err, "request should have been aborted by RequestTimeout")
+	require.Less(t, time.Since(start), 3*time.Second, "RequestTimeout did not bound the request")
+}

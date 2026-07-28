@@ -34,14 +34,12 @@ import (
 // given environment and you don't want to wait for a min_compatible_version
 // bump onchain.
 
-// The 0.15.0 floor matches the program's MIN_COMPATIBLE_VERSION. Note that
-// the `client/v0.14.1` git tag was a patch release built from a commit whose
-// workspace Cargo version was still "0.14.0", so the v0.14.1 CLI binary
-// self-reports its embedded version as 0.14.0 in the startup version check —
-// v0.15.0 is the first release whose embedded version is actually ≥ 0.14.1.
+// The 0.30.0 floor matches the program's MIN_COMPATIBLE_VERSION. Until each cluster is
+// redeployed, its onchain min_compatible_version still admits older clients, so this floor
+// is what keeps the matrix off them.
 var globalMinVersions = map[string]string{
-	"mainnet-beta": "0.21.0",
-	"testnet":      "0.21.0",
+	"mainnet-beta": "0.30.0",
+	"testnet":      "0.30.0",
 }
 
 // =============================================================================

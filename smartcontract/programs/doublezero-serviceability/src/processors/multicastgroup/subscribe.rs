@@ -77,6 +77,15 @@ pub fn update_user_multicastgroup_roles(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
+    // Only a multicast user can hold multicast roles. The device controller programs group
+    // membership solely for UserType::Multicast, so roles on any other type are state the device
+    // never sees. Removal stays allowed for every type so a user already carrying them can be
+    // cleaned up before delete.
+    if (publisher || subscriber) && user.user_type != UserType::Multicast {
+        msg!("UserType {} cannot hold multicast roles", user.user_type);
+        return Err(DoubleZeroError::UserNotMulticast.into());
+    }
+
     // Check allowlists for additions. EdgeSeat passes derive joinable groups from their feeds'
     // metro→group map (the feed metro gate), which supersedes the mgroup allowlist; the caller is
     // responsible for running the feed metro gate for EdgeSeat role adds.
@@ -282,9 +291,8 @@ pub fn process_update_multicastgroup_roles(
 
     // Feed seats exist only for multicast users on an EdgeSeat pass, matching the connect-time gate
     // in create_user_core. Unicast stays on the pass's per-category cap and is never feed-gated.
-    let is_feed_gated =
-        matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_))
-            && user.user_type == UserType::Multicast;
+    let is_feed_gated = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_))
+        && user.user_type == UserType::Multicast;
     let adding_role = value.publisher || value.subscriber;
     let mut accesspass_changed = false;
 

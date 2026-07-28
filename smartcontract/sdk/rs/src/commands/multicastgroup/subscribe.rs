@@ -10,7 +10,7 @@ use crate::{
 };
 use doublezero_serviceability::{
     processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
-    state::{accesspass::AccessPassType, multicastgroup::MulticastGroupStatus},
+    state::{accesspass::AccessPassType, multicastgroup::MulticastGroupStatus, user::UserType},
 };
 use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -54,6 +54,15 @@ impl UpdateMulticastGroupRolesCommand {
         }
         .execute(client)?
         .ok_or_else(|| eyre::eyre!("AccessPass not found"))?;
+
+        // Only a multicast user can hold multicast roles; the processor rejects an add otherwise.
+        if (self.publisher || self.subscriber) && user.user_type != UserType::Multicast {
+            eyre::bail!(
+                "User {} is a {} user; multicast roles require a Multicast user",
+                self.user_pk,
+                user.user_type
+            );
+        }
 
         // An EdgeSeat pass bypasses the mgroup allowlists onchain (the feed metro gate below admits
         // it instead), so checking them here would reject every EdgeSeat role change.

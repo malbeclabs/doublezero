@@ -179,11 +179,33 @@ func isRetryableHTTPStatus(code int) bool {
 	return false
 }
 
-// isRetryableRPCCode covers the provider-specific "busy / retry later" JSON-RPC
-// codes (node is behind, rate limited, transaction history not available yet).
+// isRetryableRPCCode covers the "busy / retry later" JSON-RPC codes: the node
+// cannot serve this request right now, but an identical request later can succeed.
+//
+//	-32005 NODE_UNHEALTHY (Agave): the node is behind the cluster by more than its
+//	        health-check slot distance. It catches up, or a load balancer sends the
+//	        retry to a backend that already has.
+//	-32004 BLOCK_NOT_AVAILABLE (Agave): the requested slot has not reached this node
+//	        yet. Same shape — it arrives, or another backend already holds it.
+//	-32429  not an Agave code. Providers that front Agave (RPCPool in our case) mint
+//	        it to mirror HTTP 429 inside a JSON-RPC envelope, so it reaches us as an
+//	        *RPCError rather than an *HTTPError. Rate limits lift; retry with backoff.
+//
+// Deliberately absent:
+//
+//	-32003 TRANSACTION_SIGNATURE_VERIFICATION_FAILURE — a deterministic rejection of
+//	        this exact payload. Retrying burns the whole budget to be told the same
+//	        thing, every time, against an endpoint that is often already degraded.
+//	-32011 TRANSACTION_HISTORY_NOT_AVAILABLE — describes a node that does not carry
+//	        long-term history at all, not one that is momentarily busy. Retrying the
+//	        same node cannot change the answer.
+//
+// Codes are only listed here once there is a reason to believe the same request
+// later succeeds. An unlisted code falls through to the transport checks in
+// isRetryableJSONRPC and ends up non-retryable, which is the safe default.
 func isRetryableRPCCode(code int) bool {
 	switch code {
-	case -32005, -32004, -32003, -32429:
+	case -32005, -32004, -32429:
 		return true
 	}
 	return false
@@ -213,7 +235,6 @@ func isRetryableJSONRPC(err error) bool {
 		return true
 	}
 
-	//
 	// Neither branch returns false on a non-matching code: an unrecognized code
 	// falls through to the transport checks below, which also match transient
 	// wording from providers that set no machine-readable code. A code we do

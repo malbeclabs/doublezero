@@ -40,10 +40,13 @@ func TestNewWithRetries_RetriesOnEOFThenSucceeds(t *testing.T) {
 		require.NoError(t, err)
 		_ = r.Body.Close()
 
+		// Decode the id as RawMessage so it can be echoed back with its original
+		// JSON type. Decoding into `any` yields float64 for a numeric id, and
+		// re-encoding that is how a request id silently changes type on the wire.
 		var req struct {
-			JSONRPC string `json:"jsonrpc"`
-			ID      any    `json:"id"`
-			Method  string `json:"method"`
+			JSONRPC string          `json:"jsonrpc"`
+			ID      json.RawMessage `json:"id"`
+			Method  string          `json:"method"`
 		}
 		require.NoError(t, json.Unmarshal(body, &req))
 
@@ -94,7 +97,7 @@ func TestNewWithHeadersAndRetries_SendsHeaders(t *testing.T) {
 		_ = r.Body.Close()
 
 		var req struct {
-			ID any `json:"id"`
+			ID json.RawMessage `json:"id"`
 		}
 		require.NoError(t, json.Unmarshal(body, &req))
 
@@ -142,7 +145,7 @@ func TestNewWithRetries_RetriesServiceUnavailable(t *testing.T) {
 			// error envelope, so the status never reaches the caller as an HTTPError.
 			name:        "503 with json-rpc error body",
 			status:      http.StatusServiceUnavailable,
-			body:        `{"jsonrpc":"2.0","error":{"code":503,"message":"Service unavailable"},"id":%q}`,
+			body:        `{"jsonrpc":"2.0","error":{"code":503,"message":"Service unavailable"},"id":%s}`,
 			wantRetried: true,
 		},
 		{
@@ -156,7 +159,7 @@ func TestNewWithRetries_RetriesServiceUnavailable(t *testing.T) {
 		{
 			name:        "429 with json-rpc error body",
 			status:      http.StatusTooManyRequests,
-			body:        `{"jsonrpc":"2.0","error":{"code":-32429,"message":"Too many requests"},"id":%q}`,
+			body:        `{"jsonrpc":"2.0","error":{"code":-32429,"message":"Too many requests"},"id":%s}`,
 			wantRetried: true,
 		},
 		{
@@ -164,7 +167,17 @@ func TestNewWithRetries_RetriesServiceUnavailable(t *testing.T) {
 			// be retried — retrying only adds load to a degraded endpoint.
 			name:        "400 invalid params",
 			status:      http.StatusBadRequest,
-			body:        `{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid param: not a Pubkey"},"id":%q}`,
+			body:        `{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid param: not a Pubkey"},"id":%s}`,
+			wantRetried: false,
+		},
+		{
+			// -32003 is a deterministic signature-verification rejection, not a busy
+			// signal. It reaches here on an idempotent method (getProgramAccounts and
+			// simulateTransaction both qualify), so classifying it as retryable would
+			// spend the entire budget re-asking a question already answered.
+			name:        "signature verification failure is not retried",
+			status:      http.StatusBadRequest,
+			body:        `{"jsonrpc":"2.0","error":{"code":-32003,"message":"Transaction signature verification failure"},"id":%s}`,
 			wantRetried: false,
 		},
 	}
@@ -180,14 +193,19 @@ func TestNewWithRetries_RetriesServiceUnavailable(t *testing.T) {
 				body, err := io.ReadAll(r.Body)
 				require.NoError(t, err)
 				_ = r.Body.Close()
+				// RawMessage echoes the id back byte-for-byte, preserving its JSON
+				// type. Decoding into `any` gives float64 and re-encoding it via
+				// fmt turns a numeric id into a string one — non-conformant to
+				// JSON-RPC 2.0, and a live trap for anyone extending these cases to
+				// CallBatch, which correlates responses to requests by id.
 				var req struct {
-					ID any `json:"id"`
+					ID json.RawMessage `json:"id"`
 				}
 				require.NoError(t, json.Unmarshal(body, &req))
 
 				out := tc.body
-				if strings.Contains(out, "%q") {
-					out = fmt.Sprintf(out, fmt.Sprint(req.ID))
+				if strings.Contains(out, "%s") {
+					out = fmt.Sprintf(out, req.ID)
 					w.Header().Set("Content-Type", "application/json")
 				}
 				w.WriteHeader(tc.status)
@@ -250,7 +268,7 @@ func TestNewHTTPTransport_ConfigMatchesConstants(t *testing.T) {
 	tr := newHTTPTransport(defaultMaxIdleConnsPerHost)
 	require.NotNil(t, tr)
 
-	require.Equal(t, defaultTimeout, tr.IdleConnTimeout)
+	require.Equal(t, defaultIdleConnTimeout, tr.IdleConnTimeout)
 	require.Equal(t, defaultMaxIdleConnsPerHost, tr.MaxConnsPerHost)
 	require.Equal(t, defaultMaxIdleConnsPerHost, tr.MaxIdleConnsPerHost)
 	require.True(t, tr.ForceAttemptHTTP2)
@@ -279,8 +297,42 @@ func TestNew_ZeroOptionsUsesDefaults(t *testing.T) {
 	t.Parallel()
 
 	hc := newHTTP(0, 0)
-	require.Equal(t, defaultTimeout, hc.Timeout)
+	require.Equal(t, defaultRequestTimeout, hc.Timeout)
 	require.NotNil(t, New("http://127.0.0.1:1", Options{}))
+}
+
+// Pins the default per-attempt bound. Almost every ledger reader in the repo
+// (doublezerod, controller, monitor, funder, device-health-oracle, telemetry,
+// data-api, cdiff, state-ingest, flow-enricher, global-monitor, the Go SDK)
+// constructs its client with nil/zero options and inherits this value, so raising
+// it silently multiplies a hung endpoint by the retry budget on all of them.
+//
+// The upper bound is what keeps retry containing a stall instead of amplifying it:
+// an exhausted budget must still fit inside the cadence of a caller that applies no
+// call-site deadline of its own. state-ingest is the reference case — it refreshes
+// every 60s and hands its root context straight to GetProgramData, so nothing but
+// this default bounds a refresh. The lower bound is the heaviest legitimate call,
+// an unfiltered getProgramAccounts over the serviceability program (~2.9MB raw /
+// ~1.0MB gzipped on mainnet, ~0.4s observed); too tight a bound turns a slow scan
+// into a manufactured failure.
+func TestNew_DefaultRequestTimeoutIsBounded(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 10*time.Second, defaultRequestTimeout)
+
+	// Worst case for one logical call: every attempt burns the full timeout, plus
+	// the jittered backoff between them.
+	const maxAttempts = 4
+	worstCase := maxAttempts*defaultRequestTimeout + 3*time.Second
+	require.Less(t, worstCase, 60*time.Second,
+		"an exhausted retry budget must fit inside state-ingest's 60s refresh tick")
+
+	require.Greater(t, defaultRequestTimeout, 5*time.Second,
+		"must leave headroom for a full unfiltered getProgramAccounts scan")
+
+	// Idle connections are pooled far longer than any single request may run;
+	// reusing one constant for both would churn a connection every poll tick.
+	require.Greater(t, defaultIdleConnTimeout, defaultRequestTimeout)
 }
 
 // RequestTimeout must actually abort a slow request, not just be stored on the

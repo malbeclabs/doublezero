@@ -57,7 +57,15 @@ func TestTools_Solana_JSONRPC_IsRetryableJSONRPC(t *testing.T) {
 		{"RPCError 429", &jsonrpc.RPCError{Code: 429, Message: "Too many requests"}, true},
 		{"RPCError 502", &jsonrpc.RPCError{Code: 502, Message: "Bad gateway"}, true},
 		{"RPCError busy -32005", &jsonrpc.RPCError{Code: -32005, Message: "Node is behind by 42 slots"}, true},
+		{"RPCError busy -32004", &jsonrpc.RPCError{Code: -32004, Message: "Block not available for slot 42"}, true},
 		{"RPCError busy -32429", &jsonrpc.RPCError{Code: -32429, Message: "Rate limit"}, true},
+		// -32003 is a deterministic rejection of this exact payload, not a busy
+		// signal. simulateTransaction is idempotent, so if this were retryable a
+		// bad signature would burn the full budget against the endpoint every time.
+		{"RPCError signature verification failure -32003", &jsonrpc.RPCError{Code: -32003, Message: "Transaction signature verification failure"}, false},
+		// -32011 describes a node that carries no long-term history at all; the
+		// same request to the same node cannot start succeeding.
+		{"RPCError history not available -32011", &jsonrpc.RPCError{Code: -32011, Message: "Transaction history is not available from this node"}, false},
 		{"RPCError transient message, no code", &jsonrpc.RPCError{Code: -32603, Message: "Service Unavailable"}, true},
 		{"RPCError invalid params", &jsonrpc.RPCError{Code: -32602, Message: "Invalid param: not a Pubkey"}, false},
 		{"RPCError preflight failure", &jsonrpc.RPCError{Code: -32002, Message: "Transaction simulation failed: Blockhash not found"}, false},

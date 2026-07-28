@@ -13,8 +13,41 @@ import (
 
 const (
 	defaultMaxIdleConnsPerHost = 9
-	defaultTimeout             = 5 * time.Minute
 	defaultKeepAlive           = 180 * time.Second
+
+	// defaultRequestTimeout bounds a single HTTP request, so it also bounds a single
+	// retry attempt. It must be short enough that an exhausted retry budget still
+	// fits inside a caller's poll interval: retry multiplies a hang by MaxAttempts,
+	// so a long per-attempt bound amplifies an endpoint stall instead of containing
+	// it. At the package retry defaults (4 attempts, ~3s of total jittered backoff)
+	// 10s puts the worst case at ~43s.
+	//
+	// 10s is chosen against the heaviest call we actually make, an unfiltered
+	// getProgramAccounts over the serviceability program. Measured against mainnet
+	// (2.9MB raw, ~1.0MB gzipped) that completes in ~0.4s wall with ~0.11s to first
+	// byte, so 10s leaves more than an order of magnitude of headroom and will not
+	// manufacture failures on a full program scan from a poorly connected host.
+	//
+	// It also fits the callers. state-ingest is the case that needs this default
+	// most: it refreshes every 60s and passes its root context straight to
+	// GetProgramData with no call-site bound, so nothing else stands between it and
+	// a wedged refresh goroutine; ~43s worst case stays inside its tick. The controller
+	// (cacheFetchTimeout) and doublezerod (onchain.DefaultRPCTimeout) already cap a
+	// whole fetch at 30s, so their own bound still wins — but a 10s attempt means
+	// they get real retries inside it rather than one attempt that eats the budget.
+	// 10s also matches dialTimeout and TLSHandshakeTimeout below, keeping connect
+	// and request bounds on one number.
+	//
+	// Callers with a different tradeoff override it: sdk/shreds and the
+	// internet-latency-collector pass 15s, buying patience for transaction sends
+	// while staying well inside the ~56s blockhash validity window.
+	defaultRequestTimeout = 10 * time.Second
+
+	// defaultIdleConnTimeout is how long an unused pooled connection is kept alive.
+	// Unrelated to the per-request bound: reconnecting costs a TCP and TLS handshake
+	// on every poll tick, so idle connections are held far longer than any single
+	// request is allowed to run.
+	defaultIdleConnTimeout = 5 * time.Minute
 
 	// dialTimeout bounds TCP connect only. It has to be far shorter than the
 	// per-request timeout: a dial that can hang for minutes makes the retry budget
@@ -29,7 +62,8 @@ type Options struct {
 	// Headers are sent on every request.
 	Headers map[string]string
 
-	// RequestTimeout bounds each individual HTTP request. Defaults to 5 minutes.
+	// RequestTimeout bounds each individual HTTP request, and therefore each retry
+	// attempt. Defaults to defaultRequestTimeout.
 	RequestTimeout time.Duration
 
 	// MaxConnsPerHost caps concurrent and idle connections to the endpoint.
@@ -70,7 +104,7 @@ func NewWithHeadersAndRetries(rpcEndpoint string, headers map[string]string, ret
 // the package defaults. Client is safe for concurrent use by multiple goroutines.
 func newHTTP(requestTimeout time.Duration, maxConns int) *http.Client {
 	if requestTimeout <= 0 {
-		requestTimeout = defaultTimeout
+		requestTimeout = defaultRequestTimeout
 	}
 
 	return &http.Client{
@@ -85,7 +119,7 @@ func newHTTPTransport(maxConns int) *http.Transport {
 	}
 
 	return &http.Transport{
-		IdleConnTimeout:     defaultTimeout,
+		IdleConnTimeout:     defaultIdleConnTimeout,
 		MaxConnsPerHost:     maxConns,
 		MaxIdleConns:        maxConns,
 		MaxIdleConnsPerHost: maxConns,

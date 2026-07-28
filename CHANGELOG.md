@@ -17,7 +17,7 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - `doublezero user create-subscribe` gains a `--feed` flag (a Feed pubkey or an unambiguous feed code) passed as the trailing `Feed` account the EdgeSeat feed metro gate requires. Without it, connecting a Multicast user to a feed pass failed with `FeedAccountRequired`. (#4087)
-  - `user subscribe` accepts `--feed <PUBKEY|CODE>`, which an EdgeSeat access pass needs. It is optional: the feed is otherwise resolved from the pass. (#4099)
+  - `user subscribe` accepts `--feed <PUBKEY|CODE>`, repeatable, subscribing the user to every multicast group the feed carries in the user's metro and charging each against that feed's seat. A group two feeds both carry is joined once. It is mutually exclusive with `--group`, which names its own groups, and rejects `--publisher`: a feed is a receive-only SKU, so publishing stays per-group. (#4099)
 - Serviceability
   - `User` accounts can hold EdgeSeat feed seats on multiple feeds: `feed_pks: Vec<Pubkey>` records every feed whose per-feed seat the user consumed at connect, and delete releases all of them. Added to the Go/TypeScript/Python SDK `User` decoders as well. (#4080)
   - Bound the preallocation in `deserialize_vec_with_capacity` against the remaining input. A garbage or attacker-controlled u32 length prefix in an account (e.g. a pre-FeedSeat SDK misparsing an EdgeSeat AccessPass) could request tens of GiB via `Vec::with_capacity`, aborting the process through the uncatchable alloc-error handler; the capacity is now capped at the remaining byte count. Decoding of valid accounts is unchanged. (#4072)

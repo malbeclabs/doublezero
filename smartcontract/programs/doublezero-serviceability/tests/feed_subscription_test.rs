@@ -31,7 +31,12 @@ use doublezero_serviceability::{
     },
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
+use solana_sdk::{
+    instruction::{AccountMeta, InstructionError},
+    pubkey::Pubkey,
+    signature::Signer,
+    transaction::TransactionError,
+};
 use std::net::Ipv4Addr;
 
 mod test_helpers;
@@ -453,13 +458,16 @@ async fn read_user(f: &mut Fixture) -> User {
         .unwrap()
 }
 
-/// Assert the transaction failed on a specific `ProgramError::Custom` code, so a test cannot pass
-/// because the instruction failed for an unrelated reason.
+/// Match the error structurally rather than on its debug text, so a test cannot pass because some
+/// other instruction in the transaction failed or because the formatting changed.
 fn assert_custom_error(err: &BanksClientError, code: u32) {
-    assert!(
-        format!("{err:?}").contains(&format!("Custom({code})")),
-        "expected Custom({code}), got: {err:?}"
-    );
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(actual),
+        )) if *actual == code => {}
+        other => panic!("expected Custom({code}), got {other:?}"),
+    }
 }
 
 fn seat_users(pass: &AccessPass, feed: &Pubkey) -> u8 {

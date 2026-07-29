@@ -77,14 +77,17 @@ pub fn check_mgroup_allowlists(
     Ok(())
 }
 
-/// Toggle a user's multicast group roles.
+/// Set a user's multicast group roles to the requested state.
+///
+/// `publisher` and `subscriber` are desired states, not toggle signals: `true` adds the role when the
+/// user does not hold it, `false` removes it when they do, and either is a no-op otherwise.
 ///
 /// Mechanics only: this does NOT authorize the change. Callers must first run either
 /// [`check_mgroup_allowlists`] or the EdgeSeat feed metro gate, so that the authorization a
 /// processor performed is visible in that processor rather than claimed through an argument here.
 ///
 /// Handles both create-time subscription (user lists start empty, only adds)
-/// and post-activation subscription changes (add/remove toggle). The caller is
+/// and post-activation subscription changes. The caller is
 /// responsible for setting `user.status = Updating` when
 /// `publisher_list_transitioned` is true and the user is already activated.
 pub fn update_user_multicastgroup_roles(

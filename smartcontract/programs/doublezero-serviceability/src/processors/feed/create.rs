@@ -23,7 +23,7 @@ use solana_program::{
 /// Maximum `name` length, matching the Exchange/Location `name` cap.
 pub const MAX_FEED_NAME_LEN: usize = 64;
 /// Maximum number of multicast groups in a feed.
-pub const MAX_FEED_GROUPS: usize = 64;
+pub const MAX_FEED_GROUPS: usize = 20;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Debug, Clone, Default)]
 pub struct FeedCreateArgs {

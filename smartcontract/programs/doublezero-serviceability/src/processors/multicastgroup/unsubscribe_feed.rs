@@ -82,6 +82,18 @@ pub fn process_unsubscribe_feed(
         retained_accounts,
     )?;
 
+    // Without both checks a caller can release a seat while keeping the groups.
+    for (key, _) in &retained {
+        if targets.iter().any(|(target, _)| target == key) {
+            msg!("feed {} passed as both a target and retained", key);
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+        if !ctx.user.feed_pks.contains(key) {
+            msg!("retained feed {} is not held by this user", key);
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+    }
+
     for held in &ctx.user.feed_pks {
         if !targets.iter().any(|(key, _)| key == held)
             && !retained.iter().any(|(key, _)| key == held)

@@ -864,3 +864,43 @@ async fn test_duplicate_feed_rejected() {
     let err = join(&mut f, &[feed, feed], &[g[1]]).await.unwrap_err();
     assert_custom_error(&err, 65);
 }
+
+// Naming the departing feed as retained would make every one of its groups look covered, so nothing
+// is unsubscribed while the seat is still released.
+#[tokio::test]
+async fn test_target_passed_as_retained_rejected() {
+    let mut f = setup([100, 0, 0, 38]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    let feed = create_feed(&mut f, "feed1", exchange, vec![g[0], g[1]]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 1)]).await;
+    create_user_on(&mut f, feed, g[0]).await;
+    join(&mut f, &[feed], &[g[1]]).await.unwrap();
+
+    let err = leave(&mut f, &[feed], &[feed], &[]).await.unwrap_err();
+    assert_custom_error(&err, 65);
+
+    // The seat and both subscriptions survive the rejected call.
+    let user = read_user(&mut f).await;
+    assert_eq!(user.subscribers, vec![g[0], g[1]]);
+    assert_eq!(seat_users(&read_pass(&mut f).await, &feed), 1);
+}
+
+// A feed the user never held cannot stand in as retained: overlapping groups would survive the leave
+// while the target's seat is released.
+#[tokio::test]
+async fn test_unheld_feed_as_retained_rejected() {
+    let mut f = setup([100, 0, 0, 39]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    let held = create_feed(&mut f, "held", exchange, vec![g[0], g[1]]).await;
+    let unheld = create_feed(&mut f, "unheld", exchange, vec![g[0], g[1]]).await;
+    set_pass_feeds(&mut f, vec![seat(held, 1), seat(unheld, 1)]).await;
+    create_user_on(&mut f, held, g[0]).await;
+    join(&mut f, &[held], &[g[1]]).await.unwrap();
+
+    let err = leave(&mut f, &[held], &[unheld], &[]).await.unwrap_err();
+    assert_custom_error(&err, 65);
+
+    let user = read_user(&mut f).await;
+    assert_eq!(user.subscribers, vec![g[0], g[1]]);
+    assert_eq!(seat_users(&read_pass(&mut f).await, &held), 1);
+}

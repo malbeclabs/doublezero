@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Serviceability
-  - New `UpdateFeedSubscription` instruction joins or leaves every multicast group carried by one or more feeds on an EdgeSeat access pass in a single atomic transaction, charging one seat per feed rather than per group. `UpdateMulticastGroupRoles` now enforces the multicast-group allowlists for every access-pass type, EdgeSeat included, so purchased groups go through the feed instruction and individually comped groups through the allowlist. New errors: `EdgeSeatRequired` (101), `UserDeviceMismatch` (102), `UserFeedLimitExceeded` (103), `EdgeSeatIsMulticastOnly` (104). (#4109)
+  - New `SubscribeFeed` and `UnsubscribeFeed` instructions join or leave whole feeds on an EdgeSeat access pass in a single atomic transaction, charging one seat per feed rather than per group. A feed is all-or-nothing: the caller names feeds, the processor derives which groups change and rejects a group list that does not match, so two feeds carrying the same group stay unambiguous. `UpdateMulticastGroupRoles` now enforces the multicast-group allowlists for every access-pass type, EdgeSeat included, so purchased groups go through the feed instructions and individually comped groups through the allowlist. `CreateSubscribeUser` skips the allowlist only for the case its feed gate actually covers, closing two paths that could join a group with no check. New errors: `EdgeSeatRequired` (101), `UserDeviceMismatch` (102), `UserFeedLimitExceeded` (103), `EdgeSeatIsMulticastOnly` (104). (#4109)
 
 ## [v0.32.0](https://github.com/malbeclabs/doublezero/compare/client/v0.31.0...client/v0.32.0) - 2026-07-29
 

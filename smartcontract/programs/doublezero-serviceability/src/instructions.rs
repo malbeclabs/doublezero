@@ -58,8 +58,9 @@ use crate::processors::{
         delete::MulticastGroupDeleteArgs,
         reactivate::MulticastGroupReactivateArgs,
         subscribe::UpdateMulticastGroupRolesArgs,
-        subscribe_feed::UpdateFeedSubscriptionArgs,
+        subscribe_feed::SubscribeFeedArgs,
         suspend::MulticastGroupSuspendArgs,
+        unsubscribe_feed::UnsubscribeFeedArgs,
         update::MulticastGroupUpdateArgs,
     },
     permission::{
@@ -255,7 +256,8 @@ pub enum DoubleZeroInstruction {
     SetAccessPassFeeds(SetAccessPassFeedsArgs), // variant 115
     SetAccessPassFlags(SetAccessPassFlagsArgs), // variant 116
 
-    UpdateFeedSubscription(UpdateFeedSubscriptionArgs), // variant 117
+    SubscribeFeed(SubscribeFeedArgs),     // variant 117
+    UnsubscribeFeed(UnsubscribeFeedArgs), // variant 118
 }
 
 impl DoubleZeroInstruction {
@@ -404,7 +406,8 @@ impl DoubleZeroInstruction {
             115 => Ok(Self::SetAccessPassFeeds(SetAccessPassFeedsArgs::try_from(rest).unwrap())),
             116 => Ok(Self::SetAccessPassFlags(SetAccessPassFlagsArgs::try_from(rest).unwrap())),
 
-            117 => Ok(Self::UpdateFeedSubscription(UpdateFeedSubscriptionArgs::try_from(rest).unwrap())),
+            117 => Ok(Self::SubscribeFeed(SubscribeFeedArgs::try_from(rest).unwrap())),
+            118 => Ok(Self::UnsubscribeFeed(UnsubscribeFeedArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -555,7 +558,8 @@ impl DoubleZeroInstruction {
             Self::DeleteFeed(_) => "DeleteFeed".to_string(), // variant 114
             Self::SetAccessPassFeeds(_) => "SetAccessPassFeeds".to_string(), // variant 115
             Self::SetAccessPassFlags(_) => "SetAccessPassFlags".to_string(), // variant 116
-            Self::UpdateFeedSubscription(_) => "UpdateFeedSubscription".to_string(), // variant 117
+            Self::SubscribeFeed(_) => "SubscribeFeed".to_string(), // variant 117
+            Self::UnsubscribeFeed(_) => "UnsubscribeFeed".to_string(), // variant 118
         }
     }
 
@@ -698,7 +702,8 @@ impl DoubleZeroInstruction {
             Self::DeleteFeed(args) => format!("{args:?}"), // variant 114
             Self::SetAccessPassFeeds(args) => format!("{args:?}"), // variant 115
             Self::SetAccessPassFlags(args) => format!("{args:?}"), // variant 116
-            Self::UpdateFeedSubscription(args) => format!("{args:?}"), // variant 117
+            Self::SubscribeFeed(args) => format!("{args:?}"), // variant 117
+            Self::UnsubscribeFeed(args) => format!("{args:?}"), // variant 118
         }
     }
 }

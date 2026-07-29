@@ -1,261 +1,116 @@
-//! `UpdateFeedSubscription` (variant 117) — join or leave every multicast group carried by one or
-//! more feeds on an EdgeSeat access pass, in a single atomic transaction.
+//! `SubscribeFeed` (variant 117) — join whole feeds on an EdgeSeat access pass.
 //!
-//! A feed is receive-only, so there is no publisher flag. Any publisher role the user already holds
-//! on a group is carried through untouched — stripping it here would deallocate the user's `dz_ip`
-//! as a side effect of a subscribe.
+//! Accounts: `[accesspass, user, globalstate, device, feeds.., groups.., payer, system, perm?]`.
+//! One seat is charged per feed newly held. See [`super::feed`] for the shared model.
 
 use crate::{
-    authorize::{authorize, split_trailing_permission},
     error::DoubleZeroError,
-    pda::{get_accesspass_pda, get_globalstate_pda},
     processors::{
-        accesspass::set_feeds::MAX_ACCESS_PASS_FEEDS, feed::check_feed_metro_coverage,
-        validation::validate_program_account,
+        accesspass::set_feeds::MAX_ACCESS_PASS_FEEDS,
+        multicastgroup::feed::{
+            apply_groups, check_group_accounts, load_context, load_feeds, write_back,
+        },
     },
-    serializer::try_acc_write,
-    state::{
-        accesspass::{AccessPass, AccessPassType},
-        device::Device,
-        feed::Feed,
-        globalstate::GlobalState,
-        permission::permission_flags,
-        user::{User, UserStatus, UserType},
-    },
+    state::{permission::permission_flags, user::UserStatus},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
-use solana_program::{
-    account_info::{next_account_info, AccountInfo},
-    entrypoint::ProgramResult,
-    msg,
-    pubkey::Pubkey,
-};
-use std::{fmt, net::Ipv4Addr};
-
-use super::subscribe::update_user_multicastgroup_roles;
+use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, msg, pubkey::Pubkey};
+use std::fmt;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
-pub struct UpdateFeedSubscriptionArgs {
-    /// `true` joins every passed group, `false` leaves them.
-    pub subscriber: bool,
-    /// How many of the variable accounts are Feeds. The rest are MulticastGroups.
+pub struct SubscribeFeedArgs {
+    /// How many of the variable accounts are Feeds. The rest are the MulticastGroups being joined.
     pub feed_count: u8,
 }
 
-impl fmt::Debug for UpdateFeedSubscriptionArgs {
+impl fmt::Debug for SubscribeFeedArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "subscriber: {:?}, feed_count: {:?}",
-            self.subscriber, self.feed_count
-        )
+        write!(f, "feed_count: {:?}", self.feed_count)
     }
 }
 
-pub fn process_update_feed_subscription(
+pub fn process_subscribe_feed(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    value: &UpdateFeedSubscriptionArgs,
+    value: &SubscribeFeedArgs,
 ) -> ProgramResult {
-    let accounts_iter = &mut accounts.iter();
-
-    // Account layout:
-    //   [accesspass, user, globalstate, device,
-    //    feed_0..feed_{F-1}, group_0..group_{G-1},
-    //    payer, system, permission?]
-    // F is `feed_count`; G is whatever remains of the variable section.
-    let accesspass_account = next_account_info(accounts_iter)?;
-    let user_account = next_account_info(accounts_iter)?;
-    let gs_account = next_account_info(accounts_iter)?;
-    let device_account = next_account_info(accounts_iter)?;
-
-    let remaining: Vec<&AccountInfo> = accounts_iter.collect();
-    let (payer_account, system_program, variable, permission_account) =
-        split_trailing_permission(program_id, &remaining)?;
+    let mut ctx = load_context(program_id, accounts)?;
 
     #[cfg(test)]
-    msg!("process_update_feed_subscription({:?})", value);
+    msg!("process_subscribe_feed({:?})", value);
 
-    assert!(payer_account.is_signer, "Payer must be a signer");
-    assert_eq!(
-        *system_program.unsigned_key(),
-        solana_system_interface::program::ID,
-        "Invalid System Program Account Owner"
-    );
-
-    let (expected_globalstate_pda, _) = get_globalstate_pda(program_id);
-    assert_eq!(
-        gs_account.key, &expected_globalstate_pda,
-        "Invalid GlobalState PDA"
-    );
-    let globalstate = GlobalState::try_from(gs_account)?;
-
-    // The pass is written here (seat counts move), unlike the allowlist path which reads it.
-    if accesspass_account.data_is_empty() {
-        return Err(DoubleZeroError::AccessPassNotFound.into());
+    if ctx.user.status != UserStatus::Activated {
+        msg!("UserStatus: {:?}", ctx.user.status);
+        return Err(DoubleZeroError::InvalidStatus.into());
     }
-    validate_program_account!(
-        accesspass_account,
+
+    // Joining consumes the pass's paid capacity.
+    ctx.authorize_payer(
         program_id,
-        writable = true,
-        "AccessPass"
-    );
-    validate_program_account!(user_account, program_id, writable = true, "User");
-    validate_program_account!(device_account, program_id, writable = false, "Device");
+        permission_flags::ACCESS_PASS_ADMIN,
+        DoubleZeroError::Unauthorized,
+    )?;
 
     let feed_count = value.feed_count as usize;
-    if feed_count == 0 || variable.len() <= feed_count {
+    if feed_count == 0 || ctx.variable.len() < feed_count {
         msg!(
-            "expected at least one Feed and one MulticastGroup account (feed_count={}, variable={})",
+            "bad account shape: feed_count={}, variable={}",
             feed_count,
-            variable.len()
+            ctx.variable.len()
         );
         return Err(DoubleZeroError::InvalidArgument.into());
     }
-    let (feed_accounts, group_accounts) = variable.split_at(feed_count);
+    let (feed_accounts, group_accounts) = ctx.variable.split_at(feed_count);
 
-    let mut user: User = User::try_from(user_account)?;
-    // Only a multicast user occupies a feed seat, so no other type may hold a feed subscription.
-    if user.user_type != UserType::Multicast {
-        msg!(
-            "A feed subscription requires a Multicast user, got {}",
-            user.user_type
-        );
-        return Err(DoubleZeroError::EdgeSeatIsMulticastOnly.into());
-    }
-    // Leaving is allowed from any status so a user created but not yet activated can be cleaned up.
-    if value.subscriber && user.status != UserStatus::Activated {
-        msg!("UserStatus: {:?}", user.status);
-        return Err(DoubleZeroError::InvalidStatus.into());
-    }
-    if device_account.key != &user.device_pk {
-        msg!(
-            "Device {} is not the user's device {}",
-            device_account.key,
-            user.device_pk
-        );
-        return Err(DoubleZeroError::UserDeviceMismatch.into());
-    }
-    let device = Device::try_from(device_account)?;
+    let feeds = load_feeds(
+        program_id,
+        &ctx.accesspass,
+        &ctx.device.exchange_pk,
+        feed_accounts,
+    )?;
 
-    let mut accesspass = AccessPass::try_from(accesspass_account)?;
-    let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
-    let (accesspass_dynamic_pda, _) =
-        get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
-    assert!(
-        accesspass_account.key == &accesspass_pda
-            || accesspass_account.key == &accesspass_dynamic_pda,
-        "Invalid AccessPass PDA",
-    );
-    if !matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_)) {
-        msg!(
-            "AccessPass type {:?} carries no feeds; use UpdateMulticastGroupRoles",
-            accesspass.accesspass_type
-        );
-        return Err(DoubleZeroError::EdgeSeatRequired.into());
-    }
-
-    if accesspass.user_payer != *payer_account.key
-        && !globalstate.foundation_allowlist.contains(payer_account.key)
-    {
-        let required_flag = if value.subscriber {
-            permission_flags::ACCESS_PASS_ADMIN
-        } else {
-            permission_flags::USER_ADMIN
-        };
-        if authorize(
-            program_id,
-            &mut permission_account.into_iter(),
-            payer_account.key,
-            &globalstate,
-            required_flag,
-        )
-        .is_err()
-        {
-            msg!(
-                "AccessPass user_payer {:?} does not match payer {:?}",
-                accesspass.user_payer,
-                payer_account.key
-            );
-            return Err(if value.subscriber {
-                DoubleZeroError::Unauthorized.into()
-            } else {
-                DoubleZeroError::NotAllowed.into()
-            });
-        }
-    }
-
-    // Validate every feed up front, and collect their group sets for the membership check below.
-    // check_feed_metro_coverage enforces that the feed is provisioned on this pass and serves the
-    // device's metro.
-    let mut feeds: Vec<(Pubkey, Feed)> = Vec::with_capacity(feed_accounts.len());
-    for feed_account in feed_accounts {
-        check_feed_metro_coverage(
-            program_id,
-            &accesspass,
-            &device.exchange_pk,
-            None,
-            Some(feed_account),
-        )?;
-        if feeds.iter().any(|(key, _)| key == feed_account.key) {
-            msg!("Feed {} passed more than once", feed_account.key);
-            return Err(DoubleZeroError::InvalidArgument.into());
-        }
-        feeds.push((*feed_account.key, Feed::try_from(*feed_account)?));
-    }
-
-    // Apply the role change per group. The publisher role is carried through unchanged: a feed sells
-    // receive only, and clearing it here would deallocate the user's dz_ip as a side effect.
-    for group_account in group_accounts {
-        validate_program_account!(
-            *group_account,
-            program_id,
-            writable = true,
-            "MulticastGroup"
-        );
-        if !feeds
-            .iter()
-            .any(|(_, feed)| feed.groups.contains(group_account.key))
-        {
-            msg!(
-                "Group {} is not carried by any of the passed feeds",
-                group_account.key
-            );
-            return Err(DoubleZeroError::GroupNotInFeed.into());
-        }
-        let carry_publisher = user.publishers.contains(group_account.key);
-        let result = update_user_multicastgroup_roles(
-            group_account,
-            &mut user,
-            carry_publisher,
-            value.subscriber,
-        )?;
-        try_acc_write(&result.mgroup, group_account, payer_account, accounts)?;
-    }
-
-    // Reconcile seats against the user's *final* membership rather than ticking as we go. A feed is
-    // held exactly while the user is in at least one of its groups, so a second group inside a held
-    // feed is free, dropping one of several groups keeps the seat, and dropping the last releases it.
-    let held_groups = user.get_multicast_groups();
-    for (feed_key, feed) in &feeds {
-        let holds_group = feed.groups.iter().any(|group| held_groups.contains(group));
-        let seat_recorded = user.feed_pks.contains(feed_key);
-
-        if holds_group && !seat_recorded {
-            if user.feed_pks.len() >= MAX_ACCESS_PASS_FEEDS {
-                return Err(DoubleZeroError::UserFeedLimitExceeded.into());
+    let mut expected: Vec<Pubkey> = Vec::new();
+    for (_, feed) in &feeds {
+        for group in &feed.groups {
+            if !ctx.user.subscribers.contains(group) && !expected.contains(group) {
+                expected.push(*group);
             }
-            accesspass.try_add_feed_user(feed_key)?;
-            user.feed_pks.push(*feed_key);
-        } else if !holds_group && seat_recorded {
-            accesspass.remove_feed_user(feed_key);
-            user.feed_pks.retain(|held| held != feed_key);
         }
     }
+    check_group_accounts(group_accounts, &expected)?;
 
-    try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
-    try_acc_write(&user, user_account, payer_account, accounts)?;
+    apply_groups(
+        program_id,
+        accounts,
+        group_accounts,
+        &mut ctx.user,
+        ctx.payer_account,
+        true,
+    )?;
 
-    Ok(())
+    for (feed_key, _) in &feeds {
+        if ctx.user.feed_pks.contains(feed_key) {
+            continue;
+        }
+        if ctx.user.feed_pks.len() >= MAX_ACCESS_PASS_FEEDS {
+            msg!(
+                "user already holds {} feeds, the maximum an access pass may carry is {}",
+                ctx.user.feed_pks.len(),
+                MAX_ACCESS_PASS_FEEDS
+            );
+            return Err(DoubleZeroError::UserFeedLimitExceeded.into());
+        }
+        ctx.accesspass.try_add_feed_user(feed_key)?;
+        ctx.user.feed_pks.push(*feed_key);
+    }
+
+    write_back(
+        &ctx.accesspass,
+        &ctx.user,
+        ctx.accesspass_account,
+        ctx.user_account,
+        ctx.payer_account,
+        accounts,
+    )
 }

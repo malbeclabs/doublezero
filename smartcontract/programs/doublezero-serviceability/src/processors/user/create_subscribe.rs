@@ -140,21 +140,20 @@ pub fn process_create_subscribe_user(
         feed_account,
     )?;
 
-    // Authorize the group before joining it. An EdgeSeat pass derives joinable groups from the feeds
-    // provisioned on it, and `create_user_core` above already enforced that gate (and charged the
-    // feed's seat), so the allowlist does not apply. Every other pass type grants groups
-    // individually and is checked against the allowlist here.
-    if !matches!(
+    // Mirrors the exact condition under which `create_user_core` ran the feed metro gate
+    // (create_core.rs). Keying the skip on pass type alone would let an EdgeSeat pass join a group
+    // with neither check: the gate is multicast-only and would not have run. The publisher allowlist
+    // is always checked, since a feed sells receive only and grants no publisher role.
+    let feed_gated = matches!(
         result.accesspass.accesspass_type,
         AccessPassType::EdgeSeat(_)
-    ) {
-        check_mgroup_allowlists(
-            &result.accesspass,
-            mgroup_account.key,
-            value.publisher,
-            value.subscriber,
-        )?;
-    }
+    ) && value.user_type == UserType::Multicast;
+    check_mgroup_allowlists(
+        &result.accesspass,
+        mgroup_account.key,
+        value.publisher,
+        value.subscriber && !feed_gated,
+    )?;
 
     // Subscribe user to multicast group
     let subscribe_result = update_user_multicastgroup_roles(

@@ -19,9 +19,9 @@ use doublezero_serviceability::{
         feed::create::FeedCreateArgs,
         multicastgroup::{
             create::MulticastGroupCreateArgs, subscribe::UpdateMulticastGroupRolesArgs,
-            subscribe_feed::UpdateFeedSubscriptionArgs,
+            subscribe_feed::SubscribeFeedArgs, unsubscribe_feed::UnsubscribeFeedArgs,
         },
-        user::create_subscribe::UserCreateSubscribeArgs,
+        user::{create::UserCreateArgs, create_subscribe::UserCreateSubscribeArgs},
     },
     resource::ResourceType,
     state::{
@@ -319,25 +319,13 @@ async fn create_user_at(f: &mut Fixture, ip: Ipv4Addr, feed: Pubkey, group: Pubk
     f.banks_client.process_transaction(tx).await.unwrap();
 }
 
-/// Invoke `UpdateFeedSubscription` with an explicit device, so tests can pass a foreign one.
-async fn try_feed_subscription_with_device(
-    f: &mut Fixture,
-    device: Pubkey,
-    feeds: &[Pubkey],
-    groups: &[Pubkey],
-    subscriber: bool,
-) -> Result<(), BanksClientError> {
-    let user = f.user_pubkey;
-    try_feed_subscription_as(f, user, device, feeds, groups, subscriber).await
-}
-
-async fn try_feed_subscription_as(
+#[allow(clippy::too_many_arguments)]
+async fn try_join_as(
     f: &mut Fixture,
     user_pubkey: Pubkey,
     device: Pubkey,
     feeds: &[Pubkey],
     groups: &[Pubkey],
-    subscriber: bool,
 ) -> Result<(), BanksClientError> {
     let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
     let mut accounts = vec![
@@ -351,8 +339,7 @@ async fn try_feed_subscription_as(
 
     let mut tx = create_transaction_with_extra_accounts(
         f.program_id,
-        &DoubleZeroInstruction::UpdateFeedSubscription(UpdateFeedSubscriptionArgs {
-            subscriber,
+        &DoubleZeroInstruction::SubscribeFeed(SubscribeFeedArgs {
             feed_count: feeds.len() as u8,
         }),
         &accounts,
@@ -363,14 +350,91 @@ async fn try_feed_subscription_as(
     f.banks_client.process_transaction(tx).await
 }
 
-async fn try_feed_subscription(
+async fn join(
     f: &mut Fixture,
     feeds: &[Pubkey],
     groups: &[Pubkey],
-    subscriber: bool,
 ) -> Result<(), BanksClientError> {
-    let device = f.device_pubkey;
-    try_feed_subscription_with_device(f, device, feeds, groups, subscriber).await
+    let (user, device) = (f.user_pubkey, f.device_pubkey);
+    try_join_as(f, user, device, feeds, groups).await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn try_leave_as(
+    f: &mut Fixture,
+    user_pubkey: Pubkey,
+    device: Pubkey,
+    targets: &[Pubkey],
+    retained: &[Pubkey],
+    groups: &[Pubkey],
+) -> Result<(), BanksClientError> {
+    let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
+    let mut accounts = vec![
+        AccountMeta::new(f.accesspass_pubkey, false),
+        AccountMeta::new(user_pubkey, false),
+        AccountMeta::new(f.globalstate_pubkey, false),
+        AccountMeta::new_readonly(device, false),
+    ];
+    accounts.extend(
+        targets
+            .iter()
+            .chain(retained)
+            .map(|k| AccountMeta::new_readonly(*k, false)),
+    );
+    accounts.extend(groups.iter().map(|k| AccountMeta::new(*k, false)));
+
+    let mut tx = create_transaction_with_extra_accounts(
+        f.program_id,
+        &DoubleZeroInstruction::UnsubscribeFeed(UnsubscribeFeedArgs {
+            feed_count: targets.len() as u8,
+            retained_feed_count: retained.len() as u8,
+        }),
+        &accounts,
+        &f.payer,
+        &[],
+    );
+    tx.try_sign(&[&f.payer], recent_blockhash).unwrap();
+    f.banks_client.process_transaction(tx).await
+}
+
+async fn leave(
+    f: &mut Fixture,
+    targets: &[Pubkey],
+    retained: &[Pubkey],
+    groups: &[Pubkey],
+) -> Result<(), BanksClientError> {
+    let (user, device) = (f.user_pubkey, f.device_pubkey);
+    try_leave_as(f, user, device, targets, retained, groups).await
+}
+
+/// An IBRL user under the same pass, for the user-type gate.
+async fn create_ibrl_user(f: &mut Fixture, ip: Ipv4Addr) {
+    let (user_pubkey, _) = get_user_pda(&f.program_id, &ip, UserType::IBRL);
+    let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
+    execute_transaction(
+        &mut f.banks_client,
+        recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: ip,
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(f.device_pubkey, false),
+            AccountMeta::new(f.accesspass_pubkey, false),
+            AccountMeta::new(f.globalstate_pubkey, false),
+            AccountMeta::new(f.user_tunnel_block, false),
+            AccountMeta::new(f.multicast_publisher_block, false),
+            AccountMeta::new(f.tunnel_ids, false),
+            AccountMeta::new(f.dz_prefix_block, false),
+        ],
+        &f.payer,
+    )
+    .await;
 }
 
 async fn read_pass(f: &mut Fixture) -> AccessPass {
@@ -416,9 +480,7 @@ async fn test_feed_subscription_joins_every_group_for_one_seat() {
     set_pass_feeds(&mut f, vec![seat(feed, 1)]).await;
 
     create_user_on(&mut f, feed, g[0]).await;
-    try_feed_subscription(&mut f, &[feed], &[g[1], g[2]], true)
-        .await
-        .unwrap();
+    join(&mut f, &[feed], &[g[1], g[2]]).await.unwrap();
 
     let user = read_user(&mut f).await;
     assert_eq!(user.subscribers, vec![g[0], g[1], g[2]]);
@@ -436,9 +498,7 @@ async fn test_second_feed_takes_its_own_seat() {
     set_pass_feeds(&mut f, vec![seat(feed1, 1), seat(feed2, 1)]).await;
 
     create_user_on(&mut f, feed1, g[0]).await;
-    try_feed_subscription(&mut f, &[feed2], &[g[2], g[3]], true)
-        .await
-        .unwrap();
+    join(&mut f, &[feed2], &[g[2], g[3]]).await.unwrap();
 
     let user = read_user(&mut f).await;
     assert_eq!(user.feed_pks, vec![feed1, feed2]);
@@ -457,7 +517,7 @@ async fn test_two_feeds_in_one_transaction() {
     set_pass_feeds(&mut f, vec![seat(feed1, 1), seat(feed2, 1)]).await;
 
     create_user_on(&mut f, feed1, g[0]).await;
-    try_feed_subscription(&mut f, &[feed1, feed2], &[g[1], g[2], g[3]], true)
+    join(&mut f, &[feed1, feed2], &[g[1], g[2], g[3]])
         .await
         .unwrap();
 
@@ -477,12 +537,8 @@ async fn test_removal_releases_the_seat_on_the_last_group() {
     set_pass_feeds(&mut f, vec![seat(feed, 1)]).await;
 
     create_user_on(&mut f, feed, g[0]).await;
-    try_feed_subscription(&mut f, &[feed], &[g[1]], true)
-        .await
-        .unwrap();
-    try_feed_subscription(&mut f, &[feed], &[g[0], g[1]], false)
-        .await
-        .unwrap();
+    join(&mut f, &[feed], &[g[1]]).await.unwrap();
+    leave(&mut f, &[feed], &[], &[g[0], g[1]]).await.unwrap();
 
     let user = read_user(&mut f).await;
     assert!(user.subscribers.is_empty());
@@ -490,41 +546,58 @@ async fn test_removal_releases_the_seat_on_the_last_group() {
     assert_eq!(seat_users(&read_pass(&mut f).await, &feed), 0);
 }
 
-// Dropping one of several groups leaves the user in the feed, so the seat stays held.
+// Leaving one feed must not drop a group a retained feed still carries. Alice keeps feed1, which
+// also sells g0, so leaving feed2 costs her g1 only and leaves feed1's seat charged.
 #[tokio::test]
-async fn test_removal_keeps_the_seat_while_a_group_remains() {
+async fn test_leaving_a_feed_keeps_a_group_a_retained_feed_covers() {
     let mut f = setup([100, 0, 0, 24]).await;
     let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
-    let feed = create_feed(&mut f, "feed1", exchange, vec![g[0], g[1]]).await;
-    set_pass_feeds(&mut f, vec![seat(feed, 1)]).await;
+    let feed1 = create_feed(&mut f, "feed1", exchange, vec![g[0]]).await;
+    let feed2 = create_feed(&mut f, "feed2", exchange, vec![g[0], g[1]]).await;
+    set_pass_feeds(&mut f, vec![seat(feed1, 1), seat(feed2, 1)]).await;
 
-    create_user_on(&mut f, feed, g[0]).await;
-    try_feed_subscription(&mut f, &[feed], &[g[1]], true)
-        .await
-        .unwrap();
-    try_feed_subscription(&mut f, &[feed], &[g[1]], false)
-        .await
-        .unwrap();
+    create_user_on(&mut f, feed1, g[0]).await;
+    join(&mut f, &[feed2], &[g[1]]).await.unwrap();
+
+    // g[0] is covered by feed1, so only g[1] departs with feed2.
+    leave(&mut f, &[feed2], &[feed1], &[g[1]]).await.unwrap();
 
     let user = read_user(&mut f).await;
     assert_eq!(user.subscribers, vec![g[0]]);
-    assert_eq!(user.feed_pks, vec![feed]);
-    assert_eq!(seat_users(&read_pass(&mut f).await, &feed), 1);
+    assert_eq!(user.feed_pks, vec![feed1]);
+    let pass = read_pass(&mut f).await;
+    assert_eq!(seat_users(&pass, &feed1), 1);
+    assert_eq!(seat_users(&pass, &feed2), 0);
 }
 
-// A group carried by no passed feed is rejected: GroupNotInFeed (94).
+// A leave that omits a feed the user still holds is rejected rather than stranding its seat.
 #[tokio::test]
-async fn test_group_outside_the_passed_feeds_rejected() {
+async fn test_leave_omitting_a_held_feed_rejected() {
+    let mut f = setup([100, 0, 0, 32]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    let feed1 = create_feed(&mut f, "feed1", exchange, vec![g[0]]).await;
+    let feed2 = create_feed(&mut f, "feed2", exchange, vec![g[0], g[1]]).await;
+    set_pass_feeds(&mut f, vec![seat(feed1, 1), seat(feed2, 1)]).await;
+
+    create_user_on(&mut f, feed1, g[0]).await;
+    join(&mut f, &[feed2], &[g[1]]).await.unwrap();
+
+    let err = leave(&mut f, &[feed2], &[], &[g[1]]).await.unwrap_err();
+    assert_custom_error(&err, 92);
+}
+
+// The group list must be exactly what the target feeds change, so a stale client cannot half-apply.
+#[tokio::test]
+async fn test_group_list_not_matching_the_feeds_rejected() {
     let mut f = setup([100, 0, 0, 25]).await;
     let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
     let feed = create_feed(&mut f, "feed1", exchange, vec![g[0], g[1]]).await;
     set_pass_feeds(&mut f, vec![seat(feed, 1)]).await;
     create_user_on(&mut f, feed, g[0]).await;
 
-    let err = try_feed_subscription(&mut f, &[feed], &[g[4]], true)
-        .await
-        .unwrap_err();
-    assert_custom_error(&err, 94);
+    // Same count as the real change set (g[1]), but the wrong group.
+    let err = join(&mut f, &[feed], &[g[4]]).await.unwrap_err();
+    assert_custom_error(&err, 65);
 }
 
 // A feed that is not provisioned on the pass is rejected: FeedNotOnAccessPass (93).
@@ -537,9 +610,7 @@ async fn test_feed_not_on_the_pass_rejected() {
     set_pass_feeds(&mut f, vec![seat(feed, 1)]).await;
     create_user_on(&mut f, feed, g[0]).await;
 
-    let err = try_feed_subscription(&mut f, &[unprovisioned], &[g[2]], true)
-        .await
-        .unwrap_err();
+    let err = join(&mut f, &[unprovisioned], &[g[2]]).await.unwrap_err();
     assert_custom_error(&err, 93);
 }
 
@@ -554,9 +625,7 @@ async fn test_feed_serving_another_metro_rejected() {
     set_pass_feeds(&mut f, vec![seat(feed, 1), seat(other_metro, 1)]).await;
     create_user_on(&mut f, feed, g[0]).await;
 
-    let err = try_feed_subscription(&mut f, &[other_metro], &[g[2]], true)
-        .await
-        .unwrap_err();
+    let err = join(&mut f, &[other_metro], &[g[2]]).await.unwrap_err();
     assert_custom_error(&err, 91);
 }
 
@@ -570,8 +639,8 @@ async fn test_foreign_device_rejected() {
     set_pass_feeds(&mut f, vec![seat(feed, 1)]).await;
     create_user_on(&mut f, feed, g[0]).await;
 
-    let foreign = f.globalstate_pubkey;
-    let err = try_feed_subscription_with_device(&mut f, foreign, &[feed], &[g[1]], true)
+    let (foreign, user) = (f.globalstate_pubkey, f.user_pubkey);
+    let err = try_join_as(&mut f, user, foreign, &[feed], &[g[1]])
         .await
         .unwrap_err();
     assert_custom_error(&err, 102);
@@ -597,14 +666,12 @@ async fn test_seat_cap_rejects_a_second_machine() {
     assert_eq!(seat_users(&read_pass(&mut f).await, &entry), 2);
 
     // Machine 1 takes the scarce feed's only seat.
-    try_feed_subscription(&mut f, &[scarce], &[g[2]], true)
-        .await
-        .unwrap();
+    join(&mut f, &[scarce], &[g[2]]).await.unwrap();
     assert_eq!(seat_users(&read_pass(&mut f).await, &scarce), 1);
 
     // Machine 2 is a legitimate user on the same pass, but the feed is sold out.
     let device = f.device_pubkey;
-    let err = try_feed_subscription_as(&mut f, second_user, device, &[scarce], &[g[2]], true)
+    let err = try_join_as(&mut f, second_user, device, &[scarce], &[g[2]])
         .await
         .unwrap_err();
     assert_custom_error(&err, 95);
@@ -705,4 +772,87 @@ async fn test_feed_group_not_joinable_through_the_roles_instruction() {
     tx.try_sign(&[&f.payer], recent_blockhash).unwrap();
     let err = f.banks_client.process_transaction(tx).await.unwrap_err();
     assert_custom_error(&err, 8);
+}
+
+// This instruction is EdgeSeat-only: a Prepaid pass carries no feeds and must use the allowlist path.
+#[tokio::test]
+async fn test_non_edgeseat_pass_rejected() {
+    let mut f = setup([100, 0, 0, 33]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    let feed = create_feed(&mut f, "feed1", exchange, vec![g[0], g[1]]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 1)]).await;
+    create_user_on(&mut f, feed, g[0]).await;
+
+    // Downgrade the pass to Prepaid, keeping the same PDA and user.
+    let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
+    execute_transaction(
+        &mut f.banks_client,
+        recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            last_access_epoch: 9999,
+            allow_multiple_ip: true,
+            max_unicast_users: 1,
+            max_multicast_users: 4,
+        }),
+        vec![
+            AccountMeta::new(f.accesspass_pubkey, false),
+            AccountMeta::new(f.globalstate_pubkey, false),
+            AccountMeta::new(f.payer.pubkey(), false),
+        ],
+        &f.payer,
+    )
+    .await;
+
+    let err = join(&mut f, &[feed], &[g[1]]).await.unwrap_err();
+    assert_custom_error(&err, 101);
+}
+
+// Only a Multicast user occupies a feed seat, so no other user type may hold a feed subscription.
+#[tokio::test]
+async fn test_non_multicast_user_rejected() {
+    let mut f = setup([100, 0, 0, 34]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    let feed = create_feed(&mut f, "feed1", exchange, vec![g[0], g[1]]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 2)]).await;
+    create_user_on(&mut f, feed, g[0]).await;
+
+    // An IBRL user at another IP under the same dynamic pass.
+    let ibrl_ip: Ipv4Addr = [100, 0, 0, 70].into();
+    let (ibrl_user, _) = get_user_pda(&f.program_id, &ibrl_ip, UserType::IBRL);
+    create_ibrl_user(&mut f, ibrl_ip).await;
+
+    let device = f.device_pubkey;
+    let err = try_join_as(&mut f, ibrl_user, device, &[feed], &[g[1]])
+        .await
+        .unwrap_err();
+    assert_custom_error(&err, 104);
+}
+
+// feed_count == 0 leaves nothing to derive the group set from.
+#[tokio::test]
+async fn test_zero_feed_count_rejected() {
+    let mut f = setup([100, 0, 0, 35]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    let feed = create_feed(&mut f, "feed1", exchange, vec![g[0], g[1]]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 1)]).await;
+    create_user_on(&mut f, feed, g[0]).await;
+
+    let err = join(&mut f, &[], &[g[1]]).await.unwrap_err();
+    assert_custom_error(&err, 65);
+}
+
+// The same feed twice would double-count its seat.
+#[tokio::test]
+async fn test_duplicate_feed_rejected() {
+    let mut f = setup([100, 0, 0, 36]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    let feed = create_feed(&mut f, "feed1", exchange, vec![g[0], g[1]]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 1)]).await;
+    create_user_on(&mut f, feed, g[0]).await;
+
+    let err = join(&mut f, &[feed, feed], &[g[1]]).await.unwrap_err();
+    assert_custom_error(&err, 65);
 }

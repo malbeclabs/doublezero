@@ -55,9 +55,9 @@ jobs:
         uses: actions/github-script@v7
         env:
           CHECK_NAME: shard-e2e
-          # 2 pinned shards + 2 round-robin shards; must match the required
+          # 3 pinned shards + 2 round-robin shards; must match the required
           # status check contexts in the main ruleset.
-          CHECK_SHARDS: "4"
+          CHECK_SHARDS: "5"
         with:
           script: |
             try {
@@ -192,24 +192,28 @@ jobs:
           echo "Discovered $count tests"
           echo "$tests"
 
-          # Pinned heavy tests: each gets its own shard slot to keep the two
+          # Pinned heavy tests: each gets its own shard slot to keep the
           # biggest rocks off the same runner. Update this list if a new test
           # exceeds ~5min, or if a pinned test is renamed/removed upstream
           # (the validation below will fail fast in that case).
           pinned_1="TestE2E_MultiUserInstantAllocationAndWithdrawal"
           pinned_2="TestE2E_DeviceScale"
+          # ~9min, over half of it a single 40-day ledger warp (three validator
+          # restart hops). On a round-robin shard it only passed when Go's
+          # parallel scheduler happened to start it early.
+          pinned_3="TestE2E_FeedSubscriptionOracleExpiryTeardown"
 
           # Fail fast if a pinned test no longer exists in the shreds repo —
           # otherwise its shard would silently run zero tests.
-          for pin in "$pinned_1" "$pinned_2"; do
+          for pin in "$pinned_1" "$pinned_2" "$pinned_3"; do
             if ! echo "$tests" | grep -qxF "$pin"; then
               echo "::error::Pinned test '$pin' not found in doublezero-shreds. Update the pin list in this workflow."
               exit 1
             fi
           done
 
-          # Remaining tests round-robin across shards 3 and 4.
-          remaining=$(echo "$tests" | grep -vE "^(${pinned_1}|${pinned_2})$")
+          # Remaining tests round-robin across shards 4 and 5.
+          remaining=$(echo "$tests" | grep -vE "^(${pinned_1}|${pinned_2}|${pinned_3})$")
 
           ROUND_ROBIN_SHARDS=2
           declare -a shards
@@ -225,11 +229,12 @@ jobs:
             i=$((i + 1))
           done <<< "$remaining"
 
-          # Build JSON matrix: shards 1-2 are pinned, shards 3-4 are round-robin.
+          # Build JSON matrix: shards 1-3 are pinned, shards 4-5 are round-robin.
           matrix="[{\"shard\":1,\"run\":\"^(${pinned_1})$\"}"
           matrix="${matrix},{\"shard\":2,\"run\":\"^(${pinned_2})$\"}"
+          matrix="${matrix},{\"shard\":3,\"run\":\"^(${pinned_3})$\"}"
           for ((i=0; i<ROUND_ROBIN_SHARDS; i++)); do
-            matrix="${matrix},{\"shard\":$((i + 3)),\"run\":\"^(${shards[i]})$\"}"
+            matrix="${matrix},{\"shard\":$((i + 4)),\"run\":\"^(${shards[i]})$\"}"
           done
           matrix="${matrix}]"
 

@@ -5,11 +5,9 @@
 //! when the user's last group in that feed goes away.
 
 use doublezero_serviceability::{
-    entrypoint::process_instruction,
     instructions::DoubleZeroInstruction,
     pda::{
-        get_accesspass_pda, get_contributor_pda, get_device_pda, get_exchange_pda, get_feed_pda,
-        get_globalconfig_pda, get_globalstate_pda, get_location_pda, get_multicastgroup_pda,
+        get_accesspass_pda, get_device_pda, get_feed_pda, get_multicastgroup_pda,
         get_resource_extension_pda, get_user_pda,
     },
     processors::{
@@ -17,11 +15,8 @@ use doublezero_serviceability::{
             set::SetAccessPassArgs,
             set_feeds::{FeedSeatConfig, SetAccessPassFeedsArgs},
         },
-        contributor::create::ContributorCreateArgs,
         device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
-        exchange::create::ExchangeCreateArgs,
         feed::create::FeedCreateArgs,
-        location::create::LocationCreateArgs,
         multicastgroup::{
             create::MulticastGroupCreateArgs, subscribe::UpdateMulticastGroupRolesArgs,
             subscribe_feed::UpdateFeedSubscriptionArgs,
@@ -67,82 +62,21 @@ struct Fixture {
 /// GlobalState/Config, Location, Exchange, Contributor, an Activated Device, five Activated
 /// MulticastGroups, and an EdgeSeat access pass with no feeds yet.
 async fn setup(client_ip: [u8; 4]) -> Fixture {
-    let program_id = Pubkey::new_unique();
-    let mut program_test = ProgramTest::new(
-        "doublezero_serviceability",
-        program_id,
-        processor!(process_instruction),
-    );
-    program_test.set_compute_max_units(1_400_000);
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
 
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-    let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
     let (user_tunnel_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
     let (multicast_publisher_block, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
 
-    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
-
-    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (location_pubkey, _) = get_location_pda(&program_id, gs.account_index + 1);
-    execute_transaction(
+    let (location_pubkey, exchange_pubkey, contributor_pubkey) = setup_device_prerequisites(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CreateLocation(LocationCreateArgs {
-            code: "test".to_string(),
-            name: "Test Location".to_string(),
-            country: "us".to_string(),
-            lat: 0.0,
-            lng: 0.0,
-            loc_id: 0,
-        }),
-        vec![
-            AccountMeta::new(location_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (exchange_pubkey, _) = get_exchange_pda(&program_id, gs.account_index + 1);
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateExchange(ExchangeCreateArgs {
-            code: "test".to_string(),
-            name: "Test Exchange".to_string(),
-            lat: 0.0,
-            lng: 0.0,
-            reserved: 0,
-        }),
-        vec![
-            AccountMeta::new(exchange_pubkey, false),
-            AccountMeta::new(globalconfig_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    let (contributor_pubkey, _) = get_contributor_pda(&program_id, gs.account_index + 1);
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
-            code: "test".to_string(),
-        }),
-        vec![
-            AccountMeta::new(contributor_pubkey, false),
-            AccountMeta::new(payer.pubkey(), false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
+        globalstate_pubkey,
+        globalconfig_pubkey,
         &payer,
     )
     .await;

@@ -91,12 +91,20 @@ func TestProvisionRequest_InfraEqual_CoversAllFields(t *testing.T) {
 		"MulticastSubGroups": true,
 	}
 
+	// Fields compared only for some user types. testFullProvisionRequest builds
+	// a multicast request, which does not consume DoubleZeroPrefixes; the
+	// user-type scoping is covered by
+	// TestProvisionRequest_DoubleZeroPrefixesScopedToEdgeFiltering.
+	scopedFields := map[string]bool{
+		"DoubleZeroPrefixes": true,
+	}
+
 	// All remaining fields must be infra fields — changing them must make
 	// InfraEqual return false.
 	typ := reflect.TypeOf(ProvisionRequest{})
 	for i := range typ.NumField() {
 		field := typ.Field(i)
-		if groupFields[field.Name] {
+		if groupFields[field.Name] || scopedFields[field.Name] {
 			continue
 		}
 
@@ -140,11 +148,57 @@ func TestProvisionRequest_InfraEqual_CoversAllFields(t *testing.T) {
 	for i := range typ.NumField() {
 		allFields[typ.Field(i).Name] = true
 	}
-	// infraFields = allFields - groupFields; verify no field is missing.
+	// infraFields = allFields - groupFields - scopedFields; verify no field is missing.
 	for name := range groupFields {
 		if !allFields[name] {
 			t.Fatalf("groupFields references non-existent field %s", name)
 		}
+	}
+	for name := range scopedFields {
+		if !allFields[name] {
+			t.Fatalf("scopedFields references non-existent field %s", name)
+		}
+	}
+}
+
+// TestProvisionRequest_DoubleZeroPrefixesScopedToEdgeFiltering pins the fix for
+// malbeclabs/infra#2117: the prefix list is the fleet-wide union of every
+// device's dz_prefixes, so a single device add/remove must not look like a
+// change to users that never read it.
+func TestProvisionRequest_DoubleZeroPrefixesScopedToEdgeFiltering(t *testing.T) {
+	prefixesA := []*net.IPNet{{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(24, 32)}}
+	prefixesB := []*net.IPNet{
+		{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(24, 32)},
+		{IP: net.IPv4(172, 16, 0, 0), Mask: net.CIDRMask(12, 32)},
+	}
+
+	for _, tt := range []struct {
+		userType UserType
+		want     bool // expected result of Equal and InfraEqual
+	}{
+		{UserTypeMulticast, true},
+		{UserTypeIBRL, true},
+		{UserTypeIBRLWithAllocatedIP, true},
+		{UserTypeEdgeFiltering, false},
+	} {
+		t.Run(tt.userType.String(), func(t *testing.T) {
+			a := testFullProvisionRequest()
+			a.UserType = tt.userType
+			a.DoubleZeroPrefixes = prefixesA
+			b := a
+			b.DoubleZeroPrefixes = prefixesB
+
+			if got := a.Equal(&b); got != tt.want {
+				t.Errorf("Equal = %v, want %v when only DoubleZeroPrefixes differ", got, tt.want)
+			}
+			if got := a.InfraEqual(&b); got != tt.want {
+				t.Errorf("InfraEqual = %v, want %v when only DoubleZeroPrefixes differ", got, tt.want)
+			}
+			// Diff stays unconditional so the change is still visible in logs.
+			if d := a.Diff(&b); !strings.Contains(d, "DoubleZeroPrefixes: count 1 -> 2") {
+				t.Errorf("Diff did not report the prefix change: %q", d)
+			}
+		})
 	}
 }
 

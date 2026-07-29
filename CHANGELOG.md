@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.32.0](https://github.com/malbeclabs/doublezero/compare/client/v0.31.0...client/v0.32.0) - 2026-07-29
+
+### Breaking
+
 - SDK
   - The Rust SDK no longer attaches the payer's Permission PDA to serviceability transactions. The RFC-26 builders derive account layout offline and their Permission append is still deferred, so every migrated instruction reaches `authorize()` with no Permission account and takes the legacy GlobalState allowlist/authority path. A payer whose only grant is an activated Permission account — not on `foundation_allowlist`/`qa_allowlist`, not a matching authority key — gets `NotAllowed` on every gated command. Re-enabling the append is per-instruction future work and must be sequenced with the permission-model rollout. Verified against live chain state at time of writing, no cluster is exposed: `RequirePermissionAccounts` is off everywhere (so the legacy fallback is live), mainnet-beta's 8 Permission accounts all grant `FOUNDATION` to keys already on `foundation_allowlist`, and the one grant on testnet/devnet that no legacy authority covers (`ACCESS_PASS_ADMIN` to `EWFXDTBWhNxsmj4mbahZL7HH1XpmC6Ao3LZUhJGCyyPh`) belongs to the shred oracle, which assembles its serviceability instructions itself and appends its own Permission account — it never uses this send path, so it is unaffected. Note `doublezero permission audit` does not answer this question: it reports the inverse (strict-mode) direction only, so checking it means diffing `permission list` against the GlobalState allowlists. (#4060)
 

@@ -3,15 +3,13 @@ use crate::{
     error::DoubleZeroError,
     pda::{get_accesspass_pda, get_globalstate_pda, get_resource_extension_pda},
     processors::{
-        feed::check_feed_metro_coverage,
         resource::{allocate_ip, deallocate_ip},
         validation::validate_program_account,
     },
     resource::ResourceType,
     serializer::try_acc_write,
     state::{
-        accesspass::{AccessPass, AccessPassType},
-        device::Device,
+        accesspass::AccessPass,
         globalstate::GlobalState,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         permission::permission_flags,
@@ -57,7 +55,34 @@ pub struct SubscribeUserResult {
     pub publisher_list_transitioned: bool,
 }
 
+/// Authorize a role grant against the access pass's multicast-group allowlists.
+///
+/// This is the authorization used by every access-pass type that grants groups individually. The
+/// only alternative is the EdgeSeat feed metro gate, which derives joinable groups from the feeds
+/// provisioned on the pass; a caller runs one or the other, never neither. Removals are always
+/// allowed, so a user can be cleaned up after a group leaves an allowlist.
+pub fn check_mgroup_allowlists(
+    accesspass: &AccessPass,
+    mgroup_key: &Pubkey,
+    publisher: bool,
+    subscriber: bool,
+) -> ProgramResult {
+    if publisher && !accesspass.mgroup_pub_allowlist.contains(mgroup_key) {
+        msg!("{:?}", accesspass);
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
+    if subscriber && !accesspass.mgroup_sub_allowlist.contains(mgroup_key) {
+        msg!("{:?}", accesspass);
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
+    Ok(())
+}
+
 /// Toggle a user's multicast group roles.
+///
+/// Mechanics only: this does NOT authorize the change. Callers must first run either
+/// [`check_mgroup_allowlists`] or the EdgeSeat feed metro gate, so that the authorization a
+/// processor performed is visible in that processor rather than claimed through an argument here.
 ///
 /// Handles both create-time subscription (user lists start empty, only adds)
 /// and post-activation subscription changes (add/remove toggle). The caller is
@@ -65,7 +90,6 @@ pub struct SubscribeUserResult {
 /// `publisher_list_transitioned` is true and the user is already activated.
 pub fn update_user_multicastgroup_roles(
     mgroup_account: &AccountInfo,
-    accesspass: &AccessPass,
     user: &mut User,
     publisher: bool,
     subscriber: bool,
@@ -74,20 +98,6 @@ pub fn update_user_multicastgroup_roles(
     if mgroup.status != MulticastGroupStatus::Activated {
         msg!("MulticastGroupStatus: {:?}", mgroup.status);
         return Err(DoubleZeroError::InvalidStatus.into());
-    }
-
-    // Check allowlists for additions. EdgeSeat passes derive joinable groups from their feeds'
-    // metro→group map (the feed metro gate), which supersedes the mgroup allowlist; the caller is
-    // responsible for running enforce_feed_metro_gate for EdgeSeat connects.
-    let is_edge_seat = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_));
-    if publisher && !is_edge_seat && !accesspass.mgroup_pub_allowlist.contains(mgroup_account.key) {
-        msg!("{:?}", accesspass);
-        return Err(DoubleZeroError::NotAllowed.into());
-    }
-    if subscriber && !is_edge_seat && !accesspass.mgroup_sub_allowlist.contains(mgroup_account.key)
-    {
-        msg!("{:?}", accesspass);
-        return Err(DoubleZeroError::NotAllowed.into());
     }
 
     let mut publisher_list_transitioned = false;
@@ -162,18 +172,13 @@ pub fn process_update_multicastgroup_roles(
     let globalstate = GlobalState::try_from(gs_account)?;
     let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
 
-    // Trailing layout: [device?, feed?, payer, system, permission?]. The SDK appends the payer's
-    // Permission PDA last (via execute_authorized_transaction); the optional EdgeSeat device/feed
-    // accounts for post-activation metro re-gating precede payer/system, because the client pushes
-    // them into the instruction's account list ahead of the [payer, system, permission] trailer
-    // that assemble_instructions always appends. split_trailing_permission identifies the
-    // Permission by PDA match rather than by position, so it never mistakes device/feed for the
-    // Permission account regardless of which optional accounts are present.
+    // Trailing layout: [payer, system, permission?]. The SDK appends the payer's Permission PDA last
+    // (via execute_authorized_transaction), and split_trailing_permission identifies it by PDA match
+    // rather than by position. Nothing precedes payer/system: EdgeSeat feed joins moved to
+    // UpdateFeedSubscription, which takes the device and feeds it needs as its own accounts.
     let remaining: Vec<&AccountInfo> = accounts_iter.collect();
-    let (payer_account, system_program, leading, permission_account) =
+    let (payer_account, system_program, _leading, permission_account) =
         split_trailing_permission(program_id, &remaining)?;
-    let device_account = leading.first().copied();
-    let feed_account = leading.get(1).copied();
 
     #[cfg(test)]
     msg!("process_update_multicastgroup_roles({:?})", value);
@@ -279,30 +284,20 @@ pub fn process_update_multicastgroup_roles(
         }
     }
 
-    // EdgeSeat passes derive joinable groups from their feeds' metro→group map. The seat was
-    // ticked at connect (CreateSubscribeUser), so post-activation role adds only re-validate
-    // coverage; they do not re-tick.
-    if matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_))
-        && (value.publisher || value.subscriber)
-    {
-        let device_account = device_account.ok_or(DoubleZeroError::MetroMismatch)?;
-        validate_program_account!(device_account, program_id, writable = false, "Device");
-        if user.device_pk != *device_account.key {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        let device = Device::try_from(device_account)?;
-        check_feed_metro_coverage(
-            program_id,
-            &accesspass,
-            &device.exchange_pk,
-            Some(mgroup_account.key),
-            feed_account,
-        )?;
-    }
+    // Every pass type is authorized the same way here: the group must be on the pass's allowlist.
+    // EdgeSeat passes are no exception. Groups they hold by *purchase* are joined through
+    // UpdateFeedSubscription, which gates on the feeds provisioned on the pass and charges a seat;
+    // this instruction is the comped path, where a foundation member has explicitly granted an
+    // individual group and no seat is consumed.
+    check_mgroup_allowlists(
+        &accesspass,
+        mgroup_account.key,
+        value.publisher,
+        value.subscriber,
+    )?;
 
     let result = update_user_multicastgroup_roles(
         mgroup_account,
-        &accesspass,
         &mut user,
         value.publisher,
         value.subscriber,

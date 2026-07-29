@@ -20,7 +20,12 @@ use super::{
     create_core::{create_user_core, CreateUserCoreAccounts, PDAVersion},
     resource_onchain_helpers,
 };
-use crate::processors::multicastgroup::subscribe::update_user_multicastgroup_roles;
+use crate::{
+    processors::multicastgroup::subscribe::{
+        check_mgroup_allowlists, update_user_multicastgroup_roles,
+    },
+    state::accesspass::AccessPassType,
+};
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct UserCreateSubscribeArgs {
@@ -135,10 +140,25 @@ pub fn process_create_subscribe_user(
         feed_account,
     )?;
 
+    // Authorize the group before joining it. An EdgeSeat pass derives joinable groups from the feeds
+    // provisioned on it, and `create_user_core` above already enforced that gate (and charged the
+    // feed's seat), so the allowlist does not apply. Every other pass type grants groups
+    // individually and is checked against the allowlist here.
+    if !matches!(
+        result.accesspass.accesspass_type,
+        AccessPassType::EdgeSeat(_)
+    ) {
+        check_mgroup_allowlists(
+            &result.accesspass,
+            mgroup_account.key,
+            value.publisher,
+            value.subscriber,
+        )?;
+    }
+
     // Subscribe user to multicast group
     let subscribe_result = update_user_multicastgroup_roles(
         mgroup_account,
-        &result.accesspass,
         &mut result.user,
         value.publisher,
         value.subscriber,

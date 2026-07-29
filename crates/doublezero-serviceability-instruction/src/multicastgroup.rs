@@ -21,6 +21,7 @@ use doublezero_serviceability::{
         delete::MulticastGroupDeleteArgs,
         reactivate::MulticastGroupReactivateArgs,
         subscribe::UpdateMulticastGroupRolesArgs,
+        subscribe_feed::UpdateFeedSubscriptionArgs,
         suspend::MulticastGroupSuspendArgs,
         update::MulticastGroupUpdateArgs,
     },
@@ -194,6 +195,52 @@ pub fn update_multicast_group_roles(
             AccountMeta::new(globalstate, false),
             AccountMeta::new(multicast_publisher_block, false),
         ],
+        payer,
+    )
+}
+
+/// `UpdateFeedSubscription` (variant 117) — join or leave every multicast group carried by the
+/// given feeds on an EdgeSeat access pass, atomically.
+///
+/// Accounts: `[accesspass, user, globalstate, device, feed_0..feed_{F-1}, group_0..group_{G-1}]`.
+///
+/// `feeds` and `groups` are variable-length and the processor splits them using `feed_count`, which
+/// this builder derives from `feeds.len()` rather than trusting a caller-supplied value: a count
+/// that disagreed with the account list would silently reinterpret feeds as groups.
+///
+/// The caller is responsible for passing every group it wants joined; the processor rejects any
+/// group not carried by one of `feeds`. Account count is bounded by the transaction size limit
+/// (~34 total), so very large feed sets must be split across transactions.
+pub fn update_feed_subscription(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    accesspass: &Pubkey,
+    user: &Pubkey,
+    device: &Pubkey,
+    feeds: &[Pubkey],
+    groups: &[Pubkey],
+    mut args: UpdateFeedSubscriptionArgs,
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    args.feed_count = feeds.len() as u8;
+
+    let mut accounts = vec![
+        AccountMeta::new(*accesspass, false),
+        AccountMeta::new(*user, false),
+        AccountMeta::new(globalstate, false),
+        AccountMeta::new_readonly(*device, false),
+    ];
+    accounts.extend(
+        feeds
+            .iter()
+            .map(|feed| AccountMeta::new_readonly(*feed, false)),
+    );
+    accounts.extend(groups.iter().map(|group| AccountMeta::new(*group, false)));
+
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::UpdateFeedSubscription(args),
+        accounts,
         payer,
     )
 }

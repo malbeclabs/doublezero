@@ -118,7 +118,7 @@ func (p *ProvisionRequest) Equal(other *ProvisionRequest) bool {
 	if !p.MulticastRpAddress.Equal(other.MulticastRpAddress) {
 		return false
 	}
-	return ipNetSlicesEqual(p.DoubleZeroPrefixes, other.DoubleZeroPrefixes)
+	return prefixesEqual(p, other)
 }
 
 // Diff returns a human-readable summary of fields that differ between two
@@ -200,6 +200,19 @@ func (p *ProvisionRequest) InfraEqual(other *ProvisionRequest) bool {
 	}
 	if !p.MulticastRpAddress.Equal(other.MulticastRpAddress) {
 		return false
+	}
+	return prefixesEqual(p, other)
+}
+
+// prefixesEqual compares DoubleZeroPrefixes only for the user type that
+// consumes them. EdgeFiltering turns them into IP rules; IBRL and multicast
+// ignore the field entirely. The list is the union of every device's
+// dz_prefixes fleet-wide, so comparing it for every user type made any device
+// add/remove look like an infra change and tore down every user's tunnel —
+// dropping kernel multicast memberships along with it (malbeclabs/infra#2117).
+func prefixesEqual(p, other *ProvisionRequest) bool {
+	if p.UserType != UserTypeEdgeFiltering {
+		return true
 	}
 	return ipNetSlicesEqual(p.DoubleZeroPrefixes, other.DoubleZeroPrefixes)
 }

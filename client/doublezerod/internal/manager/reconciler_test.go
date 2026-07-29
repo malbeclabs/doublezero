@@ -47,12 +47,16 @@ func (m *mockFetcher) Calls() int {
 }
 
 type mockNetlink struct {
-	routes []*routing.Route
+	routes        []*routing.Route
+	tunnelDeletes int
 }
 
-func (m *mockNetlink) TunnelAdd(*routing.Tunnel) error                  { return nil }
-func (m *mockNetlink) TunnelDown(*routing.Tunnel) error                 { return nil }
-func (m *mockNetlink) TunnelDelete(*routing.Tunnel) error               { return nil }
+func (m *mockNetlink) TunnelAdd(*routing.Tunnel) error  { return nil }
+func (m *mockNetlink) TunnelDown(*routing.Tunnel) error { return nil }
+func (m *mockNetlink) TunnelDelete(*routing.Tunnel) error {
+	m.tunnelDeletes++
+	return nil
+}
 func (m *mockNetlink) TunnelAddrAdd(*routing.Tunnel, string, int) error { return nil }
 func (m *mockNetlink) TunnelUp(*routing.Tunnel) error                   { return nil }
 func (m *mockNetlink) RouteAdd(*routing.Route) error                    { return nil }
@@ -2004,6 +2008,156 @@ func TestReconcile_IncrementalUpdateFallbackToReprovision(t *testing.T) {
 	pr := n.MulticastService.ProvisionRequest()
 	if len(pr.MulticastPubGroups) != 1 {
 		t.Fatalf("expected 1 pub group after reprovision, got %d", len(pr.MulticastPubGroups))
+	}
+}
+
+// TestReconcile_DzPrefixChangeDoesNotReprovision covers malbeclabs/infra#2117.
+// DoubleZeroPrefixes is the fleet-wide union of every device's dz_prefixes, so
+// a single device being added or removed must not tear down the tunnel of a
+// user that never reads the field — a teardown drops the kernel multicast
+// memberships of consumers that join only at startup. EdgeFiltering does read
+// it (it becomes IP rules) and must still be reprovisioned.
+func TestReconcile_DzPrefixChangeDoesNotReprovision(t *testing.T) {
+	tests := []struct {
+		name            string
+		userType        serviceability.UserUserType
+		multicast       bool
+		wantReprovision bool
+	}{
+		{name: "multicast", userType: serviceability.UserTypeMulticast, multicast: true},
+		{name: "ibrl", userType: serviceability.UserTypeIBRL},
+		{name: "edge filtering", userType: serviceability.UserTypeEdgeFiltering, wantReprovision: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			devicePK := [32]byte{1}
+			newDevicePK := [32]byte{2}
+			mcastGroupPK := [32]byte{3}
+			clientIP := net.IPv4(1, 2, 3, 4).To4()
+
+			user := testUser([4]uint8{1, 2, 3, 4}, devicePK, tt.userType, serviceability.UserStatusActivated)
+			var mcastGroups []serviceability.MulticastGroup
+			if tt.multicast {
+				// The multicast service requires at least one group to set up.
+				user.Publishers = [][32]uint8{mcastGroupPK}
+				mcastGroups = []serviceability.MulticastGroup{{PubKey: mcastGroupPK, MulticastIp: [4]uint8{239, 0, 0, 1}}}
+			}
+
+			fetcher := &mockFetcher{
+				data: &serviceability.ProgramData{
+					GlobalConfig:    testGlobalConfig(),
+					Devices:         []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
+					Users:           []serviceability.User{user},
+					MulticastGroups: mcastGroups,
+				},
+			}
+
+			nl := &mockNetlink{}
+			n := newTestNLMWithNetlink(nl, fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+			n.reconcile(context.Background())
+
+			service := func() Provisioner {
+				if tt.multicast {
+					return n.MulticastService
+				}
+				return n.UnicastService
+			}
+			origService := service()
+			if origService == nil {
+				t.Fatal("expected service to be provisioned")
+			}
+
+			// A new device joins the fleet carrying its own dz prefix. Nothing
+			// about this user's own device or tunnel changed.
+			fetcher.mu.Lock()
+			fetcher.data.Devices = append(fetcher.data.Devices,
+				testDevice(newDevicePK, [4]uint8{5, 6, 7, 9}, [][5]uint8{{10, 1, 0, 0, 24}}))
+			fetcher.mu.Unlock()
+
+			n.reconcile(context.Background())
+
+			if service() == nil {
+				t.Fatal("expected service to still be provisioned")
+			}
+
+			if tt.wantReprovision {
+				if service() == origService {
+					t.Fatal("expected EdgeFiltering service to be re-created so its IP rules track the new prefix")
+				}
+				if nl.tunnelDeletes != 1 {
+					t.Fatalf("expected 1 tunnel delete for EdgeFiltering reprovision, got %d", nl.tunnelDeletes)
+				}
+				pr := service().ProvisionRequest()
+				if len(pr.DoubleZeroPrefixes) != 2 {
+					t.Fatalf("expected 2 prefixes after reprovision, got %d", len(pr.DoubleZeroPrefixes))
+				}
+				return
+			}
+
+			if service() != origService {
+				t.Fatal("expected service to be preserved when only the fleet-wide prefix set changed")
+			}
+			if nl.tunnelDeletes != 0 {
+				t.Fatalf("expected no tunnel teardown, got %d tunnel deletes", nl.tunnelDeletes)
+			}
+		})
+	}
+}
+
+// TestReconcile_IncrementalUpdateWithConcurrentDzPrefixChange is the realistic
+// shape of malbeclabs/infra#2117: a device add lands in the same reconcile as a
+// group change. The group update must still be applied incrementally rather
+// than escalating to a full reprovision.
+func TestReconcile_IncrementalUpdateWithConcurrentDzPrefixChange(t *testing.T) {
+	devicePK := [32]byte{1}
+	newDevicePK := [32]byte{2}
+	mcastGroupPK1 := [32]byte{3}
+	mcastGroupPK2 := [32]byte{4}
+	clientIP := net.IPv4(1, 2, 3, 4).To4()
+
+	user := testUser([4]uint8{1, 2, 3, 4}, devicePK, serviceability.UserTypeMulticast, serviceability.UserStatusActivated)
+	user.Publishers = [][32]uint8{mcastGroupPK1}
+
+	fetcher := &mockFetcher{
+		data: &serviceability.ProgramData{
+			GlobalConfig: testGlobalConfig(),
+			Devices:      []serviceability.Device{testDevice(devicePK, [4]uint8{5, 6, 7, 8}, [][5]uint8{{10, 0, 0, 0, 24}})},
+			Users:        []serviceability.User{user},
+			MulticastGroups: []serviceability.MulticastGroup{
+				{PubKey: mcastGroupPK1, MulticastIp: [4]uint8{239, 0, 0, 1}},
+				{PubKey: mcastGroupPK2, MulticastIp: [4]uint8{239, 0, 0, 2}},
+			},
+		},
+	}
+
+	nl := &mockNetlink{}
+	n := newTestNLMWithNetlink(nl, fetcher, WithClientIP(clientIP), WithPollInterval(time.Second))
+	n.reconcile(context.Background())
+
+	if n.MulticastService == nil {
+		t.Fatal("expected multicast service to be provisioned")
+	}
+	origService := n.MulticastService
+
+	user.Publishers = [][32]uint8{mcastGroupPK1, mcastGroupPK2}
+	fetcher.mu.Lock()
+	fetcher.data.Users = []serviceability.User{user}
+	fetcher.data.Devices = append(fetcher.data.Devices,
+		testDevice(newDevicePK, [4]uint8{5, 6, 7, 9}, [][5]uint8{{10, 1, 0, 0, 24}}))
+	fetcher.mu.Unlock()
+
+	n.reconcile(context.Background())
+
+	if n.MulticastService != origService {
+		t.Fatal("expected service pointer to be preserved during incremental update")
+	}
+	if nl.tunnelDeletes != 0 {
+		t.Fatalf("expected no tunnel teardown, got %d tunnel deletes", nl.tunnelDeletes)
+	}
+	pr := n.MulticastService.ProvisionRequest()
+	if len(pr.MulticastPubGroups) != 2 {
+		t.Fatalf("expected 2 pub groups after incremental update, got %d", len(pr.MulticastPubGroups))
 	}
 }
 

@@ -201,16 +201,10 @@ pub fn update_multicast_group_roles(
 
 /// `UpdateFeedSubscription` (variant 117) — join or leave every multicast group carried by the
 /// given feeds on an EdgeSeat access pass, atomically.
-///
 /// Accounts: `[accesspass, user, globalstate, device, feed_0..feed_{F-1}, group_0..group_{G-1}]`.
 ///
-/// `feeds` and `groups` are variable-length and the processor splits them using `feed_count`, which
-/// this builder derives from `feeds.len()` rather than trusting a caller-supplied value: a count
-/// that disagreed with the account list would silently reinterpret feeds as groups.
-///
-/// The caller is responsible for passing every group it wants joined; the processor rejects any
-/// group not carried by one of `feeds`. Account count is bounded by the transaction size limit
-/// (~34 total), so very large feed sets must be split across transactions.
+/// The processor rejects any group not carried by one of `feeds`.
+#[allow(clippy::too_many_arguments)]
 pub fn update_feed_subscription(
     program_id: &Pubkey,
     payer: &Pubkey,

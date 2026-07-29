@@ -50,8 +50,7 @@ impl fmt::Debug for UpdateMulticastGroupRolesArgs {
 pub struct SubscribeUserResult {
     pub mgroup: MulticastGroup,
     /// True if the publisher list transitioned between empty and non-empty
-    /// (gained first publisher or lost last publisher). Callers that need to
-    /// trigger downstream reprocessing should check this flag.
+    /// (gained first publisher or lost last publisher).
     pub publisher_list_transitioned: bool,
 }
 
@@ -174,8 +173,7 @@ pub fn process_update_multicastgroup_roles(
 
     // Trailing layout: [payer, system, permission?]. The SDK appends the payer's Permission PDA last
     // (via execute_authorized_transaction), and split_trailing_permission identifies it by PDA match
-    // rather than by position. Nothing precedes payer/system: EdgeSeat feed joins moved to
-    // UpdateFeedSubscription, which takes the device and feeds it needs as its own accounts.
+    // rather than by position.
     let remaining: Vec<&AccountInfo> = accounts_iter.collect();
     let (payer_account, system_program, _leading, permission_account) =
         split_trailing_permission(program_id, &remaining)?;
@@ -234,8 +232,7 @@ pub fn process_update_multicastgroup_roles(
     // must be a foundation member, or — for removal-only cleanup (no roles being
     // granted) — hold USER_ADMIN. The USER_ADMIN path lets an operator strip a
     // user's multicast roles as a prerequisite to deleting/request-banning that
-    // user (see DeleteUserCommand / RequestBanUserCommand, which authorize the
-    // final instruction with the same USER_ADMIN flag).
+    // user.
     if accesspass.user_payer != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
@@ -285,10 +282,6 @@ pub fn process_update_multicastgroup_roles(
     }
 
     // Every pass type is authorized the same way here: the group must be on the pass's allowlist.
-    // EdgeSeat passes are no exception. Groups they hold by *purchase* are joined through
-    // UpdateFeedSubscription, which gates on the feeds provisioned on the pass and charges a seat;
-    // this instruction is the comped path, where a foundation member has explicitly granted an
-    // individual group and no seat is consumed.
     check_mgroup_allowlists(
         &accesspass,
         mgroup_account.key,

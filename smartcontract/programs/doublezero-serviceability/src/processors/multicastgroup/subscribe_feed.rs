@@ -1,15 +1,6 @@
 //! `UpdateFeedSubscription` (variant 117) — join or leave every multicast group carried by one or
 //! more feeds on an EdgeSeat access pass, in a single atomic transaction.
 //!
-//! A feed is the SKU an EdgeSeat pass holder buys: one metro, one group set, one seat cap. This
-//! instruction is the only path that charges those seats, which is what keeps the accounting honest:
-//! [`super::subscribe`] handles allowlist-granted (comped) groups and never touches a seat.
-//!
-//! Seats are held per *feed*, not per group. Three groups inside one feed cost one seat, and a
-//! second feed on the same pass costs a second. The reconciliation below derives seat state from the
-//! user's final group membership rather than ticking incrementally, so adds, partial removals and
-//! full removals all fall out of the same comparison.
-//!
 //! A feed is receive-only, so there is no publisher flag. Any publisher role the user already holds
 //! on a group is carried through untouched — stripping it here would deallocate the user's `dz_ip`
 //! as a side effect of a subscribe.
@@ -73,9 +64,7 @@ pub fn process_update_feed_subscription(
     //   [accesspass, user, globalstate, device,
     //    feed_0..feed_{F-1}, group_0..group_{G-1},
     //    payer, system, permission?]
-    // F is `feed_count`; G is whatever remains of the variable section. The device is fixed rather
-    // than optional because every path through this instruction needs it: the metro check compares
-    // each feed against the device's exchange.
+    // F is `feed_count`; G is whatever remains of the variable section.
     let accesspass_account = next_account_info(accounts_iter)?;
     let user_account = next_account_info(accounts_iter)?;
     let gs_account = next_account_info(accounts_iter)?;
@@ -167,10 +156,6 @@ pub fn process_update_feed_subscription(
         return Err(DoubleZeroError::EdgeSeatRequired.into());
     }
 
-    // Authorization mirrors UpdateMulticastGroupRoles: the pass's own user_payer, a foundation
-    // member, or a permission holder. Joining consumes the pass's paid capacity, so it is an
-    // ACCESS_PASS_ADMIN operation; leaving is cleanup a USER_ADMIN may perform as a prerequisite to
-    // deleting the user.
     if accesspass.user_payer != *payer_account.key
         && !globalstate.foundation_allowlist.contains(payer_account.key)
     {
@@ -203,8 +188,7 @@ pub fn process_update_feed_subscription(
 
     // Validate every feed up front, and collect their group sets for the membership check below.
     // check_feed_metro_coverage enforces that the feed is provisioned on this pass and serves the
-    // device's metro; passing None for the group defers the per-group check to the loop after it,
-    // since a group need only be carried by *one* of the passed feeds.
+    // device's metro.
     let mut feeds: Vec<(Pubkey, Feed)> = Vec::with_capacity(feed_accounts.len());
     for feed_account in feed_accounts {
         check_feed_metro_coverage(

@@ -160,7 +160,11 @@ fn apply_role_update_batches<L: LedgerClient, W: Write>(
             }
             Err(e) => {
                 let codes: Vec<&str> = batch.groups.iter().map(|(c, _)| c.as_str()).collect();
-                writeln!(out, "    ❌ failed to {fail_verb} {}: {e}", codes.join(", "))?;
+                writeln!(
+                    out,
+                    "    ❌ failed to {fail_verb} {}: {e}",
+                    codes.join(", ")
+                )?;
                 failures.extend(batch.groups.iter().map(|(c, _)| c.clone()));
             }
         }
@@ -1039,7 +1043,10 @@ mod tests {
             "got: {rendered}"
         );
         let msg = err.to_string();
-        assert!(msg.contains("subscribe failed for 2 group(s)"), "got: {msg}");
+        assert!(
+            msg.contains("subscribe failed for 2 group(s)"),
+            "got: {msg}"
+        );
         assert!(msg.contains("g1") && msg.contains("g2"), "got: {msg}");
     }
 

@@ -13,10 +13,13 @@ use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
     commands::{
-        multicastgroup::subscribe::UpdateMulticastGroupRolesCommand,
+        multicastgroup::{
+            subscribe::UpdateMulticastGroupRolesCommand, subscribe_feed::SubscribeFeedCommand,
+            unsubscribe_feed::UnsubscribeFeedCommand,
+        },
         user::{create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand},
     },
-    Device, User, UserCYOA, UserStatus, UserType,
+    Device, Feed, User, UserCYOA, UserStatus, UserType,
 };
 use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
@@ -64,6 +67,22 @@ pub enum DzMode {
         /// Multicast groups to subscribe to
         #[arg(long = "subscribe", num_args = 1..)]
         sub_groups: Vec<String>,
+
+        /// Feeds to join on an EdgeSeat access pass (codes or pubkeys)
+        #[arg(
+            long = "subscribe-feed",
+            num_args = 1..,
+            conflicts_with_all = ["mode", "multicast_groups", "pub_groups", "sub_groups"]
+        )]
+        sub_feeds: Vec<String>,
+
+        /// Feeds to leave on an EdgeSeat access pass (codes or pubkeys)
+        #[arg(
+            long = "unsubscribe-feed",
+            num_args = 1..,
+            conflicts_with_all = ["mode", "multicast_groups", "pub_groups", "sub_groups"]
+        )]
+        unsub_feeds: Vec<String>,
     },
 }
 
@@ -91,6 +110,10 @@ enum ParsedDzMode {
     Multicast {
         pub_groups: Vec<String>,
         sub_groups: Vec<String>,
+    },
+    MulticastFeeds {
+        sub_feeds: Vec<String>,
+        unsub_feeds: Vec<String>,
     },
 }
 
@@ -148,7 +171,10 @@ impl Connect {
 
         let parsed_mode = self.parse_dz_mode()?;
         // Multicast users are not subject to epoch expiry — only verify the AccessPass exists.
-        let enforce_epoch = !matches!(parsed_mode, ParsedDzMode::Multicast { .. });
+        let enforce_epoch = !matches!(
+            parsed_mode,
+            ParsedDzMode::Multicast { .. } | ParsedDzMode::MulticastFeeds { .. }
+        );
 
         if !check_accesspass(ledger, client_ip, enforce_epoch)? {
             writeln!(
@@ -180,6 +206,21 @@ impl Connect {
                     daemon,
                     &pub_groups,
                     &sub_groups,
+                    client_ip,
+                    &spinner,
+                    out,
+                )
+                .await?
+            }
+            ParsedDzMode::MulticastFeeds {
+                sub_feeds,
+                unsub_feeds,
+            } => {
+                self.execute_multicast_feeds(
+                    ledger,
+                    daemon,
+                    &sub_feeds,
+                    &unsub_feeds,
                     client_ip,
                     &spinner,
                     out,
@@ -350,6 +391,222 @@ impl Connect {
         }
     }
 
+    /// `--subscribe-feed` / `--unsubscribe-feed`: join or leave whole feeds on an EdgeSeat pass.
+    ///
+    /// When both flags are given, the leave runs first so a swap at the per-user feed cap frees
+    /// its slot before the join needs it.
+    #[allow(clippy::too_many_arguments)]
+    async fn execute_multicast_feeds<D: DaemonClient, L: LedgerClient, W: Write>(
+        &self,
+        ledger: &L,
+        daemon: &D,
+        sub_feeds: &[String],
+        unsub_feeds: &[String],
+        client_ip: Ipv4Addr,
+        spinner: &ProgressBar,
+        out: &mut W,
+    ) -> eyre::Result<bool> {
+        let feeds = ledger.list_feed()?;
+        let users = ledger.list_user()?;
+        let mcast_user = users
+            .iter()
+            .find(|(_, u)| u.client_ip == client_ip && u.user_type == UserType::Multicast)
+            .map(|(pk, u)| (*pk, u.clone()));
+
+        let unsub_result = if unsub_feeds.is_empty() {
+            None
+        } else {
+            let result = self.unsubscribe_feeds(
+                ledger,
+                mcast_user.as_ref(),
+                &feeds,
+                unsub_feeds,
+                client_ip,
+                spinner,
+            );
+            if result.is_ok() {
+                writeln!(out, "    Left feed(s): {}", unsub_feeds.join(", "))?;
+            }
+            Some(result)
+        };
+
+        let sub_result = if sub_feeds.is_empty() {
+            None
+        } else {
+            let result = self
+                .subscribe_feeds(
+                    ledger,
+                    daemon,
+                    mcast_user.as_ref(),
+                    &feeds,
+                    sub_feeds,
+                    client_ip,
+                    spinner,
+                    out,
+                )
+                .await;
+            if result.is_ok() {
+                writeln!(out, "    Joined feed(s): {}", sub_feeds.join(", "))?;
+            }
+            Some(result)
+        };
+
+        match (unsub_result, sub_result) {
+            (Some(Err(unsub_err)), Some(Ok(()))) => {
+                writeln!(out, "❌  --unsubscribe-feed failed: {unsub_err:#}")?;
+                writeln!(
+                    out,
+                    "    --subscribe-feed succeeded. Rerun with only --unsubscribe-feed {} to finish.",
+                    unsub_feeds.join(" ")
+                )?;
+                return Err(unsub_err);
+            }
+            (Some(Ok(())), Some(Err(sub_err))) => {
+                writeln!(out, "❌  --subscribe-feed failed: {sub_err:#}")?;
+                writeln!(
+                    out,
+                    "    --unsubscribe-feed succeeded. Rerun with only --subscribe-feed {} to finish.",
+                    sub_feeds.join(" ")
+                )?;
+                return Err(sub_err);
+            }
+            (Some(Err(unsub_err)), Some(Err(sub_err))) => {
+                writeln!(out, "❌  --unsubscribe-feed failed: {unsub_err:#}")?;
+                writeln!(out, "❌  --subscribe-feed failed: {sub_err:#}")?;
+                eyre::bail!("both halves failed; rerun the command");
+            }
+            (Some(Err(err)), None) | (None, Some(Err(err))) => return Err(err),
+            _ => {}
+        }
+
+        if sub_feeds.is_empty() {
+            // A pure leave changes routes only; the daemon reconciler picks that up on its own.
+            Ok(false)
+        } else {
+            self.user_activated(daemon, UserType::Multicast, spinner, out)
+                .await?;
+            Ok(true)
+        }
+    }
+
+    /// Reuse the existing Multicast user, or create a bare one then send one SubscribeFeed.
+    #[allow(clippy::too_many_arguments)]
+    async fn subscribe_feeds<D: DaemonClient, L: LedgerClient, W: Write>(
+        &self,
+        ledger: &L,
+        daemon: &D,
+        mcast_user: Option<&(Pubkey, User)>,
+        feeds: &HashMap<Pubkey, Feed>,
+        names: &[String],
+        client_ip: Ipv4Addr,
+        spinner: &ProgressBar,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        let (user_pk, device) = match mcast_user {
+            Some((pk, user)) => {
+                let device = ledger
+                    .get_device(user.device_pk.to_string())
+                    .map_err(|_| eyre::eyre!("Unable to get device"))?;
+                writeln!(out, "    An account already exists with Pubkey: {pk}")?;
+                (*pk, device)
+            }
+            None => {
+                let users = ledger.list_user()?;
+                let mut devices = ledger.list_device()?;
+                if self.device.is_none() {
+                    devices.retain(|_, d| {
+                        d.is_device_eligible_for_provisioning()
+                            && d.check_user_type_capacity(UserType::Multicast, false)
+                                .is_none()
+                    });
+                }
+                let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, &client_ip, &devices);
+
+                let (device_pk, device, tunnel_endpoint) = self
+                    .find_or_create_device(ledger, daemon, &devices, spinner, &exclude_ips)
+                    .await?;
+
+                writeln!(out, "    Creating account for IP: {client_ip}")?;
+                writeln!(out, "    Device selected: {}", device.code)?;
+                spinner.inc(1);
+
+                if let Some(err_msg) = device.check_user_type_capacity(UserType::Multicast, false) {
+                    return Err(eyre::eyre!(err_msg));
+                }
+
+                let user_pk = ledger.create_user(CreateUserCommand {
+                    user_type: UserType::Multicast,
+                    device_pk,
+                    cyoa_type: UserCYOA::GREOverDIA,
+                    client_ip,
+                    tunnel_endpoint,
+                    tenant_pk: None,
+                })?;
+                spinner.set_message("Multicast user created");
+                (user_pk, device)
+            }
+        };
+
+        let feed_pks = resolve_feeds_for_metro(names, feeds, &device)?;
+
+        self.poll_for_user_activated(ledger, &user_pk, spinner)?;
+        spinner.set_message("Joining feed(s)...");
+        ledger.subscribe_feed(SubscribeFeedCommand {
+            user_pk,
+            client_ip,
+            feed_pks,
+        })?;
+        Ok(())
+    }
+
+    /// Leave feeds the existing Multicast user holds with one UnsubscribeFeed.
+    fn unsubscribe_feeds<L: LedgerClient>(
+        &self,
+        ledger: &L,
+        mcast_user: Option<&(Pubkey, User)>,
+        feeds: &HashMap<Pubkey, Feed>,
+        names: &[String],
+        client_ip: Ipv4Addr,
+        spinner: &ProgressBar,
+    ) -> eyre::Result<()> {
+        let Some((user_pk, user)) = mcast_user else {
+            eyre::bail!("no Multicast user exists for IP {client_ip}; nothing to leave");
+        };
+
+        let mut feed_pks: Vec<Pubkey> = Vec::with_capacity(names.len());
+        for name in names {
+            let pk = match name.parse::<Pubkey>() {
+                Ok(pk) => pk,
+                Err(_) => {
+                    let held = feeds.iter().find(|(pk, f)| {
+                        user.feed_pks.contains(pk) && f.code.eq_ignore_ascii_case(name)
+                    });
+                    match held {
+                        Some((pk, _)) => *pk,
+                        None => {
+                            if feeds.values().any(|f| f.code.eq_ignore_ascii_case(name)) {
+                                eyre::bail!("you do not hold feed {name}");
+                            }
+                            eyre::bail!("feed {name} not found");
+                        }
+                    }
+                }
+            };
+            if feed_pks.contains(&pk) {
+                eyre::bail!("duplicate feed: {name}");
+            }
+            feed_pks.push(pk);
+        }
+
+        spinner.set_message("Leaving feed(s)...");
+        ledger.unsubscribe_feed(UnsubscribeFeedCommand {
+            user_pk: *user_pk,
+            client_ip,
+            feed_pks,
+        })?;
+        Ok(())
+    }
+
     fn parse_dz_mode(&self) -> eyre::Result<ParsedDzMode> {
         match &self.dz_mode {
             DzMode::IBRL {
@@ -370,9 +627,29 @@ impl Connect {
                 multicast_groups,
                 pub_groups,
                 sub_groups,
+                sub_feeds,
+                unsub_feeds,
             } => {
                 let has_legacy = mode.is_some() || !multicast_groups.is_empty();
                 let has_new = !pub_groups.is_empty() || !sub_groups.is_empty();
+                let has_feeds = !sub_feeds.is_empty() || !unsub_feeds.is_empty();
+
+                // clap's conflicts_with_all rejects these mixes at parse time; this covers a
+                // programmatically built command.
+                if has_feeds && (has_legacy || has_new) {
+                    eyre::bail!("Cannot mix --subscribe-feed/--unsubscribe-feed with --publish/--subscribe or positional group arguments");
+                }
+                if has_feeds {
+                    if let Some(feed) = sub_feeds.iter().find(|f| unsub_feeds.contains(f)) {
+                        eyre::bail!(
+                            "feed {feed} is in both --subscribe-feed and --unsubscribe-feed"
+                        );
+                    }
+                    return Ok(ParsedDzMode::MulticastFeeds {
+                        sub_feeds: sub_feeds.clone(),
+                        unsub_feeds: unsub_feeds.clone(),
+                    });
+                }
 
                 if has_legacy && has_new {
                     eyre::bail!("Cannot mix legacy positional args (mode + groups) with --publish/--subscribe flags");
@@ -1036,6 +1313,44 @@ fn exclude_ips(
         .collect()
 }
 
+/// Resolve `--subscribe-feed` values. A pubkey passes through (the SDK command validates it); a
+/// code must name a feed in the device's metro, and a code that only exists in another metro gets
+/// an error naming the device rather than being silently dropped.
+fn resolve_feeds_for_metro(
+    names: &[String],
+    feeds: &HashMap<Pubkey, Feed>,
+    device: &Device,
+) -> eyre::Result<Vec<Pubkey>> {
+    let mut resolved: Vec<Pubkey> = Vec::with_capacity(names.len());
+    for name in names {
+        let pk = match name.parse::<Pubkey>() {
+            Ok(pk) => pk,
+            Err(_) => {
+                let in_metro = feeds.iter().find(|(_, f)| {
+                    f.exchange == device.exchange_pk && f.code.eq_ignore_ascii_case(name)
+                });
+                match in_metro {
+                    Some((pk, _)) => *pk,
+                    None => {
+                        if feeds.values().any(|f| f.code.eq_ignore_ascii_case(name)) {
+                            eyre::bail!(
+                                "feed {name} does not serve the metro of device {}; pass --device to pick a device in the feed's metro",
+                                device.code
+                            );
+                        }
+                        eyre::bail!("feed {name} not found");
+                    }
+                }
+            }
+        };
+        if resolved.contains(&pk) {
+            eyre::bail!("duplicate feed: {name}");
+        }
+        resolved.push(pk);
+    }
+    Ok(resolved)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1087,6 +1402,7 @@ mod tests {
         pub users: Arc<Mutex<HashMap<Pubkey, User>>>,
         pub latencies: Arc<Mutex<Vec<LatencyRecord>>>,
         pub mcast_groups: Arc<Mutex<HashMap<Pubkey, MulticastGroup>>>,
+        pub feeds: Arc<Mutex<HashMap<Pubkey, Feed>>>,
         pub tenants: Arc<Mutex<HashMap<Pubkey, Tenant>>>,
         pub default_tenant_pk: Pubkey,
         pub accesspass: Arc<Mutex<AccessPass>>,
@@ -1179,6 +1495,7 @@ mod tests {
                 users: Arc::new(Mutex::new(HashMap::new())),
                 latencies: Arc::new(Mutex::new(vec![])),
                 mcast_groups: Arc::new(Mutex::new(HashMap::new())),
+                feeds: Arc::new(Mutex::new(HashMap::new())),
                 tenants: Arc::new(Mutex::new(tenants)),
                 default_tenant_pk,
                 accesspass,
@@ -1269,6 +1586,12 @@ mod tests {
                 .ledger
                 .expect_list_multicastgroup()
                 .returning_st(move || Ok(mcast_groups.lock().unwrap().clone()));
+
+            let feeds = fixture.feeds.clone();
+            fixture
+                .ledger
+                .expect_list_feed()
+                .returning_st(move || Ok(feeds.lock().unwrap().clone()));
 
             let users = fixture.users.clone();
             fixture
@@ -1607,6 +1930,89 @@ mod tests {
                     Ok(())
                 });
         }
+
+        pub fn add_feed(&mut self, code: &str, exchange: Pubkey, groups: Vec<Pubkey>) -> Pubkey {
+            let pk = Pubkey::new_unique();
+            let feed = Feed {
+                account_type: AccountType::Feed,
+                owner: Pubkey::new_unique(),
+                bump_seed: 1,
+                code: code.to_string(),
+                name: code.to_string(),
+                exchange,
+                groups,
+            };
+            self.feeds.lock().unwrap().insert(pk, feed);
+            pk
+        }
+
+        pub fn expect_subscribe_feed(
+            &mut self,
+            user_pk: Pubkey,
+            client_ip: Ipv4Addr,
+            feed_pks: Vec<Pubkey>,
+        ) {
+            let expected_command = SubscribeFeedCommand {
+                user_pk,
+                client_ip,
+                feed_pks,
+            };
+
+            let users = self.users.clone();
+            let feeds = self.feeds.clone();
+            let provisioned = self.provisioned_services.clone();
+            self.ledger
+                .expect_subscribe_feed()
+                .times(1)
+                .with(predicate::eq(expected_command))
+                .returning_st(move |cmd| {
+                    let mut users = users.lock().unwrap();
+                    let feeds = feeds.lock().unwrap();
+                    if let Some(user) = users.get_mut(&cmd.user_pk) {
+                        for feed_pk in &cmd.feed_pks {
+                            user.feed_pks.push(*feed_pk);
+                            if let Some(feed) = feeds.get(feed_pk) {
+                                for group in &feed.groups {
+                                    if !user.subscribers.contains(group) {
+                                        user.subscribers.push(*group);
+                                    }
+                                }
+                            }
+                        }
+                        provisioned
+                            .lock()
+                            .unwrap()
+                            .insert(user.user_type.to_string());
+                    }
+                    Ok(())
+                });
+        }
+
+        pub fn expect_unsubscribe_feed(
+            &mut self,
+            user_pk: Pubkey,
+            client_ip: Ipv4Addr,
+            feed_pks: Vec<Pubkey>,
+        ) {
+            let expected_command = UnsubscribeFeedCommand {
+                user_pk,
+                client_ip,
+                feed_pks,
+            };
+
+            let users = self.users.clone();
+            self.ledger
+                .expect_unsubscribe_feed()
+                .times(1)
+                .with(predicate::eq(expected_command))
+                .returning_st(move |cmd| {
+                    let mut users = users.lock().unwrap();
+                    if let Some(user) = users.get_mut(&cmd.user_pk) {
+                        user.feed_pks.retain(|pk| !cmd.feed_pks.contains(pk));
+                    }
+                    Ok(())
+                });
+        }
     }
 
     /// Run `connect` against the fixture's mocks with a captured writer,
@@ -1672,6 +2078,8 @@ mod tests {
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
@@ -1731,6 +2139,8 @@ mod tests {
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
@@ -1893,6 +2303,8 @@ mod tests {
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
@@ -1943,6 +2355,8 @@ mod tests {
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: None,
                 device: None,
@@ -1978,6 +2392,8 @@ mod tests {
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: None,
                 device: None,
@@ -2025,6 +2441,8 @@ mod tests {
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: None,
                 device: None,
@@ -2050,6 +2468,8 @@ mod tests {
                 multicast_groups: vec![],
                 pub_groups: vec![],
                 sub_groups: vec![],
+                sub_feeds: vec![],
+                unsub_feeds: vec![],
             },
             client_ip: None,
             device: None,
@@ -2064,7 +2484,7 @@ mod tests {
                 assert!(pub_groups.is_empty());
                 assert!(sub_groups.is_empty());
             }
-            ParsedDzMode::Ibrl(..) => panic!("expected ParsedDzMode::Multicast, got Ibrl"),
+            _ => panic!("expected ParsedDzMode::Multicast"),
         }
     }
 
@@ -2096,6 +2516,8 @@ mod tests {
                     multicast_groups: vec![],
                     pub_groups: vec!["test-group".to_string()],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
@@ -2136,6 +2558,8 @@ mod tests {
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec!["test-group".to_string()],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
@@ -2185,6 +2609,8 @@ mod tests {
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec!["test-group".to_string()],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(ibrl_user.client_ip.to_string()),
                 device: None,
@@ -2236,6 +2662,8 @@ mod tests {
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec!["test-group2".to_string()],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
@@ -2322,6 +2750,8 @@ mod tests {
                 multicast_groups: vec!["test-group2".to_string()],
                 pub_groups: vec![],
                 sub_groups: vec![],
+                sub_feeds: vec![],
+                unsub_feeds: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -2348,6 +2778,8 @@ mod tests {
                     multicast_groups: vec!["test-group".to_string(), "test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
@@ -2395,6 +2827,8 @@ mod tests {
                     multicast_groups: vec!["test-group2".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
@@ -2438,6 +2872,8 @@ mod tests {
                     multicast_groups: vec!["test-group2".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
@@ -2484,6 +2920,8 @@ mod tests {
                 multicast_groups: vec!["test-group".to_string()],
                 pub_groups: vec![],
                 sub_groups: vec![],
+                sub_feeds: vec![],
+                unsub_feeds: vec![],
             },
             client_ip: Some(user.client_ip.to_string()),
             device: None,
@@ -2534,6 +2972,8 @@ mod tests {
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
@@ -2595,6 +3035,8 @@ mod tests {
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
@@ -2782,6 +3224,8 @@ mod tests {
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(user.client_ip.to_string()),
                 device: None, // auto-select
@@ -2827,6 +3271,8 @@ mod tests {
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
@@ -2861,6 +3307,8 @@ mod tests {
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some("1.2.3.4".to_string()),
                 device: None,
@@ -2894,6 +3342,8 @@ mod tests {
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some("1.2.3.4".to_string()),
                 device: None,
@@ -3028,6 +3478,8 @@ mod tests {
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
                 },
                 client_ip: Some(ibrl_user.client_ip.to_string()),
                 device: None,
@@ -3134,6 +3586,242 @@ mod tests {
                 result.err()
             );
             assert!(output.contains("failed to enable reconciler"));
+        });
+    }
+
+    /// `--subscribe-feed` on a fresh IP creates a bare Multicast user (no group, no tenant), then
+    /// joins the feed with one SubscribeFeed covering it.
+    #[test]
+    fn test_connect_command_subscribe_feed_creates_bare_user() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let (g0, g1) = (Pubkey::new_unique(), Pubkey::new_unique());
+            let feed_pk = fixture.add_feed("shreds", device.exchange_pk, vec![g0, g1]);
+
+            let user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            let user_pk = Pubkey::new_unique();
+            fixture.expect_create_user_with_tenant(user_pk, &user, None);
+            fixture.expect_subscribe_feed(user_pk, "1.2.3.4".parse().unwrap(), vec![feed_pk]);
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec![],
+                    sub_groups: vec![],
+                    sub_feeds: vec!["shreds".to_string()],
+                    unsub_feeds: vec![],
+                },
+                client_ip: None,
+                device: None,
+                verbose: false,
+            };
+
+            let (result, output) = run(&fixture, command).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
+            assert!(output.contains("Joined feed(s): shreds"), "{output}");
+        });
+    }
+
+    /// `--subscribe-feed` with an existing activated Multicast user skips creation and goes
+    /// straight to the subscription. No create expectation is set, so a create call would panic.
+    #[test]
+    fn test_connect_command_subscribe_feed_existing_user_skips_creation() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let g0 = Pubkey::new_unique();
+            let feed_pk = fixture.add_feed("shreds", device.exchange_pk, vec![g0]);
+
+            let user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            let user_pk = fixture.add_user(&user);
+            fixture.expect_subscribe_feed(user_pk, "1.2.3.4".parse().unwrap(), vec![feed_pk]);
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec![],
+                    sub_groups: vec![],
+                    sub_feeds: vec!["shreds".to_string()],
+                    unsub_feeds: vec![],
+                },
+                client_ip: None,
+                device: None,
+                verbose: false,
+            };
+
+            let (result, output) = run(&fixture, command).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
+            assert!(output.contains("An account already exists"), "{output}");
+        });
+    }
+
+    /// `--unsubscribe-feed` leaves a held feed with one UnsubscribeFeed and creates nothing.
+    #[test]
+    fn test_connect_command_unsubscribe_feed() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let g0 = Pubkey::new_unique();
+            let feed_pk = fixture.add_feed("shreds", device.exchange_pk, vec![g0]);
+
+            let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            user.feed_pks = vec![feed_pk];
+            user.subscribers = vec![g0];
+            let user_pk = fixture.add_user(&user);
+            fixture.expect_unsubscribe_feed(user_pk, "1.2.3.4".parse().unwrap(), vec![feed_pk]);
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec![],
+                    sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec!["shreds".to_string()],
+                },
+                client_ip: None,
+                device: None,
+                verbose: false,
+            };
+
+            let (result, output) = run(&fixture, command).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
+            assert!(output.contains("Left feed(s): shreds"), "{output}");
+        });
+    }
+
+    /// A feed whose metro differs from the user's device fails before any transaction: no
+    /// subscribe_feed expectation is set, so a send would panic the mock.
+    #[test]
+    fn test_connect_command_subscribe_feed_wrong_metro_rejected() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, _device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            fixture.add_feed("away", Pubkey::new_unique(), vec![Pubkey::new_unique()]);
+
+            let user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            fixture.add_user(&user);
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec![],
+                    sub_groups: vec![],
+                    sub_feeds: vec!["away".to_string()],
+                    unsub_feeds: vec![],
+                },
+                client_ip: None,
+                device: None,
+                verbose: false,
+            };
+
+            let (result, _) = run(&fixture, command).await;
+            let err = format!("{:?}", result.unwrap_err());
+            assert!(err.contains("does not serve the metro"), "{err}");
+        });
+    }
+
+    /// Feed flags cannot be combined with group flags, even on a programmatically built command
+    /// (clap's conflicts_with_all rejects the same mix at parse time).
+    #[test]
+    fn test_connect_command_feed_flags_conflict_with_group_flags() {
+        block_on(async {
+            let fixture = TestFixture::new();
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec![],
+                    sub_groups: vec!["group".to_string()],
+                    sub_feeds: vec!["feed".to_string()],
+                    unsub_feeds: vec![],
+                },
+                client_ip: None,
+                device: None,
+                verbose: false,
+            };
+
+            let (result, _) = run(&fixture, command).await;
+            let err = format!("{:?}", result.unwrap_err());
+            assert!(err.contains("Cannot mix"), "{err}");
+        });
+    }
+
+    /// The same feed in both flags is rejected up front.
+    #[test]
+    fn test_connect_command_feed_in_both_flags_rejected() {
+        block_on(async {
+            let fixture = TestFixture::new();
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec![],
+                    sub_groups: vec![],
+                    sub_feeds: vec!["shreds".to_string()],
+                    unsub_feeds: vec!["shreds".to_string()],
+                },
+                client_ip: None,
+                device: None,
+                verbose: false,
+            };
+
+            let (result, _) = run(&fixture, command).await;
+            let err = format!("{:?}", result.unwrap_err());
+            assert!(err.contains("is in both"), "{err}");
+        });
+    }
+
+    /// A swap runs the leave first; when the join half then fails, the output names the half that
+    /// failed and says to rerun only that flag.
+    #[test]
+    fn test_connect_command_feed_swap_reports_failed_half() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let g0 = Pubkey::new_unique();
+            let old_pk = fixture.add_feed("old", device.exchange_pk, vec![g0]);
+            fixture.add_feed("new", device.exchange_pk, vec![Pubkey::new_unique()]);
+
+            let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            user.feed_pks = vec![old_pk];
+            user.subscribers = vec![g0];
+            let user_pk = fixture.add_user(&user);
+            fixture.expect_unsubscribe_feed(user_pk, "1.2.3.4".parse().unwrap(), vec![old_pk]);
+            fixture
+                .ledger
+                .expect_subscribe_feed()
+                .times(1)
+                .returning_st(|_| Err(eyre::eyre!("feed seat is full")));
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec![],
+                    sub_groups: vec![],
+                    sub_feeds: vec!["new".to_string()],
+                    unsub_feeds: vec!["old".to_string()],
+                },
+                client_ip: None,
+                device: None,
+                verbose: false,
+            };
+
+            let (result, output) = run(&fixture, command).await;
+            assert!(result.is_err());
+            assert!(output.contains("Left feed(s): old"), "{output}");
+            assert!(output.contains("--unsubscribe-feed succeeded"), "{output}");
+            assert!(
+                output.contains("Rerun with only --subscribe-feed new"),
+                "{output}"
+            );
         });
     }
 }

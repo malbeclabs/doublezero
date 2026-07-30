@@ -74,6 +74,8 @@ use doublezero_sdk::{
             get::GetMulticastGroupCommand,
             list::ListMulticastGroupCommand,
             subscribe::UpdateMulticastGroupRolesCommand,
+            subscribe_feed::SubscribeFeedCommand,
+            unsubscribe_feed::UnsubscribeFeedCommand,
             update::UpdateMulticastGroupCommand,
         },
         permission::{
@@ -302,6 +304,8 @@ pub trait CliCommand {
         &self,
         cmd: UpdateMulticastGroupRolesCommand,
     ) -> eyre::Result<Signature>;
+    fn subscribe_feed(&self, cmd: SubscribeFeedCommand) -> eyre::Result<Signature>;
+    fn unsubscribe_feed(&self, cmd: UnsubscribeFeedCommand) -> eyre::Result<Signature>;
     fn add_multicastgroup_pub_allowlist(
         &self,
         cmd: AddMulticastGroupPubAllowlistCommand,
@@ -747,6 +751,12 @@ impl CliCommand for CliCommandImpl<'_> {
         &self,
         cmd: UpdateMulticastGroupRolesCommand,
     ) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn subscribe_feed(&self, cmd: SubscribeFeedCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn unsubscribe_feed(&self, cmd: UnsubscribeFeedCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn add_multicastgroup_pub_allowlist(

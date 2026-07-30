@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - `doublezero connect multicast` gains `--subscribe-feed` and `--unsubscribe-feed` (feed codes or pubkeys) for EdgeSeat access passes: one command creates the bare multicast user if needed and joins whole feeds, or leaves them. When both flags are given the leave runs first, and if one half fails the output names it and says which flag to rerun. (#4111)
+- SDK
+  - New `SubscribeFeedCommand` and `UnsubscribeFeedCommand` in the Rust SDK derive the exact group lists the onchain instructions demand and check the metro, pass, and feed-cap constraints before sending; the daemon-cli `LedgerClient` gains `list_feed`, `subscribe_feed`, and `unsubscribe_feed`. (#4111)
 - Controller
   - A multicast user with no publisher role now gets the subscriber ingress ACL and a deny-all announce prefix-list; a user with no roles at all previously fell through to the publisher versions of both. (#4110)
 - Serviceability

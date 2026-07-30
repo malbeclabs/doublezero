@@ -2802,10 +2802,15 @@ async fn test_create_subscribe_user_batch_atomic_bad_extra_group() {
         &payer,
     )
     .await;
-    assert!(
-        result.is_err(),
-        "off-allowlist extra group must fail the batch"
-    );
+    match result {
+        Err(BanksClientError::TransactionError(
+            solana_sdk::transaction::TransactionError::InstructionError(
+                0,
+                solana_sdk::instruction::InstructionError::Custom(8), // NotAllowed
+            ),
+        )) => {}
+        _ => panic!("Expected NotAllowed error (Custom(8)), got {:?}", result),
+    }
 
     // Nothing survives: no user account, primary group's counter untouched.
     assert!(
@@ -3044,4 +3049,91 @@ async fn test_create_subscribe_user_batch_duplicate_group_rejected() {
         .get_multicastgroup()
         .unwrap();
     assert_eq!(mgroup.subscriber_count, 0);
+}
+
+/// Two identical extra groups (extra-vs-extra duplicate) are rejected with
+/// InvalidArgument, exercising the pairwise branch of the duplicate scan.
+#[tokio::test]
+async fn test_create_subscribe_user_batch_duplicate_extra_rejected() {
+    let client_ip = [100, 0, 0, 46];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+        ..
+    } = f;
+
+    let mgroup2_pubkey = create_second_group(
+        &mut banks_client,
+        program_id,
+        &payer,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_ip,
+        true,
+    )
+    .await;
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+            extra_group_count: 2,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+            AccountMeta::new(mgroup2_pubkey, false),
+            AccountMeta::new(mgroup2_pubkey, false), // same extra twice
+        ],
+        &payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(
+            solana_sdk::transaction::TransactionError::InstructionError(
+                0,
+                solana_sdk::instruction::InstructionError::Custom(65), // InvalidArgument
+            ),
+        )) => {}
+        _ => panic!(
+            "Expected InvalidArgument error (Custom(65)), got {:?}",
+            result
+        ),
+    }
+    assert!(
+        get_account_data(&mut banks_client, user_pubkey)
+            .await
+            .is_none(),
+        "user account must not be created on a rejected batch"
+    );
 }

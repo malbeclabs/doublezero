@@ -51,7 +51,7 @@ impl UpdateMulticastGroupRolesCommand {
         }
         if group_pks.len() > MAX_GROUPS_PER_TRANSACTION {
             eyre::bail!(
-                "{} multicast groups exceed the {MAX_GROUPS_PER_TRANSACTION}-group transaction                  limit; send one transaction per chunk",
+                "{} multicast groups exceed the {MAX_GROUPS_PER_TRANSACTION}-group transaction limit; send one transaction per chunk",
                 group_pks.len()
             );
         }

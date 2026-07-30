@@ -56,7 +56,7 @@ impl CreateSubscribeUserCommand {
         }
         if mgroup_pks.len() > MAX_GROUPS_PER_TRANSACTION {
             eyre::bail!(
-                "{} multicast groups exceed the {MAX_GROUPS_PER_TRANSACTION}-group transaction                  limit; subscribe the rest via UpdateMulticastGroupRolesCommand",
+                "{} multicast groups exceed the {MAX_GROUPS_PER_TRANSACTION}-group transaction limit; subscribe the rest via UpdateMulticastGroupRolesCommand",
                 mgroup_pks.len()
             );
         }

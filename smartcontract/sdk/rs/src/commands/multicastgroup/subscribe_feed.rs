@@ -19,10 +19,15 @@ use doublezero_serviceability::{
 use doublezero_serviceability_instruction::multicastgroup::subscribe_feed;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-/// Join whole feeds on an EdgeSeat access pass with one `SubscribeFeed` transaction.
+/// A legacy transaction fits 26 variable feed+group accounts with room left for the optional
+/// trailing Permission account
+pub(crate) const MAX_FEED_TX_ACCOUNTS: usize = 26;
+
+/// Join whole feeds on an EdgeSeat access pass.
 ///
 /// The group list the program demands (exactly the groups these feeds add) is derived here, so a
 /// retry against a user that already holds some of the feeds sends the right list and succeeds.
+/// A join too large for one transaction is split into several, each carrying whole feeds.
 #[derive(Debug, PartialEq, Clone)]
 pub struct SubscribeFeedCommand {
     pub user_pk: Pubkey,
@@ -40,7 +45,7 @@ impl SubscribeFeedCommand {
             pubkey: self.user_pk,
         }
         .execute(client)
-        .map_err(|_err| eyre::eyre!("User not found"))?;
+        .map_err(|err| eyre::eyre!("failed to fetch user {}: {err}", self.user_pk))?;
         if user.user_type != UserType::Multicast {
             eyre::bail!(
                 "user {} is a {} user; only a Multicast user can join feeds",
@@ -69,7 +74,7 @@ impl SubscribeFeedCommand {
             pubkey_or_code: user.device_pk.to_string(),
         }
         .execute(client)
-        .map_err(|_err| eyre::eyre!("Device {} not found", user.device_pk))?;
+        .map_err(|err| eyre::eyre!("failed to fetch device {}: {err}", user.device_pk))?;
 
         let mut feeds: Vec<(Pubkey, Feed)> = Vec::with_capacity(self.feed_pks.len());
         for feed_pk in &self.feed_pks {
@@ -116,25 +121,46 @@ impl SubscribeFeedCommand {
             );
         }
 
-        // Exactly the groups this call adds, mirroring the processor's derivation.
-        let mut groups: Vec<Pubkey> = Vec::new();
-        for (_, feed) in &feeds {
-            for group in &feed.groups {
-                if !user.subscribers.contains(group) && !groups.contains(group) {
-                    groups.push(*group);
-                }
+        // Exactly the groups each transaction adds, mirroring the processor's derivation.
+        let mut subscribed: Vec<Pubkey> = user.subscribers.clone();
+        let mut chunks: Vec<(Vec<Pubkey>, Vec<Pubkey>)> = Vec::new();
+        let mut chunk_feeds: Vec<Pubkey> = Vec::new();
+        let mut chunk_groups: Vec<Pubkey> = Vec::new();
+        for (feed_pk, feed) in &feeds {
+            let new_groups: Vec<Pubkey> = feed
+                .groups
+                .iter()
+                .filter(|group| !subscribed.contains(group) && !chunk_groups.contains(group))
+                .copied()
+                .collect();
+            if !chunk_feeds.is_empty()
+                && chunk_feeds.len() + 1 + chunk_groups.len() + new_groups.len()
+                    > MAX_FEED_TX_ACCOUNTS
+            {
+                subscribed.extend(chunk_groups.iter().copied());
+                chunks.push((
+                    std::mem::take(&mut chunk_feeds),
+                    std::mem::take(&mut chunk_groups),
+                ));
             }
+            chunk_feeds.push(*feed_pk);
+            chunk_groups.extend(new_groups);
         }
+        chunks.push((chunk_feeds, chunk_groups));
 
-        client.send_transaction(subscribe_feed(
-            &client.get_program_id(),
-            &client.get_payer(),
-            &accesspass_pubkey,
-            &self.user_pk,
-            &user.device_pk,
-            &self.feed_pks,
-            &groups,
-        ))
+        let mut signature = Signature::default();
+        for (chunk_feed_pks, chunk_group_pks) in &chunks {
+            signature = client.send_transaction(subscribe_feed(
+                &client.get_program_id(),
+                &client.get_payer(),
+                &accesspass_pubkey,
+                &self.user_pk,
+                &user.device_pk,
+                chunk_feed_pks,
+                chunk_group_pks,
+            ))?;
+        }
+        Ok(signature)
     }
 }
 
@@ -346,6 +372,66 @@ mod tests {
         client
             .expect_send_transaction()
             .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        SubscribeFeedCommand {
+            user_pk: f.user_pk,
+            client_ip: f.client_ip,
+            feed_pks: vec![feed1_pk, feed2_pk],
+        }
+        .execute(&client)
+        .unwrap();
+    }
+
+    #[test]
+    fn test_commands_subscribe_feed_splits_over_the_transaction_limit() {
+        // Two 14-group feeds cannot share one transaction (2 feeds + 28 groups), so each goes in
+        // its own, carrying exactly its groups.
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+
+        let exchange = Pubkey::new_unique();
+        let groups1: Vec<Pubkey> = (0..14).map(|_| Pubkey::new_unique()).collect();
+        let groups2: Vec<Pubkey> = (0..14).map(|_| Pubkey::new_unique()).collect();
+        let (feed1_pk, feed2_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let f = setup(
+            &mut client,
+            vec![],
+            vec![],
+            vec![
+                (feed1_pk, feed_with("f1", exchange, groups1.clone())),
+                (feed2_pk, feed_with("f2", exchange, groups2.clone())),
+            ],
+        );
+
+        let expected1 = subscribe_feed(
+            &program_id,
+            &payer,
+            &f.accesspass_pk,
+            &f.user_pk,
+            &f.device_pk,
+            &[feed1_pk],
+            &groups1,
+        );
+        let expected2 = subscribe_feed(
+            &program_id,
+            &payer,
+            &f.accesspass_pk,
+            &f.user_pk,
+            &f.device_pk,
+            &[feed2_pk],
+            &groups2,
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected1))
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected2))
+            .times(1)
             .returning(|_| Ok(Signature::new_unique()));
 
         SubscribeFeedCommand {

@@ -1,7 +1,10 @@
 use std::net::Ipv4Addr;
 
 use crate::{
-    commands::{accesspass::get::GetAccessPassCommand, user::get::GetUserCommand},
+    commands::{
+        accesspass::get::GetAccessPassCommand,
+        multicastgroup::subscribe_feed::MAX_FEED_TX_ACCOUNTS, user::get::GetUserCommand,
+    },
     DoubleZeroClient,
 };
 use doublezero_serviceability::state::{
@@ -33,7 +36,7 @@ impl UnsubscribeFeedCommand {
             pubkey: self.user_pk,
         }
         .execute(client)
-        .map_err(|_err| eyre::eyre!("User not found"))?;
+        .map_err(|err| eyre::eyre!("failed to fetch user {}: {err}", self.user_pk))?;
         if user.user_type != UserType::Multicast {
             eyre::bail!(
                 "user {} is a {} user; only a Multicast user holds feeds",
@@ -100,16 +103,69 @@ impl UnsubscribeFeedCommand {
             }
         }
 
-        client.send_transaction(unsubscribe_feed(
-            &client.get_program_id(),
-            &client.get_payer(),
-            &accesspass_pubkey,
-            &self.user_pk,
-            &user.device_pk,
-            &self.feed_pks,
-            &retained_pks,
-            &groups,
-        ))
+        if self.feed_pks.len() + retained_pks.len() + groups.len() <= MAX_FEED_TX_ACCOUNTS {
+            return client.send_transaction(unsubscribe_feed(
+                &client.get_program_id(),
+                &client.get_payer(),
+                &accesspass_pubkey,
+                &self.user_pk,
+                &user.device_pk,
+                &self.feed_pks,
+                &retained_pks,
+                &groups,
+            ));
+        }
+
+        // Too many accounts for one transaction: leave one feed per transaction. A target not yet
+        // left counts as retained in the meantime (only on-pass feeds can be named as retained),
+        // so a group two departing feeds share stays covered until the last one carrying it
+        // leaves; the end state matches the single call.
+        let mut subscribers = user.subscribers.clone();
+        let mut signature = Signature::default();
+        for index in 0..self.feed_pks.len() {
+            let target_pk = self.feed_pks[index];
+            let target_feed = &targets[index];
+
+            let not_yet_left: Vec<usize> = (index + 1..self.feed_pks.len())
+                .filter(|later| {
+                    accesspass
+                        .feed_seats()
+                        .iter()
+                        .any(|seat| seat.feed_key == self.feed_pks[*later])
+                })
+                .collect();
+            let tx_retained_pks: Vec<Pubkey> = not_yet_left
+                .iter()
+                .map(|later| self.feed_pks[*later])
+                .chain(retained_pks.iter().copied())
+                .collect();
+
+            let tx_groups: Vec<Pubkey> = target_feed
+                .groups
+                .iter()
+                .filter(|group| {
+                    subscribers.contains(group)
+                        && !not_yet_left
+                            .iter()
+                            .any(|later| targets[*later].groups.contains(group))
+                        && !retained.iter().any(|r| r.groups.contains(group))
+                })
+                .copied()
+                .collect();
+
+            signature = client.send_transaction(unsubscribe_feed(
+                &client.get_program_id(),
+                &client.get_payer(),
+                &accesspass_pubkey,
+                &self.user_pk,
+                &user.device_pk,
+                &[target_pk],
+                &tx_retained_pks,
+                &tx_groups,
+            ))?;
+            subscribers.retain(|group| !tx_groups.contains(group));
+        }
+        Ok(signature)
     }
 }
 
@@ -309,6 +365,81 @@ mod tests {
             user_pk: f.user_pk,
             client_ip: f.client_ip,
             feed_pks: vec![feed_pk],
+        }
+        .execute(&client)
+        .unwrap();
+    }
+
+    #[test]
+    fn test_commands_unsubscribe_feed_splits_over_the_transaction_limit() {
+        // Leaving two 13-group feeds while a third is retained is 29 combined accounts, so the
+        // command leaves one feed per transaction: the not-yet-left target counts as retained in
+        // the first, and the second's retained list shrinks to the kept feed.
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+
+        let groups1: Vec<Pubkey> = (0..13).map(|_| Pubkey::new_unique()).collect();
+        let groups2: Vec<Pubkey> = (0..13).map(|_| Pubkey::new_unique()).collect();
+        let g_kept = Pubkey::new_unique();
+        let (feed1_pk, feed2_pk, kept_pk) = (
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+        );
+        let all_subscribed: Vec<Pubkey> = groups1
+            .iter()
+            .chain(groups2.iter())
+            .copied()
+            .chain(std::iter::once(g_kept))
+            .collect();
+        let f = setup(
+            &mut client,
+            all_subscribed,
+            vec![feed1_pk, feed2_pk, kept_pk],
+            vec![feed1_pk, feed2_pk, kept_pk],
+            vec![
+                (feed1_pk, feed_with("f1", groups1.clone())),
+                (feed2_pk, feed_with("f2", groups2.clone())),
+                (kept_pk, feed_with("kept", vec![g_kept])),
+            ],
+        );
+
+        let expected1 = unsubscribe_feed(
+            &program_id,
+            &payer,
+            &f.accesspass_pk,
+            &f.user_pk,
+            &f.device_pk,
+            &[feed1_pk],
+            &[feed2_pk, kept_pk],
+            &groups1,
+        );
+        let expected2 = unsubscribe_feed(
+            &program_id,
+            &payer,
+            &f.accesspass_pk,
+            &f.user_pk,
+            &f.device_pk,
+            &[feed2_pk],
+            &[kept_pk],
+            &groups2,
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected1))
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected2))
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+
+        UnsubscribeFeedCommand {
+            user_pk: f.user_pk,
+            client_ip: f.client_ip,
+            feed_pks: vec![feed1_pk, feed2_pk],
         }
         .execute(&client)
         .unwrap();

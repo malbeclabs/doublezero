@@ -117,6 +117,21 @@ enum ParsedDzMode {
     },
 }
 
+/// The join half of a feed command after validation: everything needed to execute it without
+/// further checks.
+struct FeedJoin {
+    user: FeedJoinUser,
+    feed_pks: Vec<Pubkey>,
+}
+
+enum FeedJoinUser {
+    Existing(Pubkey),
+    Create {
+        device_pk: Pubkey,
+        tunnel_endpoint: Ipv4Addr,
+    },
+}
+
 /// AccessPass pre-flight: `Ok(false)` when no pass exists for
 /// `(client_ip, payer)` so the caller can render its own diagnostic before
 /// bailing. With `enforce_epoch`, the pass must also cover the current epoch.
@@ -393,8 +408,11 @@ impl Connect {
 
     /// `--subscribe-feed` / `--unsubscribe-feed`: join or leave whole feeds on an EdgeSeat pass.
     ///
-    /// When both flags are given, the leave runs first so a swap at the per-user feed cap frees
-    /// its slot before the join needs it.
+    /// Both flags are validated fully before anything is sent, so a deterministic rejection
+    /// (unknown feed, wrong metro, not held, overlap) leaves the chain untouched and never
+    /// strands a half-done swap. When both flags are given the leave runs first, freeing its
+    /// slot for a swap at the per-user feed cap; a failure after validation is a transaction
+    /// failure, so "rerun the failed flag" is real advice.
     #[allow(clippy::too_many_arguments)]
     async fn execute_multicast_feeds<D: DaemonClient, L: LedgerClient, W: Write>(
         &self,
@@ -413,28 +431,20 @@ impl Connect {
             .find(|(_, u)| u.client_ip == client_ip && u.user_type == UserType::Multicast)
             .map(|(pk, u)| (*pk, u.clone()));
 
-        let unsub_result = if unsub_feeds.is_empty() {
-            None
+        let unsub_pks: Vec<Pubkey> = if unsub_feeds.is_empty() {
+            vec![]
         } else {
-            let result = self.unsubscribe_feeds(
-                ledger,
-                mcast_user.as_ref(),
-                &feeds,
-                unsub_feeds,
-                client_ip,
-                spinner,
-            );
-            if result.is_ok() {
-                writeln!(out, "    Left feed(s): {}", unsub_feeds.join(", "))?;
-            }
-            Some(result)
+            let Some((_, user)) = &mcast_user else {
+                eyre::bail!("no Multicast user exists for IP {client_ip}; nothing to leave");
+            };
+            resolve_held_feeds(unsub_feeds, &feeds, user)?
         };
 
-        let sub_result = if sub_feeds.is_empty() {
+        let feed_join = if sub_feeds.is_empty() {
             None
         } else {
-            let result = self
-                .subscribe_feeds(
+            Some(
+                self.resolve_feed_join(
                     ledger,
                     daemon,
                     mcast_user.as_ref(),
@@ -444,22 +454,57 @@ impl Connect {
                     spinner,
                     out,
                 )
-                .await;
+                .await?,
+            )
+        };
+
+        // Catches a code in one flag naming the same feed as a pubkey (or another casing) in the
+        // other; the raw-string check in parse_dz_mode only catches identical spellings.
+        if let Some(join) = &feed_join {
+            if let Some(pk) = join.feed_pks.iter().find(|pk| unsub_pks.contains(pk)) {
+                eyre::bail!("feed {pk} is in both --subscribe-feed and --unsubscribe-feed");
+            }
+        }
+
+        let unsub_result = if unsub_pks.is_empty() {
+            None
+        } else {
+            let (user_pk, _) = mcast_user.as_ref().expect("checked during validation");
+            spinner.set_message("Leaving feed(s)...");
+            let result = ledger.unsubscribe_feed(UnsubscribeFeedCommand {
+                user_pk: *user_pk,
+                client_ip,
+                feed_pks: unsub_pks,
+            });
             if result.is_ok() {
-                writeln!(out, "    Joined feed(s): {}", sub_feeds.join(", "))?;
+                writeln!(out, "    Left feed(s): {}", unsub_feeds.join(", "))?;
             }
             Some(result)
         };
 
+        let sub_result = match feed_join {
+            None => None,
+            Some(join) => {
+                let result = self.execute_feed_join(ledger, join, client_ip, spinner, out);
+                if result.is_ok() {
+                    writeln!(out, "    Joined feed(s): {}", sub_feeds.join(", "))?;
+                }
+                Some(result)
+            }
+        };
+
         match (unsub_result, sub_result) {
             (Some(Err(unsub_err)), Some(Ok(()))) => {
+                // The join landed, so still hand the daemon its provisioning work.
+                self.user_activated(daemon, UserType::Multicast, spinner, out)
+                    .await?;
                 writeln!(out, "❌  --unsubscribe-feed failed: {unsub_err:#}")?;
                 writeln!(
                     out,
                     "    --subscribe-feed succeeded. Rerun with only --unsubscribe-feed {} to finish.",
                     unsub_feeds.join(" ")
                 )?;
-                return Err(unsub_err);
+                Err(unsub_err)
             }
             (Some(Ok(())), Some(Err(sub_err))) => {
                 writeln!(out, "❌  --subscribe-feed failed: {sub_err:#}")?;
@@ -468,30 +513,29 @@ impl Connect {
                     "    --unsubscribe-feed succeeded. Rerun with only --subscribe-feed {} to finish.",
                     sub_feeds.join(" ")
                 )?;
-                return Err(sub_err);
+                Err(sub_err)
             }
             (Some(Err(unsub_err)), Some(Err(sub_err))) => {
                 writeln!(out, "❌  --unsubscribe-feed failed: {unsub_err:#}")?;
                 writeln!(out, "❌  --subscribe-feed failed: {sub_err:#}")?;
                 eyre::bail!("both halves failed; rerun the command");
             }
-            (Some(Err(err)), None) | (None, Some(Err(err))) => return Err(err),
-            _ => {}
-        }
-
-        if sub_feeds.is_empty() {
+            (Some(Err(err)), None) | (None, Some(Err(err))) => Err(err),
+            (_, Some(Ok(()))) => {
+                self.user_activated(daemon, UserType::Multicast, spinner, out)
+                    .await?;
+                Ok(true)
+            }
             // A pure leave changes routes only; the daemon reconciler picks that up on its own.
-            Ok(false)
-        } else {
-            self.user_activated(daemon, UserType::Multicast, spinner, out)
-                .await?;
-            Ok(true)
+            _ => Ok(false),
         }
     }
 
-    /// Reuse the existing Multicast user, or create a bare one then send one SubscribeFeed.
+    /// Resolve everything the join needs without sending anything: the device (the existing
+    /// user's, or the best one for a new user), the feed names against that device's metro, and
+    /// whether a multicast user already exists or one must be created.
     #[allow(clippy::too_many_arguments)]
-    async fn subscribe_feeds<D: DaemonClient, L: LedgerClient, W: Write>(
+    async fn resolve_feed_join<D: DaemonClient, L: LedgerClient, W: Write>(
         &self,
         ledger: &L,
         daemon: &D,
@@ -501,14 +545,26 @@ impl Connect {
         client_ip: Ipv4Addr,
         spinner: &ProgressBar,
         out: &mut W,
-    ) -> eyre::Result<()> {
-        let (user_pk, device) = match mcast_user {
+    ) -> eyre::Result<FeedJoin> {
+        match mcast_user {
             Some((pk, user)) => {
                 let device = ledger
                     .get_device(user.device_pk.to_string())
-                    .map_err(|_| eyre::eyre!("Unable to get device"))?;
+                    .map_err(|err| {
+                        eyre::eyre!("failed to fetch device {}: {err}", user.device_pk)
+                    })?;
                 writeln!(out, "    An account already exists with Pubkey: {pk}")?;
-                (*pk, device)
+                // The user's device is fixed, so --device cannot help here.
+                let feed_pks = resolve_feeds_for_metro(
+                    names,
+                    feeds,
+                    &device,
+                    "run 'doublezero disconnect multicast' first to reconnect on a device in the feed's metro",
+                )?;
+                Ok(FeedJoin {
+                    user: FeedJoinUser::Existing(*pk),
+                    feed_pks,
+                })
             }
             None => {
                 let users = ledger.list_user()?;
@@ -525,15 +581,47 @@ impl Connect {
                 let (device_pk, device, tunnel_endpoint) = self
                     .find_or_create_device(ledger, daemon, &devices, spinner, &exclude_ips)
                     .await?;
-
-                writeln!(out, "    Creating account for IP: {client_ip}")?;
                 writeln!(out, "    Device selected: {}", device.code)?;
-                spinner.inc(1);
 
                 if let Some(err_msg) = device.check_user_type_capacity(UserType::Multicast, false) {
                     return Err(eyre::eyre!(err_msg));
                 }
 
+                let feed_pks = resolve_feeds_for_metro(
+                    names,
+                    feeds,
+                    &device,
+                    "pass --device to pick a device in the feed's metro",
+                )?;
+                Ok(FeedJoin {
+                    user: FeedJoinUser::Create {
+                        device_pk,
+                        tunnel_endpoint,
+                    },
+                    feed_pks,
+                })
+            }
+        }
+    }
+
+    /// Execute a validated join: create the bare user when needed (CreateUser is idempotent, so a
+    /// retry is safe), poll it to Activated, and send the SubscribeFeed.
+    fn execute_feed_join<L: LedgerClient, W: Write>(
+        &self,
+        ledger: &L,
+        join: FeedJoin,
+        client_ip: Ipv4Addr,
+        spinner: &ProgressBar,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        let user_pk = match join.user {
+            FeedJoinUser::Existing(pk) => pk,
+            FeedJoinUser::Create {
+                device_pk,
+                tunnel_endpoint,
+            } => {
+                writeln!(out, "    Creating account for IP: {client_ip}")?;
+                spinner.inc(1);
                 let user_pk = ledger.create_user(CreateUserCommand {
                     user_type: UserType::Multicast,
                     device_pk,
@@ -543,66 +631,16 @@ impl Connect {
                     tenant_pk: None,
                 })?;
                 spinner.set_message("Multicast user created");
-                (user_pk, device)
+                user_pk
             }
         };
-
-        let feed_pks = resolve_feeds_for_metro(names, feeds, &device)?;
 
         self.poll_for_user_activated(ledger, &user_pk, spinner)?;
         spinner.set_message("Joining feed(s)...");
         ledger.subscribe_feed(SubscribeFeedCommand {
             user_pk,
             client_ip,
-            feed_pks,
-        })?;
-        Ok(())
-    }
-
-    /// Leave feeds the existing Multicast user holds with one UnsubscribeFeed.
-    fn unsubscribe_feeds<L: LedgerClient>(
-        &self,
-        ledger: &L,
-        mcast_user: Option<&(Pubkey, User)>,
-        feeds: &HashMap<Pubkey, Feed>,
-        names: &[String],
-        client_ip: Ipv4Addr,
-        spinner: &ProgressBar,
-    ) -> eyre::Result<()> {
-        let Some((user_pk, user)) = mcast_user else {
-            eyre::bail!("no Multicast user exists for IP {client_ip}; nothing to leave");
-        };
-
-        let mut feed_pks: Vec<Pubkey> = Vec::with_capacity(names.len());
-        for name in names {
-            let pk = match name.parse::<Pubkey>() {
-                Ok(pk) => pk,
-                Err(_) => {
-                    let held = feeds.iter().find(|(pk, f)| {
-                        user.feed_pks.contains(pk) && f.code.eq_ignore_ascii_case(name)
-                    });
-                    match held {
-                        Some((pk, _)) => *pk,
-                        None => {
-                            if feeds.values().any(|f| f.code.eq_ignore_ascii_case(name)) {
-                                eyre::bail!("you do not hold feed {name}");
-                            }
-                            eyre::bail!("feed {name} not found");
-                        }
-                    }
-                }
-            };
-            if feed_pks.contains(&pk) {
-                eyre::bail!("duplicate feed: {name}");
-            }
-            feed_pks.push(pk);
-        }
-
-        spinner.set_message("Leaving feed(s)...");
-        ledger.unsubscribe_feed(UnsubscribeFeedCommand {
-            user_pk: *user_pk,
-            client_ip,
-            feed_pks,
+            feed_pks: join.feed_pks,
         })?;
         Ok(())
     }
@@ -640,7 +678,12 @@ impl Connect {
                     eyre::bail!("Cannot mix --subscribe-feed/--unsubscribe-feed with --publish/--subscribe or positional group arguments");
                 }
                 if has_feeds {
-                    if let Some(feed) = sub_feeds.iter().find(|f| unsub_feeds.contains(f)) {
+                    // Same-spelling overlap (case-insensitively); a code overlapping the same
+                    // feed's pubkey is caught after resolution in execute_multicast_feeds.
+                    if let Some(feed) = sub_feeds
+                        .iter()
+                        .find(|f| unsub_feeds.iter().any(|u| u.eq_ignore_ascii_case(f)))
+                    {
                         eyre::bail!(
                             "feed {feed} is in both --subscribe-feed and --unsubscribe-feed"
                         );
@@ -1318,6 +1361,7 @@ fn resolve_feeds_for_metro(
     names: &[String],
     feeds: &HashMap<Pubkey, Feed>,
     device: &Device,
+    wrong_metro_hint: &str,
 ) -> eyre::Result<Vec<Pubkey>> {
     let mut resolved: Vec<Pubkey> = Vec::with_capacity(names.len());
     for name in names {
@@ -1332,9 +1376,43 @@ fn resolve_feeds_for_metro(
                     None => {
                         if feeds.values().any(|f| f.code.eq_ignore_ascii_case(name)) {
                             eyre::bail!(
-                                "feed {name} does not serve the metro of device {}; pass --device to pick a device in the feed's metro",
+                                "feed {name} does not serve the metro of device {}; {wrong_metro_hint}",
                                 device.code
                             );
+                        }
+                        eyre::bail!("feed {name} not found");
+                    }
+                }
+            }
+        };
+        if resolved.contains(&pk) {
+            eyre::bail!("duplicate feed: {name}");
+        }
+        resolved.push(pk);
+    }
+    Ok(resolved)
+}
+
+/// Resolve `--unsubscribe-feed` values against the feeds the user holds. A pubkey passes through
+/// (the SDK command checks it is held); a code must name a held feed.
+fn resolve_held_feeds(
+    names: &[String],
+    feeds: &HashMap<Pubkey, Feed>,
+    user: &User,
+) -> eyre::Result<Vec<Pubkey>> {
+    let mut resolved: Vec<Pubkey> = Vec::with_capacity(names.len());
+    for name in names {
+        let pk = match name.parse::<Pubkey>() {
+            Ok(pk) => pk,
+            Err(_) => {
+                let held = feeds.iter().find(|(pk, f)| {
+                    user.feed_pks.contains(pk) && f.code.eq_ignore_ascii_case(name)
+                });
+                match held {
+                    Some((pk, _)) => *pk,
+                    None => {
+                        if feeds.values().any(|f| f.code.eq_ignore_ascii_case(name)) {
+                            eyre::bail!("you do not hold feed {name}");
                         }
                         eyre::bail!("feed {name} not found");
                     }
@@ -3720,6 +3798,38 @@ mod tests {
             let (result, _) = run(&fixture, command).await;
             assert_eq!(
                 result.unwrap_err().to_string(),
+                "feed away does not serve the metro of device device1; run 'doublezero disconnect multicast' first to reconnect on a device in the feed's metro"
+            );
+        });
+    }
+
+    /// On a fresh IP, a wrong-metro feed is rejected before the user is created: no create_user
+    /// expectation is set, so a create would panic the mock, and --device is honored on this
+    /// branch, so the hint is true.
+    #[test]
+    fn test_connect_command_subscribe_feed_wrong_metro_creates_nothing() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            fixture.add_device(DeviceType::Hybrid, 100, true);
+            fixture.add_feed("away", Pubkey::new_unique(), vec![Pubkey::new_unique()]);
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec![],
+                    sub_groups: vec![],
+                    sub_feeds: vec!["away".to_string()],
+                    unsub_feeds: vec![],
+                },
+                client_ip: None,
+                device: None,
+                verbose: false,
+            };
+
+            let (result, _) = run(&fixture, command).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
                 "feed away does not serve the metro of device device1; pass --device to pick a device in the feed's metro"
             );
         });
@@ -3754,7 +3864,7 @@ mod tests {
         });
     }
 
-    /// The same feed in both flags is rejected up front.
+    /// The same feed in both flags is rejected up front, casing notwithstanding.
     #[test]
     fn test_connect_command_feed_in_both_flags_rejected() {
         block_on(async {
@@ -3766,7 +3876,7 @@ mod tests {
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
-                    sub_feeds: vec!["shreds".to_string()],
+                    sub_feeds: vec!["SHREDS".to_string()],
                     unsub_feeds: vec!["shreds".to_string()],
                 },
                 client_ip: None,
@@ -3777,7 +3887,44 @@ mod tests {
             let (result, _) = run(&fixture, command).await;
             assert_eq!(
                 result.unwrap_err().to_string(),
-                "feed shreds is in both --subscribe-feed and --unsubscribe-feed"
+                "feed SHREDS is in both --subscribe-feed and --unsubscribe-feed"
+            );
+        });
+    }
+
+    /// The same feed as a code in one flag and its pubkey in the other is caught after both
+    /// resolve, before any transaction: no unsubscribe or subscribe expectation is set.
+    #[test]
+    fn test_connect_command_feed_in_both_flags_by_pubkey_rejected() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let g0 = Pubkey::new_unique();
+            let feed_pk = fixture.add_feed("shreds", device.exchange_pk, vec![g0]);
+
+            let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            user.feed_pks = vec![feed_pk];
+            user.subscribers = vec![g0];
+            fixture.add_user(&user);
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec![],
+                    sub_groups: vec![],
+                    sub_feeds: vec![feed_pk.to_string()],
+                    unsub_feeds: vec!["shreds".to_string()],
+                },
+                client_ip: None,
+                device: None,
+                verbose: false,
+            };
+
+            let (result, _) = run(&fixture, command).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                format!("feed {feed_pk} is in both --subscribe-feed and --unsubscribe-feed")
             );
         });
     }
@@ -3824,6 +3971,55 @@ mod tests {
             assert!(
                 output.contains(
                     "    --unsubscribe-feed succeeded. Rerun with only --subscribe-feed new to finish.\n"
+                ),
+                "{output}"
+            );
+        });
+    }
+
+    /// When the leave half fails after validation but the join succeeds, the daemon still gets
+    /// its provisioning work before the error is reported.
+    #[test]
+    fn test_connect_command_feed_swap_leave_failure_still_provisions_the_join() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let g0 = Pubkey::new_unique();
+            let old_pk = fixture.add_feed("old", device.exchange_pk, vec![g0]);
+            let g_new = Pubkey::new_unique();
+            let new_pk = fixture.add_feed("new", device.exchange_pk, vec![g_new]);
+
+            let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            user.feed_pks = vec![old_pk];
+            user.subscribers = vec![g0];
+            let user_pk = fixture.add_user(&user);
+            fixture
+                .ledger
+                .expect_unsubscribe_feed()
+                .times(1)
+                .returning_st(|_| Err(eyre::eyre!("rpc timed out")));
+            fixture.expect_subscribe_feed(user_pk, "1.2.3.4".parse().unwrap(), vec![new_pk]);
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec![],
+                    sub_groups: vec![],
+                    sub_feeds: vec!["new".to_string()],
+                    unsub_feeds: vec!["old".to_string()],
+                },
+                client_ip: None,
+                device: None,
+                verbose: false,
+            };
+
+            let (result, output) = run(&fixture, command).await;
+            assert!(result.is_err());
+            assert!(output.contains("    Session: BGP Session Up\n"), "{output}");
+            assert!(
+                output.contains(
+                    "    --subscribe-feed succeeded. Rerun with only --unsubscribe-feed old to finish.\n"
                 ),
                 "{output}"
             );

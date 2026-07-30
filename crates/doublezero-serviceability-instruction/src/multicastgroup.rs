@@ -416,7 +416,7 @@ mod tests {
             &retained,
             &groups,
         );
-        let message = solana_program::message::Message::new(&[ix], Some(&payer));
+        let message = solana_sdk::message::Message::new(&[ix], Some(&payer));
         // One byte of signature count plus one 64-byte signature plus the message.
         let tx_size = 1 + 64 + message.serialize().len();
         assert!(tx_size + 33 <= 1232, "worst-case leave is {tx_size} bytes");

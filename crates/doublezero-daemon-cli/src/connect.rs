@@ -1313,9 +1313,7 @@ fn exclude_ips(
         .collect()
 }
 
-/// Resolve `--subscribe-feed` values. A pubkey passes through (the SDK command validates it); a
-/// code must name a feed in the device's metro, and a code that only exists in another metro gets
-/// an error naming the device rather than being silently dropped.
+/// Resolve `--subscribe-feed` values.
 fn resolve_feeds_for_metro(
     names: &[String],
     feeds: &HashMap<Pubkey, Feed>,
@@ -3720,8 +3718,10 @@ mod tests {
             };
 
             let (result, _) = run(&fixture, command).await;
-            let err = format!("{:?}", result.unwrap_err());
-            assert!(err.contains("does not serve the metro"), "{err}");
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "feed away does not serve the metro of device device1; pass --device to pick a device in the feed's metro"
+            );
         });
     }
 
@@ -3747,8 +3747,10 @@ mod tests {
             };
 
             let (result, _) = run(&fixture, command).await;
-            let err = format!("{:?}", result.unwrap_err());
-            assert!(err.contains("Cannot mix"), "{err}");
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "Cannot mix --subscribe-feed/--unsubscribe-feed with --publish/--subscribe or positional group arguments"
+            );
         });
     }
 
@@ -3773,8 +3775,10 @@ mod tests {
             };
 
             let (result, _) = run(&fixture, command).await;
-            let err = format!("{:?}", result.unwrap_err());
-            assert!(err.contains("is in both"), "{err}");
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "feed shreds is in both --subscribe-feed and --unsubscribe-feed"
+            );
         });
     }
 
@@ -3816,10 +3820,11 @@ mod tests {
 
             let (result, output) = run(&fixture, command).await;
             assert!(result.is_err());
-            assert!(output.contains("Left feed(s): old"), "{output}");
-            assert!(output.contains("--unsubscribe-feed succeeded"), "{output}");
+            assert!(output.contains("    Left feed(s): old\n"), "{output}");
             assert!(
-                output.contains("Rerun with only --subscribe-feed new"),
+                output.contains(
+                    "    --unsubscribe-feed succeeded. Rerun with only --subscribe-feed new to finish.\n"
+                ),
                 "{output}"
             );
         });

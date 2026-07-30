@@ -390,9 +390,11 @@ mod tests {
         }
         .execute(&client)
         .unwrap_err();
-        assert!(
-            err.to_string().contains("serves exchange"),
-            "expected a metro mismatch error, got: {err}"
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "feed away serves exchange {other_exchange}, but the user's device dz1 is in exchange {exchange}"
+            )
         );
     }
 
@@ -420,9 +422,11 @@ mod tests {
         }
         .execute(&client)
         .unwrap_err();
-        assert!(
-            err.to_string().contains("at most"),
-            "expected the feed cap error, got: {err}"
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "user holds {MAX_USER_FEEDS} feeds and this join adds 1; a user may hold at most {MAX_USER_FEEDS}"
+            )
         );
     }
 }

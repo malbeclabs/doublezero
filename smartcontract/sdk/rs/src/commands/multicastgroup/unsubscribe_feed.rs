@@ -336,9 +336,9 @@ mod tests {
         }
         .execute(&client)
         .unwrap_err();
-        assert!(
-            err.to_string().contains("does not hold"),
-            "expected a not-held error, got: {err}"
+        assert_eq!(
+            err.to_string(),
+            format!("user does not hold feed {unheld_pk}")
         );
     }
 

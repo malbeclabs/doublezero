@@ -24,6 +24,12 @@ DoubleZero is a protocol for building and operating high-performance, permission
 
 **Serialization:** Borsh for onchain accounts, Protobuf for gRPC (controller↔agent), JSON for APIs.
 
+## Geolocation Architecture
+
+- **telemetry-agent** runs on DZDs (Arista devices). It measures geoprobes via TWAMP and sends them location offsets. DZDs are the roots of trust with known coordinates.
+- **geoprobe-agent** runs on geoprobe servers (Ubuntu bare metal or VPS), NOT on DZDs. It receives TWAMP probes from DZDs, caches their location offsets, and measures outbound targets. It currently requires no special privileges (all UDP, unprivileged ports).
+- These are two separate binaries with opposite roles. Never conflate them: DZDs measure geoprobes; geoprobes measure targets.
+
 ## Build Commands
 
 ```bash

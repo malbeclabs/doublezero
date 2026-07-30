@@ -44,17 +44,17 @@ impl DeleteFeedCliCommand {
             exchange,
         })?;
 
-        // Deleting the feed drops every group it carried, so the post-change set is empty.
-        if !feed.groups.is_empty() {
-            unsubscribe_orphans(
-                client,
-                out,
-                &pubkey,
-                &feed.code,
-                &[],
-                self.force_unsubscribe,
-            )?;
-        }
+        // Deleting the feed drops every group it carried, so the post-change set is empty. The
+        // guard always runs — it re-derives the dropped set from its own fresh scan, so a group
+        // added after the `get_feed` read above is still caught.
+        unsubscribe_orphans(
+            client,
+            out,
+            &pubkey,
+            &feed.code,
+            &[],
+            self.force_unsubscribe,
+        )?;
 
         let signature = client.delete_feed(DeleteFeedCommand { pubkey })?;
         print_signature(out, &signature)
@@ -78,6 +78,7 @@ mod tests {
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use std::collections::HashMap;
 
     #[test]
     fn test_cli_feed_delete_fails_closed_when_it_would_orphan_a_subscriber() {
@@ -198,6 +199,7 @@ mod tests {
             exchange: exchange_pk,
             groups: vec![],
         };
+        let feed_for_get = feed.clone();
         client
             .expect_get_feed()
             .with(predicate::eq(GetFeedCommand {
@@ -205,7 +207,19 @@ mod tests {
                 exchange: Some(exchange_pk),
             }))
             .times(1)
-            .returning(move |_| Ok((feed_pk, feed.clone())));
+            .returning(move |_| Ok((feed_pk, feed_for_get.clone())));
+
+        // Delete always runs the guard; with no users the scan finds nothing to drop.
+        client.expect_list_user().returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_accesspass()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_device()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_feed()
+            .returning(move |_| Ok(HashMap::from([(feed_pk, feed.clone())])));
 
         client
             .expect_delete_feed()

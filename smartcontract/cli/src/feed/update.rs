@@ -65,20 +65,19 @@ impl UpdateFeedCliCommand {
             )
         };
 
-        // Only a group removal can orphan a subscriber, so a rename or a purely additive change
-        // scans nothing and behaves exactly as before. The guard re-derives the dropped set from
-        // its own scan, so a group added between here and the update still gets caught.
+        // Only a group replacement can orphan a subscriber, so a rename leaves the groups alone
+        // and scans nothing. Whenever `--group` is given the guard runs — even for an apparently
+        // additive change — because it re-derives the dropped set from its own fresh scan, and
+        // deciding from the `get_feed` read above would miss a group added in between.
         if let Some(new_groups) = &groups {
-            if feed.groups.iter().any(|g| !new_groups.contains(g)) {
-                unsubscribe_orphans(
-                    client,
-                    out,
-                    &pubkey,
-                    &feed.code,
-                    new_groups,
-                    self.force_unsubscribe,
-                )?;
-            }
+            unsubscribe_orphans(
+                client,
+                out,
+                &pubkey,
+                &feed.code,
+                new_groups,
+                self.force_unsubscribe,
+            )?;
         }
 
         let signature = client.update_feed(UpdateFeedCommand {
@@ -206,8 +205,10 @@ mod tests {
             .contains(&format!("Signature: {signature}")));
     }
 
+    /// An additive change scans (the guard re-derives the dropped set from its own snapshot) but
+    /// finds nothing dropped, so an existing subscriber needs no flag and no removals happen.
     #[test]
-    fn test_cli_feed_update_additive_change_does_not_scan() {
+    fn test_cli_feed_update_additive_change_needs_no_flag() {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
 
@@ -215,8 +216,10 @@ mod tests {
         let (g1, g2) = (f.groups[0], f.groups[1]);
         let signature = Signature::new_unique();
         f.expect_get_feed(&mut client, vec![g1]);
-        client.expect_list_user().times(0);
-        client.expect_list_accesspass().times(0);
+        // The scanned feed carries [g1, g2] (the fixture's full set); the new set is a superset,
+        // so nothing is dropped even though the user subscribes to g2.
+        f.expect_scan(&mut client, vec![g2]);
+        client.expect_update_multicastgroup_roles().times(0);
         client
             .expect_update_feed()
             .with(predicate::eq(UpdateFeedCommand {
@@ -341,6 +344,7 @@ mod tests {
             exchange: exchange_pk,
             groups: vec![],
         };
+        let feed_for_get = feed.clone();
         client
             .expect_get_feed()
             .with(predicate::eq(GetFeedCommand {
@@ -348,7 +352,19 @@ mod tests {
                 exchange: Some(exchange_pk),
             }))
             .times(1)
-            .returning(move |_| Ok((feed_pk, feed.clone())));
+            .returning(move |_| Ok((feed_pk, feed_for_get.clone())));
+
+        // `--group` always runs the guard; with no users the scan finds nothing to drop.
+        client.expect_list_user().returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_accesspass()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_device()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_feed()
+            .returning(move |_| Ok(HashMap::from([(feed_pk, feed.clone())])));
 
         let mgroup = MulticastGroup {
             account_type: AccountType::MulticastGroup,

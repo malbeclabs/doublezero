@@ -31,15 +31,24 @@ use std::{collections::HashMap, io::Write, net::Ipv4Addr};
 const MAX_UNSUBSCRIBE_ROUNDS: usize = 3;
 
 /// A multicast-group membership the pending feed change would leave outside the user's feeds.
+///
+/// Roles are tracked separately because coverage is per role: the pass's own
+/// `mgroup_pub_allowlist` / `mgroup_sub_allowlist` authorize a role with no feed involved, so one
+/// role of a group can be orphaned while the other legitimately stays.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Orphan {
     pub user_pk: Pubkey,
     pub group_pk: Pubkey,
     pub client_ip: Ipv4Addr,
-    /// The user holds the publisher role on this group. EdgeSeat is meant to be subscribe-only, so
-    /// this is worth calling out in the plan an operator reads before forcing the change through.
-    pub publisher: bool,
-    pub subscriber: bool,
+    /// The user holds the publisher role and nothing covers it. EdgeSeat is meant to be
+    /// subscribe-only, so this is worth calling out in the plan an operator reads before forcing
+    /// the change through.
+    pub remove_publisher: bool,
+    pub remove_subscriber: bool,
+    /// Held roles kept because an accepted pass's own allowlist still authorizes them; the
+    /// removal re-asserts these so they survive it.
+    pub keep_publisher: bool,
+    pub keep_subscriber: bool,
 }
 
 /// The onchain state [`plan`] reads, fetched once per round by [`scan`].
@@ -111,8 +120,10 @@ pub fn unsubscribe_orphans<C: CliCommand, W: Write>(
                     user_pk: orphan.user_pk,
                     group_pk: orphan.group_pk,
                     client_ip: orphan.client_ip,
-                    publisher: false,
-                    subscriber: false,
+                    // Desired absolute state, not a toggle: an allowlist-covered role is
+                    // re-asserted so only the orphaned role is removed.
+                    publisher: orphan.keep_publisher,
+                    subscriber: orphan.keep_subscriber,
                     device_pk: None,
                     feed_pk: None,
                 })
@@ -153,6 +164,11 @@ fn scan<C: CliCommand>(client: &C) -> eyre::Result<Snapshot> {
 /// group and serves the user's metro — that is the same coverage test the program applies at
 /// connect time. The rotated feed itself never counts: every group in `dropped` is by construction
 /// absent from its post-change set, and a delete removes it entirely.
+///
+/// A role also survives when an accepted pass's own allowlist authorizes it
+/// (`mgroup_pub_allowlist` for publisher, `mgroup_sub_allowlist` for subscriber): the program runs
+/// that check for every pass type, so such a membership is legal with no feed involved, and seat
+/// release never keys on a group the feeds don't carry.
 pub fn plan(feed_pk: &Pubkey, dropped: &[Pubkey], snap: &Snapshot) -> eyre::Result<Vec<Orphan>> {
     let mut orphans = Vec::new();
 
@@ -168,18 +184,23 @@ pub fn plan(feed_pk: &Pubkey, dropped: &[Pubkey], snap: &Snapshot) -> eyre::Resu
             continue;
         }
 
-        // Every feed seated on a pass the program would accept for this user. Not the single pass
-        // the SDK read path prefers: `create_user` and `update_multicastgroup_roles` both accept
-        // either the exact-IP PDA or the shared UNSPECIFIED one, so a dynamic Prepaid pass must
-        // not be allowed to hide a live EdgeSeat pass at the other PDA.
-        let seated: Vec<Pubkey> = accepted_passes(&snap.accesspasses, user)
+        // Every pass the program would accept for this user. Not the single pass the SDK read
+        // path prefers: `create_user` and `update_multicastgroup_roles` both accept either the
+        // exact-IP PDA or the shared UNSPECIFIED one, so a dynamic Prepaid pass must not be
+        // allowed to hide a live EdgeSeat pass at the other PDA.
+        let passes: Vec<&AccessPass> = accepted_passes(&snap.accesspasses, user).collect();
+        let seated: Vec<Pubkey> = passes
+            .iter()
             .flat_map(|pass| pass.feed_seats().iter().map(|seat| seat.feed_key))
             .collect();
-        // Not feed-gated: these memberships come from the pass's own allowlists, not from feeds,
+        // Not feed-gated: with no EdgeSeat pass, memberships come from the pass's own allowlists,
         // so no feed change can orphan them and no seat is at stake. `feed_pks` is the record of
         // seats actually consumed at connect, so a user holding one stays in scope even if their
         // pass no longer shows the seat.
-        if seated.is_empty() && user.feed_pks.is_empty() {
+        let edge_seat = passes
+            .iter()
+            .any(|pass| matches!(pass.accesspass_type, AccessPassType::EdgeSeat(_)));
+        if !edge_seat && user.feed_pks.is_empty() {
             continue;
         }
 
@@ -193,19 +214,35 @@ pub fn plan(feed_pk: &Pubkey, dropped: &[Pubkey], snap: &Snapshot) -> eyre::Resu
         })?;
 
         for group_pk in held {
-            let covered = seated.iter().any(|seated_pk| {
+            // Feed coverage is role-agnostic; allowlist coverage is per role.
+            let feed_covered = seated.iter().any(|seated_pk| {
                 seated_pk != feed_pk
                     && snap.feeds.get(seated_pk).is_some_and(|other| {
                         other.groups_for(&device.exchange_pk).contains(group_pk)
                     })
             });
-            if !covered {
+            let pub_covered = feed_covered
+                || passes
+                    .iter()
+                    .any(|pass| pass.mgroup_pub_allowlist.contains(group_pk));
+            let sub_covered = feed_covered
+                || passes
+                    .iter()
+                    .any(|pass| pass.mgroup_sub_allowlist.contains(group_pk));
+
+            let pub_held = user.publishers.contains(group_pk);
+            let sub_held = user.subscribers.contains(group_pk);
+            let remove_publisher = pub_held && !pub_covered;
+            let remove_subscriber = sub_held && !sub_covered;
+            if remove_publisher || remove_subscriber {
                 orphans.push(Orphan {
                     user_pk: *user_pk,
                     group_pk: *group_pk,
                     client_ip: user.client_ip,
-                    publisher: user.publishers.contains(group_pk),
-                    subscriber: user.subscribers.contains(group_pk),
+                    remove_publisher,
+                    remove_subscriber,
+                    keep_publisher: pub_held && pub_covered,
+                    keep_subscriber: sub_held && sub_covered,
                 });
             }
         }
@@ -216,8 +253,8 @@ pub fn plan(feed_pk: &Pubkey, dropped: &[Pubkey], snap: &Snapshot) -> eyre::Resu
     Ok(orphans)
 }
 
-/// The EdgeSeat passes the program would accept for `user`: those owned by their payer at either
-/// the exact-IP PDA or the shared UNSPECIFIED-IP one.
+/// The passes the program would accept for `user`: those owned by their payer at either the
+/// exact-IP PDA or the shared UNSPECIFIED-IP one.
 fn accepted_passes<'a>(
     accesspasses: &'a HashMap<Pubkey, AccessPass>,
     user: &'a User,
@@ -225,7 +262,6 @@ fn accepted_passes<'a>(
     accesspasses.values().filter(move |pass| {
         pass.user_payer == user.owner
             && (pass.client_ip == Ipv4Addr::UNSPECIFIED || pass.client_ip == user.client_ip)
-            && matches!(pass.accesspass_type, AccessPassType::EdgeSeat(_))
     })
 }
 
@@ -251,19 +287,31 @@ fn report<W: Write>(
     }
     for orphan in orphans {
         let mut roles = Vec::new();
-        if orphan.publisher {
+        if orphan.remove_publisher {
             roles.push("publisher");
         }
-        if orphan.subscriber {
+        if orphan.remove_subscriber {
             roles.push("subscriber");
+        }
+        let mut kept = Vec::new();
+        if orphan.keep_publisher {
+            kept.push("publisher");
+        }
+        if orphan.keep_subscriber {
+            kept.push("subscriber");
         }
         writeln!(
             out,
-            "  user {} ({}) group {} [{}]",
+            "  user {} ({}) group {} [{}]{}",
             orphan.user_pk,
             orphan.client_ip,
             orphan.group_pk,
-            roles.join(", ")
+            roles.join(", "),
+            if kept.is_empty() {
+                String::new()
+            } else {
+                format!(" (keeping allowlisted {})", kept.join(", "))
+            }
         )?;
     }
     Ok(())
@@ -503,8 +551,10 @@ mod tests {
                 user_pk: f.user_pk,
                 group_pk: f.group,
                 client_ip: f.client_ip,
-                publisher: false,
-                subscriber: true,
+                remove_publisher: false,
+                remove_subscriber: true,
+                keep_publisher: false,
+                keep_subscriber: false,
             }]
         );
     }
@@ -602,7 +652,7 @@ mod tests {
 
         let orphans = plan(&f.feed_pk, &[f.group], &f.snap).unwrap();
         assert_eq!(orphans.len(), 1);
-        assert!(orphans[0].publisher && !orphans[0].subscriber);
+        assert!(orphans[0].remove_publisher && !orphans[0].remove_subscriber);
     }
 
     #[test]
@@ -703,5 +753,68 @@ mod tests {
         );
 
         assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
+    }
+
+    /// The program authorizes a role through the pass's own allowlist for every pass type, so a
+    /// subscriber the sub allowlist still covers is not orphaned by the feed change.
+    #[test]
+    fn test_plan_skips_a_role_covered_by_the_pass_sub_allowlist() {
+        let mut f = fixture();
+        let (_, pass) = f.snap.accesspasses.iter_mut().next().unwrap();
+        pass.mgroup_sub_allowlist.push(f.group);
+
+        assert!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().is_empty());
+    }
+
+    /// Allowlist coverage is per role: a pub allowlist entry says nothing about the subscriber
+    /// role.
+    #[test]
+    fn test_plan_pub_allowlist_does_not_cover_the_subscriber_role() {
+        let mut f = fixture();
+        let (_, pass) = f.snap.accesspasses.iter_mut().next().unwrap();
+        pass.mgroup_pub_allowlist.push(f.group);
+
+        assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
+    }
+
+    /// Mixed roles: the uncovered publisher role is removed, the allowlist-covered subscriber
+    /// role is re-asserted so the removal leaves it in place.
+    #[test]
+    fn test_plan_removes_only_the_uncovered_role() {
+        let mut f = fixture();
+        f.snap
+            .users
+            .get_mut(&f.user_pk)
+            .unwrap()
+            .publishers
+            .push(f.group);
+        let (_, pass) = f.snap.accesspasses.iter_mut().next().unwrap();
+        pass.mgroup_sub_allowlist.push(f.group);
+
+        let orphans = plan(&f.feed_pk, &[f.group], &f.snap).unwrap();
+        assert_eq!(
+            orphans,
+            vec![Orphan {
+                user_pk: f.user_pk,
+                group_pk: f.group,
+                client_ip: f.client_ip,
+                remove_publisher: true,
+                remove_subscriber: false,
+                keep_publisher: false,
+                keep_subscriber: true,
+            }]
+        );
+    }
+
+    /// Allowlist coverage counts from any accepted pass, not just the one carrying the seat.
+    #[test]
+    fn test_plan_counts_allowlist_coverage_from_the_other_pda() {
+        let mut f = fixture();
+        let owner = f.snap.users[&f.user_pk].owner;
+        let mut dynamic = pass(owner, Ipv4Addr::UNSPECIFIED, AccessPassType::Prepaid);
+        dynamic.mgroup_sub_allowlist.push(f.group);
+        f.snap.accesspasses.insert(Pubkey::new_unique(), dynamic);
+
+        assert!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().is_empty());
     }
 }

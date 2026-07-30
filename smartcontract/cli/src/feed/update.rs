@@ -66,22 +66,19 @@ impl UpdateFeedCliCommand {
         };
 
         // Only a group removal can orphan a subscriber, so a rename or a purely additive change
-        // scans nothing and behaves exactly as before.
+        // scans nothing and behaves exactly as before. The guard re-derives the dropped set from
+        // its own scan, so a group added between here and the update still gets caught.
         if let Some(new_groups) = &groups {
-            let dropped: Vec<_> = feed
-                .groups
-                .iter()
-                .filter(|g| !new_groups.contains(g))
-                .copied()
-                .collect();
-            unsubscribe_orphans(
-                client,
-                out,
-                &pubkey,
-                &feed.code,
-                &dropped,
-                self.force_unsubscribe,
-            )?;
+            if feed.groups.iter().any(|g| !new_groups.contains(g)) {
+                unsubscribe_orphans(
+                    client,
+                    out,
+                    &pubkey,
+                    &feed.code,
+                    new_groups,
+                    self.force_unsubscribe,
+                )?;
+            }
         }
 
         let signature = client.update_feed(UpdateFeedCommand {
@@ -97,9 +94,8 @@ impl UpdateFeedCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        doublezerocommand::MockCliCommand,
         feed::{
-            guard::fixtures::{device, feed as feed_account, pass, seat, user},
+            guard::fixtures::{device, feed as feed_account, pass, seat, user, GuardFixture},
             update::UpdateFeedCliCommand,
         },
         tests::utils::create_test_client,
@@ -118,89 +114,17 @@ mod tests {
     use doublezero_serviceability::state::accesspass::AccessPassType;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
-    use std::{collections::HashMap, net::Ipv4Addr};
-
-    /// A feed carrying `[g1, g2]` and one EdgeSeat user in the feed's exchange, seated on it.
-    struct GuardFixture {
-        exchange_pk: Pubkey,
-        feed_pk: Pubkey,
-        g1: Pubkey,
-        g2: Pubkey,
-        device_pk: Pubkey,
-        user_pk: Pubkey,
-        owner: Pubkey,
-        client_ip: Ipv4Addr,
-    }
-
-    impl GuardFixture {
-        fn new() -> Self {
-            Self {
-                exchange_pk: Pubkey::new_unique(),
-                feed_pk: Pubkey::new_unique(),
-                g1: Pubkey::new_unique(),
-                g2: Pubkey::new_unique(),
-                device_pk: Pubkey::new_unique(),
-                user_pk: Pubkey::new_unique(),
-                owner: Pubkey::new_unique(),
-                client_ip: [10, 1, 1, 1].into(),
-            }
-        }
-
-        /// Stub `get_feed` for a `--pubkey <feed_pk>` lookup, returning a feed carrying `groups`.
-        fn expect_get_feed(&self, client: &mut MockCliCommand, groups: Vec<Pubkey>) {
-            let feed_pk = self.feed_pk;
-            let feed = feed_account(self.exchange_pk, groups);
-            client
-                .expect_get_feed()
-                .with(predicate::eq(GetFeedCommand {
-                    pubkey_or_code: feed_pk.to_string(),
-                    exchange: None,
-                }))
-                .times(1)
-                .returning(move |_| Ok((feed_pk, feed.clone())));
-        }
-
-        /// Stub one guard scan whose user holds `subscribers`. Stacked expectations match FIFO,
-        /// so calling this twice lets a second scan see a different snapshot.
-        fn expect_scan(&self, client: &mut MockCliCommand, subscribers: Vec<Pubkey>) {
-            let user_pk = self.user_pk;
-            let user_acct = user(self.owner, self.device_pk, self.client_ip, subscribers);
-            client
-                .expect_list_user()
-                .times(1)
-                .returning(move |_| Ok(HashMap::from([(user_pk, user_acct.clone())])));
-            let pass_acct = pass(
-                self.owner,
-                self.client_ip,
-                AccessPassType::EdgeSeat(vec![seat(self.feed_pk)]),
-            );
-            client
-                .expect_list_accesspass()
-                .times(1)
-                .returning(move |_| Ok(HashMap::from([(Pubkey::new_unique(), pass_acct.clone())])));
-            let device_pk = self.device_pk;
-            let device_acct = device(self.exchange_pk);
-            client
-                .expect_list_device()
-                .times(1)
-                .returning(move |_| Ok(HashMap::from([(device_pk, device_acct.clone())])));
-            let feed_pk = self.feed_pk;
-            let feed_acct = feed_account(self.exchange_pk, vec![self.g1, self.g2]);
-            client
-                .expect_list_feed()
-                .times(1)
-                .returning(move |_| Ok(HashMap::from([(feed_pk, feed_acct.clone())])));
-        }
-    }
+    use std::collections::HashMap;
 
     #[test]
     fn test_cli_feed_update_fails_closed_when_it_would_orphan_a_subscriber() {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
 
-        let f = GuardFixture::new();
-        f.expect_get_feed(&mut client, vec![f.g1, f.g2]);
-        f.expect_scan(&mut client, vec![f.g2]);
+        let f = GuardFixture::new(2);
+        let (g1, g2) = (f.groups[0], f.groups[1]);
+        f.expect_get_feed(&mut client, vec![g1, g2]);
+        f.expect_scan(&mut client, vec![g2]);
         client.expect_update_feed().times(0);
         client.expect_update_multicastgroup_roles().times(0);
 
@@ -211,7 +135,7 @@ mod tests {
                 pubkey: f.feed_pk.to_string(),
                 exchange: None,
                 name: None,
-                groups: vec![f.g1.to_string()],
+                groups: vec![g1.to_string()],
                 force_unsubscribe: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -233,10 +157,11 @@ mod tests {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
 
-        let f = GuardFixture::new();
+        let f = GuardFixture::new(2);
+        let (g1, g2) = (f.groups[0], f.groups[1]);
         let signature = Signature::new_unique();
-        f.expect_get_feed(&mut client, vec![f.g1, f.g2]);
-        f.expect_scan(&mut client, vec![f.g2]);
+        f.expect_get_feed(&mut client, vec![g1, g2]);
+        f.expect_scan(&mut client, vec![g2]);
         // The mock does not mutate state, so the post-unsubscribe re-scan needs its own snapshot
         // with the membership gone.
         f.expect_scan(&mut client, vec![]);
@@ -244,7 +169,7 @@ mod tests {
             .expect_update_multicastgroup_roles()
             .with(predicate::eq(UpdateMulticastGroupRolesCommand {
                 user_pk: f.user_pk,
-                group_pk: f.g2,
+                group_pk: g2,
                 client_ip: f.client_ip,
                 publisher: false,
                 subscriber: false,
@@ -258,7 +183,7 @@ mod tests {
             .with(predicate::eq(UpdateFeedCommand {
                 pubkey: f.feed_pk,
                 name: None,
-                groups: Some(vec![f.g1]),
+                groups: Some(vec![g1]),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -270,7 +195,7 @@ mod tests {
                 pubkey: f.feed_pk.to_string(),
                 exchange: None,
                 name: None,
-                groups: vec![f.g1.to_string()],
+                groups: vec![g1.to_string()],
                 force_unsubscribe: true,
             }
             .execute(&ctx, &client, &mut output),
@@ -286,9 +211,10 @@ mod tests {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
 
-        let f = GuardFixture::new();
+        let f = GuardFixture::new(2);
+        let (g1, g2) = (f.groups[0], f.groups[1]);
         let signature = Signature::new_unique();
-        f.expect_get_feed(&mut client, vec![f.g1]);
+        f.expect_get_feed(&mut client, vec![g1]);
         client.expect_list_user().times(0);
         client.expect_list_accesspass().times(0);
         client
@@ -296,7 +222,7 @@ mod tests {
             .with(predicate::eq(UpdateFeedCommand {
                 pubkey: f.feed_pk,
                 name: None,
-                groups: Some(vec![f.g1, f.g2]),
+                groups: Some(vec![g1, g2]),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -308,7 +234,7 @@ mod tests {
                 pubkey: f.feed_pk.to_string(),
                 exchange: None,
                 name: None,
-                groups: vec![f.g1.to_string(), f.g2.to_string()],
+                groups: vec![g1.to_string(), g2.to_string()],
                 force_unsubscribe: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -321,12 +247,15 @@ mod tests {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
 
-        let f = GuardFixture::new();
-        f.expect_get_feed(&mut client, vec![f.g1, f.g2]);
+        let f = GuardFixture::new(2);
+        let (g1, g2) = (f.groups[0], f.groups[1]);
+        f.expect_get_feed(&mut client, vec![g1, g2]);
         // Every scan sees the same still-subscribed user, as if a new subscription raced each
-        // unsubscribe pass; uncapped so the guard's round limit decides when to stop.
+        // unsubscribe pass; uncapped so the guard's round limit decides when to stop. Deliberately
+        // not `expect_scan`: that helper is capped per call, which would hard-code the guard's
+        // internal round count.
         let user_pk = f.user_pk;
-        let user_acct = user(f.owner, f.device_pk, f.client_ip, vec![f.g2]);
+        let user_acct = user(f.owner, f.device_pk, f.client_ip, vec![g2]);
         client
             .expect_list_user()
             .returning(move |_| Ok(HashMap::from([(user_pk, user_acct.clone())])));
@@ -344,7 +273,7 @@ mod tests {
             .expect_list_device()
             .returning(move |_| Ok(HashMap::from([(device_pk, device_acct.clone())])));
         let feed_pk = f.feed_pk;
-        let feed_acct = feed_account(f.exchange_pk, vec![f.g1, f.g2]);
+        let feed_acct = feed_account(f.exchange_pk, vec![g1, g2]);
         client
             .expect_list_feed()
             .returning(move |_| Ok(HashMap::from([(feed_pk, feed_acct.clone())])));
@@ -361,7 +290,7 @@ mod tests {
                 pubkey: f.feed_pk.to_string(),
                 exchange: None,
                 name: None,
-                groups: vec![f.g1.to_string()],
+                groups: vec![g1.to_string()],
                 force_unsubscribe: true,
             }
             .execute(&ctx, &client, &mut output),

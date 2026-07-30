@@ -50,8 +50,9 @@ pub struct Snapshot {
     pub feeds: HashMap<Pubkey, Feed>,
 }
 
-/// Unsubscribes every EdgeSeat user that dropping `dropped` from `feed_pk` would orphan, leaving
-/// the caller to submit the feed change afterwards.
+/// Unsubscribes every EdgeSeat user that replacing `feed_pk`'s group set with `new_groups` would
+/// orphan, leaving the caller to submit the feed change afterwards. A delete passes an empty
+/// `new_groups`, since it drops everything the feed carried.
 ///
 /// Without `force` this only reports: a non-empty plan fails the command before anything is
 /// submitted. With `force` the removals are applied and re-verified against a fresh scan.
@@ -61,16 +62,27 @@ pub fn unsubscribe_orphans<C: CliCommand, W: Write>(
     out: &mut W,
     feed_pk: &Pubkey,
     feed_code: &str,
-    dropped: &[Pubkey],
+    new_groups: &[Pubkey],
     force: bool,
 ) -> eyre::Result<()> {
-    if dropped.is_empty() {
-        return Ok(());
-    }
-
     let mut rounds_done = 0;
     loop {
-        let orphans = plan(feed_pk, dropped, &scan(client)?)?;
+        let snap = scan(client)?;
+
+        // Re-derive the dropped set from the freshly scanned feed rather than from the group set
+        // the command read before the loop: a group added to the feed mid-run is dropped by this
+        // change too, and pinning the earlier set would let its subscribers through unseen.
+        let feed = snap.feeds.get(feed_pk).ok_or_else(|| {
+            eyre::eyre!("feed '{feed_code}' ({feed_pk}) disappeared mid-run; nothing was changed")
+        })?;
+        let dropped: Vec<Pubkey> = feed
+            .groups
+            .iter()
+            .filter(|g| !new_groups.contains(g))
+            .copied()
+            .collect();
+
+        let orphans = plan(feed_pk, &dropped, &snap)?;
         if orphans.is_empty() {
             return Ok(());
         }
@@ -107,9 +119,10 @@ pub fn unsubscribe_orphans<C: CliCommand, W: Write>(
                 .wrap_err_with(|| {
                     format!(
                         "failed to unsubscribe user {} from group {}; the feed was left unchanged. \
-                         Removing another owner's roles needs USER_ADMIN (or foundation \
-                         membership) on the payer in addition to FEED_AUTHORITY: doublezero \
-                         permission set --user-payer <payer> --add user-admin",
+                         If this is an authorization failure, removing another owner's roles needs \
+                         USER_ADMIN (or foundation membership) on the payer in addition to \
+                         FEED_AUTHORITY: doublezero permission set --user-payer <payer> --add \
+                         user-admin",
                         orphan.user_pk, orphan.group_pk
                     )
                 })?;
@@ -144,15 +157,29 @@ pub fn plan(feed_pk: &Pubkey, dropped: &[Pubkey], snap: &Snapshot) -> eyre::Resu
     let mut orphans = Vec::new();
 
     for (user_pk, user) in &snap.users {
-        if user.publishers.is_empty() && user.subscribers.is_empty() {
+        // Cheapest test first: a user holding none of the dropped groups cannot be orphaned,
+        // whatever their pass or device looks like. Keeping it ahead of the lookups below also
+        // stops an unrelated user with a dangling `device_pk` from blocking every rotation.
+        let held: Vec<&Pubkey> = dropped
+            .iter()
+            .filter(|g| user.publishers.contains(g) || user.subscribers.contains(g))
+            .collect();
+        if held.is_empty() {
             continue;
         }
-        // Non-EdgeSeat memberships come from the pass's own allowlists, not from feeds, so feed
-        // changes cannot orphan them.
-        let Some(pass) = resolve_pass(&snap.accesspasses, user) else {
-            continue;
-        };
-        if !matches!(pass.accesspass_type, AccessPassType::EdgeSeat(_)) {
+
+        // Every feed seated on a pass the program would accept for this user. Not the single pass
+        // the SDK read path prefers: `create_user` and `update_multicastgroup_roles` both accept
+        // either the exact-IP PDA or the shared UNSPECIFIED one, so a dynamic Prepaid pass must
+        // not be allowed to hide a live EdgeSeat pass at the other PDA.
+        let seated: Vec<Pubkey> = accepted_passes(&snap.accesspasses, user)
+            .flat_map(|pass| pass.feed_seats().iter().map(|seat| seat.feed_key))
+            .collect();
+        // Not feed-gated: these memberships come from the pass's own allowlists, not from feeds,
+        // so no feed change can orphan them and no seat is at stake. `feed_pks` is the record of
+        // seats actually consumed at connect, so a user holding one stays in scope even if their
+        // pass no longer shows the seat.
+        if seated.is_empty() && user.feed_pks.is_empty() {
             continue;
         }
 
@@ -165,15 +192,10 @@ pub fn plan(feed_pk: &Pubkey, dropped: &[Pubkey], snap: &Snapshot) -> eyre::Resu
             )
         })?;
 
-        for group_pk in dropped {
-            let publisher = user.publishers.contains(group_pk);
-            let subscriber = user.subscribers.contains(group_pk);
-            if !publisher && !subscriber {
-                continue;
-            }
-            let covered = pass.feed_seats().iter().any(|seat| {
-                seat.feed_key != *feed_pk
-                    && snap.feeds.get(&seat.feed_key).is_some_and(|other| {
+        for group_pk in held {
+            let covered = seated.iter().any(|seated_pk| {
+                seated_pk != feed_pk
+                    && snap.feeds.get(seated_pk).is_some_and(|other| {
                         other.groups_for(&device.exchange_pk).contains(group_pk)
                     })
             });
@@ -182,8 +204,8 @@ pub fn plan(feed_pk: &Pubkey, dropped: &[Pubkey], snap: &Snapshot) -> eyre::Resu
                     user_pk: *user_pk,
                     group_pk: *group_pk,
                     client_ip: user.client_ip,
-                    publisher,
-                    subscriber,
+                    publisher: user.publishers.contains(group_pk),
+                    subscriber: user.subscribers.contains(group_pk),
                 });
             }
         }
@@ -194,25 +216,17 @@ pub fn plan(feed_pk: &Pubkey, dropped: &[Pubkey], snap: &Snapshot) -> eyre::Resu
     Ok(orphans)
 }
 
-/// The access pass serviceability would resolve for `user`, mirroring `GetAccessPassCommand`: a
-/// shared dynamic pass at the UNSPECIFIED-IP PDA wins over the exact-IP pass.
-fn resolve_pass<'a>(
+/// The EdgeSeat passes the program would accept for `user`: those owned by their payer at either
+/// the exact-IP PDA or the shared UNSPECIFIED-IP one.
+fn accepted_passes<'a>(
     accesspasses: &'a HashMap<Pubkey, AccessPass>,
-    user: &User,
-) -> Option<&'a AccessPass> {
-    let mut exact = None;
-    for pass in accesspasses.values() {
-        if pass.user_payer != user.owner {
-            continue;
-        }
-        if pass.client_ip == Ipv4Addr::UNSPECIFIED {
-            return Some(pass);
-        }
-        if pass.client_ip == user.client_ip {
-            exact = Some(pass);
-        }
-    }
-    exact
+    user: &'a User,
+) -> impl Iterator<Item = &'a AccessPass> {
+    accesspasses.values().filter(move |pass| {
+        pass.user_payer == user.owner
+            && (pass.client_ip == Ipv4Addr::UNSPECIFIED || pass.client_ip == user.client_ip)
+            && matches!(pass.accesspass_type, AccessPassType::EdgeSeat(_))
+    })
 }
 
 fn report<W: Write>(
@@ -260,7 +274,11 @@ fn report<W: Write>(
 #[cfg(test)]
 pub(crate) mod fixtures {
     use super::*;
-    use doublezero_sdk::{AccountType, DeviceStatus, UserCYOA, UserStatus, UserType};
+    use crate::doublezerocommand::MockCliCommand;
+    use doublezero_sdk::{
+        commands::feed::get::GetFeedCommand, AccountType, DeviceStatus, UserCYOA, UserStatus,
+        UserType,
+    };
     use doublezero_serviceability::state::accesspass::{AccessPassStatus, FeedSeat};
 
     pub fn device(exchange_pk: Pubkey) -> Device {
@@ -352,6 +370,79 @@ pub(crate) mod fixtures {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+        }
+    }
+
+    /// A feed carrying `groups` and one EdgeSeat user in the feed's exchange, seated on it.
+    /// Shared by the `feed update` / `feed delete` command tests, which stub the same guard
+    /// scans through the mock client; `new(group_count)` picks how many groups the feed carries.
+    pub struct GuardFixture {
+        pub exchange_pk: Pubkey,
+        pub feed_pk: Pubkey,
+        pub groups: Vec<Pubkey>,
+        pub device_pk: Pubkey,
+        pub user_pk: Pubkey,
+        pub owner: Pubkey,
+        pub client_ip: Ipv4Addr,
+    }
+
+    impl GuardFixture {
+        pub fn new(group_count: usize) -> Self {
+            Self {
+                exchange_pk: Pubkey::new_unique(),
+                feed_pk: Pubkey::new_unique(),
+                groups: (0..group_count).map(|_| Pubkey::new_unique()).collect(),
+                device_pk: Pubkey::new_unique(),
+                user_pk: Pubkey::new_unique(),
+                owner: Pubkey::new_unique(),
+                client_ip: [10, 1, 1, 1].into(),
+            }
+        }
+
+        /// Stub `get_feed` for a `--pubkey <feed_pk>` lookup, returning a feed carrying `groups`.
+        pub fn expect_get_feed(&self, client: &mut MockCliCommand, groups: Vec<Pubkey>) {
+            let feed_pk = self.feed_pk;
+            let feed_acct = feed(self.exchange_pk, groups);
+            client
+                .expect_get_feed()
+                .with(mockall::predicate::eq(GetFeedCommand {
+                    pubkey_or_code: feed_pk.to_string(),
+                    exchange: None,
+                }))
+                .times(1)
+                .returning(move |_| Ok((feed_pk, feed_acct.clone())));
+        }
+
+        /// Stub one guard scan whose user holds `subscribers`. Stacked expectations match FIFO,
+        /// so calling this twice lets a second scan see a different snapshot.
+        pub fn expect_scan(&self, client: &mut MockCliCommand, subscribers: Vec<Pubkey>) {
+            let user_pk = self.user_pk;
+            let user_acct = user(self.owner, self.device_pk, self.client_ip, subscribers);
+            client
+                .expect_list_user()
+                .times(1)
+                .returning(move |_| Ok(HashMap::from([(user_pk, user_acct.clone())])));
+            let pass_acct = pass(
+                self.owner,
+                self.client_ip,
+                AccessPassType::EdgeSeat(vec![seat(self.feed_pk)]),
+            );
+            client
+                .expect_list_accesspass()
+                .times(1)
+                .returning(move |_| Ok(HashMap::from([(Pubkey::new_unique(), pass_acct.clone())])));
+            let device_pk = self.device_pk;
+            let device_acct = device(self.exchange_pk);
+            client
+                .expect_list_device()
+                .times(1)
+                .returning(move |_| Ok(HashMap::from([(device_pk, device_acct.clone())])));
+            let feed_pk = self.feed_pk;
+            let feed_acct = feed(self.exchange_pk, self.groups.clone());
+            client
+                .expect_list_feed()
+                .times(1)
+                .returning(move |_| Ok(HashMap::from([(feed_pk, feed_acct.clone())])));
         }
     }
 }
@@ -526,18 +617,53 @@ mod tests {
         assert!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().is_empty());
     }
 
+    /// The program accepts a pass at either PDA, so a shared dynamic pass must not hide the
+    /// EdgeSeat pass at the exact-IP PDA the user is actually seated on.
     #[test]
-    fn test_plan_prefers_the_shared_dynamic_pass() {
+    fn test_plan_sees_an_edgeseat_pass_shadowed_by_a_dynamic_prepaid_pass() {
         let mut f = fixture();
         let owner = f.snap.users[&f.user_pk].owner;
-        // The exact-IP pass is EdgeSeat, but the shared dynamic pass is what the program reads —
-        // and it is Prepaid, so this user is not feed-gated.
         f.snap.accesspasses.insert(
             Pubkey::new_unique(),
             pass(owner, Ipv4Addr::UNSPECIFIED, AccessPassType::Prepaid),
         );
 
+        assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
+    }
+
+    /// Coverage is the union over both accepted PDAs, not just one of them.
+    #[test]
+    fn test_plan_counts_coverage_from_a_pass_at_the_other_pda() {
+        let mut f = fixture();
+        let owner = f.snap.users[&f.user_pk].owner;
+        let other_pk = Pubkey::new_unique();
+        f.snap
+            .feeds
+            .insert(other_pk, feed(f.exchange, vec![f.group]));
+        f.snap.accesspasses.insert(
+            Pubkey::new_unique(),
+            pass(
+                owner,
+                Ipv4Addr::UNSPECIFIED,
+                AccessPassType::EdgeSeat(vec![seat(other_pk)]),
+            ),
+        );
+
         assert!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().is_empty());
+    }
+
+    /// A consumed seat keeps the user in scope even if their pass no longer shows it.
+    #[test]
+    fn test_plan_keeps_a_user_with_a_consumed_seat_but_no_edgeseat_pass() {
+        let mut f = fixture();
+        let owner = f.snap.users[&f.user_pk].owner;
+        f.snap.accesspasses = HashMap::from([(
+            Pubkey::new_unique(),
+            pass(owner, f.client_ip, AccessPassType::Prepaid),
+        )]);
+        f.snap.users.get_mut(&f.user_pk).unwrap().feed_pks = vec![f.feed_pk];
+
+        assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
     }
 
     #[test]
@@ -549,5 +675,33 @@ mod tests {
             err.to_string().contains("unknown device"),
             "unexpected error: {err}"
         );
+    }
+
+    /// A dangling `device_pk` on a user who holds none of the dropped groups must not block the
+    /// rotation — the metro is only needed to judge coverage for a group actually held.
+    #[test]
+    fn test_plan_ignores_an_unknown_device_on_an_unaffected_user() {
+        let mut f = fixture();
+        let stray_pk = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+        f.snap.users.insert(
+            stray_pk,
+            user(
+                owner,
+                Pubkey::new_unique(),
+                [10, 2, 2, 2].into(),
+                vec![Pubkey::new_unique()],
+            ),
+        );
+        f.snap.accesspasses.insert(
+            Pubkey::new_unique(),
+            pass(
+                owner,
+                [10, 2, 2, 2].into(),
+                AccessPassType::EdgeSeat(vec![seat(f.feed_pk)]),
+            ),
+        );
+
+        assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
     }
 }

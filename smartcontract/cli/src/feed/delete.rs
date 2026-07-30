@@ -44,15 +44,17 @@ impl DeleteFeedCliCommand {
             exchange,
         })?;
 
-        // Deleting the feed drops every group it carried.
-        unsubscribe_orphans(
-            client,
-            out,
-            &pubkey,
-            &feed.code,
-            &feed.groups,
-            self.force_unsubscribe,
-        )?;
+        // Deleting the feed drops every group it carried, so the post-change set is empty.
+        if !feed.groups.is_empty() {
+            unsubscribe_orphans(
+                client,
+                out,
+                &pubkey,
+                &feed.code,
+                &[],
+                self.force_unsubscribe,
+            )?;
+        }
 
         let signature = client.delete_feed(DeleteFeedCommand { pubkey })?;
         print_signature(out, &signature)
@@ -62,11 +64,7 @@ impl DeleteFeedCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        doublezerocommand::MockCliCommand,
-        feed::{
-            delete::DeleteFeedCliCommand,
-            guard::fixtures::{device, feed as feed_account, pass, seat, user},
-        },
+        feed::{delete::DeleteFeedCliCommand, guard::fixtures::GuardFixture},
         tests::utils::create_test_client,
     };
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
@@ -78,90 +76,18 @@ mod tests {
         },
         AccountType, Exchange, ExchangeStatus, Feed,
     };
-    use doublezero_serviceability::state::accesspass::AccessPassType;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
-    use std::{collections::HashMap, net::Ipv4Addr};
-
-    /// A feed carrying `[group]` and one EdgeSeat user in the feed's exchange, seated on it.
-    struct GuardFixture {
-        exchange_pk: Pubkey,
-        feed_pk: Pubkey,
-        group: Pubkey,
-        device_pk: Pubkey,
-        user_pk: Pubkey,
-        owner: Pubkey,
-        client_ip: Ipv4Addr,
-    }
-
-    impl GuardFixture {
-        fn new() -> Self {
-            Self {
-                exchange_pk: Pubkey::new_unique(),
-                feed_pk: Pubkey::new_unique(),
-                group: Pubkey::new_unique(),
-                device_pk: Pubkey::new_unique(),
-                user_pk: Pubkey::new_unique(),
-                owner: Pubkey::new_unique(),
-                client_ip: [10, 1, 1, 1].into(),
-            }
-        }
-
-        /// Stub `get_feed` for a `--pubkey <feed_pk>` lookup.
-        fn expect_get_feed(&self, client: &mut MockCliCommand) {
-            let feed_pk = self.feed_pk;
-            let feed = feed_account(self.exchange_pk, vec![self.group]);
-            client
-                .expect_get_feed()
-                .with(predicate::eq(GetFeedCommand {
-                    pubkey_or_code: feed_pk.to_string(),
-                    exchange: None,
-                }))
-                .times(1)
-                .returning(move |_| Ok((feed_pk, feed.clone())));
-        }
-
-        /// Stub one guard scan whose user holds `subscribers`. Stacked expectations match FIFO,
-        /// so calling this twice lets a second scan see a different snapshot.
-        fn expect_scan(&self, client: &mut MockCliCommand, subscribers: Vec<Pubkey>) {
-            let user_pk = self.user_pk;
-            let user_acct = user(self.owner, self.device_pk, self.client_ip, subscribers);
-            client
-                .expect_list_user()
-                .times(1)
-                .returning(move |_| Ok(HashMap::from([(user_pk, user_acct.clone())])));
-            let pass_acct = pass(
-                self.owner,
-                self.client_ip,
-                AccessPassType::EdgeSeat(vec![seat(self.feed_pk)]),
-            );
-            client
-                .expect_list_accesspass()
-                .times(1)
-                .returning(move |_| Ok(HashMap::from([(Pubkey::new_unique(), pass_acct.clone())])));
-            let device_pk = self.device_pk;
-            let device_acct = device(self.exchange_pk);
-            client
-                .expect_list_device()
-                .times(1)
-                .returning(move |_| Ok(HashMap::from([(device_pk, device_acct.clone())])));
-            let feed_pk = self.feed_pk;
-            let feed_acct = feed_account(self.exchange_pk, vec![self.group]);
-            client
-                .expect_list_feed()
-                .times(1)
-                .returning(move |_| Ok(HashMap::from([(feed_pk, feed_acct.clone())])));
-        }
-    }
 
     #[test]
     fn test_cli_feed_delete_fails_closed_when_it_would_orphan_a_subscriber() {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
 
-        let f = GuardFixture::new();
-        f.expect_get_feed(&mut client);
-        f.expect_scan(&mut client, vec![f.group]);
+        let f = GuardFixture::new(1);
+        let group = f.groups[0];
+        f.expect_get_feed(&mut client, vec![group]);
+        f.expect_scan(&mut client, vec![group]);
         client.expect_delete_feed().times(0);
         client.expect_update_multicastgroup_roles().times(0);
 
@@ -187,10 +113,11 @@ mod tests {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
 
-        let f = GuardFixture::new();
+        let f = GuardFixture::new(1);
+        let group = f.groups[0];
         let signature = Signature::new_unique();
-        f.expect_get_feed(&mut client);
-        f.expect_scan(&mut client, vec![f.group]);
+        f.expect_get_feed(&mut client, vec![group]);
+        f.expect_scan(&mut client, vec![group]);
         // The mock does not mutate state, so the post-unsubscribe re-scan needs its own snapshot
         // with the membership gone.
         f.expect_scan(&mut client, vec![]);
@@ -198,7 +125,7 @@ mod tests {
             .expect_update_multicastgroup_roles()
             .with(predicate::eq(UpdateMulticastGroupRolesCommand {
                 user_pk: f.user_pk,
-                group_pk: f.group,
+                group_pk: group,
                 client_ip: f.client_ip,
                 publisher: false,
                 subscriber: false,

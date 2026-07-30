@@ -350,6 +350,7 @@ async fn create_user_at(f: &mut Fixture, ip: Ipv4Addr, feed: Pubkey, group: Pubk
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            extra_group_count: 0,
         }),
         &accounts,
         &f.payer,
@@ -761,6 +762,7 @@ async fn test_allowlisted_group_joins_without_a_seat() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         &vec![
             AccountMeta::new(g[4], false),
@@ -801,6 +803,7 @@ async fn test_feed_group_not_joinable_through_the_roles_instruction() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         &vec![
             AccountMeta::new(g[1], false),

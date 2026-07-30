@@ -27,7 +27,7 @@ jobs:
             binary: doublezero_geolocation.so
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: dtolnay/rust-toolchain@1.97.1
       - uses: Swatinem/rust-cache@v2
       - name: Install agave solana tools
         run: |

@@ -57,7 +57,7 @@ cargo test -p <crate-name> <test_name>
 
 Always run `make rust-fmt` before committing Rust changes.
 
-Rust toolchain: 1.90.0 (via `rust-toolchain.toml`). Solana SDK: 2.2.x.
+Rust toolchain: 1.97.1 (via `rust-toolchain.toml`); the onchain programs pin their own in `smartcontract/programs/rust-toolchain.toml`. Solana SDK: 3.0.
 
 ### Go
 

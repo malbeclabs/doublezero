@@ -41,11 +41,11 @@ impl fmt::Debug for SetGlobalConfigArgs {
             "local_asn: {}, remote_asn: {}, tunnel_block: {}, user _block: {}, multicastgroup_block: {}, next_bgp_community: {:?}, multicast_publisher_block: {}",
             self.local_asn,
             self.remote_asn,
-            &self.device_tunnel_block,
-            &self.user_tunnel_block,
-            &self.multicastgroup_block,
+            self.device_tunnel_block,
+            self.user_tunnel_block,
+            self.multicastgroup_block,
             self.next_bgp_community,
-            &self.multicast_publisher_block,
+            self.multicast_publisher_block,
         )
     }
 }

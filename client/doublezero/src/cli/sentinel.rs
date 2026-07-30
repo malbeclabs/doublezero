@@ -389,7 +389,7 @@ impl FindValidatorMulticastPublishersCommand {
                     not_publishers: on_dz - pubs,
                 })
                 .collect();
-            summary_rows.sort_by(|a, b| b.validators.cmp(&a.validators));
+            summary_rows.sort_by_key(|r| std::cmp::Reverse(r.validators));
             summary_rows.push(SummaryRow {
                 client: "TOTAL".to_string(),
                 validators: total,

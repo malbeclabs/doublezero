@@ -93,7 +93,7 @@ impl GetAccountCliCommand {
                     writeln!(
                         out,
                         "{}: {} ({})\n\t\t\tpubkey: {}, signature: {}",
-                        &tran.time.to_string(),
+                        tran.time,
                         tran.instruction.get_name(),
                         tran.instruction.get_args(),
                         tran.account,

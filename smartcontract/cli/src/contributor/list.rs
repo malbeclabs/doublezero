@@ -41,7 +41,7 @@ impl ListContributorCliCommand {
 
         let mut contributors: Vec<(Pubkey, Contributor)> = contributors.into_iter().collect();
 
-        contributors.sort_by(|(_, a), (_, b)| a.owner.cmp(&b.owner));
+        contributors.sort_by_key(|(_, a)| a.owner);
 
         let contributor_displays: Vec<ContributorDisplay> = contributors
             .into_iter()

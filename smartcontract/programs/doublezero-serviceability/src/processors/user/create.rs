@@ -41,8 +41,8 @@ impl fmt::Debug for UserCreateArgs {
             "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}",
             self.user_type,
             self.cyoa_type,
-            &self.client_ip,
-            &self.tunnel_endpoint,
+            self.client_ip,
+            self.tunnel_endpoint,
             self.dz_prefix_count,
         )
     }

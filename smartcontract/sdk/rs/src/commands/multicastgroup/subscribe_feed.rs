@@ -1,5 +1,3 @@
-use std::net::Ipv4Addr;
-
 use crate::{
     commands::{
         accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
@@ -19,9 +17,9 @@ use doublezero_serviceability::{
 use doublezero_serviceability_instruction::multicastgroup::subscribe_feed;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-/// A legacy transaction fits 26 variable feed+group accounts with room left for the optional
-/// trailing Permission account
-pub(crate) const MAX_FEED_TX_ACCOUNTS: usize = 26;
+/// A legacy transaction behind `send_transaction`'s compute-budget prelude fits 25 variable
+/// feed+group accounts.
+pub(crate) const MAX_FEED_TX_ACCOUNTS: usize = 25;
 
 /// Join whole feeds on an EdgeSeat access pass.
 ///
@@ -31,7 +29,6 @@ pub(crate) const MAX_FEED_TX_ACCOUNTS: usize = 26;
 #[derive(Debug, PartialEq, Clone)]
 pub struct SubscribeFeedCommand {
     pub user_pk: Pubkey,
-    pub client_ip: Ipv4Addr,
     pub feed_pks: Vec<Pubkey>,
 }
 
@@ -57,8 +54,10 @@ impl SubscribeFeedCommand {
             eyre::bail!("user {} is {}, not Activated", self.user_pk, user.status);
         }
 
+        // The user's own IP, not a caller-supplied one: the pass lookup must match the pass the
+        // user was created against.
         let (accesspass_pubkey, accesspass) = GetAccessPassCommand {
-            client_ip: self.client_ip,
+            client_ip: user.client_ip,
             user_payer: user.owner,
         }
         .execute(client)?
@@ -186,7 +185,6 @@ mod tests {
         user_pk: Pubkey,
         device_pk: Pubkey,
         accesspass_pk: Pubkey,
-        client_ip: Ipv4Addr,
         exchange_pk: Pubkey,
     }
 
@@ -280,7 +278,6 @@ mod tests {
             user_pk,
             device_pk,
             accesspass_pk,
-            client_ip,
             exchange_pk,
         }
     }
@@ -330,7 +327,6 @@ mod tests {
 
         SubscribeFeedCommand {
             user_pk: f.user_pk,
-            client_ip: f.client_ip,
             feed_pks: vec![feed_pk],
         }
         .execute(&client)
@@ -376,8 +372,51 @@ mod tests {
 
         SubscribeFeedCommand {
             user_pk: f.user_pk,
-            client_ip: f.client_ip,
             feed_pks: vec![feed1_pk, feed2_pk],
+        }
+        .execute(&client)
+        .unwrap();
+    }
+
+    #[test]
+    fn test_commands_subscribe_feed_already_held_feed_is_a_noop_retry() {
+        // The user already holds every feed at the cap, one of them being the request: the retry
+        // adds nothing to the count (no cap error) and sends only the groups not yet subscribed.
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+
+        let exchange = Pubkey::new_unique();
+        let (g0, g1) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let feed_pk = Pubkey::new_unique();
+        let mut held: Vec<Pubkey> = (0..MAX_USER_FEEDS - 1)
+            .map(|_| Pubkey::new_unique())
+            .collect();
+        held.push(feed_pk);
+        let f = setup(
+            &mut client,
+            vec![g0],
+            held,
+            vec![(feed_pk, feed_with("held", exchange, vec![g0, g1]))],
+        );
+
+        let expected = subscribe_feed(
+            &program_id,
+            &payer,
+            &f.accesspass_pk,
+            &f.user_pk,
+            &f.device_pk,
+            &[feed_pk],
+            &[g1],
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        SubscribeFeedCommand {
+            user_pk: f.user_pk,
+            feed_pks: vec![feed_pk],
         }
         .execute(&client)
         .unwrap();
@@ -436,7 +475,6 @@ mod tests {
 
         SubscribeFeedCommand {
             user_pk: f.user_pk,
-            client_ip: f.client_ip,
             feed_pks: vec![feed1_pk, feed2_pk],
         }
         .execute(&client)
@@ -471,7 +509,6 @@ mod tests {
         // No send_transaction expectation: the command must fail before any transaction.
         let err = SubscribeFeedCommand {
             user_pk: f.user_pk,
-            client_ip: f.client_ip,
             feed_pks: vec![feed1_pk, feed2_pk],
         }
         .execute(&client)
@@ -503,7 +540,6 @@ mod tests {
 
         let err = SubscribeFeedCommand {
             user_pk: f.user_pk,
-            client_ip: f.client_ip,
             feed_pks: vec![feed_pk],
         }
         .execute(&client)

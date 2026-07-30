@@ -21,6 +21,9 @@ use doublezero_sdk::{
     },
     Device, Feed, User, UserCYOA, UserStatus, UserType,
 };
+use doublezero_serviceability::{
+    processors::multicastgroup::subscribe_feed::MAX_USER_FEEDS, state::accesspass::AccessPassType,
+};
 use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
 
@@ -473,7 +476,6 @@ impl Connect {
             spinner.set_message("Leaving feed(s)...");
             let result = ledger.unsubscribe_feed(UnsubscribeFeedCommand {
                 user_pk: *user_pk,
-                client_ip,
                 feed_pks: unsub_pks,
             });
             if result.is_ok() {
@@ -546,7 +548,7 @@ impl Connect {
         spinner: &ProgressBar,
         out: &mut W,
     ) -> eyre::Result<FeedJoin> {
-        match mcast_user {
+        let (join, held) = match mcast_user {
             Some((pk, user)) => {
                 let device = ledger
                     .get_device(user.device_pk.to_string())
@@ -554,27 +556,80 @@ impl Connect {
                         eyre::eyre!("failed to fetch device {}: {err}", user.device_pk)
                     })?;
                 writeln!(out, "    An account already exists with Pubkey: {pk}")?;
-                // The user's device is fixed, so --device cannot help here.
+                // The user's device is fixed; a --device naming another one is a no-op the
+                // operator should hear about rather than have silently ignored.
+                if let Some(requested) = self.device.as_ref() {
+                    if *requested != user.device_pk.to_string() && *requested != device.code {
+                        eyre::bail!(
+                            "existing Multicast user {pk} is on device {}; run 'doublezero disconnect multicast' first, or omit --device",
+                            device.code
+                        );
+                    }
+                }
                 let feed_pks = resolve_feeds_for_metro(
                     names,
                     feeds,
                     &device,
                     "run 'doublezero disconnect multicast' first to reconnect on a device in the feed's metro",
                 )?;
-                Ok(FeedJoin {
-                    user: FeedJoinUser::Existing(*pk),
-                    feed_pks,
-                })
+                (
+                    FeedJoin {
+                        user: FeedJoinUser::Existing(*pk),
+                        feed_pks,
+                    },
+                    user.feed_pks.clone(),
+                )
             }
             None => {
+                // The feeds choose the metro: a code may exist in several, a pubkey names one.
+                // Every requested feed must share a metro, since one device carries the tunnel.
+                let mut allowed_exchanges: Option<Vec<Pubkey>> = None;
+                for name in names {
+                    let exchanges: Vec<Pubkey> = match name.parse::<Pubkey>() {
+                        Ok(pk) => match feeds.get(&pk) {
+                            Some(feed) => vec![feed.exchange],
+                            None => eyre::bail!("feed {name} not found"),
+                        },
+                        Err(_) => {
+                            let exchanges: Vec<Pubkey> = feeds
+                                .values()
+                                .filter(|f| f.code == *name)
+                                .map(|f| f.exchange)
+                                .collect();
+                            if exchanges.is_empty() {
+                                eyre::bail!("feed {name} not found");
+                            }
+                            exchanges
+                        }
+                    };
+                    allowed_exchanges = Some(match allowed_exchanges {
+                        None => exchanges,
+                        Some(prev) => {
+                            let shared: Vec<Pubkey> = prev
+                                .into_iter()
+                                .filter(|exchange| exchanges.contains(exchange))
+                                .collect();
+                            if shared.is_empty() {
+                                eyre::bail!("the requested feeds do not share a metro; one device carries the tunnel, so join them separately");
+                            }
+                            shared
+                        }
+                    });
+                }
+                let allowed_exchanges = allowed_exchanges.expect("names is not empty");
+
                 let users = ledger.list_user()?;
                 let mut devices = ledger.list_device()?;
                 if self.device.is_none() {
                     devices.retain(|_, d| {
-                        d.is_device_eligible_for_provisioning()
+                        allowed_exchanges.contains(&d.exchange_pk)
+                            && d.is_device_eligible_for_provisioning()
                             && d.check_user_type_capacity(UserType::Multicast, false)
                                 .is_none()
                     });
+                    if devices.is_empty() {
+                        eyre::bail!("no eligible device serves the metro of the requested feed(s)");
+                    }
                 }
                 let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, &client_ip, &devices);
 
@@ -587,21 +642,61 @@ impl Connect {
                     return Err(eyre::eyre!(err_msg));
                 }
 
+                // Auto-selection filtered to the feeds' metros, so this only fails when the
+                // operator passed a --device in another one.
                 let feed_pks = resolve_feeds_for_metro(
                     names,
                     feeds,
                     &device,
-                    "pass --device to pick a device in the feed's metro",
+                    "omit --device to pick a device in the feed's metro automatically",
                 )?;
-                Ok(FeedJoin {
-                    user: FeedJoinUser::Create {
-                        device_pk,
-                        tunnel_endpoint,
+                (
+                    FeedJoin {
+                        user: FeedJoinUser::Create {
+                            device_pk,
+                            tunnel_endpoint,
+                        },
+                        feed_pks,
                     },
-                    feed_pks,
-                })
+                    vec![],
+                )
+            }
+        };
+
+        // Refuse here what the program would refuse after the create: by then the bare user
+        // would already exist, holding a multicast slot and a device seat for nothing.
+        let accesspass = ledger
+            .get_accesspass(client_ip, ledger.get_payer())?
+            .ok_or_else(|| {
+                eyre::eyre!(
+                    "No valid AccessPass found for IP: {client_ip} user_payer: {}",
+                    ledger.get_payer()
+                )
+            })?;
+        if !matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_)) {
+            eyre::bail!(
+                "the access pass is {}; only an EdgeSeat pass carries feeds",
+                accesspass.accesspass_type
+            );
+        }
+        for feed_pk in &join.feed_pks {
+            if !accesspass
+                .feed_seats()
+                .iter()
+                .any(|seat| seat.feed_key == *feed_pk)
+            {
+                eyre::bail!("feed {feed_pk} is not provisioned on the access pass");
             }
         }
+        let new_feeds = join.feed_pks.iter().filter(|pk| !held.contains(pk)).count();
+        if held.len() + new_feeds > MAX_USER_FEEDS {
+            eyre::bail!(
+                "user holds {} feeds and this join adds {new_feeds}; a user may hold at most {MAX_USER_FEEDS}",
+                held.len()
+            );
+        }
+
+        Ok(join)
     }
 
     /// Execute a validated join: create the bare user when needed (CreateUser is idempotent, so a
@@ -639,7 +734,6 @@ impl Connect {
         spinner.set_message("Joining feed(s)...");
         ledger.subscribe_feed(SubscribeFeedCommand {
             user_pk,
-            client_ip,
             feed_pks: join.feed_pks,
         })?;
         Ok(())
@@ -678,12 +772,9 @@ impl Connect {
                     eyre::bail!("Cannot mix --subscribe-feed/--unsubscribe-feed with --publish/--subscribe or positional group arguments");
                 }
                 if has_feeds {
-                    // Same-spelling overlap (case-insensitively); a code overlapping the same
-                    // feed's pubkey is caught after resolution in execute_multicast_feeds.
-                    if let Some(feed) = sub_feeds
-                        .iter()
-                        .find(|f| unsub_feeds.iter().any(|u| u.eq_ignore_ascii_case(f)))
-                    {
+                    // Same-spelling overlap; a code overlapping the same feed's pubkey is caught
+                    // after resolution in execute_multicast_feeds. Codes are case-sensitive.
+                    if let Some(feed) = sub_feeds.iter().find(|f| unsub_feeds.contains(f)) {
                         eyre::bail!(
                             "feed {feed} is in both --subscribe-feed and --unsubscribe-feed"
                         );
@@ -1368,13 +1459,13 @@ fn resolve_feeds_for_metro(
         let pk = match name.parse::<Pubkey>() {
             Ok(pk) => pk,
             Err(_) => {
-                let in_metro = feeds.iter().find(|(_, f)| {
-                    f.exchange == device.exchange_pk && f.code.eq_ignore_ascii_case(name)
-                });
+                let in_metro = feeds
+                    .iter()
+                    .find(|(_, f)| f.exchange == device.exchange_pk && f.code == *name);
                 match in_metro {
                     Some((pk, _)) => *pk,
                     None => {
-                        if feeds.values().any(|f| f.code.eq_ignore_ascii_case(name)) {
+                        if feeds.values().any(|f| f.code == *name) {
                             eyre::bail!(
                                 "feed {name} does not serve the metro of device {}; {wrong_metro_hint}",
                                 device.code
@@ -1405,13 +1496,13 @@ fn resolve_held_feeds(
         let pk = match name.parse::<Pubkey>() {
             Ok(pk) => pk,
             Err(_) => {
-                let held = feeds.iter().find(|(pk, f)| {
-                    user.feed_pks.contains(pk) && f.code.eq_ignore_ascii_case(name)
-                });
+                let held = feeds
+                    .iter()
+                    .find(|(pk, f)| user.feed_pks.contains(pk) && f.code == *name);
                 match held {
                     Some((pk, _)) => *pk,
                     None => {
-                        if feeds.values().any(|f| f.code.eq_ignore_ascii_case(name)) {
+                        if feeds.values().any(|f| f.code == *name) {
                             eyre::bail!("you do not hold feed {name}");
                         }
                         eyre::bail!("feed {name} not found");
@@ -1441,7 +1532,7 @@ mod tests {
     use doublezero_config::Environment;
     use doublezero_sdk::{tests::utils::create_temp_config, utils::parse_pubkey};
     use doublezero_serviceability::state::{
-        accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat},
         accounttype::AccountType,
         device::{Device, DeviceStatus, DeviceType},
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
@@ -2007,6 +2098,21 @@ mod tests {
                 });
         }
 
+        /// Turn the fixture pass into an EdgeSeat pass seating exactly `feed_pks`, which the
+        /// join preflight in resolve_feed_join demands.
+        pub fn seat_feeds(&mut self, feed_pks: &[Pubkey]) {
+            self.accesspass.lock().unwrap().accesspass_type = AccessPassType::EdgeSeat(
+                feed_pks
+                    .iter()
+                    .map(|pk| FeedSeat {
+                        feed_key: *pk,
+                        max_users: 2,
+                        ..Default::default()
+                    })
+                    .collect(),
+            );
+        }
+
         pub fn add_feed(&mut self, code: &str, exchange: Pubkey, groups: Vec<Pubkey>) -> Pubkey {
             let pk = Pubkey::new_unique();
             let feed = Feed {
@@ -2022,17 +2128,8 @@ mod tests {
             pk
         }
 
-        pub fn expect_subscribe_feed(
-            &mut self,
-            user_pk: Pubkey,
-            client_ip: Ipv4Addr,
-            feed_pks: Vec<Pubkey>,
-        ) {
-            let expected_command = SubscribeFeedCommand {
-                user_pk,
-                client_ip,
-                feed_pks,
-            };
+        pub fn expect_subscribe_feed(&mut self, user_pk: Pubkey, feed_pks: Vec<Pubkey>) {
+            let expected_command = SubscribeFeedCommand { user_pk, feed_pks };
 
             let users = self.users.clone();
             let feeds = self.feeds.clone();
@@ -2064,17 +2161,8 @@ mod tests {
                 });
         }
 
-        pub fn expect_unsubscribe_feed(
-            &mut self,
-            user_pk: Pubkey,
-            client_ip: Ipv4Addr,
-            feed_pks: Vec<Pubkey>,
-        ) {
-            let expected_command = UnsubscribeFeedCommand {
-                user_pk,
-                client_ip,
-                feed_pks,
-            };
+        pub fn expect_unsubscribe_feed(&mut self, user_pk: Pubkey, feed_pks: Vec<Pubkey>) {
+            let expected_command = UnsubscribeFeedCommand { user_pk, feed_pks };
 
             let users = self.users.clone();
             self.ledger
@@ -3674,11 +3762,12 @@ mod tests {
             let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
             let (g0, g1) = (Pubkey::new_unique(), Pubkey::new_unique());
             let feed_pk = fixture.add_feed("shreds", device.exchange_pk, vec![g0, g1]);
+            fixture.seat_feeds(&[feed_pk]);
 
             let user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
             let user_pk = Pubkey::new_unique();
             fixture.expect_create_user_with_tenant(user_pk, &user, None);
-            fixture.expect_subscribe_feed(user_pk, "1.2.3.4".parse().unwrap(), vec![feed_pk]);
+            fixture.expect_subscribe_feed(user_pk, vec![feed_pk]);
 
             let command = Connect {
                 dz_mode: DzMode::Multicast {
@@ -3709,10 +3798,11 @@ mod tests {
             let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
             let g0 = Pubkey::new_unique();
             let feed_pk = fixture.add_feed("shreds", device.exchange_pk, vec![g0]);
+            fixture.seat_feeds(&[feed_pk]);
 
             let user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
             let user_pk = fixture.add_user(&user);
-            fixture.expect_subscribe_feed(user_pk, "1.2.3.4".parse().unwrap(), vec![feed_pk]);
+            fixture.expect_subscribe_feed(user_pk, vec![feed_pk]);
 
             let command = Connect {
                 dz_mode: DzMode::Multicast {
@@ -3747,7 +3837,7 @@ mod tests {
             user.feed_pks = vec![feed_pk];
             user.subscribers = vec![g0];
             let user_pk = fixture.add_user(&user);
-            fixture.expect_unsubscribe_feed(user_pk, "1.2.3.4".parse().unwrap(), vec![feed_pk]);
+            fixture.expect_unsubscribe_feed(user_pk, vec![feed_pk]);
 
             let command = Connect {
                 dz_mode: DzMode::Multicast {
@@ -3803,9 +3893,8 @@ mod tests {
         });
     }
 
-    /// On a fresh IP, a wrong-metro feed is rejected before the user is created: no create_user
-    /// expectation is set, so a create would panic the mock, and --device is honored on this
-    /// branch, so the hint is true.
+    /// On a fresh IP the feeds choose the metro; with no eligible device there, the command fails
+    /// before creating anything (no create_user expectation is set, so a create would panic).
     #[test]
     fn test_connect_command_subscribe_feed_wrong_metro_creates_nothing() {
         block_on(async {
@@ -3830,8 +3919,45 @@ mod tests {
             let (result, _) = run(&fixture, command).await;
             assert_eq!(
                 result.unwrap_err().to_string(),
-                "feed away does not serve the metro of device device1; pass --device to pick a device in the feed's metro"
+                "no eligible device serves the metro of the requested feed(s)"
             );
+        });
+    }
+
+    /// The feeds choose the metro on a fresh IP: the feed's device wins over a lower-latency
+    /// device in another metro.
+    #[test]
+    fn test_connect_command_subscribe_feed_picks_a_device_in_the_feed_metro() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            fixture.add_device(DeviceType::Hybrid, 100, true);
+            let (far_pk, far) = fixture.add_device(DeviceType::Hybrid, 500, true);
+            let g0 = Pubkey::new_unique();
+            let feed_pk = fixture.add_feed("shreds", far.exchange_pk, vec![g0]);
+            fixture.seat_feeds(&[feed_pk]);
+
+            let user = fixture.create_user(UserType::Multicast, far_pk, "1.2.3.4");
+            let user_pk = Pubkey::new_unique();
+            fixture.expect_create_user_with_tenant(user_pk, &user, None);
+            fixture.expect_subscribe_feed(user_pk, vec![feed_pk]);
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec![],
+                    sub_groups: vec![],
+                    sub_feeds: vec!["shreds".to_string()],
+                    unsub_feeds: vec![],
+                },
+                client_ip: None,
+                device: None,
+                verbose: false,
+            };
+
+            let (result, output) = run(&fixture, command).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
+            assert!(output.contains("Device selected: device2"), "{output}");
         });
     }
 
@@ -3864,7 +3990,7 @@ mod tests {
         });
     }
 
-    /// The same feed in both flags is rejected up front, casing notwithstanding.
+    /// The same feed in both flags is rejected up front.
     #[test]
     fn test_connect_command_feed_in_both_flags_rejected() {
         block_on(async {
@@ -3876,7 +4002,7 @@ mod tests {
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
-                    sub_feeds: vec!["SHREDS".to_string()],
+                    sub_feeds: vec!["shreds".to_string()],
                     unsub_feeds: vec!["shreds".to_string()],
                 },
                 client_ip: None,
@@ -3887,7 +4013,7 @@ mod tests {
             let (result, _) = run(&fixture, command).await;
             assert_eq!(
                 result.unwrap_err().to_string(),
-                "feed SHREDS is in both --subscribe-feed and --unsubscribe-feed"
+                "feed shreds is in both --subscribe-feed and --unsubscribe-feed"
             );
         });
     }
@@ -3901,6 +4027,7 @@ mod tests {
             let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
             let g0 = Pubkey::new_unique();
             let feed_pk = fixture.add_feed("shreds", device.exchange_pk, vec![g0]);
+            fixture.seat_feeds(&[feed_pk]);
 
             let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
             user.feed_pks = vec![feed_pk];
@@ -3938,13 +4065,14 @@ mod tests {
             let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
             let g0 = Pubkey::new_unique();
             let old_pk = fixture.add_feed("old", device.exchange_pk, vec![g0]);
-            fixture.add_feed("new", device.exchange_pk, vec![Pubkey::new_unique()]);
+            let new_pk = fixture.add_feed("new", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds(&[old_pk, new_pk]);
 
             let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
             user.feed_pks = vec![old_pk];
             user.subscribers = vec![g0];
             let user_pk = fixture.add_user(&user);
-            fixture.expect_unsubscribe_feed(user_pk, "1.2.3.4".parse().unwrap(), vec![old_pk]);
+            fixture.expect_unsubscribe_feed(user_pk, vec![old_pk]);
             fixture
                 .ledger
                 .expect_subscribe_feed()
@@ -3988,6 +4116,7 @@ mod tests {
             let old_pk = fixture.add_feed("old", device.exchange_pk, vec![g0]);
             let g_new = Pubkey::new_unique();
             let new_pk = fixture.add_feed("new", device.exchange_pk, vec![g_new]);
+            fixture.seat_feeds(&[old_pk, new_pk]);
 
             let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
             user.feed_pks = vec![old_pk];
@@ -3998,7 +4127,7 @@ mod tests {
                 .expect_unsubscribe_feed()
                 .times(1)
                 .returning_st(|_| Err(eyre::eyre!("rpc timed out")));
-            fixture.expect_subscribe_feed(user_pk, "1.2.3.4".parse().unwrap(), vec![new_pk]);
+            fixture.expect_subscribe_feed(user_pk, vec![new_pk]);
 
             let command = Connect {
                 dz_mode: DzMode::Multicast {

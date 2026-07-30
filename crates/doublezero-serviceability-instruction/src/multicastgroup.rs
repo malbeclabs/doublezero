@@ -391,8 +391,8 @@ mod tests {
 
     /// The one feed transaction that cannot be split: a single-target leave must name every held
     /// feed, so its worst case is `MAX_USER_FEEDS - 1` retained plus `MAX_FEED_GROUPS` departing
-    /// groups. Pin that it fits a 1232-byte legacy transaction with 33 bytes to spare for the
-    /// optional trailing Permission account.
+    /// groups. Pin that it fits a 1232-byte legacy transaction behind the compute-budget prelude
+    /// `send_transaction` prepends.
     #[test]
     fn test_worst_case_leave_fits_one_transaction() {
         use doublezero_serviceability::processors::{
@@ -416,10 +416,12 @@ mod tests {
             &retained,
             &groups,
         );
-        let message = solana_sdk::message::Message::new(&[ix], Some(&payer));
+        let mut instructions = common::compute_budget_prelude().to_vec();
+        instructions.push(ix);
+        let message = solana_sdk::message::Message::new(&instructions, Some(&payer));
         // One byte of signature count plus one 64-byte signature plus the message.
         let tx_size = 1 + 64 + message.serialize().len();
-        assert!(tx_size + 33 <= 1232, "worst-case leave is {tx_size} bytes");
+        assert!(tx_size <= 1232, "worst-case leave is {tx_size} bytes");
     }
 
     #[test]

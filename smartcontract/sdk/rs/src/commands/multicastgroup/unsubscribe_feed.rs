@@ -1,5 +1,3 @@
-use std::net::Ipv4Addr;
-
 use crate::{
     commands::{
         accesspass::get::GetAccessPassCommand,
@@ -22,7 +20,6 @@ use solana_sdk::{pubkey::Pubkey, signature::Signature};
 #[derive(Debug, PartialEq, Clone)]
 pub struct UnsubscribeFeedCommand {
     pub user_pk: Pubkey,
-    pub client_ip: Ipv4Addr,
     pub feed_pks: Vec<Pubkey>,
 }
 
@@ -44,14 +41,21 @@ impl UnsubscribeFeedCommand {
                 user.user_type
             );
         }
+        let mut seen: Vec<Pubkey> = Vec::with_capacity(self.feed_pks.len());
         for feed_pk in &self.feed_pks {
+            if seen.contains(feed_pk) {
+                eyre::bail!("feed {} given more than once", feed_pk);
+            }
+            seen.push(*feed_pk);
             if !user.feed_pks.contains(feed_pk) {
                 eyre::bail!("user does not hold feed {}", feed_pk);
             }
         }
 
+        // The user's own IP, not a caller-supplied one: the pass lookup must match the pass the
+        // user was created against.
         let (accesspass_pubkey, accesspass) = GetAccessPassCommand {
-            client_ip: self.client_ip,
+            client_ip: user.client_ip,
             user_payer: user.owner,
         }
         .execute(client)?
@@ -60,6 +64,22 @@ impl UnsubscribeFeedCommand {
             eyre::bail!(
                 "the access pass is {}; only an EdgeSeat pass carries feeds",
                 accesspass.accesspass_type
+            );
+        }
+        // EdgeSeat passes carry their feeds on the dynamic (0.0.0.0) pass, but nothing forbids a
+        // second pass for the same payer. If the resolved pass seats none of the held feeds it is
+        // the wrong one, and sending would make the program prune every held feed as stale while
+        // the seat-bearing pass keeps its seats charged.
+        if !user.feed_pks.iter().any(|held| {
+            accesspass
+                .feed_seats()
+                .iter()
+                .any(|seat| seat.feed_key == *held)
+        }) {
+            eyre::bail!(
+                "access pass {} seats none of the feeds user {} holds",
+                accesspass_pubkey,
+                self.user_pk
             );
         }
 
@@ -190,7 +210,6 @@ mod tests {
         user_pk: Pubkey,
         device_pk: Pubkey,
         accesspass_pk: Pubkey,
-        client_ip: Ipv4Addr,
     }
 
     /// Mock a Multicast user holding `held_feeds` and subscribing `subscribers`, a dynamic
@@ -270,7 +289,6 @@ mod tests {
             user_pk,
             device_pk,
             accesspass_pk,
-            client_ip,
         }
     }
 
@@ -323,7 +341,6 @@ mod tests {
 
         UnsubscribeFeedCommand {
             user_pk: f.user_pk,
-            client_ip: f.client_ip,
             feed_pks: vec![feed2_pk],
         }
         .execute(&client)
@@ -363,7 +380,6 @@ mod tests {
 
         UnsubscribeFeedCommand {
             user_pk: f.user_pk,
-            client_ip: f.client_ip,
             feed_pks: vec![feed_pk],
         }
         .execute(&client)
@@ -438,11 +454,66 @@ mod tests {
 
         UnsubscribeFeedCommand {
             user_pk: f.user_pk,
-            client_ip: f.client_ip,
             feed_pks: vec![feed1_pk, feed2_pk],
         }
         .execute(&client)
         .unwrap();
+    }
+
+    #[test]
+    fn test_commands_unsubscribe_feed_duplicate_target_rejected() {
+        let mut client = create_test_client();
+
+        let feed_pk = Pubkey::new_unique();
+        let f = setup(
+            &mut client,
+            vec![],
+            vec![feed_pk],
+            vec![feed_pk],
+            vec![(feed_pk, feed_with("f1", vec![]))],
+        );
+
+        let err = UnsubscribeFeedCommand {
+            user_pk: f.user_pk,
+            feed_pks: vec![feed_pk, feed_pk],
+        }
+        .execute(&client)
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("feed {feed_pk} given more than once")
+        );
+    }
+
+    #[test]
+    fn test_commands_unsubscribe_feed_pass_without_the_user_feeds_rejected() {
+        // The resolved pass seats a different feed than any the user holds: sending would make
+        // the program prune every held feed as stale, so the command refuses.
+        let mut client = create_test_client();
+
+        let held_pk = Pubkey::new_unique();
+        let other_pk = Pubkey::new_unique();
+        let f = setup(
+            &mut client,
+            vec![],
+            vec![held_pk],
+            vec![other_pk],
+            vec![(held_pk, feed_with("held", vec![]))],
+        );
+
+        let err = UnsubscribeFeedCommand {
+            user_pk: f.user_pk,
+            feed_pks: vec![held_pk],
+        }
+        .execute(&client)
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "access pass {} seats none of the feeds user {} holds",
+                f.accesspass_pk, f.user_pk
+            )
+        );
     }
 
     #[test]
@@ -462,7 +533,6 @@ mod tests {
         // No send_transaction expectation: the command must fail before any transaction.
         let err = UnsubscribeFeedCommand {
             user_pk: f.user_pk,
-            client_ip: f.client_ip,
             feed_pks: vec![unheld_pk],
         }
         .execute(&client)
@@ -508,7 +578,6 @@ mod tests {
 
         UnsubscribeFeedCommand {
             user_pk: f.user_pk,
-            client_ip: f.client_ip,
             feed_pks: vec![live_pk],
         }
         .execute(&client)

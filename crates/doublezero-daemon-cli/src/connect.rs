@@ -1526,76 +1526,56 @@ impl Connect {
                     self.poll_for_user_activated(ledger, user_pk, spinner)?;
                 }
 
-                // Subscribe to any pub groups not already subscribed, batched into
-                // atomic transactions.
-                let missing_pubs: Vec<Pubkey> = pub_group_pks
-                    .iter()
-                    .filter(|pk| !user.publishers.contains(pk))
-                    .copied()
-                    .collect();
-                for group_pks in missing_pubs.chunks(MAX_GROUPS_PER_TRANSACTION) {
-                    spinner.set_message(format!(
-                        "Adding publisher subscription to existing Multicast user: {user_pk}"
-                    ));
-
-                    let res =
-                        ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
-                            user_pk: *user_pk,
-                            group_pks: group_pks.to_vec(),
-                            client_ip: *client_ip,
-                            publisher: true,
-                            subscriber: false,
-                            device_pk: None,
-                            feed_pk: None,
-                        });
-
-                    match res {
-                        Ok(_) => {
-                            spinner.set_message("Publisher subscription added");
-                        }
-                        Err(e) => {
-                            writeln!(out, "❌ Error adding publisher subscription")?;
-                            writeln!(out, "\nError: {e:?}\n")?;
-                            eyre::bail!(
-                                "Error adding publisher subscription to existing user: {e:?}"
-                            );
-                        }
+                // Add the requested roles, batched by each group's effective
+                // (publisher, subscriber) flag pair. The instruction sets absolute
+                // role state, so the desired flags union the request with the roles
+                // the user already holds — a group in both --publish and --subscribe
+                // (or already holding the other role) keeps both instead of the last
+                // write stripping the first.
+                let mut batches: Vec<(bool, bool, Vec<Pubkey>)> = Vec::new();
+                for group_pk in all_group_pks.iter() {
+                    let publisher =
+                        pub_group_pks.contains(group_pk) || user.publishers.contains(group_pk);
+                    let subscriber =
+                        sub_group_pks.contains(group_pk) || user.subscribers.contains(group_pk);
+                    // Skip groups whose desired state is already onchain.
+                    if user.publishers.contains(group_pk) == publisher
+                        && user.subscribers.contains(group_pk) == subscriber
+                    {
+                        continue;
+                    }
+                    match batches.iter_mut().find(|(p, s, pks)| {
+                        (*p, *s) == (publisher, subscriber)
+                            && pks.len() < MAX_GROUPS_PER_TRANSACTION
+                    }) {
+                        Some((_, _, pks)) => pks.push(*group_pk),
+                        None => batches.push((publisher, subscriber, vec![*group_pk])),
                     }
                 }
-
-                // Subscribe to any sub groups not already subscribed, batched into
-                // atomic transactions.
-                let missing_subs: Vec<Pubkey> = sub_group_pks
-                    .iter()
-                    .filter(|pk| !user.subscribers.contains(pk))
-                    .copied()
-                    .collect();
-                for group_pks in missing_subs.chunks(MAX_GROUPS_PER_TRANSACTION) {
+                for (publisher, subscriber, group_pks) in batches {
                     spinner.set_message(format!(
-                        "Adding subscriber subscription to existing Multicast user: {user_pk}"
+                        "Adding subscription to existing Multicast user: {user_pk}"
                     ));
 
                     let res =
                         ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                             user_pk: *user_pk,
-                            group_pks: group_pks.to_vec(),
+                            group_pks,
                             client_ip: *client_ip,
-                            publisher: false,
-                            subscriber: true,
+                            publisher,
+                            subscriber,
                             device_pk: None,
                             feed_pk: None,
                         });
 
                     match res {
                         Ok(_) => {
-                            spinner.set_message("Subscriber subscription added");
+                            spinner.set_message("Subscription added");
                         }
                         Err(e) => {
-                            writeln!(out, "❌ Error adding subscriber subscription")?;
+                            writeln!(out, "❌ Error adding subscription")?;
                             writeln!(out, "\nError: {e:?}\n")?;
-                            eyre::bail!(
-                                "Error adding subscriber subscription to existing user: {e:?}"
-                            );
+                            eyre::bail!("Error adding subscription to existing user: {e:?}");
                         }
                     }
                 }
@@ -3675,6 +3655,52 @@ mod tests {
     /// Exercises the `(_, Some(mcast))` branch of `find_or_create_user_and_subscribe`,
     /// which calls UpdateMulticastGroupRoles (the on-chain processor never had an epoch
     /// check; this test verifies the CLI gate no longer blocks it either).
+    /// A group requested in BOTH --publish and --subscribe on an existing Multicast
+    /// user gets one update with both flags, instead of a publisher add that a later
+    /// subscriber-only write strips (the instruction sets absolute role state).
+    #[test]
+    fn test_connect_existing_user_group_in_both_lists_keeps_both_roles() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+
+            let (mcast_group_pk, _mcast_group) =
+                fixture.add_multicast_group("test-group", "239.0.0.1");
+            let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+            // Existing multicast user with no roles yet.
+            let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+            let user_pk = fixture.add_user(&user);
+
+            // Exactly ONE update carrying both roles.
+            fixture.expect_update_multicastgroup_roles(
+                user_pk,
+                vec![mcast_group_pk],
+                user.client_ip,
+                true,
+                true,
+            );
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec!["test-group".to_string()],
+                    sub_groups: vec!["test-group".to_string()],
+                },
+                client_ip: Some(user.client_ip.to_string()),
+                device: None,
+                verbose: false,
+            };
+
+            let (result, _) = run(&fixture, command).await;
+            assert!(
+                result.is_ok(),
+                "both-lists connect on existing user must succeed: {:?}",
+                result.err()
+            );
+        });
+    }
+
     #[test]
     fn test_connect_command_multicast_add_group_to_existing_user_with_expired_accesspass() {
         block_on(async {

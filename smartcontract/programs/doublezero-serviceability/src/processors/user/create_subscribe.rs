@@ -20,7 +20,12 @@ use super::{
     create_core::{create_user_core, CreateUserCoreAccounts, PDAVersion},
     resource_onchain_helpers,
 };
-use crate::processors::multicastgroup::subscribe::update_user_multicastgroup_roles;
+use crate::{
+    processors::multicastgroup::subscribe::{
+        check_mgroup_allowlists, update_user_multicastgroup_roles,
+    },
+    state::accesspass::AccessPassType,
+};
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct UserCreateSubscribeArgs {
@@ -135,10 +140,24 @@ pub fn process_create_subscribe_user(
         feed_account,
     )?;
 
+    // Mirrors the exact condition under which `create_user_core` ran the feed metro gate
+    // (create_core.rs). Keying the skip on pass type alone would let an EdgeSeat pass join a group
+    // with neither check: the gate is multicast-only and would not have run. The publisher allowlist
+    // is always checked, since a feed sells receive only and grants no publisher role.
+    let feed_gated = matches!(
+        result.accesspass.accesspass_type,
+        AccessPassType::EdgeSeat(_)
+    ) && value.user_type == UserType::Multicast;
+    check_mgroup_allowlists(
+        &result.accesspass,
+        mgroup_account.key,
+        value.publisher,
+        value.subscriber && !feed_gated,
+    )?;
+
     // Subscribe user to multicast group
     let subscribe_result = update_user_multicastgroup_roles(
         mgroup_account,
-        &result.accesspass,
         &mut result.user,
         value.publisher,
         value.subscriber,

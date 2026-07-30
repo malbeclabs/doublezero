@@ -21,7 +21,9 @@ use doublezero_serviceability::{
         delete::MulticastGroupDeleteArgs,
         reactivate::MulticastGroupReactivateArgs,
         subscribe::UpdateMulticastGroupRolesArgs,
+        subscribe_feed::SubscribeFeedArgs,
         suspend::MulticastGroupSuspendArgs,
+        unsubscribe_feed::UnsubscribeFeedArgs,
         update::MulticastGroupUpdateArgs,
     },
     resource::ResourceType,
@@ -194,6 +196,91 @@ pub fn update_multicast_group_roles(
             AccountMeta::new(globalstate, false),
             AccountMeta::new(multicast_publisher_block, false),
         ],
+        payer,
+    )
+}
+
+/// `SubscribeFeed` (variant 117) — join whole feeds on an EdgeSeat access pass.
+///
+/// Accounts: `[accesspass, user, globalstate, device, feeds.., groups..]`.
+///
+/// `groups` must be exactly the groups this call adds; the processor derives that set from the feeds
+/// and rejects a mismatch, so a stale client cannot half-apply a change. `feed_count` is derived from
+/// `feeds.len()` rather than trusted from the caller.
+pub fn subscribe_feed(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    accesspass: &Pubkey,
+    user: &Pubkey,
+    device: &Pubkey,
+    feeds: &[Pubkey],
+    groups: &[Pubkey],
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    let mut accounts = vec![
+        AccountMeta::new(*accesspass, false),
+        AccountMeta::new(*user, false),
+        AccountMeta::new(globalstate, false),
+        AccountMeta::new_readonly(*device, false),
+    ];
+    accounts.extend(
+        feeds
+            .iter()
+            .map(|feed| AccountMeta::new_readonly(*feed, false)),
+    );
+    accounts.extend(groups.iter().map(|group| AccountMeta::new(*group, false)));
+
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::SubscribeFeed(SubscribeFeedArgs {
+            feed_count: feeds.len() as u8,
+        }),
+        accounts,
+        payer,
+    )
+}
+
+/// `UnsubscribeFeed` (variant 118) — leave whole feeds on an EdgeSeat access pass.
+///
+/// Accounts: `[accesspass, user, globalstate, device, targets.., retained.., groups..]`.
+///
+/// `retained` must be every feed the user keeps: two feeds on one pass can carry the same group, and
+/// without the retained group sets the processor would drop a group another held feed still covers and
+/// strand that feed's seat. Together `targets` and `retained` must cover every held feed still
+/// provisioned on the pass; a held feed the pass dropped is pruned by the processor instead.
+#[allow(clippy::too_many_arguments)]
+pub fn unsubscribe_feed(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    accesspass: &Pubkey,
+    user: &Pubkey,
+    device: &Pubkey,
+    targets: &[Pubkey],
+    retained: &[Pubkey],
+    groups: &[Pubkey],
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    let mut accounts = vec![
+        AccountMeta::new(*accesspass, false),
+        AccountMeta::new(*user, false),
+        AccountMeta::new(globalstate, false),
+        AccountMeta::new_readonly(*device, false),
+    ];
+    accounts.extend(
+        targets
+            .iter()
+            .chain(retained)
+            .map(|feed| AccountMeta::new_readonly(*feed, false)),
+    );
+    accounts.extend(groups.iter().map(|group| AccountMeta::new(*group, false)));
+
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::UnsubscribeFeed(UnsubscribeFeedArgs {
+            feed_count: targets.len() as u8,
+            retained_feed_count: retained.len() as u8,
+        }),
+        accounts,
         payer,
     )
 }

@@ -128,6 +128,25 @@ pub fn process_create_subscribe_user(
     let (extra_group_accounts, rest) = leading.split_at(extra_group_count);
     let feed_account = rest.first().copied();
 
+    validate_program_account!(
+        mgroup_account,
+        program_id,
+        writable = true,
+        "MulticastGroup"
+    );
+    // Reject duplicate group accounts. A duplicate aliases the same account data
+    // twice in the batch loop, making the final counter state depend on write
+    // ordering — an explicit error is a clearer contract than an accidental no-op.
+    for (i, group_key) in std::iter::once(mgroup_account.key)
+        .chain(extra_group_accounts.iter().map(|a| a.key))
+        .enumerate()
+    {
+        if extra_group_accounts[i..].iter().any(|a| a.key == group_key) {
+            msg!("duplicate multicast group {} in batch", group_key);
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+    }
+
     msg!("process_create_subscribe_user({:?})", value);
 
     let core_accounts = CreateUserCoreAccounts {

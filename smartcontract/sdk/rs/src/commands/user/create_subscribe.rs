@@ -12,8 +12,9 @@ use std::net::Ipv4Addr;
 
 use crate::{
     commands::{
-        accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
-        multicastgroup::get::GetMulticastGroupCommand,
+        accesspass::get::GetAccessPassCommand,
+        device::get::GetDeviceCommand,
+        multicastgroup::{get::GetMulticastGroupCommand, subscribe::MAX_GROUPS_PER_TRANSACTION},
     },
     DoubleZeroClient,
 };
@@ -43,12 +44,27 @@ pub struct CreateSubscribeUserCommand {
 
 impl CreateSubscribeUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (first_mgroup_pk, extra_mgroup_pks) = self
-            .mgroup_pks
+        // Deduplicate while preserving order: the processor rejects duplicate group
+        // accounts in a batch. CreateSubscribeUser also carries the device's
+        // dz_prefix accounts, so callers should stay well below the role-update
+        // chunk size (connect folds at most 8 groups into the create).
+        let mut mgroup_pks: Vec<Pubkey> = Vec::with_capacity(self.mgroup_pks.len());
+        for pk in &self.mgroup_pks {
+            if !mgroup_pks.contains(pk) {
+                mgroup_pks.push(*pk);
+            }
+        }
+        if mgroup_pks.len() > MAX_GROUPS_PER_TRANSACTION {
+            eyre::bail!(
+                "{} multicast groups exceed the {MAX_GROUPS_PER_TRANSACTION}-group transaction                  limit; subscribe the rest via UpdateMulticastGroupRolesCommand",
+                mgroup_pks.len()
+            );
+        }
+        let (first_mgroup_pk, extra_mgroup_pks) = mgroup_pks
             .split_first()
             .ok_or_else(|| eyre::eyre!("At least one multicast group is required"))?;
 
-        for mgroup_pk in &self.mgroup_pks {
+        for mgroup_pk in &mgroup_pks {
             let (_, mgroup) = GetMulticastGroupCommand {
                 pubkey_or_code: mgroup_pk.to_string(),
             }

@@ -220,6 +220,18 @@ pub fn process_update_multicastgroup_roles(
             "MulticastGroup"
         );
     }
+    // Reject duplicate group accounts. A duplicate aliases the same account data
+    // twice in the batch loop, making the final counter state depend on write
+    // ordering — an explicit error is a clearer contract than an accidental no-op.
+    for (i, group_key) in std::iter::once(mgroup_account.key)
+        .chain(extra_group_accounts.iter().map(|a| a.key))
+        .enumerate()
+    {
+        if extra_group_accounts[i..].iter().any(|a| a.key == group_key) {
+            msg!("duplicate multicast group {} in batch", group_key);
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+    }
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }

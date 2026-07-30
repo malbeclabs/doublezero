@@ -5,7 +5,8 @@ use crate::{
         accesspass::get::GetAccessPassCommand,
         device::get::GetDeviceCommand,
         multicastgroup::{
-            list::ListMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
+            list::ListMulticastGroupCommand,
+            subscribe::{UpdateMulticastGroupRolesCommand, MAX_GROUPS_PER_TRANSACTION},
         },
     },
     DoubleZeroClient,
@@ -42,14 +43,15 @@ impl DeleteUserCommand {
             .into_iter()
             .collect();
         let multicastgroups = ListMulticastGroupCommand {}.execute(client)?;
-        // Strip every remaining multicast role in one atomic transaction.
+        // Strip every remaining multicast role, batched atomically per chunk (one
+        // transaction each, bounded by the transaction size limit).
         let group_pks: Vec<Pubkey> = unique_mgroup_pks
             .into_iter()
             .filter(|pk| multicastgroups.contains_key(pk))
             .collect();
-        if !group_pks.is_empty() {
+        for chunk in group_pks.chunks(MAX_GROUPS_PER_TRANSACTION) {
             UpdateMulticastGroupRolesCommand {
-                group_pks,
+                group_pks: chunk.to_vec(),
                 user_pk: self.pubkey,
                 client_ip: user.client_ip,
                 publisher: false,

@@ -2978,3 +2978,85 @@ async fn test_create_subscribe_user_batch_old_encoding_single_group() {
     assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.subscribers, vec![mgroup_pubkey]);
 }
+
+/// A duplicate group in a batch (primary repeated as an extra) is rejected with
+/// InvalidArgument and no user is created.
+#[tokio::test]
+async fn test_create_subscribe_user_batch_duplicate_group_rejected() {
+    let client_ip = [100, 0, 0, 45];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+        ..
+    } = f;
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+            extra_group_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+            AccountMeta::new(mgroup_pubkey, false), // primary again as the extra
+        ],
+        &payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(
+            solana_sdk::transaction::TransactionError::InstructionError(
+                0,
+                solana_sdk::instruction::InstructionError::Custom(65), // InvalidArgument
+            ),
+        )) => {}
+        _ => panic!(
+            "Expected InvalidArgument error (Custom(65)), got {:?}",
+            result
+        ),
+    }
+
+    assert!(
+        get_account_data(&mut banks_client, user_pubkey)
+            .await
+            .is_none(),
+        "user account must not be created on a rejected batch"
+    );
+    let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
+        .await
+        .expect("MulticastGroup should exist")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup.subscriber_count, 0);
+}

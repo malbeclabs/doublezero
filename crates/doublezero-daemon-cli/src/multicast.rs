@@ -16,7 +16,10 @@ use std::{io::Write, net::Ipv4Addr};
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
-    commands::multicastgroup::subscribe::UpdateMulticastGroupRolesCommand, User, UserType,
+    commands::multicastgroup::subscribe::{
+        UpdateMulticastGroupRolesCommand, MAX_GROUPS_PER_TRANSACTION,
+    },
+    User, UserType,
 };
 use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
@@ -111,14 +114,16 @@ struct RoleUpdateBatch {
 /// Partition `(code, pk, (publisher, subscriber))` triples into batches sharing a
 /// flag pair, preserving encounter order. The instruction applies one flag pair to
 /// every group it carries, so each distinct pair needs its own transaction (at most
-/// two per verb: the carried role is the only variable).
+/// two per verb: the carried role is the only variable). Batches are capped at the
+/// transaction size limit — a full batch stops matching, so oversize pairs chunk
+/// naturally.
 fn batch_role_updates(groups: Vec<(String, Pubkey, (bool, bool))>) -> Vec<RoleUpdateBatch> {
     let mut batches: Vec<RoleUpdateBatch> = Vec::new();
     for (code, pk, (publisher, subscriber)) in groups {
-        match batches
-            .iter_mut()
-            .find(|b| (b.publisher, b.subscriber) == (publisher, subscriber))
-        {
+        match batches.iter_mut().find(|b| {
+            (b.publisher, b.subscriber) == (publisher, subscriber)
+                && b.groups.len() < MAX_GROUPS_PER_TRANSACTION
+        }) {
             Some(batch) => batch.groups.push((code, pk)),
             None => batches.push(RoleUpdateBatch {
                 publisher,

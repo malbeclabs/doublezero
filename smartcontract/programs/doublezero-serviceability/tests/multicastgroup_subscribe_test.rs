@@ -1604,3 +1604,65 @@ async fn test_batch_old_encoding_without_count_byte_single_group() {
         .unwrap();
     assert_eq!(user.subscribers, vec![mgroup1_pubkey]);
 }
+
+/// A duplicate group in a batch (primary repeated as an extra) is rejected with
+/// InvalidArgument: aliased accounts would make counter state depend on write order.
+#[tokio::test]
+async fn test_batch_duplicate_group_rejected() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+            extra_group_count: 1,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(mgroup1_pubkey, false), // primary again as the extra
+        ],
+        &payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(65), // InvalidArgument
+        ))) => {}
+        _ => panic!(
+            "Expected InvalidArgument error (Custom(65)), got {:?}",
+            result
+        ),
+    }
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert!(user.subscribers.is_empty());
+}

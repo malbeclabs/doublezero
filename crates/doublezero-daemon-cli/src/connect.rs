@@ -14,7 +14,8 @@ use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
     commands::{
         multicastgroup::{
-            subscribe::UpdateMulticastGroupRolesCommand, subscribe_feed::SubscribeFeedCommand,
+            subscribe::{UpdateMulticastGroupRolesCommand, MAX_GROUPS_PER_TRANSACTION},
+            subscribe_feed::SubscribeFeedCommand,
             unsubscribe_feed::UnsubscribeFeedCommand,
         },
         user::{create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand},
@@ -1465,20 +1466,19 @@ impl Connect {
                 // Create the user subscribed to every group sharing the first group's
                 // flag pair in one transaction; other flag pairs follow as batched
                 // role updates.
-                let (create_group_pks, follow_up_batches) =
+                let (create_group_pks, (create_publisher, create_subscriber), follow_up_batches) =
                     plan_group_batches(&all_group_pks, pub_group_pks, sub_group_pks);
-                let first_group_pk = create_group_pks
-                    .first()
-                    .copied()
-                    .ok_or_else(|| eyre::eyre!("At least one multicast group is required"))?;
+                if create_group_pks.is_empty() {
+                    eyre::bail!("At least one multicast group is required");
+                }
 
                 let res = ledger.create_subscribe_user(CreateSubscribeUserCommand {
                     user_type: UserType::Multicast,
                     device_pk,
                     cyoa_type: ibrl_user.cyoa_type,
                     client_ip: *client_ip,
-                    publisher: pub_group_pks.contains(&first_group_pk),
-                    subscriber: sub_group_pks.contains(&first_group_pk),
+                    publisher: create_publisher,
+                    subscriber: create_subscriber,
                     mgroup_pks: create_group_pks,
                     tunnel_endpoint,
                     owner: None,
@@ -1533,7 +1533,7 @@ impl Connect {
                     .filter(|pk| !user.publishers.contains(pk))
                     .copied()
                     .collect();
-                for group_pks in missing_pubs.chunks(MAX_UPDATE_GROUPS) {
+                for group_pks in missing_pubs.chunks(MAX_GROUPS_PER_TRANSACTION) {
                     spinner.set_message(format!(
                         "Adding publisher subscription to existing Multicast user: {user_pk}"
                     ));
@@ -1570,7 +1570,7 @@ impl Connect {
                     .filter(|pk| !user.subscribers.contains(pk))
                     .copied()
                     .collect();
-                for group_pks in missing_subs.chunks(MAX_UPDATE_GROUPS) {
+                for group_pks in missing_subs.chunks(MAX_GROUPS_PER_TRANSACTION) {
                     spinner.set_message(format!(
                         "Adding subscriber subscription to existing Multicast user: {user_pk}"
                     ));
@@ -1624,20 +1624,19 @@ impl Connect {
                 // Create the user subscribed to every group sharing the first group's
                 // flag pair in one transaction; other flag pairs follow as batched
                 // role updates.
-                let (create_group_pks, follow_up_batches) =
+                let (create_group_pks, (create_publisher, create_subscriber), follow_up_batches) =
                     plan_group_batches(&all_group_pks, pub_group_pks, sub_group_pks);
-                let first_group_pk = create_group_pks
-                    .first()
-                    .copied()
-                    .ok_or_else(|| eyre::eyre!("At least one multicast group is required"))?;
+                if create_group_pks.is_empty() {
+                    eyre::bail!("At least one multicast group is required");
+                }
 
                 let res = ledger.create_subscribe_user(CreateSubscribeUserCommand {
                     user_type: UserType::Multicast,
                     device_pk,
                     cyoa_type: UserCYOA::GREOverDIA,
                     client_ip: *client_ip,
-                    publisher: pub_group_pks.contains(&first_group_pk),
-                    subscriber: sub_group_pks.contains(&first_group_pk),
+                    publisher: create_publisher,
+                    subscriber: create_subscriber,
                     mgroup_pks: create_group_pks,
                     tunnel_endpoint,
                     owner: None,
@@ -1807,12 +1806,10 @@ impl Connect {
 /// Upper bound on multicast groups folded into a single CreateSubscribeUser
 /// transaction. The instruction already carries the device's dz_prefix blocks, so
 /// its account headroom under the 1232-byte transaction size limit is smaller than
-/// UpdateMulticastGroupRoles'; overflow rides in follow-up update batches.
+/// UpdateMulticastGroupRoles'; 8 groups leave room for several dz_prefix blocks
+/// (devices typically advertise one or two). Overflow rides in follow-up update
+/// batches, which are chunked to [`MAX_GROUPS_PER_TRANSACTION`].
 const MAX_CREATE_GROUPS: usize = 8;
-
-/// Upper bound on multicast groups per UpdateMulticastGroupRoles transaction,
-/// keeping the account list comfortably under the 1232-byte transaction size limit.
-const MAX_UPDATE_GROUPS: usize = 16;
 
 /// One follow-up UpdateMulticastGroupRoles batch: (publisher, subscriber, group_pks).
 type RoleBatch = (bool, bool, Vec<Pubkey>);
@@ -1821,16 +1818,18 @@ type RoleBatch = (bool, bool, Vec<Pubkey>);
 /// CreateSubscribeUser transaction — every group sharing the first group's
 /// (publisher, subscriber) flag pair, up to [`MAX_CREATE_GROUPS`] — and the
 /// follow-up UpdateMulticastGroupRoles batches for the rest, grouped by flag pair
-/// and chunked to [`MAX_UPDATE_GROUPS`]. In the common case (all groups share one
-/// flag pair) the follow-up list is empty and connect is a single transaction.
+/// and chunked to [`MAX_GROUPS_PER_TRANSACTION`]. Returns the create batch, its
+/// shared flag pair, and the follow-up batches. In the common case (all groups
+/// share one flag pair) the follow-up list is empty and connect is a single
+/// transaction.
 fn plan_group_batches(
     all_group_pks: &[Pubkey],
     pub_group_pks: &[Pubkey],
     sub_group_pks: &[Pubkey],
-) -> (Vec<Pubkey>, Vec<RoleBatch>) {
+) -> (Vec<Pubkey>, (bool, bool), Vec<RoleBatch>) {
     let flags_of = |pk: &Pubkey| (pub_group_pks.contains(pk), sub_group_pks.contains(pk));
     let Some(first_flags) = all_group_pks.first().map(flags_of) else {
-        return (Vec::new(), Vec::new());
+        return (Vec::new(), (false, false), Vec::new());
     };
 
     let mut create_group_pks = Vec::new();
@@ -1843,13 +1842,13 @@ fn plan_group_batches(
         }
         // A full batch stops matching, so oversize flag pairs chunk naturally.
         match follow_ups.iter_mut().find(|(p, s, pks)| {
-            (*p, *s) == (publisher, subscriber) && pks.len() < MAX_UPDATE_GROUPS
+            (*p, *s) == (publisher, subscriber) && pks.len() < MAX_GROUPS_PER_TRANSACTION
         }) {
             Some((_, _, pks)) => pks.push(*pk),
             None => follow_ups.push((publisher, subscriber, vec![*pk])),
         }
     }
-    (create_group_pks, follow_ups)
+    (create_group_pks, first_flags, follow_ups)
 }
 
 fn exclude_ips(

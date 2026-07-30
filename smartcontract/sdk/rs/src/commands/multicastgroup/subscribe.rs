@@ -14,6 +14,13 @@ use doublezero_serviceability::{
 use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
+/// Upper bound on multicast groups per role-update transaction. Each group adds a
+/// 32-byte account key; 16 groups plus the instruction's fixed accounts, the
+/// compute-budget prelude, and an optional Permission PDA stay comfortably under
+/// the 1232-byte transaction size limit (pinned by `max_group_batch_fits_transaction`).
+/// Callers with more groups send one transaction per chunk.
+pub const MAX_GROUPS_PER_TRANSACTION: usize = 16;
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateMulticastGroupRolesCommand {
     /// Multicast groups the role change applies to, atomically in one transaction.
@@ -33,12 +40,26 @@ pub struct UpdateMulticastGroupRolesCommand {
 
 impl UpdateMulticastGroupRolesCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (first_group_pk, extra_group_pks) = self
-            .group_pks
+        // Deduplicate while preserving order: the processor rejects duplicate group
+        // accounts in a batch, and a repeated group was an idempotent no-op under
+        // the old per-group loop.
+        let mut group_pks: Vec<Pubkey> = Vec::with_capacity(self.group_pks.len());
+        for pk in &self.group_pks {
+            if !group_pks.contains(pk) {
+                group_pks.push(*pk);
+            }
+        }
+        if group_pks.len() > MAX_GROUPS_PER_TRANSACTION {
+            eyre::bail!(
+                "{} multicast groups exceed the {MAX_GROUPS_PER_TRANSACTION}-group transaction                  limit; send one transaction per chunk",
+                group_pks.len()
+            );
+        }
+        let (first_group_pk, extra_group_pks) = group_pks
             .split_first()
             .ok_or_else(|| eyre::eyre!("At least one multicast group is required"))?;
 
-        for group_pk in &self.group_pks {
+        for group_pk in &group_pks {
             let (_, mgroup) = GetMulticastGroupCommand {
                 pubkey_or_code: group_pk.to_string(),
             }
@@ -65,7 +86,7 @@ impl UpdateMulticastGroupRolesCommand {
         .execute(client)?
         .ok_or_else(|| eyre::eyre!("AccessPass not found"))?;
 
-        for group_pk in &self.group_pks {
+        for group_pk in &group_pks {
             if self.publisher && !accesspass.mgroup_pub_allowlist.contains(group_pk) {
                 eyre::bail!("User not allowed to publish multicast group ({group_pk})");
             }
@@ -247,5 +268,50 @@ mod tests {
         .execute(&client);
 
         assert!(res.is_ok());
+    }
+
+    /// A max-size batch (MAX_GROUPS_PER_TRANSACTION groups + Permission PDA) must fit
+    /// the 1232-byte transaction size limit, including the compute-budget prelude the
+    /// SDK prepends.
+    #[test]
+    fn max_group_batch_fits_transaction_size() {
+        use solana_sdk::{instruction::AccountMeta, message::Message};
+
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let group_pks: Vec<Pubkey> = (0
+            ..crate::commands::multicastgroup::subscribe::MAX_GROUPS_PER_TRANSACTION)
+            .map(|_| Pubkey::new_unique())
+            .collect();
+        let mut ix = update_multicast_group_roles(
+            &program_id,
+            &payer,
+            &group_pks[0],
+            &Pubkey::new_unique(), // accesspass
+            &Pubkey::new_unique(), // user
+            &group_pks[1..],
+            UpdateMulticastGroupRolesArgs {
+                client_ip: std::net::Ipv4Addr::new(1, 2, 3, 4),
+                publisher: true,
+                subscriber: true,
+                use_onchain_allocation: true,
+                extra_group_count: 0,
+            },
+        );
+        // Worst case also carries the payer's Permission PDA.
+        ix.accounts
+            .push(AccountMeta::new_readonly(Pubkey::new_unique(), false));
+
+        let message = Message::new(&[ix], Some(&payer));
+        // Wire size: 1-byte signature count + 64 bytes per signature + the message.
+        let tx_size =
+            1 + 64 * message.header.num_required_signatures as usize + message.serialize().len();
+        // The SDK's send_transaction prepends two compute-budget instructions
+        // (one program key + two short instructions), comfortably under this margin.
+        const COMPUTE_BUDGET_PRELUDE_MARGIN: usize = 100;
+        assert!(
+            tx_size + COMPUTE_BUDGET_PRELUDE_MARGIN <= 1232,
+            "max batch transaction is {tx_size} bytes + {COMPUTE_BUDGET_PRELUDE_MARGIN} margin, over the 1232-byte limit"
+        );
     }
 }

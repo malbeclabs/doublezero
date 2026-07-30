@@ -7,7 +7,10 @@ use crate::{
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::{
-    multicastgroup::{get::GetMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand},
+    multicastgroup::{
+        get::GetMulticastGroupCommand,
+        subscribe::{UpdateMulticastGroupRolesCommand, MAX_GROUPS_PER_TRANSACTION},
+    },
     user::get::GetUserCommand,
 };
 use solana_sdk::pubkey::Pubkey;
@@ -107,18 +110,20 @@ impl SubscribeUserCliCommand {
             }
         }
         for ((publisher, subscriber), batch_pks) in batches {
-            let signature =
-                client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
-                    user_pk,
-                    group_pks: batch_pks.clone(),
-                    client_ip: user.client_ip,
-                    publisher,
-                    subscriber,
-                    device_pk: None,
-                    feed_pk: None,
-                })?;
-            for group_pk in &batch_pks {
-                writeln!(out, "Updated roles for {group_pk}: {signature}")?;
+            for chunk in batch_pks.chunks(MAX_GROUPS_PER_TRANSACTION) {
+                let signature =
+                    client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
+                        user_pk,
+                        group_pks: chunk.to_vec(),
+                        client_ip: user.client_ip,
+                        publisher,
+                        subscriber,
+                        device_pk: None,
+                        feed_pk: None,
+                    })?;
+                for group_pk in chunk {
+                    writeln!(out, "Updated roles for {group_pk}: {signature}")?;
+                }
             }
         }
 

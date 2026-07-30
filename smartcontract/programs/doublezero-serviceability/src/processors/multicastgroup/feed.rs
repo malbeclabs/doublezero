@@ -174,21 +174,41 @@ impl FeedSubscriptionContext<'_, '_> {
 }
 
 /// Read a run of Feed accounts, checking each is on the pass and serves the user's metro.
+///
+/// A feed listed in `held` is loaded even if no longer provisioned on the pass (its seat is gone,
+/// so there is no metro to validate against); strict callers pass `&[]`.
 pub fn load_feeds(
     program_id: &Pubkey,
     accesspass: &AccessPass,
     device_exchange: &Pubkey,
     feed_accounts: &[&AccountInfo],
+    held: &[Pubkey],
 ) -> Result<Vec<(Pubkey, Feed)>, ProgramError> {
     let mut feeds: Vec<(Pubkey, Feed)> = Vec::with_capacity(feed_accounts.len());
     for feed_account in feed_accounts {
-        check_feed_metro_coverage(
-            program_id,
-            accesspass,
-            device_exchange,
-            None,
-            Some(feed_account),
-        )?;
+        let provisioned = accesspass
+            .feed_seats()
+            .iter()
+            .any(|s| s.feed_key == *feed_account.key);
+        if provisioned {
+            check_feed_metro_coverage(
+                program_id,
+                accesspass,
+                device_exchange,
+                None,
+                Some(feed_account),
+            )?;
+        } else if held.contains(feed_account.key) {
+            if feed_account.owner != program_id {
+                return Err(DoubleZeroError::InvalidAccountOwner.into());
+            }
+        } else {
+            msg!(
+                "Feed {} is not provisioned on the access pass",
+                feed_account.key
+            );
+            return Err(DoubleZeroError::FeedNotOnAccessPass.into());
+        }
         if feeds.iter().any(|(key, _)| key == feed_account.key) {
             msg!("feed {} passed more than once", feed_account.key);
             return Err(DoubleZeroError::InvalidArgument.into());

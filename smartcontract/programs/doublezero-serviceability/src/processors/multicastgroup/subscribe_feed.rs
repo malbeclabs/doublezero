@@ -5,11 +5,8 @@
 
 use crate::{
     error::DoubleZeroError,
-    processors::{
-        accesspass::set_feeds::MAX_ACCESS_PASS_FEEDS,
-        multicastgroup::feed::{
-            apply_groups, check_group_accounts, load_context, load_feeds, write_back,
-        },
+    processors::multicastgroup::feed::{
+        apply_groups, check_group_accounts, load_context, load_feeds, write_back,
     },
     state::{permission::permission_flags, user::UserStatus},
 };
@@ -17,6 +14,10 @@ use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, msg, pubkey::Pubkey};
 use std::fmt;
+
+/// Cap on the feeds one user may hold at once. Bounded by what a single [`UnsubscribeFeed`]
+/// transaction can name.
+pub const MAX_USER_FEEDS: usize = 6;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct SubscribeFeedArgs {
@@ -68,6 +69,7 @@ pub fn process_subscribe_feed(
         &ctx.accesspass,
         &ctx.device.exchange_pk,
         feed_accounts,
+        &[],
     )?;
 
     let mut expected: Vec<Pubkey> = Vec::new();
@@ -93,11 +95,11 @@ pub fn process_subscribe_feed(
         if ctx.user.feed_pks.contains(feed_key) {
             continue;
         }
-        if ctx.user.feed_pks.len() >= MAX_ACCESS_PASS_FEEDS {
+        if ctx.user.feed_pks.len() >= MAX_USER_FEEDS {
             msg!(
-                "user already holds {} feeds, the maximum an access pass may carry is {}",
+                "user already holds {} feeds; a user may hold at most {}",
                 ctx.user.feed_pks.len(),
-                MAX_ACCESS_PASS_FEEDS
+                MAX_USER_FEEDS
             );
             return Err(DoubleZeroError::UserFeedLimitExceeded.into());
         }

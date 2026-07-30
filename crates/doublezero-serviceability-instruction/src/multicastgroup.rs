@@ -246,7 +246,8 @@ pub fn subscribe_feed(
 ///
 /// `retained` must be every feed the user keeps: two feeds on one pass can carry the same group, and
 /// without the retained group sets the processor would drop a group another held feed still covers and
-/// strand that feed's seat. Together `targets` and `retained` must cover the user's whole `feed_pks`.
+/// strand that feed's seat. Together `targets` and `retained` must cover every held feed still
+/// provisioned on the pass; a held feed the pass dropped is pruned by the processor instead.
 #[allow(clippy::too_many_arguments)]
 pub fn unsubscribe_feed(
     program_id: &Pubkey,

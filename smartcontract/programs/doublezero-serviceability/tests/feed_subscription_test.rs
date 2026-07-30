@@ -16,10 +16,12 @@ use doublezero_serviceability::{
             set_feeds::{FeedSeatConfig, SetAccessPassFeedsArgs},
         },
         device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
-        feed::create::FeedCreateArgs,
+        feed::create::{FeedCreateArgs, MAX_FEED_GROUPS},
         multicastgroup::{
-            create::MulticastGroupCreateArgs, subscribe::UpdateMulticastGroupRolesArgs,
-            subscribe_feed::SubscribeFeedArgs, unsubscribe_feed::UnsubscribeFeedArgs,
+            create::MulticastGroupCreateArgs,
+            subscribe::UpdateMulticastGroupRolesArgs,
+            subscribe_feed::{SubscribeFeedArgs, MAX_USER_FEEDS},
+            unsubscribe_feed::UnsubscribeFeedArgs,
         },
         user::{create::UserCreateArgs, create_subscribe::UserCreateSubscribeArgs},
     },
@@ -234,6 +236,39 @@ async fn create_feed(f: &mut Fixture, code: &str, exchange: Pubkey, groups: Vec<
     )
     .await;
     feed_pubkey
+}
+
+/// Activated multicast groups beyond the five the fixture creates.
+async fn create_groups(f: &mut Fixture, n: usize) -> Vec<Pubkey> {
+    let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
+    let mut groups = Vec::with_capacity(n);
+    for i in 0..n {
+        let gs = get_globalstate(&mut f.banks_client, f.globalstate_pubkey).await;
+        let (mgroup_pubkey, _) = get_multicastgroup_pda(&f.program_id, gs.account_index + 1);
+        execute_transaction(
+            &mut f.banks_client,
+            recent_blockhash,
+            f.program_id,
+            DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+                code: format!("extra{i}"),
+                max_bandwidth: 1000,
+                owner: f.payer.pubkey(),
+                use_onchain_allocation: true,
+            }),
+            vec![
+                AccountMeta::new(mgroup_pubkey, false),
+                AccountMeta::new(f.globalstate_pubkey, false),
+                AccountMeta::new(
+                    get_resource_extension_pda(&f.program_id, ResourceType::MulticastGroupBlock).0,
+                    false,
+                ),
+            ],
+            &f.payer,
+        )
+        .await;
+        groups.push(mgroup_pubkey);
+    }
+    groups
 }
 
 fn seat(feed_key: Pubkey, max_users: u8) -> FeedSeat {
@@ -903,4 +938,116 @@ async fn test_unheld_feed_as_retained_rejected() {
     let user = read_user(&mut f).await;
     assert_eq!(user.subscribers, vec![g[0], g[1]]);
     assert_eq!(seat_users(&read_pass(&mut f).await, &held), 1);
+}
+
+// The pass admin drops a feed the user still holds (SetAccessPassFeeds never refuses that). The
+// stale feed has no seat left to strand, so it no longer has to be named: the user can still leave
+// their other feeds, and the stale entry is pruned along the way.
+#[tokio::test]
+async fn test_leave_succeeds_after_the_pass_drops_a_held_feed() {
+    let mut f = setup([100, 0, 0, 41]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    let feed1 = create_feed(&mut f, "feed1", exchange, vec![g[0]]).await;
+    let feed2 = create_feed(&mut f, "feed2", exchange, vec![g[1]]).await;
+    set_pass_feeds(&mut f, vec![seat(feed1, 1), seat(feed2, 1)]).await;
+    create_user_on(&mut f, feed1, g[0]).await;
+    join(&mut f, &[feed2], &[g[1]]).await.unwrap();
+
+    set_pass_feeds(&mut f, vec![seat(feed1, 1)]).await;
+
+    leave(&mut f, &[feed1], &[], &[g[0]]).await.unwrap();
+
+    let user = read_user(&mut f).await;
+    assert!(user.feed_pks.is_empty());
+    // The stale feed's group stays subscribed until reconciled (or feed2 is named as a target).
+    assert_eq!(user.subscribers, vec![g[1]]);
+    assert_eq!(seat_users(&read_pass(&mut f).await, &feed1), 0);
+}
+
+// A stale feed named as a target unsubscribes its groups, still honoring retained coverage, and
+// touches no seat.
+#[tokio::test]
+async fn test_stale_feed_named_as_target_cleans_up() {
+    let mut f = setup([100, 0, 0, 42]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    let feed1 = create_feed(&mut f, "feed1", exchange, vec![g[0]]).await;
+    let feed2 = create_feed(&mut f, "feed2", exchange, vec![g[0], g[1]]).await;
+    set_pass_feeds(&mut f, vec![seat(feed1, 1), seat(feed2, 1)]).await;
+    create_user_on(&mut f, feed1, g[0]).await;
+    join(&mut f, &[feed2], &[g[1]]).await.unwrap();
+
+    set_pass_feeds(&mut f, vec![seat(feed1, 1)]).await;
+
+    // g[0] stays covered by retained feed1; only g[1] departs with the stale feed2.
+    leave(&mut f, &[feed2], &[feed1], &[g[1]]).await.unwrap();
+
+    let user = read_user(&mut f).await;
+    assert_eq!(user.subscribers, vec![g[0]]);
+    assert_eq!(user.feed_pks, vec![feed1]);
+    assert_eq!(seat_users(&read_pass(&mut f).await, &feed1), 1);
+}
+
+// A stale feed carries no entitlement, so it cannot stand in as retained coverage.
+#[tokio::test]
+async fn test_stale_feed_as_retained_rejected() {
+    let mut f = setup([100, 0, 0, 43]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    let feed1 = create_feed(&mut f, "feed1", exchange, vec![g[0]]).await;
+    let feed2 = create_feed(&mut f, "feed2", exchange, vec![g[0], g[1]]).await;
+    set_pass_feeds(&mut f, vec![seat(feed1, 1), seat(feed2, 1)]).await;
+    create_user_on(&mut f, feed1, g[0]).await;
+    join(&mut f, &[feed2], &[g[1]]).await.unwrap();
+
+    set_pass_feeds(&mut f, vec![seat(feed2, 1)]).await;
+
+    let err = leave(&mut f, &[feed2], &[feed1], &[g[1]])
+        .await
+        .unwrap_err();
+    assert_custom_error(&err, 93);
+}
+
+// MAX_FEED_GROUPS is bounded by transaction capacity: a feed at the cap joins in one transaction.
+#[tokio::test]
+async fn test_feed_at_max_groups_joins_in_one_transaction() {
+    let mut f = setup([100, 0, 0, 44]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    // `entry` only exists so the user account can be created (see create_user_on).
+    let entry = create_feed(&mut f, "entry", exchange, vec![g[0]]).await;
+    let mut big_groups = g[1..5].to_vec();
+    let extra = create_groups(&mut f, MAX_FEED_GROUPS - big_groups.len()).await;
+    big_groups.extend(extra);
+    let big = create_feed(&mut f, "big", exchange, big_groups.clone()).await;
+    set_pass_feeds(&mut f, vec![seat(entry, 1), seat(big, 1)]).await;
+    create_user_on(&mut f, entry, g[0]).await;
+
+    join(&mut f, &[big], &big_groups).await.unwrap();
+
+    let user = read_user(&mut f).await;
+    assert_eq!(user.subscribers.len(), 1 + MAX_FEED_GROUPS);
+    assert_eq!(seat_users(&read_pass(&mut f).await, &big), 1);
+}
+
+// A join that would take the user past MAX_USER_FEEDS is refused: UserFeedLimitExceeded (103).
+#[tokio::test]
+async fn test_join_past_the_user_feed_cap_rejected() {
+    let mut f = setup([100, 0, 0, 45]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    // Every feed carries the same group, so each join costs its seat and adds no groups.
+    let mut feeds = Vec::new();
+    for i in 0..=MAX_USER_FEEDS {
+        feeds.push(create_feed(&mut f, &format!("feed{i}"), exchange, vec![g[0]]).await);
+    }
+    let seats = feeds.iter().map(|k| seat(*k, 1)).collect();
+    set_pass_feeds(&mut f, seats).await;
+    create_user_on(&mut f, feeds[0], g[0]).await;
+
+    for feed in &feeds[1..MAX_USER_FEEDS] {
+        join(&mut f, &[*feed], &[]).await.unwrap();
+    }
+    assert_eq!(read_user(&mut f).await.feed_pks.len(), MAX_USER_FEEDS);
+
+    let err = join(&mut f, &[feeds[MAX_USER_FEEDS]], &[])
+        .await
+        .unwrap_err();
+    assert_custom_error(&err, 103);
 }

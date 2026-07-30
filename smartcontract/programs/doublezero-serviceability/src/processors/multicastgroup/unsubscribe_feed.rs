@@ -6,7 +6,9 @@
 //! `retained` is every feed the user keeps. It is required, not optional: two feeds on one pass can
 //! carry the same group, so without the retained feeds' group sets a departing feed would drop a
 //! group another held feed still covers, and leave that feed's seat charged against a user holding
-//! nothing in it. See [`super::feed`] for the shared model.
+//! nothing in it. A held feed the pass no longer carries is exempt: it has no seat to strand, is
+//! pruned on any leave, and may itself be a target to unsubscribe its groups (but cannot stand in
+//! as retained). See [`super::feed`] for the shared model.
 
 use crate::{
     error::DoubleZeroError,
@@ -24,7 +26,8 @@ use std::fmt;
 pub struct UnsubscribeFeedArgs {
     /// Feeds being left.
     pub feed_count: u8,
-    /// Feeds the user keeps. Together with `feed_count` this must cover every feed the user holds.
+    /// Feeds the user keeps. Together with `feed_count` this must cover every feed the user holds
+    /// that is still provisioned on the pass.
     pub retained_feed_count: u8,
 }
 
@@ -74,12 +77,14 @@ pub fn process_unsubscribe_feed(
         &ctx.accesspass,
         &ctx.device.exchange_pk,
         target_accounts,
+        &ctx.user.feed_pks,
     )?;
     let retained = load_feeds(
         program_id,
         &ctx.accesspass,
         &ctx.device.exchange_pk,
         retained_accounts,
+        &[],
     )?;
 
     // Without both checks a caller can release a seat while keeping the groups.
@@ -93,6 +98,21 @@ pub fn process_unsubscribe_feed(
             return Err(DoubleZeroError::InvalidArgument.into());
         }
     }
+
+    // A held feed no longer on the pass has no seat to strand: prune it instead of requiring it.
+    let provisioned: Vec<Pubkey> = ctx
+        .accesspass
+        .feed_seats()
+        .iter()
+        .map(|s| s.feed_key)
+        .collect();
+    ctx.user.feed_pks.retain(|held| {
+        if provisioned.contains(held) {
+            return true;
+        }
+        msg!("held feed {} is no longer on the pass; pruning it", held);
+        false
+    });
 
     for held in &ctx.user.feed_pks {
         if !targets.iter().any(|(key, _)| key == held)

@@ -29,6 +29,31 @@ jobs:
           go-version-file: go.mod
           cache: true
       - uses: Swatinem/rust-cache@v2
+      # proxy.golang.org occasionally drops a module zip mid-transfer (HTTP/2
+      # INTERNAL_ERROR). The go command does not retry, so the failure surfaces
+      # as a GoReleaser build error partway through the release. Populate the
+      # module cache up front, where a retry is cheap and side-effect free.
+      #
+      # Best-effort only: this must never be a new way for the release to fail.
+      # It downloads every module go.mod requires, a superset of what the built
+      # binaries import, so a durable proxy failure on a test-only dependency
+      # would otherwise block a release that used to succeed. GoReleaser fetches
+      # whatever is still missing. The bound covers a stalled (as opposed to
+      # dropped) transfer, which would otherwise hang to the six-hour job
+      # default and suppress the daily-failure Slack alert that needs this job.
+      - name: Download Go modules
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          for attempt in 1 2 3; do
+            echo "go mod download (attempt $attempt/3)"
+            if go mod download; then
+              exit 0
+            fi
+            sleep $((attempt * 10))
+          done
+          echo "go mod download failed after 3 attempts"
+          exit 1
       - name: Set env vars
         run: ./scripts/env.sh >> $GITHUB_ENV
       - name: Install rust for cli

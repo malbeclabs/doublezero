@@ -342,7 +342,10 @@ mod tests {
             .times(1)
             .returning(move |_| Ok((device_pubkey, device.clone())));
 
-        let mgroup_pubkey = Pubkey::new_unique();
+        // Fixed short base58 (< 43 chars) so `--group` deterministically takes the
+        // code-resolution path: `Pubkey::new_unique()` straddles that length threshold
+        // depending on the process-global counter, which makes the run order matter.
+        let mgroup_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let mgroup = MulticastGroup {
             account_type: AccountType::MulticastGroup,
             owner: Pubkey::default(),
@@ -460,7 +463,10 @@ mod tests {
             .times(1)
             .returning(move |_| Ok((device_pubkey, device.clone())));
 
-        let mgroup_pubkey = Pubkey::new_unique();
+        // Fixed short base58 (< 43 chars) so `--group` deterministically takes the
+        // code-resolution path: `Pubkey::new_unique()` straddles that length threshold
+        // depending on the process-global counter, which makes the run order matter.
+        let mgroup_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let mgroup = MulticastGroup {
             account_type: AccountType::MulticastGroup,
             owner: Pubkey::default(),
@@ -588,7 +594,10 @@ mod tests {
             .times(1)
             .returning(move |_| Ok((device_pubkey, device.clone())));
 
-        let mgroup_pubkey = Pubkey::new_unique();
+        // Fixed short base58 (< 43 chars) so `--group` deterministically takes the
+        // code-resolution path: `Pubkey::new_unique()` straddles that length threshold
+        // depending on the process-global counter, which makes the run order matter.
+        let mgroup_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let mgroup = MulticastGroup {
             account_type: AccountType::MulticastGroup,
             owner: Pubkey::default(),

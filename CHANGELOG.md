@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI
+  - `doublezero feed update` (when `--group` drops a group) and `doublezero feed delete` now fail closed if the change would leave an EdgeSeat user subscribed to a multicast group no feed on their access pass carries, printing the affected users and groups and submitting nothing. Pass `--force-unsubscribe` to unsubscribe them first and then apply the change. A rename, a purely additive `--group` set, and an update without `--group` are unaffected. The removals need `USER_ADMIN` (or foundation membership) on the payer in addition to `FEED_AUTHORITY`. (malbeclabs/infra#2113)
+
 ### Changes
 
 - Serviceability

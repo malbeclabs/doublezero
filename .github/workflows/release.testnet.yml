@@ -91,7 +91,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           token: ${{ steps.app.outputs.token }}
-      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: dtolnay/rust-toolchain@1.97.1
       - name: Open doublezero version-bump PR
         id: dzpr
         env:
@@ -371,7 +371,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main   # the merged version-bump commit
-      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: dtolnay/rust-toolchain@1.97.1
       - uses: Swatinem/rust-cache@v2
       # Keep the agave version and --tools-version in sync with
       # release.devnet.smartcontract.daily.yml (platform-tools >= v1.54 is

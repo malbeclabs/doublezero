@@ -498,7 +498,7 @@ impl fmt::Display for Device {
             unicast_users_count: {}, multicast_subscribers_count: {}, max_unicast_users: {}, max_multicast_subscribers: {}, reserved_seats: {}, \
             multicast_publishers_count: {}, max_multicast_publishers: {}",
             self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type,
-            &self.public_ip, &self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces,
+            self.public_ip, self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces,
             self.reference_count, self.users_count, self.max_users, self.device_health, self.desired_status,
             self.unicast_users_count, self.multicast_subscribers_count, self.max_unicast_users, self.max_multicast_subscribers, self.reserved_seats,
             self.multicast_publishers_count, self.max_multicast_publishers

@@ -329,8 +329,7 @@ pub fn process_update_multicastgroup_roles(
     // below: on batch adds only the first add sees empty→non-empty; on batch
     // removes only the last removal sees non-empty→empty.
     let mut publisher_list_transitioned = false;
-    for group_account in
-        std::iter::once(mgroup_account).chain(extra_group_accounts.iter().copied())
+    for group_account in std::iter::once(mgroup_account).chain(extra_group_accounts.iter().copied())
     {
         check_mgroup_allowlists(
             &accesspass,

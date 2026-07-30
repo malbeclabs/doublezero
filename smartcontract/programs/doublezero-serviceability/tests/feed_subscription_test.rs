@@ -359,6 +359,7 @@ async fn try_create_user_at(
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: None,
+            extra_group_count: 0,
         }),
         &accounts,
         &f.payer,
@@ -771,6 +772,7 @@ async fn test_allowlisted_group_joins_without_a_seat() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         &vec![
             AccountMeta::new(g[4], false),
@@ -811,6 +813,7 @@ async fn test_feed_group_not_joinable_through_the_roles_instruction() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         &vec![
             AccountMeta::new(g[1], false),

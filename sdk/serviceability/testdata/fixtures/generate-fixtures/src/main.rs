@@ -299,6 +299,7 @@ fn generate_ix_fixtures(dir: &Path) {
         &b,
         &c,
         1,
+        &[],
         Some(&d),
         UserCreateSubscribeArgs {
             user_type: UserType::IBRLWithAllocatedIP,
@@ -309,6 +310,7 @@ fn generate_ix_fixtures(dir: &Path) {
             tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
             dz_prefix_count: 0,
             owner: Pubkey::default(),
+            extra_group_count: 0,
         },
     );
     write_ix_fixture(dir, "create_subscribe_user", &create_subscribe_user);

@@ -1099,6 +1099,7 @@ mod tests {
                 publisher: false,
                 subscriber: true,
                 use_onchain_allocation: false,
+                extra_group_count: 0,
             }),
             "UpdateMulticastGroupRoles",
         );
@@ -1112,6 +1113,7 @@ mod tests {
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 dz_prefix_count: 0,
                 owner: Pubkey::default(),
+                extra_group_count: 0,
             }),
             "CreateSubscribeUser",
         );

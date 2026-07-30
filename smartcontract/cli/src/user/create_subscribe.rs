@@ -126,9 +126,9 @@ impl CreateSubscribeUserCliCommand {
             client_ip: self.client_ip,
             publisher: publisher_pk.is_some(),
             subscriber: subscriber_pk.is_some(),
-            mgroup_pk: publisher_pk
+            mgroup_pks: vec![publisher_pk
                 .or(subscriber_pk)
-                .ok_or(eyre::eyre!("Subscriber is required if publisher is not"))?,
+                .ok_or(eyre::eyre!("Subscriber is required if publisher is not"))?],
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             owner: owner_pk,
             feed_pk,
@@ -253,7 +253,7 @@ mod tests {
                 client_ip: [100, 0, 0, 1].into(),
                 publisher: false,
                 subscriber: true,
-                mgroup_pk: mgroup_pubkey,
+                mgroup_pks: vec![mgroup_pubkey],
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 owner: None,
                 feed_pk: None,
@@ -376,7 +376,7 @@ mod tests {
                 client_ip: [100, 0, 0, 1].into(),
                 publisher: false,
                 subscriber: true,
-                mgroup_pk: mgroup_pubkey,
+                mgroup_pks: vec![mgroup_pubkey],
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 owner: None,
                 feed_pk: Some(feed_pubkey),
@@ -512,7 +512,7 @@ mod tests {
                 client_ip: [100, 0, 0, 1].into(),
                 publisher: false,
                 subscriber: true,
-                mgroup_pk: mgroup_pubkey,
+                mgroup_pks: vec![mgroup_pubkey],
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 owner: None,
                 feed_pk: Some(resolved_feed_pubkey),

@@ -32,6 +32,7 @@ use solana_program::{
 /// multicast_publisher_block   (writable)  — ResourceType::MulticastPublisherBlock
 /// device_tunnel_ids           (writable)  — ResourceType::TunnelIds(device, 0)
 /// dz_prefix_block[i]          (writable)  — one per dz_prefix_count
+/// extra_mgroup[i]             (writable)  — one per extra_groups entry
 /// feed                        (readonly)  — OPTIONAL, appended only when Some
 /// ```
 ///
@@ -42,7 +43,8 @@ use solana_program::{
 /// `[payer, system]` and the processor peels it by PDA match — so the two never
 /// collide. This builder is therefore assigned to `common::build_with_permission`
 /// (permission deferred for now). `dz_prefix_count` is written back into the args
-/// so it always matches the number of `dz_prefix_block` accounts produced.
+/// so it always matches the number of `dz_prefix_block` accounts produced, and
+/// `extra_group_count` is likewise DERIVED from `extra_groups.len()`.
 #[allow(clippy::too_many_arguments)]
 pub fn create_subscribe_user(
     program_id: &Pubkey,
@@ -51,6 +53,7 @@ pub fn create_subscribe_user(
     mgroup: &Pubkey,
     accesspass: &Pubkey,
     dz_prefix_count: u8,
+    extra_groups: &[Pubkey],
     feed: Option<&Pubkey>,
     mut args: UserCreateSubscribeArgs,
 ) -> Instruction {
@@ -69,6 +72,8 @@ pub fn create_subscribe_user(
         args.dz_prefix_count
     );
     args.dz_prefix_count = dz_prefix_count;
+    args.extra_group_count = u8::try_from(extra_groups.len())
+        .expect("extra_groups cannot exceed the transaction account limit");
 
     let (user, _) = get_user_pda(program_id, &args.client_ip, args.user_type);
     let (globalstate, _) = get_globalstate_pda(program_id);
@@ -95,6 +100,10 @@ pub fn create_subscribe_user(
             get_resource_extension_pda(program_id, ResourceType::DzPrefixBlock(*device, idx));
         accounts.push(AccountMeta::new(dz_prefix, false));
     }
+
+    // Extra multicast groups (batch subscription), after the dz_prefix blocks and
+    // before the optional feed — matching the processor's trailing-region layout.
+    accounts.extend(extra_groups.iter().map(|g| AccountMeta::new(*g, false)));
 
     // Optional trailing Feed account (EdgeSeat metro gate), appended BEFORE
     // payer/system. A Permission PDA, once activated, is appended AFTER payer/system
@@ -495,6 +504,7 @@ mod tests {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
             owner: Pubkey::default(),
+            extra_group_count: 0,
         }
     }
 
@@ -515,6 +525,7 @@ mod tests {
             &mgroup,
             &accesspass,
             1,
+            &[],
             None,
             args.clone(),
         );
@@ -576,6 +587,7 @@ mod tests {
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
             1,
+            &[],
             Some(&feed),
             base_args(client_ip),
         );
@@ -590,6 +602,46 @@ mod tests {
         // Permission append is deferred (build_with_permission delegates to build
         // today), so the last account is the system program.
         assert_eq!(ix.accounts.last().unwrap().pubkey, system_program::ID);
+    }
+
+    /// Extra groups sit between the dz_prefix blocks and the optional feed, writable,
+    /// and `extra_group_count` is derived from the slice length.
+    #[test]
+    fn test_create_subscribe_user_extra_groups_between_dz_prefix_and_feed() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let feed = Pubkey::new_unique();
+        let extra1 = Pubkey::new_unique();
+        let extra2 = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        let ix = create_subscribe_user(
+            &pid,
+            &payer,
+            &device,
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            1,
+            &[extra1, extra2],
+            Some(&feed),
+            base_args(client_ip),
+        );
+
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::CreateSubscribeUser(a) => assert_eq!(a.extra_group_count, 2),
+            other => panic!("unexpected variant: {other:?}"),
+        }
+
+        // 8 fixed + 1 dz_prefix + 2 extras + feed + payer + system = 14.
+        assert_eq!(ix.accounts.len(), 14);
+        let (dz_prefix0, _, _) =
+            get_resource_extension_pda(&pid, ResourceType::DzPrefixBlock(device, 0));
+        assert_eq!(ix.accounts[8].pubkey, dz_prefix0);
+        assert_eq!(ix.accounts[9], AccountMeta::new(extra1, false));
+        assert_eq!(ix.accounts[10], AccountMeta::new(extra2, false));
+        assert_eq!(ix.accounts[11].pubkey, feed);
+        assert!(!ix.accounts[11].is_writable);
     }
 
     fn create_args(client_ip: Ipv4Addr) -> UserCreateArgs {

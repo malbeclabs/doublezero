@@ -1787,3 +1787,174 @@ async fn test_user_create_existing_different_owner_rejected() {
         .unwrap();
     assert_eq!(user.owner, payer.pubkey());
 }
+
+/// A re-run must not fail on a device that filled up after the first create: the exists check
+/// returns before the capacity gates.
+#[tokio::test]
+async fn test_user_create_rerun_succeeds_on_full_device() {
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+    ) = setup_activated_user().await;
+
+    // Shrink the device cap to exactly its current occupancy.
+    let (location_pubkey, _) = get_location_pda(&program_id, 1);
+    let (contributor_pubkey, _) = get_contributor_pda(&program_id, 3);
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_users: Some(1),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    let device = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    assert_eq!(device.max_users, 1);
+    assert_eq!(device.users_count, 1);
+
+    // Full for a new user, but a retry of the existing one still succeeds.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0))
+                    .0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(
+                    &program_id,
+                    ResourceType::DzPrefixBlock(device_pubkey, 0),
+                )
+                .0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+}
+
+/// A re-run against a banned user fails fast with InvalidStatus: a ban is terminal, so a no-op
+/// success would leave the caller polling a user that never activates.
+#[tokio::test]
+async fn test_user_create_rerun_on_banned_user_rejected() {
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+    ) = setup_activated_user().await;
+
+    let (user_tunnel_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
+    let (tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RequestBanUser(UserRequestBanArgs {
+            dz_prefix_count: 1,
+            multicast_publisher_count: 0,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let err = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block_pda, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+        ],
+        &payer,
+    )
+    .await
+    .unwrap_err();
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(7),
+        )) => {}
+        other => panic!("expected InvalidStatus (Custom(7)), got {other:?}"),
+    }
+}

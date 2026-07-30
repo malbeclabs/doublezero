@@ -324,6 +324,15 @@ async fn create_user_on(f: &mut Fixture, feed: Pubkey, group: Pubkey) {
 
 /// Same, for an arbitrary client IP — a second machine under the same dynamic pass.
 async fn create_user_at(f: &mut Fixture, ip: Ipv4Addr, feed: Pubkey, group: Pubkey) {
+    try_create_user_at(f, ip, feed, group).await.unwrap()
+}
+
+async fn try_create_user_at(
+    f: &mut Fixture,
+    ip: Ipv4Addr,
+    feed: Pubkey,
+    group: Pubkey,
+) -> Result<(), BanksClientError> {
     let (user_pubkey, _) = get_user_pda(&f.program_id, &ip, UserType::Multicast);
     let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
     let accounts = vec![
@@ -355,7 +364,7 @@ async fn create_user_at(f: &mut Fixture, ip: Ipv4Addr, feed: Pubkey, group: Pubk
         &[],
     );
     tx.try_sign(&[&f.payer], recent_blockhash).unwrap();
-    f.banks_client.process_transaction(tx).await.unwrap();
+    f.banks_client.process_transaction(tx).await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1097,4 +1106,30 @@ async fn test_naked_create_then_subscribe_feed() {
     assert_eq!(user.subscribers, vec![g[0], g[1]]);
     assert_eq!(user.feed_pks, vec![feed]);
     assert_eq!(seat_users(&read_pass(&mut f).await, &feed), 1);
+}
+
+// Only CreateUser is idempotent: a duplicate CreateSubscribeUser is still rejected, and neither
+// ticks a seat nor changes the user.
+#[tokio::test]
+async fn test_duplicate_create_subscribe_user_rejected() {
+    let mut f = setup([100, 0, 0, 47]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    let feed = create_feed(&mut f, "feed1", exchange, vec![g[0]]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 2)]).await;
+    create_user_on(&mut f, feed, g[0]).await;
+
+    let ip = f.user_ip;
+    let err = try_create_user_at(&mut f, ip, feed, g[0])
+        .await
+        .unwrap_err();
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::AccountAlreadyInitialized,
+        )) => {}
+        other => panic!("expected AccountAlreadyInitialized, got {other:?}"),
+    }
+
+    assert_eq!(seat_users(&read_pass(&mut f).await, &feed), 1);
+    assert_eq!(read_user(&mut f).await.subscribers, vec![g[0]]);
 }

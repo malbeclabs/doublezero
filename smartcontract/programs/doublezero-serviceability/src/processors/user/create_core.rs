@@ -54,12 +54,12 @@ pub struct CreateUserCoreResult {
 
 /// Shared validation and state setup for CreateUser and CreateSubscribeUser.
 ///
-/// Performs all common checks (payer signer, account emptiness, access pass validation,
-/// PDA derivation, device validation, max users checks, epoch check) and sets up the
-/// initial User struct.
+/// Performs all common checks (payer signer, access pass validation, PDA derivation,
+/// device validation, max users checks, epoch check) and sets up the initial User struct.
 ///
 /// Returns `Ok(None)` when the user already exists and matches the requested owner, device, and
-/// user type; a mismatch errors with `AccountAlreadyInitialized`.
+/// user type; a mismatch errors with `AccountAlreadyInitialized`, and a banned user with
+/// `InvalidStatus`.
 ///
 /// Callers are responsible for:
 /// - Parsing the required resource extension accounts
@@ -199,8 +199,9 @@ pub fn create_user_core(
     }
 
     // Idempotent create: an existing user matching the request is a no-op, so a caller can retry
-    // safely. Checked after the pass validation so the no-op still requires the caller's own pass,
-    // and before the capacity checks, which do not apply when nothing is added.
+    // safely. Checked after the pass validation so a no-op still needs the caller's own pass, and
+    // before the tenant, epoch, device-status, and capacity gates: those apply to adding a user,
+    // not to retrying one.
     if already_exists {
         if core.user_account.owner != program_id {
             return Err(ProgramError::IncorrectProgramId);
@@ -220,6 +221,12 @@ pub fn create_user_core(
                 user_type
             );
             return Err(ProgramError::AccountAlreadyInitialized);
+        }
+        // A ban is terminal; fail fast instead of leaving the caller polling a user that will
+        // never activate.
+        if existing.status == UserStatus::Banned {
+            msg!("user {} is banned", core.user_account.key);
+            return Err(DoubleZeroError::InvalidStatus.into());
         }
         return Ok(None);
     }

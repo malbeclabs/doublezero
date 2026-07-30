@@ -62,7 +62,7 @@ impl Orphan {
     }
 }
 
-/// The onchain state [`plan`] reads, fetched once per round by [`scan`].
+/// The onchain state [`find_orphans`] reads, fetched once per round by [`scan`].
 pub struct Snapshot {
     pub users: HashMap<Pubkey, User>,
     pub accesspasses: HashMap<Pubkey, AccessPass>,
@@ -105,7 +105,7 @@ pub fn unsubscribe_orphans<C: CliCommand, W: Write>(
             .copied()
             .collect();
 
-        let orphans = plan(feed_pk, &dropped, &snap)?;
+        let orphans = find_orphans(feed_pk, &dropped, &snap)?;
         if orphans.is_empty() {
             return Ok(());
         }
@@ -180,19 +180,15 @@ fn scan<C: CliCommand>(client: &C) -> eyre::Result<Snapshot> {
 
 /// The memberships that dropping `dropped` from `feed_pk` would orphan.
 ///
-/// A membership survives when some *other* feed still carries the group in the user's metro,
-/// provided that feed is both seated on an accepted pass and among the seats the user actually
-/// consumed (`user.feed_pks`) — the same set `UnsubscribeFeed`'s retained-feeds check releases
-/// seats against. A seated feed the user never consumed is not coverage: keeping the group on its
-/// strength would leave usage no seat accounts for. The rotated feed itself never counts: every
-/// group in `dropped` is by construction absent from its post-change set, and a delete removes it
-/// entirely.
-///
-/// A role also survives when an accepted pass's own allowlist authorizes it
-/// (`mgroup_pub_allowlist` for publisher, `mgroup_sub_allowlist` for subscriber): the program runs
-/// that check for every pass type, so such a membership is legal with no feed involved, and seat
-/// release never keys on a group the feeds don't carry.
-pub fn plan(feed_pk: &Pubkey, dropped: &[Pubkey], snap: &Snapshot) -> eyre::Result<Vec<Orphan>> {
+/// A role survives when another feed the user holds a consumed seat on (`user.feed_pks`, the set
+/// seat release retains against) still carries the group in their metro, or when the pass's own
+/// per-role allowlist authorizes it. The rotated feed itself never counts: every group in
+/// `dropped` is by construction absent from its post-change set.
+pub fn find_orphans(
+    feed_pk: &Pubkey,
+    dropped: &[Pubkey],
+    snap: &Snapshot,
+) -> eyre::Result<Vec<Orphan>> {
     let mut orphans = Vec::new();
 
     // Index once so the per-user pass lookup doesn't rescan every pass (O(users × passes) when a
@@ -578,7 +574,7 @@ mod tests {
     #[test]
     fn test_plan_flags_dropped_group_the_user_holds() {
         let f = fixture();
-        let orphans = plan(&f.feed_pk, &[f.group], &f.snap).unwrap();
+        let orphans = find_orphans(&f.feed_pk, &[f.group], &f.snap).unwrap();
         assert_eq!(
             orphans,
             vec![Orphan {
@@ -596,7 +592,7 @@ mod tests {
     #[test]
     fn test_plan_ignores_dropped_group_the_user_does_not_hold() {
         let f = fixture();
-        assert!(plan(&f.feed_pk, &[Pubkey::new_unique()], &f.snap)
+        assert!(find_orphans(&f.feed_pk, &[Pubkey::new_unique()], &f.snap)
             .unwrap()
             .is_empty());
     }
@@ -604,7 +600,7 @@ mod tests {
     #[test]
     fn test_plan_empty_when_nothing_dropped() {
         let f = fixture();
-        assert!(plan(&f.feed_pk, &[], &f.snap).unwrap().is_empty());
+        assert!(find_orphans(&f.feed_pk, &[], &f.snap).unwrap().is_empty());
     }
 
     #[test]
@@ -625,7 +621,9 @@ mod tests {
         )]);
         f.snap.users.get_mut(&f.user_pk).unwrap().feed_pks = vec![f.feed_pk, other_pk];
 
-        assert!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().is_empty());
+        assert!(find_orphans(&f.feed_pk, &[f.group], &f.snap)
+            .unwrap()
+            .is_empty());
     }
 
     /// A seated feed whose seat the user never consumed (absent from `feed_pks`) is not coverage:
@@ -649,7 +647,10 @@ mod tests {
         )]);
         f.snap.users.get_mut(&f.user_pk).unwrap().feed_pks = vec![f.feed_pk];
 
-        assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
+        assert_eq!(
+            find_orphans(&f.feed_pk, &[f.group], &f.snap).unwrap().len(),
+            1
+        );
     }
 
     #[test]
@@ -671,7 +672,10 @@ mod tests {
         // Consumed, so the metro mismatch is the only reason it doesn't cover.
         f.snap.users.get_mut(&f.user_pk).unwrap().feed_pks = vec![f.feed_pk, other_pk];
 
-        assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
+        assert_eq!(
+            find_orphans(&f.feed_pk, &[f.group], &f.snap).unwrap().len(),
+            1
+        );
     }
 
     /// The sharp edge: the rotated feed's *old* set is not coverage. Its own seat must never
@@ -683,7 +687,10 @@ mod tests {
         // is even consumed — none of which excuses a group the feed is about to stop carrying.
         f.snap.users.get_mut(&f.user_pk).unwrap().feed_pks = vec![f.feed_pk];
         assert!(f.snap.feeds[&f.feed_pk].groups.contains(&f.group));
-        assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
+        assert_eq!(
+            find_orphans(&f.feed_pk, &[f.group], &f.snap).unwrap().len(),
+            1
+        );
     }
 
     #[test]
@@ -701,7 +708,7 @@ mod tests {
             .push(second);
 
         let groups = f.snap.feeds[&f.feed_pk].groups.clone();
-        let orphans = plan(&f.feed_pk, &groups, &f.snap).unwrap();
+        let orphans = find_orphans(&f.feed_pk, &groups, &f.snap).unwrap();
         assert_eq!(orphans.len(), 2);
         assert!(orphans.iter().all(|o| o.user_pk == f.user_pk));
     }
@@ -713,7 +720,7 @@ mod tests {
         u.subscribers.clear();
         u.publishers.push(f.group);
 
-        let orphans = plan(&f.feed_pk, &[f.group], &f.snap).unwrap();
+        let orphans = find_orphans(&f.feed_pk, &[f.group], &f.snap).unwrap();
         assert_eq!(orphans.len(), 1);
         assert!(orphans[0].remove_publisher && !orphans[0].remove_subscriber);
     }
@@ -727,7 +734,9 @@ mod tests {
             pass(owner, f.client_ip, AccessPassType::Prepaid),
         )]);
 
-        assert!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().is_empty());
+        assert!(find_orphans(&f.feed_pk, &[f.group], &f.snap)
+            .unwrap()
+            .is_empty());
     }
 
     /// The program accepts a pass at either PDA, so a shared dynamic pass must not hide the
@@ -741,7 +750,10 @@ mod tests {
             pass(owner, Ipv4Addr::UNSPECIFIED, AccessPassType::Prepaid),
         );
 
-        assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
+        assert_eq!(
+            find_orphans(&f.feed_pk, &[f.group], &f.snap).unwrap().len(),
+            1
+        );
     }
 
     /// Coverage is the union over both accepted PDAs, not just one of them.
@@ -763,7 +775,9 @@ mod tests {
         );
         f.snap.users.get_mut(&f.user_pk).unwrap().feed_pks = vec![f.feed_pk, other_pk];
 
-        assert!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().is_empty());
+        assert!(find_orphans(&f.feed_pk, &[f.group], &f.snap)
+            .unwrap()
+            .is_empty());
     }
 
     /// A consumed seat keeps the user in scope even if their pass no longer shows it.
@@ -777,14 +791,17 @@ mod tests {
         )]);
         f.snap.users.get_mut(&f.user_pk).unwrap().feed_pks = vec![f.feed_pk];
 
-        assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
+        assert_eq!(
+            find_orphans(&f.feed_pk, &[f.group], &f.snap).unwrap().len(),
+            1
+        );
     }
 
     #[test]
     fn test_plan_errors_on_a_user_with_an_unknown_device() {
         let mut f = fixture();
         f.snap.devices.clear();
-        let err = plan(&f.feed_pk, &[f.group], &f.snap).unwrap_err();
+        let err = find_orphans(&f.feed_pk, &[f.group], &f.snap).unwrap_err();
         assert!(
             err.to_string().contains("unknown device"),
             "unexpected error: {err}"
@@ -816,7 +833,10 @@ mod tests {
             ),
         );
 
-        assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
+        assert_eq!(
+            find_orphans(&f.feed_pk, &[f.group], &f.snap).unwrap().len(),
+            1
+        );
     }
 
     /// The program authorizes a role through the pass's own allowlist for every pass type, so a
@@ -827,7 +847,9 @@ mod tests {
         let (_, pass) = f.snap.accesspasses.iter_mut().next().unwrap();
         pass.mgroup_sub_allowlist.push(f.group);
 
-        assert!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().is_empty());
+        assert!(find_orphans(&f.feed_pk, &[f.group], &f.snap)
+            .unwrap()
+            .is_empty());
     }
 
     /// Allowlist coverage is per role: a pub allowlist entry says nothing about the subscriber
@@ -838,7 +860,10 @@ mod tests {
         let (_, pass) = f.snap.accesspasses.iter_mut().next().unwrap();
         pass.mgroup_pub_allowlist.push(f.group);
 
-        assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
+        assert_eq!(
+            find_orphans(&f.feed_pk, &[f.group], &f.snap).unwrap().len(),
+            1
+        );
     }
 
     /// Mixed roles: the uncovered publisher role must go while the allowlist still authorizes the
@@ -855,7 +880,7 @@ mod tests {
         let (_, pass) = f.snap.accesspasses.iter_mut().next().unwrap();
         pass.mgroup_sub_allowlist.push(f.group);
 
-        let orphans = plan(&f.feed_pk, &[f.group], &f.snap).unwrap();
+        let orphans = find_orphans(&f.feed_pk, &[f.group], &f.snap).unwrap();
         assert_eq!(
             orphans,
             vec![Orphan {
@@ -880,6 +905,8 @@ mod tests {
         dynamic.mgroup_sub_allowlist.push(f.group);
         f.snap.accesspasses.insert(Pubkey::new_unique(), dynamic);
 
-        assert!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().is_empty());
+        assert!(find_orphans(&f.feed_pk, &[f.group], &f.snap)
+            .unwrap()
+            .is_empty());
     }
 }

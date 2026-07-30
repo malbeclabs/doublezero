@@ -146,6 +146,13 @@ impl CreateSubscribeUserCliCommand {
 
 #[cfg(test)]
 mod tests {
+    /// A fixed short (< 43 chars) base58 pubkey, so a `--subscriber` argument deterministically
+    /// takes the code-resolution path: `Pubkey::new_unique()` straddles `parse_pubkey`'s length
+    /// threshold depending on the process-global counter, which makes the run order matter.
+    fn short_mgroup_pubkey() -> solana_sdk::pubkey::Pubkey {
+        solana_sdk::pubkey::Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo")
+    }
+
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
 
     use crate::{
@@ -342,10 +349,7 @@ mod tests {
             .times(1)
             .returning(move |_| Ok((device_pubkey, device.clone())));
 
-        // Fixed short base58 (< 43 chars) so `--subscriber` deterministically takes the
-        // code-resolution path: `Pubkey::new_unique()` straddles that length threshold
-        // depending on the process-global counter, which makes the run order matter.
-        let mgroup_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
+        let mgroup_pubkey = short_mgroup_pubkey();
         let mgroup = MulticastGroup {
             account_type: AccountType::MulticastGroup,
             owner: Pubkey::default(),
@@ -463,10 +467,7 @@ mod tests {
             .times(1)
             .returning(move |_| Ok((device_pubkey, device.clone())));
 
-        // Fixed short base58 (< 43 chars) so `--subscriber` deterministically takes the
-        // code-resolution path: `Pubkey::new_unique()` straddles that length threshold
-        // depending on the process-global counter, which makes the run order matter.
-        let mgroup_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
+        let mgroup_pubkey = short_mgroup_pubkey();
         let mgroup = MulticastGroup {
             account_type: AccountType::MulticastGroup,
             owner: Pubkey::default(),
@@ -594,10 +595,7 @@ mod tests {
             .times(1)
             .returning(move |_| Ok((device_pubkey, device.clone())));
 
-        // Fixed short base58 (< 43 chars) so `--subscriber` deterministically takes the
-        // code-resolution path: `Pubkey::new_unique()` straddles that length threshold
-        // depending on the process-global counter, which makes the run order matter.
-        let mgroup_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
+        let mgroup_pubkey = short_mgroup_pubkey();
         let mgroup = MulticastGroup {
             account_type: AccountType::MulticastGroup,
             owner: Pubkey::default(),

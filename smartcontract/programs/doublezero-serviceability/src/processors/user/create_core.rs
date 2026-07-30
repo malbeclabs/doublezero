@@ -56,7 +56,8 @@ pub struct CreateUserCoreResult {
 ///
 /// Performs all common checks (payer signer, account emptiness, access pass validation,
 /// PDA derivation, device validation, max users checks, epoch check) and sets up the
-/// initial User struct with Pending status.
+/// initial User struct, created Activated: the Pending state no longer exists since
+/// activation moved onchain.
 ///
 /// Returns `Ok(None)` when the user already exists and matches the requested owner, device, and
 /// user type; a mismatch errors with `AccountAlreadyInitialized`.

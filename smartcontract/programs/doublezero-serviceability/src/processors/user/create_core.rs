@@ -57,9 +57,9 @@ pub struct CreateUserCoreResult {
 /// Performs all common checks (payer signer, access pass validation, PDA derivation,
 /// device validation, max users checks, epoch check) and sets up the initial User struct.
 ///
-/// Returns `Ok(None)` when the user already exists and matches the requested owner, device, and
-/// user type; a mismatch errors with `AccountAlreadyInitialized`, and a banned user with
-/// `InvalidStatus`.
+/// Returns `Ok(None)` when the user already exists and matches the requested owner, device,
+/// user type, and tenant; a mismatch errors with `AccountAlreadyInitialized`, and a banned user
+/// with `InvalidStatus`.
 ///
 /// Callers are responsible for:
 /// - Parsing the required resource extension accounts
@@ -199,26 +199,30 @@ pub fn create_user_core(
     }
 
     // Idempotent create: an existing user matching the request is a no-op, so a caller can retry
-    // safely. Checked after the pass validation so a no-op still needs the caller's own pass, and
-    // before the tenant, epoch, device-status, and capacity gates: those apply to adding a user,
-    // not to retrying one.
+    // safely. Checked after the pass identity checks (PDA, user_payer, client_ip) so a no-op still
+    // needs the caller's own pass, and before the tenant-allowlist, epoch, device-status, and
+    // capacity gates: those apply to adding a user, not to retrying one.
     if already_exists {
         if core.user_account.owner != program_id {
             return Err(ProgramError::IncorrectProgramId);
         }
         let existing = User::try_from(core.user_account)?;
+        let requested_tenant = core.tenant_account.map(|a| *a.key).unwrap_or_default();
         if existing.owner != effective_owner
             || existing.device_pk != *core.device_account.key
             || existing.user_type != user_type
+            || existing.tenant_pk != requested_tenant
         {
             msg!(
-                "user exists with owner {} device {} type {}; requested owner {} device {} type {}",
+                "user exists with owner {} device {} type {} tenant {}; requested owner {} device {} type {} tenant {}",
                 existing.owner,
                 existing.device_pk,
                 existing.user_type,
+                existing.tenant_pk,
                 effective_owner,
                 core.device_account.key,
-                user_type
+                user_type,
+                requested_tenant
             );
             return Err(ProgramError::AccountAlreadyInitialized);
         }

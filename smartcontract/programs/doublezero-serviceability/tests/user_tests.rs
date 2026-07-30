@@ -1686,6 +1686,105 @@ async fn test_user_create_existing_different_device_rejected() {
     assert_eq!(user.device_pk, device_pubkey);
 }
 
+/// A re-run naming a different tenant must error: tenant selects the VRF, so a silent no-op
+/// would leave the caller believing the user moved.
+#[tokio::test]
+async fn test_user_create_existing_different_tenant_rejected() {
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+    ) = setup_activated_user().await;
+
+    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
+    let (tenant_pubkey, _) = get_tenant_pda(&program_id, "tenant1");
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateTenant(TenantCreateArgs {
+            code: "tenant1".to_string(),
+            administrator: payer.pubkey(),
+            token_account: None,
+            metro_routing: true,
+            route_liveness: false,
+        }),
+        vec![
+            AccountMeta::new(tenant_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(vrf_ids_pda, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // The user was created without a tenant, so naming one is a different request.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let err = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0))
+                    .0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(
+                    &program_id,
+                    ResourceType::DzPrefixBlock(device_pubkey, 0),
+                )
+                .0,
+                false,
+            ),
+            AccountMeta::new(tenant_pubkey, false),
+        ],
+        &payer,
+    )
+    .await
+    .unwrap_err();
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::AccountAlreadyInitialized,
+        )) => {}
+        other => panic!("expected AccountAlreadyInitialized, got {other:?}"),
+    }
+
+    // The user still has no tenant.
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.tenant_pk, Pubkey::default());
+}
+
 /// A second buyer with their own pass at the same client IP hits the first buyer's user account.
 /// That must error rather than succeed for an account they do not own.
 #[tokio::test]

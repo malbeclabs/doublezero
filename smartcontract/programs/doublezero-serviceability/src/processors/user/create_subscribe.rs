@@ -140,7 +140,8 @@ pub fn process_create_subscribe_user(
         owner_override,
     )?
     else {
-        // Only CreateUser is idempotent; a duplicate here is still an error.
+        // A duplicate is an error here, not a no-op: falling through would tick a second feed
+        // seat and push a duplicate feed_pks entry that delete would double-release.
         return Err(ProgramError::AccountAlreadyInitialized);
     };
 

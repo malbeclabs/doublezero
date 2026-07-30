@@ -19,10 +19,7 @@ use solana_program::{
 };
 use std::net::Ipv4Addr;
 
-use crate::{
-    processors::{feed::enforce_feed_metro_gate, validation::validate_program_account},
-    serializer::try_acc_write,
-};
+use crate::{processors::validation::validate_program_account, serializer::try_acc_write};
 
 #[derive(PartialEq)]
 pub enum PDAVersion {
@@ -61,11 +58,14 @@ pub struct CreateUserCoreResult {
 /// PDA derivation, device validation, max users checks, epoch check) and sets up the
 /// initial User struct with Pending status.
 ///
+/// Returns `Ok(None)` when the user already exists and matches the requested owner, device, and
+/// user type; a mismatch errors with `AccountAlreadyInitialized`.
+///
 /// Callers are responsible for:
 /// - Parsing the required resource extension accounts
 /// - Onchain allocation + try_activate
 /// - Account creation (try_acc_create) and write-back
-/// - Multicast subscription logic (CreateSubscribeUser only)
+/// - Multicast subscription logic and the EdgeSeat feed gate (CreateSubscribeUser only)
 #[allow(clippy::too_many_arguments)]
 pub fn create_user_core(
     program_id: &Pubkey,
@@ -77,17 +77,11 @@ pub fn create_user_core(
     tunnel_endpoint: Ipv4Addr,
     is_publisher: bool,
     owner_override: Option<Pubkey>,
-    // EdgeSeat multicast metro gate: the multicast group being joined (None for non-multicast
-    // connects) and the referenced Feed account covering the device's exchange.
-    target_mgroup: Option<&Pubkey>,
-    feed_account: Option<&AccountInfo>,
-) -> Result<CreateUserCoreResult, ProgramError> {
+) -> Result<Option<CreateUserCoreResult>, ProgramError> {
     // Check if the payer is a signer
     assert!(core.payer_account.is_signer, "Payer must be a signer");
 
-    if !core.user_account.data_is_empty() {
-        return Err(ProgramError::AccountAlreadyInitialized);
-    }
+    let already_exists = !core.user_account.data_is_empty();
     if core.accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
@@ -204,6 +198,32 @@ pub fn create_user_core(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
+    // Idempotent create: an existing user matching the request is a no-op, so a caller can retry
+    // safely. Checked after the pass validation so the no-op still requires the caller's own pass,
+    // and before the capacity checks, which do not apply when nothing is added.
+    if already_exists {
+        if core.user_account.owner != program_id {
+            return Err(ProgramError::IncorrectProgramId);
+        }
+        let existing = User::try_from(core.user_account)?;
+        if existing.owner != effective_owner
+            || existing.device_pk != *core.device_account.key
+            || existing.user_type != user_type
+        {
+            msg!(
+                "user exists with owner {} device {} type {}; requested owner {} device {} type {}",
+                existing.owner,
+                existing.device_pk,
+                existing.user_type,
+                effective_owner,
+                core.device_account.key,
+                user_type
+            );
+            return Err(ProgramError::AccountAlreadyInitialized);
+        }
+        return Ok(None);
+    }
+
     // Enforce tenant_allowlist for unicast users only. Multicast connections are not
     // tenant-scoped, so the access-pass tenant_allowlist does not apply to them.
     if user_type != UserType::Multicast {
@@ -317,25 +337,6 @@ pub fn create_user_core(
     // returns before any account is written, so no state is persisted.
     accesspass.try_add_user(user_type)?;
 
-    // EdgeSeat multicast metro gate: the device's exchange must be covered by a feed on the pass,
-    // the target group must be joinable there, and that feed's seat is ticked. Unicast retains the
-    // per-category cap above and is not feed-gated. The ticked feed is recorded on the User below so
-    // delete releases exactly that seat. A user may accumulate more feeds post-activation (multiple
-    // metros per pass); that re-gating is deferred to doublezero#1699.
-    let feed_pks = if matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_))
-        && user_type == UserType::Multicast
-    {
-        vec![enforce_feed_metro_gate(
-            program_id,
-            &mut accesspass,
-            &device.exchange_pk,
-            target_mgroup,
-            feed_account,
-        )?]
-    } else {
-        vec![]
-    };
-
     // All validations passed - now update counters
     accesspass.connection_count += 1;
     accesspass.status = AccessPassStatus::Connected;
@@ -406,10 +407,11 @@ pub fn create_user_core(
         last_bgp_up_at: 0,
         last_bgp_reported_at: 0,
         bgp_rtt_ns: 0,
-        feed_pks,
+        // Feeds are joined post-creation via SubscribeFeed, or by CreateSubscribeUser's gate.
+        feed_pks: vec![],
     };
 
-    Ok(CreateUserCoreResult {
+    Ok(Some(CreateUserCoreResult {
         user,
         device,
         accesspass,
@@ -417,5 +419,5 @@ pub fn create_user_core(
         pda_ver,
         bump_old_seed,
         bump_seed,
-    })
+    }))
 }

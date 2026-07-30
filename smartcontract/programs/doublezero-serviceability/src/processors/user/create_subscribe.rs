@@ -12,6 +12,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 use std::net::Ipv4Addr;
@@ -21,8 +22,9 @@ use super::{
     resource_onchain_helpers,
 };
 use crate::{
-    processors::multicastgroup::subscribe::{
-        check_mgroup_allowlists, update_user_multicastgroup_roles,
+    processors::{
+        feed::enforce_feed_metro_gate,
+        multicastgroup::subscribe::{check_mgroup_allowlists, update_user_multicastgroup_roles},
     },
     state::accesspass::AccessPassType,
 };
@@ -126,7 +128,7 @@ pub fn process_create_subscribe_user(
         None
     };
 
-    let mut result = create_user_core(
+    let Some(mut result) = create_user_core(
         program_id,
         accounts,
         &core_accounts,
@@ -136,18 +138,30 @@ pub fn process_create_subscribe_user(
         value.tunnel_endpoint,
         value.publisher,
         owner_override,
-        Some(mgroup_account.key),
-        feed_account,
-    )?;
+    )?
+    else {
+        // Only CreateUser is idempotent; a duplicate here is still an error.
+        return Err(ProgramError::AccountAlreadyInitialized);
+    };
 
-    // Mirrors the exact condition under which `create_user_core` ran the feed metro gate
-    // (create_core.rs). Keying the skip on pass type alone would let an EdgeSeat pass join a group
-    // with neither check: the gate is multicast-only and would not have run. The publisher allowlist
-    // is always checked, since a feed sells receive only and grants no publisher role.
+    // EdgeSeat multicast metro gate: the group must be joinable via a feed on the pass serving the
+    // device's metro; that feed's seat is ticked and recorded on the User so delete releases it.
+    // Feed-gated joins skip the subscriber allowlist; the publisher allowlist always applies, since
+    // a feed sells receive only.
     let feed_gated = matches!(
         result.accesspass.accesspass_type,
         AccessPassType::EdgeSeat(_)
     ) && value.user_type == UserType::Multicast;
+    if feed_gated {
+        let feed_key = enforce_feed_metro_gate(
+            program_id,
+            &mut result.accesspass,
+            &result.device.exchange_pk,
+            Some(mgroup_account.key),
+            feed_account,
+        )?;
+        result.user.feed_pks.push(feed_key);
+    }
     check_mgroup_allowlists(
         &result.accesspass,
         mgroup_account.key,

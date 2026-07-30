@@ -1478,3 +1478,312 @@ async fn test_user_check_access_pass_expired_epoch_stays_activated_and_delete() 
     let user = get_account_data(&mut banks_client, user_pubkey).await;
     assert_eq!(user, None);
 }
+
+/// Re-running CreateUser with the same arguments is a no-op: it succeeds and changes nothing, so a
+/// client that missed the first confirmation can retry safely.
+#[tokio::test]
+async fn test_user_create_rerun_is_noop() {
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+    ) = setup_activated_user().await;
+
+    let user_before = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    let device_before = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    let pass_before = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0))
+                    .0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(
+                    &program_id,
+                    ResourceType::DzPrefixBlock(device_pubkey, 0),
+                )
+                .0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user_after = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    let device_after = get_device(&mut banks_client, device_pubkey).await.unwrap();
+    let pass_after = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(user_after, user_before);
+    assert_eq!(device_after, device_before);
+    assert_eq!(pass_after, pass_before);
+}
+
+/// A re-run that names a different device must error: success would leave the caller believing it
+/// connected to the new device while the user still points at the old one.
+#[tokio::test]
+async fn test_user_create_existing_different_device_rejected() {
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        accesspass_pubkey,
+    ) = setup_activated_user().await;
+
+    // A second activated device, reusing the contributor/location/exchange the setup created at
+    // account indices 1-3.
+    let (location_pubkey, _) = get_location_pda(&program_id, 1);
+    let (exchange_pubkey, _) = get_exchange_pda(&program_id, 2);
+    let (contributor_pubkey, _) = get_contributor_pda(&program_id, 3);
+    let (config_pubkey, _) = get_globalconfig_pda(&program_id);
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (device2_pubkey, _) = get_device_pda(&program_id, gs.account_index + 1);
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(device::create::DeviceCreateArgs {
+            code: "la2".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [100, 0, 0, 2].into(),
+            dz_prefixes: "100.2.0.0/23".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 2,
+        }),
+        vec![
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device2_pubkey, 0))
+                    .0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(
+                    &program_id,
+                    ResourceType::DzPrefixBlock(device2_pubkey, 0),
+                )
+                .0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let err = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device2_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device2_pubkey, 0))
+                    .0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(
+                    &program_id,
+                    ResourceType::DzPrefixBlock(device2_pubkey, 0),
+                )
+                .0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await
+    .unwrap_err();
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::AccountAlreadyInitialized,
+        )) => {}
+        other => panic!("expected AccountAlreadyInitialized, got {other:?}"),
+    }
+
+    // The user still points at the original device.
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.device_pk, device_pubkey);
+}
+
+/// A second buyer with their own pass at the same client IP hits the first buyer's user account.
+/// That must error rather than succeed for an account they do not own.
+#[tokio::test]
+async fn test_user_create_existing_different_owner_rejected() {
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        user_pubkey,
+        _accesspass_pubkey,
+    ) = setup_activated_user().await;
+
+    let payer_b = Keypair::new();
+    transfer(&mut banks_client, &payer, &payer_b.pubkey(), 10_000_000_000).await;
+
+    // B's own pass for the same client IP.
+    let user_ip: Ipv4Addr = [100, 0, 0, 1].into();
+    let (accesspass_b, _) = get_accesspass_pda(&program_id, &user_ip, &payer_b.pubkey());
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: user_ip,
+            last_access_epoch: 9999,
+            allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
+        }),
+        vec![
+            AccountMeta::new(accesspass_b, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer_b.pubkey(), false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let err = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: user_ip,
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(accesspass_b, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0))
+                    .0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(
+                    &program_id,
+                    ResourceType::DzPrefixBlock(device_pubkey, 0),
+                )
+                .0,
+                false,
+            ),
+        ],
+        &payer_b,
+    )
+    .await
+    .unwrap_err();
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::AccountAlreadyInitialized,
+        )) => {}
+        other => panic!("expected AccountAlreadyInitialized, got {other:?}"),
+    }
+
+    // The user still belongs to the original owner.
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.owner, payer.pubkey());
+}

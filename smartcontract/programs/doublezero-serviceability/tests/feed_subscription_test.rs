@@ -315,9 +315,8 @@ async fn set_pass_feeds(f: &mut Fixture, seats: Vec<FeedSeat>) {
     f.banks_client.process_transaction(tx).await.unwrap();
 }
 
-/// Bring the Multicast user into existence on `feed` joined to `group`. `UpdateFeedSubscription`
-/// operates on an existing user, and until `CreateUser` is made naked (#4110) this is the only way
-/// to create one under an EdgeSeat pass.
+/// Bring the Multicast user into existence on `feed` joined to `group` via CreateSubscribeUser,
+/// charging that feed's seat at creation.
 async fn create_user_on(f: &mut Fixture, feed: Pubkey, group: Pubkey) {
     let ip = f.user_ip;
     create_user_at(f, ip, feed, group).await
@@ -1050,4 +1049,52 @@ async fn test_join_past_the_user_feed_cap_rejected() {
         .await
         .unwrap_err();
     assert_custom_error(&err, 103);
+}
+
+// A naked CreateUser makes a bare multicast user (no feed, no group), and one
+// SubscribeFeed then joins a whole feed and charges its seat.
+#[tokio::test]
+async fn test_naked_create_then_subscribe_feed() {
+    let mut f = setup([100, 0, 0, 46]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    let feed = create_feed(&mut f, "feed1", exchange, vec![g[0], g[1]]).await;
+    set_pass_feeds(&mut f, vec![seat(feed, 1)]).await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
+    execute_transaction(
+        &mut f.banks_client,
+        recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: f.user_ip,
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+        }),
+        vec![
+            AccountMeta::new(f.user_pubkey, false),
+            AccountMeta::new(f.device_pubkey, false),
+            AccountMeta::new(f.accesspass_pubkey, false),
+            AccountMeta::new(f.globalstate_pubkey, false),
+            AccountMeta::new(f.user_tunnel_block, false),
+            AccountMeta::new(f.multicast_publisher_block, false),
+            AccountMeta::new(f.tunnel_ids, false),
+            AccountMeta::new(f.dz_prefix_block, false),
+        ],
+        &f.payer,
+    )
+    .await;
+
+    let user = read_user(&mut f).await;
+    assert!(user.subscribers.is_empty());
+    assert!(user.feed_pks.is_empty());
+    assert_eq!(seat_users(&read_pass(&mut f).await, &feed), 0);
+
+    join(&mut f, &[feed], &[g[0], g[1]]).await.unwrap();
+
+    let user = read_user(&mut f).await;
+    assert_eq!(user.subscribers, vec![g[0], g[1]]);
+    assert_eq!(user.feed_pks, vec![feed]);
+    assert_eq!(seat_users(&read_pass(&mut f).await, &feed), 1);
 }

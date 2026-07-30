@@ -254,9 +254,9 @@ mod tests {
         let (g1, g2) = (f.groups[0], f.groups[1]);
         f.expect_get_feed(&mut client, vec![g1, g2]);
         // Every scan sees the same still-subscribed user, as if a new subscription raced each
-        // unsubscribe pass; uncapped so the guard's round limit decides when to stop. Deliberately
-        // not `expect_scan`: that helper is capped per call, which would hard-code the guard's
-        // internal round count.
+        // unsubscribe pass. Deliberately not `expect_scan` (capped per call): uncapped scans let
+        // the guard run until its own round limit trips, which the removal count below then pins
+        // at one removal per round.
         let user_pk = f.user_pk;
         let user_acct = user(f.owner, f.device_pk, f.client_ip, vec![g2]);
         client
@@ -298,7 +298,82 @@ mod tests {
             }
             .execute(&ctx, &client, &mut output),
         );
-        assert!(res.is_err(), "{res:?}");
+        let err = res.unwrap_err();
+        assert!(
+            err.to_string().contains("kept appearing"),
+            "expected the round-limit error, got: {err}"
+        );
+    }
+
+    /// A mixed-role orphan (one role must go, the other still allowlist-authorized) cannot be
+    /// expressed as the removal-only update the automated path issues, so even `--force` fails
+    /// closed before submitting anything.
+    #[test]
+    fn test_cli_feed_update_force_fails_closed_on_a_mixed_role_orphan() {
+        let mut client = create_test_client();
+        client.expect_check_requirements().returning(|_| Ok(()));
+
+        let f = GuardFixture::new(2);
+        let (g1, g2) = (f.groups[0], f.groups[1]);
+        f.expect_get_feed(&mut client, vec![g1, g2]);
+
+        // One scan: the user publishes and subscribes g2; the sub allowlist still authorizes the
+        // subscriber role, so only the publisher role is removable.
+        let user_pk = f.user_pk;
+        let mut user_acct = user(f.owner, f.device_pk, f.client_ip, vec![g2]);
+        user_acct.publishers.push(g2);
+        client
+            .expect_list_user()
+            .times(1)
+            .returning(move |_| Ok(HashMap::from([(user_pk, user_acct.clone())])));
+        let mut pass_acct = pass(
+            f.owner,
+            f.client_ip,
+            AccessPassType::EdgeSeat(vec![seat(f.feed_pk)]),
+        );
+        pass_acct.mgroup_sub_allowlist.push(g2);
+        client
+            .expect_list_accesspass()
+            .times(1)
+            .returning(move |_| Ok(HashMap::from([(Pubkey::new_unique(), pass_acct.clone())])));
+        let device_pk = f.device_pk;
+        let device_acct = device(f.exchange_pk);
+        client
+            .expect_list_device()
+            .times(1)
+            .returning(move |_| Ok(HashMap::from([(device_pk, device_acct.clone())])));
+        let feed_pk = f.feed_pk;
+        let feed_acct = feed_account(f.exchange_pk, vec![g1, g2]);
+        client
+            .expect_list_feed()
+            .times(1)
+            .returning(move |_| Ok(HashMap::from([(feed_pk, feed_acct.clone())])));
+
+        client.expect_update_multicastgroup_roles().times(0);
+        client.expect_update_feed().times(0);
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            UpdateFeedCliCommand {
+                pubkey: f.feed_pk.to_string(),
+                exchange: None,
+                name: None,
+                groups: vec![g1.to_string()],
+                force_unsubscribe: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        let err = res.unwrap_err();
+        assert!(
+            err.to_string().contains("manually"),
+            "expected the mixed-role error, got: {err}"
+        );
+        let output = String::from_utf8(output).unwrap();
+        assert!(
+            output.contains("still allowlisted"),
+            "plan does not flag the kept role: {output}"
+        );
     }
 
     #[test]

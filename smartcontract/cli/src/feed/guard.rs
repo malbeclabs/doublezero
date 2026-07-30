@@ -45,10 +45,21 @@ pub struct Orphan {
     /// the change through.
     pub remove_publisher: bool,
     pub remove_subscriber: bool,
-    /// Held roles kept because an accepted pass's own allowlist still authorizes them; the
-    /// removal re-asserts these so they survive it.
+    /// Held roles an accepted pass's own allowlist still authorizes. These cannot be preserved
+    /// through the automated removal — `UpdateMulticastGroupRoles` reads a `true` as a grant, not
+    /// "leave it alone", which flips the required permission to ACCESS_PASS_ADMIN, requires the
+    /// user be Activated, and re-checks the allowlist against the single pass the SDK resolves —
+    /// so an orphan carrying one of these fails the run closed for manual handling.
     pub keep_publisher: bool,
     pub keep_subscriber: bool,
+}
+
+impl Orphan {
+    /// One role must go while the other is still authorized — not expressible as the
+    /// removal-only update the automated path issues.
+    fn is_mixed(&self) -> bool {
+        self.keep_publisher || self.keep_subscriber
+    }
 }
 
 /// The onchain state [`plan`] reads, fetched once per round by [`scan`].
@@ -82,7 +93,10 @@ pub fn unsubscribe_orphans<C: CliCommand, W: Write>(
         // the command read before the loop: a group added to the feed mid-run is dropped by this
         // change too, and pinning the earlier set would let its subscribers through unseen.
         let feed = snap.feeds.get(feed_pk).ok_or_else(|| {
-            eyre::eyre!("feed '{feed_code}' ({feed_pk}) disappeared mid-run; nothing was changed")
+            eyre::eyre!(
+                "feed '{feed_code}' ({feed_pk}) disappeared mid-run; the feed change was \
+                 not submitted"
+            )
         })?;
         let dropped: Vec<Pubkey> = feed
             .groups
@@ -113,6 +127,14 @@ pub fn unsubscribe_orphans<C: CliCommand, W: Write>(
                  subscriptions to its groups have quiesced."
             );
         }
+        if orphans.iter().any(Orphan::is_mixed) {
+            eyre::bail!(
+                "feed '{feed_code}' has membership(s) where one role must be removed while the \
+                 other is still authorized by the pass allowlist (flagged above). The automated \
+                 path only issues removal-only updates, so clean those users up manually, then \
+                 re-run. Nothing was submitted this round."
+            );
+        }
 
         for orphan in &orphans {
             client
@@ -120,10 +142,8 @@ pub fn unsubscribe_orphans<C: CliCommand, W: Write>(
                     user_pk: orphan.user_pk,
                     group_pk: orphan.group_pk,
                     client_ip: orphan.client_ip,
-                    // Desired absolute state, not a toggle: an allowlist-covered role is
-                    // re-asserted so only the orphaned role is removed.
-                    publisher: orphan.keep_publisher,
-                    subscriber: orphan.keep_subscriber,
+                    publisher: false,
+                    subscriber: false,
                     device_pk: None,
                     feed_pk: None,
                 })
@@ -160,10 +180,13 @@ fn scan<C: CliCommand>(client: &C) -> eyre::Result<Snapshot> {
 
 /// The memberships that dropping `dropped` from `feed_pk` would orphan.
 ///
-/// A membership survives when some *other* feed seated on the same access pass still carries the
-/// group and serves the user's metro — that is the same coverage test the program applies at
-/// connect time. The rotated feed itself never counts: every group in `dropped` is by construction
-/// absent from its post-change set, and a delete removes it entirely.
+/// A membership survives when some *other* feed still carries the group in the user's metro,
+/// provided that feed is both seated on an accepted pass and among the seats the user actually
+/// consumed (`user.feed_pks`) — the same set `UnsubscribeFeed`'s retained-feeds check releases
+/// seats against. A seated feed the user never consumed is not coverage: keeping the group on its
+/// strength would leave usage no seat accounts for. The rotated feed itself never counts: every
+/// group in `dropped` is by construction absent from its post-change set, and a delete removes it
+/// entirely.
 ///
 /// A role also survives when an accepted pass's own allowlist authorizes it
 /// (`mgroup_pub_allowlist` for publisher, `mgroup_sub_allowlist` for subscriber): the program runs
@@ -232,9 +255,11 @@ pub fn plan(feed_pk: &Pubkey, dropped: &[Pubkey], snap: &Snapshot) -> eyre::Resu
         })?;
 
         for group_pk in held {
-            // Feed coverage is role-agnostic; allowlist coverage is per role.
+            // Feed coverage is role-agnostic; allowlist coverage is per role. Only a seat the
+            // user consumed counts, mirroring the retained-feeds set seat release checks.
             let feed_covered = seated.iter().any(|seated_pk| {
                 seated_pk != feed_pk
+                    && user.feed_pks.contains(seated_pk)
                     && snap.feeds.get(seated_pk).is_some_and(|other| {
                         other.groups_for(&device.exchange_pk).contains(group_pk)
                     })
@@ -316,7 +341,10 @@ fn report<W: Write>(
             if kept.is_empty() {
                 String::new()
             } else {
-                format!(" (keeping allowlisted {})", kept.join(", "))
+                format!(
+                    " ({} still allowlisted — resolve manually)",
+                    kept.join(", ")
+                )
             }
         )?;
     }
@@ -580,7 +608,7 @@ mod tests {
     }
 
     #[test]
-    fn test_plan_skips_group_covered_by_another_seated_feed_in_the_same_metro() {
+    fn test_plan_skips_group_covered_by_another_consumed_feed_in_the_same_metro() {
         let mut f = fixture();
         let other_pk = Pubkey::new_unique();
         f.snap
@@ -595,8 +623,33 @@ mod tests {
                 AccessPassType::EdgeSeat(vec![seat(f.feed_pk), seat(other_pk)]),
             ),
         )]);
+        f.snap.users.get_mut(&f.user_pk).unwrap().feed_pks = vec![f.feed_pk, other_pk];
 
         assert!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().is_empty());
+    }
+
+    /// A seated feed whose seat the user never consumed (absent from `feed_pks`) is not coverage:
+    /// seat release only retains against consumed seats, so the membership would outlive its
+    /// accounting.
+    #[test]
+    fn test_plan_does_not_count_a_seated_feed_the_user_never_consumed() {
+        let mut f = fixture();
+        let other_pk = Pubkey::new_unique();
+        f.snap
+            .feeds
+            .insert(other_pk, feed(f.exchange, vec![f.group]));
+        let owner = f.snap.users[&f.user_pk].owner;
+        f.snap.accesspasses = HashMap::from([(
+            Pubkey::new_unique(),
+            pass(
+                owner,
+                f.client_ip,
+                AccessPassType::EdgeSeat(vec![seat(f.feed_pk), seat(other_pk)]),
+            ),
+        )]);
+        f.snap.users.get_mut(&f.user_pk).unwrap().feed_pks = vec![f.feed_pk];
+
+        assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
     }
 
     #[test]
@@ -615,6 +668,8 @@ mod tests {
                 AccessPassType::EdgeSeat(vec![seat(f.feed_pk), seat(other_pk)]),
             ),
         )]);
+        // Consumed, so the metro mismatch is the only reason it doesn't cover.
+        f.snap.users.get_mut(&f.user_pk).unwrap().feed_pks = vec![f.feed_pk, other_pk];
 
         assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
     }
@@ -623,8 +678,10 @@ mod tests {
     /// excuse a group it is about to stop carrying.
     #[test]
     fn test_plan_does_not_count_the_rotated_feeds_own_seat_as_coverage() {
-        let f = fixture();
-        // `feeds` still holds the pre-rotation group set, and the pass is seated on it.
+        let mut f = fixture();
+        // `feeds` still holds the pre-rotation group set, the pass is seated on it, and the seat
+        // is even consumed — none of which excuses a group the feed is about to stop carrying.
+        f.snap.users.get_mut(&f.user_pk).unwrap().feed_pks = vec![f.feed_pk];
         assert!(f.snap.feeds[&f.feed_pk].groups.contains(&f.group));
         assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
     }
@@ -704,6 +761,7 @@ mod tests {
                 AccessPassType::EdgeSeat(vec![seat(other_pk)]),
             ),
         );
+        f.snap.users.get_mut(&f.user_pk).unwrap().feed_pks = vec![f.feed_pk, other_pk];
 
         assert!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().is_empty());
     }
@@ -783,10 +841,10 @@ mod tests {
         assert_eq!(plan(&f.feed_pk, &[f.group], &f.snap).unwrap().len(), 1);
     }
 
-    /// Mixed roles: the uncovered publisher role is removed, the allowlist-covered subscriber
-    /// role is re-asserted so the removal leaves it in place.
+    /// Mixed roles: the uncovered publisher role must go while the allowlist still authorizes the
+    /// subscriber role — flagged as mixed so the run fails closed for manual handling.
     #[test]
-    fn test_plan_removes_only_the_uncovered_role() {
+    fn test_plan_flags_a_mixed_role_orphan() {
         let mut f = fixture();
         f.snap
             .users
@@ -810,6 +868,7 @@ mod tests {
                 keep_subscriber: true,
             }]
         );
+        assert!(orphans[0].is_mixed());
     }
 
     /// Allowlist coverage counts from any accepted pass, not just the one carrying the seat.

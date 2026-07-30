@@ -79,6 +79,7 @@ mpls icmp ip source-interface Loopback255
 default interface Tunnel500
 default interface Tunnel501
 default interface Tunnel502
+default interface Tunnel503
 interface Tunnel500
    description USER-MCAST-500
    ip access-group SEC-USER-SUB-MCAST-IN in
@@ -126,6 +127,21 @@ interface Tunnel502
    tunnel ttl 32
    no shutdown
 !
+interface Tunnel503
+   description USER-MCAST-503
+   ip access-group SEC-USER-SUB-MCAST-IN in
+   multicast ipv4 boundary SEC-USER-MCAST-BOUNDARY-503-OUT out
+   pim ipv4 sparse-mode
+   pim ipv4 dr-priority 4294967295
+   mtu 9216
+   ip address 169.254.0.6/31
+   tunnel mode gre
+   tunnel source 8.8.8.8
+   tunnel destination 9.9.9.9
+   tunnel path-mtu-discovery
+   tunnel ttl 32
+   no shutdown
+!
 router bgp 65342
    router-id 14.14.14.14
    timers bgp 1 3
@@ -157,10 +173,20 @@ router bgp 65342
    neighbor 169.254.0.5 route-map RM-USER-502-OUT out
    neighbor 169.254.0.5 maximum-routes 1
    neighbor 169.254.0.5 maximum-accepted-routes 1
+   no neighbor 169.254.0.7
+   neighbor 169.254.0.7 remote-as 65000
+   neighbor 169.254.0.7 local-as 65342 no-prepend replace-as
+   neighbor 169.254.0.7 passive
+   neighbor 169.254.0.7 description USER-503
+   neighbor 169.254.0.7 route-map RM-USER-503-IN in
+   neighbor 169.254.0.7 route-map RM-USER-503-OUT out
+   neighbor 169.254.0.7 maximum-routes 1
+   neighbor 169.254.0.7 maximum-accepted-routes 1
    address-family ipv4
       neighbor 169.254.0.1 activate
       neighbor 169.254.0.3 activate
       neighbor 169.254.0.5 activate
+      neighbor 169.254.0.7 activate
    !
    address-family vpn-ipv4
    !
@@ -203,6 +229,12 @@ route-map RM-USER-502-OUT deny 10
 route-map RM-USER-502-OUT permit 20
    match community COMM-ALL_MCAST_USERS
 !
+no route-map RM-USER-503-OUT
+route-map RM-USER-503-OUT deny 10
+   match community COMM-TST_USERS
+route-map RM-USER-503-OUT permit 20
+   match community COMM-ALL_MCAST_USERS
+!
 no route-map RM-USER-500-IN
 route-map RM-USER-500-IN permit 10
    match ip address prefix-list PL-USER-500
@@ -221,6 +253,12 @@ route-map RM-USER-502-IN permit 10
    match as-path length = 1
    set community 21682:1300 21682:10050
 !
+no route-map RM-USER-503-IN
+route-map RM-USER-503-IN permit 10
+   match ip address prefix-list PL-USER-503
+   match as-path length = 1
+   set community 21682:1300 21682:10050
+!
 no ip prefix-list PL-USER-500
 ip prefix-list PL-USER-500 seq 10 deny 0.0.0.0/0 le 32
 !
@@ -230,9 +268,13 @@ ip prefix-list PL-USER-501 seq 10 permit 100.0.0.1/32
 no ip prefix-list PL-USER-502
 ip prefix-list PL-USER-502 seq 10 permit 100.0.0.2/32
 !
+no ip prefix-list PL-USER-503
+ip prefix-list PL-USER-503 seq 10 deny 0.0.0.0/0 le 32
+!
 no ip access-list SEC-USER-500-IN
 no ip access-list SEC-USER-501-IN
 no ip access-list SEC-USER-502-IN
+no ip access-list SEC-USER-503-IN
 no ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
 ip access-list standard SEC-USER-MCAST-BOUNDARY-500-OUT
    counters per-entry
@@ -252,6 +294,11 @@ ip access-list standard SEC-USER-MCAST-BOUNDARY-502-OUT
    counters per-entry
    permit host 239.0.0.5
    permit host 239.0.0.6
+   deny 224.0.0.0/4
+!
+no ip access-list standard SEC-USER-MCAST-BOUNDARY-503-OUT
+ip access-list standard SEC-USER-MCAST-BOUNDARY-503-OUT
+   counters per-entry
    deny 224.0.0.0/4
 !
 no ip access-list SEC-USER-PUB-MCAST-IN

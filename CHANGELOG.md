@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI
+  - `doublezero feed update` (with `--group`) and `doublezero feed delete` now fail closed if the change would leave an EdgeSeat user holding a multicast group role that no consumed feed seat on their access pass covers and the pass's own allowlists don't authorize, printing the affected users, groups, and roles and submitting nothing. Pass `--force-unsubscribe` to remove those roles first and then apply the change; a group where one role must go while the allowlist still authorizes the other fails closed even with the flag and needs manual cleanup. A rename or an update without `--group` is unaffected; an additive `--group` set scans but finds nothing to do. The removals need `USER_ADMIN` (or foundation membership) on the payer in addition to `FEED_AUTHORITY`. (malbeclabs/infra#2113, #4119)
+
 ### Changes
 
 - Controller

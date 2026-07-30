@@ -582,7 +582,9 @@ jobs:
 
   qa:
     runs-on: ubuntu-latest
-    needs: deploy-clients
+    # preflight is already in the transitive chain; listed directly so its
+    # thread_ts output is readable here (needs only exposes direct dependencies).
+    needs: [deploy-clients, preflight]
     timeout-minutes: 90   # qa.testnet has an hourly cron + concurrency group; we may queue behind one run
     steps:
       - uses: actions/checkout@v4
@@ -598,6 +600,9 @@ jobs:
           repo: malbeclabs/infra
           workflow: qa.testnet.yml
           token: ${{ steps.app.outputs.token }}
+          slack-bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
+          slack-channel: ${{ env.SLACK_CHANNEL_ID }}
+          slack-thread-ts: ${{ needs.preflight.outputs.thread_ts }}
 
   announce:
     runs-on: ubuntu-latest

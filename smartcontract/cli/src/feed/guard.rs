@@ -172,6 +172,16 @@ fn scan<C: CliCommand>(client: &C) -> eyre::Result<Snapshot> {
 pub fn plan(feed_pk: &Pubkey, dropped: &[Pubkey], snap: &Snapshot) -> eyre::Result<Vec<Orphan>> {
     let mut orphans = Vec::new();
 
+    // Index once so the per-user pass lookup doesn't rescan every pass (O(users × passes) when a
+    // drop touches many users).
+    let mut passes_by_payer: HashMap<Pubkey, Vec<&AccessPass>> = HashMap::new();
+    for pass in snap.accesspasses.values() {
+        passes_by_payer
+            .entry(pass.user_payer)
+            .or_default()
+            .push(pass);
+    }
+
     for (user_pk, user) in &snap.users {
         // Cheapest test first: a user holding none of the dropped groups cannot be orphaned,
         // whatever their pass or device looks like. Keeping it ahead of the lookups below also
@@ -188,7 +198,15 @@ pub fn plan(feed_pk: &Pubkey, dropped: &[Pubkey], snap: &Snapshot) -> eyre::Resu
         // path prefers: `create_user` and `update_multicastgroup_roles` both accept either the
         // exact-IP PDA or the shared UNSPECIFIED one, so a dynamic Prepaid pass must not be
         // allowed to hide a live EdgeSeat pass at the other PDA.
-        let passes: Vec<&AccessPass> = accepted_passes(&snap.accesspasses, user).collect();
+        let passes: Vec<&AccessPass> = passes_by_payer
+            .get(&user.owner)
+            .into_iter()
+            .flatten()
+            .filter(|pass| {
+                pass.client_ip == Ipv4Addr::UNSPECIFIED || pass.client_ip == user.client_ip
+            })
+            .copied()
+            .collect();
         let seated: Vec<Pubkey> = passes
             .iter()
             .flat_map(|pass| pass.feed_seats().iter().map(|seat| seat.feed_key))
@@ -251,18 +269,6 @@ pub fn plan(feed_pk: &Pubkey, dropped: &[Pubkey], snap: &Snapshot) -> eyre::Resu
     // The scan walks HashMaps, so sort for a stable plan and stable output.
     orphans.sort();
     Ok(orphans)
-}
-
-/// The passes the program would accept for `user`: those owned by their payer at either the
-/// exact-IP PDA or the shared UNSPECIFIED-IP one.
-fn accepted_passes<'a>(
-    accesspasses: &'a HashMap<Pubkey, AccessPass>,
-    user: &'a User,
-) -> impl Iterator<Item = &'a AccessPass> {
-    accesspasses.values().filter(move |pass| {
-        pass.user_payer == user.owner
-            && (pass.client_ip == Ipv4Addr::UNSPECIFIED || pass.client_ip == user.client_ip)
-    })
 }
 
 fn report<W: Write>(

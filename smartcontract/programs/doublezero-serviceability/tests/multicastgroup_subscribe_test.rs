@@ -420,6 +420,7 @@ async fn test_subscribe_foundation_admin_payer_differs_from_user_owner() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -474,6 +475,7 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -534,6 +536,7 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
             publisher: false,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -587,6 +590,7 @@ async fn test_subscribe_unauthorized_payer_rejected() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -641,6 +645,7 @@ async fn test_unsubscribe_user_admin_permission_allowed() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -690,6 +695,7 @@ async fn test_unsubscribe_user_admin_permission_allowed() {
             publisher: false,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -764,6 +770,7 @@ async fn test_subscribe_user_admin_permission_rejected() {
             publisher: false,
             subscriber: true, // attempting to ADD a role
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -849,6 +856,7 @@ async fn test_subscribe_access_pass_admin_permission_allowed() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -914,6 +922,7 @@ async fn test_subscribe_onchain_first_publisher_allocates_dz_ip() {
             publisher: true,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -987,6 +996,7 @@ async fn test_subscribe_onchain_subscriber_no_allocation() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -1042,6 +1052,7 @@ async fn test_subscribe_onchain_second_publisher_no_reallocation() {
             publisher: true,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -1072,6 +1083,7 @@ async fn test_subscribe_onchain_second_publisher_no_reallocation() {
             publisher: true,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup2_pubkey, false),
@@ -1127,6 +1139,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
             publisher: true,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -1164,6 +1177,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
             publisher: true,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),

@@ -365,6 +365,7 @@ async fn try_subscribe_with_feed(
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: None,
+            extra_group_count: 0,
         }),
         &accounts,
         &f.payer,

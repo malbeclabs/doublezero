@@ -16,7 +16,10 @@ use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateMulticastGroupRolesCommand {
-    pub group_pk: Pubkey,
+    /// Multicast groups the role change applies to, atomically in one transaction.
+    /// Must be non-empty; the first entry is the instruction's primary group and the
+    /// rest ride as extra group accounts.
+    pub group_pks: Vec<Pubkey>,
     pub client_ip: Ipv4Addr,
     pub user_pk: Pubkey,
     pub publisher: bool,
@@ -30,14 +33,21 @@ pub struct UpdateMulticastGroupRolesCommand {
 
 impl UpdateMulticastGroupRolesCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let (_, mgroup) = GetMulticastGroupCommand {
-            pubkey_or_code: self.group_pk.to_string(),
-        }
-        .execute(client)
-        .map_err(|_err| eyre::eyre!("MulticastGroup not found"))?;
+        let (first_group_pk, extra_group_pks) = self
+            .group_pks
+            .split_first()
+            .ok_or_else(|| eyre::eyre!("At least one multicast group is required"))?;
 
-        if mgroup.status != MulticastGroupStatus::Activated {
-            eyre::bail!("MulticastGroup not active");
+        for group_pk in &self.group_pks {
+            let (_, mgroup) = GetMulticastGroupCommand {
+                pubkey_or_code: group_pk.to_string(),
+            }
+            .execute(client)
+            .map_err(|_err| eyre::eyre!("MulticastGroup not found ({group_pk})"))?;
+
+            if mgroup.status != MulticastGroupStatus::Activated {
+                eyre::bail!("MulticastGroup not active ({group_pk})");
+            }
         }
 
         let (_, user) = GetUserCommand {
@@ -55,11 +65,13 @@ impl UpdateMulticastGroupRolesCommand {
         .execute(client)?
         .ok_or_else(|| eyre::eyre!("AccessPass not found"))?;
 
-        if self.publisher && !accesspass.mgroup_pub_allowlist.contains(&self.group_pk) {
-            eyre::bail!("User not allowed to publish multicast group");
-        }
-        if self.subscriber && !accesspass.mgroup_sub_allowlist.contains(&self.group_pk) {
-            eyre::bail!("User not allowed to subscribe multicast group");
+        for group_pk in &self.group_pks {
+            if self.publisher && !accesspass.mgroup_pub_allowlist.contains(group_pk) {
+                eyre::bail!("User not allowed to publish multicast group ({group_pk})");
+            }
+            if self.subscriber && !accesspass.mgroup_sub_allowlist.contains(group_pk) {
+                eyre::bail!("User not allowed to subscribe multicast group ({group_pk})");
+            }
         }
 
         // The EdgeSeat feed metro gate is enforced at connect (CreateSubscribeUser). The optional
@@ -70,14 +82,16 @@ impl UpdateMulticastGroupRolesCommand {
         client.send_transaction(update_multicast_group_roles(
             &client.get_program_id(),
             &client.get_payer(),
-            &self.group_pk,
+            first_group_pk,
             &accesspass_pubkey,
             &self.user_pk,
+            extra_group_pks,
             UpdateMulticastGroupRolesArgs {
                 publisher: self.publisher,
                 subscriber: self.subscriber,
                 client_ip: user.client_ip,
                 use_onchain_allocation: true,
+                extra_group_count: 0, // derived by the builder from extra_group_pks
             },
         ))
     }
@@ -207,11 +221,13 @@ mod tests {
             &mgroup_pubkey,
             &accesspass_pubkey,
             &user_pubkey,
+            &[],
             UpdateMulticastGroupRolesArgs {
                 client_ip,
                 publisher: true,
                 subscriber: false,
                 use_onchain_allocation: true,
+                extra_group_count: 0,
             },
         );
         client
@@ -220,7 +236,7 @@ mod tests {
             .returning(|_| Ok(Signature::new_unique()));
 
         let res = UpdateMulticastGroupRolesCommand {
-            group_pk: mgroup_pubkey,
+            group_pks: vec![mgroup_pubkey],
             user_pk: user_pubkey,
             client_ip,
             publisher: true,

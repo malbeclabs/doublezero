@@ -35,19 +35,22 @@ impl RequestBanUserCommand {
             .into_iter()
             .collect();
         let multicastgroups = ListMulticastGroupCommand {}.execute(client)?;
-        for mgroup_pk in &unique_mgroup_pks {
-            if multicastgroups.contains_key(mgroup_pk) {
-                UpdateMulticastGroupRolesCommand {
-                    group_pk: *mgroup_pk,
-                    user_pk: self.pubkey,
-                    client_ip: user.client_ip,
-                    publisher: false,
-                    subscriber: false,
-                    device_pk: None,
-                    feed_pk: None,
-                }
-                .execute(client)?;
+        // Strip every remaining multicast role in one atomic transaction.
+        let group_pks: Vec<Pubkey> = unique_mgroup_pks
+            .into_iter()
+            .filter(|pk| multicastgroups.contains_key(pk))
+            .collect();
+        if !group_pks.is_empty() {
+            UpdateMulticastGroupRolesCommand {
+                group_pks,
+                user_pk: self.pubkey,
+                client_ip: user.client_ip,
+                publisher: false,
+                subscriber: false,
+                device_pk: None,
+                feed_pk: None,
             }
+            .execute(client)?;
         }
 
         let (_, device) = GetDeviceCommand {

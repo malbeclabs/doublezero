@@ -734,10 +734,8 @@ impl Connect {
                     self.poll_for_user_activated(ledger, &user_pk, spinner)?;
                 }
                 for (publisher, subscriber, group_pks) in follow_up_batches {
-                    spinner.set_message(format!(
-                        "Subscribing to {} more group(s)",
-                        group_pks.len()
-                    ));
+                    spinner
+                        .set_message(format!("Subscribing to {} more group(s)", group_pks.len()));
                     ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                         user_pk,
                         group_pks,
@@ -895,10 +893,8 @@ impl Connect {
                     self.poll_for_user_activated(ledger, &user_pk, spinner)?;
                 }
                 for (publisher, subscriber, group_pks) in follow_up_batches {
-                    spinner.set_message(format!(
-                        "Subscribing to {} more group(s)",
-                        group_pks.len()
-                    ));
+                    spinner
+                        .set_message(format!("Subscribing to {} more group(s)", group_pks.len()));
                     ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                         user_pk,
                         group_pks,
@@ -1048,6 +1044,9 @@ const MAX_CREATE_GROUPS: usize = 8;
 /// keeping the account list comfortably under the 1232-byte transaction size limit.
 const MAX_UPDATE_GROUPS: usize = 16;
 
+/// One follow-up UpdateMulticastGroupRoles batch: (publisher, subscriber, group_pks).
+type RoleBatch = (bool, bool, Vec<Pubkey>);
+
 /// Split the deduplicated group list into the batch folded into the
 /// CreateSubscribeUser transaction — every group sharing the first group's
 /// (publisher, subscriber) flag pair, up to [`MAX_CREATE_GROUPS`] — and the
@@ -1058,14 +1057,14 @@ fn plan_group_batches(
     all_group_pks: &[Pubkey],
     pub_group_pks: &[Pubkey],
     sub_group_pks: &[Pubkey],
-) -> (Vec<Pubkey>, Vec<(bool, bool, Vec<Pubkey>)>) {
+) -> (Vec<Pubkey>, Vec<RoleBatch>) {
     let flags_of = |pk: &Pubkey| (pub_group_pks.contains(pk), sub_group_pks.contains(pk));
     let Some(first_flags) = all_group_pks.first().map(flags_of) else {
         return (Vec::new(), Vec::new());
     };
 
     let mut create_group_pks = Vec::new();
-    let mut follow_ups: Vec<(bool, bool, Vec<Pubkey>)> = Vec::new();
+    let mut follow_ups: Vec<RoleBatch> = Vec::new();
     for pk in all_group_pks {
         let (publisher, subscriber) = flags_of(pk);
         if (publisher, subscriber) == first_flags && create_group_pks.len() < MAX_CREATE_GROUPS {

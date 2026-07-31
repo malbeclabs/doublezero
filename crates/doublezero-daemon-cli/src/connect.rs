@@ -453,6 +453,7 @@ impl Connect {
                     mcast_user.as_ref(),
                     &feeds,
                     sub_feeds,
+                    &unsub_pks,
                     client_ip,
                     spinner,
                     out,
@@ -544,6 +545,7 @@ impl Connect {
         mcast_user: Option<&(Pubkey, User)>,
         feeds: &HashMap<Pubkey, Feed>,
         names: &[String],
+        leaving: &[Pubkey],
         client_ip: Ipv4Addr,
         spinner: &ProgressBar,
         out: &mut W,
@@ -688,11 +690,22 @@ impl Connect {
                 eyre::bail!("feed {feed_pk} is not provisioned on the access pass");
             }
         }
-        let new_feeds = join.feed_pks.iter().filter(|pk| !held.contains(pk)).count();
-        if held.len() + new_feeds > MAX_USER_FEEDS {
+        // The cap applies to the state the join will see: the leave half runs first, so feeds
+        // being left do not count as held.
+        let remaining: Vec<Pubkey> = held
+            .iter()
+            .filter(|pk| !leaving.contains(pk))
+            .copied()
+            .collect();
+        let new_feeds = join
+            .feed_pks
+            .iter()
+            .filter(|pk| !remaining.contains(pk))
+            .count();
+        if remaining.len() + new_feeds > MAX_USER_FEEDS {
             eyre::bail!(
-                "user holds {} feeds and this join adds {new_feeds}; a user may hold at most {MAX_USER_FEEDS}",
-                held.len()
+                "this join would leave the user holding {} feeds; a user may hold at most {MAX_USER_FEEDS}",
+                remaining.len() + new_feeds
             );
         }
 
@@ -4053,6 +4066,52 @@ mod tests {
                 result.unwrap_err().to_string(),
                 format!("feed {feed_pk} is in both --subscribe-feed and --unsubscribe-feed")
             );
+        });
+    }
+
+    /// A swap at the per-user feed cap works: the cap counts the post-leave state, so leaving one
+    /// feed and joining another in one command sends both transactions.
+    #[test]
+    fn test_connect_command_feed_swap_at_the_cap() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let g0 = Pubkey::new_unique();
+            let old_pk = fixture.add_feed("old", device.exchange_pk, vec![g0]);
+            let g_new = Pubkey::new_unique();
+            let new_pk = fixture.add_feed("new", device.exchange_pk, vec![g_new]);
+            let fillers: Vec<Pubkey> = (0..MAX_USER_FEEDS - 1)
+                .map(|_| Pubkey::new_unique())
+                .collect();
+            let mut seated = vec![old_pk, new_pk];
+            seated.extend(fillers.iter().copied());
+            fixture.seat_feeds(&seated);
+
+            let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            user.feed_pks = std::iter::once(old_pk).chain(fillers).collect();
+            user.subscribers = vec![g0];
+            let user_pk = fixture.add_user(&user);
+            fixture.expect_unsubscribe_feed(user_pk, vec![old_pk]);
+            fixture.expect_subscribe_feed(user_pk, vec![new_pk]);
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec![],
+                    sub_groups: vec![],
+                    sub_feeds: vec!["new".to_string()],
+                    unsub_feeds: vec!["old".to_string()],
+                },
+                client_ip: None,
+                device: None,
+                verbose: false,
+            };
+
+            let (result, output) = run(&fixture, command).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
+            assert!(output.contains("    Left feed(s): old\n"), "{output}");
+            assert!(output.contains("    Joined feed(s): new\n"), "{output}");
         });
     }
 

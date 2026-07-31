@@ -148,8 +148,8 @@ impl SubscribeFeedCommand {
         chunks.push((chunk_feeds, chunk_groups));
 
         let mut signature = Signature::default();
-        for (chunk_feed_pks, chunk_group_pks) in &chunks {
-            signature = client.send_transaction(subscribe_feed(
+        for (index, (chunk_feed_pks, chunk_group_pks)) in chunks.iter().enumerate() {
+            let result = client.send_transaction(subscribe_feed(
                 &client.get_program_id(),
                 &client.get_payer(),
                 &accesspass_pubkey,
@@ -157,7 +157,27 @@ impl SubscribeFeedCommand {
                 &user.device_pk,
                 chunk_feed_pks,
                 chunk_group_pks,
-            ))?;
+            ));
+            // A failure mid-sequence leaves earlier chunks applied; name them so the operator
+            // knows where the join stands. The join is retry-safe, so rerunning finishes it.
+            signature = if index == 0 {
+                result?
+            } else {
+                result.map_err(|err| {
+                    let applied: Vec<String> = chunks[..index]
+                        .iter()
+                        .flat_map(|(feed_pks, _)| feed_pks)
+                        .map(|pk| pk.to_string())
+                        .collect();
+                    let failing: Vec<String> =
+                        chunk_feed_pks.iter().map(|pk| pk.to_string()).collect();
+                    eyre::eyre!(
+                        "feeds {} already joined; joining {} failed: {err}; rerunning the command finishes the rest",
+                        applied.join(", "),
+                        failing.join(", ")
+                    )
+                })?
+            };
         }
         Ok(signature)
     }
@@ -479,6 +499,71 @@ mod tests {
         }
         .execute(&client)
         .unwrap();
+    }
+
+    #[test]
+    fn test_commands_subscribe_feed_split_failure_names_the_applied_chunk() {
+        // Same shape as the split test, but the second transaction fails: the error names the
+        // feeds already joined and the ones that failed.
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+
+        let exchange = Pubkey::new_unique();
+        let groups1: Vec<Pubkey> = (0..14).map(|_| Pubkey::new_unique()).collect();
+        let groups2: Vec<Pubkey> = (0..14).map(|_| Pubkey::new_unique()).collect();
+        let (feed1_pk, feed2_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let f = setup(
+            &mut client,
+            vec![],
+            vec![],
+            vec![
+                (feed1_pk, feed_with("f1", exchange, groups1.clone())),
+                (feed2_pk, feed_with("f2", exchange, groups2.clone())),
+            ],
+        );
+
+        let expected1 = subscribe_feed(
+            &program_id,
+            &payer,
+            &f.accesspass_pk,
+            &f.user_pk,
+            &f.device_pk,
+            &[feed1_pk],
+            &groups1,
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected1))
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+        let expected2 = subscribe_feed(
+            &program_id,
+            &payer,
+            &f.accesspass_pk,
+            &f.user_pk,
+            &f.device_pk,
+            &[feed2_pk],
+            &groups2,
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected2))
+            .times(1)
+            .returning(|_| Err(eyre::eyre!("blockhash expired")));
+
+        let err = SubscribeFeedCommand {
+            user_pk: f.user_pk,
+            feed_pks: vec![feed1_pk, feed2_pk],
+        }
+        .execute(&client)
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "feeds {feed1_pk} already joined; joining {feed2_pk} failed: blockhash expired; rerunning the command finishes the rest"
+            )
+        );
     }
 
     #[test]

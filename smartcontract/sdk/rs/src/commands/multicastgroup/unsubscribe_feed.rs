@@ -5,11 +5,18 @@ use crate::{
     },
     DoubleZeroClient,
 };
-use doublezero_serviceability::state::{
-    accesspass::AccessPassType, accountdata::AccountData, feed::Feed, user::UserType,
+use doublezero_serviceability::{
+    pda::get_accesspass_pda,
+    state::{
+        accesspass::{AccessPass, AccessPassType},
+        accountdata::AccountData,
+        feed::Feed,
+        user::UserType,
+    },
 };
 use doublezero_serviceability_instruction::multicastgroup::unsubscribe_feed;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
+use std::net::Ipv4Addr;
 
 /// Leave whole feeds on an EdgeSeat access pass with one `UnsubscribeFeed` transaction.
 ///
@@ -66,21 +73,36 @@ impl UnsubscribeFeedCommand {
                 accesspass.accesspass_type
             );
         }
-        // EdgeSeat passes carry their feeds on the dynamic (0.0.0.0) pass, but nothing forbids a
-        // second pass for the same payer. If the resolved pass seats none of the held feeds it is
-        // the wrong one, and sending would make the program prune every held feed as stale while
-        // the seat-bearing pass keeps its seats charged.
-        if !user.feed_pks.iter().any(|held| {
-            accesspass
-                .feed_seats()
+        // A resolved pass seating none of the held feeds is either the wrong pass (a second pass
+        // exists for the same payer, and sending would make the program prune every held feed as
+        // stale while the real pass keeps its seats charged) or every held feed has been
+        // de-provisioned, which is a legitimate cleanup the program handles by pruning. Only the
+        // sibling PDA tells the two apart.
+        let seats_any_held = |pass: &AccessPass| {
+            user.feed_pks
                 .iter()
-                .any(|seat| seat.feed_key == *held)
-        }) {
-            eyre::bail!(
-                "access pass {} seats none of the feeds user {} holds",
-                accesspass_pubkey,
-                self.user_pk
-            );
+                .any(|held| pass.feed_seats().iter().any(|seat| seat.feed_key == *held))
+        };
+        if !seats_any_held(&accesspass) {
+            let program_id = client.get_program_id();
+            let (dynamic_pk, _) =
+                get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
+            let (exact_pk, _) = get_accesspass_pda(&program_id, &user.client_ip, &user.owner);
+            let sibling_pk = if accesspass_pubkey == dynamic_pk {
+                exact_pk
+            } else {
+                dynamic_pk
+            };
+            if let Ok(AccountData::AccessPass(sibling)) = client.get(sibling_pk) {
+                if seats_any_held(&sibling) {
+                    eyre::bail!(
+                        "access pass {} seats the feeds user {} holds, but the lookup resolved {}; refusing to leave against the wrong pass",
+                        sibling_pk,
+                        self.user_pk,
+                        accesspass_pubkey
+                    );
+                }
+            }
         }
 
         let retained_pks: Vec<Pubkey> = user
@@ -173,7 +195,7 @@ impl UnsubscribeFeedCommand {
                 .copied()
                 .collect();
 
-            signature = client.send_transaction(unsubscribe_feed(
+            let result = client.send_transaction(unsubscribe_feed(
                 &client.get_program_id(),
                 &client.get_payer(),
                 &accesspass_pubkey,
@@ -182,7 +204,23 @@ impl UnsubscribeFeedCommand {
                 &[target_pk],
                 &tx_retained_pks,
                 &tx_groups,
-            ))?;
+            ));
+            // A failure mid-sequence leaves earlier targets already left; name them so the
+            // operator knows to rerun with only the remaining feeds.
+            signature = if index == 0 {
+                result?
+            } else {
+                result.map_err(|err| {
+                    let applied: Vec<String> = self.feed_pks[..index]
+                        .iter()
+                        .map(|pk| pk.to_string())
+                        .collect();
+                    eyre::eyre!(
+                        "feeds {} already left; leaving {target_pk} failed: {err}; rerun with only the remaining feeds",
+                        applied.join(", ")
+                    )
+                })?
+            };
             subscribers.retain(|group| !tx_groups.contains(group));
         }
         Ok(signature)
@@ -486,10 +524,13 @@ mod tests {
     }
 
     #[test]
-    fn test_commands_unsubscribe_feed_pass_without_the_user_feeds_rejected() {
-        // The resolved pass seats a different feed than any the user holds: sending would make
-        // the program prune every held feed as stale, so the command refuses.
+    fn test_commands_unsubscribe_feed_wrong_pass_rejected() {
+        // The resolved (dynamic) pass seats a different feed, while the sibling exact-IP pass
+        // seats the held one: the lookup picked the wrong pass, so the command refuses rather
+        // than let the program prune every held feed.
         let mut client = create_test_client();
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
 
         let held_pk = Pubkey::new_unique();
         let other_pk = Pubkey::new_unique();
@@ -501,6 +542,36 @@ mod tests {
             vec![(held_pk, feed_with("held", vec![]))],
         );
 
+        let (exact_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::new(100, 0, 0, 1), &payer);
+        let sibling = AccessPass {
+            account_type: AccountType::AccessPass,
+            accesspass_type: AccessPassType::EdgeSeat(vec![FeedSeat {
+                feed_key: held_pk,
+                max_users: 2,
+                current_users: 1,
+                ..Default::default()
+            }]),
+            client_ip: Ipv4Addr::new(100, 0, 0, 1),
+            user_payer: payer,
+            owner: payer,
+            status: AccessPassStatus::Connected,
+            last_access_epoch: u64::MAX,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            bump_seed: 0,
+            connection_count: 1,
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 0,
+            multicast_user_count: 1,
+            max_multicast_users: 4,
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(exact_pk))
+            .returning(move |_| Ok(AccountData::AccessPass(sibling.clone())));
+
         let err = UnsubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![held_pk],
@@ -510,10 +581,57 @@ mod tests {
         assert_eq!(
             err.to_string(),
             format!(
-                "access pass {} seats none of the feeds user {} holds",
-                f.accesspass_pk, f.user_pk
+                "access pass {exact_pk} seats the feeds user {} holds, but the lookup resolved {}; refusing to leave against the wrong pass",
+                f.user_pk, f.accesspass_pk
             )
         );
+    }
+
+    #[test]
+    fn test_commands_unsubscribe_feed_all_stale_feeds_still_leavable() {
+        // Every held feed was de-provisioned and no sibling pass seats them: the leave goes
+        // through with nothing retained, and the program prunes the stale entries.
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+
+        let g0 = Pubkey::new_unique();
+        let stale_pk = Pubkey::new_unique();
+        let f = setup(
+            &mut client,
+            vec![g0],
+            vec![stale_pk],
+            vec![],
+            vec![(stale_pk, feed_with("stale", vec![g0]))],
+        );
+
+        let (exact_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::new(100, 0, 0, 1), &payer);
+        client
+            .expect_get()
+            .with(predicate::eq(exact_pk))
+            .returning(|_| Err(eyre::eyre!("account not found")));
+
+        let expected = unsubscribe_feed(
+            &program_id,
+            &payer,
+            &f.accesspass_pk,
+            &f.user_pk,
+            &f.device_pk,
+            &[stale_pk],
+            &[],
+            &[g0],
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        UnsubscribeFeedCommand {
+            user_pk: f.user_pk,
+            feed_pks: vec![stale_pk],
+        }
+        .execute(&client)
+        .unwrap();
     }
 
     #[test]

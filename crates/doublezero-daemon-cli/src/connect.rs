@@ -3798,7 +3798,8 @@ mod tests {
 
             let (result, output) = run(&fixture, command).await;
             assert!(result.is_ok(), "{:?}\n{output}", result.err());
-            assert!(output.contains("Joined feed(s): shreds"), "{output}");
+            let lines: Vec<&str> = output.lines().collect();
+            assert_eq!(lines[5], "    Joined feed(s): shreds", "{output}");
         });
     }
 
@@ -3833,7 +3834,13 @@ mod tests {
 
             let (result, output) = run(&fixture, command).await;
             assert!(result.is_ok(), "{:?}\n{output}", result.err());
-            assert!(output.contains("An account already exists"), "{output}");
+            let lines: Vec<&str> = output.lines().collect();
+            assert_eq!(
+                lines[3],
+                format!("    An account already exists with Pubkey: {user_pk}"),
+                "{output}"
+            );
+            assert_eq!(lines[4], "    Joined feed(s): shreds", "{output}");
         });
     }
 
@@ -3868,7 +3875,8 @@ mod tests {
 
             let (result, output) = run(&fixture, command).await;
             assert!(result.is_ok(), "{:?}\n{output}", result.err());
-            assert!(output.contains("Left feed(s): shreds"), "{output}");
+            let lines: Vec<&str> = output.lines().collect();
+            assert_eq!(lines[3], "    Left feed(s): shreds", "{output}");
         });
     }
 
@@ -3970,7 +3978,8 @@ mod tests {
 
             let (result, output) = run(&fixture, command).await;
             assert!(result.is_ok(), "{:?}\n{output}", result.err());
-            assert!(output.contains("Device selected: device2"), "{output}");
+            let lines: Vec<&str> = output.lines().collect();
+            assert_eq!(lines[3], "    Device selected: device2", "{output}");
         });
     }
 
@@ -4110,8 +4119,9 @@ mod tests {
 
             let (result, output) = run(&fixture, command).await;
             assert!(result.is_ok(), "{:?}\n{output}", result.err());
-            assert!(output.contains("    Left feed(s): old\n"), "{output}");
-            assert!(output.contains("    Joined feed(s): new\n"), "{output}");
+            let lines: Vec<&str> = output.lines().collect();
+            assert_eq!(lines[4], "    Left feed(s): old", "{output}");
+            assert_eq!(lines[5], "    Joined feed(s): new", "{output}");
         });
     }
 
@@ -4154,11 +4164,15 @@ mod tests {
 
             let (result, output) = run(&fixture, command).await;
             assert!(result.is_err());
-            assert!(output.contains("    Left feed(s): old\n"), "{output}");
-            assert!(
-                output.contains(
-                    "    --unsubscribe-feed succeeded. Rerun with only --subscribe-feed new to finish.\n"
-                ),
+            let lines: Vec<&str> = output.lines().collect();
+            assert_eq!(lines[4], "    Left feed(s): old", "{output}");
+            assert_eq!(
+                lines[5], "❌  --subscribe-feed failed: feed seat is full",
+                "{output}"
+            );
+            assert_eq!(
+                lines[6],
+                "    --unsubscribe-feed succeeded. Rerun with only --subscribe-feed new to finish.",
                 "{output}"
             );
         });
@@ -4204,11 +4218,11 @@ mod tests {
 
             let (result, output) = run(&fixture, command).await;
             assert!(result.is_err());
-            assert!(output.contains("    Session: BGP Session Up\n"), "{output}");
-            assert!(
-                output.contains(
-                    "    --subscribe-feed succeeded. Rerun with only --unsubscribe-feed old to finish.\n"
-                ),
+            let lines: Vec<&str> = output.lines().collect();
+            assert_eq!(lines[8], "    Session: BGP Session Up", "{output}");
+            assert_eq!(
+                lines[10],
+                "    --subscribe-feed succeeded. Rerun with only --unsubscribe-feed old to finish.",
                 "{output}"
             );
         });

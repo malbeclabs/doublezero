@@ -525,8 +525,8 @@ mod tests {
 
     #[test]
     fn test_commands_unsubscribe_feed_wrong_pass_rejected() {
-        // The resolved (dynamic) pass seats a different feed, while the sibling exact-IP pass
-        // seats the held one: the lookup picked the wrong pass, so the command refuses rather
+        // The resolved (dynamic) accesspass seats a different feed, while the sibling exact-IP
+        // accesspass seats the held one: the lookup picked the wrong pass, so the command refuses rather
         // than let the program prune every held feed.
         let mut client = create_test_client();
         let payer = client.get_payer();

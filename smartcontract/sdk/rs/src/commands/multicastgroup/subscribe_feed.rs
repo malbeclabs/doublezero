@@ -503,8 +503,6 @@ mod tests {
 
     #[test]
     fn test_commands_subscribe_feed_split_failure_names_the_applied_chunk() {
-        // Same shape as the split test, but the second transaction fails: the error names the
-        // feeds already joined and the ones that failed.
         let mut client = create_test_client();
         let payer = client.get_payer();
         let program_id = client.get_program_id();

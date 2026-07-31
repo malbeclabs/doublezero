@@ -131,20 +131,16 @@ impl Disconnect {
         let payer = ledger.get_payer();
 
         for (pubkey, user) in users.iter().filter(|(_, u)| u.client_ip == client_ip) {
-            match self.dz_mode {
+            let mode_mismatch = match self.dz_mode {
                 Some(DzMode::IBRL) => {
-                    if user.user_type != UserType::IBRL
+                    user.user_type != UserType::IBRL
                         && user.user_type != UserType::IBRLWithAllocatedIP
-                    {
-                        continue;
-                    }
                 }
-                Some(DzMode::Multicast) => {
-                    if user.user_type != UserType::Multicast {
-                        continue;
-                    }
-                }
-                None => {}
+                Some(DzMode::Multicast) => user.user_type != UserType::Multicast,
+                None => false,
+            };
+            if mode_mismatch {
+                continue;
             }
 
             // Skip users owned by a different keypair — only the owner can delete them.
@@ -250,7 +246,7 @@ impl Disconnect {
 
         let get_user = || {
             match ledger.get_user(*user_pubkey) {
-                Ok(user) => Err(user), // User still exists, keep retrying
+                Ok(_) => Err(()), // User still exists, keep retrying
                 Err(e) => {
                     Ok(if e.to_string().contains("User not found") {
                         Ok(()) // User deleted, stop retrying

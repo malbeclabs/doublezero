@@ -34,7 +34,7 @@ impl DeleteGeolocationUserCliCommand {
             if !std::io::stdin().is_terminal() {
                 eyre::bail!("stdin is not a terminal — pass --yes to skip confirmation");
             }
-            write!(out, "Delete user '{}'? [y/N]: ", &code)?;
+            write!(out, "Delete user '{}'? [y/N]: ", code)?;
             out.flush()?;
             let mut input = String::new();
             std::io::stdin().read_line(&mut input)?;

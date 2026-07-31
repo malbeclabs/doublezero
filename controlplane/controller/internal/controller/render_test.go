@@ -378,6 +378,21 @@ func TestRenderConfig(t *testing.T) {
 								{239, 0, 0, 6},
 							},
 						},
+						// A bare multicast user (no roles yet) must get the subscriber ACL and
+						// announce nothing, not fall through to the publisher config.
+						{
+							Id:                    503,
+							UnderlaySrcIP:         net.IP{8, 8, 8, 8},
+							UnderlayDstIP:         net.IP{9, 9, 9, 9},
+							OverlaySrcIP:          net.IP{169, 254, 0, 6},
+							OverlayDstIP:          net.IP{169, 254, 0, 7},
+							DzIp:                  net.IP{100, 0, 0, 3},
+							Allocated:             true,
+							IsMulticast:           true,
+							MulticastBoundaryList: []net.IP{},
+							MulticastSubscribers:  []net.IP{},
+							MulticastPublishers:   []net.IP{},
+						},
 					},
 				},
 				UnknownBgpPeers: []net.IP{},

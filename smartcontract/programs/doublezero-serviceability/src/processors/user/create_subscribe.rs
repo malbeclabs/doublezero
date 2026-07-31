@@ -12,6 +12,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 use std::net::Ipv4Addr;
@@ -22,7 +23,7 @@ use super::{
 };
 use crate::{
     processors::{
-        feed::check_feed_metro_coverage,
+        feed::{check_feed_metro_coverage, enforce_feed_metro_gate},
         multicastgroup::subscribe::{check_mgroup_allowlists, update_user_multicastgroup_roles},
         validation::validate_program_account,
     },
@@ -62,8 +63,8 @@ impl fmt::Debug for UserCreateSubscribeArgs {
             "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}, owner: {}, extra_group_count: {}",
             self.user_type,
             self.cyoa_type,
-            &self.client_ip,
-            &self.tunnel_endpoint,
+            self.client_ip,
+            self.tunnel_endpoint,
             self.dz_prefix_count,
             self.owner,
             self.extra_group_count,
@@ -165,7 +166,7 @@ pub fn process_create_subscribe_user(
         None
     };
 
-    let mut result = create_user_core(
+    let Some(mut result) = create_user_core(
         program_id,
         accounts,
         &core_accounts,
@@ -175,18 +176,31 @@ pub fn process_create_subscribe_user(
         value.tunnel_endpoint,
         value.publisher,
         owner_override,
-        Some(mgroup_account.key),
-        feed_account,
-    )?;
+    )?
+    else {
+        // A duplicate is an error here, not a no-op: falling through would tick a second feed
+        // seat and push a duplicate feed_pks entry that delete would double-release.
+        return Err(ProgramError::AccountAlreadyInitialized);
+    };
 
-    // Mirrors the exact condition under which `create_user_core` ran the feed metro gate
-    // (create_core.rs). Keying the skip on pass type alone would let an EdgeSeat pass join a group
-    // with neither check: the gate is multicast-only and would not have run. The publisher allowlist
-    // is always checked, since a feed sells receive only and grants no publisher role.
+    // EdgeSeat multicast metro gate: the group must be joinable via a feed on the pass serving the
+    // device's metro; that feed's seat is ticked and recorded on the User so delete releases it.
+    // Feed-gated joins skip the subscriber allowlist; the publisher allowlist always applies, since
+    // a feed sells receive only.
     let feed_gated = matches!(
         result.accesspass.accesspass_type,
         AccessPassType::EdgeSeat(_)
     ) && value.user_type == UserType::Multicast;
+    if feed_gated {
+        let feed_key = enforce_feed_metro_gate(
+            program_id,
+            &mut result.accesspass,
+            &result.device.exchange_pk,
+            Some(mgroup_account.key),
+            feed_account,
+        )?;
+        result.user.feed_pks.push(feed_key);
+    }
     check_mgroup_allowlists(
         &result.accesspass,
         mgroup_account.key,
@@ -194,8 +208,8 @@ pub fn process_create_subscribe_user(
         value.subscriber && !feed_gated,
     )?;
 
-    // Subscribe user to the primary multicast group. create_user_core already ran the
-    // EdgeSeat feed metro gate (coverage check + one seat tick) against this group.
+    // Subscribe user to the primary multicast group; the feed metro gate above already
+    // covered it (and ticked the seat) for EdgeSeat passes.
     let subscribe_result = update_user_multicastgroup_roles(
         mgroup_account,
         &mut result.user,
@@ -207,9 +221,9 @@ pub fn process_create_subscribe_user(
     // publisher allowlist always applies, and the subscriber role comes from the
     // allowlist unless the feed metro gate covers it — extra groups on EdgeSeat
     // passes get a coverage-only check against the same feed (a feed carries a
-    // group set; the seat is per-user-per-feed and was ticked once by
-    // create_user_core). Any failure aborts the whole instruction: no user
-    // account, counters, or seat tick survive a partial batch.
+    // group set; the seat is per-user-per-feed and was ticked once by the gate
+    // above). Any failure aborts the whole instruction: no user account,
+    // counters, or seat tick survive a partial batch.
     for extra_group_account in extra_group_accounts {
         validate_program_account!(
             *extra_group_account,

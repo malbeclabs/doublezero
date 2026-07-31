@@ -361,7 +361,7 @@ impl ListAccessPassCliCommand {
             })
             .collect();
 
-        access_pass_displays.sort_by(|a, b| a.client_ip.cmp(&b.client_ip));
+        access_pass_displays.sort_by_key(|a| a.client_ip);
 
         let res = if self.json {
             serde_json::to_string_pretty(&access_pass_displays)?

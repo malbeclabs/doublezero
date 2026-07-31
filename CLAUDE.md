@@ -24,6 +24,12 @@ DoubleZero is a protocol for building and operating high-performance, permission
 
 **Serialization:** Borsh for onchain accounts, Protobuf for gRPC (controller↔agent), JSON for APIs.
 
+## Geolocation Architecture
+
+- **telemetry-agent** runs on DZDs (Arista devices). It measures geoprobes via TWAMP and sends them location offsets. DZDs are the roots of trust with known coordinates.
+- **geoprobe-agent** runs on geoprobe servers (Ubuntu bare metal or VPS), NOT on DZDs. It receives TWAMP probes from DZDs, caches their location offsets, and measures outbound targets. It currently requires no special privileges (all UDP, unprivileged ports).
+- These are two separate binaries with opposite roles. Never conflate them: DZDs measure geoprobes; geoprobes measure targets.
+
 ## Build Commands
 
 ```bash
@@ -51,7 +57,7 @@ cargo test -p <crate-name> <test_name>
 
 Always run `make rust-fmt` before committing Rust changes.
 
-Rust toolchain: 1.90.0 (via `rust-toolchain.toml`). Solana SDK: 2.2.x.
+Rust toolchain: 1.97.1 (via `rust-toolchain.toml`); the onchain programs pin their own in `smartcontract/programs/rust-toolchain.toml`. Solana SDK: 3.0.
 
 ### Go
 

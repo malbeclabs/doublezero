@@ -168,7 +168,7 @@ mod tests {
             .expect_update_multicastgroup_roles()
             .with(predicate::eq(UpdateMulticastGroupRolesCommand {
                 user_pk: f.user_pk,
-                group_pk: g2,
+                group_pks: vec![g2],
                 client_ip: f.client_ip,
                 publisher: false,
                 subscriber: false,

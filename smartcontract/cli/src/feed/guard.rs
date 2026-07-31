@@ -140,7 +140,7 @@ pub fn unsubscribe_orphans<C: CliCommand, W: Write>(
             client
                 .update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                     user_pk: orphan.user_pk,
-                    group_pk: orphan.group_pk,
+                    group_pks: vec![orphan.group_pk],
                     client_ip: orphan.client_ip,
                     publisher: false,
                     subscriber: false,

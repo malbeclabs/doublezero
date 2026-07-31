@@ -16,8 +16,9 @@ use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, msg, 
 use std::fmt;
 
 /// Cap on the feeds one user may hold at once. Bounded by what a single [`UnsubscribeFeed`]
-/// transaction can name.
-pub const MAX_USER_FEEDS: usize = 6;
+/// transaction can name: every held feed plus up to `MAX_FEED_GROUPS` departing groups, behind
+/// the client's compute-budget prelude, fits a legacy transaction only up to 25 such accounts.
+pub const MAX_USER_FEEDS: usize = 5;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct SubscribeFeedArgs {

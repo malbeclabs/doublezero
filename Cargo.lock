@@ -1919,6 +1919,7 @@ dependencies = [
  "doublezero-serviceability",
  "solana-compute-budget-interface",
  "solana-program",
+ "solana-sdk",
  "solana-system-interface 3.2.0",
 ]
 

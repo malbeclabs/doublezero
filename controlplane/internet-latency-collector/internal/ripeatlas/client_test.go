@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1062,4 +1063,92 @@ func TestInternetLatency_RIPEAtlas_GetCreditBalance(t *testing.T) {
 
 	require.NoError(t, err, "GetCreditBalance() should not return error")
 	require.Equal(t, 1000.0, balance, "Expected credit balance to be 1000")
+}
+
+func TestInternetLatency_RIPEAtlas_GetMeasurementProbes(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	t.Run("single page", func(t *testing.T) {
+		t.Parallel()
+
+		var requested []string
+		client := &Client{
+			log:     log,
+			BaseURL: "https://atlas.ripe.net/api/v2",
+			HTTPClient: &MockHTTPClient{
+				DoFunc: func(req *http.Request) (*http.Response, error) {
+					requested = append(requested, req.URL.String())
+					body, _ := json.Marshal(ProbesResponse{
+						Count:   2,
+						Results: []Probe{{ID: 600}, {ID: 700}},
+					})
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(bytes.NewReader(body)),
+					}, nil
+				},
+			},
+		}
+
+		probes, err := client.GetMeasurementProbes(t.Context(), 9001)
+		require.NoError(t, err)
+		require.Len(t, probes, 2)
+		require.Equal(t, 600, probes[0].ID)
+		require.Equal(t, 700, probes[1].ID)
+		require.Equal(t, []string{"https://atlas.ripe.net/api/v2/measurements/9001/probes/"}, requested)
+	})
+
+	t.Run("follows pagination", func(t *testing.T) {
+		t.Parallel()
+
+		page := 0
+		client := &Client{
+			log:     log,
+			BaseURL: "https://atlas.ripe.net/api/v2",
+			HTTPClient: &MockHTTPClient{
+				DoFunc: func(req *http.Request) (*http.Response, error) {
+					page++
+					resp := ProbesResponse{Results: []Probe{{ID: 100 * page}}}
+					if page < 3 {
+						resp.Next = "https://atlas.ripe.net/api/v2/measurements/9001/probes/?page=" + strconv.Itoa(page+1)
+					}
+					body, _ := json.Marshal(resp)
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(bytes.NewReader(body)),
+					}, nil
+				},
+			},
+		}
+
+		probes, err := client.GetMeasurementProbes(t.Context(), 9001)
+		require.NoError(t, err)
+		require.Equal(t, 3, page, "should have followed both next links")
+		require.Len(t, probes, 3, "results from every page should be accumulated")
+		require.Equal(t, []int{100, 200, 300}, []int{probes[0].ID, probes[1].ID, probes[2].ID})
+	})
+
+	t.Run("propagates API errors", func(t *testing.T) {
+		t.Parallel()
+
+		client := &Client{
+			log:     log,
+			BaseURL: "https://atlas.ripe.net/api/v2",
+			HTTPClient: &MockHTTPClient{
+				DoFunc: func(req *http.Request) (*http.Response, error) {
+					return &http.Response{
+						StatusCode: http.StatusUnauthorized,
+						Body:       io.NopCloser(bytes.NewReader([]byte(`{}`))),
+					}, nil
+				},
+			},
+		}
+
+		probes, err := client.GetMeasurementProbes(t.Context(), 9001)
+		require.Error(t, err, "a non-200 must not be reported as an empty probe list")
+		require.Contains(t, err.Error(), "401")
+		require.Nil(t, probes)
+	})
 }

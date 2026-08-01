@@ -95,6 +95,21 @@ var (
 		Help: "Current RIPE Atlas credit balance",
 	})
 
+	RipeatlasMeasurementListFailuresTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_ripeatlas_measurement_list_failures_total",
+		Help: "Total number of times listing existing measurements failed, aborting reconciliation for that cycle",
+	})
+
+	RipeatlasMetadataRebuiltTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_ripeatlas_metadata_rebuilt_total",
+		Help: "Total number of measurements whose metadata was rebuilt from the RIPE Atlas API instead of being recreated",
+	})
+
+	RipeatlasMetadataPruneSkippedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_ripeatlas_metadata_prune_skipped_total",
+		Help: "Total number of times orphaned-metadata pruning was skipped because it would have removed every entry",
+	})
+
 	RipeatlasTotalMeasurements = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "doublezero_internet_latency_collector_ripeatlas_total_measurements",
 		Help: "Total number of RIPE Atlas measurements being tracked",

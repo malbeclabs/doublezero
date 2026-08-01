@@ -338,6 +338,42 @@ func (c *Client) GetAllMeasurements(ctx context.Context, env string) ([]Measurem
 	return allMeasurements, nil
 }
 
+// GetMeasurementProbes returns the probes participating in a measurement. This
+// lets the collector rebuild metadata for a measurement it no longer recognizes
+// instead of stopping and recreating it.
+func (c *Client) GetMeasurementProbes(ctx context.Context, measurementID int) ([]Probe, error) {
+	endpoint := fmt.Sprintf("/measurements/%d/probes/", measurementID)
+
+	allProbes := []Probe{}
+	for {
+		resp, err := c.makeRequest(ctx, endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get probes for measurement %d: %w", measurementID, err)
+		}
+
+		var response ProbesResponse
+		decoder := json.NewDecoder(resp.Body)
+		if err := decoder.Decode(&response); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("failed to decode probes response for measurement %d: %w", measurementID, err)
+		}
+		resp.Body.Close()
+
+		allProbes = append(allProbes, response.Results...)
+
+		if response.Next == "" {
+			break
+		}
+
+		endpoint = response.Next
+		if len(endpoint) > len(c.BaseURL) {
+			endpoint = endpoint[len(c.BaseURL):]
+		}
+	}
+
+	return allProbes, nil
+}
+
 func (c *Client) GetMeasurementResultsIncremental(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
 	endpoint := fmt.Sprintf("/measurements/%d/results/", measurementID)
 

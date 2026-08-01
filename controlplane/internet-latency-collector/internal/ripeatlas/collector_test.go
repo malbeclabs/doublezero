@@ -29,6 +29,14 @@ type MockClient struct {
 	GetMeasurementResultsIncrementalFunc func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error)
 	StopMeasurementFunc                  func(ctx context.Context, measurementID int) error
 	GetCreditBalanceFunc                 func(ctx context.Context) (float64, error)
+	GetMeasurementProbesFunc             func(ctx context.Context, measurementID int) ([]Probe, error)
+}
+
+func (m *MockClient) GetMeasurementProbes(ctx context.Context, measurementID int) ([]Probe, error) {
+	if m.GetMeasurementProbesFunc != nil {
+		return m.GetMeasurementProbesFunc(ctx, measurementID)
+	}
+	return []Probe{}, nil
 }
 
 func (m *MockClient) GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int, anchorsOnly bool) ([]Probe, error) {
@@ -1623,4 +1631,175 @@ func TestInitializeCreditBalance(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to get RIPE Atlas credit balance")
 	})
+}
+
+func TestInternetLatency_RIPEAtlas_ParseMeasurementDescription(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		description string
+		wantLoc     string
+		wantProbe   int
+		wantOK      bool
+	}{
+		{"DoubleZero [mainnet-beta] to osl probe 7439", "osl", 7439, true},
+		{"DoubleZero to osl probe 7439", "osl", 7439, true},
+		{"DoubleZero [] to ams probe 1", "ams", 1, true},
+		{"DoubleZero [mainnet-beta] to slc probe 1008538", "slc", 1008538, true},
+		// Legacy source-qualified descriptions cannot be rebuilt from text alone.
+		{"DoubleZero NYC probe 100 to LON probe 200", "", 0, false},
+		{"Someone else's measurement", "", 0, false},
+		{"DoubleZero [mainnet-beta] to osl probe abc", "", 0, false},
+		{"", "", 0, false},
+	}
+
+	for _, tt := range tests {
+		loc, probe, ok := parseMeasurementDescription(tt.description)
+		require.Equal(t, tt.wantOK, ok, "description: %q", tt.description)
+		require.Equal(t, tt.wantLoc, loc, "description: %q", tt.description)
+		require.Equal(t, tt.wantProbe, probe, "description: %q", tt.description)
+	}
+}
+
+// Losing the state file must not cost us the measurement fleet. Metadata is
+// rebuilt from the description plus the measurement's probe list, so the
+// measurements keep running instead of being stopped and recreated.
+func TestInternetLatency_RIPEAtlas_RehydrateMissingMetadata(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+	stateDir := t.TempDir()
+
+	mockClient := &MockClient{
+		GetMeasurementProbesFunc: func(ctx context.Context, measurementID int) ([]Probe, error) {
+			return []Probe{{ID: 600}, {ID: 700}}, nil
+		},
+	}
+	c := &Collector{client: mockClient, log: log}
+
+	locationMatches := []LocationProbeMatch{
+		{LocationMatch: collector.LocationMatch{LocationCode: "ams"}, NearbyProbes: []Probe{{ID: 500}}},
+		{LocationMatch: collector.LocationMatch{LocationCode: "lon"}, NearbyProbes: []Probe{{ID: 600}}},
+		{LocationMatch: collector.LocationMatch{LocationCode: "fra"}, NearbyProbes: []Probe{{ID: 700}}},
+	}
+
+	ms := NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	measurements := []Measurement{
+		{ID: 9001, Description: "DoubleZero [test] to ams probe 500"},
+	}
+
+	c.rehydrateMissingMetadata(t.Context(), measurements, locationMatches, ms)
+
+	meta, ok := ms.GetMetadata(9001)
+	require.True(t, ok, "metadata should have been rebuilt")
+	require.Equal(t, "ams", meta.TargetLocation)
+	require.Equal(t, 500, meta.TargetProbeID)
+	require.ElementsMatch(t, []SourceProbeMeta{
+		{LocationCode: "lon", ProbeID: 600},
+		{LocationCode: "fra", ProbeID: 700},
+	}, meta.Sources)
+
+	// The rebuilt state must survive a reload.
+	reloaded := NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	require.NoError(t, reloaded.Load())
+	require.Equal(t, 1, reloaded.MetadataCount())
+}
+
+func TestInternetLatency_RIPEAtlas_RehydrateMissingMetadata_Unrecoverable(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+	stateDir := t.TempDir()
+
+	probesCalled := 0
+	mockClient := &MockClient{
+		GetMeasurementProbesFunc: func(ctx context.Context, measurementID int) ([]Probe, error) {
+			probesCalled++
+			// A probe we cannot place in any known metro.
+			return []Probe{{ID: 999999}}, nil
+		},
+	}
+	c := &Collector{client: mockClient, log: log}
+	locationMatches := []LocationProbeMatch{
+		{LocationMatch: collector.LocationMatch{LocationCode: "ams"}, NearbyProbes: []Probe{{ID: 500}}},
+	}
+	ms := NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+
+	c.rehydrateMissingMetadata(t.Context(), []Measurement{
+		// Unparseable description: never reaches the probes API.
+		{ID: 9001, Description: "DoubleZero NYC probe 1 to LON probe 2"},
+		// Parseable, but its probes cannot be attributed to a metro.
+		{ID: 9002, Description: "DoubleZero [test] to ams probe 500"},
+	}, locationMatches, ms)
+
+	require.Equal(t, 1, probesCalled, "only the parseable description should hit the API")
+	require.Equal(t, 0, ms.MetadataCount(), "no metadata should be invented")
+}
+
+// A failed measurement listing must abort reconciliation. Treating it as "no
+// measurements exist" prunes all metadata as orphaned, and the next run then
+// stops and recreates the entire fleet.
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_ListFailureAborts(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+	stateDir := t.TempDir()
+
+	var stopped []int
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
+			return nil, errors.New("API request failed with status: 502")
+		},
+		StopMeasurementFunc: func(ctx context.Context, measurementID int) error {
+			stopped = append(stopped, measurementID)
+			return nil
+		},
+	}
+
+	ms := NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	for i := 1; i <= 3; i++ {
+		ms.SetMetadata(i, MeasurementMeta{TargetLocation: "ams", TargetProbeID: i})
+	}
+	require.NoError(t, ms.Save())
+
+	c := &Collector{client: mockClient, log: log, measurementState: ms}
+	err := c.configureMeasurements(t.Context(), []LocationProbeMatch{}, false, 1, stateDir, time.Minute)
+
+	require.Error(t, err, "reconciliation must fail rather than proceed on a partial view")
+	require.Empty(t, stopped, "no measurement may be stopped when the listing failed")
+	require.Equal(t, 3, ms.MetadataCount(), "metadata must survive a failed listing")
+
+	reloaded := NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	require.NoError(t, reloaded.Load())
+	require.Equal(t, 3, reloaded.MetadataCount(), "persisted metadata must survive too")
+}
+
+// If every known metadata entry looks orphaned, the listing is far more likely
+// to be degraded than the fleet to have vanished. Keep the state and retry.
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_SkipsFullMetadataPrune(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+	stateDir := t.TempDir()
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
+			// A single unrelated measurement: none of our known IDs are present.
+			return []Measurement{
+				{ID: 99, Description: "DoubleZero unparseable form"},
+			}, nil
+		},
+	}
+
+	ms := NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	for i := 1; i <= 3; i++ {
+		ms.SetMetadata(i, MeasurementMeta{TargetLocation: "ams", TargetProbeID: i})
+	}
+	require.NoError(t, ms.Save())
+
+	c := &Collector{client: mockClient, log: log, measurementState: ms}
+	err := c.configureMeasurements(t.Context(), []LocationProbeMatch{}, false, 1, stateDir, time.Minute)
+	require.NoError(t, err)
+
+	require.Equal(t, 3, ms.MetadataCount(), "metadata must not be pruned wholesale")
 }

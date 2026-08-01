@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -104,20 +105,41 @@ func (ms *MeasurementState) Load() error {
 	return nil
 }
 
+// Save atomically persists the tracker by writing to a temporary file in the
+// same directory and renaming it over the target. Writing in place would leave
+// a truncated file behind if the process is killed mid-write, and a torn state
+// file causes the collector to treat every live measurement as unrecognized.
 func (ms *MeasurementState) Save() error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	file, err := os.Create(ms.filename)
+	tmp, err := os.CreateTemp(filepath.Dir(ms.filename), filepath.Base(ms.filename)+".tmp-*")
 	if err != nil {
-		return fmt.Errorf("failed to create timestamp file: %w", err)
+		return fmt.Errorf("failed to create temporary timestamp file: %w", err)
 	}
-	defer file.Close()
+	tmpName := tmp.Name()
+	// Best-effort cleanup; a successful rename makes this a no-op.
+	defer func() {
+		tmp.Close()
+		os.Remove(tmpName)
+	}()
 
-	encoder := json.NewEncoder(file)
+	encoder := json.NewEncoder(tmp)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(ms.tracker); err != nil {
 		return fmt.Errorf("failed to encode timestamp file: %w", err)
+	}
+
+	// Flush to disk before renaming so a crash cannot leave an empty file in place.
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("failed to sync timestamp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("failed to close timestamp file: %w", err)
+	}
+
+	if err := os.Rename(tmpName, ms.filename); err != nil {
+		return fmt.Errorf("failed to replace timestamp file: %w", err)
 	}
 
 	return nil

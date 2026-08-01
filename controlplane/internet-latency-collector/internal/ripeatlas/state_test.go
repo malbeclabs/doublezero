@@ -162,7 +162,12 @@ func TestInternetLatency_RIPEAtlas_State_FilePermissionError(t *testing.T) {
 
 	err = ms.Save()
 	require.Error(t, err, "Expected error when saving to read-only directory")
-	require.Contains(t, err.Error(), "failed to create timestamp file")
+	require.Contains(t, err.Error(), "failed to create temporary timestamp file")
+
+	// The atomic write must not leave a partial file behind in the target directory.
+	entries, err := os.ReadDir(readOnlyDir)
+	require.NoError(t, err)
+	require.Empty(t, entries, "no temporary file should remain after a failed save")
 }
 
 func TestInternetLatency_RIPEAtlas_State_EmptyMetadataInFile(t *testing.T) {
@@ -435,4 +440,56 @@ func TestInternetLatency_RIPEAtlas_State_TimestampTracker_Structure(t *testing.T
 	require.NoError(t, err)
 
 	require.Equal(t, tracker.Metadata, tracker2.Metadata)
+}
+
+// A save that is interrupted must never leave a truncated state file behind.
+// Losing the metadata map is what causes the collector to stop recognizing its
+// own measurements, which in turn triggers a full teardown and recreation.
+func TestInternetLatency_RIPEAtlas_State_SaveIsAtomic(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	filename := filepath.Join(tempDir, "timestamps.json")
+
+	ms := NewMeasurementState(filename)
+	for i := 1; i <= 25; i++ {
+		ms.SetMetadata(i, MeasurementMeta{
+			TargetLocation: "ams",
+			TargetProbeID:  1000 + i,
+			Sources:        []SourceProbeMeta{{LocationCode: "lon", ProbeID: 2000 + i}},
+		})
+	}
+	require.NoError(t, ms.Save())
+
+	// Concurrent saves must not expose a partially written file to a reader.
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = ms.Save()
+		}()
+	}
+	for i := 0; i < 25; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			reloaded := NewMeasurementState(filename)
+			// Any read must see a complete, decodable file with every entry.
+			if err := reloaded.Load(); err == nil {
+				require.Equal(t, 25, reloaded.MetadataCount())
+			}
+		}()
+	}
+	wg.Wait()
+
+	// No temporary files may be left over.
+	entries, err := os.ReadDir(tempDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "only the state file should remain: %v", entries)
+	require.Equal(t, "timestamps.json", entries[0].Name())
+
+	reloaded := NewMeasurementState(filename)
+	require.NoError(t, reloaded.Load())
+	require.Equal(t, 25, reloaded.MetadataCount())
 }

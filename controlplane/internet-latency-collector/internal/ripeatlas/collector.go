@@ -6,7 +6,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,12 +32,116 @@ type clientInterface interface {
 	GetMeasurementResultsIncremental(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error)
 	StopMeasurement(ctx context.Context, measurementID int) error
 	GetCreditBalance(ctx context.Context) (float64, error)
+	GetMeasurementProbes(ctx context.Context, measurementID int) ([]Probe, error)
 }
 
 type LocationProbeMatch struct {
 	collector.LocationMatch
 	NearbyProbes []Probe
 	ProbeCount   int
+}
+
+// measurementDescriptionRE matches the descriptions the collector generates for
+// its own measurements, in both the environment-qualified and bare forms:
+//
+//	DoubleZero [mainnet-beta] to osl probe 7439
+//	DoubleZero to osl probe 7439
+//
+// The target location and target probe are recoverable from the description
+// alone, which is what makes metadata rebuilding possible.
+var measurementDescriptionRE = regexp.MustCompile(`^DoubleZero(?: \[[^\]]*\])? to (\S+) probe (\d+)$`)
+
+// parseMeasurementDescription extracts the target location code and target probe
+// ID from a collector-generated measurement description.
+func parseMeasurementDescription(description string) (locationCode string, targetProbeID int, ok bool) {
+	m := measurementDescriptionRE.FindStringSubmatch(strings.TrimSpace(description))
+	if m == nil {
+		return "", 0, false
+	}
+	probeID, err := strconv.Atoi(m[2])
+	if err != nil {
+		return "", 0, false
+	}
+	return m[1], probeID, true
+}
+
+// rehydrateMissingMetadata rebuilds state entries for live measurements the
+// collector no longer has metadata for.
+//
+// Losing the state file used to be unrecoverable: an unrecognized measurement is
+// stopped and recreated, so losing state for the whole fleet recreated every
+// measurement at once and cost hours of coverage while fresh measurements ramped
+// up. Everything needed to rebuild an entry is still available, though. The
+// description carries the target location and target probe, and the measurement's
+// probe list plus the current location-to-probe mapping gives back the sources.
+func (c *Collector) rehydrateMissingMetadata(ctx context.Context, measurements []Measurement, locationMatches []LocationProbeMatch, measurementState *MeasurementState) {
+	// Map every probe we know about back to its location code.
+	probeLocations := make(map[int]string)
+	for _, match := range locationMatches {
+		for _, probe := range match.NearbyProbes {
+			probeLocations[probe.ID] = match.LocationCode
+		}
+	}
+
+	recovered := 0
+	for _, measurement := range measurements {
+		if _, hasMetadata := measurementState.GetMetadata(measurement.ID); hasMetadata {
+			continue
+		}
+
+		targetLocation, targetProbeID, ok := parseMeasurementDescription(measurement.Description)
+		if !ok {
+			continue
+		}
+
+		probes, err := c.client.GetMeasurementProbes(ctx, measurement.ID)
+		if err != nil {
+			c.log.Warn("Failed to fetch probes while rebuilding measurement metadata",
+				slog.Int("measurement_id", measurement.ID),
+				slog.String("error", err.Error()))
+			continue
+		}
+
+		sources := make([]SourceProbeMeta, 0, len(probes))
+		for _, probe := range probes {
+			locationCode, known := probeLocations[probe.ID]
+			if !known {
+				// A probe we can no longer place cannot be attributed to a
+				// metro, so the entry would be incomplete. Leave the
+				// measurement unrecognized and let it be recreated.
+				sources = nil
+				break
+			}
+			sources = append(sources, SourceProbeMeta{LocationCode: locationCode, ProbeID: probe.ID})
+		}
+		if len(sources) == 0 {
+			c.log.Warn("Could not rebuild measurement metadata; probes are unrecognized",
+				slog.Int("measurement_id", measurement.ID),
+				slog.String("description", measurement.Description))
+			continue
+		}
+
+		measurementState.SetMetadata(measurement.ID, MeasurementMeta{
+			TargetLocation: targetLocation,
+			TargetProbeID:  targetProbeID,
+			Sources:        sources,
+			CreatedAt:      time.Now().Unix(),
+		})
+		recovered++
+
+		c.log.Info("Rebuilt metadata for unrecognized measurement",
+			slog.Int("measurement_id", measurement.ID),
+			slog.String("target_location", targetLocation),
+			slog.Int("target_probe_id", targetProbeID),
+			slog.Int("sources", len(sources)))
+	}
+
+	if recovered > 0 {
+		metrics.RipeatlasMetadataRebuiltTotal.Add(float64(recovered))
+		if err := measurementState.Save(); err != nil {
+			c.log.Warn("Failed to save rebuilt measurement metadata", slog.String("error", err.Error()))
+		}
+	}
 }
 
 type ProbeDistance struct {
@@ -731,8 +837,12 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	// Step 4: Get all existing measurements
 	existingMeasurements, err := c.client.GetAllMeasurements(ctx, c.env)
 	if err != nil {
-		c.log.Warn("Failed to get existing measurements", slog.String("error", err.Error()))
-		existingMeasurements = []Measurement{}
+		// Continuing with an empty listing would make every live measurement
+		// look absent: metadata gets pruned as orphaned and the next run stops
+		// and recreates the entire fleet. Reconciliation is only safe against a
+		// listing we actually retrieved, so bail out and retry next cycle.
+		metrics.RipeatlasMeasurementListFailuresTotal.Inc()
+		return fmt.Errorf("failed to get existing measurements: %w", err)
 	}
 
 	// Filter for DoubleZero measurements only
@@ -742,6 +852,10 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			doubleZeroMeasurements = append(doubleZeroMeasurements, m)
 		}
 	}
+
+	// Rebuild metadata for any measurement we no longer recognize before making
+	// keep/remove decisions, so the rest of reconciliation sees a complete view.
+	c.rehydrateMissingMetadata(ctx, doubleZeroMeasurements, locationMatches, measurementState)
 
 	// Step 3: Build map of existing measurements by target location
 	existingByTarget := make(map[string]Measurement)
@@ -973,6 +1087,8 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		// Check if measurement has metadata
 		_, hasMetadata := measurementState.GetMetadata(measurement.ID)
 		if !hasMetadata {
+			// Metadata rebuilding already ran; anything still unrecognized here
+			// is a genuine orphan.
 			c.log.Info("Marking measurement for removal due to missing metadata",
 				slog.Int("measurement_id", measurement.ID),
 				slog.String("description", measurement.Description))
@@ -1032,7 +1148,6 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				// Always remove metadata for measurements we're removing,
 				// even if the API call fails (measurement might already be stopped)
 				measurementState.RemoveMetadata(measurement.ID)
-				metrics.RipeatlasTotalMeasurements.Dec()
 				time.Sleep(CallDelay) // Rate limiting
 			}
 		}
@@ -1054,6 +1169,21 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		if !activeIDs[id] {
 			orphanedIDs = append(orphanedIDs, id)
 		}
+	}
+
+	// A measurement listing that came back empty, or that would orphan every
+	// entry we know about, is far more likely to be a degraded API response than
+	// a genuine fleet-wide teardown. Pruning on that signal deletes the metadata
+	// the collector needs to recognize its own measurements, and the next run
+	// then stops and recreates all of them. Keep the state and retry next cycle.
+	knownCount := measurementState.MetadataCount()
+	if len(orphanedIDs) > 0 && knownCount > 0 && len(orphanedIDs) == knownCount {
+		c.log.Error("Refusing to prune all measurement metadata; treating as a degraded measurement listing",
+			slog.Int("known_metadata", knownCount),
+			slog.Int("would_orphan", len(orphanedIDs)),
+			slog.Int("measurements_from_api", len(doubleZeroMeasurements)))
+		metrics.RipeatlasMetadataPruneSkippedTotal.Inc()
+		orphanedIDs = nil
 	}
 
 	if len(orphanedIDs) > 0 {
@@ -1161,8 +1291,8 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				if err := measurementState.Save(); err != nil {
 					c.log.Warn("Failed to save measurement metadata", slog.String("error", err.Error()))
 				} else {
-					// Update metrics
-					metrics.RipeatlasTotalMeasurements.Inc()
+					// Update metrics. The tracked-measurement total is set from
+					// state at the end of the run rather than incremented here.
 					metrics.RipeatlasProbesPerMeasurement.Set(float64(len(sources)))
 				}
 			}
@@ -1214,6 +1344,11 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 
 	metrics.RipeatlasExpectedDailyResults.Set(expectedDailyResults)
 	metrics.RipeatlasExpectedDailyCredits.Set(expectedDailyCredits)
+
+	// Set the tracked-measurement count from state rather than incrementing and
+	// decrementing it per create/remove. The counter-style updates drift against
+	// the value written at startup and have driven this gauge negative.
+	metrics.RipeatlasTotalMeasurements.Set(float64(len(allMetadata)))
 
 	c.log.Info("Updated expected daily metrics",
 		slog.Float64("expected_daily_results", expectedDailyResults),

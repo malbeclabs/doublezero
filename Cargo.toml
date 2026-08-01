@@ -85,7 +85,7 @@ solana-client = "3.0"
 solana-bincode = "3.0"
 solana-commitment-config = "3.0"
 solana-compute-budget-interface = "3.0"
-solana-loader-v3-interface = { version = "6", features = ["serde"] }
+solana-loader-v3-interface = { version = "8", features = ["serde"] }
 solana-program = "3.0"
 solana-program-test = "=3.0.12"
 solana-pubsub-client = "3.0"

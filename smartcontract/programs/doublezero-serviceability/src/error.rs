@@ -208,6 +208,14 @@ pub enum DoubleZeroError {
         "Feed billing window is invalid (window_end must be in the future and <= terminates_at)"
     )]
     FeedInvalidBillingWindow, // variant 100
+    #[error("Feed subscriptions require an EdgeSeat access pass")]
+    EdgeSeatRequired, // variant 101
+    #[error("The passed Device account is not the user's device")]
+    UserDeviceMismatch, // variant 102
+    #[error("User would hold more feeds than an access pass may carry")]
+    UserFeedLimitExceeded, // variant 103
+    #[error("An EdgeSeat feed seat is only held by a Multicast user")]
+    EdgeSeatIsMulticastOnly, // variant 104
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -314,6 +322,10 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::FeedMaxFutureUsersBelowMaxUsers => ProgramError::Custom(98),
             DoubleZeroError::FeedInvalidAnniversaryDay => ProgramError::Custom(99),
             DoubleZeroError::FeedInvalidBillingWindow => ProgramError::Custom(100),
+            DoubleZeroError::EdgeSeatRequired => ProgramError::Custom(101),
+            DoubleZeroError::UserDeviceMismatch => ProgramError::Custom(102),
+            DoubleZeroError::UserFeedLimitExceeded => ProgramError::Custom(103),
+            DoubleZeroError::EdgeSeatIsMulticastOnly => ProgramError::Custom(104),
         }
     }
 }
@@ -421,6 +433,10 @@ impl From<u32> for DoubleZeroError {
             98 => DoubleZeroError::FeedMaxFutureUsersBelowMaxUsers,
             99 => DoubleZeroError::FeedInvalidAnniversaryDay,
             100 => DoubleZeroError::FeedInvalidBillingWindow,
+            101 => DoubleZeroError::EdgeSeatRequired,
+            102 => DoubleZeroError::UserDeviceMismatch,
+            103 => DoubleZeroError::UserFeedLimitExceeded,
+            104 => DoubleZeroError::EdgeSeatIsMulticastOnly,
             _ => DoubleZeroError::Custom(e),
         }
     }

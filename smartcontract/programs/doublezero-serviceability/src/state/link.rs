@@ -277,7 +277,7 @@ impl fmt::Display for Link {
         write!(
             f,
             "account_type: {}, owner: {}, index: {}, side_a_pk: {}, side_z_pk: {}, tunnel_type: {}, bandwidth: {}, mtu: {}, delay_ns: {}, jitter_ns: {}, tunnel_id: {}, tunnel_net: {}, status: {}, code: {}, contributor_pk: {}, link_health: {}, desired_status: {}, link_topologies: {:?}, link_flags: {:#010x}",
-            self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, &self.tunnel_net, self.status, self.code, self.contributor_pk, self.link_health, self.desired_status, self.link_topologies, self.link_flags
+            self.account_type, self.owner, self.index, self.side_a_pk, self.side_z_pk, self.link_type, self.bandwidth, self.mtu, self.delay_ns, self.jitter_ns, self.tunnel_id, self.tunnel_net, self.status, self.code, self.contributor_pk, self.link_health, self.desired_status, self.link_topologies, self.link_flags
         )
     }
 }

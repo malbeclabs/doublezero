@@ -635,8 +635,10 @@ pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey,
         processor!(process_instruction),
     );
     // SetGlobalConfig creates multiple ResourceExtension accounts; raise the budget so this
-    // doesn't flake under load when many test processes run concurrently.
-    program_test.set_compute_max_units(1_000_000);
+    // doesn't flake under load when many test processes run concurrently. Set to the protocol max
+    // (mirrors MAX_COMPUTE_UNIT_LIMIT) so instructions that write many accounts in one transaction
+    // — e.g. UpdateFeedSubscription across several feeds and groups — also fit.
+    program_test.set_compute_max_units(1_400_000);
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
     let (program_config_pubkey, _) = get_program_config_pda(&program_id);

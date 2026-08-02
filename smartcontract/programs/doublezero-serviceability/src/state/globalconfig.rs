@@ -28,11 +28,11 @@ impl fmt::Display for GlobalConfig {
             f,
             "account_type: {}, owner: {}, local_asn: {}, remote_asn: {}, device_tunnel_block: {}, user_tunnel_block: {}, multicastgroup_block: {}, next_bgp_community: {}, multicast_publisher_block: {}",
             self.account_type, self.owner, self.local_asn, self.remote_asn,
-            &self.device_tunnel_block,
-            &self.user_tunnel_block,
-            &self.multicastgroup_block,
+            self.device_tunnel_block,
+            self.user_tunnel_block,
+            self.multicastgroup_block,
             self.next_bgp_community,
-            &self.multicast_publisher_block,
+            self.multicast_publisher_block,
         )
     }
 }

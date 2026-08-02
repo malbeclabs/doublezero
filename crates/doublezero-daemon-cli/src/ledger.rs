@@ -11,10 +11,13 @@ use std::{collections::HashMap, net::Ipv4Addr};
 use doublezero_config::Environment;
 use doublezero_sdk::{
     commands::{
-        multicastgroup::subscribe::UpdateMulticastGroupRolesCommand,
+        multicastgroup::{
+            subscribe::UpdateMulticastGroupRolesCommand, subscribe_feed::SubscribeFeedCommand,
+            unsubscribe_feed::UnsubscribeFeedCommand,
+        },
         user::{create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand},
     },
-    Device, GlobalState, MulticastGroup, Tenant, User,
+    Device, Feed, GlobalState, MulticastGroup, Tenant, User,
 };
 use doublezero_serviceability::state::accesspass::AccessPass;
 use mockall::automock;
@@ -86,4 +89,13 @@ pub trait LedgerClient: Send + Sync {
         &self,
         cmd: UpdateMulticastGroupRolesCommand,
     ) -> eyre::Result<()>;
+
+    /// List all feeds on the ledger, keyed by pubkey.
+    fn list_feed(&self) -> eyre::Result<HashMap<Pubkey, Feed>>;
+
+    /// Join whole feeds on the user's EdgeSeat access pass.
+    fn subscribe_feed(&self, cmd: SubscribeFeedCommand) -> eyre::Result<()>;
+
+    /// Leave whole feeds on the user's EdgeSeat access pass.
+    fn unsubscribe_feed(&self, cmd: UnsubscribeFeedCommand) -> eyre::Result<()>;
 }

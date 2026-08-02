@@ -1,7 +1,10 @@
 pub mod allowlist;
 pub mod create;
 pub mod delete;
+pub mod feed;
 pub mod reactivate;
 pub mod subscribe;
+pub mod subscribe_feed;
 pub mod suspend;
+pub mod unsubscribe_feed;
 pub mod update;

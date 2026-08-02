@@ -5,5 +5,7 @@ pub mod get;
 pub mod list;
 pub mod reactivate;
 pub mod subscribe;
+pub mod subscribe_feed;
 pub mod suspend;
+pub mod unsubscribe_feed;
 pub mod update;

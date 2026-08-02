@@ -21,7 +21,9 @@ use doublezero_serviceability::{
         delete::MulticastGroupDeleteArgs,
         reactivate::MulticastGroupReactivateArgs,
         subscribe::UpdateMulticastGroupRolesArgs,
+        subscribe_feed::SubscribeFeedArgs,
         suspend::MulticastGroupSuspendArgs,
+        unsubscribe_feed::UnsubscribeFeedArgs,
         update::MulticastGroupUpdateArgs,
     },
     resource::ResourceType,
@@ -198,6 +200,91 @@ pub fn update_multicast_group_roles(
     )
 }
 
+/// `SubscribeFeed` (variant 117) — join whole feeds on an EdgeSeat access pass.
+///
+/// Accounts: `[accesspass, user, globalstate, device, feeds.., groups..]`.
+///
+/// `groups` must be exactly the groups this call adds; the processor derives that set from the feeds
+/// and rejects a mismatch, so a stale client cannot half-apply a change. `feed_count` is derived from
+/// `feeds.len()` rather than trusted from the caller.
+pub fn subscribe_feed(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    accesspass: &Pubkey,
+    user: &Pubkey,
+    device: &Pubkey,
+    feeds: &[Pubkey],
+    groups: &[Pubkey],
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    let mut accounts = vec![
+        AccountMeta::new(*accesspass, false),
+        AccountMeta::new(*user, false),
+        AccountMeta::new(globalstate, false),
+        AccountMeta::new_readonly(*device, false),
+    ];
+    accounts.extend(
+        feeds
+            .iter()
+            .map(|feed| AccountMeta::new_readonly(*feed, false)),
+    );
+    accounts.extend(groups.iter().map(|group| AccountMeta::new(*group, false)));
+
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::SubscribeFeed(SubscribeFeedArgs {
+            feed_count: feeds.len() as u8,
+        }),
+        accounts,
+        payer,
+    )
+}
+
+/// `UnsubscribeFeed` (variant 118) — leave whole feeds on an EdgeSeat access pass.
+///
+/// Accounts: `[accesspass, user, globalstate, device, targets.., retained.., groups..]`.
+///
+/// `retained` must be every feed the user keeps: two feeds on one pass can carry the same group, and
+/// without the retained group sets the processor would drop a group another held feed still covers and
+/// strand that feed's seat. Together `targets` and `retained` must cover every held feed still
+/// provisioned on the pass; a held feed the pass dropped is pruned by the processor instead.
+#[allow(clippy::too_many_arguments)]
+pub fn unsubscribe_feed(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    accesspass: &Pubkey,
+    user: &Pubkey,
+    device: &Pubkey,
+    targets: &[Pubkey],
+    retained: &[Pubkey],
+    groups: &[Pubkey],
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    let mut accounts = vec![
+        AccountMeta::new(*accesspass, false),
+        AccountMeta::new(*user, false),
+        AccountMeta::new(globalstate, false),
+        AccountMeta::new_readonly(*device, false),
+    ];
+    accounts.extend(
+        targets
+            .iter()
+            .chain(retained)
+            .map(|feed| AccountMeta::new_readonly(*feed, false)),
+    );
+    accounts.extend(groups.iter().map(|group| AccountMeta::new(*group, false)));
+
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::UnsubscribeFeed(UnsubscribeFeedArgs {
+            feed_count: targets.len() as u8,
+            retained_feed_count: retained.len() as u8,
+        }),
+        accounts,
+        payer,
+    )
+}
+
 /// `AddMulticastGroupPubAllowlist` (variant 54).
 /// Accounts: `[mgroup, accesspass, globalstate, user_payer]`.
 pub fn add_multicast_group_pub_allowlist(
@@ -301,6 +388,41 @@ mod tests {
     use super::*;
     use solana_system_interface::program as system_program;
     use std::net::Ipv4Addr;
+
+    /// The one feed transaction that cannot be split: a single-target leave must name every held
+    /// feed, so its worst case is `MAX_USER_FEEDS - 1` retained plus `MAX_FEED_GROUPS` departing
+    /// groups. Pin that it fits a 1232-byte legacy transaction behind the compute-budget prelude
+    /// `send_transaction` prepends.
+    #[test]
+    fn test_worst_case_leave_fits_one_transaction() {
+        use doublezero_serviceability::processors::{
+            feed::create::MAX_FEED_GROUPS, multicastgroup::subscribe_feed::MAX_USER_FEEDS,
+        };
+
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let targets = [Pubkey::new_unique()];
+        let retained: Vec<Pubkey> = (0..MAX_USER_FEEDS - 1)
+            .map(|_| Pubkey::new_unique())
+            .collect();
+        let groups: Vec<Pubkey> = (0..MAX_FEED_GROUPS).map(|_| Pubkey::new_unique()).collect();
+        let ix = unsubscribe_feed(
+            &pid,
+            &payer,
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            &targets,
+            &retained,
+            &groups,
+        );
+        let mut instructions = common::compute_budget_prelude().to_vec();
+        instructions.push(ix);
+        let message = solana_sdk::message::Message::new(&instructions, Some(&payer));
+        // One byte of signature count plus one 64-byte signature plus the message.
+        let tx_size = 1 + 64 + message.serialize().len();
+        assert!(tx_size <= 1232, "worst-case leave is {tx_size} bytes");
+    }
 
     #[test]
     fn test_create_multicast_group() {

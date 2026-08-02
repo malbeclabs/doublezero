@@ -41,8 +41,8 @@ impl fmt::Debug for UserCreateArgs {
             "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}",
             self.user_type,
             self.cyoa_type,
-            &self.client_ip,
-            &self.tunnel_endpoint,
+            self.client_ip,
+            self.tunnel_endpoint,
             self.dz_prefix_count,
         )
     }
@@ -106,7 +106,7 @@ pub fn process_create_user(
         permission_account: None,
     };
 
-    let mut result = create_user_core(
+    let Some(mut result) = create_user_core(
         program_id,
         accounts,
         &core_accounts,
@@ -116,10 +116,11 @@ pub fn process_create_user(
         value.tunnel_endpoint,
         false,
         None,
-        // Plain CreateUser is unicast; no multicast group and no feed gate.
-        None,
-        None,
-    )?;
+    )?
+    else {
+        msg!("user already exists; nothing to do");
+        return Ok(());
+    };
 
     // Always allocate resources and activate atomically.
     resource_onchain_helpers::validate_and_allocate_user_resources(

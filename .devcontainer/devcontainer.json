@@ -14,7 +14,7 @@
         // Go is installed directly in the Dockerfile at a pinned version to avoid
         // stdlib conflicts from layering the Go feature on the base image's Go.
         "ghcr.io/devcontainers/features/rust:1": {
-            "version": "1.90.0"
+            "version": "1.97.1"
         },
     },
     "initializeCommand": "mkdir -p \"${DZ_WORKTREES_DIR:-/tmp/worktrees}\"",

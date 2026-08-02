@@ -15,7 +15,7 @@ impl AddressCliCommand {
     ) -> eyre::Result<()> {
         require!(client, RequirementCheck::KEYPAIR);
 
-        writeln!(out, "{}", &client.get_payer())?;
+        writeln!(out, "{}", client.get_payer())?;
 
         Ok(())
     }

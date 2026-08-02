@@ -337,12 +337,12 @@ impl fmt::Display for User {
             self.user_type,
             self.device_pk,
             self.cyoa_type,
-            &self.client_ip,
-            &self.dz_ip,
+            self.client_ip,
+            self.dz_ip,
             self.tunnel_id,
-            &self.tunnel_net,
+            self.tunnel_net,
             self.status,
-            &self.tunnel_endpoint
+            self.tunnel_endpoint
         )
     }
 }

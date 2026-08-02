@@ -21,3 +21,6 @@ doublezero-serviceability.workspace = true
 solana-program.workspace = true
 solana-system-interface.workspace = true
 solana-compute-budget-interface.workspace = true
+
+[dev-dependencies]
+solana-sdk.workspace = true

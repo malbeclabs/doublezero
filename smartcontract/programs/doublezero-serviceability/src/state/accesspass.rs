@@ -311,21 +311,25 @@ impl AccessPass {
         flags.join(", ")
     }
 
-    /// Admit a user against the per-category seat caps. EdgeSeat-only: for all other access-pass
-    /// types this is a no-op and always succeeds. Does NOT touch `connection_count` — that counter
-    /// is maintained independently by the user create/delete processors.
+    /// Admit a user against the per-category caps. EdgeSeat-only: for all other access-pass
+    /// types this is a no-op and always succeeds. Does NOT touch `connection_count`, which the
+    /// user create/delete processors maintain independently.
     ///
-    /// Per the feed-scoped supersede model (#1700): for EdgeSeat **multicast** the authoritative
-    /// cap is the per-feed [`FeedSeat`] (see [`Self::try_add_feed_user`]), so `max_multicast_users`
-    /// is no longer enforced here and is retained only for layout/back-compat. The per-category
-    /// **unicast** cap is still enforced.
+    /// The multicast cap counts users on the pass, bare ones included (reachable since #4110);
+    /// how many users each purchased feed admits is capped separately by its [`FeedSeat`]
+    /// (see [`Self::try_add_feed_user`]).
     pub fn try_add_user(&mut self, user_type: UserType) -> Result<(), DoubleZeroError> {
         if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
             return Ok(());
         }
         match user_type {
-            // Vestigial: gated by FeedSeat caps instead. See try_add_feed_user.
-            UserType::Multicast => Ok(()),
+            UserType::Multicast => {
+                if self.multicast_user_count >= self.max_multicast_users {
+                    return Err(DoubleZeroError::AccessPassMaxMulticastUsersExceeded);
+                }
+                self.multicast_user_count += 1;
+                Ok(())
+            }
             _ => {
                 if self.unicast_user_count >= self.max_unicast_users {
                     return Err(DoubleZeroError::AccessPassMaxUnicastUsersExceeded);
@@ -337,12 +341,14 @@ impl AccessPass {
     }
 
     /// Release a seat held by a user. EdgeSeat-only: no-op for all other access-pass types. Does NOT
-    /// touch `connection_count`. Multicast release is feed-scoped (see [`Self::remove_feed_user`]).
+    /// touch `connection_count`. Feed seats are released separately (see [`Self::remove_feed_user`]).
     pub fn remove_user(&mut self, user_type: UserType) {
         if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
             return;
         }
-        if user_type != UserType::Multicast {
+        if user_type == UserType::Multicast {
+            self.multicast_user_count = self.multicast_user_count.saturating_sub(1);
+        } else {
             self.unicast_user_count = self.unicast_user_count.saturating_sub(1);
         }
     }
@@ -600,10 +606,10 @@ mod tests {
     }
 
     #[test]
-    fn test_edge_seat_unicast_cap_retained() {
+    fn test_edge_seat_per_category_caps() {
         let mut ap = test_accesspass(AccessPassType::EdgeSeat(vec![]));
 
-        // Unicast: per-category cap is still enforced (cap is 2).
+        // Unicast: per-category cap is enforced (cap is 2).
         ap.try_add_user(UserType::IBRL).unwrap();
         ap.try_add_user(UserType::EdgeFiltering).unwrap();
         assert_eq!(ap.unicast_user_count, 2);
@@ -612,15 +618,18 @@ mod tests {
             DoubleZeroError::AccessPassMaxUnicastUsersExceeded
         );
 
-        // Multicast: max_multicast_users is vestigial under supersede — try_add_user is a no-op
-        // and never errors, regardless of max_multicast_users.
-        ap.max_multicast_users = 0;
+        // Multicast: the pass-level cap counts users, bare ones included (cap is 1).
         ap.try_add_user(UserType::Multicast).unwrap();
-        ap.try_add_user(UserType::Multicast).unwrap();
-        assert_eq!(ap.multicast_user_count, 0);
+        assert_eq!(ap.multicast_user_count, 1);
+        assert_eq!(
+            ap.try_add_user(UserType::Multicast).unwrap_err(),
+            DoubleZeroError::AccessPassMaxMulticastUsersExceeded
+        );
 
         ap.remove_user(UserType::IBRL);
         assert_eq!(ap.unicast_user_count, 1);
+        ap.remove_user(UserType::Multicast);
+        assert_eq!(ap.multicast_user_count, 0);
 
         // connection_count is never touched by the seat helpers.
         assert_eq!(ap.connection_count, 0);

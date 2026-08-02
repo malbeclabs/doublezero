@@ -23,32 +23,32 @@ inputs:
       Optional Slack bot token. When set together with slack-channel, posts a
       link to the dispatched run before watching it, so a run gated on a
       required-reviewer environment in the target repo gets approved instead of
-      stalling unnoticed.
+      stalling unnoticed, and posts the names of the failing jobs if the run
+      fails.
     required: false
     default: ''
   slack-channel:
-    description: 'Slack channel ID to post the approval ping to'
+    description: 'Slack channel ID to post the approval ping and failure report to'
     required: false
     default: ''
   slack-thread-ts:
     description: >-
-      ts of a parent Slack message. When set, the approval ping is posted as a
-      reply in that thread; when empty, it is posted as a top-level message.
+      ts of a parent Slack message. When set, the posts are replies in that
+      thread; when empty, they are top-level messages.
     required: false
     default: ''
 runs:
   using: composite
   steps:
-    - shell: bash
+    - name: Dispatch and locate the run
+      id: dispatch
+      shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
         REPO: ${{ inputs.repo }}
         WORKFLOW: ${{ inputs.workflow }}
         REF: ${{ inputs.ref }}
         FIELDS: ${{ inputs.fields }}
-        SLACK_BOT_TOKEN: ${{ inputs.slack-bot-token }}
-        SLACK_CHANNEL: ${{ inputs.slack-channel }}
-        SLACK_THREAD_TS: ${{ inputs.slack-thread-ts }}
       run: |
         set -euo pipefail
         CID="cid-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${RANDOM}"
@@ -71,21 +71,102 @@ runs:
           exit 1
         fi
         RUN_URL="https://github.com/$REPO/actions/runs/$RUN_ID"
-        if [ -n "$SLACK_BOT_TOKEN" ] && [ -n "$SLACK_CHANNEL" ]; then
-          PAYLOAD=$(jq -n --arg ch "$SLACK_CHANNEL" \
-            --arg text "$WORKFLOW run in $REPO may need environment approval: $RUN_URL" \
-            --arg ts "$SLACK_THREAD_TS" \
-            '{channel: $ch, text: $text} + (if $ts != "" then {thread_ts: $ts} else {} end)')
-          RESP=$(curl -sf --max-time 15 --retry 3 --retry-max-time 60 --retry-all-errors \
-            https://slack.com/api/chat.postMessage \
-            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
-            -H 'Content-type: application/json; charset=utf-8' \
-            --data "$PAYLOAD") || RESP='{"ok":false,"error":"curl error"}'
-          # chat.postMessage returns HTTP 200 with ok=false on errors; check .ok.
-          if ! echo "$RESP" | jq -e '.ok' >/dev/null 2>&1; then
-            ERR=$(echo "$RESP" | jq -r '.error // "unknown"' 2>/dev/null | tr -d '\r\n')
-            echo "::warning::failed to post Slack approval ping for $RUN_URL: ${ERR:-unparseable response}"
-          fi
-        fi
+        {
+          echo "run_id=$RUN_ID"
+          echo "run_url=$RUN_URL"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Post approval ping to Slack
+      if: inputs.slack-bot-token != '' && inputs.slack-channel != ''
+      uses: ./.github/actions/slack-thread-post
+      with:
+        token: ${{ inputs.slack-bot-token }}
+        channel: ${{ inputs.slack-channel }}
+        thread-ts: ${{ inputs.slack-thread-ts }}
+        text: "${{ inputs.workflow }} run in ${{ inputs.repo }} may need environment approval: ${{ steps.dispatch.outputs.run_url }}"
+
+    - name: Watch the run
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ inputs.repo }}
+        RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+        RUN_URL: ${{ steps.dispatch.outputs.run_url }}
+      run: |
+        set -euo pipefail
         echo "Watching $RUN_URL"
         gh run watch "$RUN_ID" -R "$REPO" --exit-status --interval 30
+
+    # Status functions in a composite scope to this composite's own earlier
+    # steps, so this fires when the watch (or the dispatch) above failed.
+    # `cancelled()` covers the calling job hitting its own `timeout-minutes`,
+    # where `failure()` is false and the thread would otherwise hear nothing
+    # about a stalled stage. It is best-effort by design: it only warns and
+    # always exits 0 — hence no `set -e` — so it can never replace or mask the
+    # failure the job is already reporting.
+    - name: Collect failing jobs
+      id: report
+      if: (failure() || cancelled()) && inputs.slack-bot-token != '' && inputs.slack-channel != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ inputs.repo }}
+        WORKFLOW: ${{ inputs.workflow }}
+        RUN_ID: ${{ steps.dispatch.outputs.run_id }}
+        RUN_URL: ${{ steps.dispatch.outputs.run_url }}
+        MAX: '10'
+      run: |
+        set -uo pipefail
+        # Empty when the dispatch step itself failed: there is no run to report on.
+        if [ -z "${RUN_ID:-}" ]; then
+          echo "::warning::no dispatched run to report on"
+          exit 0
+        fi
+        RUN_JSON=$(gh run view "$RUN_ID" -R "$REPO" --json status,conclusion,jobs) || {
+          echo "::warning::could not query $RUN_URL"
+          RUN_JSON=''
+        }
+        OUTCOME=unknown
+        NAMES=''
+        if [ -n "$RUN_JSON" ]; then
+          # gh renders a not-yet-concluded run or job as "", not null. On the
+          # cancelled path the dispatched run is usually still going, so report
+          # its status rather than claiming it failed.
+          OUTCOME=$(printf '%s' "$RUN_JSON" \
+            | jq -r '[.conclusion, .status, "unknown"] | map(select(. != null and . != "")) | first')
+          # Concluded and not fine: failure, timed_out, cancelled, action_required.
+          # Reusable-workflow children come back as e.g. "deploy / onchain-collector-to-s3".
+          NAMES=$(printf '%s' "$RUN_JSON" | jq -r '.jobs[]
+            | select((.conclusion // "") | . != "" and . != "success" and . != "skipped")
+            | "\(.name) (\(.conclusion))"')
+        fi
+        TOTAL=0
+        [ -n "$NAMES" ] && TOTAL=$(printf '%s\n' "$NAMES" | wc -l | tr -d ' ')
+        {
+          echo 'text<<SLACK_TEXT_EOF'
+          echo "*$WORKFLOW in $REPO: $OUTCOME*"
+          echo "$RUN_URL"
+          if [ "$TOTAL" -eq 0 ]; then
+            # A run that failed with no failed job, one still in flight because
+            # the caller was cancelled out from under it, or the query above
+            # erroring out.
+            echo '_No failed jobs to name — see the run for details._'
+          else
+            echo 'Failed jobs:'
+            printf '%s\n' "$NAMES" | head -n "$MAX" | sed 's/^/• /'
+            [ "$TOTAL" -gt "$MAX" ] && echo "_… and $((TOTAL - MAX)) more_"
+          fi
+          echo 'SLACK_TEXT_EOF'
+        } >> "$GITHUB_OUTPUT"
+        exit 0
+
+    # Empty text means the step above was skipped (no Slack config) or bailed out.
+    - name: Post failure report to Slack
+      if: (failure() || cancelled()) && steps.report.outputs.text != ''
+      uses: ./.github/actions/slack-thread-post
+      with:
+        token: ${{ inputs.slack-bot-token }}
+        channel: ${{ inputs.slack-channel }}
+        thread-ts: ${{ inputs.slack-thread-ts }}
+        color: danger
+        text: ${{ steps.report.outputs.text }}

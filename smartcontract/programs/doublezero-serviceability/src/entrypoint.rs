@@ -72,7 +72,9 @@ use crate::{
             delete::process_delete_multicastgroup,
             reactivate::process_reactivate_multicastgroup,
             subscribe::process_update_multicastgroup_roles,
+            subscribe_feed::process_subscribe_feed,
             suspend::process_suspend_multicastgroup,
+            unsubscribe_feed::process_unsubscribe_feed,
             update::process_update_multicastgroup,
         },
         permission::{
@@ -426,6 +428,12 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::SetAccessPassFlags(value) => {
             process_set_access_pass_flags(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SubscribeFeed(value) => {
+            process_subscribe_feed(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::UnsubscribeFeed(value) => {
+            process_unsubscribe_feed(program_id, accounts, &value)?
         }
     };
     Ok(())

@@ -70,8 +70,8 @@ impl ListDeviceInterfaceCliCommand {
             let devices = client.list_device(ListDeviceCommand {})?;
 
             devices
-                .iter()
-                .flat_map(|(_, device)| {
+                .values()
+                .flat_map(|device| {
                     device
                         .interfaces
                         .iter()

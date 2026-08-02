@@ -12,6 +12,7 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 use std::net::Ipv4Addr;
@@ -20,7 +21,13 @@ use super::{
     create_core::{create_user_core, CreateUserCoreAccounts, PDAVersion},
     resource_onchain_helpers,
 };
-use crate::processors::multicastgroup::subscribe::update_user_multicastgroup_roles;
+use crate::{
+    processors::{
+        feed::enforce_feed_metro_gate,
+        multicastgroup::subscribe::{check_mgroup_allowlists, update_user_multicastgroup_roles},
+    },
+    state::accesspass::AccessPassType,
+};
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
 pub struct UserCreateSubscribeArgs {
@@ -49,8 +56,8 @@ impl fmt::Debug for UserCreateSubscribeArgs {
             "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}, owner: {}",
             self.user_type,
             self.cyoa_type,
-            &self.client_ip,
-            &self.tunnel_endpoint,
+            self.client_ip,
+            self.tunnel_endpoint,
             self.dz_prefix_count,
             self.owner,
         )
@@ -121,7 +128,7 @@ pub fn process_create_subscribe_user(
         None
     };
 
-    let mut result = create_user_core(
+    let Some(mut result) = create_user_core(
         program_id,
         accounts,
         &core_accounts,
@@ -131,14 +138,41 @@ pub fn process_create_subscribe_user(
         value.tunnel_endpoint,
         value.publisher,
         owner_override,
-        Some(mgroup_account.key),
-        feed_account,
+    )?
+    else {
+        // A duplicate is an error here, not a no-op: falling through would tick a second feed
+        // seat and push a duplicate feed_pks entry that delete would double-release.
+        return Err(ProgramError::AccountAlreadyInitialized);
+    };
+
+    // EdgeSeat multicast metro gate: the group must be joinable via a feed on the pass serving the
+    // device's metro; that feed's seat is ticked and recorded on the User so delete releases it.
+    // Feed-gated joins skip the subscriber allowlist; the publisher allowlist always applies, since
+    // a feed sells receive only.
+    let feed_gated = matches!(
+        result.accesspass.accesspass_type,
+        AccessPassType::EdgeSeat(_)
+    ) && value.user_type == UserType::Multicast;
+    if feed_gated {
+        let feed_key = enforce_feed_metro_gate(
+            program_id,
+            &mut result.accesspass,
+            &result.device.exchange_pk,
+            Some(mgroup_account.key),
+            feed_account,
+        )?;
+        result.user.feed_pks.push(feed_key);
+    }
+    check_mgroup_allowlists(
+        &result.accesspass,
+        mgroup_account.key,
+        value.publisher,
+        value.subscriber && !feed_gated,
     )?;
 
     // Subscribe user to multicast group
     let subscribe_result = update_user_multicastgroup_roles(
         mgroup_account,
-        &result.accesspass,
         &mut result.user,
         value.publisher,
         value.subscriber,

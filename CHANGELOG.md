@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - `doublezero feed list` gains a `group_codes` column naming the multicast groups the feed holds, alongside the existing `groups` count. A group the ledger no longer carries renders as its raw pubkey. The JSON output gains the field as well. (malbeclabs/infra#2172, #4150)
 - Telemetry
-  - A ledger RPC outage no longer stops TWAMP probing on the device telemetry agent: the pinger caches the last known epoch and refreshes it off the probe path, instead of fetching it inline and skipping the tick on failure. Probing stops only when no epoch has ever been fetched or the cached one exceeds the new `-max-epoch-staleness` (default 12h). ([#4125](https://github.com/malbeclabs/doublezero/issues/4125))
+  - A ledger RPC outage no longer stops TWAMP probing on the device telemetry agent: the pinger caches the last known epoch and refreshes it off the probe path, instead of fetching it inline and skipping the tick on failure. Probing stops only when no epoch has ever been fetched or the cached one exceeds the new `-max-epoch-staleness` (default 12h). (#4143)
 
 ## [v0.33.0](https://github.com/malbeclabs/doublezero/compare/client/v0.32.0...client/v0.33.0) - 2026-07-31
 

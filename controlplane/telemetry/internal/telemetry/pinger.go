@@ -19,7 +19,7 @@ const (
 	// the ledger RPC stops answering. Samples recorded with a stale epoch are written to that
 	// epoch's account, so once we are far enough behind that a rollover is likely they would be
 	// misattributed to the previous epoch.
-	DefaultMaxEpochStaleness = 24 * time.Hour
+	DefaultMaxEpochStaleness = 12 * time.Hour
 
 	// defaultEpochRefreshInterval is used when neither EpochRefreshInterval nor Interval is set.
 	defaultEpochRefreshInterval = 10 * time.Second

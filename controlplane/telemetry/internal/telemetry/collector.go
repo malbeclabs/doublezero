@@ -80,6 +80,8 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		GetSender:         c.getOrCreateSender,
 		GetCurrentEpoch:   cfg.GetCurrentEpochFunc,
 		RecordProbeResult: c.recordProbeResult,
+		MaxEpochStaleness: cfg.MaxEpochStaleness,
+		NowFunc:           cfg.NowFunc,
 	})
 
 	// Initialize geoprobe coordinator if onchain discovery is configured.

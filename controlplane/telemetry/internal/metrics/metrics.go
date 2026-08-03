@@ -10,6 +10,7 @@ const (
 	MetricNameBuildInfo                        = "doublezero_device_telemetry_agent_build_info"
 	MetricNameErrors                           = "doublezero_device_telemetry_agent_errors_total"
 	MetricNamePeerDiscoveryLocalTunnelNotFound = "doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels"
+	MetricNameEpochCacheStaleAge               = "doublezero_device_telemetry_agent_epoch_cache_stale_age_seconds"
 
 	// Labels.
 	LabelVersion       = "version"
@@ -27,6 +28,7 @@ const (
 	ErrorTypeSubmitterFailedToInitializeAccount  = "submitter_failed_to_initialize_account"
 	ErrorTypeSubmitterFailedToWriteSamples       = "submitter_failed_to_write_samples"
 	ErrorTypeSubmitterRetriesExhausted           = "submitter_retries_exhausted"
+	ErrorTypePingerEpochUnavailable              = "pinger_epoch_unavailable"
 )
 
 var (
@@ -44,6 +46,15 @@ var (
 			Help: "Number of errors encountered",
 		},
 		[]string{LabelErrorType},
+	)
+
+	// EpochCacheStaleAge is the age of the cached epoch the probe loop is falling back to while the
+	// epoch fetch is failing, and 0 whenever the cache is fresh.
+	EpochCacheStaleAge = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: MetricNameEpochCacheStaleAge,
+			Help: "Age of the cached ledger epoch served to the probe loop when the epoch fetch is failing (0 when fresh)",
+		},
 	)
 
 	PeerDiscoveryLocalTunnelNotFound = promauto.NewGaugeVec(

@@ -55,6 +55,7 @@ const (
 	defaultBGPStatusInterval          = 60 * time.Second
 	defaultBGPStatusRefreshInterval   = 6 * time.Hour
 	defaultCachingFetcherRPCTimeout   = 30 * time.Second
+	defaultMaxEpochStaleness          = telemetry.DefaultMaxEpochStaleness
 
 	waitForNamespaceTimeout             = 30 * time.Second
 	defaultStateIngestHTTPClientTimeout = 10 * time.Second
@@ -96,6 +97,7 @@ var (
 
 	// caching fetcher flags
 	cachingFetcherRPCTimeout = flag.Duration("caching-fetcher-rpc-timeout", defaultCachingFetcherRPCTimeout, "Timeout for GetProgramData RPC calls inside the caching fetcher.")
+	maxEpochStaleness        = flag.Duration("max-epoch-staleness", defaultMaxEpochStaleness, "How long to keep probing with the last known epoch while the ledger rpc is unreachable, before giving up.")
 
 	// bgp status submitter flags
 	bgpStatusEnable          = flag.Bool("bgp-status-enable", false, "Enable onchain BGP status submission after each collection tick.")
@@ -346,6 +348,7 @@ func main() {
 		SenderTTL:                  *senderTTL,
 		SubmitterMaxConcurrency:    *submitterMaxConcurrency,
 		MaxConsecutiveSenderLosses: *maxConsecutiveSenderLosses,
+		MaxEpochStaleness:          *maxEpochStaleness,
 		GeolocationClient:          geolocationClient,
 		AgentVersion:               version,
 		AgentCommit:                commit,

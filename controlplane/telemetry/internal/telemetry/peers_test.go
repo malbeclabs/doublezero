@@ -706,7 +706,10 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 
 		var logs syncBuffer
 		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
-		localDevicePK := stringToPubkey("device1")
+
+		// A pubkey of this subtest's own: metrics.Peers is a package-level gauge keyed by device,
+		// and the sibling subtests that share "device1" would overwrite the series under it.
+		localDevicePK := stringToPubkey("device_peer_count_logging")
 
 		activeLinks := []serviceability.Link{
 			{PubKey: stringToPubkey("link_1-2"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2"), TunnelNet: [5]uint8{10, 1, 1, 0, 31}},

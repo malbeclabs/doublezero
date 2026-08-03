@@ -12,7 +12,7 @@ const (
 	MetricNamePeerDiscoveryLocalTunnelNotFound = "doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels"
 	MetricNameEpochCacheStaleAge               = "doublezero_device_telemetry_agent_epoch_cache_stale_age_seconds"
 	MetricNameSamplesDropped                   = "doublezero_device_telemetry_agent_samples_dropped_total"
-	MetricNamePeers                            = "doublezero_device_telemetry_agent_peers_total"
+	MetricNamePeers                            = "doublezero_device_telemetry_agent_peers"
 
 	// Labels.
 	LabelVersion       = "version"

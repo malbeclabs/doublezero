@@ -52,6 +52,10 @@ type Config struct {
 	// before a sender is evicted from the cache and recreated.
 	MaxConsecutiveSenderLosses int
 
+	// MaxEpochStaleness is how long the probe loop keeps probing with the last known epoch while
+	// the ledger RPC is unreachable. Defaults to DefaultMaxEpochStaleness.
+	MaxEpochStaleness time.Duration
+
 	// ServiceabilityProgramClient is the client to the serviceability program (for fetching Device/Location).
 	ServiceabilityProgramClient ServiceabilityProgramClient
 
@@ -114,6 +118,9 @@ func (c *Config) Validate() error {
 	}
 	if c.MaxConsecutiveSenderLosses <= 0 {
 		c.MaxConsecutiveSenderLosses = 30
+	}
+	if c.MaxEpochStaleness <= 0 {
+		c.MaxEpochStaleness = DefaultMaxEpochStaleness
 	}
 
 	geoprobeEnabled := c.GeolocationClient != nil

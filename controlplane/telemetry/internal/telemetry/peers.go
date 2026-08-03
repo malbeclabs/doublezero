@@ -57,6 +57,11 @@ type ledgerPeerDiscovery struct {
 	config  *LedgerPeerDiscoveryConfig
 	peers   []*Peer
 	peersMu sync.RWMutex
+
+	// Peer count last reported at Info level, so a steady peer list stays quiet. Starts at
+	// -1 so the first successful refresh always logs, including one that finds no peers.
+	// Only touched by refresh, which Run calls serially.
+	loggedPeerCount int
 }
 
 func NewLedgerPeerDiscovery(cfg *LedgerPeerDiscoveryConfig) (*ledgerPeerDiscovery, error) {
@@ -83,9 +88,10 @@ func NewLedgerPeerDiscovery(cfg *LedgerPeerDiscoveryConfig) (*ledgerPeerDiscover
 	}
 
 	return &ledgerPeerDiscovery{
-		log:    cfg.Logger,
-		config: cfg,
-		peers:  make([]*Peer, 0),
+		log:             cfg.Logger,
+		config:          cfg,
+		peers:           make([]*Peer, 0),
+		loggedPeerCount: -1,
 	}, nil
 }
 
@@ -210,8 +216,25 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 
 	p.log.Debug("Refreshed peers", "devices", len(devices), "links", len(links), "peers", len(peers), "tunnelsNotFound", tunnelsNotFound)
 
-	// Record the number of tunnels not found.
+	// Record the number of peers and the number of tunnels not found.
+	metrics.Peers.WithLabelValues(p.config.LocalDevicePK.String()).Set(float64(len(peers)))
 	metrics.PeerDiscoveryLocalTunnelNotFound.WithLabelValues(p.config.LocalDevicePK.String()).Set(float64(tunnelsNotFound))
+
+	// Report the count when it changes, so the peer list is visible above Debug without a
+	// line per refresh. A refresh that succeeds with no peers means nothing gets probed, and
+	// is otherwise indistinguishable from a healthy one.
+	if len(peers) != p.loggedPeerCount {
+		attrs := []any{"peers", len(peers), "devices", len(devices), "links", len(links), "tunnelsNotFound", tunnelsNotFound}
+		if p.loggedPeerCount >= 0 {
+			attrs = append(attrs, "previousPeers", p.loggedPeerCount)
+		}
+		if len(peers) == 0 {
+			p.log.Warn("Peer count changed, no peers found and nothing will be probed", attrs...)
+		} else {
+			p.log.Info("Peer count changed", attrs...)
+		}
+		p.loggedPeerCount = len(peers)
+	}
 
 	return nil
 }

@@ -5,15 +5,19 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -692,6 +696,99 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		}, 2*time.Second, 20*time.Millisecond, "later refreshes should keep failing on local interfaces")
 
 		assert.Equal(t, expected, peerDiscovery.GetPeers(), "peers should survive a refresh that fails after the ledger read")
+
+		cancel()
+		assert.NoError(t, <-errCh)
+	})
+
+	t.Run("logs peer count changes and stays quiet otherwise", func(t *testing.T) {
+		t.Parallel()
+
+		var logs syncBuffer
+		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		localDevicePK := stringToPubkey("device1")
+
+		activeLinks := []serviceability.Link{
+			{PubKey: stringToPubkey("link_1-2"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2"), TunnelNet: [5]uint8{10, 1, 1, 0, 31}},
+			{PubKey: stringToPubkey("link_1-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 2, 31}},
+		}
+
+		var mu sync.Mutex
+		links := activeLinks
+		setLinks := func(l []serviceability.Link) {
+			mu.Lock()
+			defer mu.Unlock()
+			links = l
+		}
+
+		serviceabilityProgram := &mockServiceabilityProgramClient{
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{PubKey: localDevicePK, PublicIp: [4]uint8{192, 168, 1, 1}},
+						{PubKey: stringToPubkey("device2"), PublicIp: [4]uint8{192, 168, 1, 2}},
+						{PubKey: stringToPubkey("device3"), PublicIp: [4]uint8{192, 168, 1, 3}},
+					},
+					Links: slices.Clone(links),
+				}, nil
+			},
+		}
+
+		cfg := &telemetry.LedgerPeerDiscoveryConfig{
+			Logger:        log,
+			LocalDevicePK: localDevicePK,
+			ProgramClient: serviceabilityProgram,
+			LocalNet: &netutil.MockLocalNet{
+				InterfacesFunc: func() ([]netutil.Interface, error) {
+					return []netutil.Interface{
+						{Name: "tun1-2", Addrs: []net.Addr{&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 0}), Mask: net.CIDRMask(31, 32)}}},
+						{Name: "tun1-3", Addrs: []net.Addr{&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 2}), Mask: net.CIDRMask(31, 32)}}},
+					}, nil
+				},
+			},
+			TWAMPPort:       1234,
+			RefreshInterval: 20 * time.Millisecond,
+		}
+
+		peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(cfg)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- peerDiscovery.Run(ctx)
+		}()
+
+		// The first refresh reports the count it discovered, at Info.
+		require.Eventually(t, func() bool {
+			return strings.Contains(logs.String(), "Peer count changed")
+		}, 2*time.Second, 20*time.Millisecond)
+		assert.Contains(t, logs.String(), "peers=2")
+
+		// Many refreshes later, an unchanged count has still only logged once.
+		require.Eventually(t, func() bool {
+			return testutil.ToFloat64(metrics.Peers.WithLabelValues(localDevicePK.String())) == 2
+		}, 2*time.Second, 20*time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
+		assert.Equal(t, 1, strings.Count(logs.String(), "Peer count changed"), "a steady peer list should not log per refresh")
+
+		// Losing every link is a warning, since nothing gets probed after it.
+		logs.Reset()
+		setLinks(nil)
+
+		require.Eventually(t, func() bool {
+			return strings.Contains(logs.String(), "no peers found and nothing will be probed")
+		}, 2*time.Second, 20*time.Millisecond)
+		out := logs.String()
+		assert.Contains(t, out, "level=WARN")
+		assert.Contains(t, out, "peers=0")
+		assert.Contains(t, out, "previousPeers=2")
+
+		require.Eventually(t, func() bool {
+			return testutil.ToFloat64(metrics.Peers.WithLabelValues(localDevicePK.String())) == 0
+		}, 2*time.Second, 20*time.Millisecond)
 
 		cancel()
 		assert.NoError(t, <-errCh)

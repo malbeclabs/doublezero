@@ -149,16 +149,14 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 				_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 				if err != nil {
 					if errors.Is(err, telemetry.ErrSamplesAccountFull) {
-						log.Warn("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
-						s.cfg.Buffer.Remove(partitionKey)
+						s.handleAccountFull(log, partitionKey, len(samples)-i)
 						return nil
 					}
 					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToWriteSamples).Inc()
 					return fmt.Errorf("failed to write device latency samples after init: %w", err)
 				}
 			} else if errors.Is(err, telemetry.ErrSamplesAccountFull) {
-				log.Warn("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
-				s.cfg.Buffer.Remove(partitionKey)
+				s.handleAccountFull(log, partitionKey, len(samples)-i)
 				return nil
 			} else {
 				metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToWriteSamples).Inc()
@@ -170,6 +168,27 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 	}
 
 	return nil
+}
+
+// handleAccountFull records the samples lost when a partition's onchain account can no longer
+// accept writes, and drops the partition.
+//
+// Everything that has not been written is gone: SubmitSamples returns without attempting the
+// batches after the one that failed, the caller treats the partition as submitted and does not
+// requeue, and removing the partition discards whatever the collector buffered since the flush.
+// unsubmitted counts the failing batch plus every batch behind it; buffered is read before the
+// removal.
+func (s *Submitter) handleAccountFull(log *slog.Logger, partitionKey PartitionKey, unsubmitted int) {
+	buffered := s.cfg.Buffer.Len(partitionKey)
+
+	metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterAccountFull).Inc()
+	metrics.SamplesDropped.WithLabelValues(metrics.DropReasonAccountFull).Add(float64(unsubmitted + buffered))
+	log.Warn("Partition account is full, dropping partition",
+		"unsubmittedSamples", unsubmitted,
+		"bufferedSamples", buffered,
+		"epoch", partitionKey.Epoch)
+
+	s.cfg.Buffer.Remove(partitionKey)
 }
 
 func (s *Submitter) Tick(ctx context.Context) {

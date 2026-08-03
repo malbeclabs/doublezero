@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Telemetry
-  - A ledger RPC outage no longer stops TWAMP probing on the device telemetry agent: the pinger caches the last known epoch and refreshes it off the probe path, instead of fetching it inline and skipping the tick on failure. Probing stops only when no epoch has ever been fetched or the cached one exceeds the new `-max-epoch-staleness` (default 12h). ([#4125](https://github.com/malbeclabs/doublezero/issues/4125))
+  - A ledger RPC outage no longer stops TWAMP probing on the device telemetry agent: the pinger caches the last known epoch and refreshes it off the probe path, instead of fetching it inline and skipping the tick on failure. Probing stops only when no epoch has ever been fetched or the cached one exceeds the new `-max-epoch-staleness` (default 12h). (#4143)
 
 ## [v0.33.0](https://github.com/malbeclabs/doublezero/compare/client/v0.32.0...client/v0.33.0) - 2026-07-31
 

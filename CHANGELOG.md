@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - Telemetry
   - A ledger RPC outage no longer stops TWAMP probing on the device telemetry agent: the pinger caches the last known epoch and refreshes it off the probe path, instead of fetching it inline and skipping the tick on failure. Probing stops only when no epoch has ever been fetched or the cached one exceeds the new `-max-epoch-staleness` (default 12h). (#4143)
+- Device telemetry
+  - A peer discovery refresh that fails after reading the ledger no longer wipes the agent's peer list. It cleared the cache before calling `LocalNet.Interfaces()`, so a transient failure there left the pinger iterating zero peers and probing nothing until a later refresh succeeded. The cache is now replaced only once the new list is built, which also shortens the critical section to the assignment. (#4146)
 
 ## [v0.33.0](https://github.com/malbeclabs/doublezero/compare/client/v0.32.0...client/v0.33.0) - 2026-07-31
 

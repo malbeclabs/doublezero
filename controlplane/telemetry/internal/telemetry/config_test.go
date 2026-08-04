@@ -70,8 +70,8 @@ func validBaseConfig(keypair solana.PrivateKey) Config {
 		TWAMPSenderTimeout:      5 * time.Second,
 		SenderTTL:               60 * time.Second,
 		SubmitterMaxConcurrency: 4,
-		GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
-			return 1, nil
+		GetEpochInfoFunc: func(ctx context.Context) (EpochInfo, error) {
+			return EpochInfo{Epoch: 1}, nil
 		},
 		Keypair: keypair,
 	}

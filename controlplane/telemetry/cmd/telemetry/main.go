@@ -97,7 +97,8 @@ var (
 
 	// caching fetcher flags
 	cachingFetcherRPCTimeout = flag.Duration("caching-fetcher-rpc-timeout", defaultCachingFetcherRPCTimeout, "Timeout for GetProgramData RPC calls inside the caching fetcher.")
-	maxEpochStaleness        = flag.Duration("max-epoch-staleness", defaultMaxEpochStaleness, "How long to keep probing with the last known epoch while the ledger rpc is unreachable, before giving up.")
+	maxEpochStaleness        = flag.Duration("max-epoch-staleness", defaultMaxEpochStaleness, "How long to keep probing with the last known epoch while the ledger rpc is unreachable, before giving up. Clamped to what the sample buffer can hold at -probe-interval.")
+	epochRefreshInterval     = flag.Duration("epoch-refresh-interval", 0, "How often to refresh the cached ledger epoch. 0 follows -probe-interval.")
 
 	// bgp status submitter flags
 	bgpStatusEnable          = flag.Bool("bgp-status-enable", false, "Enable onchain BGP status submission after each collection tick.")
@@ -116,6 +117,18 @@ func main() {
 
 	if *probeInterval >= *submissionInterval {
 		fmt.Println("probe-interval must be less than submission-interval")
+		os.Exit(1)
+	}
+
+	// Rejected rather than defaulted: "how long before giving up" reads as "never give up" at 0,
+	// which is the opposite of what silently substituting the default would do.
+	if *maxEpochStaleness <= 0 {
+		fmt.Println("max-epoch-staleness must be greater than 0")
+		os.Exit(1)
+	}
+
+	if *epochRefreshInterval < 0 {
+		fmt.Println("epoch-refresh-interval must not be negative")
 		os.Exit(1)
 	}
 
@@ -338,17 +351,25 @@ func main() {
 		ServiceabilityProgramClient: cachedSvcClient,
 		RPCClient:                   rpcClient,
 		Keypair:                     keypair,
-		GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
+		GetEpochInfoFunc: func(ctx context.Context) (telemetry.EpochInfo, error) {
 			epochInfo, err := rpcClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
 			if err != nil {
-				return 0, err
+				return telemetry.EpochInfo{}, err
 			}
-			return epochInfo.Epoch, nil
+			// The slot position is what lets the pinger project when this epoch ends, which bounds
+			// how long a cached epoch may be probed with far more tightly than a flat duration.
+			return telemetry.EpochInfo{
+				Epoch:        epochInfo.Epoch,
+				SlotIndex:    epochInfo.SlotIndex,
+				SlotsInEpoch: epochInfo.SlotsInEpoch,
+				AbsoluteSlot: epochInfo.AbsoluteSlot,
+			}, nil
 		},
 		SenderTTL:                  *senderTTL,
 		SubmitterMaxConcurrency:    *submitterMaxConcurrency,
 		MaxConsecutiveSenderLosses: *maxConsecutiveSenderLosses,
 		MaxEpochStaleness:          *maxEpochStaleness,
+		EpochRefreshInterval:       *epochRefreshInterval,
 		GeolocationClient:          geolocationClient,
 		AgentVersion:               version,
 		AgentCommit:                commit,

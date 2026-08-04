@@ -28,7 +28,13 @@ const (
 	ErrorTypeSubmitterFailedToInitializeAccount  = "submitter_failed_to_initialize_account"
 	ErrorTypeSubmitterFailedToWriteSamples       = "submitter_failed_to_write_samples"
 	ErrorTypeSubmitterRetriesExhausted           = "submitter_retries_exhausted"
-	ErrorTypePingerEpochUnavailable              = "pinger_epoch_unavailable"
+	// Kept separate rather than folded into one "epoch unavailable" type: a bad ledger URL or boot
+	// ordering (never fetched), a multi-hour outage (too stale), and a projected rollover (ended)
+	// want different alerts, and the fleet alert fires on the value.
+	ErrorTypePingerEpochNeverFetched = "pinger_epoch_never_fetched"
+	ErrorTypePingerEpochTooStale     = "pinger_epoch_too_stale"
+	ErrorTypePingerEpochEnded        = "pinger_epoch_ended"
+	ErrorTypePingerEpochFetchFailed  = "pinger_epoch_fetch_failed"
 )
 
 var (
@@ -49,11 +55,12 @@ var (
 	)
 
 	// EpochCacheStaleAge is the age of the cached epoch the probe loop is falling back to while the
-	// epoch fetch is failing, and 0 whenever the cache is fresh.
+	// epoch fetch is failing, 0 whenever the cache is fresh, and +Inf when the fetch is failing and
+	// no epoch has ever been cached — the state in which nothing is probed at all.
 	EpochCacheStaleAge = promauto.NewGauge(
 		prometheus.GaugeOpts{
 			Name: MetricNameEpochCacheStaleAge,
-			Help: "Age of the cached ledger epoch served to the probe loop when the epoch fetch is failing (0 when fresh)",
+			Help: "Age of the cached ledger epoch served to the probe loop when the epoch fetch is failing (0 when fresh, +Inf when no epoch has ever been fetched)",
 		},
 	)
 

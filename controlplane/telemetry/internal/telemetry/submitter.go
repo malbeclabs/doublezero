@@ -84,12 +84,16 @@ func (s *Submitter) Run(ctx context.Context) error {
 	}
 }
 
-func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey, samples []Sample) error {
+// SubmitSamples writes samples to the partition's onchain account in batches, and returns how many
+// of them were written. That count is the caller's resume point: the batches before it are already
+// onchain, so a retry must pass samples[written:] rather than re-sending the whole slice, or those
+// samples are appended a second time.
+func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey, samples []Sample) (int, error) {
 	log := s.log.With("partition", partitionKey)
 
 	if len(samples) == 0 {
 		log.Debug("No samples to submit, skipping")
-		return nil
+		return 0, nil
 	}
 
 	for i := 0; i < len(samples); i += telemetry.MaxDeviceLatencySamplesPerBatch {
@@ -144,30 +148,30 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 				})
 				if err != nil {
 					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToInitializeAccount).Inc()
-					return fmt.Errorf("failed to initialize device latency samples: %w", err)
+					return i, fmt.Errorf("failed to initialize device latency samples: %w", err)
 				}
 				_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 				if err != nil {
 					if errors.Is(err, telemetry.ErrSamplesAccountFull) {
 						s.handleAccountFull(log, partitionKey, len(samples)-i)
-						return nil
+						return i, nil
 					}
 					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToWriteSamples).Inc()
-					return fmt.Errorf("failed to write device latency samples after init: %w", err)
+					return i, fmt.Errorf("failed to write device latency samples after init: %w", err)
 				}
 			} else if errors.Is(err, telemetry.ErrSamplesAccountFull) {
 				s.handleAccountFull(log, partitionKey, len(samples)-i)
-				return nil
+				return i, nil
 			} else {
 				metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToWriteSamples).Inc()
-				return fmt.Errorf("failed to write device latency samples: %w", err)
+				return i, fmt.Errorf("failed to write device latency samples: %w", err)
 			}
 		}
 
 		log.Debug("Submitted account samples batch", "count", len(samples), "samples", rtts)
 	}
 
-	return nil
+	return len(samples), nil
 }
 
 // handleAccountFull records the samples lost when a partition's onchain account can no longer
@@ -177,7 +181,8 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 // batches after the one that failed, the caller treats the partition as submitted and does not
 // requeue, and removing the partition discards whatever the collector buffered since the flush.
 // unsubmitted counts the failing batch plus every batch behind it; buffered is read before the
-// removal.
+// removal. Batches an earlier attempt already wrote are excluded, since Tick resumes each retry at
+// the first unwritten sample.
 func (s *Submitter) handleAccountFull(log *slog.Logger, partitionKey PartitionKey, unsubmitted int) {
 	buffered := s.cfg.Buffer.Len(partitionKey)
 
@@ -185,8 +190,7 @@ func (s *Submitter) handleAccountFull(log *slog.Logger, partitionKey PartitionKe
 	metrics.SamplesDropped.WithLabelValues(metrics.DropReasonAccountFull).Add(float64(unsubmitted + buffered))
 	log.Warn("Partition account is full, dropping partition",
 		"unsubmittedSamples", unsubmitted,
-		"bufferedSamples", buffered,
-		"epoch", partitionKey.Epoch)
+		"bufferedSamples", buffered)
 
 	s.cfg.Buffer.Remove(partitionKey)
 }
@@ -228,9 +232,15 @@ func (s *Submitter) Tick(ctx context.Context) {
 				return
 			}
 
+			// Samples written so far across attempts. Each retry resumes here rather than at the
+			// start of tmp, so batches an earlier attempt put onchain are neither re-sent nor
+			// counted as lost.
+			written := 0
+
 			success := false
 			for attempt := 1; attempt <= s.cfg.MaxAttempts; attempt++ {
-				err := s.SubmitSamples(ctx, partitionKey, tmp)
+				n, err := s.SubmitSamples(ctx, partitionKey, tmp[written:])
+				written += n
 				if err == nil {
 					log.Debug("Submitted samples", "count", len(tmp), "attempt", attempt)
 					success = true
@@ -262,20 +272,21 @@ func (s *Submitter) Tick(ctx context.Context) {
 				}
 			}
 
-			// If submission failed and the buffer is not at capacity, prepend the samples back to the
-			// buffer. If the buffer is at capacity and we have failed all attempts, the samples are
-			// discarded; log and count the loss.
+			// If submission failed and the buffer is not at capacity, prepend the samples that were
+			// never written back to the buffer. If the buffer is at capacity and we have failed all
+			// attempts, they are discarded; log and count the loss.
 			if !success {
-				overCapacity := s.cfg.Buffer.Len(partitionKey)+len(tmp) >= s.cfg.Buffer.Capacity(partitionKey)
+				unwritten := tmp[written:]
+				overCapacity := s.cfg.Buffer.Len(partitionKey)+len(unwritten) >= s.cfg.Buffer.Capacity(partitionKey)
 				if overCapacity {
 					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterBufferFull).Inc()
-					metrics.SamplesDropped.WithLabelValues(metrics.DropReasonBufferFull).Add(float64(len(tmp)))
+					metrics.SamplesDropped.WithLabelValues(metrics.DropReasonBufferFull).Add(float64(len(unwritten)))
 					log.Warn("Partition buffer at capacity after failed submission, dropping samples",
-						"droppedSamples", len(tmp),
+						"droppedSamples", len(unwritten),
 						"bufferLen", s.cfg.Buffer.Len(partitionKey),
 						"capacity", s.cfg.Buffer.Capacity(partitionKey))
 				} else {
-					s.cfg.Buffer.PriorityPrepend(partitionKey, tmp)
+					s.cfg.Buffer.PriorityPrepend(partitionKey, unwritten)
 				}
 			}
 

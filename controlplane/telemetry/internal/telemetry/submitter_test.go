@@ -1063,6 +1063,109 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		assert.NotContains(t, logs.String(), "unsubmittedSamples="+strconv.Itoa(total))
 	})
 
+	// Deliberately not parallel: see the note above, the account-full drop counters are shared with
+	// the sibling account-full subtests.
+	t.Run("counts_only_unsubmitted_samples_when_account_fills_after_a_retry", func(t *testing.T) {
+		var logs bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+		key := newTestPartitionKey()
+
+		// Two batches: the first is written, the second takes a transient error, and the retry
+		// finds the account full.
+		total := sdktelemetry.MaxDeviceLatencySamplesPerBatch + 61
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](2048)
+		for range total {
+			buf.Add(key, newTestSample())
+		}
+
+		var mu sync.Mutex
+		var batchSizes []int
+		prog := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(_ context.Context, cfg sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				mu.Lock()
+				batchSizes = append(batchSizes, len(cfg.Samples))
+				n := len(batchSizes)
+				mu.Unlock()
+
+				switch n {
+				case 1:
+					return solana.Signature{}, nil, nil
+				case 2:
+					return solana.Signature{}, nil, errors.New("transient rpc error")
+				default:
+					return solana.Signature{}, nil, sdktelemetry.ErrSamplesAccountFull
+				}
+			},
+		}
+
+		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   prog,
+			MaxAttempts:     2,
+			MaxConcurrency:  10,
+			BackoffFunc:     func(int) time.Duration { return 0 },
+			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
+		})
+		require.NoError(t, err)
+
+		droppedBefore := testutil.ToFloat64(metrics.SamplesDropped.WithLabelValues(metrics.DropReasonAccountFull))
+
+		s.Tick(context.Background())
+
+		// The retry resumes at the second batch instead of re-sending the first, which is both why
+		// the count is right and why the already-written samples are not appended twice.
+		assert.Equal(t, []int{sdktelemetry.MaxDeviceLatencySamplesPerBatch, 61, 61}, batchSizes,
+			"the retry should resume at the first unwritten sample")
+
+		dropped := testutil.ToFloat64(metrics.SamplesDropped.WithLabelValues(metrics.DropReasonAccountFull)) - droppedBefore
+		assert.Equal(t, float64(61), dropped, "the batch written by the earlier attempt should not be counted as dropped")
+		assert.Contains(t, logs.String(), "unsubmittedSamples=61")
+		assert.NotContains(t, logs.String(), "unsubmittedSamples="+strconv.Itoa(total))
+	})
+
+	t.Run("requeues_only_unwritten_samples_after_a_failed_submission", func(t *testing.T) {
+		t.Parallel()
+
+		log := slog.New(slog.NewTextHandler(&bytes.Buffer{}, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+		key := newTestPartitionKey()
+
+		// Two batches: the first is written, the second fails on every attempt.
+		total := sdktelemetry.MaxDeviceLatencySamplesPerBatch + 61
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](2048)
+		for range total {
+			buf.Add(key, newTestSample())
+		}
+
+		var writes int32
+		prog := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				if atomic.AddInt32(&writes, 1) == 1 {
+					return solana.Signature{}, nil, nil
+				}
+				return solana.Signature{}, nil, errors.New("transient rpc error")
+			},
+		}
+
+		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   prog,
+			MaxAttempts:     2,
+			MaxConcurrency:  10,
+			BackoffFunc:     func(int) time.Duration { return 0 },
+			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
+		})
+		require.NoError(t, err)
+
+		s.Tick(context.Background())
+
+		assert.Len(t, buf.CopyAndReset(key), 61,
+			"only the samples never written should be requeued, or the next tick appends them twice")
+	})
+
 	t.Run("counts_dropped_samples_when_account_is_full_after_initialize", func(t *testing.T) {
 		var logs bytes.Buffer
 		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))

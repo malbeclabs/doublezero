@@ -72,7 +72,7 @@ var (
 	SamplesDropped = promauto.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: MetricNameSamplesDropped,
-			Help: "Number of samples permanently discarded, by reason",
+			Help: "Number of samples in batches discarded from the buffer without a successful submission, by reason",
 		},
 		[]string{LabelDropReason},
 	)

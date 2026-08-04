@@ -82,6 +82,45 @@ func TestAgentTelemetry_Serviceability_CachingFetcher_StaleLogging(t *testing.T)
 		assert.Empty(t, logs.String())
 	})
 
+	t.Run("logs repeated stale reads at debug", func(t *testing.T) {
+		t.Parallel()
+
+		var logs bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+		fresh := &serviceability.ProgramData{}
+		failing := false
+		errs := []error{errors.New("503 from backend"), errors.New("tls handshake timeout"), errors.New("no such host")}
+		attempt := 0
+		provider := &mockProvider{fn: func(context.Context) (*serviceability.ProgramData, error) {
+			if failing {
+				err := errs[attempt%len(errs)]
+				attempt++
+				return nil, err
+			}
+			return fresh, nil
+		}}
+
+		f := telemetrysvc.NewCachingFetcher(log, provider, 0, time.Second)
+
+		_, err := f.GetProgramData(context.Background())
+		require.NoError(t, err)
+
+		failing = true
+		for range 3 {
+			_, err = f.GetProgramData(context.Background())
+			require.NoError(t, err)
+		}
+
+		out := logs.String()
+		assert.Equal(t, 1, strings.Count(out, "Program data fetch failed, serving stale cached data"),
+			"only the first stale read should warn")
+		assert.Equal(t, 2, strings.Count(out, "Program data fetch still failing, serving stale cached data"),
+			"reads after the first should be visible at debug, even as the failure cause changes")
+		assert.Contains(t, out, "error=\"tls handshake timeout\"")
+		assert.Contains(t, out, "error=\"no such host\"")
+	})
+
 	t.Run("warns again after recovering and failing a second time", func(t *testing.T) {
 		t.Parallel()
 

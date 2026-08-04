@@ -50,9 +50,6 @@ type CachingFetcher struct {
 // stale data" would otherwise be emitted in a different format, without the agent's source
 // field, and could not be leveled with the rest of the agent's output.
 func NewCachingFetcher(log *slog.Logger, provider ProgramDataProvider, cacheTTL, rpcTimeout time.Duration) *CachingFetcher {
-	if log == nil {
-		log = slog.Default()
-	}
 	return &CachingFetcher{
 		log:        log,
 		provider:   provider,
@@ -145,5 +142,7 @@ func (f *CachingFetcher) enterStale(cachedAge time.Duration, err error) {
 
 	if first {
 		f.log.Warn("Program data fetch failed, serving stale cached data", "age", cachedAge, "error", err)
+	} else {
+		f.log.Debug("Program data fetch still failing, serving stale cached data", "age", cachedAge, "error", err)
 	}
 }

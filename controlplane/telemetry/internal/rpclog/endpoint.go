@@ -13,20 +13,23 @@ import (
 
 // EndpointLogger logs the resolved remote address of new RPC connections.
 //
-// It logs transitions, not dials: the first connection to a dial target, and any later
-// connection that resolves somewhere new. Repeats are silent, which matters because the
-// namespaced transport does not pool connections and dials once per request.
+// It logs each distinct (target, remote) pair once: a dial target is usually a hostname in
+// front of several load balancer addresses served off a single rotating A record, so "same
+// target" does not imply "same remote" from one dial to the next. Deduping on target alone
+// would make a routine DNS rotation look like a constant stream of endpoint changes; deduping
+// on the pair means output is bounded by the backend pool size, and a genuinely new backend
+// still logs once.
 type EndpointLogger struct {
 	log *slog.Logger
 
 	mu   sync.Mutex
-	seen map[string]string // dial target -> last logged remote address
+	seen map[string]map[string]struct{} // dial target -> set of remotes already logged
 }
 
 func NewEndpointLogger(log *slog.Logger) *EndpointLogger {
 	return &EndpointLogger{
 		log:  log,
-		seen: make(map[string]string),
+		seen: make(map[string]map[string]struct{}),
 	}
 }
 
@@ -34,17 +37,17 @@ func NewEndpointLogger(log *slog.Logger) *EndpointLogger {
 // concurrent use and does no I/O beyond the log line it may emit.
 func (l *EndpointLogger) OnDial(addr, remote string) {
 	l.mu.Lock()
-	previous, known := l.seen[addr]
-	if known && previous == remote {
+	remotes, known := l.seen[addr]
+	if !known {
+		remotes = make(map[string]struct{})
+		l.seen[addr] = remotes
+	}
+	if _, seen := remotes[remote]; seen {
 		l.mu.Unlock()
 		return
 	}
-	l.seen[addr] = remote
+	remotes[remote] = struct{}{}
 	l.mu.Unlock()
 
-	if known {
-		l.log.Info("Ledger RPC endpoint changed", "host", addr, "remote", remote, "previousRemote", previous)
-		return
-	}
 	l.log.Info("Ledger RPC connection established", "host", addr, "remote", remote)
 }

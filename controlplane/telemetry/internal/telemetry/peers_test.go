@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -704,8 +703,8 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 	t.Run("logs peer count changes and stays quiet otherwise", func(t *testing.T) {
 		t.Parallel()
 
-		var logs syncBuffer
-		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		handler := newRecordingHandler()
+		log := slog.New(handler)
 
 		// A pubkey of this subtest's own: metrics.Peers is a package-level gauge keyed by device,
 		// and the sibling subtests that share "device1" would overwrite the series under it.
@@ -718,6 +717,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 
 		var mu sync.Mutex
 		links := activeLinks
+		var fetchCount atomic.Int64
 		setLinks := func(l []serviceability.Link) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -728,6 +728,7 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
 				mu.Lock()
 				defer mu.Unlock()
+				fetchCount.Add(1)
 				return &serviceability.ProgramData{
 					Devices: []serviceability.Device{
 						{PubKey: localDevicePK, PublicIp: [4]uint8{192, 168, 1, 1}},
@@ -766,28 +767,32 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 
 		// The first refresh reports the count it discovered, at Info.
 		require.Eventually(t, func() bool {
-			return strings.Contains(logs.String(), "Peer count changed")
+			return handler.count(slog.LevelInfo, "Peer count changed") == 1
 		}, 2*time.Second, 20*time.Millisecond)
-		assert.Contains(t, logs.String(), "peers=2")
+		attrs, ok := handler.attrs(slog.LevelInfo, "Peer count changed")
+		require.True(t, ok)
+		assert.Equal(t, int64(2), attrs["peers"])
 
-		// Many refreshes later, an unchanged count has still only logged once.
+		// Many refreshes later, an unchanged count has still only logged once. Waiting on the
+		// fetch count rather than a fixed sleep proves the ticker actually fired repeatedly in
+		// the meantime, not just that nothing logged.
 		require.Eventually(t, func() bool {
-			return testutil.ToFloat64(metrics.Peers.WithLabelValues(localDevicePK.String())) == 2
+			return fetchCount.Load() >= 5
 		}, 2*time.Second, 20*time.Millisecond)
-		time.Sleep(200 * time.Millisecond)
-		assert.Equal(t, 1, strings.Count(logs.String(), "Peer count changed"), "a steady peer list should not log per refresh")
+		assert.Equal(t, 1, handler.count(slog.LevelInfo, "Peer count changed"), "a steady peer list should not log per refresh")
 
 		// Losing every link is a warning, since nothing gets probed after it.
-		logs.Reset()
+		handler.reset()
 		setLinks(nil)
 
+		const warnMsg = "Peer count changed, no peers found and nothing will be probed"
 		require.Eventually(t, func() bool {
-			return strings.Contains(logs.String(), "no peers found and nothing will be probed")
+			return handler.count(slog.LevelWarn, warnMsg) == 1
 		}, 2*time.Second, 20*time.Millisecond)
-		out := logs.String()
-		assert.Contains(t, out, "level=WARN")
-		assert.Contains(t, out, "peers=0")
-		assert.Contains(t, out, "previousPeers=2")
+		attrs, ok = handler.attrs(slog.LevelWarn, warnMsg)
+		require.True(t, ok)
+		assert.Equal(t, int64(0), attrs["peers"])
+		assert.Equal(t, int64(2), attrs["previousPeers"])
 
 		require.Eventually(t, func() bool {
 			return testutil.ToFloat64(metrics.Peers.WithLabelValues(localDevicePK.String())) == 0

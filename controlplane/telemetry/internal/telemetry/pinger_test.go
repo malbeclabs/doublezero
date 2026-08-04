@@ -1081,6 +1081,35 @@ func (h *recordingHandler) count(level slog.Level, message string) int {
 	return n
 }
 
+// reset discards all recorded records, so a test can assert on log-once behavior across
+// multiple phases without a fresh handler for each one.
+func (h *recordingHandler) reset() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = nil
+}
+
+// attrs returns the attributes of the last record at level with the given message, and whether
+// one was found.
+func (h *recordingHandler) attrs(level slog.Level, message string) (map[string]any, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for i := len(h.records) - 1; i >= 0; i-- {
+		r := h.records[i]
+		if r.Level != level || r.Message != message {
+			continue
+		}
+		out := make(map[string]any, r.NumAttrs())
+		r.Attrs(func(a slog.Attr) bool {
+			out[a.Key] = a.Value.Any()
+			return true
+		})
+		return out, true
+	}
+	return nil, false
+}
+
 type mockSender struct {
 	rtt time.Duration
 	err error

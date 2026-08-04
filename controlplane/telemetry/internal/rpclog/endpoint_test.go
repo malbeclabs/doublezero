@@ -44,7 +44,7 @@ func TestAgentTelemetry_RPCLog_EndpointLogger(t *testing.T) {
 		assert.Equal(t, 1, strings.Count(logs.String(), "Ledger RPC"), "repeat dials to the same address should log once")
 	})
 
-	t.Run("logs a move to a different address behind the same host", func(t *testing.T) {
+	t.Run("logs each distinct remote behind the same host once", func(t *testing.T) {
 		t.Parallel()
 
 		l, logs := newLogger()
@@ -53,10 +53,26 @@ func TestAgentTelemetry_RPCLog_EndpointLogger(t *testing.T) {
 		l.OnDial("ledger.example.com:443", "10.0.0.2:443")
 
 		out := logs.String()
-		assert.Contains(t, out, "Ledger RPC endpoint changed")
+		assert.Contains(t, out, "remote=10.0.0.1:443")
 		assert.Contains(t, out, "remote=10.0.0.2:443")
-		assert.Contains(t, out, "previousRemote=10.0.0.1:443")
-		assert.Equal(t, 2, strings.Count(out, "Ledger RPC"), "one line for the first connection, one for the change")
+		assert.Equal(t, 2, strings.Count(out, "Ledger RPC connection established"), "one line per distinct remote, none for the repeat")
+	})
+
+	t.Run("stays quiet across a rotating DNS record", func(t *testing.T) {
+		t.Parallel()
+
+		l, logs := newLogger()
+		for i := range 20 {
+			if i%2 == 0 {
+				l.OnDial("ledger.example.com:443", "10.0.0.1:443")
+			} else {
+				l.OnDial("ledger.example.com:443", "10.0.0.2:443")
+			}
+		}
+
+		// A hostname alternating between two backends on every dial is the steady state for a
+		// rotating A record, not 20 endpoint changes.
+		assert.Equal(t, 2, strings.Count(logs.String(), "Ledger RPC connection established"), "alternating between two known remotes should log each only once")
 	})
 
 	t.Run("tracks targets independently", func(t *testing.T) {

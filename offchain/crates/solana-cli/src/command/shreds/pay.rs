@@ -1,4 +1,7 @@
-use std::{io::Write, net::Ipv4Addr};
+use std::{
+    io::{IsTerminal, Write},
+    net::Ipv4Addr,
+};
 
 use anyhow::{Context, Result, bail};
 use clap::Args;
@@ -34,6 +37,14 @@ use super::{make_dz_connection, serviceability_program_id};
 
 /// Warn if less than 10% of the current Solana epoch remains.
 const EPOCH_REMAINING_WARNING_THRESHOLD: f64 = 0.10;
+
+// No trailing period: `try_prompt_proceed_confirmation` appends
+// ". Proceed? [y/N]".
+const DEPRECATION_NOTICE: &str = "The doublezero-solana client will soon be deprecated for Edge \
+     shreds payments. You will be able to manage your account through https://www.fastshreds.com. \
+     For existing users, we suggest making a new purchase on the front end when monthly payments \
+     are available. You can then proceed to withdraw funds in the CLI and close out this account. \
+     This command will fund your seat now";
 
 /// Solana's target slot duration in seconds. Actual varies with network
 /// conditions; used only for approximate display estimates (prefixed with `~`).
@@ -236,6 +247,10 @@ pub struct PayCommand {
     /// Skip the epoch-remaining warning prompt (for batch/multi-seat workflows)
     #[arg(long)]
     accept_partial_epoch: bool,
+    /// Acknowledge the fastshreds.com transition notice without prompting
+    /// (for batch/multi-seat workflows). The notice is still printed.
+    #[arg(long)]
+    accept_deprecation_notice: bool,
     /// Shred oracle pubkey (auto-detected from network; override for local dev)
     #[arg(long, hide = true)]
     shred_oracle_key: Option<Pubkey>,
@@ -254,6 +269,31 @@ impl PayCommand {
         ctx: &CliContext,
         out: &mut impl Write,
     ) -> Result<()> {
+        // Ahead of `build_wallet` and any RPC, so declining needs neither a
+        // loadable keypair nor a reachable cluster, and signs nothing.
+        //
+        // Both ends of the terminal are required, not just stdin: the prompt is
+        // written to `out`, so with stdout redirected the question lands in the
+        // file while `read_line` blocks on a terminal showing nothing. Dry runs
+        // print only, matching the epoch-remaining prompt below, because a
+        // simulation signs and sends nothing. A non-terminal stdin must not
+        // prompt for a second reason — keypair-from-stdin requires a non-tty
+        // stdin, so prompting there would consume the keypair bytes.
+        let should_prompt = !self.accept_deprecation_notice
+            && !self.write_opts.dry_run
+            && std::io::stdin().is_terminal()
+            && std::io::stdout().is_terminal();
+
+        if should_prompt {
+            crate::command::try_prompt_proceed_confirmation(
+                out,
+                DEPRECATION_NOTICE,
+                "Aborted. Manage your account at https://www.fastshreds.com.",
+            )?;
+        } else {
+            writeln!(out, "⚠️  {DEPRECATION_NOTICE}.")?;
+        }
+
         let moniker_env = self.write_opts.connection_options.moniker_env();
         let wallet = crate::command::build_wallet(ctx, self.write_opts)?;
         let wallet_key = wallet.pubkey();
@@ -658,6 +698,84 @@ mod tests {
         assert_eq!(format_duration(3599.0), "~60 minutes");
         // Exactly an hour -> hours
         assert_eq!(format_duration(3600.0), "~1.0 hours");
+    }
+
+    // --- deprecation notice tests ---
+
+    #[test]
+    fn test_notice_text_has_no_trailing_period() {
+        assert!(!DEPRECATION_NOTICE.ends_with('.'));
+        assert!(!DEPRECATION_NOTICE.contains('\n'));
+    }
+
+    #[derive(clap::Parser)]
+    struct NoticeCli {
+        #[command(flatten)]
+        command: PayCommand,
+    }
+
+    // `--keypair` points at a path that cannot exist, so `build_wallet` fails
+    // deterministically instead of finding a developer's keypair and reaching
+    // the network.
+    fn pay_command(extra_args: &[&str]) -> PayCommand {
+        use clap::Parser;
+
+        let device = Pubkey::new_unique().to_string();
+        let mut args = vec![
+            "test",
+            "--device",
+            &device,
+            "--client-ip",
+            "203.0.113.10",
+            "--amount",
+            "30",
+            "--keypair",
+            "/nonexistent/keypair.json",
+        ];
+        args.extend_from_slice(extra_args);
+
+        NoticeCli::try_parse_from(args)
+            .expect("pay args parse")
+            .command
+    }
+
+    #[tokio::test]
+    async fn test_notice_prints_when_flag_is_absent() {
+        let ctx = doublezero_cli_core::testing::cli_context_default_for_tests();
+        let mut out = Vec::new();
+
+        let result = pay_command(&[]).execute(None, &ctx, &mut out).await;
+
+        assert_eq!(
+            String::from_utf8(out).expect("output is utf8"),
+            format!("⚠️  {DEPRECATION_NOTICE}.\n")
+        );
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Failed to read keypair file '/nonexistent/keypair.json': \
+             No such file or directory (os error 2)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_notice_flag_proceeds_to_the_payment_flow() {
+        let ctx = doublezero_cli_core::testing::cli_context_default_for_tests();
+        let mut out = Vec::new();
+
+        let result = pay_command(&["--accept-deprecation-notice"])
+            .execute(None, &ctx, &mut out)
+            .await;
+
+        assert_eq!(
+            String::from_utf8(out).expect("output is utf8"),
+            format!("⚠️  {DEPRECATION_NOTICE}.\n")
+        );
+
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Failed to read keypair file '/nonexistent/keypair.json': \
+             No such file or directory (os error 2)"
+        );
     }
 
     // --- epoch_warning_prompt tests (behavior matrix) ---

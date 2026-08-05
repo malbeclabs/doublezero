@@ -38,9 +38,11 @@ const (
 	ErrorTypePingerEpochEnded        = "pinger_epoch_ended"
 	ErrorTypePingerEpochFetchFailed  = "pinger_epoch_fetch_failed"
 	ErrorTypeSubmitterBufferFull     = "submitter_buffer_full"
+	ErrorTypeSubmitterAccountFull    = "submitter_account_full"
 
 	// Sample drop reasons.
-	DropReasonBufferFull = "buffer_full"
+	DropReasonBufferFull  = "buffer_full"
+	DropReasonAccountFull = "account_full"
 )
 
 var (

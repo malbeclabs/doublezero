@@ -10,11 +10,11 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - `doublezero feed list` gains a `group_codes` column naming the multicast groups the feed holds, alongside the existing `groups` count. A group the ledger no longer carries renders as its raw pubkey. The JSON output gains the field as well. (malbeclabs/infra#2172, #4150)
-- Telemetry
+- Device Telemetry
   - A ledger RPC outage no longer stops TWAMP probing on the device telemetry agent: the pinger caches the last known epoch and refreshes it off the probe path, instead of fetching it inline and skipping the tick on failure. Probing stops when no epoch has ever been fetched, when the cached one exceeds the new `-max-epoch-staleness` (default 10h, clamped to what the sample buffer holds at `-probe-interval`), or when the cached epoch's projected end has passed. Samples taken against a cached epoch are written to that epoch's account, so a query scoped to a later epoch will not return them — the projected-end bound is what keeps that from spanning a rollover. The refresh cadence follows `-probe-interval` and can be set with the new `-epoch-refresh-interval`. (#4143)
-- Device telemetry
   - A peer discovery refresh that fails after reading the ledger no longer wipes the agent's peer list. It cleared the cache before calling `LocalNet.Interfaces()`, so a transient failure there left the pinger iterating zero peers and probing nothing until a later refresh succeeded. The cache is now replaced only once the new list is built, which also shortens the critical section to the assignment. (#4146)
-
+  - The telemetry agent now logs and counts samples it discards when a submission fails and the partition buffer is already at capacity; that path previously recycled the batch with no signal at all. New counter `doublezero_device_telemetry_agent_samples_dropped_total` with a `reason` label (`buffer_full`), plus `submitter_buffer_full` on the existing errors counter. Requeue behavior below capacity is unchanged, and neither signal fires in steady state. (#4144)
+  
 ## [v0.33.0](https://github.com/malbeclabs/doublezero/compare/client/v0.32.0...client/v0.33.0) - 2026-07-31
 
 ### Breaking

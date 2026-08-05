@@ -11,6 +11,7 @@ const (
 	MetricNameErrors                           = "doublezero_device_telemetry_agent_errors_total"
 	MetricNamePeerDiscoveryLocalTunnelNotFound = "doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels"
 	MetricNameEpochCacheStaleAge               = "doublezero_device_telemetry_agent_epoch_cache_stale_age_seconds"
+	MetricNameSamplesDropped                   = "doublezero_device_telemetry_agent_samples_dropped_total"
 
 	// Labels.
 	LabelVersion       = "version"
@@ -18,6 +19,7 @@ const (
 	LabelDate          = "date"
 	LabelErrorType     = "error_type"
 	LabelLocalDevicePK = "local_device_pk"
+	LabelDropReason    = "reason"
 
 	// Error types.
 	ErrorTypeCollectorSubmitSamplesOnClose       = "collector_submit_samples_on_close"
@@ -35,6 +37,10 @@ const (
 	ErrorTypePingerEpochTooStale     = "pinger_epoch_too_stale"
 	ErrorTypePingerEpochEnded        = "pinger_epoch_ended"
 	ErrorTypePingerEpochFetchFailed  = "pinger_epoch_fetch_failed"
+	ErrorTypeSubmitterBufferFull     = "submitter_buffer_full"
+
+	// Sample drop reasons.
+	DropReasonBufferFull = "buffer_full"
 )
 
 var (
@@ -62,6 +68,13 @@ var (
 			Name: MetricNameEpochCacheStaleAge,
 			Help: "Age of the cached ledger epoch served to the probe loop when the epoch fetch is failing (0 when fresh, +Inf when no epoch has ever been fetched)",
 		},
+	)
+	SamplesDropped = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: MetricNameSamplesDropped,
+			Help: "Number of samples in batches discarded from the buffer without a successful submission, by reason",
+		},
+		[]string{LabelDropReason},
 	)
 
 	PeerDiscoveryLocalTunnelNotFound = promauto.NewGaugeVec(

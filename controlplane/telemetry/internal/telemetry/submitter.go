@@ -244,11 +244,20 @@ func (s *Submitter) Tick(ctx context.Context) {
 			}
 
 			// If submission failed and the buffer is not at capacity, prepend the samples back to the
-			// buffer. If the buffer is at capacity and we have failed all attempts, don't prepend the
-			// samples back to the buffer.
-			overCapacity := s.cfg.Buffer.Len(partitionKey)+len(tmp) >= s.cfg.Buffer.Capacity(partitionKey)
-			if !success && !overCapacity {
-				s.cfg.Buffer.PriorityPrepend(partitionKey, tmp)
+			// buffer. If the buffer is at capacity and we have failed all attempts, the samples are
+			// discarded; log and count the loss.
+			if !success {
+				overCapacity := s.cfg.Buffer.Len(partitionKey)+len(tmp) >= s.cfg.Buffer.Capacity(partitionKey)
+				if overCapacity {
+					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterBufferFull).Inc()
+					metrics.SamplesDropped.WithLabelValues(metrics.DropReasonBufferFull).Add(float64(len(tmp)))
+					log.Warn("Partition buffer at capacity after failed submission, dropping samples",
+						"droppedSamples", len(tmp),
+						"bufferLen", s.cfg.Buffer.Len(partitionKey),
+						"capacity", s.cfg.Buffer.Capacity(partitionKey))
+				} else {
+					s.cfg.Buffer.PriorityPrepend(partitionKey, tmp)
+				}
 			}
 
 			// Always recycle the slice for reuse

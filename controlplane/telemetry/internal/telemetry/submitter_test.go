@@ -1,8 +1,10 @@
 package telemetry_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -10,9 +12,11 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/pkg/buffer"
 	sdktelemetry "github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -879,4 +883,89 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		assert.Len(t, got, 0, "failed samples should be dropped when requeue would meet capacity exactly")
 	})
 
+	// Deliberately not parallel: the drop counters are package-level prometheus metrics shared with
+	// the sibling over-capacity subtests, so the deltas are only exact while nothing else is running.
+	t.Run("logs_and_counts_dropped_samples_when_over_capacity", func(t *testing.T) {
+		var logs bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+		key := newTestPartitionKey()
+
+		prog := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, errors.New("perm fail")
+			},
+		}
+
+		// Capacity == len(tmp) (2), so the requeue check is 0+2 >= 2 -> drop.
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](2)
+		buf.Add(key, newTestSample())
+		buf.Add(key, newTestSample())
+
+		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   prog,
+			MaxAttempts:     1,
+			MaxConcurrency:  10,
+			BackoffFunc:     func(int) time.Duration { return 0 },
+			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
+		})
+		require.NoError(t, err)
+
+		droppedBefore := testutil.ToFloat64(metrics.SamplesDropped.WithLabelValues(metrics.DropReasonBufferFull))
+		errorsBefore := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterBufferFull))
+
+		s.Tick(context.Background())
+
+		dropped := testutil.ToFloat64(metrics.SamplesDropped.WithLabelValues(metrics.DropReasonBufferFull)) - droppedBefore
+		assert.Equal(t, float64(2), dropped, "drop counter should increment by the number of discarded samples")
+
+		errs := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterBufferFull)) - errorsBefore
+		assert.Equal(t, float64(1), errs, "buffer-full error counter should increment once per dropped batch")
+
+		out := logs.String()
+		assert.Contains(t, out, "Partition buffer at capacity after failed submission, dropping samples")
+		assert.Contains(t, out, "droppedSamples=2")
+		assert.Contains(t, out, "capacity=2")
+
+		assert.Len(t, buf.CopyAndReset(key), 0, "dropped samples should not be requeued")
+	})
+
+	t.Run("does_not_count_drops_when_samples_are_requeued", func(t *testing.T) {
+		var logs bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+		key := newTestPartitionKey()
+
+		prog := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, errors.New("perm fail")
+			},
+		}
+
+		// Capacity well above len(tmp), so the failed batch is requeued rather than dropped.
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buf.Add(key, newTestSample())
+
+		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   prog,
+			MaxAttempts:     1,
+			MaxConcurrency:  10,
+			BackoffFunc:     func(int) time.Duration { return 0 },
+			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
+		})
+		require.NoError(t, err)
+
+		droppedBefore := testutil.ToFloat64(metrics.SamplesDropped.WithLabelValues(metrics.DropReasonBufferFull))
+
+		s.Tick(context.Background())
+
+		dropped := testutil.ToFloat64(metrics.SamplesDropped.WithLabelValues(metrics.DropReasonBufferFull)) - droppedBefore
+		assert.Equal(t, float64(0), dropped, "requeued samples should not be counted as dropped")
+		assert.NotContains(t, logs.String(), "dropping samples")
+		assert.Len(t, buf.CopyAndReset(key), 1, "failed samples should be requeued below capacity")
+	})
 }

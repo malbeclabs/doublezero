@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - `doublezero feed list` gains a `group_codes` column naming the multicast groups the feed holds, alongside the existing `groups` count. A group the ledger no longer carries renders as its raw pubkey. The JSON output gains the field as well. (malbeclabs/infra#2172, #4150)
+
 ## [v0.33.0](https://github.com/malbeclabs/doublezero/compare/client/v0.32.0...client/v0.33.0) - 2026-07-31
 
 ### Breaking

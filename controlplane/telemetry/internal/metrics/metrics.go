@@ -43,6 +43,10 @@ const (
 	ErrorTypePingerEpochFetch     = "pinger_epoch_fetch"
 	ErrorTypeSubmitterBufferFull  = "submitter_buffer_full"
 	ErrorTypeSubmitterAccountFull = "submitter_account_full"
+	// ErrorTypeSubmitterProgramError counts submissions the telemetry program rejected onchain.
+	// Distinct from the write/init failure types, which also cover transient RPC trouble: this one
+	// only fires on a rejection that will recur until something changes onchain or in config.
+	ErrorTypeSubmitterProgramError = "submitter_program_error"
 
 	// Sample drop reasons.
 	DropReasonBufferFull  = "buffer_full"

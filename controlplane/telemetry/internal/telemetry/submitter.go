@@ -247,6 +247,19 @@ func (s *Submitter) Tick(ctx context.Context) {
 					break
 				}
 
+				// A rejection by the program is not transient: the ledger executed the instruction
+				// and refused it, so every attempt this tick would be refused the same way. Report
+				// it once at Error and leave the rest of the attempts unspent, rather than burying
+				// the reason under a backoff loop. The samples are requeued as with any other
+				// failure, so the next tick retries once the operator fixes what was wrong.
+				var programErr *telemetry.ProgramError
+				if errors.As(err, &programErr) {
+					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterProgramError).Inc()
+					log.Error("Submission rejected by the telemetry program, not retrying this tick",
+						"attempt", attempt, "samplesCount", len(tmp), "error", err)
+					break
+				}
+
 				var backoff time.Duration
 				if s.cfg.BackoffFunc != nil {
 					backoff = s.cfg.BackoffFunc(attempt)

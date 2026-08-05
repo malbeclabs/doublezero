@@ -285,6 +285,122 @@ func TestSDK_Telemetry_Executor_TransactionNeverFinalized(t *testing.T) {
 	require.Nil(t, res)
 }
 
+// TestSDK_Telemetry_Executor_FinalizedWithProgramError covers the chi-dn-dzd4 case
+// (malbeclabs/infra#1703): an InitializeDeviceLatencySamples the program rejected with
+// UnauthorizedAgent (0x3e9) still finalizes, and reporting it as success left the submitter
+// re-initializing an account that never existed with nothing in the log naming the cause.
+func TestSDK_Telemetry_Executor_FinalizedWithProgramError(t *testing.T) {
+	t.Parallel()
+
+	signer := solana.NewWallet().PrivateKey
+	signerPub := signer.PublicKey()
+	programID := solana.NewWallet().PublicKey()
+	blockhash := solana.MustHashFromBase58("5NzX7jrPWeTkGsDnVnszdEa7T3Yyr3nSgyc78z3CwjWQ")
+
+	// UnauthorizedAgent = 1001 = 0x3e9, as the RPC renders it.
+	txErr := map[string]any{"InstructionError": []any{0, map[string]any{"Custom": 1001}}}
+	logMessages := []string{
+		"Program " + programID.String() + " invoke [1]",
+		"Program log: Instruction: InitializeDeviceLatencySamples",
+		"Program log: Agent BA14eqpRNmkcQhjsH5abfvaUxRi7RcGGuQVeQuJdwPZc is not authorized for origin device FYkmttUmox6kZVjVNCATXEdGt3bfLicn5fJ8fnGfF4fZ",
+		"Program " + programID.String() + " failed: custom program error: 0x3e9",
+	}
+
+	tests := []struct {
+		name       string
+		statusErr  any
+		metaErr    any
+		getTxFails bool
+		wantLogs   []string
+	}{
+		{
+			name:      "reported on the signature status",
+			statusErr: txErr,
+			metaErr:   txErr,
+			wantLogs:  logMessages,
+		},
+		{
+			// A node that returns a clean status still reports the rejection on the transaction.
+			name:     "reported only on the transaction meta",
+			metaErr:  txErr,
+			wantLogs: logMessages,
+		},
+		{
+			// The rejection still surfaces when the logs cannot be fetched to explain it.
+			name:       "logs unavailable",
+			statusErr:  txErr,
+			getTxFails: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockRPC := &mockRPCClient{
+				GetLatestBlockhashFunc: func(_ context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {
+					return &solanarpc.GetLatestBlockhashResult{
+						Value: &solanarpc.LatestBlockhashResult{Blockhash: blockhash},
+					}, nil
+				},
+				SendTransactionWithOptsFunc: func(_ context.Context, tx *solana.Transaction, _ solanarpc.TransactionOpts) (solana.Signature, error) {
+					return tx.Signatures[0], nil
+				},
+				GetSignatureStatusesFunc: func(_ context.Context, _ bool, _ ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
+					return &solanarpc.GetSignatureStatusesResult{
+						Value: []*solanarpc.SignatureStatusesResult{
+							{
+								ConfirmationStatus: solanarpc.ConfirmationStatusFinalized,
+								Err:                tt.statusErr,
+							},
+						},
+					}, nil
+				},
+				GetTransactionFunc: func(_ context.Context, _ solana.Signature, _ *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
+					if tt.getTxFails {
+						return nil, errors.New("rpc unavailable")
+					}
+					return &solanarpc.GetTransactionResult{
+						Meta: &solanarpc.TransactionMeta{
+							Err:         tt.metaErr,
+							LogMessages: logMessages,
+						},
+					}, nil
+				},
+			}
+
+			exec := telemetry.NewExecutor(log, mockRPC, &signer, programID)
+
+			instruction := solana.NewInstruction(
+				programID,
+				solana.AccountMetaSlice{
+					{PublicKey: signerPub, IsSigner: true, IsWritable: true},
+				},
+				[]byte{1, 2, 3},
+			)
+
+			sig, res, err := exec.ExecuteTransaction(t.Context(), instruction, &telemetry.ExecuteTransactionOptions{SkipPreflight: true})
+
+			var programErr *telemetry.ProgramError
+			require.ErrorAs(t, err, &programErr, "a finalized rejection must not be reported as success")
+			require.Equal(t, txErr, programErr.Err)
+			require.Equal(t, tt.wantLogs, programErr.Logs)
+			require.Equal(t, solana.Signature{}, sig)
+			require.Nil(t, res)
+
+			// The custom error code identifies the rejection even when the logs are missing.
+			require.ErrorContains(t, err, "Custom:1001")
+			if len(tt.wantLogs) > 0 {
+				// The program's own explanation reaches the message, without the runtime's
+				// invoke/failed boilerplate or the instruction-name echo.
+				require.ErrorContains(t, err, "is not authorized for origin device")
+				require.NotContains(t, err.Error(), "Instruction: InitializeDeviceLatencySamples")
+				require.NotContains(t, err.Error(), "invoke [1]")
+			}
+		})
+	}
+}
+
 func TestSDK_Telemetry_Executor_FinalizedButMissingTransactionMeta(t *testing.T) {
 	t.Parallel()
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -18,6 +19,42 @@ var (
 	// ErrNoProgramID is returned when a transaction signing operation is attempted without a configured program ID.
 	ErrNoProgramID = errors.New("no program ID configured")
 )
+
+// ProgramError reports a transaction that finalized onchain while the program rejected the
+// instruction it carried. The instruction did not take effect, and re-sending it unchanged will be
+// rejected the same way, so callers should treat it as a permanent failure for that input rather
+// than retry it.
+type ProgramError struct {
+	// Err is the transaction error the ledger reported, e.g.
+	// map[InstructionError:[0 map[Custom:1001]]] for TelemetryError::UnauthorizedAgent.
+	Err any
+
+	// Logs is the program's log output for the transaction. It is empty when the RPC returned the
+	// failure on the signature status but could not return the transaction itself.
+	Logs []string
+}
+
+func (e *ProgramError) Error() string {
+	if msgs := e.ProgramLogMessages(); len(msgs) > 0 {
+		return fmt.Sprintf("transaction finalized with program error: %v (program logs: %v)", e.Err, msgs)
+	}
+	return fmt.Sprintf("transaction finalized with program error: %v", e.Err)
+}
+
+// ProgramLogMessages returns the program's own log lines with the runtime's invoke/consumed/success
+// boilerplate and the instruction-name echo removed. These are the lines that say why the program
+// rejected the instruction, e.g. "Agent <pubkey> is not authorized for origin device <pubkey>".
+func (e *ProgramError) ProgramLogMessages() []string {
+	var msgs []string
+	for _, line := range e.Logs {
+		msg, ok := strings.CutPrefix(line, "Program log: ")
+		if !ok || strings.HasPrefix(msg, "Instruction: ") {
+			continue
+		}
+		msgs = append(msgs, msg)
+	}
+	return msgs
+}
 
 type executor struct {
 	log                   *slog.Logger
@@ -122,6 +159,12 @@ func (e *executor) ExecuteTransactions(ctx context.Context, instructions []solan
 	// Wait for the transaction to be finalized
 	res, err := e.waitForTransactionFinalized(ctx, sig)
 	if err != nil {
+		// A program rejection is not a failure to read the transaction; pass it through so the
+		// reason stays at the front of the message.
+		var programErr *ProgramError
+		if errors.As(err, &programErr) {
+			return solana.Signature{}, nil, err
+		}
 		return solana.Signature{}, nil, fmt.Errorf("failed to get transaction: %w", err)
 	}
 
@@ -147,6 +190,7 @@ func (e *executor) waitForSignatureVisible(ctx context.Context, sig solana.Signa
 func (e *executor) waitForTransactionFinalized(ctx context.Context, sig solana.Signature) (*solanarpc.GetTransactionResult, error) {
 	e.log.Debug("--> Waiting for transaction to be finalized", "sig", sig)
 	start := time.Now()
+	var finalStatus *solanarpc.SignatureStatusesResult
 	for {
 		statusResp, err := e.rpc.GetSignatureStatuses(ctx, true, sig)
 		if err != nil {
@@ -158,6 +202,7 @@ func (e *executor) waitForTransactionFinalized(ctx context.Context, sig solana.S
 		status := statusResp.Value[0]
 		if status != nil && status.ConfirmationStatus == solanarpc.ConfirmationStatusFinalized {
 			e.log.Debug("--> Transaction finalized", "sig", sig, "duration", time.Since(start))
+			finalStatus = status
 			break
 		}
 		select {
@@ -170,6 +215,14 @@ func (e *executor) waitForTransactionFinalized(ctx context.Context, sig solana.S
 		}
 	}
 
+	// Finalization only says the cluster agreed on the transaction, not that the program accepted
+	// it: a rejected instruction finalizes and carries the rejection in Err. Reporting that as
+	// success leaves the caller believing an account it never got was written, and the program
+	// error never reaches the log.
+	if finalStatus.Err != nil {
+		return nil, &ProgramError{Err: finalStatus.Err, Logs: e.transactionLogs(ctx, sig)}
+	}
+
 	tx, err := e.rpc.GetTransaction(ctx, sig, &solanarpc.GetTransactionOpts{
 		Encoding:   solana.EncodingBase64,
 		Commitment: solanarpc.CommitmentFinalized,
@@ -180,5 +233,25 @@ func (e *executor) waitForTransactionFinalized(ctx context.Context, sig solana.S
 	if tx == nil || tx.Meta == nil {
 		return nil, errors.New("transaction not found or missing metadata after finalization")
 	}
+	// The same rejection is carried on the transaction metadata. Checked here as well because the
+	// two come from separate RPC calls, and a node that omits it on the status still reports it here.
+	if tx.Meta.Err != nil {
+		return nil, &ProgramError{Err: tx.Meta.Err, Logs: tx.Meta.LogMessages}
+	}
 	return tx, nil
+}
+
+// transactionLogs fetches the program logs for a finalized transaction, best effort. They are
+// context for a failure that is already known, so a node that cannot return the transaction costs
+// the logs rather than replacing the program error with an RPC error.
+func (e *executor) transactionLogs(ctx context.Context, sig solana.Signature) []string {
+	tx, err := e.rpc.GetTransaction(ctx, sig, &solanarpc.GetTransactionOpts{
+		Encoding:   solana.EncodingBase64,
+		Commitment: solanarpc.CommitmentFinalized,
+	})
+	if err != nil || tx == nil || tx.Meta == nil {
+		e.log.Debug("--> Could not fetch program logs for failed transaction", "sig", sig, "error", err)
+		return nil
+	}
+	return tx.Meta.LogMessages
 }

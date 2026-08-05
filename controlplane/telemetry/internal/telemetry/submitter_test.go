@@ -1211,4 +1211,66 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		assert.Equal(t, float64(1), errs, "account-full error counter should increment once")
 		assert.Contains(t, logs.String(), "Partition account is full, dropping partition")
 	})
+
+	// The chi-dn-dzd4 case (malbeclabs/infra#1703): the agent key is not the device's
+	// metrics_publisher, so the program rejects the init. Deliberately not parallel: the assertions
+	// are exact deltas on package-level prometheus counters.
+	t.Run("does_not_retry_a_submission_the_program_rejected", func(t *testing.T) {
+		var logs bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+		key := newTestPartitionKey()
+
+		var writes, inits int32
+		prog := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				atomic.AddInt32(&writes, 1)
+				return solana.Signature{}, nil, sdktelemetry.ErrAccountNotFound
+			},
+			InitializeDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				atomic.AddInt32(&inits, 1)
+				return solana.Signature{}, nil, &sdktelemetry.ProgramError{
+					Err: map[string]any{"InstructionError": []any{0, map[string]any{"Custom": 1001}}},
+					Logs: []string{
+						"Program log: Instruction: InitializeDeviceLatencySamples",
+						"Program log: Agent BA14eqpRNmkcQhjsH5abfvaUxRi7RcGGuQVeQuJdwPZc is not authorized for origin device FYkmttUmox6kZVjVNCATXEdGt3bfLicn5fJ8fnGfF4fZ",
+					},
+				}
+			},
+		}
+
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buf.Add(key, newTestSample())
+
+		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   prog,
+			MaxAttempts:     5,
+			MaxConcurrency:  10,
+			BackoffFunc:     func(int) time.Duration { return 0 },
+			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
+		})
+		require.NoError(t, err)
+
+		programErrsBefore := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterProgramError))
+		exhaustedBefore := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterRetriesExhausted))
+
+		s.Tick(context.Background())
+
+		assert.Equal(t, int32(1), atomic.LoadInt32(&writes), "the rejection should end the tick, not spend the remaining attempts")
+		assert.Equal(t, int32(1), atomic.LoadInt32(&inits), "an init the program rejected should not be re-sent unchanged")
+
+		programErrs := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterProgramError)) - programErrsBefore
+		assert.Equal(t, float64(1), programErrs, "program-error counter should increment once")
+
+		exhausted := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterRetriesExhausted)) - exhaustedBefore
+		assert.Equal(t, float64(0), exhausted, "retries were not exhausted, they were skipped")
+
+		out := logs.String()
+		assert.Contains(t, out, "Submission rejected by the telemetry program")
+		assert.Contains(t, out, "is not authorized for origin device", "the reason the program gave has to reach the log")
+
+		assert.Len(t, buf.CopyAndReset(key), 1, "samples should be requeued for the next tick")
+	})
 }

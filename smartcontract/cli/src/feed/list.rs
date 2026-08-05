@@ -29,7 +29,6 @@ pub struct FeedDisplay {
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub exchange: Pubkey,
     pub groups: usize,
-    /// Codes of the multicast groups joinable in this feed (pubkey if the group is unknown).
     pub group_codes: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
@@ -142,13 +141,9 @@ mod tests {
         assert!(res.is_ok(), "{res:?}");
 
         let output_str = String::from_utf8(output).unwrap();
-        assert!(
-            output_str.contains("group_codes"),
-            "missing column: {output_str}"
-        );
-        assert!(
-            output_str.contains(&format!("mg01, {unknown_mgroup_pk}")),
-            "unexpected group codes: {output_str}"
+        assert_eq!(
+            output_str,
+            " account                                   | code        | name        | exchange                                  | groups | group_codes                                     | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | qa-payments | QA Payments | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3 | 2      | mg01, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo4 | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n"
         );
     }
 }

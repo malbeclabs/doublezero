@@ -18,8 +18,8 @@ type Config struct {
 	// PeerDiscovery is the configured peer discovery implementation.
 	PeerDiscovery PeerDiscovery
 
-	// GetCurrentEpochFunc is the function to get the current epoch.
-	GetCurrentEpochFunc func(ctx context.Context) (uint64, error)
+	// GetEpochInfoFunc is the function to get the current epoch and its slot position.
+	GetEpochInfoFunc func(ctx context.Context) (EpochInfo, error)
 
 	// TelemetryProgramClient is the client to the telemetry program.
 	TelemetryProgramClient TelemetryProgramClient
@@ -52,6 +52,16 @@ type Config struct {
 	// before a sender is evicted from the cache and recreated.
 	MaxConsecutiveSenderLosses int
 
+	// MaxEpochStaleness is how long the probe loop keeps probing with the last known epoch while
+	// the ledger RPC is unreachable. Defaults to DefaultMaxEpochStaleness, and is clamped to what
+	// the sample buffer can hold at ProbeInterval.
+	MaxEpochStaleness time.Duration
+
+	// EpochRefreshInterval is how often the cached epoch is refreshed in the background.
+	// Defaults to ProbeInterval, which keeps the epoch RPC rate the same as when the fetch was
+	// inline on the probe path.
+	EpochRefreshInterval time.Duration
+
 	// ServiceabilityProgramClient is the client to the serviceability program (for fetching Device/Location).
 	ServiceabilityProgramClient ServiceabilityProgramClient
 
@@ -83,8 +93,8 @@ func (c *Config) Validate() error {
 	if c.PeerDiscovery == nil {
 		return errors.New("peer discovery is required")
 	}
-	if c.GetCurrentEpochFunc == nil {
-		return errors.New("get current epoch is required")
+	if c.GetEpochInfoFunc == nil {
+		return errors.New("get epoch info is required")
 	}
 	if c.LocalDevicePK.IsZero() {
 		return errors.New("local device pubkey is required")
@@ -114,6 +124,9 @@ func (c *Config) Validate() error {
 	}
 	if c.MaxConsecutiveSenderLosses <= 0 {
 		c.MaxConsecutiveSenderLosses = 30
+	}
+	if c.MaxEpochStaleness <= 0 {
+		c.MaxEpochStaleness = DefaultMaxEpochStaleness
 	}
 
 	geoprobeEnabled := c.GeolocationClient != nil

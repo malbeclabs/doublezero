@@ -121,11 +121,9 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 		return fmt.Errorf("failed to load program from ledger: %w", err)
 	}
 
-	p.peersMu.Lock()
-	defer p.peersMu.Unlock()
-
-	p.peers = make([]*Peer, 0, len(p.peers))
-
+	// The cache is left in place while the new peer list is built, and replaced only once the build
+	// has succeeded. Nothing below this point may clear it: a refresh that fails partway must leave
+	// the agent probing the peers it already knows about rather than none at all.
 	devices := make(map[string]serviceability.Device)
 	for _, device := range data.Devices {
 		pubkey := solana.PublicKeyFromBytes(device.PubKey[:])
@@ -206,7 +204,10 @@ func (p *ledgerPeerDiscovery) refresh(ctx context.Context) error {
 		})
 	}
 
+	p.peersMu.Lock()
 	p.peers = peers
+	p.peersMu.Unlock()
+
 	p.log.Debug("Refreshed peers", "devices", len(devices), "links", len(links), "peers", len(peers), "tunnelsNotFound", tunnelsNotFound)
 
 	// Record the number of tunnels not found.

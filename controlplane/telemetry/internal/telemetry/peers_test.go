@@ -2,9 +2,11 @@ package telemetry_test
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -616,6 +618,83 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		cfg = valid
 		cfg.RefreshInterval = 0
 		base(cfg, "zero refresh interval")
+	})
+
+	t.Run("keeps known peers when getting local interfaces fails", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+		localDevicePK := stringToPubkey("device1")
+
+		serviceabilityProgram := &mockServiceabilityProgramClient{
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{PubKey: localDevicePK, PublicIp: [4]uint8{192, 168, 1, 1}},
+						{PubKey: stringToPubkey("device2"), PublicIp: [4]uint8{192, 168, 1, 2}},
+					},
+					Links: []serviceability.Link{
+						{PubKey: stringToPubkey("link_1-2"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2"), TunnelNet: [5]uint8{10, 1, 1, 0, 31}},
+					},
+				}, nil
+			},
+		}
+
+		// The first refresh discovers the peer; every refresh after it fails on local interfaces.
+		var interfaceCalls atomic.Int32
+
+		cfg := &telemetry.LedgerPeerDiscoveryConfig{
+			Logger:        log,
+			LocalDevicePK: localDevicePK,
+			ProgramClient: serviceabilityProgram,
+			LocalNet: &netutil.MockLocalNet{
+				InterfacesFunc: func() ([]netutil.Interface, error) {
+					if interfaceCalls.Add(1) > 1 {
+						return nil, errors.New("transient failure getting local interfaces")
+					}
+					return []netutil.Interface{
+						{Name: "tun1-2", Addrs: []net.Addr{&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 0}), Mask: net.CIDRMask(31, 32)}}},
+					}, nil
+				},
+			},
+			TWAMPPort:       1234,
+			RefreshInterval: 20 * time.Millisecond,
+		}
+
+		peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(cfg)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- peerDiscovery.Run(ctx)
+		}()
+
+		expected := []*telemetry.Peer{
+			{
+				LinkPK:   stringToPubkey("link_1-2"),
+				DevicePK: stringToPubkey("device2"),
+				Tunnel: &netutil.LocalTunnel{
+					Interface: "tun1-2",
+					SourceIP:  ipv4([4]uint8{10, 1, 1, 0}),
+					TargetIP:  ipv4([4]uint8{10, 1, 1, 1}),
+				},
+				TWAMPPort: 1234,
+			},
+		}
+
+		require.Eventually(t, func() bool {
+			return len(peerDiscovery.GetPeers()) == 1
+		}, 2*time.Second, 20*time.Millisecond, "first refresh should discover the peer")
+
+		require.Eventually(t, func() bool {
+			return interfaceCalls.Load() >= 4
+		}, 2*time.Second, 20*time.Millisecond, "later refreshes should keep failing on local interfaces")
+
+		assert.Equal(t, expected, peerDiscovery.GetPeers(), "peers should survive a refresh that fails after the ledger read")
+
+		cancel()
+		assert.NoError(t, <-errCh)
 	})
 }
 

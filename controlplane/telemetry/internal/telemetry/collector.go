@@ -15,7 +15,31 @@ import (
 
 const (
 	partitionBufferCapacity = 4096
+
+	// bufferRetentionHeadroom is the fraction of a partition's capacity the staleness bound is
+	// allowed to fill. The rest absorbs the samples the pinger adds while the submitter is draining
+	// and retrying, since the over-capacity check compares the buffer's current length plus the
+	// batch in flight against capacity.
+	bufferRetentionHeadroom = 0.95
 )
+
+// maxEpochStaleness bounds how long the probe loop may keep probing with a cached epoch by what the
+// sample buffer underneath it can actually hold. A partition holds capacity samples, and the
+// submitter cannot drain during the same ledger outage that makes the epoch stale, so once it finds
+// the partition over capacity it discards the whole accumulated backlog in one tick — and because
+// the onchain account carries one start timestamp and a fixed sampling interval rather than a
+// timestamp per sample, every sample written after that discard is backdated by the length of the
+// gap. Wrong data presented as good data is worse than the probe gap the fallback removes, so the
+// bound stays inside the buffer even when an operator asks for more.
+func maxEpochStaleness(log *slog.Logger, configured, probeInterval time.Duration, capacity int) time.Duration {
+	retention := time.Duration(float64(capacity) * float64(probeInterval) * bufferRetentionHeadroom)
+	if configured <= retention {
+		return configured
+	}
+	log.Warn("Max epoch staleness exceeds what the sample buffer can hold, clamping",
+		"configured", configured, "clamped", retention, "probeInterval", probeInterval, "partitionCapacity", capacity)
+	return retention
+}
 
 // Collector orchestrates telemetry collection by coordinating the TWAMP reflector,
 // peer discovery, periodic probing (via Pinger), and sample submission (via Submitter).
@@ -62,24 +86,36 @@ func New(log *slog.Logger, cfg Config) (*Collector, error) {
 		MetricsPublisherPK: cfg.MetricsPublisherPK,
 		ProbeInterval:      cfg.ProbeInterval,
 		ProgramClient:      cfg.TelemetryProgramClient,
-		GetCurrentEpoch:    cfg.GetCurrentEpochFunc,
-		MaxConcurrency:     cfg.SubmitterMaxConcurrency,
-		AgentVersion:       cfg.AgentVersion,
-		AgentCommit:        cfg.AgentCommit,
+		// The submitter only needs the epoch number, to decide whether a drained partition belongs
+		// to a past epoch and can be dropped.
+		GetCurrentEpoch: func(ctx context.Context) (uint64, error) {
+			info, err := cfg.GetEpochInfoFunc(ctx)
+			if err != nil {
+				return 0, err
+			}
+			return info.Epoch, nil
+		},
+		MaxConcurrency: cfg.SubmitterMaxConcurrency,
+		AgentVersion:   cfg.AgentVersion,
+		AgentCommit:    cfg.AgentCommit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create submitter: %w", err)
 	}
 
 	c.pinger = NewPinger(log, &PingerConfig{
-		LocalDevicePK:     cfg.LocalDevicePK,
-		Interval:          cfg.ProbeInterval,
-		ProbeTimeout:      cfg.TWAMPSenderTimeout,
-		Peers:             cfg.PeerDiscovery,
-		Buffer:            buffer,
-		GetSender:         c.getOrCreateSender,
-		GetCurrentEpoch:   cfg.GetCurrentEpochFunc,
-		RecordProbeResult: c.recordProbeResult,
+		LocalDevicePK:        cfg.LocalDevicePK,
+		Interval:             cfg.ProbeInterval,
+		ProbeTimeout:         cfg.TWAMPSenderTimeout,
+		Peers:                cfg.PeerDiscovery,
+		Buffer:               buffer,
+		GetSender:            c.getOrCreateSender,
+		GetEpochInfo:         cfg.GetEpochInfoFunc,
+		RecordProbeResult:    c.recordProbeResult,
+		EpochRefreshInterval: cfg.EpochRefreshInterval,
+		MaxEpochStaleness:    maxEpochStaleness(log, cfg.MaxEpochStaleness, cfg.ProbeInterval, partitionBufferCapacity),
+		// Deliberately not cfg.NowFunc: that one is UTC wall-clock for the sender cache's
+		// bookkeeping, and the epoch staleness bound needs the monotonic reading .UTC() strips.
 	})
 
 	// Initialize geoprobe coordinator if onchain discovery is configured.

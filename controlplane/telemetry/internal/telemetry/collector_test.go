@@ -276,8 +276,8 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 			TWAMPReflector:          reflector,
 			PeerDiscovery:           peerDiscovery,
 			TelemetryProgramClient:  telemetryProgram,
-			GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
-				return 100, nil
+			GetEpochInfoFunc: func(ctx context.Context) (telemetry.EpochInfo, error) {
+				return telemetry.EpochInfo{Epoch: 100}, nil
 			},
 		})
 		require.NoError(t, err)
@@ -454,7 +454,7 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 			TWAMPReflector:             reflector,
 			PeerDiscovery:              peerDiscovery,
 			TelemetryProgramClient:     telemetryProgram,
-			GetCurrentEpochFunc:        func(ctx context.Context) (uint64, error) { return 100, nil },
+			GetEpochInfoFunc:           func(ctx context.Context) (telemetry.EpochInfo, error) { return telemetry.EpochInfo{Epoch: 100}, nil },
 			MaxConsecutiveSenderLosses: maxLosses,
 		})
 		require.NoError(t, err)
@@ -585,7 +585,7 @@ func TestAgentTelemetry_Collector(t *testing.T) {
 			TWAMPReflector:          reflector,
 			PeerDiscovery:           peerDiscovery,
 			TelemetryProgramClient:  telemetryProgram,
-			GetCurrentEpochFunc:     func(ctx context.Context) (uint64, error) { return 100, nil },
+			GetEpochInfoFunc:        func(ctx context.Context) (telemetry.EpochInfo, error) { return telemetry.EpochInfo{Epoch: 100}, nil },
 			SenderTTL:               250 * time.Millisecond,
 			NowFunc: func() time.Time {
 				nowMu.Lock()
@@ -701,8 +701,8 @@ func newTestCollector(t *testing.T, log *slog.Logger, localDevicePK solana.Publi
 		TWAMPReflector:          reflector,
 		PeerDiscovery:           peerDiscovery,
 		TelemetryProgramClient:  telemetryProgramClient,
-		GetCurrentEpochFunc: func(ctx context.Context) (uint64, error) {
-			return 100, nil
+		GetEpochInfoFunc: func(ctx context.Context) (telemetry.EpochInfo, error) {
+			return telemetry.EpochInfo{Epoch: 100}, nil
 		},
 	})
 	require.NoError(t, err)

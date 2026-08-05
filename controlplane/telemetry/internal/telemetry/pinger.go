@@ -396,6 +396,13 @@ func (p *Pinger) getEpochInfo(ctx context.Context) (EpochInfo, error) {
 		return info, nil
 	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxTries(3))
 	if err != nil {
+		// ErrorTypePingerEpochFetchFailed above fires per attempt; this one fires once per
+		// exhausted batch, which is what the refresh loop actually reacts to and the only signal
+		// for a ledger endpoint that fails intermittently without ever going stale enough to stop
+		// probing. Shutdown is not a fetch failure, so it is not counted.
+		if ctx.Err() == nil {
+			metrics.Errors.WithLabelValues(metrics.ErrorTypePingerEpochFetch).Inc()
+		}
 		return EpochInfo{}, fmt.Errorf("failed to get current epoch: %w", err)
 	}
 	return info, nil

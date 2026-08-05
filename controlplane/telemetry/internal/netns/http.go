@@ -23,6 +23,11 @@ type JSONRPCClientOptions struct {
 	DialTimeout   time.Duration
 	DialKeepAlive time.Duration
 	HTTPTimeout   time.Duration
+
+	// OnDial, when set, is called after each new connection is established, with the dial
+	// target and the resolved remote address. SingleThreadTransport does not pool, so this
+	// fires once per request: a caller that logs from it must collapse repeats itself.
+	OnDial func(addr, remote string)
 }
 
 type HTTPClientOptions = JSONRPCClientOptions
@@ -42,22 +47,44 @@ func NewNamespacedHTTPClient(namespace string, opts *HTTPClientOptions) (*http.C
 		opts = defaultJSONRPCClientOptions
 	}
 
+	// Fall back per field rather than only for a nil opts, so a caller that sets just one
+	// field (OnDial, say) does not silently get zero timeouts for the rest.
+	dialTimeout := opts.DialTimeout
+	if dialTimeout == 0 {
+		dialTimeout = defaultJSONRPCClientOptions.DialTimeout
+	}
+	dialKeepAlive := opts.DialKeepAlive
+	if dialKeepAlive == 0 {
+		dialKeepAlive = defaultJSONRPCClientOptions.DialKeepAlive
+	}
+	httpTimeout := opts.HTTPTimeout
+	if httpTimeout == 0 {
+		httpTimeout = defaultJSONRPCClientOptions.HTTPTimeout
+	}
+
 	transport := &SingleThreadTransport{
 		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return RunInNamespace(namespace, func() (net.Conn, error) {
+			conn, err := RunInNamespace(namespace, func() (net.Conn, error) {
 				return (&net.Dialer{
-					Timeout:       opts.DialTimeout,
-					KeepAlive:     opts.DialKeepAlive,
+					Timeout:       dialTimeout,
+					KeepAlive:     dialKeepAlive,
 					DualStack:     false,
 					FallbackDelay: -1,
 				}).DialContext(ctx, network, address)
 			})
+			if err != nil {
+				return nil, err
+			}
+			if opts.OnDial != nil {
+				opts.OnDial(address, conn.RemoteAddr().String())
+			}
+			return conn, nil
 		},
 	}
 
 	client := &http.Client{
 		Transport: gzhttp.Transport(transport),
-		Timeout:   opts.HTTPTimeout,
+		Timeout:   httpTimeout,
 	}
 
 	return client, nil

@@ -23,6 +23,7 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netns"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/rpclog"
 	telemetrysvc "github.com/malbeclabs/doublezero/controlplane/telemetry/internal/serviceability"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/state"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
@@ -279,17 +280,22 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Build solana RPC client.
+	// Build solana RPC client. Both paths report the resolved remote address of each new
+	// connection, so logs say which endpoint behind the ledger RPC hostname this agent is
+	// talking to.
+	endpointLogger := rpclog.NewEndpointLogger(log)
 	var rpcClient *solanarpc.Client
 	if *managementNamespace != "" {
-		jsonrpcClient, err := netns.NewNamespacedJSONRPCClient(*ledgerRPCURL, *managementNamespace, nil)
+		jsonrpcClient, err := netns.NewNamespacedJSONRPCClient(*ledgerRPCURL, *managementNamespace, &netns.JSONRPCClientOptions{
+			OnDial: endpointLogger.OnDial,
+		})
 		if err != nil {
 			log.Error("failed to create namespace-safe solana RPC client", "error", err)
 			os.Exit(1)
 		}
 		rpcClient = solanarpc.NewWithCustomRPCClient(jsonrpcClient)
 	} else {
-		rpcClient = dzrpc.NewWithRetries(*ledgerRPCURL, nil)
+		rpcClient = dzrpc.New(*ledgerRPCURL, dzrpc.Options{OnDial: endpointLogger.OnDial})
 	}
 
 	// Set up real peer discovery.
@@ -300,6 +306,7 @@ func main() {
 	}
 	localNet := netutil.NewLocalNet(log)
 	cachedSvcClient := telemetrysvc.NewCachingFetcher(
+		log,
 		serviceability.New(rpcClient, serviceabilityProgramID),
 		telemetrysvc.DefaultCacheTTL,
 		*cachingFetcherRPCTimeout,

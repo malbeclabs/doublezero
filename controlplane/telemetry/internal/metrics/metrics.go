@@ -12,6 +12,7 @@ const (
 	MetricNamePeerDiscoveryLocalTunnelNotFound = "doublezero_device_telemetry_agent_peer_discovery_not_found_tunnels"
 	MetricNameEpochCacheStaleAge               = "doublezero_device_telemetry_agent_epoch_cache_stale_age_seconds"
 	MetricNameSamplesDropped                   = "doublezero_device_telemetry_agent_samples_dropped_total"
+	MetricNamePeers                            = "doublezero_device_telemetry_agent_peers"
 
 	// Labels.
 	LabelVersion       = "version"
@@ -37,8 +38,11 @@ const (
 	ErrorTypePingerEpochTooStale     = "pinger_epoch_too_stale"
 	ErrorTypePingerEpochEnded        = "pinger_epoch_ended"
 	ErrorTypePingerEpochFetchFailed  = "pinger_epoch_fetch_failed"
-	ErrorTypeSubmitterBufferFull     = "submitter_buffer_full"
-	ErrorTypeSubmitterAccountFull    = "submitter_account_full"
+	// ErrorTypePingerEpochFetch counts once per exhausted retry batch, distinct from
+	// ErrorTypePingerEpochFetchFailed's once-per-attempt count.
+	ErrorTypePingerEpochFetch     = "pinger_epoch_fetch"
+	ErrorTypeSubmitterBufferFull  = "submitter_buffer_full"
+	ErrorTypeSubmitterAccountFull = "submitter_account_full"
 
 	// Sample drop reasons.
 	DropReasonBufferFull  = "buffer_full"
@@ -77,6 +81,14 @@ var (
 			Help: "Number of samples in batches discarded from the buffer without a successful submission, by reason",
 		},
 		[]string{LabelDropReason},
+	)
+
+	Peers = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: MetricNamePeers,
+			Help: "Number of peers currently discovered for probing",
+		},
+		[]string{LabelLocalDevicePK},
 	)
 
 	PeerDiscoveryLocalTunnelNotFound = promauto.NewGaugeVec(

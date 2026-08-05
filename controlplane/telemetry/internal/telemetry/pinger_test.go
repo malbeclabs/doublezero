@@ -873,6 +873,42 @@ func TestAgentTelemetry_PingerEpochMetrics(t *testing.T) {
 		assert.Equal(t, 1.0, delta(metrics.ErrorTypePingerEpochTooStale), "a rollover is not staleness either")
 	})
 
+	// ErrorTypePingerEpochFetchFailed above fires on every retry; this one fires once per exhausted
+	// batch, which is what the refresh loop actually reacts to and the only signal for an endpoint
+	// that fails intermittently without ever going stale enough to stop probing.
+	t.Run("counts every exhausted epoch fetch, not every attempt", func(t *testing.T) {
+		before := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypePingerEpochFetch))
+
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		pinger := telemetry.NewPinger(slog.New(newRecordingHandler()), &telemetry.PingerConfig{
+			LocalDevicePK: newPK(62),
+			Peers:         singleTunnelPeer(t, newPK(63), newPK(64)),
+			Buffer:        buf,
+			GetSender: func(context.Context, *telemetry.Peer) twamplight.Sender {
+				return &mockSender{rtt: 7 * time.Millisecond}
+			},
+			GetEpochInfo: func(context.Context) (telemetry.EpochInfo, error) {
+				return telemetry.EpochInfo{}, errors.New("ledger rpc unreachable")
+			},
+		})
+
+		ctx := context.Background()
+		for range 5 {
+			pinger.RefreshEpoch(ctx)
+		}
+		assert.Equal(t, 5.0, testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypePingerEpochFetch))-before,
+			"every exhausted fetch should be counted once, not once per retry")
+
+		// Shutdown is not a fetch failure.
+		cancelledCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		before = testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypePingerEpochFetch))
+		pinger.RefreshEpoch(cancelledCtx)
+		assert.Zero(t, testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypePingerEpochFetch))-before,
+			"a cancelled context should not be counted as a fetch failure")
+	})
+
 	// The inline fetch in the probe path made Tick a second writer of the epoch cache, so a tick could
 	// act on a read the refresh loop had already replaced: an ERROR and an error-counter increment on
 	// an agent with a perfectly good epoch cached.
@@ -1043,6 +1079,35 @@ func (h *recordingHandler) count(level slog.Level, message string) int {
 		}
 	}
 	return n
+}
+
+// reset discards all recorded records, so a test can assert on log-once behavior across
+// multiple phases without a fresh handler for each one.
+func (h *recordingHandler) reset() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = nil
+}
+
+// attrs returns the attributes of the last record at level with the given message, and whether
+// one was found.
+func (h *recordingHandler) attrs(level slog.Level, message string) (map[string]any, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for i := len(h.records) - 1; i >= 0; i-- {
+		r := h.records[i]
+		if r.Level != level || r.Message != message {
+			continue
+		}
+		out := make(map[string]any, r.NumAttrs())
+		r.Attrs(func(a slog.Attr) bool {
+			out[a.Key] = a.Value.Any()
+			return true
+		})
+		return out, true
+	}
+	return nil, false
 }
 
 type mockSender struct {

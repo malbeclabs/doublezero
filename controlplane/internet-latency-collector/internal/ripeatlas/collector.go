@@ -18,6 +18,11 @@ import (
 
 const (
 	TimestampFileName = "ripe_atlas_timestamps.json"
+
+	// staleMeasurementWarnAfter is how long a measurement may return no new results
+	// before we treat it as stalled rather than merely idle. It is several times the
+	// default sampling interval so ordinary polling jitter stays quiet.
+	staleMeasurementWarnAfter = 30 * time.Minute
 )
 
 // CallDelay is defined in client.go to avoid duplication
@@ -557,10 +562,22 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	}
 
 	if len(results) == 0 {
-		c.log.Debug("No new results for measurement",
-			slog.Int("measurement_id", measurement.ID),
-			slog.String("target_location", meta.TargetLocation),
-			slog.Int64("query_start_timestamp", lastTimestampUnix))
+		// An empty page is normal between cycles, but once it persists well past the
+		// sampling interval the measurement has stalled and its circuits are going
+		// missing. This is the only per-measurement signal that the stall is happening;
+		// marking the probes responsible is handled by the measurement creation cycle.
+		if exists && time.Since(lastTimestamp) > staleMeasurementWarnAfter {
+			c.log.Warn("No new results since last export (measurement stalled?)",
+				slog.Int("measurement_id", measurement.ID),
+				slog.String("target_location", meta.TargetLocation),
+				slog.Time("last_timestamp", lastTimestamp),
+				slog.Duration("stale_for", time.Since(lastTimestamp)))
+		} else {
+			c.log.Debug("No new results for measurement",
+				slog.Int("measurement_id", measurement.ID),
+				slog.String("target_location", meta.TargetLocation),
+				slog.Int64("query_start_timestamp", lastTimestampUnix))
+		}
 		return 0, nil, nil
 	}
 

@@ -168,14 +168,21 @@ pub fn delete_multicast_group(
     )
 }
 
-/// `UpdateMulticastGroupRoles` (variant 58) — publisher/subscriber role change.
-/// Accounts: `[group, accesspass, user, globalstate, multicast_publisher_block]`.
+/// `UpdateMulticastGroupRoles` (variant 58) — publisher/subscriber role change,
+/// applied atomically to `group` plus every group in `extra_groups`.
+/// Accounts: `[group, accesspass, user, globalstate, multicast_publisher_block,
+/// extra_groups...]`.
+///
+/// `args.extra_group_count` is DERIVED from `extra_groups.len()`; any
+/// caller-supplied value is ignored (the count must stay in lockstep with the
+/// emitted group metas, or the processor would misparse the trailing region).
 pub fn update_multicast_group_roles(
     program_id: &Pubkey,
     payer: &Pubkey,
     group: &Pubkey,
     accesspass: &Pubkey,
     user: &Pubkey,
+    extra_groups: &[Pubkey],
     mut args: UpdateMulticastGroupRolesArgs,
 ) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
@@ -186,16 +193,20 @@ pub fn update_multicast_group_roles(
     // a caller-supplied value here can only ever fail. This builder always emits
     // the `multicast_publisher_block` account, so it forces the flag (as the SDK does).
     args.use_onchain_allocation = true;
+    args.extra_group_count = u8::try_from(extra_groups.len())
+        .expect("extra_groups cannot exceed the transaction account limit");
+    let mut accounts = vec![
+        AccountMeta::new(*group, false),
+        AccountMeta::new(*accesspass, false),
+        AccountMeta::new(*user, false),
+        AccountMeta::new(globalstate, false),
+        AccountMeta::new(multicast_publisher_block, false),
+    ];
+    accounts.extend(extra_groups.iter().map(|g| AccountMeta::new(*g, false)));
     common::build_with_permission(
         program_id,
         DoubleZeroInstruction::UpdateMulticastGroupRoles(args),
-        vec![
-            AccountMeta::new(*group, false),
-            AccountMeta::new(*accesspass, false),
-            AccountMeta::new(*user, false),
-            AccountMeta::new(globalstate, false),
-            AccountMeta::new(multicast_publisher_block, false),
-        ],
+        accounts,
         payer,
     )
 }
@@ -577,8 +588,9 @@ mod tests {
             subscriber: false,
             // Left off deliberately: the builder must force it on.
             use_onchain_allocation: false,
+            extra_group_count: 0,
         };
-        let ix = update_multicast_group_roles(&pid, &payer, &group, &accesspass, &user, args);
+        let ix = update_multicast_group_roles(&pid, &payer, &group, &accesspass, &user, &[], args);
         assert_eq!(ix.data[0], 58);
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
             DoubleZeroInstruction::UpdateMulticastGroupRoles(a) => {
@@ -596,6 +608,59 @@ mod tests {
                 AccountMeta::new(user, false),
                 AccountMeta::new(globalstate, false),
                 AccountMeta::new(mpb, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
+    }
+
+    /// Extra groups are appended after the five fixed accounts, writable, and
+    /// `extra_group_count` is derived from the slice length (a caller-set value is
+    /// overwritten).
+    #[test]
+    fn test_update_multicast_group_roles_extra_groups() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let group = Pubkey::new_unique();
+        let accesspass = Pubkey::new_unique();
+        let user = Pubkey::new_unique();
+        let extra1 = Pubkey::new_unique();
+        let extra2 = Pubkey::new_unique();
+        let args = UpdateMulticastGroupRolesArgs {
+            client_ip: Ipv4Addr::new(192, 168, 1, 1),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: false,
+            // Wrong on purpose: the builder must derive it from the slice.
+            extra_group_count: 7,
+        };
+        let ix = update_multicast_group_roles(
+            &pid,
+            &payer,
+            &group,
+            &accesspass,
+            &user,
+            &[extra1, extra2],
+            args,
+        );
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::UpdateMulticastGroupRoles(a) => {
+                assert_eq!(a.extra_group_count, 2);
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        let (mpb, _, _) = get_resource_extension_pda(&pid, ResourceType::MulticastPublisherBlock);
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(group, false),
+                AccountMeta::new(accesspass, false),
+                AccountMeta::new(user, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(mpb, false),
+                AccountMeta::new(extra1, false),
+                AccountMeta::new(extra2, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
             ]

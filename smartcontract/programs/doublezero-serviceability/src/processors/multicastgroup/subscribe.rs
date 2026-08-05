@@ -35,14 +35,20 @@ pub struct UpdateMulticastGroupRolesArgs {
     pub subscriber: bool,
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
+    /// Number of additional writable MulticastGroup accounts following the five fixed
+    /// accounts. The role change is applied to the primary group plus every extra
+    /// group atomically. Old encodings without this byte decode as 0 (single-group
+    /// behavior).
+    #[incremental(default = 0)]
+    pub extra_group_count: u8,
 }
 
 impl fmt::Debug for UpdateMulticastGroupRolesArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "client_ip: {}, publisher: {:?}, subscriber: {:?}, use_onchain_allocation: {:?}",
-            self.client_ip, self.publisher, self.subscriber, self.use_onchain_allocation
+            "client_ip: {}, publisher: {:?}, subscriber: {:?}, use_onchain_allocation: {:?}, extra_group_count: {}",
+            self.client_ip, self.publisher, self.subscriber, self.use_onchain_allocation, self.extra_group_count
         )
     }
 }
@@ -174,12 +180,24 @@ pub fn process_update_multicastgroup_roles(
     let globalstate = GlobalState::try_from(gs_account)?;
     let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
 
-    // Trailing layout: [payer, system, permission?]. The SDK appends the payer's Permission PDA last
-    // (via execute_authorized_transaction), and split_trailing_permission identifies it by PDA match
-    // rather than by position.
+    // Trailing layout: [mgroup₁..mgroupₙ, payer, system, permission?]. The extra
+    // multicast groups (batch role change, counted by args.extra_group_count) come
+    // first; the SDK appends the payer's Permission PDA last (via
+    // execute_authorized_transaction), and split_trailing_permission identifies it by
+    // PDA match rather than by position, so the variable-length extras never confuse it.
     let remaining: Vec<&AccountInfo> = accounts_iter.collect();
-    let (payer_account, system_program, _leading, permission_account) =
+    let (payer_account, system_program, leading, permission_account) =
         split_trailing_permission(program_id, &remaining)?;
+    let extra_group_count = value.extra_group_count as usize;
+    if extra_group_count > leading.len() {
+        msg!(
+            "extra_group_count {} exceeds {} supplied accounts",
+            extra_group_count,
+            leading.len()
+        );
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+    let (extra_group_accounts, _rest) = leading.split_at(extra_group_count);
 
     #[cfg(test)]
     msg!("process_update_multicastgroup_roles({:?})", value);
@@ -194,6 +212,26 @@ pub fn process_update_multicastgroup_roles(
         writable = true,
         "MulticastGroup"
     );
+    for extra_group_account in extra_group_accounts {
+        validate_program_account!(
+            *extra_group_account,
+            program_id,
+            writable = true,
+            "MulticastGroup"
+        );
+    }
+    // Reject duplicate group accounts. A duplicate aliases the same account data
+    // twice in the batch loop, making the final counter state depend on write
+    // ordering — an explicit error is a clearer contract than an accidental no-op.
+    for (i, group_key) in std::iter::once(mgroup_account.key)
+        .chain(extra_group_accounts.iter().map(|a| a.key))
+        .enumerate()
+    {
+        if extra_group_accounts[i..].iter().any(|a| a.key == group_key) {
+            msg!("duplicate multicast group {} in batch", group_key);
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+    }
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());
     }
@@ -284,23 +322,33 @@ pub fn process_update_multicastgroup_roles(
         }
     }
 
-    // Every pass type is authorized the same way here: the group must be on the pass's allowlist.
-    check_mgroup_allowlists(
-        &accesspass,
-        mgroup_account.key,
-        value.publisher,
-        value.subscriber,
-    )?;
-
-    let result = update_user_multicastgroup_roles(
-        mgroup_account,
-        &mut user,
-        value.publisher,
-        value.subscriber,
-    )?;
+    // Apply the role change to every group in the batch. Every pass type is
+    // authorized the same way here: each group must be on the pass's allowlist. Any
+    // per-group failure aborts the whole instruction, so the batch is atomic.
+    // Aggregating the transition flag with `|=` is correct for the dz_ip logic
+    // below: on batch adds only the first add sees empty→non-empty; on batch
+    // removes only the last removal sees non-empty→empty.
+    let mut publisher_list_transitioned = false;
+    for group_account in std::iter::once(mgroup_account).chain(extra_group_accounts.iter().copied())
+    {
+        check_mgroup_allowlists(
+            &accesspass,
+            group_account.key,
+            value.publisher,
+            value.subscriber,
+        )?;
+        let result = update_user_multicastgroup_roles(
+            group_account,
+            &mut user,
+            value.publisher,
+            value.subscriber,
+        )?;
+        publisher_list_transitioned |= result.publisher_list_transitioned;
+        try_acc_write(&result.mgroup, group_account, payer_account, accounts)?;
+    }
 
     // Allocate dz_ip when gaining first publisher
-    if result.publisher_list_transitioned
+    if publisher_list_transitioned
         && value.publisher
         && (user.dz_ip == Ipv4Addr::UNSPECIFIED || user.dz_ip == user.client_ip)
     {
@@ -315,7 +363,7 @@ pub fn process_update_multicastgroup_roles(
         );
 
         user.dz_ip = allocate_ip(multicast_publisher_block_ext, 1)?.ip();
-    } else if result.publisher_list_transitioned
+    } else if publisher_list_transitioned
         && !value.publisher
         && user.dz_ip != Ipv4Addr::UNSPECIFIED
         && user.dz_ip != user.client_ip
@@ -337,7 +385,6 @@ pub fn process_update_multicastgroup_roles(
         user.dz_ip = user.client_ip;
     }
 
-    try_acc_write(&result.mgroup, mgroup_account, payer_account, accounts)?;
     try_acc_write(&user, user_account, payer_account, accounts)?;
 
     Ok(())

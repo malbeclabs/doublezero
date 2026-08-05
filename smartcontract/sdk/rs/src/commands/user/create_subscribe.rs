@@ -12,8 +12,9 @@ use std::net::Ipv4Addr;
 
 use crate::{
     commands::{
-        accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
-        multicastgroup::get::GetMulticastGroupCommand,
+        accesspass::get::GetAccessPassCommand,
+        device::get::GetDeviceCommand,
+        multicastgroup::{get::GetMulticastGroupCommand, subscribe::MAX_GROUPS_PER_TRANSACTION},
     },
     DoubleZeroClient,
 };
@@ -24,7 +25,11 @@ pub struct CreateSubscribeUserCommand {
     pub device_pk: Pubkey,
     pub cyoa_type: UserCYOA,
     pub client_ip: Ipv4Addr,
-    pub mgroup_pk: Pubkey,
+    /// Multicast groups the user is subscribed to at creation, atomically in one
+    /// transaction. Must be non-empty; the first entry is the instruction's primary
+    /// group and the rest ride as extra group accounts. The publisher/subscriber
+    /// flags apply to every group.
+    pub mgroup_pks: Vec<Pubkey>,
     pub publisher: bool,
     pub subscriber: bool,
     pub tunnel_endpoint: Ipv4Addr,
@@ -39,14 +44,36 @@ pub struct CreateSubscribeUserCommand {
 
 impl CreateSubscribeUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        let (_, mgroup) = GetMulticastGroupCommand {
-            pubkey_or_code: self.mgroup_pk.to_string(),
+        // Deduplicate while preserving order: the processor rejects duplicate group
+        // accounts in a batch. CreateSubscribeUser also carries the device's
+        // dz_prefix accounts, so callers should stay well below the role-update
+        // chunk size (connect folds at most 8 groups into the create).
+        let mut mgroup_pks: Vec<Pubkey> = Vec::with_capacity(self.mgroup_pks.len());
+        for pk in &self.mgroup_pks {
+            if !mgroup_pks.contains(pk) {
+                mgroup_pks.push(*pk);
+            }
         }
-        .execute(client)
-        .map_err(|_err| eyre::eyre!("MulticastGroup not found"))?;
+        if mgroup_pks.len() > MAX_GROUPS_PER_TRANSACTION {
+            eyre::bail!(
+                "{} multicast groups exceed the {MAX_GROUPS_PER_TRANSACTION}-group transaction limit; subscribe the rest via UpdateMulticastGroupRolesCommand",
+                mgroup_pks.len()
+            );
+        }
+        let (first_mgroup_pk, extra_mgroup_pks) = mgroup_pks
+            .split_first()
+            .ok_or_else(|| eyre::eyre!("At least one multicast group is required"))?;
 
-        if mgroup.status != MulticastGroupStatus::Activated {
-            eyre::bail!("MulticastGroup not active");
+        for mgroup_pk in &mgroup_pks {
+            let (_, mgroup) = GetMulticastGroupCommand {
+                pubkey_or_code: mgroup_pk.to_string(),
+            }
+            .execute(client)
+            .map_err(|_err| eyre::eyre!("MulticastGroup not found ({mgroup_pk})"))?;
+
+            if mgroup.status != MulticastGroupStatus::Activated {
+                eyre::bail!("MulticastGroup not active ({mgroup_pk})");
+            }
         }
 
         // When a custom owner is set, look up the access pass for that owner
@@ -88,9 +115,10 @@ impl CreateSubscribeUserCommand {
             &program_id,
             &client.get_payer(),
             &self.device_pk,
-            &self.mgroup_pk,
+            first_mgroup_pk,
             &accesspass_pk,
             dz_prefix_count_u8,
+            extra_mgroup_pks,
             self.feed_pk.as_ref(),
             UserCreateSubscribeArgs {
                 user_type: self.user_type,
@@ -101,6 +129,7 @@ impl CreateSubscribeUserCommand {
                 tunnel_endpoint: self.tunnel_endpoint,
                 dz_prefix_count: dz_prefix_count_u8,
                 owner: self.owner.unwrap_or_default(),
+                extra_group_count: 0, // derived by the builder from extra_mgroup_pks
             },
         );
 
@@ -201,6 +230,7 @@ mod tests {
             &mgroup_pk,
             &accesspass_pubkey,
             1,
+            &[],
             None,
             UserCreateSubscribeArgs {
                 user_type: UserType::IBRLWithAllocatedIP,
@@ -211,6 +241,7 @@ mod tests {
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 dz_prefix_count: 1,
                 owner: Pubkey::default(),
+                extra_group_count: 0,
             },
         );
         client
@@ -223,7 +254,7 @@ mod tests {
             device_pk,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip,
-            mgroup_pk,
+            mgroup_pks: vec![mgroup_pk],
             publisher: true,
             subscriber: false,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,

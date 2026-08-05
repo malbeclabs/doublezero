@@ -14,7 +14,8 @@ use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
     commands::{
         multicastgroup::{
-            subscribe::UpdateMulticastGroupRolesCommand, subscribe_feed::SubscribeFeedCommand,
+            subscribe::{UpdateMulticastGroupRolesCommand, MAX_GROUPS_PER_TRANSACTION},
+            subscribe_feed::SubscribeFeedCommand,
             unsubscribe_feed::UnsubscribeFeedCommand,
         },
         user::{create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand},
@@ -1116,19 +1117,23 @@ impl Connect {
                     return Err(eyre::eyre!(err_msg));
                 }
 
-                // Create user with first group (pick from pub_groups first, then sub_groups)
-                let first_group_pk = all_group_pks
-                    .first()
-                    .ok_or_else(|| eyre::eyre!("At least one multicast group is required"))?;
+                // Create the user subscribed to every group sharing the first group's
+                // flag pair in one transaction; other flag pairs follow as batched
+                // role updates.
+                let (create_group_pks, (create_publisher, create_subscriber), follow_up_batches) =
+                    plan_group_batches(&all_group_pks, pub_group_pks, sub_group_pks);
+                if create_group_pks.is_empty() {
+                    eyre::bail!("At least one multicast group is required");
+                }
 
                 let res = ledger.create_subscribe_user(CreateSubscribeUserCommand {
                     user_type: UserType::Multicast,
                     device_pk,
                     cyoa_type: ibrl_user.cyoa_type,
                     client_ip: *client_ip,
-                    mgroup_pk: *first_group_pk,
-                    publisher: pub_group_pks.contains(first_group_pk),
-                    subscriber: sub_group_pks.contains(first_group_pk),
+                    publisher: create_publisher,
+                    subscriber: create_subscriber,
+                    mgroup_pks: create_group_pks,
                     tunnel_endpoint,
                     owner: None,
                     feed_pk: None,
@@ -1146,20 +1151,21 @@ impl Connect {
                     }
                 };
 
-                // Wait for user to be activated before subscribing to additional groups
-                if all_group_pks.len() > 1 {
+                // Groups with other flag pairs need the user Activated before their
+                // role updates; the common case (all groups share one flag pair)
+                // skips the wait entirely.
+                if !follow_up_batches.is_empty() {
                     self.poll_for_user_activated(ledger, &user_pk, spinner)?;
                 }
-
-                // Subscribe to remaining groups
-                for group_pk in all_group_pks.iter().skip(1) {
-                    spinner.set_message(format!("Subscribing to group: {group_pk}"));
+                for (publisher, subscriber, group_pks) in follow_up_batches {
+                    spinner
+                        .set_message(format!("Subscribing to {} more group(s)", group_pks.len()));
                     ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                         user_pk,
-                        group_pk: *group_pk,
+                        group_pks,
                         client_ip: *client_ip,
-                        publisher: pub_group_pks.contains(group_pk),
-                        subscriber: sub_group_pks.contains(group_pk),
+                        publisher,
+                        subscriber,
                         device_pk: None,
                         feed_pk: None,
                     })?;
@@ -1174,68 +1180,56 @@ impl Connect {
                     self.poll_for_user_activated(ledger, user_pk, spinner)?;
                 }
 
-                // Subscribe to any pub groups not already subscribed
-                for group_pk in pub_group_pks {
-                    if !user.publishers.contains(group_pk) {
-                        spinner.set_message(format!(
-                            "Adding publisher subscription to existing Multicast user: {user_pk}"
-                        ));
-
-                        let res =
-                            ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
-                                user_pk: *user_pk,
-                                group_pk: *group_pk,
-                                client_ip: *client_ip,
-                                publisher: true,
-                                subscriber: false,
-                                device_pk: None,
-                                feed_pk: None,
-                            });
-
-                        match res {
-                            Ok(_) => {
-                                spinner.set_message("Publisher subscription added");
-                            }
-                            Err(e) => {
-                                writeln!(out, "❌ Error adding publisher subscription")?;
-                                writeln!(out, "\nError: {e:?}\n")?;
-                                eyre::bail!(
-                                    "Error adding publisher subscription to existing user: {e:?}"
-                                );
-                            }
-                        }
+                // Add the requested roles, batched by each group's effective
+                // (publisher, subscriber) flag pair. The instruction sets absolute
+                // role state, so the desired flags union the request with the roles
+                // the user already holds — a group in both --publish and --subscribe
+                // (or already holding the other role) keeps both instead of the last
+                // write stripping the first.
+                let mut batches: Vec<(bool, bool, Vec<Pubkey>)> = Vec::new();
+                for group_pk in all_group_pks.iter() {
+                    let publisher =
+                        pub_group_pks.contains(group_pk) || user.publishers.contains(group_pk);
+                    let subscriber =
+                        sub_group_pks.contains(group_pk) || user.subscribers.contains(group_pk);
+                    // Skip groups whose desired state is already onchain.
+                    if user.publishers.contains(group_pk) == publisher
+                        && user.subscribers.contains(group_pk) == subscriber
+                    {
+                        continue;
+                    }
+                    match batches.iter_mut().find(|(p, s, pks)| {
+                        (*p, *s) == (publisher, subscriber)
+                            && pks.len() < MAX_GROUPS_PER_TRANSACTION
+                    }) {
+                        Some((_, _, pks)) => pks.push(*group_pk),
+                        None => batches.push((publisher, subscriber, vec![*group_pk])),
                     }
                 }
+                for (publisher, subscriber, group_pks) in batches {
+                    spinner.set_message(format!(
+                        "Adding subscription to existing Multicast user: {user_pk}"
+                    ));
 
-                // Subscribe to any sub groups not already subscribed
-                for group_pk in sub_group_pks {
-                    if !user.subscribers.contains(group_pk) {
-                        spinner.set_message(format!(
-                            "Adding subscriber subscription to existing Multicast user: {user_pk}"
-                        ));
+                    let res =
+                        ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
+                            user_pk: *user_pk,
+                            group_pks,
+                            client_ip: *client_ip,
+                            publisher,
+                            subscriber,
+                            device_pk: None,
+                            feed_pk: None,
+                        });
 
-                        let res =
-                            ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
-                                user_pk: *user_pk,
-                                group_pk: *group_pk,
-                                client_ip: *client_ip,
-                                publisher: false,
-                                subscriber: true,
-                                device_pk: None,
-                                feed_pk: None,
-                            });
-
-                        match res {
-                            Ok(_) => {
-                                spinner.set_message("Subscriber subscription added");
-                            }
-                            Err(e) => {
-                                writeln!(out, "❌ Error adding subscriber subscription")?;
-                                writeln!(out, "\nError: {e:?}\n")?;
-                                eyre::bail!(
-                                    "Error adding subscriber subscription to existing user: {e:?}"
-                                );
-                            }
+                    match res {
+                        Ok(_) => {
+                            spinner.set_message("Subscription added");
+                        }
+                        Err(e) => {
+                            writeln!(out, "❌ Error adding subscription")?;
+                            writeln!(out, "\nError: {e:?}\n")?;
+                            eyre::bail!("Error adding subscription to existing user: {e:?}");
                         }
                     }
                 }
@@ -1261,19 +1255,23 @@ impl Connect {
                     return Err(eyre::eyre!(err_msg));
                 }
 
-                // Create user with first group (pick from pub_groups first, then sub_groups)
-                let first_group_pk = all_group_pks
-                    .first()
-                    .ok_or_else(|| eyre::eyre!("At least one multicast group is required"))?;
+                // Create the user subscribed to every group sharing the first group's
+                // flag pair in one transaction; other flag pairs follow as batched
+                // role updates.
+                let (create_group_pks, (create_publisher, create_subscriber), follow_up_batches) =
+                    plan_group_batches(&all_group_pks, pub_group_pks, sub_group_pks);
+                if create_group_pks.is_empty() {
+                    eyre::bail!("At least one multicast group is required");
+                }
 
                 let res = ledger.create_subscribe_user(CreateSubscribeUserCommand {
                     user_type: UserType::Multicast,
                     device_pk,
                     cyoa_type: UserCYOA::GREOverDIA,
                     client_ip: *client_ip,
-                    mgroup_pk: *first_group_pk,
-                    publisher: pub_group_pks.contains(first_group_pk),
-                    subscriber: sub_group_pks.contains(first_group_pk),
+                    publisher: create_publisher,
+                    subscriber: create_subscriber,
+                    mgroup_pks: create_group_pks,
                     tunnel_endpoint,
                     owner: None,
                     feed_pk: None,
@@ -1291,20 +1289,21 @@ impl Connect {
                     }
                 };
 
-                // Wait for user to be activated before subscribing to additional groups
-                if all_group_pks.len() > 1 {
+                // Groups with other flag pairs need the user Activated before their
+                // role updates; the common case (all groups share one flag pair)
+                // skips the wait entirely.
+                if !follow_up_batches.is_empty() {
                     self.poll_for_user_activated(ledger, &user_pk, spinner)?;
                 }
-
-                // Subscribe to remaining groups
-                for group_pk in all_group_pks.iter().skip(1) {
-                    spinner.set_message(format!("Subscribing to group: {group_pk}"));
+                for (publisher, subscriber, group_pks) in follow_up_batches {
+                    spinner
+                        .set_message(format!("Subscribing to {} more group(s)", group_pks.len()));
                     ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
                         user_pk,
-                        group_pk: *group_pk,
+                        group_pks,
                         client_ip: *client_ip,
-                        publisher: pub_group_pks.contains(group_pk),
-                        subscriber: sub_group_pks.contains(group_pk),
+                        publisher,
+                        subscriber,
                         device_pk: None,
                         feed_pk: None,
                     })?;
@@ -1436,6 +1435,54 @@ impl Connect {
 
         eyre::bail!("timed out waiting for daemon to provision tunnel")
     }
+}
+
+/// Upper bound on multicast groups folded into a single CreateSubscribeUser
+/// transaction. The instruction already carries the device's dz_prefix blocks, so
+/// its account headroom under the 1232-byte transaction size limit is smaller than
+/// UpdateMulticastGroupRoles'; 8 groups leave room for several dz_prefix blocks
+/// (devices typically advertise one or two). Overflow rides in follow-up update
+/// batches, which are chunked to [`MAX_GROUPS_PER_TRANSACTION`].
+const MAX_CREATE_GROUPS: usize = 8;
+
+/// One follow-up UpdateMulticastGroupRoles batch: (publisher, subscriber, group_pks).
+type RoleBatch = (bool, bool, Vec<Pubkey>);
+
+/// Split the deduplicated group list into the batch folded into the
+/// CreateSubscribeUser transaction — every group sharing the first group's
+/// (publisher, subscriber) flag pair, up to [`MAX_CREATE_GROUPS`] — and the
+/// follow-up UpdateMulticastGroupRoles batches for the rest, grouped by flag pair
+/// and chunked to [`MAX_GROUPS_PER_TRANSACTION`]. Returns the create batch, its
+/// shared flag pair, and the follow-up batches. In the common case (all groups
+/// share one flag pair) the follow-up list is empty and connect is a single
+/// transaction.
+fn plan_group_batches(
+    all_group_pks: &[Pubkey],
+    pub_group_pks: &[Pubkey],
+    sub_group_pks: &[Pubkey],
+) -> (Vec<Pubkey>, (bool, bool), Vec<RoleBatch>) {
+    let flags_of = |pk: &Pubkey| (pub_group_pks.contains(pk), sub_group_pks.contains(pk));
+    let Some(first_flags) = all_group_pks.first().map(flags_of) else {
+        return (Vec::new(), (false, false), Vec::new());
+    };
+
+    let mut create_group_pks = Vec::new();
+    let mut follow_ups: Vec<RoleBatch> = Vec::new();
+    for pk in all_group_pks {
+        let (publisher, subscriber) = flags_of(pk);
+        if (publisher, subscriber) == first_flags && create_group_pks.len() < MAX_CREATE_GROUPS {
+            create_group_pks.push(*pk);
+            continue;
+        }
+        // A full batch stops matching, so oversize flag pairs chunk naturally.
+        match follow_ups.iter_mut().find(|(p, s, pks)| {
+            (*p, *s) == (publisher, subscriber) && pks.len() < MAX_GROUPS_PER_TRANSACTION
+        }) {
+            Some((_, _, pks)) => pks.push(*pk),
+            None => follow_ups.push((publisher, subscriber, vec![*pk])),
+        }
+    }
+    (create_group_pks, first_flags, follow_ups)
 }
 
 fn exclude_ips(
@@ -2029,7 +2076,7 @@ mod tests {
             &mut self,
             pk: Pubkey,
             user: &User,
-            mcast_group_pk: Pubkey,
+            mgroup_pks: Vec<Pubkey>,
             publisher: bool,
             subscriber: bool,
         ) {
@@ -2038,7 +2085,7 @@ mod tests {
                 device_pk: user.device_pk,
                 cyoa_type: UserCYOA::GREOverDIA,
                 client_ip: user.client_ip,
-                mgroup_pk: mcast_group_pk,
+                mgroup_pks: mgroup_pks.clone(),
                 publisher,
                 subscriber,
                 tunnel_endpoint: user.tunnel_endpoint,
@@ -2050,10 +2097,10 @@ mod tests {
             let provisioned = self.provisioned_services.clone();
             let mut user = user.clone();
             if publisher {
-                user.publishers.push(mcast_group_pk);
+                user.publishers.extend(&mgroup_pks);
             }
             if subscriber {
-                user.subscribers.push(mcast_group_pk);
+                user.subscribers.extend(&mgroup_pks);
             }
             self.ledger
                 .expect_create_subscribe_user()
@@ -2071,14 +2118,14 @@ mod tests {
         pub fn expect_update_multicastgroup_roles(
             &mut self,
             user_pk: Pubkey,
-            mcast_group_pk: Pubkey,
+            group_pks: Vec<Pubkey>,
             client_ip: Ipv4Addr,
             publisher: bool,
             subscriber: bool,
         ) {
             let expected_command = UpdateMulticastGroupRolesCommand {
                 user_pk,
-                group_pk: mcast_group_pk,
+                group_pks,
                 client_ip,
                 publisher,
                 subscriber,
@@ -2097,10 +2144,10 @@ mod tests {
                     let mut users = users.lock().unwrap();
                     if let Some(user) = users.get_mut(&cmd.user_pk) {
                         if cmd.publisher {
-                            user.publishers.push(cmd.group_pk);
+                            user.publishers.extend(&cmd.group_pks);
                         }
                         if cmd.subscriber {
-                            user.subscribers.push(cmd.group_pk);
+                            user.subscribers.extend(&cmd.group_pks);
                         }
                         provisioned
                             .lock()
@@ -2244,7 +2291,7 @@ mod tests {
             fixture.expect_create_subscribe_user(
                 Pubkey::new_unique(),
                 &mcast_user,
-                mcast_group_pk,
+                vec![mcast_group_pk],
                 true,  // publisher
                 false, // subscriber
             );
@@ -2305,7 +2352,7 @@ mod tests {
             fixture.expect_create_subscribe_user(
                 Pubkey::new_unique(),
                 &mcast_user,
-                mcast_group_pk,
+                vec![mcast_group_pk],
                 true,  // publisher
                 false, // subscriber
             );
@@ -2469,7 +2516,7 @@ mod tests {
             fixture.expect_create_subscribe_user(
                 Pubkey::new_unique(),
                 &user,
-                mcast_group_pk,
+                vec![mcast_group_pk],
                 true,
                 false,
             );
@@ -2516,11 +2563,11 @@ mod tests {
 
             // First group (g1) created via create_subscribe_user as publisher + subscriber.
             let user_pk = Pubkey::new_unique();
-            fixture.expect_create_subscribe_user(user_pk, &user, g1_pk, true, true);
+            fixture.expect_create_subscribe_user(user_pk, &user, vec![g1_pk], true, true);
             // Remaining group (g2) added via update_multicastgroup_roles as subscriber-only.
             fixture.expect_update_multicastgroup_roles(
                 user_pk,
-                g2_pk,
+                vec![g2_pk],
                 Ipv4Addr::new(1, 2, 3, 4),
                 false,
                 true,
@@ -2547,6 +2594,55 @@ mod tests {
                 result.err()
             );
             assert!(output.contains("Publishing to (from AccessPass): group-1"));
+            assert!(output.contains("Subscribing to (from AccessPass): group-1, group-2"));
+        });
+    }
+
+    /// When every authorized group shares the same (publisher, subscriber) flag pair,
+    /// all of them fold into the single CreateSubscribeUser transaction and no
+    /// follow-up role update is issued.
+    #[test]
+    fn test_connect_command_multicast_single_transaction_when_flags_match() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+
+            let (g1_pk, _) = fixture.add_multicast_group("group-1", "239.0.0.1");
+            let (g2_pk, _) = fixture.add_multicast_group("group-2", "239.0.0.2");
+
+            // Subscribe-only for both groups → one shared flag pair.
+            {
+                let mut ap = fixture.accesspass.lock().unwrap();
+                ap.mgroup_sub_allowlist = vec![g1_pk, g2_pk];
+            }
+
+            let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+
+            // Both groups ride in the create, in allowlist order. No
+            // expect_update_multicastgroup_roles: any such call would panic the mock.
+            let user_pk = Pubkey::new_unique();
+            fixture.expect_create_subscribe_user(user_pk, &user, vec![g1_pk, g2_pk], false, true);
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec![],
+                    sub_groups: vec![],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
+                },
+                client_ip: None,
+                device: None,
+                verbose: false,
+            };
+
+            let (result, output) = run(&fixture, command).await;
+            assert!(
+                result.is_ok(),
+                "single-transaction auto-join must succeed: {:?}",
+                result.err()
+            );
             assert!(output.contains("Subscribing to (from AccessPass): group-1, group-2"));
         });
     }
@@ -2610,7 +2706,7 @@ mod tests {
             // Only g1 survives filtering → single create_subscribe_user as subscriber-only,
             // no further update calls.
             let user_pk = Pubkey::new_unique();
-            fixture.expect_create_subscribe_user(user_pk, &user, g1_pk, false, true);
+            fixture.expect_create_subscribe_user(user_pk, &user, vec![g1_pk], false, true);
 
             let command = Connect {
                 dz_mode: DzMode::Multicast {
@@ -2682,7 +2778,7 @@ mod tests {
             fixture.expect_create_subscribe_user(
                 Pubkey::new_unique(),
                 &user,
-                mcast_group_pk,
+                vec![mcast_group_pk],
                 true,
                 false,
             );
@@ -2724,7 +2820,7 @@ mod tests {
             fixture.expect_create_subscribe_user(
                 Pubkey::new_unique(),
                 &user,
-                mcast_group_pk,
+                vec![mcast_group_pk],
                 false,
                 true,
             );
@@ -2775,7 +2871,7 @@ mod tests {
             fixture.expect_create_subscribe_user(
                 Pubkey::new_unique(),
                 &mcast_user,
-                mcast_group_pk,
+                vec![mcast_group_pk],
                 false,
                 true,
             );
@@ -2807,6 +2903,54 @@ mod tests {
     /// Exercises the `(_, Some(mcast))` branch of `find_or_create_user_and_subscribe`,
     /// which calls UpdateMulticastGroupRoles (the on-chain processor never had an epoch
     /// check; this test verifies the CLI gate no longer blocks it either).
+    /// A group requested in BOTH --publish and --subscribe on an existing Multicast
+    /// user gets one update with both flags, instead of a publisher add that a later
+    /// subscriber-only write strips (the instruction sets absolute role state).
+    #[test]
+    fn test_connect_existing_user_group_in_both_lists_keeps_both_roles() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+
+            let (mcast_group_pk, _mcast_group) =
+                fixture.add_multicast_group("test-group", "239.0.0.1");
+            let (device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+            // Existing multicast user with no roles yet.
+            let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+            let user_pk = fixture.add_user(&user);
+
+            // Exactly ONE update carrying both roles.
+            fixture.expect_update_multicastgroup_roles(
+                user_pk,
+                vec![mcast_group_pk],
+                user.client_ip,
+                true,
+                true,
+            );
+
+            let command = Connect {
+                dz_mode: DzMode::Multicast {
+                    mode: None,
+                    multicast_groups: vec![],
+                    pub_groups: vec!["test-group".to_string()],
+                    sub_groups: vec!["test-group".to_string()],
+                    sub_feeds: vec![],
+                    unsub_feeds: vec![],
+                },
+                client_ip: Some(user.client_ip.to_string()),
+                device: None,
+                verbose: false,
+            };
+
+            let (result, _) = run(&fixture, command).await;
+            assert!(
+                result.is_ok(),
+                "both-lists connect on existing user must succeed: {:?}",
+                result.err()
+            );
+        });
+    }
+
     #[test]
     fn test_connect_command_multicast_add_group_to_existing_user_with_expired_accesspass() {
         block_on(async {
@@ -2827,7 +2971,7 @@ mod tests {
             // Expect UpdateMulticastGroupRoles for the new group
             fixture.expect_update_multicastgroup_roles(
                 user_pk,
-                mcast_group2_pk,
+                vec![mcast_group2_pk],
                 user.client_ip,
                 false,
                 true,
@@ -2915,7 +3059,7 @@ mod tests {
         // Expect subscribe to second group
         fixture.expect_update_multicastgroup_roles(
             user_pk,
-            mcast_group2_pk,
+            vec![mcast_group2_pk],
             user.client_ip,
             publisher,
             subscriber,
@@ -2991,7 +3135,7 @@ mod tests {
             // Expect update_multicastgroup_roles call for the new subscriber group
             fixture.expect_update_multicastgroup_roles(
                 user_pk,
-                mcast_group2_pk,
+                vec![mcast_group2_pk],
                 user.client_ip,
                 false,
                 true,
@@ -3036,7 +3180,7 @@ mod tests {
             // Expect update_multicastgroup_roles call for the new publisher group
             fixture.expect_update_multicastgroup_roles(
                 user_pk,
-                mcast_group2_pk,
+                vec![mcast_group2_pk],
                 user.client_ip,
                 true,
                 false,
@@ -3138,7 +3282,7 @@ mod tests {
             fixture.expect_create_subscribe_user(
                 Pubkey::new_unique(),
                 &user,
-                mcast_group_pk,
+                vec![mcast_group_pk],
                 false,
                 true,
             );
@@ -3195,7 +3339,7 @@ mod tests {
             fixture.expect_create_subscribe_user(
                 Pubkey::new_unique(),
                 &user,
-                mcast_group_pk,
+                vec![mcast_group_pk],
                 false,
                 true,
             );
@@ -3390,7 +3534,7 @@ mod tests {
             fixture.expect_create_subscribe_user(
                 Pubkey::new_unique(),
                 &user,
-                mcast_group_pk,
+                vec![mcast_group_pk],
                 true,  // publisher
                 false, // not subscriber
             );
@@ -3437,7 +3581,7 @@ mod tests {
             fixture.expect_create_subscribe_user(
                 Pubkey::new_unique(),
                 &user,
-                mcast_group_pk,
+                vec![mcast_group_pk],
                 false, // not publisher
                 true,  // subscriber
             );
@@ -3644,7 +3788,7 @@ mod tests {
             fixture.expect_create_subscribe_user(
                 Pubkey::new_unique(),
                 &mcast_user,
-                mcast_group_pk,
+                vec![mcast_group_pk],
                 false, // publisher
                 true,  // subscriber
             );

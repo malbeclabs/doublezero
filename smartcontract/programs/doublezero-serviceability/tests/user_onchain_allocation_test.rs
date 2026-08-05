@@ -1379,6 +1379,7 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -1422,6 +1423,7 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
             publisher: false,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -1597,6 +1599,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             publisher: true,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -1638,6 +1641,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             publisher: false,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -1776,6 +1780,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             publisher: true,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -1898,6 +1903,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
             publisher: true,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -1931,6 +1937,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
             publisher: false,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),

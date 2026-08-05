@@ -1264,8 +1264,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 	})
 
 	// The chi-dn-dzd4 case (malbeclabs/infra#1703): the agent key is not the device's
-	// metrics_publisher, so the program rejects the init. Deliberately not parallel: the assertions
-	// are exact deltas on package-level prometheus counters.
+	// metrics_publisher, so the program rejects the init. Deliberately not parallel: the
+	// program-error delta is on a package-level prometheus counter.
 	t.Run("does_not_retry_a_submission_the_program_rejected", func(t *testing.T) {
 		var logs bytes.Buffer
 		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
@@ -1305,7 +1305,6 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		require.NoError(t, err)
 
 		programErrsBefore := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterProgramError))
-		exhaustedBefore := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterRetriesExhausted))
 
 		s.Tick(context.Background())
 
@@ -1316,10 +1315,11 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		programErrs := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterProgramError)) - programErrsBefore
 		assert.Equal(t, float64(1), programErrs, "program-error counter should increment once")
 
-		exhausted := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterRetriesExhausted)) - exhaustedBefore
-		assert.Equal(t, float64(0), exhausted, "retries were not exhausted, they were skipped")
-
 		out := logs.String()
+		// Asserted on the log rather than a delta of submitter_retries_exhausted: that counter is
+		// package-level and TestSubmitter_RetainsEverySampleAcrossTheStalenessBound drives it from a
+		// sibling parallel test, so a zero delta there would be racy.
+		assert.NotContains(t, out, "Submission failed after all retries", "the attempts should be skipped, not exhausted")
 		assert.Contains(t, out, "Submission rejected by the telemetry program")
 		assert.Contains(t, out, "is not authorized for origin device", "the reason the program gave has to reach the log")
 

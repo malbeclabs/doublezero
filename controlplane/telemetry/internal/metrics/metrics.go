@@ -44,8 +44,10 @@ const (
 	ErrorTypeSubmitterBufferFull  = "submitter_buffer_full"
 	ErrorTypeSubmitterAccountFull = "submitter_account_full"
 	// ErrorTypeSubmitterProgramError counts submissions the telemetry program rejected onchain.
-	// Distinct from the write/init failure types, which also cover transient RPC trouble: this one
-	// only fires on a rejection that will recur until something changes onchain or in config.
+	// It overlaps the write/init failure types rather than replacing them: those name the operation
+	// that failed, this one narrows why to a rejection that will recur until something changes
+	// onchain or in config, as opposed to the transient RPC trouble they also cover. A rejected init
+	// increments both.
 	ErrorTypeSubmitterProgramError = "submitter_program_error"
 
 	// Sample drop reasons.

@@ -2,6 +2,7 @@ package telemetry_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -399,6 +400,74 @@ func TestSDK_Telemetry_Executor_FinalizedWithProgramError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSDK_Telemetry_ProgramError_CustomErrorCode(t *testing.T) {
+	t.Parallel()
+
+	customErr := func(code any) map[string]any {
+		return map[string]any{"InstructionError": []any{0, map[string]any{"Custom": code}}}
+	}
+
+	tests := []struct {
+		name string
+		err  any
+		want uint32
+		ok   bool
+	}{
+		// Which numeric type the code arrives as depends on the decoder behind the RPC client.
+		{name: "json.Number", err: customErr(json.Number("1001")), want: 1001, ok: true},
+		{name: "float64", err: customErr(float64(1006)), want: 1006, ok: true},
+		{name: "int", err: customErr(1011), want: 1011, ok: true},
+		{name: "uint64", err: customErr(uint64(1010)), want: 1010, ok: true},
+		{name: "not a custom error", err: map[string]any{"InstructionError": []any{0, "InvalidAccountData"}}},
+		{name: "runtime error with no instruction error", err: "BlockhashNotFound"},
+		{name: "nil", err: nil},
+		{name: "negative code", err: customErr(float64(-1))},
+		{name: "code beyond uint32", err: customErr(json.Number("4294967296"))},
+		{name: "unparseable code", err: customErr(json.Number("not-a-number"))},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			code, ok := (&telemetry.ProgramError{Err: tt.err}).CustomErrorCode()
+			require.Equal(t, tt.ok, ok)
+			require.Equal(t, tt.want, code)
+		})
+	}
+}
+
+// The reason a failure happened is not always a "Program log:" line. A native program reached
+// through CPI — the system program, when an agent cannot fund the account it is creating — logs it
+// unprefixed, and dropping those lines would leave only an opaque error code.
+func TestSDK_Telemetry_ProgramError_ProgramLogMessages(t *testing.T) {
+	t.Parallel()
+
+	programErr := &telemetry.ProgramError{
+		Err: map[string]any{"InstructionError": []any{0, map[string]any{"Custom": 1}}},
+		Logs: []string{
+			"Program TeLeMetRy1111111111111111111111111111111111 invoke [1]",
+			"Program log: Instruction: InitializeDeviceLatencySamples",
+			"Program log: Processing InitializeDeviceLatencySamples",
+			"Program 11111111111111111111111111111111 invoke [2]",
+			"Transfer: insufficient lamports 0, need 890880",
+			"Program 11111111111111111111111111111111 failed: custom program error: 0x1",
+			"Program TeLeMetRy1111111111111111111111111111111111 consumed 4242 of 200000 compute units",
+			"Program TeLeMetRy1111111111111111111111111111111111 failed: custom program error: 0x1",
+		},
+	}
+
+	require.Equal(t, []string{
+		"Processing InitializeDeviceLatencySamples",
+		"Transfer: insufficient lamports 0, need 890880",
+	}, programErr.ProgramLogMessages())
+
+	// And the same lines reach anyone who only prints the error.
+	require.Contains(t, programErr.Error(), "insufficient lamports")
+	require.NotContains(t, programErr.Error(), "compute units")
+	require.NotContains(t, programErr.Error(), "Instruction: InitializeDeviceLatencySamples")
 }
 
 func TestSDK_Telemetry_Executor_FinalizedButMissingTransactionMeta(t *testing.T) {

@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"time"
@@ -72,6 +73,13 @@ type Options struct {
 
 	// Retry overrides the retry budget and classifier. Defaults apply when nil.
 	Retry *jsonrpc.RetryOptions
+
+	// OnDial, when set, is called after each new connection to the endpoint is
+	// established, with the dial target and the resolved remote address. It exists so a
+	// caller can record which endpoint behind a hostname it is actually talking to,
+	// which nothing else in the stack reports. It runs on the dial path, so it must not
+	// block, and it is not called when the dial fails: the error reaches the caller.
+	OnDial func(addr, remote string)
 }
 
 // New creates a Solana JSON-RPC client that retries transient failures.
@@ -82,7 +90,7 @@ type Options struct {
 // are never retried regardless of the options passed.
 func New(endpoint string, o Options) *solrpc.Client {
 	opts := &soljsonrpc.RPCClientOpts{
-		HTTPClient:    newHTTP(o.RequestTimeout, o.MaxConnsPerHost),
+		HTTPClient:    newHTTP(o.RequestTimeout, o.MaxConnsPerHost, o.OnDial),
 		CustomHeaders: o.Headers,
 	}
 	soljsonrpcClient := soljsonrpc.NewClientWithOpts(endpoint, opts)
@@ -102,20 +110,38 @@ func NewWithHeadersAndRetries(rpcEndpoint string, headers map[string]string, ret
 
 // newHTTP returns a new Client from the provided config. Zero values fall back to
 // the package defaults. Client is safe for concurrent use by multiple goroutines.
-func newHTTP(requestTimeout time.Duration, maxConns int) *http.Client {
+func newHTTP(requestTimeout time.Duration, maxConns int, onDial func(addr, remote string)) *http.Client {
 	if requestTimeout <= 0 {
 		requestTimeout = defaultRequestTimeout
 	}
 
 	return &http.Client{
 		Timeout:   requestTimeout,
-		Transport: gzhttp.Transport(newHTTPTransport(maxConns)),
+		Transport: gzhttp.Transport(newHTTPTransport(maxConns, onDial)),
 	}
 }
 
-func newHTTPTransport(maxConns int) *http.Transport {
+func newHTTPTransport(maxConns int, onDial func(addr, remote string)) *http.Transport {
 	if maxConns <= 0 {
 		maxConns = defaultMaxIdleConnsPerHost
+	}
+
+	dialer := &net.Dialer{
+		Timeout:   dialTimeout,
+		KeepAlive: defaultKeepAlive,
+		DualStack: true,
+	}
+
+	dialContext := dialer.DialContext
+	if onDial != nil {
+		dialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			conn, err := dialer.DialContext(ctx, network, addr)
+			if err != nil {
+				return nil, err
+			}
+			onDial(addr, conn.RemoteAddr().String())
+			return conn, nil
+		}
 	}
 
 	return &http.Transport{
@@ -124,11 +150,7 @@ func newHTTPTransport(maxConns int) *http.Transport {
 		MaxIdleConns:        maxConns,
 		MaxIdleConnsPerHost: maxConns,
 		Proxy:               http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   dialTimeout,
-			KeepAlive: defaultKeepAlive,
-			DualStack: true,
-		}).DialContext,
+		DialContext:         dialContext,
 		ForceAttemptHTTP2:   true,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}

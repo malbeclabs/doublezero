@@ -147,6 +147,30 @@ impl<C: CliCommand + Sync> doublezero_daemon_cli::LedgerClient for LedgerAdapter
         self.client.update_multicastgroup_roles(cmd)?;
         Ok(())
     }
+
+    fn list_feed(
+        &self,
+    ) -> eyre::Result<std::collections::HashMap<solana_sdk::pubkey::Pubkey, doublezero_sdk::Feed>>
+    {
+        self.client
+            .list_feed(doublezero_sdk::commands::feed::list::ListFeedCommand)
+    }
+
+    fn subscribe_feed(
+        &self,
+        cmd: doublezero_sdk::commands::multicastgroup::subscribe_feed::SubscribeFeedCommand,
+    ) -> eyre::Result<()> {
+        self.client.subscribe_feed(cmd)?;
+        Ok(())
+    }
+
+    fn unsubscribe_feed(
+        &self,
+        cmd: doublezero_sdk::commands::multicastgroup::unsubscribe_feed::UnsubscribeFeedCommand,
+    ) -> eyre::Result<()> {
+        self.client.unsubscribe_feed(cmd)?;
+        Ok(())
+    }
 }
 
 #[derive(Parser, Debug)]

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -265,7 +266,7 @@ func TestNewWithRetries_DoesNotRetrySendTransaction(t *testing.T) {
 func TestNewHTTPTransport_ConfigMatchesConstants(t *testing.T) {
 	t.Parallel()
 
-	tr := newHTTPTransport(defaultMaxIdleConnsPerHost)
+	tr := newHTTPTransport(defaultMaxIdleConnsPerHost, nil)
 	require.NotNil(t, tr)
 
 	require.Equal(t, defaultIdleConnTimeout, tr.IdleConnTimeout)
@@ -284,10 +285,10 @@ func TestNewHTTPTransport_ConfigMatchesConstants(t *testing.T) {
 func TestNew_OptionsReachHTTPClient(t *testing.T) {
 	t.Parallel()
 
-	hc := newHTTP(15*time.Second, 128)
+	hc := newHTTP(15*time.Second, 128, nil)
 	require.Equal(t, 15*time.Second, hc.Timeout)
 
-	tr := newHTTPTransport(128)
+	tr := newHTTPTransport(128, nil)
 	require.Equal(t, 128, tr.MaxConnsPerHost)
 	require.Equal(t, 128, tr.MaxIdleConnsPerHost)
 	require.Equal(t, 128, tr.MaxIdleConns)
@@ -296,7 +297,7 @@ func TestNew_OptionsReachHTTPClient(t *testing.T) {
 func TestNew_ZeroOptionsUsesDefaults(t *testing.T) {
 	t.Parallel()
 
-	hc := newHTTP(0, 0)
+	hc := newHTTP(0, 0, nil)
 	require.Equal(t, defaultRequestTimeout, hc.Timeout)
 	require.NotNil(t, New("http://127.0.0.1:1", Options{}))
 }
@@ -359,4 +360,53 @@ func TestNew_RequestTimeoutAbortsSlowRequest(t *testing.T) {
 	_, err := cl.GetVersion(context.Background())
 	require.Error(t, err, "request should have been aborted by RequestTimeout")
 	require.Less(t, time.Since(start), 3*time.Second, "RequestTimeout did not bound the request")
+}
+
+// OnDial exists so a caller can record which endpoint behind a hostname it is actually
+// connected to. Nothing else in the stack reports the resolved address, and during the
+// 2026-07-29 ledger outage one bad load balancer address out of five was the cause.
+func TestNew_OnDialReportsResolvedRemoteAddress(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"solana-core":"1.0.0","feature-set":0}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	type dial struct{ addr, remote string }
+	var mu sync.Mutex
+	var dials []dial
+
+	cl := New(srv.URL, Options{
+		Retry: &jsonrpc.RetryOptions{MaxAttempts: 1},
+		OnDial: func(addr, remote string) {
+			mu.Lock()
+			defer mu.Unlock()
+			dials = append(dials, dial{addr: addr, remote: remote})
+		},
+	})
+
+	_, err := cl.GetVersion(context.Background())
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, dials, 1, "one connection, one report")
+	require.Equal(t, strings.TrimPrefix(srv.URL, "http://"), dials[0].addr)
+	require.Equal(t, strings.TrimPrefix(srv.URL, "http://"), dials[0].remote, "httptest listens on a literal address, so the resolved remote matches it")
+}
+
+// A failed dial must not be reported as an established connection.
+func TestNew_OnDialNotCalledWhenDialFails(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	cl := New("http://127.0.0.1:1", Options{
+		Retry:  &jsonrpc.RetryOptions{MaxAttempts: 1},
+		OnDial: func(addr, remote string) { calls.Add(1) },
+	})
+
+	_, err := cl.GetVersion(context.Background())
+	require.Error(t, err)
+	require.Equal(t, int32(0), calls.Load())
 }

@@ -2,16 +2,21 @@ package telemetry_test
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
+	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/metrics"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/netutil"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/telemetry"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -616,6 +621,185 @@ func TestAgentTelemetry_PeerDiscovery_Ledger(t *testing.T) {
 		cfg = valid
 		cfg.RefreshInterval = 0
 		base(cfg, "zero refresh interval")
+	})
+
+	t.Run("keeps known peers when getting local interfaces fails", func(t *testing.T) {
+		t.Parallel()
+
+		log := log.With("test", t.Name())
+		localDevicePK := stringToPubkey("device1")
+
+		serviceabilityProgram := &mockServiceabilityProgramClient{
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{PubKey: localDevicePK, PublicIp: [4]uint8{192, 168, 1, 1}},
+						{PubKey: stringToPubkey("device2"), PublicIp: [4]uint8{192, 168, 1, 2}},
+					},
+					Links: []serviceability.Link{
+						{PubKey: stringToPubkey("link_1-2"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2"), TunnelNet: [5]uint8{10, 1, 1, 0, 31}},
+					},
+				}, nil
+			},
+		}
+
+		// The first refresh discovers the peer; every refresh after it fails on local interfaces.
+		var interfaceCalls atomic.Int32
+
+		cfg := &telemetry.LedgerPeerDiscoveryConfig{
+			Logger:        log,
+			LocalDevicePK: localDevicePK,
+			ProgramClient: serviceabilityProgram,
+			LocalNet: &netutil.MockLocalNet{
+				InterfacesFunc: func() ([]netutil.Interface, error) {
+					if interfaceCalls.Add(1) > 1 {
+						return nil, errors.New("transient failure getting local interfaces")
+					}
+					return []netutil.Interface{
+						{Name: "tun1-2", Addrs: []net.Addr{&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 0}), Mask: net.CIDRMask(31, 32)}}},
+					}, nil
+				},
+			},
+			TWAMPPort:       1234,
+			RefreshInterval: 20 * time.Millisecond,
+		}
+
+		peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(cfg)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- peerDiscovery.Run(ctx)
+		}()
+
+		expected := []*telemetry.Peer{
+			{
+				LinkPK:   stringToPubkey("link_1-2"),
+				DevicePK: stringToPubkey("device2"),
+				Tunnel: &netutil.LocalTunnel{
+					Interface: "tun1-2",
+					SourceIP:  ipv4([4]uint8{10, 1, 1, 0}),
+					TargetIP:  ipv4([4]uint8{10, 1, 1, 1}),
+				},
+				TWAMPPort: 1234,
+			},
+		}
+
+		require.Eventually(t, func() bool {
+			return len(peerDiscovery.GetPeers()) == 1
+		}, 2*time.Second, 20*time.Millisecond, "first refresh should discover the peer")
+
+		require.Eventually(t, func() bool {
+			return interfaceCalls.Load() >= 4
+		}, 2*time.Second, 20*time.Millisecond, "later refreshes should keep failing on local interfaces")
+
+		assert.Equal(t, expected, peerDiscovery.GetPeers(), "peers should survive a refresh that fails after the ledger read")
+
+		cancel()
+		assert.NoError(t, <-errCh)
+	})
+
+	t.Run("logs peer count changes and stays quiet otherwise", func(t *testing.T) {
+		t.Parallel()
+
+		handler := newRecordingHandler()
+		log := slog.New(handler)
+
+		// A pubkey of this subtest's own: metrics.Peers is a package-level gauge keyed by device,
+		// and the sibling subtests that share "device1" would overwrite the series under it.
+		localDevicePK := stringToPubkey("device_peer_count_logging")
+
+		activeLinks := []serviceability.Link{
+			{PubKey: stringToPubkey("link_1-2"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device2"), TunnelNet: [5]uint8{10, 1, 1, 0, 31}},
+			{PubKey: stringToPubkey("link_1-3"), Status: serviceability.LinkStatusActivated, SideAPubKey: localDevicePK, SideZPubKey: stringToPubkey("device3"), TunnelNet: [5]uint8{10, 1, 1, 2, 31}},
+		}
+
+		var mu sync.Mutex
+		links := activeLinks
+		var fetchCount atomic.Int64
+		setLinks := func(l []serviceability.Link) {
+			mu.Lock()
+			defer mu.Unlock()
+			links = l
+		}
+
+		serviceabilityProgram := &mockServiceabilityProgramClient{
+			GetProgramDataFunc: func(ctx context.Context) (*serviceability.ProgramData, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				fetchCount.Add(1)
+				return &serviceability.ProgramData{
+					Devices: []serviceability.Device{
+						{PubKey: localDevicePK, PublicIp: [4]uint8{192, 168, 1, 1}},
+						{PubKey: stringToPubkey("device2"), PublicIp: [4]uint8{192, 168, 1, 2}},
+						{PubKey: stringToPubkey("device3"), PublicIp: [4]uint8{192, 168, 1, 3}},
+					},
+					Links: slices.Clone(links),
+				}, nil
+			},
+		}
+
+		cfg := &telemetry.LedgerPeerDiscoveryConfig{
+			Logger:        log,
+			LocalDevicePK: localDevicePK,
+			ProgramClient: serviceabilityProgram,
+			LocalNet: &netutil.MockLocalNet{
+				InterfacesFunc: func() ([]netutil.Interface, error) {
+					return []netutil.Interface{
+						{Name: "tun1-2", Addrs: []net.Addr{&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 0}), Mask: net.CIDRMask(31, 32)}}},
+						{Name: "tun1-3", Addrs: []net.Addr{&net.IPNet{IP: ipv4([4]uint8{10, 1, 1, 2}), Mask: net.CIDRMask(31, 32)}}},
+					}, nil
+				},
+			},
+			TWAMPPort:       1234,
+			RefreshInterval: 20 * time.Millisecond,
+		}
+
+		peerDiscovery, err := telemetry.NewLedgerPeerDiscovery(cfg)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- peerDiscovery.Run(ctx)
+		}()
+
+		// The first refresh reports the count it discovered, at Info.
+		require.Eventually(t, func() bool {
+			return handler.count(slog.LevelInfo, "Peer count changed") == 1
+		}, 2*time.Second, 20*time.Millisecond)
+		attrs, ok := handler.attrs(slog.LevelInfo, "Peer count changed")
+		require.True(t, ok)
+		assert.Equal(t, int64(2), attrs["peers"])
+
+		// Many refreshes later, an unchanged count has still only logged once. Waiting on the
+		// fetch count rather than a fixed sleep proves the ticker actually fired repeatedly in
+		// the meantime, not just that nothing logged.
+		require.Eventually(t, func() bool {
+			return fetchCount.Load() >= 5
+		}, 2*time.Second, 20*time.Millisecond)
+		assert.Equal(t, 1, handler.count(slog.LevelInfo, "Peer count changed"), "a steady peer list should not log per refresh")
+
+		// Losing every link is a warning, since nothing gets probed after it.
+		handler.reset()
+		setLinks(nil)
+
+		const warnMsg = "Peer count changed, no peers found and nothing will be probed"
+		require.Eventually(t, func() bool {
+			return handler.count(slog.LevelWarn, warnMsg) == 1
+		}, 2*time.Second, 20*time.Millisecond)
+		attrs, ok = handler.attrs(slog.LevelWarn, warnMsg)
+		require.True(t, ok)
+		assert.Equal(t, int64(0), attrs["peers"])
+		assert.Equal(t, int64(2), attrs["previousPeers"])
+
+		require.Eventually(t, func() bool {
+			return testutil.ToFloat64(metrics.Peers.WithLabelValues(localDevicePK.String())) == 0
+		}, 2*time.Second, 20*time.Millisecond)
+
+		cancel()
+		assert.NoError(t, <-errCh)
 	})
 }
 

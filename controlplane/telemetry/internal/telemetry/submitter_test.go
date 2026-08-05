@@ -1211,4 +1211,118 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		assert.Equal(t, float64(1), errs, "account-full error counter should increment once")
 		assert.Contains(t, logs.String(), "Partition account is full, dropping partition")
 	})
+
+	// An init the program rejects because the account already exists still leaves the write able to
+	// proceed, so it must not end the submission. Reachable when a previous init landed onchain
+	// without the agent seeing it succeed.
+	t.Run("writes_anyway_when_the_account_already_exists", func(t *testing.T) {
+		t.Parallel()
+
+		var logs bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+		key := newTestPartitionKey()
+
+		var writes int32
+		prog := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				// Preflight reports the account missing, then the post-init write finds it there.
+				if atomic.AddInt32(&writes, 1) == 1 {
+					return solana.Signature{}, nil, sdktelemetry.ErrAccountNotFound
+				}
+				return solana.Signature{}, nil, nil
+			},
+			InitializeDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, &sdktelemetry.ProgramError{
+					Err:  map[string]any{"InstructionError": []any{0, map[string]any{"Custom": 1010}}},
+					Logs: []string{"Program log: Latency samples account already exists"},
+				}
+			},
+		}
+
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buf.Add(key, newTestSample())
+
+		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   prog,
+			MaxAttempts:     3,
+			MaxConcurrency:  10,
+			BackoffFunc:     func(int) time.Duration { return 0 },
+			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
+		})
+		require.NoError(t, err)
+
+		s.Tick(context.Background())
+
+		assert.Equal(t, int32(2), atomic.LoadInt32(&writes), "the write should be attempted after the rejected init")
+		assert.Len(t, buf.CopyAndReset(key), 0, "the samples were written, so nothing should be requeued")
+		assert.Contains(t, logs.String(), "attempting the write anyway")
+		assert.NotContains(t, logs.String(), "Submission rejected by the telemetry program",
+			"an account that already exists is not a submission failure")
+	})
+
+	// The chi-dn-dzd4 case (malbeclabs/infra#1703): the agent key is not the device's
+	// metrics_publisher, so the program rejects the init. Deliberately not parallel: the
+	// program-error delta is on a package-level prometheus counter.
+	t.Run("does_not_retry_a_submission_the_program_rejected", func(t *testing.T) {
+		var logs bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+		key := newTestPartitionKey()
+
+		var writes, inits int32
+		prog := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				atomic.AddInt32(&writes, 1)
+				return solana.Signature{}, nil, sdktelemetry.ErrAccountNotFound
+			},
+			InitializeDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				atomic.AddInt32(&inits, 1)
+				return solana.Signature{}, nil, &sdktelemetry.ProgramError{
+					Err: map[string]any{"InstructionError": []any{0, map[string]any{"Custom": 1001}}},
+					Logs: []string{
+						"Program log: Instruction: InitializeDeviceLatencySamples",
+						"Program log: Agent BA14eqpRNmkcQhjsH5abfvaUxRi7RcGGuQVeQuJdwPZc is not authorized for origin device FYkmttUmox6kZVjVNCATXEdGt3bfLicn5fJ8fnGfF4fZ",
+					},
+				}
+			},
+		}
+
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buf.Add(key, newTestSample())
+
+		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   prog,
+			MaxAttempts:     5,
+			MaxConcurrency:  10,
+			BackoffFunc:     func(int) time.Duration { return 0 },
+			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
+		})
+		require.NoError(t, err)
+
+		programErrsBefore := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterProgramError))
+
+		s.Tick(context.Background())
+
+		// One write to find the account missing, one to confirm the rejected init left it missing.
+		assert.Equal(t, int32(2), atomic.LoadInt32(&writes), "the rejection should end the tick, not spend the remaining attempts")
+		assert.Equal(t, int32(1), atomic.LoadInt32(&inits), "an init the program rejected should not be re-sent unchanged")
+
+		programErrs := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterProgramError)) - programErrsBefore
+		assert.Equal(t, float64(1), programErrs, "program-error counter should increment once")
+
+		out := logs.String()
+		// Asserted on the log rather than a delta of submitter_retries_exhausted: that counter is
+		// package-level and TestSubmitter_RetainsEverySampleAcrossTheStalenessBound drives it from a
+		// sibling parallel test, so a zero delta there would be racy.
+		assert.NotContains(t, out, "Submission failed after all retries", "the attempts should be skipped, not exhausted")
+		assert.Contains(t, out, "Submission rejected by the telemetry program")
+		assert.Contains(t, out, "is not authorized for origin device", "the reason the program gave has to reach the log")
+
+		assert.Len(t, buf.CopyAndReset(key), 1, "samples should be requeued for the next tick")
+	})
 }

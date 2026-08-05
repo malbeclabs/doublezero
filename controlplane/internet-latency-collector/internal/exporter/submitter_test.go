@@ -741,6 +741,58 @@ func TestInternetLatency_Submitter(t *testing.T) {
 		}
 	})
 
+	// A partition too large for one transaction is written in batches, so a failure part-way through
+	// leaves some of them onchain. Resuming at the first unwritten sample is what keeps the retry
+	// from appending the earlier batches a second time and skewing the latency data they feed.
+	t.Run("retries_resume_at_the_first_unwritten_sample", func(t *testing.T) {
+		t.Parallel()
+
+		log := logger.With("test", t.Name())
+
+		key := newTestPartitionKey()
+		total := sdktelemetry.MaxInternetLatencySamplesPerBatch + 17
+
+		var writes int32
+		var submitted []uint32
+		var mu sync.Mutex
+		telemetryProgram := &mockTelemetryProgramClient{
+			WriteInternetLatencySamplesFunc: func(_ context.Context, config sdktelemetry.WriteInternetLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				// The first batch lands, the second fails, and the retry picks up from there.
+				if atomic.AddInt32(&writes, 1) == 1 {
+					mu.Lock()
+					submitted = append(submitted, config.Samples...)
+					mu.Unlock()
+					return solana.Signature{}, nil, nil
+				}
+				return solana.Signature{}, nil, errors.New("ledger rpc unreachable")
+			},
+		}
+
+		buf := buffer.NewMemoryPartitionedBuffer[exporter.PartitionKey, exporter.Sample](4096)
+		for range total {
+			buf.Add(key, newTestSample())
+		}
+
+		submitter, err := exporter.NewSubmitter(log, &exporter.SubmitterConfig{
+			OracleAgentPK: solana.NewWallet().PublicKey(),
+			Interval:      time.Hour,
+			Buffer:        buf,
+			Telemetry:     telemetryProgram,
+			MaxAttempts:   2,
+			BackoffFunc:   func(_ int) time.Duration { return 0 },
+			EpochFinder:   &mockEpochFinder{ApproximateAtTimeFunc: func(context.Context, time.Time) (uint64, error) { return key.Epoch, nil }},
+		})
+		require.NoError(t, err)
+
+		submitter.Tick(t.Context())
+
+		mu.Lock()
+		defer mu.Unlock()
+		assert.Len(t, submitted, sdktelemetry.MaxInternetLatencySamplesPerBatch,
+			"the batch that landed should be written exactly once, not re-sent by the retry")
+		assert.Len(t, buf.CopyAndReset(key), 17,
+			"only the samples never written should be requeued, or the next tick appends them twice")
+	})
 }
 
 func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {

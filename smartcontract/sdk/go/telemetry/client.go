@@ -286,6 +286,29 @@ func (c *Client) InitializeDeviceLatencySamples(
 	return sig, res, nil
 }
 
+// sentinelForProgramError maps a rejection that reached execution onto the sentinel its preflight
+// equivalent returns. Preflight catches most of these, but a transaction that simulated cleanly and
+// then failed against the bank it landed on reports the same code through the finalized transaction
+// instead, and callers should not have to know which side of preflight a rejection came from.
+// Returns nil when the error is not a program rejection, or carries a code with no sentinel.
+func sentinelForProgramError(err error) error {
+	var programErr *ProgramError
+	if !errors.As(err, &programErr) {
+		return nil
+	}
+	code, ok := programErr.CustomErrorCode()
+	if !ok {
+		return nil
+	}
+	switch code {
+	case InstructionErrorAccountDoesNotExist:
+		return ErrAccountNotFound
+	case InstructionErrorAccountSamplesAccountFull:
+		return ErrSamplesAccountFull
+	}
+	return nil
+}
+
 func (c *Client) WriteDeviceLatencySamples(
 	ctx context.Context,
 	config WriteDeviceLatencySamplesInstructionConfig,
@@ -325,6 +348,9 @@ func (c *Client) WriteDeviceLatencySamples(
 					}
 				}
 			}
+		}
+		if sentinel := sentinelForProgramError(err); sentinel != nil {
+			return solana.Signature{}, nil, sentinel
 		}
 		return solana.Signature{}, nil, fmt.Errorf("failed to execute instruction: %w", err)
 	}
@@ -431,6 +457,9 @@ func (c *Client) WriteInternetLatencySamples(
 					}
 				}
 			}
+		}
+		if sentinel := sentinelForProgramError(err); sentinel != nil {
+			return solana.Signature{}, nil, sentinel
 		}
 		return solana.Signature{}, nil, fmt.Errorf("failed to execute instruction: %w", err)
 	}

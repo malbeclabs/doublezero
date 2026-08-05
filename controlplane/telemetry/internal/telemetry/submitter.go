@@ -136,7 +136,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 		if err != nil {
 			if errors.Is(err, telemetry.ErrAccountNotFound) {
 				log.Info("Account not found, initializing new account")
-				_, _, err = s.cfg.ProgramClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
+				_, _, initErr := s.cfg.ProgramClient.InitializeDeviceLatencySamples(ctx, telemetry.InitializeDeviceLatencySamplesInstructionConfig{
 					AgentPK:                      s.cfg.MetricsPublisherPK,
 					OriginDevicePK:               partitionKey.OriginDevicePK,
 					TargetDevicePK:               partitionKey.TargetDevicePK,
@@ -146,15 +146,27 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 					AgentVersion:                 s.cfg.AgentVersion,
 					AgentCommit:                  s.cfg.AgentCommit,
 				})
-				if err != nil {
-					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToInitializeAccount).Inc()
-					return i, fmt.Errorf("failed to initialize device latency samples: %w", err)
+				if initErr != nil {
+					// Not fatal on its own. An init the program rejects because the account already
+					// exists has left us with exactly what the write needs, which happens when a
+					// previous init landed onchain without the agent seeing it succeed. The write
+					// below is what decides whether the rejection mattered, so it runs either way.
+					// The error counter waits for that verdict rather than firing on a failure the
+					// write goes on to absorb.
+					log.Warn("Failed to initialize account, attempting the write anyway", "error", initErr)
 				}
 				_, _, err = s.cfg.ProgramClient.WriteDeviceLatencySamples(ctx, writeConfig)
 				if err != nil {
 					if errors.Is(err, telemetry.ErrSamplesAccountFull) {
 						s.handleAccountFull(log, partitionKey, len(samples)-i)
 						return i, nil
+					}
+					if initErr != nil {
+						// The account is still not there, so the init failure is the reason the
+						// write had nothing to write to. Report that rather than the missing
+						// account it caused.
+						metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToInitializeAccount).Inc()
+						return i, fmt.Errorf("failed to initialize device latency samples: %w", initErr)
 					}
 					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterFailedToWriteSamples).Inc()
 					return i, fmt.Errorf("failed to write device latency samples after init: %w", err)

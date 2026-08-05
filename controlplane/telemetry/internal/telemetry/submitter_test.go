@@ -1212,6 +1212,57 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		assert.Contains(t, logs.String(), "Partition account is full, dropping partition")
 	})
 
+	// An init the program rejects because the account already exists still leaves the write able to
+	// proceed, so it must not end the submission. Reachable when a previous init landed onchain
+	// without the agent seeing it succeed.
+	t.Run("writes_anyway_when_the_account_already_exists", func(t *testing.T) {
+		t.Parallel()
+
+		var logs bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+		key := newTestPartitionKey()
+
+		var writes int32
+		prog := &mockTelemetryProgramClient{
+			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				// Preflight reports the account missing, then the post-init write finds it there.
+				if atomic.AddInt32(&writes, 1) == 1 {
+					return solana.Signature{}, nil, sdktelemetry.ErrAccountNotFound
+				}
+				return solana.Signature{}, nil, nil
+			},
+			InitializeDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.InitializeDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
+				return solana.Signature{}, nil, &sdktelemetry.ProgramError{
+					Err:  map[string]any{"InstructionError": []any{0, map[string]any{"Custom": 1010}}},
+					Logs: []string{"Program log: Latency samples account already exists"},
+				}
+			},
+		}
+
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		buf.Add(key, newTestSample())
+
+		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
+			Interval:        time.Hour,
+			Buffer:          buf,
+			ProgramClient:   prog,
+			MaxAttempts:     3,
+			MaxConcurrency:  10,
+			BackoffFunc:     func(int) time.Duration { return 0 },
+			GetCurrentEpoch: func(context.Context) (uint64, error) { return 100, nil },
+		})
+		require.NoError(t, err)
+
+		s.Tick(context.Background())
+
+		assert.Equal(t, int32(2), atomic.LoadInt32(&writes), "the write should be attempted after the rejected init")
+		assert.Len(t, buf.CopyAndReset(key), 0, "the samples were written, so nothing should be requeued")
+		assert.Contains(t, logs.String(), "attempting the write anyway")
+		assert.NotContains(t, logs.String(), "Submission rejected by the telemetry program",
+			"an account that already exists is not a submission failure")
+	})
+
 	// The chi-dn-dzd4 case (malbeclabs/infra#1703): the agent key is not the device's
 	// metrics_publisher, so the program rejects the init. Deliberately not parallel: the assertions
 	// are exact deltas on package-level prometheus counters.
@@ -1258,7 +1309,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		s.Tick(context.Background())
 
-		assert.Equal(t, int32(1), atomic.LoadInt32(&writes), "the rejection should end the tick, not spend the remaining attempts")
+		// One write to find the account missing, one to confirm the rejected init left it missing.
+		assert.Equal(t, int32(2), atomic.LoadInt32(&writes), "the rejection should end the tick, not spend the remaining attempts")
 		assert.Equal(t, int32(1), atomic.LoadInt32(&inits), "an init the program rejected should not be re-sent unchanged")
 
 		programErrs := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterProgramError)) - programErrsBefore

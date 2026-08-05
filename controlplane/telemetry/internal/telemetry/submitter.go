@@ -168,7 +168,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 			}
 		}
 
-		log.Debug("Submitted account samples batch", "count", len(samples), "samples", rtts)
+		log.Debug("Submitted account samples batch", "count", len(batch), "samples", rtts)
 	}
 
 	return len(samples), nil

@@ -19,9 +19,9 @@ import (
 const (
 	TimestampFileName = "ripe_atlas_timestamps.json"
 
-	// staleMeasurementWarnAfter is how long a measurement may return no new results
-	// before we treat it as stalled rather than merely idle. It is several times the
-	// default sampling interval so ordinary polling jitter stays quiet.
+	// staleMeasurementWarnAfter is how long a measurement may go without producing a new
+	// sample before we treat it as stalled rather than merely idle. It is several times
+	// the default sampling interval so ordinary polling jitter stays quiet.
 	staleMeasurementWarnAfter = 30 * time.Minute
 )
 
@@ -533,6 +533,11 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	lastTimestampUnix, exists := measurementState.GetLastTimestamp(measurement.ID)
 	lastTimestamp := time.Unix(lastTimestampUnix, 0)
 
+	// A stall shows up two ways: an empty page, and a page whose results are all
+	// timeouts, which parse to zero valid latencies and so export nothing either. Both
+	// leave the cursor where it was, so key the signal off that rather than off the page.
+	stalled := exists && time.Since(lastTimestamp) > staleMeasurementWarnAfter
+
 	c.log.Debug("Processing measurement",
 		slog.Int("measurement_id", measurement.ID),
 		slog.String("description", measurement.Description),
@@ -562,16 +567,8 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	}
 
 	if len(results) == 0 {
-		// An empty page is normal between cycles, but once it persists well past the
-		// sampling interval the measurement has stalled and its circuits are going
-		// missing. This is the only per-measurement signal that the stall is happening;
-		// marking the probes responsible is handled by the measurement creation cycle.
-		if exists && time.Since(lastTimestamp) > staleMeasurementWarnAfter {
-			c.log.Warn("No new results since last export (measurement stalled?)",
-				slog.Int("measurement_id", measurement.ID),
-				slog.String("target_location", meta.TargetLocation),
-				slog.Time("last_timestamp", lastTimestamp),
-				slog.Duration("stale_for", time.Since(lastTimestamp)))
+		if stalled {
+			c.warnStalled(measurement.ID, meta.TargetLocation, lastTimestamp, len(results))
 		} else {
 			c.log.Debug("No new results for measurement",
 				slog.Int("measurement_id", measurement.ID),
@@ -649,9 +646,23 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			slog.Time("last_timestamp", lastTimestamp),
 			slog.Time("max_result_timestamp", maxTimestamp),
 			slog.Int("exported_records", len(records)))
+	} else if stalled {
+		c.warnStalled(measurement.ID, meta.TargetLocation, lastTimestamp, len(results))
 	}
 
 	return len(records), records, nil
+}
+
+// warnStalled reports a measurement that has produced no new sample for
+// staleMeasurementWarnAfter, meaning its circuits are going missing. The measurement
+// creation cycle marks the probes responsible, an hour in.
+func (c *Collector) warnStalled(measurementID int, targetLocation string, lastTimestamp time.Time, rawResults int) {
+	c.log.Warn("No new samples since last export (measurement stalled?)",
+		slog.Int("measurement_id", measurementID),
+		slog.String("target_location", targetLocation),
+		slog.Time("last_timestamp", lastTimestamp),
+		slog.Duration("stale_for", time.Since(lastTimestamp)),
+		slog.Int("raw_results", rawResults))
 }
 
 func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval time.Duration) error {

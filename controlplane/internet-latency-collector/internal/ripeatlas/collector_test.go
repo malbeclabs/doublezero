@@ -1,11 +1,13 @@
 package ripeatlas
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -533,6 +535,100 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_PreservesAllSamples(
 		rtt, err := time.ParseDuration(dataRow[rttIdx])
 		require.NoError(t, err)
 		require.Equal(t, expected.rtt, rtt)
+	}
+}
+
+func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_StallWarning(t *testing.T) {
+	t.Parallel()
+
+	staleExport := time.Now().Add(-2 * staleMeasurementWarnAfter)
+
+	// When the target probe goes dark the sources keep pinging and keep uploading, so the
+	// page is not empty — the results just carry no rtt.
+	timeoutResult := map[string]any{
+		"prb_id":    float64(100),
+		"timestamp": float64(time.Now().Unix()),
+		"result": []any{
+			map[string]any{"x": "*"},
+			map[string]any{"x": "*"},
+		},
+	}
+	successResult := map[string]any{
+		"prb_id":    float64(100),
+		"timestamp": float64(time.Now().Unix()),
+		"result": []any{
+			map[string]any{"rtt": float64(26.0)},
+		},
+	}
+
+	tests := []struct {
+		name         string
+		results      []any
+		lastExportAt int64
+		wantWarn     bool
+	}{
+		{
+			name:         "nothing uploaded since a stale export",
+			results:      []any{},
+			lastExportAt: staleExport.Unix(),
+			wantWarn:     true,
+		},
+		{
+			name:         "results uploaded but all timed out",
+			results:      []any{timeoutResult},
+			lastExportAt: staleExport.Unix(),
+			wantWarn:     true,
+		},
+		{
+			name:         "nothing uploaded since a recent export",
+			results:      []any{},
+			lastExportAt: time.Now().Unix(),
+			wantWarn:     false,
+		},
+		{
+			name:         "samples arrive after a long gap",
+			results:      []any{successResult},
+			lastExportAt: staleExport.Unix(),
+			wantWarn:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var logs bytes.Buffer
+			log := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+			outputDir := t.TempDir()
+			e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
+			require.NoError(t, err)
+
+			mockClient := &MockClient{
+				GetMeasurementResultsIncrementalFunc: func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
+					return tt.results, nil
+				},
+			}
+			c := &Collector{client: mockClient, log: log, exporter: e}
+
+			measurementState := NewMeasurementState(filepath.Join(outputDir, TimestampFileName))
+			measurementState.SetMetadata(1, MeasurementMeta{
+				TargetLocation: "lax",
+				TargetProbeID:  200,
+				Sources:        []SourceProbeMeta{{LocationCode: "nyc", ProbeID: 100}},
+				CreatedAt:      staleExport.Unix(),
+				LastExportAt:   tt.lastExportAt,
+			})
+
+			_, _, err = c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, measurementState)
+			require.NoError(t, err)
+
+			if tt.wantWarn {
+				require.Contains(t, logs.String(), "measurement stalled?", "A stalled measurement should warn")
+			} else {
+				require.NotContains(t, logs.String(), "measurement stalled?", "A measurement that is producing samples should stay quiet")
+			}
+		})
 	}
 }
 

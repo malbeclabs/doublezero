@@ -1473,8 +1473,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveTargetDoesN
 	}}
 
 	// Measurement 1001 (target xams/6626): healthy, source probes have fresh LastResponseAt
-	// Measurement 1002 (target xsin/6726): target is unresponsive, so source probes have stale LastResponseAt
-	// (because latency=0 when target doesn't reply, UpdateSourceProbeResponse doesn't fire)
+	// Measurement 1002 (target xsin/6726): target is unresponsive, so source probes have stale LastResponseAt.
+	// Seeded directly to that shape; results are not replayed through the export path here.
 	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
 	c.measurementState.SetMetadata(1001, MeasurementMeta{
 		TargetLocation: "xams",
@@ -1876,7 +1876,8 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LossCountsAsRe
 		"timestamp": float64(resultAt.Unix()),
 		"result":    []any{map[string]any{"rtt": float64(26.0)}},
 	}
-	// No prb_id and no timestamp: nothing identifies a source, so this is not a response.
+	// No prb_id and no timestamp. UpdateSourceProbeResponse drops this: probe 0 matches no
+	// enlisted source, and a zero time.Time is not newer than any LastResponseAt.
 	unparseable := map[string]any{
 		"result": []any{map[string]any{"x": "*"}},
 	}
@@ -1934,6 +1935,9 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LossCountsAsRe
 			count, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, measurementState)
 			require.NoError(t, err)
 			require.Equal(t, tt.wantExportedNum, count, "exported record count should not change")
+
+			_, cursorSet := measurementState.GetLastTimestamp(1)
+			require.Equal(t, tt.wantExportedNum > 0, cursorSet, "a total-loss result must not advance the export cursor")
 
 			meta, ok := measurementState.GetMetadata(1)
 			require.True(t, ok)

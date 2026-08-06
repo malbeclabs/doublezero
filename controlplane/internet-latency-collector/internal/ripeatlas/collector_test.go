@@ -1720,3 +1720,138 @@ func TestInitializeCreditBalance(t *testing.T) {
 		require.Contains(t, err.Error(), "failed to get RIPE Atlas credit balance")
 	})
 }
+
+func TestInternetLatency_RIPEAtlas_SourcesWithoutSamples(t *testing.T) {
+	t.Parallel()
+
+	const hour = int64(3600)
+	now := int64(1785953098)
+	// Anchored on the production constant so the fixtures below straddle the real
+	// boundary rather than an arbitrary one.
+	createdBefore := now - int64(sourceSampleGracePeriod.Seconds())
+
+	// A source with no successful sample since creation carries LastResponseAt == 0.
+	never := SourceProbeMeta{LocationCode: "hkg", ProbeID: 7030}
+	responding := SourceProbeMeta{LocationCode: "sqq", ProbeID: 6324, LastResponseAt: now - 60}
+
+	tests := []struct {
+		name           string
+		metadata       map[int]MeasurementMeta
+		measurementIDs []int
+		wantByLocation map[string]int
+		wantTotal      int
+	}{
+		{
+			name: "measurement older than the window reports its silent sources",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", CreatedAt: now - 3*hour, Sources: []SourceProbeMeta{never, responding}},
+			},
+			measurementIDs: []int{1},
+			wantByLocation: map[string]int{"hkg": 1},
+			wantTotal:      1,
+		},
+		{
+			name: "all sources responding reports nothing",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", CreatedAt: now - 3*hour, Sources: []SourceProbeMeta{responding}},
+			},
+			measurementIDs: []int{1},
+			wantByLocation: map[string]int{},
+			wantTotal:      0,
+		},
+		{
+			name: "measurement younger than the window is still warming up",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", CreatedAt: now - 60, Sources: []SourceProbeMeta{never}},
+			},
+			measurementIDs: []int{1},
+			wantByLocation: map[string]int{},
+			wantTotal:      0,
+		},
+		{
+			// RIPE has been observed dispatching an accepted enlistment as late as 100
+			// minutes after creation. Reporting inside that window is a false positive,
+			// and this is what fails if the grace period is ever tightened below it.
+			name: "measurement inside observed RIPE dispatch latency is not reported",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", CreatedAt: now - 100*60, Sources: []SourceProbeMeta{never}},
+			},
+			measurementIDs: []int{1},
+			wantByLocation: map[string]int{},
+			wantTotal:      0,
+		},
+		{
+			name: "unknown creation time is skipped rather than assumed old",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", Sources: []SourceProbeMeta{never}},
+			},
+			measurementIDs: []int{1},
+			wantByLocation: map[string]int{},
+			wantTotal:      0,
+		},
+		{
+			name: "counts accumulate per source location across measurements",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", CreatedAt: now - 3*hour, Sources: []SourceProbeMeta{never}},
+				2: {TargetLocation: "bom", CreatedAt: now - 3*hour, Sources: []SourceProbeMeta{never}},
+				3: {TargetLocation: "chi", CreatedAt: now - 3*hour, Sources: []SourceProbeMeta{
+					never, {LocationCode: "muc", ProbeID: 6372},
+				}},
+			},
+			measurementIDs: []int{1, 2, 3},
+			wantByLocation: map[string]int{"hkg": 3, "muc": 1},
+			wantTotal:      4,
+		},
+		{
+			name: "measurement with no metadata is ignored",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", CreatedAt: now - 3*hour, Sources: []SourceProbeMeta{never}},
+			},
+			measurementIDs: []int{1, 99},
+			wantByLocation: map[string]int{"hkg": 1},
+			wantTotal:      1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			state := NewMeasurementState("test.json")
+			for id, meta := range tt.metadata {
+				state.SetMetadata(id, meta)
+			}
+
+			measurements := make([]Measurement, 0, len(tt.measurementIDs))
+			for _, id := range tt.measurementIDs {
+				measurements = append(measurements, Measurement{ID: id})
+			}
+
+			byLocation, total, sample := sourcesWithoutSamples(measurements, state, createdBefore, 20)
+
+			require.Equal(t, tt.wantByLocation, byLocation)
+			require.Equal(t, tt.wantTotal, total)
+			require.Len(t, sample, tt.wantTotal)
+		})
+	}
+}
+
+func TestInternetLatency_RIPEAtlas_SourcesWithoutSamples_SampleIsCapped(t *testing.T) {
+	t.Parallel()
+
+	now := int64(1785953098)
+	state := NewMeasurementState("test.json")
+
+	sources := make([]SourceProbeMeta, 0, 30)
+	for i := range 30 {
+		sources = append(sources, SourceProbeMeta{LocationCode: "hkg", ProbeID: 7000 + i})
+	}
+	state.SetMetadata(1, MeasurementMeta{TargetLocation: "ams", CreatedAt: now - 3*3600, Sources: sources})
+
+	byLocation, total, sample := sourcesWithoutSamples([]Measurement{{ID: 1}}, state, now-2*3600, 20)
+
+	// The metric carries the full count; only the log sample is capped.
+	require.Equal(t, 30, total)
+	require.Equal(t, map[string]int{"hkg": 30}, byLocation)
+	require.Len(t, sample, 20)
+}

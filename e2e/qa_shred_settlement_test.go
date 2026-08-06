@@ -40,6 +40,12 @@ type shredSettlementParams struct {
 	enabled    bool
 	skipReason string
 
+	// preflightSubtestName / preflight, when both set, run as a subtest after the
+	// reconciler is enabled and before device selection, so a caller can assert
+	// on a payment the program must reject before this run pays for a seat.
+	preflightSubtestName string
+	preflight            func(t *testing.T, ctx context.Context, log *slog.Logger, test *qa.Test, client *qa.Client)
+
 	// selectSubtestName is the subtest name under which selectDevice runs, e.g.
 	// "find_closest_device" or "select_retransmit_only_device".
 	selectSubtestName string
@@ -186,6 +192,14 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		require.NoError(t, err, "failed to enable reconciler")
 	}) {
 		return
+	}
+
+	if p.preflight != nil {
+		if !t.Run(p.preflightSubtestName, func(t *testing.T) {
+			p.preflight(t, ctx, log, test, client)
+		}) {
+			return
+		}
 	}
 
 	if !t.Run(p.selectSubtestName, func(t *testing.T) {

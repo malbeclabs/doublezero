@@ -6,12 +6,12 @@ import (
 	"context"
 	"flag"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/e2e/internal/qa"
-	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,20 +25,19 @@ const retransmitSubscribeTimeout = 90 * time.Second
 var (
 	enableRetransmitOnlyTests = flag.Bool("enable-retransmit-only-settlement-tests", false, "enable the retransmit-only multicast settlement test")
 	retransmitOnlyDeviceFlag  = flag.String("retransmit-only-device", "", "device code or pubkey in a retransmit-only metro (overrides auto-discovery)")
-	leaderGroupCodeFlag       = flag.String("leader-group-code", "", "multicast group code for the leader (full) shred feed, expected to be EXCLUDED from the seat")
-	retransmitGroupCodeFlag   = flag.String("retransmit-group-code", "", "multicast group code for the retransmit shred feed, expected to be subscribed")
+	retransmitGroupCodesFlag  = flag.String("retransmit-group-codes", "", "comma-separated multicast group codes a seat in a retransmit-only metro must subscribe to, and nothing else")
 	retransmitPriceFlag       = flag.Uint64("retransmit-price", 10, "expected discounted retransmit-only seat price in whole USDC dollars")
 )
 
 // TestQA_RetransmitOnlySettlement demonstrates the retransmit-only shred
 // subscription end to end: a client pays for a seat on a device in a
 // retransmit-only metro, is charged the discounted price, and ends up
-// subscribed to the retransmit multicast group only — not the leader group, so
-// leader shreds are excluded. It mirrors TestQA_MulticastSettlement over the
-// shared runShredSettlement flow, adding retransmit-only device selection, the
-// discounted-price assertion, and the subscribed-groups assertion. The test is
-// environment-agnostic: the group codes and the expected price are flags, so
-// the same binary validates the testnet QA network and later mainnet.
+// subscribed to the retransmit groups only, so leader shreds are excluded. It
+// mirrors TestQA_MulticastSettlement over the shared runShredSettlement flow,
+// adding retransmit-only device selection, the discounted-price assertion, and
+// the subscribed-groups assertion. The test is environment-agnostic: the group
+// codes and the expected price are flags, so the same binary validates the
+// testnet QA network and later mainnet.
 func TestQA_RetransmitOnlySettlement(t *testing.T) {
 	runShredSettlement(t, shredSettlementParams{
 		enabled:    *enableRetransmitOnlyTests,
@@ -97,8 +96,7 @@ func selectRetransmitOnlyDevice(t *testing.T, ctx context.Context, log *slog.Log
 
 	// The group codes are required to assert leader-exclusion once a device
 	// exists to test. Enabling the test without them is a misconfiguration.
-	require.NotEmpty(t, *leaderGroupCodeFlag, "--leader-group-code is required")
-	require.NotEmpty(t, *retransmitGroupCodeFlag, "--retransmit-group-code is required")
+	require.NotEmpty(t, *retransmitGroupCodesFlag, "--retransmit-group-codes is required")
 	return device
 }
 
@@ -129,38 +127,34 @@ func flaggedMetroCodes(test *qa.Test, exchangeKeys map[string]bool) []string {
 }
 
 // assertSubscribedGroups polls the seat's onchain multicast subscription until
-// it reflects retransmit-only membership: the retransmit group present and the
-// leader group absent (leader shreds excluded). On timeout it logs the seat's
-// last-seen subscription state so on-call can tell an oracle bug (retransmit
-// group never appeared) from a leader-exclusion bug (leader group leaked in)
-// without re-deriving it from a rerun.
+// it holds the retransmit groups and nothing else, so the leader group, the
+// root-node group and any non-retransmit per-metro group all fall away. On
+// timeout it logs the seat's last-seen subscription state so on-call can tell an
+// oracle bug (a retransmit group never appeared) from a leader-exclusion bug (a
+// group leaked in) without re-deriving it from a rerun.
 func assertSubscribedGroups(t *testing.T, ctx context.Context, log *slog.Logger, client *qa.Client, _ *qa.Device) {
-	// Resolve the leader and retransmit multicast groups by code. Neither
-	// onchain data nor the SDK labels a group as leader/retransmit, so the
-	// operator supplies the codes per network.
-	leaderGroup, err := client.GetMulticastGroup(ctx, *leaderGroupCodeFlag)
-	require.NoError(t, err, "failed to resolve leader group %q", *leaderGroupCodeFlag)
-	require.NotNil(t, leaderGroup, "leader group %q not found onchain", *leaderGroupCodeFlag)
-	retransmitGroup, err := client.GetMulticastGroup(ctx, *retransmitGroupCodeFlag)
-	require.NoError(t, err, "failed to resolve retransmit group %q", *retransmitGroupCodeFlag)
-	require.NotNil(t, retransmitGroup, "retransmit group %q not found onchain", *retransmitGroupCodeFlag)
-
-	subscribed := func(user *serviceability.User, group solana.PublicKey) bool {
-		for _, sub := range user.Subscribers {
-			if solana.PublicKeyFromBytes(sub[:]).Equals(group) {
-				return true
-			}
+	// Neither onchain data nor the SDK labels a group as leader or retransmit,
+	// so the operator supplies the codes per network.
+	required := make(map[solana.PublicKey]string)
+	for _, code := range strings.Split(*retransmitGroupCodesFlag, ",") {
+		code = strings.TrimSpace(code)
+		if code == "" {
+			continue
 		}
-		return false
+		group, err := client.GetMulticastGroup(ctx, code)
+		require.NoError(t, err, "failed to resolve multicast group %q", code)
+		require.NotNil(t, group, "multicast group %q not found onchain", code)
+		required[group.PK] = code
 	}
+	require.NotEmpty(t, required, "no multicast group resolved from --retransmit-group-codes %q", *retransmitGroupCodesFlag)
 
 	// The oracle converges the seat's onchain subscription asynchronously, so
 	// poll until it reflects retransmit-only membership. Capture the last-seen
 	// state on every poll so the timeout branch can report it.
 	var (
-		lastSubscribed      []string
-		lastRetransmitFound bool
-		lastLeaderFound     bool
+		lastSubscribed []string
+		lastMissing    []string
+		lastExtra      []string
 	)
 	ok := assert.Eventually(t, func() bool {
 		user, err := client.GetServiceabilityUser(ctx)
@@ -168,29 +162,39 @@ func assertSubscribedGroups(t *testing.T, ctx context.Context, log *slog.Logger,
 			log.Info("serviceability user poll error", "error", err)
 			return false
 		}
-		lastRetransmitFound = subscribed(user, retransmitGroup.PK)
-		lastLeaderFound = subscribed(user, leaderGroup.PK)
+		subscribed := make(map[solana.PublicKey]bool, len(user.Subscribers))
 		subs := make([]string, 0, len(user.Subscribers))
 		for _, sub := range user.Subscribers {
-			subs = append(subs, solana.PublicKeyFromBytes(sub[:]).String())
+			group := solana.PublicKeyFromBytes(sub[:])
+			subscribed[group] = true
+			subs = append(subs, group.String())
 		}
-		lastSubscribed = subs
-		return lastRetransmitFound && !lastLeaderFound
+		var missing, extra []string
+		for group, code := range required {
+			if !subscribed[group] {
+				missing = append(missing, code)
+			}
+		}
+		for group := range subscribed {
+			if _, want := required[group]; !want {
+				extra = append(extra, group.String())
+			}
+		}
+		lastSubscribed, lastMissing, lastExtra = subs, missing, extra
+		return len(missing) == 0 && len(extra) == 0
 	}, retransmitSubscribeTimeout, 5*time.Second)
 	if !ok {
 		log.Warn("seat did not converge to retransmit-only subscription within timeout",
-			"retransmit_group", retransmitGroup.PK,
-			"retransmit_present", lastRetransmitFound,
-			"leader_group", leaderGroup.PK,
-			"leader_present", lastLeaderFound,
+			"missing_groups", lastMissing,
+			"extra_groups", lastExtra,
 			"subscribed_groups", lastSubscribed,
 		)
 	}
 	require.True(t, ok,
-		"seat should subscribe to the retransmit group and NOT the leader group")
-	log.Info("Subscribed to the retransmit group only",
-		"retransmit_group", retransmitGroup.PK,
-		"leader_group_excluded", leaderGroup.PK,
+		"the seat should subscribe to %s and to nothing else; it is missing %v and wrongly subscribes to %v",
+		*retransmitGroupCodesFlag, lastMissing, lastExtra)
+	log.Info("Subscribed to the retransmit groups only",
+		"retransmit_groups", *retransmitGroupCodesFlag,
 		"subscriber_count", len(lastSubscribed),
 	)
 }

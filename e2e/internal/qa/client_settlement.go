@@ -190,6 +190,38 @@ func (c *Client) ClosestRetransmitOnlyDevice(ctx context.Context) (*Device, map[
 	return bestDevice, retransmitOnly, nil
 }
 
+func (c *Client) ClosestNonRetransmitOnlyDevice(ctx context.Context) (*Device, error) {
+	retransmitOnly, err := c.RetransmitOnlyExchangeKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	latencies, err := c.GetLatency(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latency on host %s: %w", c.Host, err)
+	}
+
+	var bestDevice *Device
+	var bestAvg uint64 = math.MaxUint64
+	for _, l := range latencies {
+		if !l.Reachable {
+			continue
+		}
+		device, ok := c.devices[l.DeviceCode]
+		if !ok || retransmitOnly[device.ExchangePubKey] {
+			continue
+		}
+		if l.AvgLatencyNs < bestAvg {
+			bestAvg = l.AvgLatencyNs
+			bestDevice = device
+		}
+	}
+	if bestDevice != nil {
+		c.log.Debug("Determined closest non-retransmit-only device", "host", c.Host, "deviceCode", bestDevice.Code, "avgLatencyNs", bestAvg)
+	}
+	return bestDevice, nil
+}
+
 // FeedSeatPrice calls the FeedSeatPrice RPC to query seat pricing for a single
 // device (by pubkey). Querying by pubkey avoids device-code resolution, which
 // the CLI refuses when it can't classify the cluster (e.g. a private Solana
@@ -767,6 +799,19 @@ func (c *Client) IsSeatProratingEnabled(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("failed to fetch program config on host %s: %w", c.Host, err)
 	}
 	return cfg.IsProratedServiceEnabled(), nil
+}
+
+func (c *Client) IsRetransmitOnlyOnboardingEnforced(ctx context.Context) (bool, error) {
+	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
+	}
+
+	cfg, err := c.shredsClient(programID).FetchProgramConfig(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to fetch program config on host %s: %w", c.Host, err)
+	}
+	return cfg.IsRetransmitOnlyOnboardingEnforced(), nil
 }
 
 // IsProgramPaused returns true if the shred-subscription program config has

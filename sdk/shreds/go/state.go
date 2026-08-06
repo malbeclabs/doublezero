@@ -69,9 +69,10 @@ type ProgramConfig struct {
 // Flag bits in ProgramConfig.Flags. Mirrors the onchain bit indices from the
 // shred-subscription program.
 const (
-	programConfigFlagIsPausedBit                 = 0
-	programConfigFlagIsMigratedBit               = 1
-	programConfigFlagIsProratedServiceEnabledBit = 2
+	programConfigFlagIsPausedBit                         = 0
+	programConfigFlagIsMigratedBit                       = 1
+	programConfigFlagIsProratedServiceEnabledBit         = 2
+	programConfigFlagRetransmitOnlyOnboardingEnforcedBit = 7
 )
 
 // IsPaused returns true if the program is paused.
@@ -88,6 +89,10 @@ func (p *ProgramConfig) IsMigrated() bool {
 // withdrawal refunds the unused portion of the epoch).
 func (p *ProgramConfig) IsProratedServiceEnabled() bool {
 	return p.Flags&(1<<programConfigFlagIsProratedServiceEnabledBit) != 0
+}
+
+func (p *ProgramConfig) IsRetransmitOnlyOnboardingEnforced() bool {
+	return p.Flags&(1<<programConfigFlagRetransmitOnlyOnboardingEnforcedBit) != 0
 }
 
 // ExecutionController tracks the epoch state machine and settlement progress.

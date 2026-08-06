@@ -216,6 +216,12 @@ pub enum DoubleZeroError {
     UserFeedLimitExceeded, // variant 103
     #[error("An EdgeSeat feed seat is only held by a Multicast user")]
     EdgeSeatIsMulticastOnly, // variant 104
+    #[error(
+        "A user already exists at this client IP with a different device, owner, type or tenant"
+    )]
+    UserExistsWithDifferentAttributes, // variant 105
+    #[error("This user is already subscribed to the requested multicast group")]
+    SubscribeUserAlreadyExists, // variant 106
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -326,6 +332,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::UserDeviceMismatch => ProgramError::Custom(102),
             DoubleZeroError::UserFeedLimitExceeded => ProgramError::Custom(103),
             DoubleZeroError::EdgeSeatIsMulticastOnly => ProgramError::Custom(104),
+            DoubleZeroError::UserExistsWithDifferentAttributes => ProgramError::Custom(105),
+            DoubleZeroError::SubscribeUserAlreadyExists => ProgramError::Custom(106),
         }
     }
 }
@@ -437,6 +445,8 @@ impl From<u32> for DoubleZeroError {
             102 => DoubleZeroError::UserDeviceMismatch,
             103 => DoubleZeroError::UserFeedLimitExceeded,
             104 => DoubleZeroError::EdgeSeatIsMulticastOnly,
+            105 => DoubleZeroError::UserExistsWithDifferentAttributes,
+            106 => DoubleZeroError::SubscribeUserAlreadyExists,
             _ => DoubleZeroError::Custom(e),
         }
     }

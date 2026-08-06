@@ -58,8 +58,8 @@ pub struct CreateUserCoreResult {
 /// device validation, max users checks, epoch check) and sets up the initial User struct.
 ///
 /// Returns `Ok(None)` when the user already exists and matches the requested owner, device,
-/// user type, and tenant; a mismatch errors with `AccountAlreadyInitialized`, and a banned user
-/// with `InvalidStatus`.
+/// user type, and tenant; a mismatch errors with `UserExistsWithDifferentAttributes`, and a
+/// banned user with `InvalidStatus`.
 ///
 /// Callers are responsible for:
 /// - Parsing the required resource extension accounts
@@ -224,7 +224,12 @@ pub fn create_user_core(
                 user_type,
                 requested_tenant
             );
-            return Err(ProgramError::AccountAlreadyInitialized);
+            // The User PDA is derived from the client IP, so the common way to reach this is two
+            // devices claiming one IP: the second request derives the first device's account and
+            // mismatches on device_pk. Distinct from the exact-duplicate case in
+            // create_subscribe, which used to share this error code and left a client unable to
+            // tell "that IP belongs to another device" from "you are already subscribed".
+            return Err(DoubleZeroError::UserExistsWithDifferentAttributes.into());
         }
         // A ban is terminal; fail fast instead of leaving the caller polling a user that will
         // never activate.

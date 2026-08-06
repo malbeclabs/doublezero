@@ -1672,9 +1672,10 @@ async fn test_user_create_existing_different_device_rejected() {
     match err {
         BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            InstructionError::AccountAlreadyInitialized,
+            // The mismatch code, distinct from the exact-duplicate subscribe case.
+            InstructionError::Custom(105),
         )) => {}
-        other => panic!("expected AccountAlreadyInitialized, got {other:?}"),
+        other => panic!("expected UserExistsWithDifferentAttributes, got {other:?}"),
     }
 
     // The user still points at the original device.
@@ -1771,9 +1772,10 @@ async fn test_user_create_existing_different_tenant_rejected() {
     match err {
         BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            InstructionError::AccountAlreadyInitialized,
+            // The mismatch code, distinct from the exact-duplicate subscribe case.
+            InstructionError::Custom(105),
         )) => {}
-        other => panic!("expected AccountAlreadyInitialized, got {other:?}"),
+        other => panic!("expected UserExistsWithDifferentAttributes, got {other:?}"),
     }
 
     // The user still has no tenant.
@@ -1873,9 +1875,10 @@ async fn test_user_create_existing_different_owner_rejected() {
     match err {
         BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            InstructionError::AccountAlreadyInitialized,
+            // The mismatch code, distinct from the exact-duplicate subscribe case.
+            InstructionError::Custom(105),
         )) => {}
-        other => panic!("expected AccountAlreadyInitialized, got {other:?}"),
+        other => panic!("expected UserExistsWithDifferentAttributes, got {other:?}"),
     }
 
     // The user still belongs to the original owner.

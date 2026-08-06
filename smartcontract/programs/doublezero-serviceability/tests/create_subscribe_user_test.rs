@@ -48,7 +48,12 @@ use doublezero_serviceability::{
     },
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
+use solana_sdk::{
+    instruction::{AccountMeta, InstructionError},
+    pubkey::Pubkey,
+    signature::Signer,
+    transaction::TransactionError,
+};
 use std::net::Ipv4Addr;
 
 mod test_helpers;
@@ -2542,4 +2547,115 @@ async fn test_publisher_disconnect_delete_decrements_publishers_count() {
         device_after.multicast_subscribers_count, 0,
         "subscribers_count must NOT change — user was created as publisher"
     );
+}
+
+// ============================================================================
+// Duplicate subscribe
+// ============================================================================
+
+/// Re-sending an identical CreateSubscribeUser is refused, and with its own error code.
+///
+/// For CreateUser an exact match is an idempotent no-op, but here falling through would tick a
+/// second feed seat and push a duplicate feed_pks entry that delete would double-release. Both
+/// this and the attribute-mismatch case in create_user_core used to return
+/// AccountAlreadyInitialized, which left a caller unable to tell "you are already subscribed"
+/// (nothing to do) from "that client IP belongs to another device" (pick another IP) — different
+/// causes with different remedies. This pins the codes apart.
+#[tokio::test]
+async fn test_create_subscribe_user_duplicate_is_refused_distinctly() {
+    let client_ip = [100, 0, 0, 9];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+        ..
+    } = f;
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let args = UserCreateSubscribeArgs {
+        user_type: UserType::Multicast,
+        cyoa_type: UserCYOA::GREOverDIA,
+        client_ip: user_ip,
+        publisher: false,
+        subscriber: true,
+        tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        dz_prefix_count: 1,
+        owner: Pubkey::default(),
+    };
+    let accounts = vec![
+        AccountMeta::new(user_pubkey, false),
+        AccountMeta::new(device_pubkey, false),
+        AccountMeta::new(mgroup_pubkey, false),
+        AccountMeta::new(accesspass_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+        AccountMeta::new(user_tunnel_block, false),
+        AccountMeta::new(multicast_publisher_block, false),
+        AccountMeta::new(tunnel_ids, false),
+        AccountMeta::new(dz_prefix_block, false),
+    ];
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(args.clone()),
+        accounts.clone(),
+        &payer,
+    )
+    .await;
+
+    // The retry flips `publisher`, for a reason worth stating: an instruction identical to the
+    // first would compile to identical transaction bytes against the same blockhash, so the
+    // runtime would dedupe it by signature and hand back the first one's success without ever
+    // reaching the program. `create_user_core` compares owner, device, user type and tenant —
+    // not the publisher/subscriber flags — so this still matches an existing user exactly and
+    // still lands in the duplicate branch, while being a distinct transaction.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let err = execute_transaction_expect_failure(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            publisher: true,
+            ..args
+        }),
+        accounts,
+        &payer,
+    )
+    .await
+    .expect_err("a duplicate subscribe must be refused");
+
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            // SubscribeUserAlreadyExists, not the mismatch code (105).
+            InstructionError::Custom(106),
+        )) => {}
+        other => panic!("expected SubscribeUserAlreadyExists, got {other:?}"),
+    }
+
+    // The subscription is untouched: exactly one seat, not two.
+    let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
+        .await
+        .expect("MulticastGroup should exist")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup.subscriber_count, 1);
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.subscribers, vec![mgroup_pubkey]);
 }

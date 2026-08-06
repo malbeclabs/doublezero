@@ -55,6 +55,14 @@ pub fn get_user_old_pda(program_id: &Pubkey, index: u128) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[SEED_PREFIX, SEED_USER, &index.to_le_bytes()], program_id)
 }
 
+/// The seeds carry the client IP and user type but no device, so a `(ip, user_type)` pair
+/// addresses exactly one User account network-wide. Two devices asking for the same client IP
+/// therefore derive the same address, and the second one fails in `create_user_core` with
+/// `UserExistsWithDifferentAttributes` rather than getting its own account.
+///
+/// That IP uniqueness is a property of this derivation, not a check somewhere: adding a device
+/// dimension here would give each device its own account and silently drop the guarantee, and it
+/// would orphan every live User, so it is not a change to make casually.
 pub fn get_user_pda(program_id: &Pubkey, ip: &Ipv4Addr, user_type: UserType) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[SEED_PREFIX, SEED_USER, &ip.octets(), &[user_type as u8]],

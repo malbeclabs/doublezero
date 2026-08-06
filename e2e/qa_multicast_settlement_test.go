@@ -27,48 +27,10 @@ var (
 	enableSettlementTests    = flag.Bool("enable-multicast-settlement-tests", false, "enable multicast settlement tests")
 	retransmitOnlyDeviceFlag = flag.String("retransmit-only-device", "", "device code or pubkey in a retransmit-only metro (overrides auto-discovery)")
 	retransmitGroupCodesFlag = flag.String("retransmit-group-codes", "", "comma-separated multicast group codes a seat in a retransmit-only metro must subscribe to, and nothing else")
+	retransmitPriceFlag      = flag.Uint64("retransmit-price", 0, "expected seat price in whole USDC dollars in a retransmit-only metro; 0 asserts nothing")
 	keypairFlag              = flag.String("keypair", "$HOME/.config/doublezero/id.json", "path to keypair file for settlement commands")
 	settlementClientFlag     = flag.String("multicast-settlement-client", "", "host of the client to use for settlement tests (overrides random selection)")
 )
-
-func TestQA_MulticastSettlement(t *testing.T) {
-	var onboardingEnforced bool
-	runShredSettlement(t, shredSettlementParams{
-		enabled:    *enableSettlementTests,
-		skipReason: "Skipping: --enable-multicast-settlement-tests flag not set",
-
-		preflightSubtestName: "reject_new_seat_outside_retransmit_only_metro",
-		preflight: func(t *testing.T, ctx context.Context, log *slog.Logger, _ *qa.Test, client *qa.Client) {
-			var err error
-			onboardingEnforced, err = client.IsRetransmitOnlyOnboardingEnforced(ctx)
-			require.NoError(t, err, "failed to read the retransmit-only onboarding flag")
-			if !onboardingEnforced {
-				log.Info("Retransmit-only onboarding is off; settling on the closest device")
-				t.Skip("Skipping: the program config does not enforce retransmit-only onboarding")
-			}
-			log.Info("Retransmit-only onboarding is on; a new seat must be rejected outside a retransmit-only metro")
-			assertNewSeatRejected(t, ctx, log, client)
-		},
-
-		selectSubtestName: "select_device",
-		selectDevice: func(t *testing.T, ctx context.Context, log *slog.Logger, test *qa.Test, client *qa.Client) *qa.Device {
-			if onboardingEnforced {
-				return selectRetransmitOnlyDevice(t, ctx, log, test, client)
-			}
-			return selectClosestDevice(t, ctx, log, test, client)
-		},
-
-		priceLogMsg: "Found epoch price",
-
-		extraSubtestName: "assert_subscribed_groups",
-		extraAssertion: func(t *testing.T, ctx context.Context, log *slog.Logger, client *qa.Client, device *qa.Device) {
-			if !onboardingEnforced {
-				t.Skip("Skipping: the seat is not in a retransmit-only metro, so it carries the leader group too")
-			}
-			assertSubscribedGroups(t, ctx, log, client, device)
-		},
-	})
-}
 
 func selectClosestDevice(t *testing.T, ctx context.Context, log *slog.Logger, _ *qa.Test, client *qa.Client) *qa.Device {
 	device, err := client.ClosestDevice(ctx)
@@ -77,6 +39,9 @@ func selectClosestDevice(t *testing.T, ctx context.Context, log *slog.Logger, _ 
 	return device
 }
 
+// assertNewSeatRejected pays for a seat outside a retransmit-only metro and
+// requires the program to refuse it. The client holds no seat at this point, so
+// the seat has no tenure and onboarding enforcement applies to it.
 func assertNewSeatRejected(t *testing.T, ctx context.Context, log *slog.Logger, client *qa.Client) {
 	device, err := client.ClosestNonRetransmitOnlyDevice(ctx)
 	require.NoError(t, err, "failed to find a device outside a retransmit-only metro")
@@ -227,31 +192,19 @@ func assertSubscribedGroups(t *testing.T, ctx context.Context, log *slog.Logger,
 	)
 }
 
-type shredSettlementParams struct {
-	enabled    bool
-	skipReason string
-
-	// preflight runs after the reconciler is enabled and before device selection.
-	preflightSubtestName string
-	preflight            func(t *testing.T, ctx context.Context, log *slog.Logger, test *qa.Test, client *qa.Client)
-
-	selectSubtestName string
-	// selectDevice may call t.Skip when the feature is not configured. It logs
-	// its own selection detail.
-	selectDevice func(t *testing.T, ctx context.Context, log *slog.Logger, test *qa.Test, client *qa.Client) *qa.Device
-
-	priceLogMsg string
-
-	// extraAssertion runs after the tunnel is up and before the seat is withdrawn.
-	extraSubtestName string
-	extraAssertion   func(t *testing.T, ctx context.Context, log *slog.Logger, client *qa.Client, device *qa.Device)
-}
-
-// runShredSettlement picks a device, pays its seat price, checks the debit and
-// the tunnel, then withdraws the seat and checks the refund.
-func runShredSettlement(t *testing.T, p shredSettlementParams) {
-	if !p.enabled {
-		t.Skip(p.skipReason)
+// TestQA_MulticastSettlement picks a device, queries its seat price from the CLI
+// and cross-checks it against the price the program will charge (read from
+// chain), waits for the open-for-requests phase, re-reads that price and pays
+// it, checks the debit and the tunnel, then withdraws the seat and checks the
+// refund accounting.
+//
+// The program config decides which shape the run takes. When it enforces
+// retransmit-only onboarding, the test also requires the program to reject a new
+// seat outside a retransmit-only metro, and it settles inside one. Otherwise it
+// settles on the closest device, which is what mainnet does today.
+func TestQA_MulticastSettlement(t *testing.T) {
+	if !*enableSettlementTests {
+		t.Skip("Skipping: --enable-multicast-settlement-tests flag not set")
 	}
 
 	log := newTestLogger(t)
@@ -271,6 +224,10 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		client.Keypair = *keypairFlag
 	}
 	log.Info("Selected client", "host", client.Host)
+
+	retransmitOnboardingEnforced, err := client.IsRetransmitOnlyOnboardingEnforced(ctx)
+	require.NoError(t, err, "failed to read the retransmit-only onboarding flag")
+	log.Info("Retransmit-only onboarding", "enforced", retransmitOnboardingEnforced)
 
 	var device *qa.Device
 	var amount string
@@ -364,27 +321,18 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		return
 	}
 
-	if p.preflight != nil {
-		if !t.Run(p.preflightSubtestName, func(t *testing.T) {
-			p.preflight(t, ctx, log, test, client)
-		}) {
+	if !t.Run("select_device", func(t *testing.T) {
+		if retransmitOnboardingEnforced {
+			device = selectRetransmitOnlyDevice(t, ctx, log, test, client)
 			return
 		}
-	}
-
-	if !t.Run(p.selectSubtestName, func(t *testing.T) {
-		device = p.selectDevice(t, ctx, log, test, client)
+		device = selectClosestDevice(t, ctx, log, test, client)
 	}) {
 		return
 	}
 	if device == nil {
-		// selectDevice skipped its subtest (e.g. no retransmit-only metro is
-		// configured on this network). t.Run reports a skipped subtest as
-		// success, so the skip does not stop the parent — skip it explicitly
-		// here rather than dereferencing a nil device in query_seat_price below.
-		// A nil device after a non-failed subtest can only mean the selector
-		// skipped: a failure would have made t.Run return false and returned
-		// above, and the success path always assigns a device.
+		// The selector skipped its subtest, because no metro is flagged
+		// retransmit-only on this network.
 		t.Skip("Skipping: device selection skipped (feature not configured on this network)")
 	}
 
@@ -402,7 +350,7 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		}
 		require.NotNil(t, quoted, "no price found for device %s", device.Code)
 		require.NotZero(t, quoted.EpochPrice, "epoch price is zero for device %s", device.Code)
-		log.Info(p.priceLogMsg, "device", device.Code,
+		log.Info("Found epoch price", "device", device.Code,
 			"epoch_price", quoted.EpochPrice,
 			"instant_allocation_price", quoted.GetInstantAllocationPrice(),
 			"reports_instant_allocation_price", quoted.GetReportsInstantAllocationPrice())
@@ -420,6 +368,13 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		onchain, err = client.SeatPrices(ctx, device.PubKey)
 		require.NoError(t, err, "failed to compute the onchain seat prices")
 		require.NotZero(t, onchain.InstantAllocationDollars, "onchain instant-allocation price is zero for device %s", device.Code)
+
+		// Pin the price the program charges, not the CLI argument.
+		if retransmitOnboardingEnforced && *retransmitPriceFlag != 0 {
+			require.Equal(t, *retransmitPriceFlag, onchain.InstantAllocationDollars,
+				"device %s in retransmit-only metro %s should cost the price --retransmit-price names",
+				device.Code, device.ExchangeCode)
+		}
 
 		log.Info("Onchain seat prices", "device", device.Code,
 			"instant_allocation_price", onchain.InstantAllocationDollars,
@@ -526,6 +481,14 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		t.Skipf("expected epoch-tail closed window: %s", epochTailWindow)
 	}
 
+	if retransmitOnboardingEnforced {
+		if !t.Run("reject_new_seat_outside_retransmit_only_metro", func(t *testing.T) {
+			assertNewSeatRejected(t, ctx, log, client)
+		}) {
+			return
+		}
+	}
+
 	if !t.Run("refresh_onchain_seat_price", func(t *testing.T) {
 		// wait_for_open_phase blocks for up to two minutes, and a settlement
 		// completing inside that window advances last_settled_epoch — the very
@@ -627,9 +590,11 @@ func runShredSettlement(t *testing.T, p shredSettlementParams) {
 		return
 	}
 
-	if p.extraAssertion != nil {
-		if !t.Run(p.extraSubtestName, func(t *testing.T) {
-			p.extraAssertion(t, ctx, log, client, device)
+	// The seat carries the leader group in any other metro, so the group
+	// assertion only means something once the metro is retransmit-only.
+	if retransmitOnboardingEnforced {
+		if !t.Run("assert_subscribed_groups", func(t *testing.T) {
+			assertSubscribedGroups(t, ctx, log, client, device)
 		}) {
 			return
 		}

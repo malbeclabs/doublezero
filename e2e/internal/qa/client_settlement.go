@@ -164,38 +164,27 @@ func (c *Client) ClosestRetransmitOnlyDevice(ctx context.Context) (*Device, map[
 		return nil, retransmitOnly, nil
 	}
 
-	latencies, err := c.GetLatency(ctx)
+	device, err := c.closestDeviceInMetros(ctx, retransmitOnly, true)
 	if err != nil {
-		return nil, retransmitOnly, fmt.Errorf("failed to get latency on host %s: %w", c.Host, err)
+		return nil, retransmitOnly, err
 	}
-
-	var bestDevice *Device
-	var bestAvg uint64 = math.MaxUint64
-	for _, l := range latencies {
-		if !l.Reachable {
-			continue
-		}
-		device, ok := c.devices[l.DeviceCode]
-		if !ok || !retransmitOnly[device.ExchangePubKey] {
-			continue
-		}
-		if l.AvgLatencyNs < bestAvg {
-			bestAvg = l.AvgLatencyNs
-			bestDevice = device
-		}
-	}
-	if bestDevice != nil {
-		c.log.Debug("Determined closest retransmit-only device", "host", c.Host, "deviceCode", bestDevice.Code, "avgLatencyNs", bestAvg)
-	}
-	return bestDevice, retransmitOnly, nil
+	return device, retransmitOnly, nil
 }
 
+// ClosestNonRetransmitOnlyDevice returns the reachable device with the lowest
+// average latency whose metro is not flagged retransmit-only. A nil device means
+// every reachable metro is flagged, so no metro is left to reject a new seat.
 func (c *Client) ClosestNonRetransmitOnlyDevice(ctx context.Context) (*Device, error) {
 	retransmitOnly, err := c.RetransmitOnlyExchangeKeys(ctx)
 	if err != nil {
 		return nil, err
 	}
+	return c.closestDeviceInMetros(ctx, retransmitOnly, false)
+}
 
+// closestDeviceInMetros returns the lowest-latency reachable device whose metro
+// membership in exchangeKeys equals want.
+func (c *Client) closestDeviceInMetros(ctx context.Context, exchangeKeys map[string]bool, want bool) (*Device, error) {
 	latencies, err := c.GetLatency(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latency on host %s: %w", c.Host, err)
@@ -208,7 +197,7 @@ func (c *Client) ClosestNonRetransmitOnlyDevice(ctx context.Context) (*Device, e
 			continue
 		}
 		device, ok := c.devices[l.DeviceCode]
-		if !ok || retransmitOnly[device.ExchangePubKey] {
+		if !ok || exchangeKeys[device.ExchangePubKey] != want {
 			continue
 		}
 		if l.AvgLatencyNs < bestAvg {
@@ -217,7 +206,8 @@ func (c *Client) ClosestNonRetransmitOnlyDevice(ctx context.Context) (*Device, e
 		}
 	}
 	if bestDevice != nil {
-		c.log.Debug("Determined closest non-retransmit-only device", "host", c.Host, "deviceCode", bestDevice.Code, "avgLatencyNs", bestAvg)
+		c.log.Debug("Determined closest device", "host", c.Host, "deviceCode", bestDevice.Code,
+			"avgLatencyNs", bestAvg, "retransmitOnly", want)
 	}
 	return bestDevice, nil
 }

@@ -55,3 +55,22 @@ updates:
       serde:
         patterns:
           - "serde*"
+
+  - package-ecosystem: "github-actions"
+    directories:
+      - "**/*"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 10
+    labels:
+      - "skip-changelog"
+      - "dependencies"
+      - "ci"
+    groups:
+      github-actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      github-actions-major:
+        update-types:
+          - "major"

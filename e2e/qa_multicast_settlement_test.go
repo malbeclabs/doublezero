@@ -150,7 +150,7 @@ func assertSubscribedGroups(t *testing.T, ctx context.Context, log *slog.Logger,
 		lastExtra      []string
 	)
 	ok := assert.Eventually(t, func() bool {
-		user, err := client.GetServiceabilityUser(ctx)
+		user, err := client.GetMulticastServiceabilityUser(ctx)
 		if err != nil {
 			log.Info("serviceability user poll error", "error", err)
 			return false

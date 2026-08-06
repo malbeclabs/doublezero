@@ -1125,10 +1125,10 @@ async fn test_duplicate_create_subscribe_user_rejected() {
     match err {
         BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            // SubscribeUserAlreadyExists: this request matched an existing user exactly. Distinct
-            // from Custom(105), which means the IP belongs to a different device.
-            InstructionError::Custom(106),
-        )) => {}
+            // SubscribeUserAlreadyExists: this request matched an existing user exactly, unlike
+            // UserExistsWithDifferentAttributes, which means the IP belongs to another device.
+            InstructionError::Custom(code),
+        )) if code == custom_code(DoubleZeroError::SubscribeUserAlreadyExists) => {}
         other => panic!("expected SubscribeUserAlreadyExists, got {other:?}"),
     }
 

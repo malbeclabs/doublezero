@@ -1672,9 +1672,10 @@ async fn test_user_create_existing_different_device_rejected() {
     match err {
         BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            // The mismatch code, distinct from the exact-duplicate subscribe case.
-            InstructionError::Custom(105),
-        )) => {}
+            // Distinct from the exact-duplicate subscribe case. A pattern cannot
+            // hold a computed value, so the code is bound and compared.
+            InstructionError::Custom(code),
+        )) if code == custom_code(DoubleZeroError::UserExistsWithDifferentAttributes) => {}
         other => panic!("expected UserExistsWithDifferentAttributes, got {other:?}"),
     }
 
@@ -1772,9 +1773,10 @@ async fn test_user_create_existing_different_tenant_rejected() {
     match err {
         BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            // The mismatch code, distinct from the exact-duplicate subscribe case.
-            InstructionError::Custom(105),
-        )) => {}
+            // Distinct from the exact-duplicate subscribe case. A pattern cannot
+            // hold a computed value, so the code is bound and compared.
+            InstructionError::Custom(code),
+        )) if code == custom_code(DoubleZeroError::UserExistsWithDifferentAttributes) => {}
         other => panic!("expected UserExistsWithDifferentAttributes, got {other:?}"),
     }
 
@@ -1875,9 +1877,10 @@ async fn test_user_create_existing_different_owner_rejected() {
     match err {
         BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            // The mismatch code, distinct from the exact-duplicate subscribe case.
-            InstructionError::Custom(105),
-        )) => {}
+            // Distinct from the exact-duplicate subscribe case. A pattern cannot
+            // hold a computed value, so the code is bound and compared.
+            InstructionError::Custom(code),
+        )) if code == custom_code(DoubleZeroError::UserExistsWithDifferentAttributes) => {}
         other => panic!("expected UserExistsWithDifferentAttributes, got {other:?}"),
     }
 

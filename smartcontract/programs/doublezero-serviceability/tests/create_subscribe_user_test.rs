@@ -2639,9 +2639,9 @@ async fn test_create_subscribe_user_duplicate_is_refused_distinctly() {
     match err {
         BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            // SubscribeUserAlreadyExists, not the mismatch code (105).
-            InstructionError::Custom(106),
-        )) => {}
+            // SubscribeUserAlreadyExists, not the mismatch code.
+            InstructionError::Custom(code),
+        )) if code == custom_code(DoubleZeroError::SubscribeUserAlreadyExists) => {}
         other => panic!("expected SubscribeUserAlreadyExists, got {other:?}"),
     }
 

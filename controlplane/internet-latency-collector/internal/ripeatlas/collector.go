@@ -606,6 +606,18 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	for _, result := range results {
 		// Parse latency from result (now also returns probe ID)
 		latency, timestamp, probeID := c.parseLatencyFromResult(result)
+
+		// A result the probe uploaded is proof the probe ran the measurement, whether or
+		// not any ping came back. Record it as a response before the latency check, so a
+		// path at total loss is not mistaken for a dead source probe: the staleness check
+		// in the measurement cycle marks a source whose LastResponseAt has aged out, and
+		// rotating a probe recreates every measurement whose target sorts before its
+		// metro. A result carrying no probe ID or timestamp is unparseable, not a
+		// response, so it stays excluded.
+		if probeID != 0 && !timestamp.IsZero() {
+			measurementState.UpdateSourceProbeResponse(measurement.ID, probeID, timestamp.Unix())
+		}
+
 		if latency > 0 {
 			if timestamp.After(maxTimestamp) {
 				maxTimestamp = timestamp
@@ -615,9 +627,6 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			if loc, ok := probeToLocationLocal[probeID]; ok {
 				sourceLocation = loc
 			}
-
-			// Track source probe response time for staleness detection
-			measurementState.UpdateSourceProbeResponse(measurement.ID, probeID, timestamp.Unix())
 
 			records = append(records, exporter.Record{
 				DataProvider: exporter.DataProviderNameRIPEAtlas,

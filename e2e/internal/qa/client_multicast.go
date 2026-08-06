@@ -141,6 +141,20 @@ func (c *Client) GetMulticastGroup(ctx context.Context, code string) (*Multicast
 	return nil, nil
 }
 
+// MulticastGroupCodes maps every multicast group pubkey to its code, so a caller
+// holding pubkeys off a user account can name them in a log or a failure.
+func (c *Client) MulticastGroupCodes(ctx context.Context) (map[solana.PublicKey]string, error) {
+	data, err := getProgramDataWithRetry(ctx, c.serviceability)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get program data on host %s: %w", c.Host, err)
+	}
+	codes := make(map[solana.PublicKey]string, len(data.MulticastGroups))
+	for _, group := range data.MulticastGroups {
+		codes[solana.PublicKeyFromBytes(group.PubKey[:])] = group.Code
+	}
+	return codes, nil
+}
+
 func (c *Client) CreateMulticastGroup(ctx context.Context, code string, maxBandwidth string) (*MulticastGroup, error) {
 	c.log.Debug("Creating multicast group", "host", c.Host, "code", code, "maxBandwidth", maxBandwidth)
 	resp, err := c.grpcClient.CreateMulticastGroup(ctx, &pb.CreateMulticastGroupRequest{

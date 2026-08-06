@@ -129,18 +129,33 @@ func flaggedMetroCodes(test *qa.Test, exchangeKeys map[string]bool) []string {
 func assertSubscribedGroups(t *testing.T, ctx context.Context, log *slog.Logger, client *qa.Client, _ *qa.Device) {
 	// Nothing onchain labels a group as leader or retransmit, so the operator
 	// names the retransmit groups per network.
+	groupCodes, err := client.MulticastGroupCodes(ctx)
+	require.NoError(t, err, "failed to read the multicast groups")
+	keysByCode := make(map[string]solana.PublicKey, len(groupCodes))
+	for key, code := range groupCodes {
+		keysByCode[code] = key
+	}
+
 	required := make(map[solana.PublicKey]string)
 	for _, code := range strings.Split(*retransmitGroupCodesFlag, ",") {
 		code = strings.TrimSpace(code)
 		if code == "" {
 			continue
 		}
-		group, err := client.GetMulticastGroup(ctx, code)
-		require.NoError(t, err, "failed to resolve multicast group %q", code)
-		require.NotNil(t, group, "multicast group %q not found onchain", code)
-		required[group.PK] = code
+		key, ok := keysByCode[code]
+		require.True(t, ok, "multicast group %q not found onchain", code)
+		required[key] = code
 	}
 	require.NotEmpty(t, required, "no multicast group resolved from --retransmit-group-codes %q", *retransmitGroupCodesFlag)
+
+	// A failure names the groups by code. The raw pubkeys are what made the
+	// first report of this check unreadable.
+	label := func(group solana.PublicKey) string {
+		if code, ok := groupCodes[group]; ok {
+			return code
+		}
+		return group.String()
+	}
 
 	// The oracle converges the seat's onchain subscription asynchronously, so
 	// poll until it reflects retransmit-only membership.
@@ -160,7 +175,7 @@ func assertSubscribedGroups(t *testing.T, ctx context.Context, log *slog.Logger,
 		for _, sub := range user.Subscribers {
 			group := solana.PublicKeyFromBytes(sub[:])
 			subscribed[group] = true
-			subs = append(subs, group.String())
+			subs = append(subs, label(group))
 		}
 		var missing, extra []string
 		for group, code := range required {
@@ -170,7 +185,7 @@ func assertSubscribedGroups(t *testing.T, ctx context.Context, log *slog.Logger,
 		}
 		for group := range subscribed {
 			if _, want := required[group]; !want {
-				extra = append(extra, group.String())
+				extra = append(extra, label(group))
 			}
 		}
 		lastSubscribed, lastMissing, lastExtra = subs, missing, extra
@@ -370,10 +385,16 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		require.NotZero(t, onchain.InstantAllocationDollars, "onchain instant-allocation price is zero for device %s", device.Code)
 
 		// Pin the price the program charges, not the CLI argument.
-		if retransmitOnboardingEnforced && *retransmitPriceFlag != 0 {
-			require.Equal(t, *retransmitPriceFlag, onchain.InstantAllocationDollars,
-				"device %s in retransmit-only metro %s should cost the price --retransmit-price names",
-				device.Code, device.ExchangeCode)
+		if retransmitOnboardingEnforced {
+			if *retransmitPriceFlag == 0 {
+				log.Info("Not asserting the seat price; --retransmit-price is unset",
+					"device", device.Code, "metro", device.ExchangeCode,
+					"price", onchain.InstantAllocationDollars)
+			} else {
+				require.Equal(t, *retransmitPriceFlag, onchain.InstantAllocationDollars,
+					"device %s in retransmit-only metro %s should cost the price --retransmit-price names",
+					device.Code, device.ExchangeCode)
+			}
 		}
 
 		log.Info("Onchain seat prices", "device", device.Code,

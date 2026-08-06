@@ -104,12 +104,16 @@ func (s *Submitter) Run(ctx context.Context) error {
 	}
 }
 
-func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey, samples []Sample) error {
+// SubmitSamples writes samples to the partition's onchain account in batches, and returns how many
+// of them were written. That count is the caller's resume point: the batches before it are already
+// onchain, so a retry must pass samples[written:] rather than re-sending the whole slice, or those
+// samples are appended a second time.
+func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey, samples []Sample) (int, error) {
 	log := s.log.With("partition", partitionKey)
 
 	if len(samples) == 0 {
 		log.Debug("No samples to submit, skipping")
-		return nil
+		return 0, nil
 	}
 
 	for i := 0; i < len(samples); i += telemetry.MaxInternetLatencySamplesPerBatch {
@@ -140,7 +144,7 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 				log.Info("Account not found, initializing new account")
 				samplingInterval, ok := s.cfg.DataProviderSamplingIntervals[partitionKey.DataProvider]
 				if !ok {
-					return fmt.Errorf("no sampling interval found for data provider: %s", partitionKey.DataProvider)
+					return i, fmt.Errorf("no sampling interval found for data provider: %s", partitionKey.DataProvider)
 				}
 				_, _, err = s.cfg.Telemetry.InitializeInternetLatencySamples(ctx, telemetry.InitializeInternetLatencySamplesInstructionConfig{
 					DataProviderName:             string(partitionKey.DataProvider),
@@ -150,33 +154,33 @@ func (s *Submitter) SubmitSamples(ctx context.Context, partitionKey PartitionKey
 					SamplingIntervalMicroseconds: uint64(samplingInterval.Microseconds()),
 				})
 				if err != nil {
-					return fmt.Errorf("failed to initialize internet latency samples: %w", err)
+					return i, fmt.Errorf("failed to initialize internet latency samples: %w", err)
 				}
 				_, _, err = s.cfg.Telemetry.WriteInternetLatencySamples(ctx, writeConfig)
 				if err != nil {
 					if errors.Is(err, telemetry.ErrSamplesAccountFull) {
-						log.Warn("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
+						log.Warn("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples)-i)
 						metrics.ExporterSubmitterAccountFull.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceExchangePK.String(), partitionKey.TargetExchangePK.String(), strconv.FormatUint(partitionKey.Epoch, 10)).Inc()
 						s.cfg.Buffer.Remove(partitionKey)
-						return nil
+						return i, nil
 					}
-					return fmt.Errorf("failed to write internet latency samples after init: %w", err)
+					return i, fmt.Errorf("failed to write internet latency samples after init: %w", err)
 				}
 			} else if errors.Is(err, telemetry.ErrSamplesAccountFull) {
-				log.Warn("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples))
+				log.Warn("Partition account is full, dropping samples from buffer and moving on", "droppedSamples", len(samples)-i)
 				metrics.ExporterSubmitterAccountFull.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceExchangePK.String(), partitionKey.TargetExchangePK.String(), strconv.FormatUint(partitionKey.Epoch, 10)).Inc()
 				s.cfg.Buffer.Remove(partitionKey)
-				return nil
+				return i, nil
 			} else {
-				return fmt.Errorf("failed to write internet latency samples: %w", err)
+				return i, fmt.Errorf("failed to write internet latency samples: %w", err)
 			}
 		}
 
 		metrics.ExporterPartitionedBufferSize.WithLabelValues(string(partitionKey.DataProvider), partitionKey.SourceExchangePK.String(), partitionKey.TargetExchangePK.String()).Set(float64(len(samples)))
-		log.Debug("Submitted partition samples batch", "count", len(samples), "samples", rtts)
+		log.Debug("Submitted partition samples batch", "count", len(batch), "samples", rtts)
 	}
 
-	return nil
+	return len(samples), nil
 }
 
 func (s *Submitter) Tick(ctx context.Context) {
@@ -232,14 +236,20 @@ func (s *Submitter) Tick(ctx context.Context) {
 				return
 			}
 
+			// Samples written so far across attempts. Each retry resumes here rather than at the
+			// start of tmp, so batches an earlier attempt put onchain are neither re-sent nor
+			// counted as lost.
+			written := 0
+
 			success := false
 			for attempt := 1; attempt <= maxAttempts; attempt++ {
 				// Bound each attempt so a slow/degraded ledger RPC can't leave the submission
 				// blocked past its blockhash's validity window; the next attempt re-fetches a
 				// fresh blockhash.
 				attemptCtx, cancel := context.WithTimeout(ctx, attemptTimeout)
-				err := s.SubmitSamples(attemptCtx, partitionKey, tmp)
+				n, err := s.SubmitSamples(attemptCtx, partitionKey, tmp[written:])
 				cancel()
+				written += n
 				if err == nil {
 					log.Debug("Submitted samples", "count", len(tmp), "attempt", attempt)
 					success = true
@@ -272,7 +282,7 @@ func (s *Submitter) Tick(ctx context.Context) {
 			}
 
 			if !success {
-				s.cfg.Buffer.PriorityPrepend(partitionKey, tmp)
+				s.cfg.Buffer.PriorityPrepend(partitionKey, tmp[written:])
 			}
 
 			// Always recycle the slice for reuse

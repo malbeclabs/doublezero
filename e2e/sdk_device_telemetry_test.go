@@ -287,12 +287,16 @@ func TestE2E_SDK_Telemetry_DeviceLatencySamples(t *testing.T) {
 			Epoch:                        &epoch,
 			SamplingIntervalMicroseconds: 1000000,
 		})
-		require.NoError(t, err)
-		for _, msg := range res.Meta.LogMessages {
+		// The rejection comes back as an error rather than in the transaction metadata: the
+		// instruction finalized, but the program refused it. Reading it off res.Meta.Err used to be
+		// the only way to see that (malbeclabs/infra#1703).
+		var programErr *telemetry.ProgramError
+		require.ErrorAs(t, err, &programErr, "re-initializing an existing account should fail")
+		require.Nil(t, res)
+		for _, msg := range programErr.Logs {
 			log.Debug("solana log message", "msg", msg)
 		}
-		log.Debug("transaction error", "error", res.Meta.Err)
-		require.NotNil(t, res.Meta.Err, "transaction should fail")
+		require.ErrorContains(t, err, "Latency samples account already exists")
 	})
 
 	// Write more device latency samples.

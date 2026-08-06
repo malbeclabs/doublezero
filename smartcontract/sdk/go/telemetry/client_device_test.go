@@ -982,6 +982,78 @@ func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_CustomInstructionErrorSa
 	require.Nil(t, tx)
 }
 
+// A write that simulates cleanly and then fails against the bank it lands on reports the same codes
+// through the finalized transaction rather than a preflight RPCError. Those have to reach the same
+// sentinels, or the caller's account-full and missing-account handling only works on the preflight
+// side of the same condition (malbeclabs/infra#1703).
+func TestSDK_Telemetry_Client_WriteDeviceLatencySamples_FinalizedCustomErrorsMapToSentinels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		code int
+		want error
+	}{
+		{"samples account full", telemetry.InstructionErrorAccountSamplesAccountFull, telemetry.ErrSamplesAccountFull},
+		{"account does not exist", telemetry.InstructionErrorAccountDoesNotExist, telemetry.ErrAccountNotFound},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			signer := solana.NewWallet().PrivateKey
+			programID := solana.NewWallet().PublicKey()
+
+			mockRPC := &mockRPCClient{
+				GetLatestBlockhashFunc: func(_ context.Context, _ solanarpc.CommitmentType) (*solanarpc.GetLatestBlockhashResult, error) {
+					return &solanarpc.GetLatestBlockhashResult{
+						Value: &solanarpc.LatestBlockhashResult{
+							Blockhash: solana.MustHashFromBase58("5NzX7jrPWeTkGsDnVnszdEa7T3Yyr3nSgyc78z3CwjWQ"),
+						},
+					}, nil
+				},
+				SendTransactionWithOptsFunc: func(_ context.Context, tx *solana.Transaction, _ solanarpc.TransactionOpts) (solana.Signature, error) {
+					return tx.Signatures[0], nil
+				},
+				GetSignatureStatusesFunc: func(context.Context, bool, ...solana.Signature) (*solanarpc.GetSignatureStatusesResult, error) {
+					return &solanarpc.GetSignatureStatusesResult{
+						Value: []*solanarpc.SignatureStatusesResult{
+							{
+								ConfirmationStatus: solanarpc.ConfirmationStatusFinalized,
+								Err: map[string]any{
+									"InstructionError": []any{
+										0,
+										map[string]any{"Custom": json.Number(strconv.Itoa(tt.code))},
+									},
+								},
+							},
+						},
+					}, nil
+				},
+				GetTransactionFunc: func(context.Context, solana.Signature, *solanarpc.GetTransactionOpts) (*solanarpc.GetTransactionResult, error) {
+					return &solanarpc.GetTransactionResult{Meta: &solanarpc.TransactionMeta{}}, nil
+				},
+			}
+
+			client := telemetry.New(slog.Default(), mockRPC, &signer, programID)
+
+			sig, tx, err := client.WriteDeviceLatencySamples(context.Background(), telemetry.WriteDeviceLatencySamplesInstructionConfig{
+				AgentPK:                    signer.PublicKey(),
+				OriginDevicePK:             solana.NewWallet().PublicKey(),
+				TargetDevicePK:             solana.NewWallet().PublicKey(),
+				LinkPK:                     solana.NewWallet().PublicKey(),
+				Epoch:                      ptr(uint64(42)),
+				StartTimestampMicroseconds: 1_600_000_000,
+				Samples:                    []uint32{10},
+			})
+			require.ErrorIs(t, err, tt.want)
+			require.Equal(t, solana.Signature{}, sig)
+			require.Nil(t, tx)
+		})
+	}
+}
+
 func TestSDK_Telemetry_Client_GetDeviceLatencySamplesHeader_HappyPath(t *testing.T) {
 	t.Parallel()
 

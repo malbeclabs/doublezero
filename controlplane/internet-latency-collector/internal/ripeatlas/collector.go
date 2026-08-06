@@ -23,6 +23,20 @@ const (
 	// sample before we treat it as stalled rather than merely idle. It is several times
 	// the default sampling interval so ordinary polling jitter stays quiet.
 	staleMeasurementWarnAfter = 30 * time.Minute
+
+	// sourceSampleGracePeriod is how long after its measurement was created a source
+	// probe may produce no successful sample before we report it. RIPE dispatch is not
+	// immediate: an accepted enlistment has been observed producing its first result
+	// 80-100 minutes after creation, and all of one probe's enlistments start within
+	// seconds of each other, so a shorter window reports probes that are merely warming
+	// up. Deliberately separate from probeTimeout, which drives probe rotation, so that
+	// tuning this reporting window cannot perturb the marking path.
+	sourceSampleGracePeriod = 2 * time.Hour
+
+	// maxSourcesWithoutSamplesLogged caps the per-cycle sample of sources named in the
+	// log. The full count is on the metric; a widespread outage should not emit hundreds
+	// of identifiers every hour.
+	maxSourcesWithoutSamplesLogged = 20
 )
 
 // CallDelay is defined in client.go to avoid duplication
@@ -665,6 +679,46 @@ func (c *Collector) warnStalled(measurementID int, targetLocation string, lastTi
 		slog.Int("raw_results", rawResults))
 }
 
+// sourcesWithoutSamples tallies source probes that have produced no successful sample
+// since their measurement was created, keyed by source location, along with the total
+// and a sample of at most sampleLimit human-readable identifiers.
+//
+// A source's LastResponseAt is zeroed whenever its measurement is created and is only
+// ever advanced by a sample with a latency above zero, so a zero on a measurement
+// created before createdBefore (a unix timestamp) means that probe has contributed
+// nothing to it. Measurements with an unknown creation time are skipped, since their
+// age cannot be judged.
+//
+// This deliberately does not claim a cause, because the state cannot distinguish one.
+// A zero means RIPE never dispatched the enlistment, or the path is at total packet
+// loss and every result parsed to zero latency (parseLatencyFromResult returns 0 for a
+// ping array carrying no rtt). Both dark the circuit; only the first is RIPE's fault.
+func sourcesWithoutSamples(measurements []Measurement, state *MeasurementState, createdBefore int64, sampleLimit int) (map[string]int, int, []string) {
+	byLocation := map[string]int{}
+	total := 0
+	var sample []string
+
+	for _, measurement := range measurements {
+		meta, hasMeta := state.GetMetadata(measurement.ID)
+		if !hasMeta || meta.CreatedAt == 0 || meta.CreatedAt >= createdBefore {
+			continue
+		}
+		for _, source := range meta.Sources {
+			if source.LastResponseAt != 0 {
+				continue
+			}
+			byLocation[source.LocationCode]++
+			total++
+			if len(sample) < sampleLimit {
+				sample = append(sample, fmt.Sprintf("%s <- %s (probe %d, measurement %d)",
+					meta.TargetLocation, source.LocationCode, source.ProbeID, measurement.ID))
+			}
+		}
+	}
+
+	return byLocation, total, sample
+}
+
 func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval time.Duration) error {
 	c.log.Info("Running RIPE Atlas measurement creation")
 
@@ -866,6 +920,34 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				}
 			}
 		}
+	}
+
+	// Step 4c: Report sources that have produced no successful sample since their
+	// measurement was created. Sources are rebuilt with a zero LastResponseAt every time
+	// a measurement is created, so a zero past sourceSampleGracePeriod means this probe
+	// has contributed nothing to it. A circuit is enlisted exactly once, so each such
+	// source silently darks its circuit with no other trace.
+	//
+	// Observation only, and it names no cause: RIPE not dispatching the enlistment and a
+	// path at total loss are indistinguishable here. Rotating the probe is not the answer
+	// either way — the drops observed so far recovered unaided — and it is expensive,
+	// because a metro's probe is a source for every measurement whose target sorts before
+	// it. See #4153.
+	silentByLocation, silentTotal, silentSample := sourcesWithoutSamples(
+		doubleZeroMeasurements, measurementState,
+		currentTime-int64(sourceSampleGracePeriod.Seconds()), maxSourcesWithoutSamplesLogged)
+
+	// Reset first so a location that recovered goes absent instead of holding its last value.
+	metrics.RipeatlasSourcesWithoutSamples.Reset()
+	for location, count := range silentByLocation {
+		metrics.RipeatlasSourcesWithoutSamples.WithLabelValues(location).Set(float64(count))
+	}
+	if silentTotal > 0 {
+		c.log.Warn("Sources with no successful sample since their measurement was created, their circuits are dark",
+			slog.Int("sources", silentTotal),
+			slog.Duration("grace_period", sourceSampleGracePeriod),
+			slog.Any("by_source_location", silentByLocation),
+			slog.Any("sample", silentSample))
 	}
 
 	// Save state if we detected any new unresponsive probes

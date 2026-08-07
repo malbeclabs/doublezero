@@ -507,6 +507,21 @@ func (c *Client) GetServiceabilityUser(ctx context.Context) (*serviceability.Use
 	return nil, fmt.Errorf("serviceability user not found for client IP %s on host %s", publicIP, c.Host)
 }
 
+func (c *Client) GetMulticastServiceabilityUser(ctx context.Context) (*serviceability.User, error) {
+	data, err := getProgramDataWithRetry(ctx, c.serviceability)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get program data on host %s: %w", c.Host, err)
+	}
+	publicIP := c.publicIP.To4().String()
+	for i := range data.Users {
+		user := &data.Users[i]
+		if net.IP(user.ClientIp[:]).String() == publicIP && user.UserType == serviceability.UserTypeMulticast {
+			return user, nil
+		}
+	}
+	return nil, fmt.Errorf("multicast serviceability user not found for client IP %s on host %s", publicIP, c.Host)
+}
+
 func (c *Client) GetOwnerPubkey(ctx context.Context) (solana.PublicKey, error) {
 	user, err := c.GetServiceabilityUser(ctx)
 	if err != nil {

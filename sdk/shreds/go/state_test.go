@@ -308,6 +308,43 @@ func TestMetroHistoryFlags(t *testing.T) {
 	}
 }
 
+// The bit indices mirror the shred-subscription program's ProgramConfig
+// constants: FLAG_IS_PAUSED_BIT 0, FLAG_PRORATED_SERVICE_ENABLED_BIT 2 and
+// FLAG_RETRANSMIT_ONLY_ONBOARDING_ENFORCED_BIT 7. A wrong index here reads as
+// "feature off" rather than as an error, so nothing else catches it.
+func TestProgramConfigFlags(t *testing.T) {
+	cases := []struct {
+		flags              uint64
+		paused             bool
+		migrated           bool
+		prorated           bool
+		onboardingEnforced bool
+	}{
+		{flags: 0},
+		{flags: 1 << 0, paused: true},
+		{flags: 1 << 1, migrated: true},
+		{flags: 1 << 2, prorated: true},
+		{flags: 1 << 7, onboardingEnforced: true},
+		{flags: 0x7c, prorated: true},
+		{flags: 0xff, paused: true, migrated: true, prorated: true, onboardingEnforced: true},
+	}
+	for _, tc := range cases {
+		cfg := ProgramConfig{Flags: tc.flags}
+		if got := cfg.IsPaused(); got != tc.paused {
+			t.Errorf("flags=%#b: IsPaused() = %v, want %v", tc.flags, got, tc.paused)
+		}
+		if got := cfg.IsMigrated(); got != tc.migrated {
+			t.Errorf("flags=%#b: IsMigrated() = %v, want %v", tc.flags, got, tc.migrated)
+		}
+		if got := cfg.IsProratedServiceEnabled(); got != tc.prorated {
+			t.Errorf("flags=%#b: IsProratedServiceEnabled() = %v, want %v", tc.flags, got, tc.prorated)
+		}
+		if got := cfg.IsRetransmitOnlyOnboardingEnforced(); got != tc.onboardingEnforced {
+			t.Errorf("flags=%#b: IsRetransmitOnlyOnboardingEnforced() = %v, want %v", tc.flags, got, tc.onboardingEnforced)
+		}
+	}
+}
+
 func TestDeviceHistoryDeserialization(t *testing.T) {
 	data := make([]byte, unsafe.Sizeof(DeviceHistory{}))
 	// Device key

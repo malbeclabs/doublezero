@@ -43,6 +43,7 @@ var (
 	reconcilerFetchTimeout      = flag.Int("reconciler-fetch-timeout", 60, "timeout in seconds for onchain data fetches during reconciliation")
 	onchainRPCTimeout           = flag.Duration("onchain-rpc-timeout", defaultOnchainRPCTimeout, "Timeout for GetProgramData RPC calls inside the onchain caching fetcher.")
 	stateDir                    = flag.String("state-dir", "/var/lib/doublezerod", "directory for persistent state files")
+	routeReconcileInterval      = flag.Duration("route-reconcile-interval", defaultRouteReconcileInterval, "interval for periodic kernel route reconciliation (reinstalls externally-deleted BGP routes); 0 disables")
 
 	// Route liveness configuration flags.
 	routeLivenessTxMin       = flag.Duration("route-liveness-tx-min", defaultRouteLivenessTxMin, "route liveness tx min")
@@ -68,6 +69,7 @@ var (
 
 const (
 	defaultOnchainRPCTimeout       = 30 * time.Second
+	defaultRouteReconcileInterval  = 30 * time.Second
 	defaultRouteLivenessTxMin      = 1 * time.Second
 	defaultRouteLivenessRxMin      = 1 * time.Second
 	defaultRouteLivenessDetectMult = 3
@@ -193,7 +195,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, *latencySingleSocket, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval, *reconcilerFetchTimeout, *stateDir, *onchainRPCTimeout); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, *latencySingleSocket, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval, *reconcilerFetchTimeout, *stateDir, *onchainRPCTimeout, *routeReconcileInterval); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

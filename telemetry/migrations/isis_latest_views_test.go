@@ -38,19 +38,23 @@ func TestIsisLatestViews_LastSeenPerNetworkInstance(t *testing.T) {
 	scrapeA := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
 	scrapeB := scrapeA.Add(time.Minute)
 
-	mustExec(t, db, `
-		INSERT INTO isis_global_state (timestamp, device_pubkey, network_instance, instance, net, level_capability) VALUES
-			(?, ?, 'default', 'default', '49.0001.0000.0000.0001.00', 'LEVEL_2'),
-			(?, ?, 'vrf1',    'vrf1',    '49.0002.0000.0000.0001.00', 'LEVEL_2'),
-			(?, ?, 'default', 'default', '49.0001.0000.0000.0001.00', 'LEVEL_2')
-	`, scrapeA, device, scrapeA, device, scrapeB, device)
+	// Insert one row per statement. The clickhouse-go database/sql driver only
+	// reliably binds placeholders for single-row INSERTs; a multi-row VALUES
+	// list with placeholders can silently drop rows, leaving the latest views
+	// empty.
+	const insertGlobalState = `
+		INSERT INTO isis_global_state (timestamp, device_pubkey, network_instance, instance, net, level_capability)
+		VALUES (?, ?, ?, ?, ?, ?)`
+	mustExec(t, db, insertGlobalState, scrapeA, device, "default", "default", "49.0001.0000.0000.0001.00", "LEVEL_2")
+	mustExec(t, db, insertGlobalState, scrapeA, device, "vrf1", "vrf1", "49.0002.0000.0000.0001.00", "LEVEL_2")
+	mustExec(t, db, insertGlobalState, scrapeB, device, "default", "default", "49.0001.0000.0000.0001.00", "LEVEL_2")
 
-	mustExec(t, db, `
-		INSERT INTO isis_overload_bit (timestamp, device_pubkey, network_instance, overload_bit) VALUES
-			(?, ?, 'default', false),
-			(?, ?, 'vrf1',    true),
-			(?, ?, 'default', false)
-	`, scrapeA, device, scrapeA, device, scrapeB, device)
+	const insertOverloadBit = `
+		INSERT INTO isis_overload_bit (timestamp, device_pubkey, network_instance, overload_bit)
+		VALUES (?, ?, ?, ?)`
+	mustExec(t, db, insertOverloadBit, scrapeA, device, "default", false)
+	mustExec(t, db, insertOverloadBit, scrapeA, device, "vrf1", true)
+	mustExec(t, db, insertOverloadBit, scrapeB, device, "default", false)
 
 	t.Run("isis_global_state_latest", func(t *testing.T) {
 		type row struct {

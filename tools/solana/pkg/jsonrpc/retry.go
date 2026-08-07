@@ -126,6 +126,9 @@ func doRetry(ctx context.Context, opt RetryOptions, label string, idempotent boo
 		}
 
 		lastErr = f(ctx)
+		if carrier := rateLimitCarrier(lastErr); carrier != "" {
+			rateLimitedTotal.WithLabelValues(label, carrier).Inc()
+		}
 		if lastErr == nil || !opt.IsRetryableFunc(lastErr) {
 			return lastErr
 		}
@@ -209,6 +212,32 @@ func isRetryableRPCCode(code int) bool {
 		return true
 	}
 	return false
+}
+
+// rateLimitCarrier reports which error shape carried a rate limit, or "" if err is
+// not one. The distinction is the point: an *HTTPError means the refusal arrived as
+// an HTTP 429 status, which an edge or CDN limiter produces and the transport layer
+// can also see; an *RPCError means it arrived inside a JSON-RPC envelope on an
+// otherwise-successful response, which is what a limiter at or behind the origin
+// typically does and which no HTTP-level metric will ever show.
+//
+// -32429 is included because a provider fronting Agave mints it to mirror HTTP 429
+// inside an envelope (see isRetryableRPCCode); a bare positive 429 in an *RPCError
+// is a different origin from the same provider's -32429, which is precisely the
+// kind of thing worth being able to tell apart after the fact.
+func rateLimitCarrier(err error) string {
+	if err == nil {
+		return ""
+	}
+	var httpErr *jsonrpc.HTTPError
+	if errors.As(err, &httpErr) && httpErr.Code == http.StatusTooManyRequests {
+		return "http_status"
+	}
+	var rpcErr *jsonrpc.RPCError
+	if errors.As(err, &rpcErr) && (rpcErr.Code == http.StatusTooManyRequests || rpcErr.Code == -32429) {
+		return "jsonrpc_error"
+	}
+	return ""
 }
 
 func isRetryableJSONRPC(err error) bool {

@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- E2E/QA
+  - `TestQA_MulticastSettlement`'s `validate_instant_allocation_price_matches_chain` no longer names a specific `doublezero_solana_version` in its skip path. Both the comment and the skip message said the pin was `0.5.10-1`; testnet has since moved to `0.5.11-1`, so a reader was told the pin was merely behind when in fact `instant_allocation_price` is in no release yet. They now name what actually gates the field — a doublezero-offchain release carrying doublezero-offchain#405 — and where the pin lives, neither of which goes stale as versions move. Comment and message only, no behaviour change.
+
 ## [v0.34.0](https://github.com/malbeclabs/doublezero/compare/client/v0.33.0...client/v0.34.0) - 2026-08-07
 
 ### Breaking

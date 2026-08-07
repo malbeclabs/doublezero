@@ -418,12 +418,12 @@ func TestQA_MulticastSettlement(t *testing.T) {
 		case !quoted.GetReportsInstantAllocationPrice():
 			// QA hosts install doublezero-solana from a version-pinned apt package
 			// (doublezero_solana_version in malbeclabs/infra
-			// ansible/inventory/*/group_vars/all.yml, 0.5.10-1 at time of writing),
-			// so the field only appears once a release carrying it is published and
-			// the pin bumped. Asserting against an absent field would read 0 and
-			// fail as "quoted 0, chain 43" — a misleading failure that looks like a
-			// new bug rather than a rollout gap.
-			t.Skipf("Skipping: installed doublezero-solana does not report instant_allocation_price (needs a release newer than the pinned 0.5.10-1); chain says %d USDC at last_settled_epoch=%d",
+			// ansible/inventory/<env>/group_vars/all.yml), so the field appears only
+			// once a doublezero-offchain release carrying it is published and that
+			// pin is bumped. The column landed in doublezero-offchain#405. Asserting
+			// against an absent field would read 0 and fail as "quoted 0, chain 43" —
+			// a misleading failure that looks like a new bug rather than a rollout gap.
+			t.Skipf("Skipping: installed doublezero-solana does not report instant_allocation_price (needs a release carrying doublezero-offchain#405); chain says %d USDC at last_settled_epoch=%d",
 				onchain.InstantAllocationDollars, onchain.LastSettledEpoch)
 		case quoted.InstantAllocationPrice == nil:
 			// Reported, but null: the CLI could not find the settled-epoch ring

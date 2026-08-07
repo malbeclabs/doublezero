@@ -338,11 +338,21 @@ func (c *Client) GetAllMeasurements(ctx context.Context, env string) ([]Measurem
 	return allMeasurements, nil
 }
 
+// GetMeasurementResultsIncremental returns results strictly newer than startTimestamp,
+// which is the newest timestamp the caller has already consumed.
+//
+// RIPE's ?start= filter is inclusive, so we ask for the following second. Passing the
+// caller's timestamp verbatim returns the boundary result on every poll, and re-exporting
+// it appends a duplicate sample each cycle, which makes the recorded sample count outrun
+// the declared sampling interval.
+//
+// The cost is a one-second blind spot: a probe stamping that same second but uploading
+// after the caller's last poll is skipped rather than deduplicated.
 func (c *Client) GetMeasurementResultsIncremental(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
 	endpoint := fmt.Sprintf("/measurements/%d/results/", measurementID)
 
 	if startTimestamp > 0 {
-		endpoint = fmt.Sprintf("%s?start=%d", endpoint, startTimestamp)
+		endpoint = fmt.Sprintf("%s?start=%d", endpoint, startTimestamp+1)
 	}
 
 	resp, err := c.makeRequest(ctx, endpoint)

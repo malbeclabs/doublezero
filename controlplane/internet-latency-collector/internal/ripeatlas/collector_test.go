@@ -1,11 +1,13 @@
 package ripeatlas
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -533,6 +535,100 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_PreservesAllSamples(
 		rtt, err := time.ParseDuration(dataRow[rttIdx])
 		require.NoError(t, err)
 		require.Equal(t, expected.rtt, rtt)
+	}
+}
+
+func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_StallWarning(t *testing.T) {
+	t.Parallel()
+
+	staleExport := time.Now().Add(-2 * staleMeasurementWarnAfter)
+
+	// When the target probe goes dark the sources keep pinging and keep uploading, so the
+	// page is not empty — the results just carry no rtt.
+	timeoutResult := map[string]any{
+		"prb_id":    float64(100),
+		"timestamp": float64(time.Now().Unix()),
+		"result": []any{
+			map[string]any{"x": "*"},
+			map[string]any{"x": "*"},
+		},
+	}
+	successResult := map[string]any{
+		"prb_id":    float64(100),
+		"timestamp": float64(time.Now().Unix()),
+		"result": []any{
+			map[string]any{"rtt": float64(26.0)},
+		},
+	}
+
+	tests := []struct {
+		name         string
+		results      []any
+		lastExportAt int64
+		wantWarn     bool
+	}{
+		{
+			name:         "nothing uploaded since a stale export",
+			results:      []any{},
+			lastExportAt: staleExport.Unix(),
+			wantWarn:     true,
+		},
+		{
+			name:         "results uploaded but all timed out",
+			results:      []any{timeoutResult},
+			lastExportAt: staleExport.Unix(),
+			wantWarn:     true,
+		},
+		{
+			name:         "nothing uploaded since a recent export",
+			results:      []any{},
+			lastExportAt: time.Now().Unix(),
+			wantWarn:     false,
+		},
+		{
+			name:         "samples arrive after a long gap",
+			results:      []any{successResult},
+			lastExportAt: staleExport.Unix(),
+			wantWarn:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var logs bytes.Buffer
+			log := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+			outputDir := t.TempDir()
+			e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
+			require.NoError(t, err)
+
+			mockClient := &MockClient{
+				GetMeasurementResultsIncrementalFunc: func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
+					return tt.results, nil
+				},
+			}
+			c := &Collector{client: mockClient, log: log, exporter: e}
+
+			measurementState := NewMeasurementState(filepath.Join(outputDir, TimestampFileName))
+			measurementState.SetMetadata(1, MeasurementMeta{
+				TargetLocation: "lax",
+				TargetProbeID:  200,
+				Sources:        []SourceProbeMeta{{LocationCode: "nyc", ProbeID: 100}},
+				CreatedAt:      staleExport.Unix(),
+				LastExportAt:   tt.lastExportAt,
+			})
+
+			_, _, err = c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, measurementState)
+			require.NoError(t, err)
+
+			if tt.wantWarn {
+				require.Contains(t, logs.String(), "measurement stalled?", "A stalled measurement should warn")
+			} else {
+				require.NotContains(t, logs.String(), "measurement stalled?", "A measurement that is producing samples should stay quiet")
+			}
+		})
 	}
 }
 
@@ -1623,4 +1719,139 @@ func TestInitializeCreditBalance(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to get RIPE Atlas credit balance")
 	})
+}
+
+func TestInternetLatency_RIPEAtlas_SourcesWithoutSamples(t *testing.T) {
+	t.Parallel()
+
+	const hour = int64(3600)
+	now := int64(1785953098)
+	// Anchored on the production constant so the fixtures below straddle the real
+	// boundary rather than an arbitrary one.
+	createdBefore := now - int64(sourceSampleGracePeriod.Seconds())
+
+	// A source with no successful sample since creation carries LastResponseAt == 0.
+	never := SourceProbeMeta{LocationCode: "hkg", ProbeID: 7030}
+	responding := SourceProbeMeta{LocationCode: "sqq", ProbeID: 6324, LastResponseAt: now - 60}
+
+	tests := []struct {
+		name           string
+		metadata       map[int]MeasurementMeta
+		measurementIDs []int
+		wantByLocation map[string]int
+		wantTotal      int
+	}{
+		{
+			name: "measurement older than the window reports its silent sources",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", CreatedAt: now - 3*hour, Sources: []SourceProbeMeta{never, responding}},
+			},
+			measurementIDs: []int{1},
+			wantByLocation: map[string]int{"hkg": 1},
+			wantTotal:      1,
+		},
+		{
+			name: "all sources responding reports nothing",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", CreatedAt: now - 3*hour, Sources: []SourceProbeMeta{responding}},
+			},
+			measurementIDs: []int{1},
+			wantByLocation: map[string]int{},
+			wantTotal:      0,
+		},
+		{
+			name: "measurement younger than the window is still warming up",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", CreatedAt: now - 60, Sources: []SourceProbeMeta{never}},
+			},
+			measurementIDs: []int{1},
+			wantByLocation: map[string]int{},
+			wantTotal:      0,
+		},
+		{
+			// RIPE has been observed dispatching an accepted enlistment as late as 100
+			// minutes after creation. Reporting inside that window is a false positive,
+			// and this is what fails if the grace period is ever tightened below it.
+			name: "measurement inside observed RIPE dispatch latency is not reported",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", CreatedAt: now - 100*60, Sources: []SourceProbeMeta{never}},
+			},
+			measurementIDs: []int{1},
+			wantByLocation: map[string]int{},
+			wantTotal:      0,
+		},
+		{
+			name: "unknown creation time is skipped rather than assumed old",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", Sources: []SourceProbeMeta{never}},
+			},
+			measurementIDs: []int{1},
+			wantByLocation: map[string]int{},
+			wantTotal:      0,
+		},
+		{
+			name: "counts accumulate per source location across measurements",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", CreatedAt: now - 3*hour, Sources: []SourceProbeMeta{never}},
+				2: {TargetLocation: "bom", CreatedAt: now - 3*hour, Sources: []SourceProbeMeta{never}},
+				3: {TargetLocation: "chi", CreatedAt: now - 3*hour, Sources: []SourceProbeMeta{
+					never, {LocationCode: "muc", ProbeID: 6372},
+				}},
+			},
+			measurementIDs: []int{1, 2, 3},
+			wantByLocation: map[string]int{"hkg": 3, "muc": 1},
+			wantTotal:      4,
+		},
+		{
+			name: "measurement with no metadata is ignored",
+			metadata: map[int]MeasurementMeta{
+				1: {TargetLocation: "ams", CreatedAt: now - 3*hour, Sources: []SourceProbeMeta{never}},
+			},
+			measurementIDs: []int{1, 99},
+			wantByLocation: map[string]int{"hkg": 1},
+			wantTotal:      1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			state := NewMeasurementState("test.json")
+			for id, meta := range tt.metadata {
+				state.SetMetadata(id, meta)
+			}
+
+			measurements := make([]Measurement, 0, len(tt.measurementIDs))
+			for _, id := range tt.measurementIDs {
+				measurements = append(measurements, Measurement{ID: id})
+			}
+
+			byLocation, total, sample := sourcesWithoutSamples(measurements, state, createdBefore, 20)
+
+			require.Equal(t, tt.wantByLocation, byLocation)
+			require.Equal(t, tt.wantTotal, total)
+			require.Len(t, sample, tt.wantTotal)
+		})
+	}
+}
+
+func TestInternetLatency_RIPEAtlas_SourcesWithoutSamples_SampleIsCapped(t *testing.T) {
+	t.Parallel()
+
+	now := int64(1785953098)
+	state := NewMeasurementState("test.json")
+
+	sources := make([]SourceProbeMeta, 0, 30)
+	for i := range 30 {
+		sources = append(sources, SourceProbeMeta{LocationCode: "hkg", ProbeID: 7000 + i})
+	}
+	state.SetMetadata(1, MeasurementMeta{TargetLocation: "ams", CreatedAt: now - 3*3600, Sources: sources})
+
+	byLocation, total, sample := sourcesWithoutSamples([]Measurement{{ID: 1}}, state, now-2*3600, 20)
+
+	// The metric carries the full count; only the log sample is capped.
+	require.Equal(t, 30, total)
+	require.Equal(t, map[string]int{"hkg": 30}, byLocation)
+	require.Len(t, sample, 20)
 }

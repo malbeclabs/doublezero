@@ -1672,9 +1672,11 @@ async fn test_user_create_existing_different_device_rejected() {
     match err {
         BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            InstructionError::AccountAlreadyInitialized,
-        )) => {}
-        other => panic!("expected AccountAlreadyInitialized, got {other:?}"),
+            // Distinct from the exact-duplicate subscribe case. A pattern cannot
+            // hold a computed value, so the code is bound and compared.
+            InstructionError::Custom(code),
+        )) if code == custom_code(DoubleZeroError::UserExistsWithDifferentAttributes) => {}
+        other => panic!("expected UserExistsWithDifferentAttributes, got {other:?}"),
     }
 
     // The user still points at the original device.
@@ -1771,9 +1773,11 @@ async fn test_user_create_existing_different_tenant_rejected() {
     match err {
         BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            InstructionError::AccountAlreadyInitialized,
-        )) => {}
-        other => panic!("expected AccountAlreadyInitialized, got {other:?}"),
+            // Distinct from the exact-duplicate subscribe case. A pattern cannot
+            // hold a computed value, so the code is bound and compared.
+            InstructionError::Custom(code),
+        )) if code == custom_code(DoubleZeroError::UserExistsWithDifferentAttributes) => {}
+        other => panic!("expected UserExistsWithDifferentAttributes, got {other:?}"),
     }
 
     // The user still has no tenant.
@@ -1873,9 +1877,11 @@ async fn test_user_create_existing_different_owner_rejected() {
     match err {
         BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            InstructionError::AccountAlreadyInitialized,
-        )) => {}
-        other => panic!("expected AccountAlreadyInitialized, got {other:?}"),
+            // Distinct from the exact-duplicate subscribe case. A pattern cannot
+            // hold a computed value, so the code is bound and compared.
+            InstructionError::Custom(code),
+        )) if code == custom_code(DoubleZeroError::UserExistsWithDifferentAttributes) => {}
+        other => panic!("expected UserExistsWithDifferentAttributes, got {other:?}"),
     }
 
     // The user still belongs to the original owner.

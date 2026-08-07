@@ -12,7 +12,6 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 use std::net::Ipv4Addr;
@@ -141,8 +140,11 @@ pub fn process_create_subscribe_user(
     )?
     else {
         // A duplicate is an error here, not a no-op: falling through would tick a second feed
-        // seat and push a duplicate feed_pks entry that delete would double-release.
-        return Err(ProgramError::AccountAlreadyInitialized);
+        // seat and push a duplicate feed_pks entry that delete would double-release. Named
+        // distinctly from the mismatch case in create_user_core, which shares neither cause nor
+        // remedy: this request matched an existing user exactly, so the subscription is already
+        // in place and the caller has nothing to change.
+        return Err(DoubleZeroError::SubscribeUserAlreadyExists.into());
     };
 
     // EdgeSeat multicast metro gate: the group must be joinable via a feed on the pass serving the

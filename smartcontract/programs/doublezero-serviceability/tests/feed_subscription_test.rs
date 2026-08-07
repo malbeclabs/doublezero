@@ -1125,9 +1125,11 @@ async fn test_duplicate_create_subscribe_user_rejected() {
     match err {
         BanksClientError::TransactionError(TransactionError::InstructionError(
             0,
-            InstructionError::AccountAlreadyInitialized,
-        )) => {}
-        other => panic!("expected AccountAlreadyInitialized, got {other:?}"),
+            // SubscribeUserAlreadyExists: this request matched an existing user exactly, unlike
+            // UserExistsWithDifferentAttributes, which means the IP belongs to another device.
+            InstructionError::Custom(code),
+        )) if code == custom_code(DoubleZeroError::SubscribeUserAlreadyExists) => {}
+        other => panic!("expected SubscribeUserAlreadyExists, got {other:?}"),
     }
 
     assert_eq!(seat_users(&read_pass(&mut f).await, &feed), 1);

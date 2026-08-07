@@ -1,4 +1,6 @@
 use borsh::to_vec;
+// Re-exported so the glob that pulls in `custom_code` also pulls in its argument type.
+pub use doublezero_serviceability::error::DoubleZeroError;
 use doublezero_serviceability::{
     entrypoint::process_instruction,
     instructions::*,
@@ -21,6 +23,7 @@ use doublezero_serviceability::{
 use solana_program_test::*;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
+    program_error::ProgramError,
     pubkey::Pubkey,
     signature::{Keypair, Signer},
     transaction::Transaction,
@@ -60,6 +63,23 @@ pub const TEST_PAYER_BYTES: [u8; 64] = [
 #[allow(dead_code)]
 pub fn test_payer() -> Keypair {
     Keypair::try_from(&TEST_PAYER_BYTES[..]).unwrap()
+}
+
+/// The `Custom` code a `DoubleZeroError` reaches a client as.
+///
+/// Derived through the conversion rather than written down, so a test cannot
+/// drift from `impl From<DoubleZeroError> for ProgramError`. Casting the variant
+/// would be wrong here: `DoubleZeroError` has no `#[repr(u32)]`, and its codes
+/// come from that impl's match rather than from declaration order. The two
+/// disagree — `InvalidExchangePubkey` is the third variant declared but maps to
+/// `Custom(3)` while `InvalidLocationPubkey`, declared fifth, maps to
+/// `Custom(2)` — so `as u32` would silently produce the wrong code.
+#[allow(dead_code)]
+pub fn custom_code(error: DoubleZeroError) -> u32 {
+    match ProgramError::from(error.clone()) {
+        ProgramError::Custom(code) => code,
+        other => panic!("{error:?} does not map to a custom error code: {other:?}"),
+    }
 }
 
 #[allow(dead_code)]

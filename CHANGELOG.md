@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Serviceability
+  - User creation no longer answers two unrelated refusals with the same error. `CreateUser` and `CreateSubscribeUser` both returned `AccountAlreadyInitialized` for conditions that share neither cause nor remedy: a user already existing at the requested client IP with a **different** device, owner, type or tenant, versus a `CreateSubscribeUser` that matched an existing user **exactly**. The first is what two devices claiming one IP looks like — the User PDA is derived from `(client_ip, user_type)` with no device dimension, so the second device derives the first one's account — and the caller has to pick another IP. The second means the subscription is already in place and there is nothing to do. A client seeing one code could not tell which it had, so it could not say which. They are now `UserExistsWithDifferentAttributes` (`Custom(105)`) and `SubscribeUserAlreadyExists` (`Custom(106)`); both variants are appended to the end of `DoubleZeroError`, so no existing code shifts. Anything matching `AccountAlreadyInitialized` on either path needs updating. (malbeclabs/infra#2171, #4159)
+
 ### Changes
 
 - CLI

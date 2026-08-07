@@ -1473,8 +1473,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveTargetDoesN
 	}}
 
 	// Measurement 1001 (target xams/6626): healthy, source probes have fresh LastResponseAt
-	// Measurement 1002 (target xsin/6726): target is unresponsive, so source probes have stale LastResponseAt
-	// (because latency=0 when target doesn't reply, UpdateSourceProbeResponse doesn't fire)
+	// Measurement 1002 (target xsin/6726): target is unresponsive, so source probes have stale LastResponseAt.
+	// Seeded directly to that shape; results are not replayed through the export path here.
 	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
 	c.measurementState.SetMetadata(1001, MeasurementMeta{
 		TargetLocation: "xams",
@@ -1854,4 +1854,96 @@ func TestInternetLatency_RIPEAtlas_SourcesWithoutSamples_SampleIsCapped(t *testi
 	require.Equal(t, 30, total)
 	require.Equal(t, map[string]int{"hkg": 30}, byLocation)
 	require.Len(t, sample, 20)
+}
+
+func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LossCountsAsResponse(t *testing.T) {
+	t.Parallel()
+
+	resultAt := time.Now().Add(-time.Minute).Truncate(time.Second)
+
+	// A probe that reaches nothing still uploads a result; the ping array just carries no
+	// rtt. RIPE returns these as rcvd=0, avg=-1.
+	totalLoss := map[string]any{
+		"prb_id":    float64(100),
+		"timestamp": float64(resultAt.Unix()),
+		"result": []any{
+			map[string]any{"x": "*"},
+			map[string]any{"x": "*"},
+		},
+	}
+	answered := map[string]any{
+		"prb_id":    float64(100),
+		"timestamp": float64(resultAt.Unix()),
+		"result":    []any{map[string]any{"rtt": float64(26.0)}},
+	}
+	// No prb_id and no timestamp. UpdateSourceProbeResponse drops this: probe 0 matches no
+	// enlisted source, and a zero time.Time is not newer than any LastResponseAt.
+	unparseable := map[string]any{
+		"result": []any{map[string]any{"x": "*"}},
+	}
+
+	tests := []struct {
+		name            string
+		results         []any
+		wantResponseAt  int64
+		wantExportedNum int
+	}{
+		{
+			name:            "a total-loss result counts as a response",
+			results:         []any{totalLoss},
+			wantResponseAt:  resultAt.Unix(),
+			wantExportedNum: 0,
+		},
+		{
+			name:            "a successful result still counts as a response",
+			results:         []any{answered},
+			wantResponseAt:  resultAt.Unix(),
+			wantExportedNum: 1,
+		},
+		{
+			name:            "an unparseable result does not",
+			results:         []any{unparseable},
+			wantResponseAt:  0,
+			wantExportedNum: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			outputDir := t.TempDir()
+			log := slog.New(slog.NewJSONHandler(io.Discard, nil))
+			e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
+			require.NoError(t, err)
+
+			mockClient := &MockClient{
+				GetMeasurementResultsIncrementalFunc: func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
+					return tt.results, nil
+				},
+			}
+			c := &Collector{client: mockClient, log: log, exporter: e}
+
+			measurementState := NewMeasurementState(filepath.Join(outputDir, TimestampFileName))
+			measurementState.SetMetadata(1, MeasurementMeta{
+				TargetLocation: "lax",
+				TargetProbeID:  200,
+				Sources:        []SourceProbeMeta{{LocationCode: "nyc", ProbeID: 100}},
+				CreatedAt:      time.Now().Add(-2 * time.Hour).Unix(),
+			})
+
+			count, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, measurementState)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantExportedNum, count, "exported record count should not change")
+
+			_, cursorSet := measurementState.GetLastTimestamp(1)
+			require.Equal(t, tt.wantExportedNum > 0, cursorSet, "a total-loss result must not advance the export cursor")
+
+			meta, ok := measurementState.GetMetadata(1)
+			require.True(t, ok)
+			require.Len(t, meta.Sources, 1)
+			require.Equal(t, tt.wantResponseAt, meta.Sources[0].LastResponseAt,
+				"LastResponseAt drives the unresponsive-probe marking, which recreates measurements")
+		})
+	}
 }

@@ -108,6 +108,14 @@ type Device struct {
 	DeviceType                serviceability.DeviceDeviceType
 }
 
+// Ready reports whether the device can accept a user tunnel. A device left
+// activated with MaxUsers == 0 is drained on purpose: the CLI refuses the
+// connect ("Device is not accepting more users"), so failures against it say
+// nothing about the network and must not count toward QA failure rates.
+func (d *Device) Ready() bool {
+	return d.Status == serviceability.DeviceStatusActivated && d.MaxUsers > 0
+}
+
 type Client struct {
 	log            *slog.Logger
 	grpcClient     pb.QAAgentServiceClient

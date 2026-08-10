@@ -371,7 +371,7 @@ func connectClientsAndWaitForRoutes(
 		if err != nil {
 			log.Error("Failed to start connection", "client", c.Host, "device", device.Code, "error", err)
 			batch[c.Host].FailedTests++
-			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
+			if device.Ready() {
 				t.Logf("DEVICE FAILURE: failed to connect client %s to device %s: %v", c.Host, device.Code, err)
 			} else {
 				log.Warn("Ignoring connection failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
@@ -386,7 +386,7 @@ func connectClientsAndWaitForRoutes(
 		if err != nil {
 			log.Error("Client failed to reach status up", "client", c.Host, "error", err)
 			batch[c.Host].FailedTests++
-			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
+			if device.Ready() {
 				t.Logf("DEVICE FAILURE: failed to wait for status for client %s: %v", c.Host, err)
 			} else {
 				log.Warn("Ignoring status failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
@@ -433,7 +433,7 @@ func connectClientsAndWaitForRoutes(
 		if err := c.WaitForRoutes(ctx, targets); err != nil {
 			log.Error("Failed to wait for routes", "client", c.Host, "error", err)
 			batch[c.Host].FailedTests++
-			if device.Status == serviceability.DeviceStatusActivated && device.MaxUsers > 0 {
+			if device.Ready() {
 				t.Logf("DEVICE FAILURE: failed to wait for routes on client %s: %v", c.Host, err)
 			} else {
 				log.Warn("Ignoring route failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
@@ -482,10 +482,8 @@ func runConnectivitySubtests(
 						mu.Lock()
 						failedTests++
 						mu.Unlock()
-						// Only fail test if both devices are activated with max_users > 0
-						srcReady := srcDevice.Status == serviceability.DeviceStatusActivated && srcDevice.MaxUsers > 0
-						dstReady := dstDevice.Status == serviceability.DeviceStatusActivated && dstDevice.MaxUsers > 0
-						if srcReady && dstReady {
+						// Only fail test if both devices can accept users
+						if srcDevice.Ready() && dstDevice.Ready() {
 							t.Logf("DEVICE FAILURE: connectivity test failed from %s to %s (device %s -> %s): %v",
 								src.Host, target.Host, srcDevice.Code, dstDevice.Code, err)
 						} else {

@@ -336,7 +336,8 @@ type FailureStats struct {
 // ComputeFailureStats walks batchData once and applies the "any success
 // counts as success" rule per device. Repeated tests of the same
 // (host, device) collapse into a single result for both the overall device
-// list and per-host stats.
+// list and per-host stats. Devices that are not Ready are omitted from every
+// tally.
 func ComputeFailureStats(batchData BatchData) FailureStats {
 	// hostDeviceAttempts[host][code] = number of attempts
 	hostDeviceAttempts := make(map[string]map[string]int)
@@ -350,6 +351,11 @@ func ComputeFailureStats(batchData BatchData) FailureStats {
 		hosts := slices.Sorted(maps.Keys(batchData[batchNum]))
 		for _, host := range hosts {
 			assignment := batchData[batchNum][host]
+			// A device that cannot accept users is excluded entirely, not
+			// counted as a failure: it must not inflate the denominator either.
+			if !assignment.Device.Ready() {
+				continue
+			}
 			code := assignment.Device.Code
 			if hostDeviceAttempts[host] == nil {
 				hostDeviceAttempts[host] = make(map[string]int)

@@ -5,6 +5,8 @@ import (
 	"net"
 	"reflect"
 	"testing"
+
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
 
 func TestAssignDevicesToClients(t *testing.T) {
@@ -554,9 +556,14 @@ func TestComputeFailureStats(t *testing.T) {
 		return &BatchResult{Device: d, PacketsSent: 10, PacketsReceived: 0, FailedTests: 1}
 	}
 
-	dev1 := &Device{Code: "dev1", PubKey: "pk1"}
-	dev2 := &Device{Code: "dev2", PubKey: "pk2"}
-	dev3 := &Device{Code: "dev3", PubKey: "pk3"}
+	// readyDevice builds a device that can accept users, so its results count.
+	readyDevice := func(code, pubkey string) *Device {
+		return &Device{Code: code, PubKey: pubkey, Status: serviceability.DeviceStatusActivated, MaxUsers: 128}
+	}
+
+	dev1 := readyDevice("dev1", "pk1")
+	dev2 := readyDevice("dev2", "pk2")
+	dev3 := readyDevice("dev3", "pk3")
 
 	t.Run("empty batch data", func(t *testing.T) {
 		stats := ComputeFailureStats(BatchData{})
@@ -729,6 +736,90 @@ func TestComputeFailureStats(t *testing.T) {
 		}
 		if !reflect.DeepEqual(stats.Retests, wantRetests) {
 			t.Errorf("retests: got %+v, want %+v", stats.Retests, wantRetests)
+		}
+	})
+
+	// A device left activated with max_users=0 is drained on purpose: the CLI
+	// refuses the connect, so it must not count against the host or inflate its
+	// denominator. This mirrors the mainnet-beta shape where three such devices
+	// pushed a 13-device host past the 20% per-host threshold.
+	t.Run("ignores activated devices with max_users=0", func(t *testing.T) {
+		drained := []*Device{
+			{Code: "drained1", PubKey: "dpk1", Status: serviceability.DeviceStatusActivated},
+			{Code: "drained2", PubKey: "dpk2", Status: serviceability.DeviceStatusActivated},
+			{Code: "drained3", PubKey: "dpk3", Status: serviceability.DeviceStatusActivated},
+		}
+
+		batchData := BatchData{
+			0: {"hostA": pass(dev1)},
+			1: {"hostA": pass(dev2)},
+			2: {"hostA": pass(dev3)},
+			3: {"hostA": fail(drained[0])},
+			4: {"hostA": fail(drained[1])},
+			5: {"hostA": fail(drained[2])},
+		}
+		stats := ComputeFailureStats(batchData)
+
+		wantDevices := []DeviceTestResult{
+			{DeviceCode: "dev1", DevicePubkey: "pk1", Success: true},
+			{DeviceCode: "dev2", DevicePubkey: "pk2", Success: true},
+			{DeviceCode: "dev3", DevicePubkey: "pk3", Success: true},
+		}
+		if !reflect.DeepEqual(stats.DeviceResults, wantDevices) {
+			t.Errorf("device results: got %+v, want %+v", stats.DeviceResults, wantDevices)
+		}
+		hostA := stats.PerHost["hostA"]
+		if hostA.Total != 3 || hostA.Failed != 0 {
+			t.Errorf("hostA: got %+v, want total=3 failed=0", hostA)
+		}
+		if len(hostA.FailedDevices) != 0 {
+			t.Errorf("hostA failedDevices: got %v, want none", hostA.FailedDevices)
+		}
+		if len(stats.Retests) != 0 {
+			t.Errorf("expected no retests, got %+v", stats.Retests)
+		}
+	})
+
+	t.Run("ignores devices that are not activated", func(t *testing.T) {
+		pending := &Device{Code: "pending1", PubKey: "ppk1", MaxUsers: 128}
+
+		batchData := BatchData{
+			0: {"hostA": pass(dev1), "hostB": fail(pending)},
+		}
+		stats := ComputeFailureStats(batchData)
+
+		wantDevices := []DeviceTestResult{
+			{DeviceCode: "dev1", DevicePubkey: "pk1", Success: true},
+		}
+		if !reflect.DeepEqual(stats.DeviceResults, wantDevices) {
+			t.Errorf("device results: got %+v, want %+v", stats.DeviceResults, wantDevices)
+		}
+		if _, ok := stats.PerHost["hostB"]; ok {
+			t.Errorf("hostB should be absent when its only device is not ready, got %+v", stats.PerHost["hostB"])
+		}
+	})
+
+	t.Run("still counts a ready device that fails", func(t *testing.T) {
+		drained := &Device{Code: "drained1", PubKey: "dpk1", Status: serviceability.DeviceStatusActivated}
+
+		batchData := BatchData{
+			0: {"hostA": fail(dev1)},
+			1: {"hostA": fail(drained)},
+		}
+		stats := ComputeFailureStats(batchData)
+
+		wantDevices := []DeviceTestResult{
+			{DeviceCode: "dev1", DevicePubkey: "pk1", Success: false},
+		}
+		if !reflect.DeepEqual(stats.DeviceResults, wantDevices) {
+			t.Errorf("device results: got %+v, want %+v", stats.DeviceResults, wantDevices)
+		}
+		hostA := stats.PerHost["hostA"]
+		if hostA.Total != 1 || hostA.Failed != 1 {
+			t.Errorf("hostA: got %+v, want total=1 failed=1", hostA)
+		}
+		if !reflect.DeepEqual(hostA.FailedDevices, []string{"dev1"}) {
+			t.Errorf("hostA failedDevices: got %v, want [dev1]", hostA.FailedDevices)
 		}
 	})
 }

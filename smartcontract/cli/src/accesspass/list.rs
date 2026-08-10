@@ -4,12 +4,12 @@ use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::{
     commands::{
-        accesspass::list::ListAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
-        tenant::list::ListTenantCommand,
+        accesspass::list::ListAccessPassCommand, feed::list::ListFeedCommand,
+        multicastgroup::list::ListMulticastGroupCommand, tenant::list::ListTenantCommand,
     },
-    MulticastGroup,
+    Feed, MulticastGroup,
 };
-use doublezero_serviceability::state::accesspass::{AccessPassStatus, AccessPassType};
+use doublezero_serviceability::state::accesspass::{AccessPass, AccessPassStatus, AccessPassType};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, io::Write, net::Ipv4Addr};
@@ -45,10 +45,11 @@ pub struct ListAccessPassCliCommand {
     /// Access passes that do not allowlist the multicast group publisher with the specified code
     #[arg(long)]
     pub not_multicast_group_publisher: Option<String>,
-    /// Access passes that allowlist the multicast group subscriber with the specified code
+    /// Access passes that grant subscribe rights to the multicast group with the specified code,
+    /// through the allowlist or through a feed
     #[arg(long)]
     pub multicast_group_subscriber: Option<String>,
-    /// Access passes that do not allowlist the multicast group subscriber with the specified code
+    /// Access passes that grant no subscribe rights to the multicast group with the specified code
     #[arg(long)]
     pub not_multicast_group_subscriber: Option<String>,
     /// Output as pretty JSON
@@ -92,6 +93,40 @@ pub struct AccessPassDisplay {
     #[tabled(skip)]
     #[serde(skip)]
     pub mgroup_sub_allowlist: Vec<Pubkey>,
+    #[tabled(skip)]
+    #[serde(skip)]
+    pub feed_groups: Vec<Pubkey>,
+}
+
+/// The groups the feeds on this pass grant.
+///
+/// TODO: qualify each group with its feed's metro. A group is joinable only on a device in that
+/// feed's exchange, so this union overstates what a pass with feeds in two metros grants in any one
+/// of them.
+fn groups_from_feeds(access_pass: &AccessPass, feeds: &HashMap<Pubkey, Feed>) -> Vec<Pubkey> {
+    let mut groups: Vec<Pubkey> = Vec::new();
+    for seat in access_pass.feed_seats() {
+        let Some(feed) = feeds.get(&seat.feed_key) else {
+            continue;
+        };
+        for group in &feed.groups {
+            if !groups.contains(group) {
+                groups.push(*group);
+            }
+        }
+    }
+    groups
+}
+
+/// Every group this pass grants subscribe rights to, from its allowlist and from its feeds.
+fn subscriber_groups(access_pass: &AccessPass, feeds: &HashMap<Pubkey, Feed>) -> Vec<Pubkey> {
+    let mut groups = access_pass.mgroup_sub_allowlist.clone();
+    for group in groups_from_feeds(access_pass, feeds) {
+        if !groups.contains(&group) {
+            groups.push(group);
+        }
+    }
+    groups
 }
 
 /// Narrow variant of [`AccessPassDisplay`] for terminals: shortens every
@@ -163,7 +198,14 @@ impl AccessPassDisplayNarrow {
             } else {
                 d.tenant.replace(&Pubkey::default().to_string(), "empty")
             },
-            multicast: narrow_groups(&d.mgroup_pub_allowlist, &d.mgroup_sub_allowlist, mgroups),
+            multicast: narrow_groups(
+                &[
+                    ("P", &d.mgroup_pub_allowlist),
+                    ("S", &d.mgroup_sub_allowlist),
+                    ("F", &d.feed_groups),
+                ],
+                mgroups,
+            ),
             last_access_epoch: d.last_access_epoch.clone(),
             remaining_epoch: d.remaining_epoch.clone(),
             flags: d.flags.clone(),
@@ -245,6 +287,17 @@ impl ListAccessPassCliCommand {
             });
         }
 
+        // Only an EdgeSeat pass carries feeds, so a run without one skips the account scan. The
+        // subscriber filters below read these too, so the scan has to happen before them.
+        let feeds = if access_passes
+            .iter()
+            .any(|(_, access_pass)| !access_pass.feed_seats().is_empty())
+        {
+            client.list_feed(ListFeedCommand)?
+        } else {
+            HashMap::new()
+        };
+
         if let Some(multicast_publisher) = self.multicast_group_publisher {
             access_passes.retain(|(_, access_pass)| {
                 access_pass.mgroup_pub_allowlist.iter().any(|mg_pub| {
@@ -259,7 +312,7 @@ impl ListAccessPassCliCommand {
 
         if let Some(multicast_group_subscriber) = self.multicast_group_subscriber {
             access_passes.retain(|(_, access_pass)| {
-                access_pass.mgroup_sub_allowlist.iter().any(|mg_sub| {
+                subscriber_groups(access_pass, &feeds).iter().any(|mg_sub| {
                     if let Some(mg) = mgroups.get(mg_sub) {
                         mg.code == multicast_group_subscriber
                     } else {
@@ -283,7 +336,7 @@ impl ListAccessPassCliCommand {
 
         if let Some(not_multicast_group_subscriber) = self.not_multicast_group_subscriber {
             access_passes.retain(|(_, access_pass)| {
-                !access_pass.mgroup_sub_allowlist.iter().any(|mg_sub| {
+                !subscriber_groups(access_pass, &feeds).iter().any(|mg_sub| {
                     if let Some(mg) = mgroups.get(mg_sub) {
                         mg.code == not_multicast_group_subscriber
                     } else {
@@ -295,69 +348,80 @@ impl ListAccessPassCliCommand {
 
         let mut access_pass_displays: Vec<AccessPassDisplay> = access_passes
             .into_iter()
-            .map(|(pubkey, access_pass)| AccessPassDisplay {
-                account: *pubkey,
-                accesspass_type: access_pass.accesspass_type.to_string(),
-                client_ip: access_pass.client_ip,
-                user_payer: access_pass.user_payer,
-                tenant: {
-                    let mut list = vec![];
-                    for tenant_pk in &access_pass.tenant_allowlist {
-                        if let Some(t) = tenants.get(tenant_pk) {
-                            list.push(t.code.clone());
-                        } else {
-                            list.push(tenant_pk.to_string());
+            .map(|(pubkey, access_pass)| {
+                let feed_groups = groups_from_feeds(access_pass, &feeds);
+                AccessPassDisplay {
+                    account: *pubkey,
+                    accesspass_type: access_pass.accesspass_type.to_string(),
+                    client_ip: access_pass.client_ip,
+                    user_payer: access_pass.user_payer,
+                    tenant: {
+                        let mut list = vec![];
+                        for tenant_pk in &access_pass.tenant_allowlist {
+                            if let Some(t) = tenants.get(tenant_pk) {
+                                list.push(t.code.clone());
+                            } else {
+                                list.push(tenant_pk.to_string());
+                            }
                         }
-                    }
-                    list.join(", ")
-                },
-                multicast: {
-                    let mut list = vec![];
-                    for mg_pub in &access_pass.mgroup_pub_allowlist {
-                        if let Some(mg) = mgroups.get(mg_pub) {
-                            list.push(format!("P:{}", mg.code));
-                        } else {
-                            list.push(format!("P:{mg_pub}"));
+                        list.join(", ")
+                    },
+                    multicast: {
+                        let mut list = vec![];
+                        for mg_pub in &access_pass.mgroup_pub_allowlist {
+                            if let Some(mg) = mgroups.get(mg_pub) {
+                                list.push(format!("P:{}", mg.code));
+                            } else {
+                                list.push(format!("P:{mg_pub}"));
+                            }
                         }
-                    }
-                    for mg_sub in &access_pass.mgroup_sub_allowlist {
-                        if let Some(mg) = mgroups.get(mg_sub) {
-                            list.push(format!("S:{}", mg.code));
-                        } else {
-                            list.push(format!("S:{mg_sub}"));
+                        for mg_sub in &access_pass.mgroup_sub_allowlist {
+                            if let Some(mg) = mgroups.get(mg_sub) {
+                                list.push(format!("S:{}", mg.code));
+                            } else {
+                                list.push(format!("S:{mg_sub}"));
+                            }
                         }
-                    }
-                    list.join(", ")
-                },
+                        for group in &feed_groups {
+                            if let Some(mg) = mgroups.get(group) {
+                                list.push(format!("F:{}", mg.code));
+                            } else {
+                                list.push(format!("F:{group}"));
+                            }
+                        }
+                        list.join(", ")
+                    },
 
-                last_access_epoch: if access_pass.last_access_epoch == u64::MAX {
-                    "MAX".to_string()
-                } else {
-                    access_pass.last_access_epoch.to_string()
-                },
-                remaining_epoch: if access_pass.last_access_epoch == u64::MAX {
-                    "MAX".to_string()
-                } else {
-                    access_pass
-                        .last_access_epoch
-                        .saturating_sub(epoch)
-                        .to_string()
-                },
-                flags: access_pass.flags_string(),
-                connections: access_pass.connection_count,
-                unicast_users: format!(
-                    "{} / {}",
-                    access_pass.unicast_user_count, access_pass.max_unicast_users
-                ),
-                multicast_users: format!(
-                    "{} / {}",
-                    access_pass.multicast_user_count, access_pass.max_multicast_users
-                ),
-                status: access_pass.status,
-                owner: access_pass.owner,
-                accesspass_type_value: access_pass.accesspass_type.clone(),
-                mgroup_pub_allowlist: access_pass.mgroup_pub_allowlist.clone(),
-                mgroup_sub_allowlist: access_pass.mgroup_sub_allowlist.clone(),
+                    last_access_epoch: if access_pass.last_access_epoch == u64::MAX {
+                        "MAX".to_string()
+                    } else {
+                        access_pass.last_access_epoch.to_string()
+                    },
+                    remaining_epoch: if access_pass.last_access_epoch == u64::MAX {
+                        "MAX".to_string()
+                    } else {
+                        access_pass
+                            .last_access_epoch
+                            .saturating_sub(epoch)
+                            .to_string()
+                    },
+                    flags: access_pass.flags_string(),
+                    connections: access_pass.connection_count,
+                    unicast_users: format!(
+                        "{} / {}",
+                        access_pass.unicast_user_count, access_pass.max_unicast_users
+                    ),
+                    multicast_users: format!(
+                        "{} / {}",
+                        access_pass.multicast_user_count, access_pass.max_multicast_users
+                    ),
+                    status: access_pass.status,
+                    owner: access_pass.owner,
+                    accesspass_type_value: access_pass.accesspass_type.clone(),
+                    mgroup_pub_allowlist: access_pass.mgroup_pub_allowlist.clone(),
+                    mgroup_sub_allowlist: access_pass.mgroup_sub_allowlist.clone(),
+                    feed_groups,
+                }
             })
             .collect();
 
@@ -391,12 +455,30 @@ impl ListAccessPassCliCommand {
 mod tests {
     use crate::{accesspass::list::ListAccessPassCliCommand, tests::utils::create_test_client};
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
-    use doublezero_sdk::AccountType;
+    use doublezero_sdk::{AccountType, Feed, MulticastGroup, MulticastGroupStatus};
     use doublezero_serviceability::state::accesspass::{
-        AccessPass, AccessPassStatus, AccessPassType,
+        AccessPass, AccessPassStatus, AccessPassType, FeedSeat,
     };
     use solana_sdk::pubkey::Pubkey;
     use std::{collections::HashMap, net::Ipv4Addr};
+
+    /// Read one cell of a two-line table by its header, so the assertion survives a column moving.
+    fn cell(output: &str, header: &str) -> String {
+        let mut lines = output.lines();
+        let headers: Vec<&str> = lines.next().unwrap().split('|').map(str::trim).collect();
+        let index = headers
+            .iter()
+            .position(|h| *h == header)
+            .unwrap_or_else(|| panic!("no {header} column"));
+        lines
+            .next()
+            .unwrap()
+            .split('|')
+            .map(str::trim)
+            .nth(index)
+            .unwrap()
+            .to_string()
+    }
 
     #[test]
     fn test_cli_accesspass_list() {
@@ -860,5 +942,184 @@ mod tests {
         assert!(out.contains(&access3_pubkey.to_string()));
         // access2 has "test" as a subscriber — excluded
         assert!(!out.contains(&access2_pubkey.to_string()));
+    }
+
+    /// One EdgeSeat pass that carries a feed and one comped group in the subscriber allowlist.
+    fn setup_edge_seat_client() -> crate::doublezerocommand::MockCliCommand {
+        let mut client = create_test_client();
+
+        let feed_key = Pubkey::new_unique();
+        let feed_group_pubkey = Pubkey::new_unique();
+        let comped_group_pubkey = Pubkey::new_unique();
+
+        let group = |code: &str| MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            index: 1,
+            bump_seed: 1,
+            owner: Pubkey::new_unique(),
+            tenant_pk: Pubkey::default(),
+            multicast_ip: [239, 0, 0, 1].into(),
+            max_bandwidth: 1_000_000_000,
+            status: MulticastGroupStatus::Activated,
+            code: code.to_string(),
+            publisher_count: 0,
+            subscriber_count: 1,
+        };
+        let feed_group = group("qa-payments-group");
+        let comped_group = group("comped");
+
+        let feed = Feed {
+            account_type: AccountType::Feed,
+            owner: Pubkey::new_unique(),
+            bump_seed: 0,
+            code: "qa-payments".to_string(),
+            name: "QA Payments".to_string(),
+            exchange: Pubkey::new_unique(),
+            groups: vec![feed_group_pubkey],
+        };
+
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 2,
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            accesspass_type: AccessPassType::EdgeSeat(vec![FeedSeat {
+                feed_key,
+                max_users: 1,
+                max_future_users: 1,
+                current_users: 0,
+                anniversary_day: 3,
+                window_end: 100,
+                terminates_at: 200,
+            }]),
+            user_payer: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
+            last_access_epoch: 123,
+            owner: Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB"),
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![comped_group_pubkey],
+            tenant_allowlist: vec![],
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        };
+
+        client.expect_get_epoch().returning(move || Ok(123));
+        client.expect_list_multicastgroup().returning(move |_| {
+            let mut mgroups = HashMap::new();
+            mgroups.insert(feed_group_pubkey, feed_group.clone());
+            mgroups.insert(comped_group_pubkey, comped_group.clone());
+            Ok(mgroups)
+        });
+        client
+            .expect_list_tenant()
+            .returning(|_| Ok(HashMap::new()));
+        client.expect_list_accesspass().returning(move |_| {
+            let mut access_passes = HashMap::new();
+            access_passes.insert(Pubkey::new_unique(), accesspass.clone());
+            Ok(access_passes)
+        });
+        client.expect_list_feed().returning(move |_| {
+            let mut feeds = HashMap::new();
+            feeds.insert(feed_key, feed.clone());
+            Ok(feeds)
+        });
+
+        client
+    }
+
+    #[test]
+    fn test_cli_accesspass_list_renders_feed_groups() {
+        let client = setup_edge_seat_client();
+        let ctx = cli_context_default_for_tests();
+
+        let mut output = Vec::new();
+        let res = block_on(
+            ListAccessPassCliCommand {
+                edge_seat: true,
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(
+            cell(&output_str, "multicast"),
+            "S:comped, F:qa-payments-group"
+        );
+
+        let mut output = Vec::new();
+        let res = block_on(
+            ListAccessPassCliCommand {
+                edge_seat: true,
+                narrow: true,
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(cell(&output_str, "multicast"), "S:comped,F:qa-p..roup");
+    }
+
+    #[test]
+    fn test_filter_multicast_group_subscriber_matches_feed_group() {
+        let client = setup_edge_seat_client();
+        let ctx = cli_context_default_for_tests();
+
+        let mut output = Vec::new();
+        let res = block_on(
+            ListAccessPassCliCommand {
+                multicast_group_subscriber: Some("qa-payments-group".to_string()),
+                json: true,
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let passes: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(passes.as_array().unwrap().len(), 1);
+        assert_eq!(passes[0]["multicast"], "S:comped, F:qa-payments-group");
+    }
+
+    #[test]
+    fn test_filter_not_multicast_group_subscriber_excludes_feed_group() {
+        let client = setup_edge_seat_client();
+        let ctx = cli_context_default_for_tests();
+
+        let mut output = Vec::new();
+        let res = block_on(
+            ListAccessPassCliCommand {
+                not_multicast_group_subscriber: Some("qa-payments-group".to_string()),
+                json: true,
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let passes: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert!(passes.as_array().unwrap().is_empty());
+    }
+
+    /// A feed grants subscribe rights only, so the publisher filters must ignore its groups.
+    #[test]
+    fn test_filter_not_multicast_group_publisher_ignores_feed_group() {
+        let client = setup_edge_seat_client();
+        let ctx = cli_context_default_for_tests();
+
+        let mut output = Vec::new();
+        let res = block_on(
+            ListAccessPassCliCommand {
+                not_multicast_group_publisher: Some("qa-payments-group".to_string()),
+                json: true,
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let passes: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(passes.as_array().unwrap().len(), 1);
     }
 }

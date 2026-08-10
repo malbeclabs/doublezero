@@ -469,7 +469,7 @@ impl UserDisplayNarrow {
             account: d.account,
             tenant: d.tenant.clone(),
             user_type: abbreviate_user_type(&d.user_type),
-            groups: narrow_groups(&d.publishers, &d.subscribers, mgroups),
+            groups: narrow_groups(&[("P", &d.publishers), ("S", &d.subscribers)], mgroups),
             device: d.device_name.clone(),
             client_ip: d.client_ip,
             dz_ip: d.dz_ip,
@@ -507,22 +507,18 @@ fn abbreviate_user_type(ut: &UserType) -> String {
     }
 }
 
-/// Build the narrow `groups` cell: up to one `P:` entry and one `S:` entry,
-/// each showing the first group's abbreviated name plus `+N` for remaining
-/// groups of that role. Empty roles are omitted.
+/// Build the narrow `groups` cell from the roles the caller names. It prints at
+/// most one group name per role, plus `+N` for the rest. Empty roles are
+/// omitted.
 pub(crate) fn narrow_groups(
-    publishers: &[Pubkey],
-    subscribers: &[Pubkey],
+    roles: &[(&str, &[Pubkey])],
     mgroups: &HashMap<Pubkey, MulticastGroup>,
 ) -> String {
-    let mut parts = Vec::new();
-    if let Some(entry) = narrow_role_entry("P", publishers, mgroups) {
-        parts.push(entry);
-    }
-    if let Some(entry) = narrow_role_entry("S", subscribers, mgroups) {
-        parts.push(entry);
-    }
-    parts.join(",")
+    roles
+        .iter()
+        .filter_map(|(prefix, pks)| narrow_role_entry(prefix, pks, mgroups))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn narrow_role_entry(
@@ -597,26 +593,40 @@ mod tests {
         mgroups.insert(g3, mg("jito-shredstream"));
 
         // Empty.
-        assert_eq!(narrow_groups(&[], &[], &mgroups), "");
+        assert_eq!(narrow_groups(&[("P", &[]), ("S", &[])], &mgroups), "");
         // Subscriber-only, one group, short name stays as-is.
-        assert_eq!(narrow_groups(&[], &[g2], &mgroups), "S:rebop");
+        assert_eq!(
+            narrow_groups(&[("P", &[]), ("S", &[g2])], &mgroups),
+            "S:rebop"
+        );
         // Subscriber-only with overflow, long name abbreviates.
         assert_eq!(
-            narrow_groups(&[], &[g1, g2, g3], &mgroups),
+            narrow_groups(&[("P", &[]), ("S", &[g1, g2, g3])], &mgroups),
             "S:edge..reds+2",
         );
         // Publisher-only.
-        assert_eq!(narrow_groups(&[g3], &[], &mgroups), "P:jito..ream");
-        // Both roles present — each gets its own entry and independent +N.
         assert_eq!(
-            narrow_groups(&[g1, g2], &[g3, g1], &mgroups),
-            "P:edge..reds+1,S:jito..ream+1",
+            narrow_groups(&[("P", &[g3]), ("S", &[])], &mgroups),
+            "P:jito..ream"
+        );
+        // Feed-only, the role an access pass adds on top of the two allowlists.
+        assert_eq!(
+            narrow_groups(&[("P", &[]), ("S", &[]), ("F", &[g2, g3])], &mgroups),
+            "F:rebop+1"
+        );
+        // Every role present, each with its own entry and independent +N.
+        assert_eq!(
+            narrow_groups(
+                &[("P", &[g1, g2]), ("S", &[g3, g1]), ("F", &[g2])],
+                &mgroups
+            ),
+            "P:edge..reds+1,S:jito..ream+1,F:rebop",
         );
         // A group absent from the map falls back to a shortened pubkey, not the
         // full 44-char key.
         let unknown = Pubkey::new_unique();
         assert_eq!(
-            narrow_groups(&[unknown], &[], &mgroups),
+            narrow_groups(&[("P", &[unknown]), ("S", &[])], &mgroups),
             format!("P:{}", crate::util::display_pubkey_short(&unknown)),
         );
     }

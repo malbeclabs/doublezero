@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - `doublezero access-pass list` now renders the groups a feed grants in the `multicast` column, with an `F:` prefix next to the existing `P:` and `S:` entries. An EdgeSeat pass carries its multicast entitlement on its feeds, and the column read only the two allowlists, so such a pass showed an empty column and looked like it granted nothing. `access-pass get` gains a `feeds` row and a `feed_groups` row, `user get` gains a `feeds` row naming the feeds whose seats the user holds, and the feed seats in `access-pass get --json` now carry `feed_code` alongside the existing `feed_key`. `--multicast-group-subscriber` and `--not-multicast-group-subscriber` now match a group a feed grants, so they agree with the column beside them. The publisher filters are unchanged, because a feed grants subscribe rights only. (malbeclabs/infra#2178, #4167)
 - E2E/QA
   - `TestQA_MulticastSettlement`'s `validate_instant_allocation_price_matches_chain` no longer names a specific `doublezero_solana_version` in its skip path. Both the comment and the skip message said the pin was `0.5.10-1`; testnet has since moved to `0.5.11-1`, so a reader was told the pin was merely behind when in fact `instant_allocation_price` is in no release yet. They now name what actually gates the field — a doublezero-offchain release carrying doublezero-offchain#405 — and where the pin lives, neither of which goes stale as versions move. Comment and message only, no behaviour change.
 

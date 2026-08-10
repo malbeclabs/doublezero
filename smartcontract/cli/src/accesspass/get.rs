@@ -1,11 +1,11 @@
-use crate::doublezerocommand::CliCommand;
+use crate::{doublezerocommand::CliCommand, feed::resolve::get_feeds};
 use clap::Args;
 use doublezero_cli_core::CliContext;
+use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
     accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
     tenant::list::ListTenantCommand,
 };
-use doublezero_serviceability::state::accesspass::{AccessPassType, FeedSeat};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
@@ -24,6 +24,21 @@ pub struct GetAccessPassCliCommand {
     pub json: bool,
 }
 
+#[derive(Serialize)]
+struct FeedSeatDisplay {
+    // A feed is keyed by (code, exchange), so one pass can hold two feeds with the same code in
+    // different metros. The key is what tells those two seats apart.
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub feed_key: Pubkey,
+    pub feed_code: String,
+    pub max_users: u8,
+    pub max_future_users: u8,
+    pub current_users: u8,
+    pub anniversary_day: u8,
+    pub window_end: i64,
+    pub terminates_at: i64,
+}
+
 #[derive(Tabled, Serialize)]
 struct AccessPassDisplay {
     pub account: String,
@@ -31,12 +46,14 @@ struct AccessPassDisplay {
     #[serde(rename = "type")]
     pub accesspass_type: String,
     #[tabled(skip)]
-    pub feed_seats: Vec<FeedSeat>,
+    pub feed_seats: Vec<FeedSeatDisplay>,
     pub client_ip: String,
     pub user_payer: String,
     pub tenant: String,
     pub multicast_pub: String,
     pub multicast_sub: String,
+    pub feeds: String,
+    pub feed_groups: String,
     pub last_access_epoch: String,
     pub remaining_epoch: String,
     pub flags: String,
@@ -85,6 +102,48 @@ impl GetAccessPassCliCommand {
             .map(|pk| mgroups.get(pk).map_or(pk.to_string(), |mg| mg.code.clone()))
             .collect();
 
+        let feed_keys: Vec<Pubkey> = accesspass
+            .feed_seats()
+            .iter()
+            .map(|seat| seat.feed_key)
+            .collect();
+        let feeds = get_feeds(client, &feed_keys)?;
+
+        let feed_seats: Vec<FeedSeatDisplay> = accesspass
+            .feed_seats()
+            .iter()
+            .map(|seat| FeedSeatDisplay {
+                feed_key: seat.feed_key,
+                feed_code: feeds
+                    .get(&seat.feed_key)
+                    .map_or(seat.feed_key.to_string(), |feed| feed.code.clone()),
+                max_users: seat.max_users,
+                max_future_users: seat.max_future_users,
+                current_users: seat.current_users,
+                anniversary_day: seat.anniversary_day,
+                window_end: seat.window_end,
+                terminates_at: seat.terminates_at,
+            })
+            .collect();
+
+        // TODO: qualify each group with its feed's metro. A group is joinable only on a device in
+        // that feed's exchange, so this union overstates what a pass with feeds in two metros
+        // grants in any one of them.
+        let mut feed_group_display: Vec<String> = Vec::new();
+        for seat in accesspass.feed_seats() {
+            let Some(feed) = feeds.get(&seat.feed_key) else {
+                continue;
+            };
+            for group in &feed.groups {
+                let code = mgroups
+                    .get(group)
+                    .map_or(group.to_string(), |mg| mg.code.clone());
+                if !feed_group_display.contains(&code) {
+                    feed_group_display.push(code);
+                }
+            }
+        }
+
         let remaining_epoch = if accesspass.last_access_epoch == u64::MAX {
             "MAX".to_string()
         } else {
@@ -103,10 +162,13 @@ impl GetAccessPassCliCommand {
         let display = AccessPassDisplay {
             account: pubkey.to_string(),
             accesspass_type: accesspass.accesspass_type.to_string(),
-            feed_seats: match &accesspass.accesspass_type {
-                AccessPassType::EdgeSeat(seats) => seats.clone(),
-                _ => Vec::new(),
-            },
+            feeds: feed_seats
+                .iter()
+                .map(|seat| seat.feed_code.clone())
+                .collect::<Vec<_>>()
+                .join(", "),
+            feed_groups: feed_group_display.join(", "),
+            feed_seats,
             client_ip: accesspass.client_ip.to_string(),
             user_payer: accesspass.user_payer.to_string(),
             tenant: tenant_display.join(", "),
@@ -153,14 +215,14 @@ mod tests {
             accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
             tenant::list::ListTenantCommand,
         },
-        AccountType, MulticastGroup,
+        AccountType, Feed, MulticastGroup,
     };
     use doublezero_serviceability::state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat},
         tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
     };
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
+    use solana_sdk::{account::Account, pubkey::Pubkey};
     use std::{collections::HashMap, net::Ipv4Addr};
 
     #[test]
@@ -317,14 +379,16 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_cli_accesspass_get_json_renders_edge_seat_feeds() {
+    /// An EdgeSeat pass with one feed, that feed carrying one group. Both the feed account and the
+    /// group are resolvable, so the display shows codes rather than keys.
+    fn edge_seat_client(
+        client_ip: Ipv4Addr,
+        user_payer: Pubkey,
+        accesspass_pubkey: Pubkey,
+        feed_key: Pubkey,
+        group_key: Pubkey,
+    ) -> crate::doublezerocommand::MockCliCommand {
         let mut client = create_test_client();
-
-        let client_ip = Ipv4Addr::new(10, 0, 0, 2);
-        let user_payer = Pubkey::new_unique();
-        let accesspass_pubkey = Pubkey::new_unique();
-        let feed_key = Pubkey::new_unique();
 
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
@@ -353,7 +417,30 @@ mod tests {
             multicast_user_count: 1,
             max_multicast_users: 2,
         };
-        let accesspass_clone = accesspass.clone();
+
+        let feed = Feed {
+            account_type: AccountType::Feed,
+            owner: Pubkey::new_unique(),
+            bump_seed: 0,
+            code: "qa-payments".to_string(),
+            name: "QA Payments".to_string(),
+            exchange: Pubkey::new_unique(),
+            groups: vec![group_key],
+        };
+
+        let mgroup = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            index: 1,
+            bump_seed: 1,
+            owner: Pubkey::new_unique(),
+            tenant_pk: Pubkey::default(),
+            multicast_ip: [239, 0, 0, 2].into(),
+            max_bandwidth: 1_000_000_000,
+            status: doublezero_sdk::MulticastGroupStatus::Activated,
+            code: "qa-payments-group".to_string(),
+            publisher_count: 0,
+            subscriber_count: 1,
+        };
 
         client
             .expect_get_accesspass()
@@ -361,15 +448,46 @@ mod tests {
                 client_ip,
                 user_payer,
             }))
-            .returning(move |_| Ok(Some((accesspass_pubkey, accesspass_clone.clone()))));
+            .returning(move |_| Ok(Some((accesspass_pubkey, accesspass.clone()))));
         client
             .expect_list_multicastgroup()
             .with(predicate::eq(ListMulticastGroupCommand {}))
-            .returning(|_| Ok(HashMap::new()));
+            .returning(move |_| {
+                let mut map = HashMap::new();
+                map.insert(group_key, mgroup.clone());
+                Ok(map)
+            });
         client
             .expect_list_tenant()
             .with(predicate::eq(ListTenantCommand {}))
             .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![feed_key]))
+            .returning(move |_| {
+                Ok(vec![Some(Account {
+                    data: borsh::to_vec(&feed).unwrap(),
+                    ..Account::default()
+                })])
+            });
+
+        client
+    }
+
+    #[test]
+    fn test_cli_accesspass_get_json_renders_edge_seat_feeds() {
+        let client_ip = Ipv4Addr::new(10, 0, 0, 2);
+        let user_payer = Pubkey::new_unique();
+        let accesspass_pubkey = Pubkey::new_unique();
+        let feed_key = Pubkey::new_unique();
+        let group_key = Pubkey::new_unique();
+        let client = edge_seat_client(
+            client_ip,
+            user_payer,
+            accesspass_pubkey,
+            feed_key,
+            group_key,
+        );
 
         let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
@@ -384,15 +502,141 @@ mod tests {
         assert!(res.is_ok());
 
         // Lock in the JSON shape consumers depend on: an EdgeSeat pass emits a feed_seats
-        // array with each seat's per-feed users and billing windows.
+        // array that names each feed by key and by code, and carries its users and billing windows.
         let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
         let feeds = json["feed_seats"].as_array().unwrap();
         assert_eq!(feeds.len(), 1);
         assert_eq!(feeds[0]["feed_key"], feed_key.to_string());
+        assert_eq!(feeds[0]["feed_code"], "qa-payments");
         assert_eq!(feeds[0]["max_users"], 2);
         assert_eq!(feeds[0]["max_future_users"], 2);
         assert_eq!(feeds[0]["current_users"], 1);
         assert_eq!(feeds[0]["window_end"], 100);
         assert_eq!(feeds[0]["terminates_at"], 200);
+        assert_eq!(json["feeds"], "qa-payments");
+        assert_eq!(json["feed_groups"], "qa-payments-group");
+    }
+
+    #[test]
+    fn test_cli_accesspass_get_table_renders_edge_seat_feeds() {
+        let client_ip = Ipv4Addr::new(10, 0, 0, 2);
+        let user_payer = Pubkey::new_unique();
+        let accesspass_pubkey = Pubkey::new_unique();
+        let feed_key = Pubkey::new_unique();
+        let group_key = Pubkey::new_unique();
+        let client = edge_seat_client(
+            client_ip,
+            user_payer,
+            accesspass_pubkey,
+            feed_key,
+            group_key,
+        );
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            GetAccessPassCliCommand {
+                client_ip,
+                user_payer,
+                json: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+
+        let output_str = String::from_utf8(output).unwrap();
+        let row = |header: &str| {
+            output_str
+                .lines()
+                .find(|l| l.trim_start().starts_with(header))
+                .unwrap_or_else(|| panic!("no {header} row"))
+                .split('|')
+                .nth(1)
+                .unwrap()
+                .trim()
+                .to_string()
+        };
+        assert_eq!(row("feeds"), "qa-payments");
+        assert_eq!(row("feed_groups"), "qa-payments-group");
+        // The allowlists are empty on this pass, and the feed does not fill them in.
+        assert_eq!(row("multicast_pub"), "");
+        assert_eq!(row("multicast_sub"), "");
+    }
+
+    /// A pass that names a feed we cannot load still identifies the feed, by key.
+    #[test]
+    fn test_cli_accesspass_get_renders_unresolved_feed_by_key() {
+        let mut client = create_test_client();
+
+        let client_ip = Ipv4Addr::new(10, 0, 0, 3);
+        let user_payer = Pubkey::new_unique();
+        let accesspass_pubkey = Pubkey::new_unique();
+        let feed_key = Pubkey::new_unique();
+
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 255,
+            accesspass_type: AccessPassType::EdgeSeat(vec![FeedSeat {
+                feed_key,
+                max_users: 1,
+                max_future_users: 1,
+                current_users: 0,
+                anniversary_day: 3,
+                window_end: 100,
+                terminates_at: 200,
+            }]),
+            client_ip,
+            user_payer,
+            last_access_epoch: u64::MAX,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            owner: Pubkey::new_unique(),
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 0,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        };
+
+        client
+            .expect_get_accesspass()
+            .with(predicate::eq(GetAccessPassCommand {
+                client_ip,
+                user_payer,
+            }))
+            .returning(move |_| Ok(Some((accesspass_pubkey, accesspass.clone()))));
+        client
+            .expect_list_multicastgroup()
+            .with(predicate::eq(ListMulticastGroupCommand {}))
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_tenant()
+            .with(predicate::eq(ListTenantCommand {}))
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![feed_key]))
+            .returning(|_| Ok(vec![None]));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            GetAccessPassCliCommand {
+                client_ip,
+                user_payer,
+                json: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+
+        let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(json["feed_seats"][0]["feed_key"], feed_key.to_string());
+        assert_eq!(json["feed_seats"][0]["feed_code"], feed_key.to_string());
+        assert_eq!(json["feeds"], feed_key.to_string());
+        assert_eq!(json["feed_groups"], "");
     }
 }

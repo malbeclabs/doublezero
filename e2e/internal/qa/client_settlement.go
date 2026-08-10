@@ -164,9 +164,30 @@ func (c *Client) ClosestRetransmitOnlyDevice(ctx context.Context) (*Device, map[
 		return nil, retransmitOnly, nil
 	}
 
+	device, err := c.closestDeviceInMetros(ctx, retransmitOnly, true)
+	if err != nil {
+		return nil, retransmitOnly, err
+	}
+	return device, retransmitOnly, nil
+}
+
+// ClosestNonRetransmitOnlyDevice returns the reachable device with the lowest
+// average latency whose metro is not flagged retransmit-only. A nil device means
+// every reachable metro is flagged, so no metro is left to reject a new seat.
+func (c *Client) ClosestNonRetransmitOnlyDevice(ctx context.Context) (*Device, error) {
+	retransmitOnly, err := c.RetransmitOnlyExchangeKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.closestDeviceInMetros(ctx, retransmitOnly, false)
+}
+
+// closestDeviceInMetros returns the lowest-latency reachable device whose metro
+// membership in exchangeKeys equals want.
+func (c *Client) closestDeviceInMetros(ctx context.Context, exchangeKeys map[string]bool, want bool) (*Device, error) {
 	latencies, err := c.GetLatency(ctx)
 	if err != nil {
-		return nil, retransmitOnly, fmt.Errorf("failed to get latency on host %s: %w", c.Host, err)
+		return nil, fmt.Errorf("failed to get latency on host %s: %w", c.Host, err)
 	}
 
 	var bestDevice *Device
@@ -176,7 +197,7 @@ func (c *Client) ClosestRetransmitOnlyDevice(ctx context.Context) (*Device, map[
 			continue
 		}
 		device, ok := c.devices[l.DeviceCode]
-		if !ok || !retransmitOnly[device.ExchangePubKey] {
+		if !ok || exchangeKeys[device.ExchangePubKey] != want {
 			continue
 		}
 		if l.AvgLatencyNs < bestAvg {
@@ -185,9 +206,10 @@ func (c *Client) ClosestRetransmitOnlyDevice(ctx context.Context) (*Device, map[
 		}
 	}
 	if bestDevice != nil {
-		c.log.Debug("Determined closest retransmit-only device", "host", c.Host, "deviceCode", bestDevice.Code, "avgLatencyNs", bestAvg)
+		c.log.Debug("Determined closest device", "host", c.Host, "deviceCode", bestDevice.Code,
+			"avgLatencyNs", bestAvg, "retransmitOnly", want)
 	}
-	return bestDevice, retransmitOnly, nil
+	return bestDevice, nil
 }
 
 // FeedSeatPrice calls the FeedSeatPrice RPC to query seat pricing for a single
@@ -767,6 +789,19 @@ func (c *Client) IsSeatProratingEnabled(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("failed to fetch program config on host %s: %w", c.Host, err)
 	}
 	return cfg.IsProratedServiceEnabled(), nil
+}
+
+func (c *Client) IsRetransmitOnlyOnboardingEnforced(ctx context.Context) (bool, error) {
+	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
+	}
+
+	cfg, err := c.shredsClient(programID).FetchProgramConfig(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to fetch program config on host %s: %w", c.Host, err)
+	}
+	return cfg.IsRetransmitOnlyOnboardingEnforced(), nil
 }
 
 // IsProgramPaused returns true if the shred-subscription program config has

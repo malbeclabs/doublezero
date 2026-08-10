@@ -18,6 +18,25 @@ import (
 
 const (
 	TimestampFileName = "ripe_atlas_timestamps.json"
+
+	// staleMeasurementWarnAfter is how long a measurement may go without producing a new
+	// sample before we treat it as stalled rather than merely idle. It is several times
+	// the default sampling interval so ordinary polling jitter stays quiet.
+	staleMeasurementWarnAfter = 30 * time.Minute
+
+	// sourceSampleGracePeriod is how long after its measurement was created a source
+	// probe may produce no successful sample before we report it. RIPE dispatch is not
+	// immediate: an accepted enlistment has been observed producing its first result
+	// 80-100 minutes after creation, and all of one probe's enlistments start within
+	// seconds of each other, so a shorter window reports probes that are merely warming
+	// up. Deliberately separate from probeTimeout, which drives probe rotation, so that
+	// tuning this reporting window cannot perturb the marking path.
+	sourceSampleGracePeriod = 2 * time.Hour
+
+	// maxSourcesWithoutSamplesLogged caps the per-cycle sample of sources named in the
+	// log. The full count is on the metric; a widespread outage should not emit hundreds
+	// of identifiers every hour.
+	maxSourcesWithoutSamplesLogged = 20
 )
 
 // CallDelay is defined in client.go to avoid duplication
@@ -528,6 +547,11 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	lastTimestampUnix, exists := measurementState.GetLastTimestamp(measurement.ID)
 	lastTimestamp := time.Unix(lastTimestampUnix, 0)
 
+	// A stall shows up two ways: an empty page, and a page whose results are all
+	// timeouts, which parse to zero valid latencies and so export nothing either. Both
+	// leave the cursor where it was, so key the signal off that rather than off the page.
+	stalled := exists && time.Since(lastTimestamp) > staleMeasurementWarnAfter
+
 	c.log.Debug("Processing measurement",
 		slog.Int("measurement_id", measurement.ID),
 		slog.String("description", measurement.Description),
@@ -557,10 +581,14 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	}
 
 	if len(results) == 0 {
-		c.log.Debug("No new results for measurement",
-			slog.Int("measurement_id", measurement.ID),
-			slog.String("target_location", meta.TargetLocation),
-			slog.Int64("query_start_timestamp", lastTimestampUnix))
+		if stalled {
+			c.warnStalled(measurement.ID, meta.TargetLocation, lastTimestamp, len(results))
+		} else {
+			c.log.Debug("No new results for measurement",
+				slog.Int("measurement_id", measurement.ID),
+				slog.String("target_location", meta.TargetLocation),
+				slog.Int64("query_start_timestamp", lastTimestampUnix))
+		}
 		return 0, nil, nil
 	}
 
@@ -578,6 +606,12 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	for _, result := range results {
 		// Parse latency from result (now also returns probe ID)
 		latency, timestamp, probeID := c.parseLatencyFromResult(result)
+
+		// A result the probe uploaded proves it ran the measurement even if nothing came
+		// back, and LastResponseAt aging out rotates the probe (Step 4b) and recreates
+		// measurements.
+		measurementState.UpdateSourceProbeResponse(measurement.ID, probeID, timestamp.Unix())
+
 		if latency > 0 {
 			if timestamp.After(maxTimestamp) {
 				maxTimestamp = timestamp
@@ -587,9 +621,6 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			if loc, ok := probeToLocationLocal[probeID]; ok {
 				sourceLocation = loc
 			}
-
-			// Track source probe response time for staleness detection
-			measurementState.UpdateSourceProbeResponse(measurement.ID, probeID, timestamp.Unix())
 
 			records = append(records, exporter.Record{
 				DataProvider: exporter.DataProviderNameRIPEAtlas,
@@ -632,9 +663,63 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			slog.Time("last_timestamp", lastTimestamp),
 			slog.Time("max_result_timestamp", maxTimestamp),
 			slog.Int("exported_records", len(records)))
+	} else if stalled {
+		c.warnStalled(measurement.ID, meta.TargetLocation, lastTimestamp, len(results))
 	}
 
 	return len(records), records, nil
+}
+
+// warnStalled reports a measurement that has produced no new sample for
+// staleMeasurementWarnAfter, meaning its circuits are going missing. The measurement
+// creation cycle marks the probes responsible, an hour in.
+func (c *Collector) warnStalled(measurementID int, targetLocation string, lastTimestamp time.Time, rawResults int) {
+	c.log.Warn("No new samples since last export (measurement stalled?)",
+		slog.Int("measurement_id", measurementID),
+		slog.String("target_location", targetLocation),
+		slog.Time("last_timestamp", lastTimestamp),
+		slog.Duration("stale_for", time.Since(lastTimestamp)),
+		slog.Int("raw_results", rawResults))
+}
+
+// sourcesWithoutSamples tallies source probes that have produced no successful sample
+// since their measurement was created, keyed by source location, along with the total
+// and a sample of at most sampleLimit human-readable identifiers.
+//
+// A source's LastResponseAt is zeroed whenever its measurement is created and is only
+// ever advanced by a sample with a latency above zero, so a zero on a measurement
+// created before createdBefore (a unix timestamp) means that probe has contributed
+// nothing to it. Measurements with an unknown creation time are skipped, since their
+// age cannot be judged.
+//
+// This deliberately does not claim a cause, because the state cannot distinguish one.
+// A zero means RIPE never dispatched the enlistment, or the path is at total packet
+// loss and every result parsed to zero latency (parseLatencyFromResult returns 0 for a
+// ping array carrying no rtt). Both dark the circuit; only the first is RIPE's fault.
+func sourcesWithoutSamples(measurements []Measurement, state *MeasurementState, createdBefore int64, sampleLimit int) (map[string]int, int, []string) {
+	byLocation := map[string]int{}
+	total := 0
+	var sample []string
+
+	for _, measurement := range measurements {
+		meta, hasMeta := state.GetMetadata(measurement.ID)
+		if !hasMeta || meta.CreatedAt == 0 || meta.CreatedAt >= createdBefore {
+			continue
+		}
+		for _, source := range meta.Sources {
+			if source.LastResponseAt != 0 {
+				continue
+			}
+			byLocation[source.LocationCode]++
+			total++
+			if len(sample) < sampleLimit {
+				sample = append(sample, fmt.Sprintf("%s <- %s (probe %d, measurement %d)",
+					meta.TargetLocation, source.LocationCode, source.ProbeID, measurement.ID))
+			}
+		}
+	}
+
+	return byLocation, total, sample
 }
 
 func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval time.Duration) error {
@@ -838,6 +923,34 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				}
 			}
 		}
+	}
+
+	// Step 4c: Report sources that have produced no successful sample since their
+	// measurement was created. Sources are rebuilt with a zero LastResponseAt every time
+	// a measurement is created, so a zero past sourceSampleGracePeriod means this probe
+	// has contributed nothing to it. A circuit is enlisted exactly once, so each such
+	// source silently darks its circuit with no other trace.
+	//
+	// Observation only, and it names no cause: RIPE not dispatching the enlistment and a
+	// path at total loss are indistinguishable here. Rotating the probe is not the answer
+	// either way — the drops observed so far recovered unaided — and it is expensive,
+	// because a metro's probe is a source for every measurement whose target sorts before
+	// it. See #4153.
+	silentByLocation, silentTotal, silentSample := sourcesWithoutSamples(
+		doubleZeroMeasurements, measurementState,
+		currentTime-int64(sourceSampleGracePeriod.Seconds()), maxSourcesWithoutSamplesLogged)
+
+	// Reset first so a location that recovered goes absent instead of holding its last value.
+	metrics.RipeatlasSourcesWithoutSamples.Reset()
+	for location, count := range silentByLocation {
+		metrics.RipeatlasSourcesWithoutSamples.WithLabelValues(location).Set(float64(count))
+	}
+	if silentTotal > 0 {
+		c.log.Warn("Sources with no successful sample since their measurement was created, their circuits are dark",
+			slog.Int("sources", silentTotal),
+			slog.Duration("grace_period", sourceSampleGracePeriod),
+			slog.Any("by_source_location", silentByLocation),
+			slog.Any("sample", silentSample))
 	}
 
 	// Save state if we detected any new unresponsive probes

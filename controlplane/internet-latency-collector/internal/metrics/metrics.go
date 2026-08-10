@@ -105,6 +105,15 @@ var (
 		Help: "Number of source probes per location (exchanges minus 1)",
 	})
 
+	// RipeatlasSourcesWithoutSamples counts source probes that have produced no
+	// successful sample since their measurement was created. Each one silently darks the
+	// circuit it serves, since a circuit is enlisted exactly once. It does not say why:
+	// an enlistment RIPE never dispatched and a path at total packet loss both land here.
+	RipeatlasSourcesWithoutSamples = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_ripeatlas_sources_without_samples",
+		Help: "Source probes with no successful sample since their measurement was created, past the grace period, by source location",
+	}, []string{"source_location"})
+
 	RipeatlasExpectedDailyCredits = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "doublezero_internet_latency_collector_ripeatlas_expected_daily_credits",
 		Help: "Estimated daily RIPE Atlas credit usage (rough estimate, actual may vary)",

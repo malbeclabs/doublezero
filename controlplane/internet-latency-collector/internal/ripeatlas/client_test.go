@@ -1004,11 +1004,13 @@ func TestInternetLatency_RIPEAtlas_GetMeasurementResultsIncremental(t *testing.T
 						expectedPath := fmt.Sprintf("/measurements/%d/results", tt.measurementID)
 						require.Contains(t, req.URL.Path, expectedPath, "Request path should contain expected path")
 
-						// Verify start parameter if provided
+						// Verify start parameter if provided. RIPE's ?start= is inclusive, so
+						// the request must ask for the second after the caller's last consumed
+						// timestamp; sending it verbatim re-returns that result on every poll.
 						if tt.startTimestamp > 0 {
 							startParam := req.URL.Query().Get("start")
-							expectedStart := fmt.Sprintf("%d", tt.startTimestamp)
-							require.Equal(t, expectedStart, startParam, "Start parameter mismatch")
+							expectedStart := fmt.Sprintf("%d", tt.startTimestamp+1)
+							require.Equal(t, expectedStart, startParam, "start must exclude the last consumed timestamp")
 						}
 
 						return &http.Response{

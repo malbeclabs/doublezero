@@ -1,6 +1,7 @@
 use crate::{doublezerocommand::CliCommand, feed::resolve::get_feeds};
 use clap::Args;
 use doublezero_cli_core::CliContext;
+use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
     accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
     tenant::list::ListTenantCommand,
@@ -25,6 +26,10 @@ pub struct GetAccessPassCliCommand {
 
 #[derive(Serialize)]
 struct FeedSeatDisplay {
+    // A feed is keyed by (code, exchange), so one pass can hold two feeds with the same code in
+    // different metros. The key is what tells those two seats apart.
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub feed_key: Pubkey,
     pub feed_code: String,
     pub max_users: u8,
     pub max_future_users: u8,
@@ -108,6 +113,7 @@ impl GetAccessPassCliCommand {
             .feed_seats()
             .iter()
             .map(|seat| FeedSeatDisplay {
+                feed_key: seat.feed_key,
                 feed_code: feeds
                     .get(&seat.feed_key)
                     .map_or(seat.feed_key.to_string(), |feed| feed.code.clone()),
@@ -120,6 +126,9 @@ impl GetAccessPassCliCommand {
             })
             .collect();
 
+        // TODO: qualify each group with its feed's metro. A group is joinable only on a device in
+        // that feed's exchange, so this union overstates what a pass with feeds in two metros
+        // grants in any one of them.
         let mut feed_group_display: Vec<String> = Vec::new();
         for seat in accesspass.feed_seats() {
             let Some(feed) = feeds.get(&seat.feed_key) else {
@@ -493,10 +502,11 @@ mod tests {
         assert!(res.is_ok());
 
         // Lock in the JSON shape consumers depend on: an EdgeSeat pass emits a feed_seats
-        // array that names each feed by code and carries its users and billing windows.
+        // array that names each feed by key and by code, and carries its users and billing windows.
         let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
         let feeds = json["feed_seats"].as_array().unwrap();
         assert_eq!(feeds.len(), 1);
+        assert_eq!(feeds[0]["feed_key"], feed_key.to_string());
         assert_eq!(feeds[0]["feed_code"], "qa-payments");
         assert_eq!(feeds[0]["max_users"], 2);
         assert_eq!(feeds[0]["max_future_users"], 2);
@@ -624,6 +634,7 @@ mod tests {
         assert!(res.is_ok());
 
         let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(json["feed_seats"][0]["feed_key"], feed_key.to_string());
         assert_eq!(json["feed_seats"][0]["feed_code"], feed_key.to_string());
         assert_eq!(json["feeds"], feed_key.to_string());
         assert_eq!(json["feed_groups"], "");

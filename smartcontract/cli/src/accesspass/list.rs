@@ -45,10 +45,11 @@ pub struct ListAccessPassCliCommand {
     /// Access passes that do not allowlist the multicast group publisher with the specified code
     #[arg(long)]
     pub not_multicast_group_publisher: Option<String>,
-    /// Access passes that allowlist the multicast group subscriber with the specified code
+    /// Access passes that grant subscribe rights to the multicast group with the specified code,
+    /// through the allowlist or through a feed
     #[arg(long)]
     pub multicast_group_subscriber: Option<String>,
-    /// Access passes that do not allowlist the multicast group subscriber with the specified code
+    /// Access passes that grant no subscribe rights to the multicast group with the specified code
     #[arg(long)]
     pub not_multicast_group_subscriber: Option<String>,
     /// Output as pretty JSON
@@ -98,6 +99,10 @@ pub struct AccessPassDisplay {
 }
 
 /// The groups the feeds on this pass grant.
+///
+/// TODO: qualify each group with its feed's metro. A group is joinable only on a device in that
+/// feed's exchange, so this union overstates what a pass with feeds in two metros grants in any one
+/// of them.
 fn groups_from_feeds(access_pass: &AccessPass, feeds: &HashMap<Pubkey, Feed>) -> Vec<Pubkey> {
     let mut groups: Vec<Pubkey> = Vec::new();
     for seat in access_pass.feed_seats() {
@@ -108,6 +113,17 @@ fn groups_from_feeds(access_pass: &AccessPass, feeds: &HashMap<Pubkey, Feed>) ->
             if !groups.contains(group) {
                 groups.push(*group);
             }
+        }
+    }
+    groups
+}
+
+/// Every group this pass grants subscribe rights to, from its allowlist and from its feeds.
+fn subscriber_groups(access_pass: &AccessPass, feeds: &HashMap<Pubkey, Feed>) -> Vec<Pubkey> {
+    let mut groups = access_pass.mgroup_sub_allowlist.clone();
+    for group in groups_from_feeds(access_pass, feeds) {
+        if !groups.contains(&group) {
+            groups.push(group);
         }
     }
     groups
@@ -271,6 +287,17 @@ impl ListAccessPassCliCommand {
             });
         }
 
+        // Only an EdgeSeat pass carries feeds, so a run without one skips the account scan. The
+        // subscriber filters below read these too, so the scan has to happen before them.
+        let feeds = if access_passes
+            .iter()
+            .any(|(_, access_pass)| !access_pass.feed_seats().is_empty())
+        {
+            client.list_feed(ListFeedCommand)?
+        } else {
+            HashMap::new()
+        };
+
         if let Some(multicast_publisher) = self.multicast_group_publisher {
             access_passes.retain(|(_, access_pass)| {
                 access_pass.mgroup_pub_allowlist.iter().any(|mg_pub| {
@@ -285,7 +312,7 @@ impl ListAccessPassCliCommand {
 
         if let Some(multicast_group_subscriber) = self.multicast_group_subscriber {
             access_passes.retain(|(_, access_pass)| {
-                access_pass.mgroup_sub_allowlist.iter().any(|mg_sub| {
+                subscriber_groups(access_pass, &feeds).iter().any(|mg_sub| {
                     if let Some(mg) = mgroups.get(mg_sub) {
                         mg.code == multicast_group_subscriber
                     } else {
@@ -309,7 +336,7 @@ impl ListAccessPassCliCommand {
 
         if let Some(not_multicast_group_subscriber) = self.not_multicast_group_subscriber {
             access_passes.retain(|(_, access_pass)| {
-                !access_pass.mgroup_sub_allowlist.iter().any(|mg_sub| {
+                !subscriber_groups(access_pass, &feeds).iter().any(|mg_sub| {
                     if let Some(mg) = mgroups.get(mg_sub) {
                         mg.code == not_multicast_group_subscriber
                     } else {
@@ -318,16 +345,6 @@ impl ListAccessPassCliCommand {
                 })
             });
         }
-
-        // Only an EdgeSeat pass carries feeds, so a run without one skips the account scan.
-        let feeds = if access_passes
-            .iter()
-            .any(|(_, access_pass)| !access_pass.feed_seats().is_empty())
-        {
-            client.list_feed(ListFeedCommand)?
-        } else {
-            HashMap::new()
-        };
 
         let mut access_pass_displays: Vec<AccessPassDisplay> = access_passes
             .into_iter()
@@ -1045,5 +1062,64 @@ mod tests {
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(cell(&output_str, "multicast"), "S:comped,F:qa-p..roup");
+    }
+
+    #[test]
+    fn test_filter_multicast_group_subscriber_matches_feed_group() {
+        let client = setup_edge_seat_client();
+        let ctx = cli_context_default_for_tests();
+
+        let mut output = Vec::new();
+        let res = block_on(
+            ListAccessPassCliCommand {
+                multicast_group_subscriber: Some("qa-payments-group".to_string()),
+                json: true,
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let passes: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(passes.as_array().unwrap().len(), 1);
+        assert_eq!(passes[0]["multicast"], "S:comped, F:qa-payments-group");
+    }
+
+    #[test]
+    fn test_filter_not_multicast_group_subscriber_excludes_feed_group() {
+        let client = setup_edge_seat_client();
+        let ctx = cli_context_default_for_tests();
+
+        let mut output = Vec::new();
+        let res = block_on(
+            ListAccessPassCliCommand {
+                not_multicast_group_subscriber: Some("qa-payments-group".to_string()),
+                json: true,
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let passes: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert!(passes.as_array().unwrap().is_empty());
+    }
+
+    /// A feed grants subscribe rights only, so the publisher filters must ignore its groups.
+    #[test]
+    fn test_filter_not_multicast_group_publisher_ignores_feed_group() {
+        let client = setup_edge_seat_client();
+        let ctx = cli_context_default_for_tests();
+
+        let mut output = Vec::new();
+        let res = block_on(
+            ListAccessPassCliCommand {
+                not_multicast_group_publisher: Some("qa-payments-group".to_string()),
+                json: true,
+                ..Default::default()
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let passes: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(passes.as_array().unwrap().len(), 1);
     }
 }

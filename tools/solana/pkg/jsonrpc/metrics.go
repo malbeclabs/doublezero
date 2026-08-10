@@ -34,4 +34,16 @@ var (
 		Name: "doublezero_solana_rpc_ratelimited_total",
 		Help: "Rate-limited JSON-RPC responses, by method and the error shape that carried the limit (http_status or jsonrpc_error).",
 	}, []string{"method", "carrier"})
+
+	// retryAfterExceededTotal counts calls that stopped retrying because the endpoint
+	// asked for a longer wait than one call is allowed to hold (MaxRetryAfter).
+	//
+	// This is the series that says the cap is set wrong. A rate limit that clears
+	// inside the cap never appears here; one that shows up steadily means the
+	// endpoint's window is longer than we sized for, and the fix is the cap or the
+	// caller's request rate, not another attempt.
+	retryAfterExceededTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "doublezero_solana_rpc_retry_after_exceeded_total",
+		Help: "JSON-RPC calls that gave up because the endpoint's Retry-After exceeded the per-call allowance, by method.",
+	}, []string{"method"})
 )

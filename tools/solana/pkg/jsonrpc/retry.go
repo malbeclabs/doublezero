@@ -20,6 +20,22 @@ const (
 	defaultBaseBackoff = 500 * time.Millisecond
 	defaultMaxBackoff  = 5 * time.Second
 
+	// defaultMaxRetryAfter caps the total time one call will spend waiting on
+	// endpoint-supplied Retry-After headers, summed across its attempts.
+	//
+	// It has to clear the window it is meant to outlast, or honoring the header
+	// changes nothing: our mainnet provider enforces limits over a rolling 10s
+	// window. It also has to keep the worst case inside what callers were sized
+	// for. defaultRequestTimeout in the rpc package documents ~43s worst case and
+	// names state-ingest's 60s tick as the constraint, because state-ingest passes
+	// its root context straight down with no call-site bound. 15s puts the worst
+	// case at 4 attempts of 10s plus 15s of waiting, so 55s, still inside that tick.
+	//
+	// A call whose remaining allowance cannot cover what the endpoint asked for
+	// stops retrying rather than waiting a shorter time. Sleeping less than the
+	// endpoint asked buys a refusal at the cost of the wait.
+	defaultMaxRetryAfter = 15 * time.Second
+
 	// batchLabel is the metric label for CallBatch, which carries a mix of methods.
 	batchLabel = "batch"
 )
@@ -29,6 +45,11 @@ type RetryOptions struct {
 	BaseBackoff     time.Duration
 	MaxBackoff      time.Duration
 	IsRetryableFunc func(error) bool
+
+	// MaxRetryAfter caps the total wait one call will honor from endpoint-supplied
+	// Retry-After headers. Defaults to defaultMaxRetryAfter. A negative value turns
+	// the header off and leaves every wait to BaseBackoff.
+	MaxRetryAfter time.Duration
 }
 
 func WithRetry(inner solanarpc.JSONRPCClient, opt *RetryOptions) solanarpc.JSONRPCClient {
@@ -46,6 +67,9 @@ func WithRetry(inner solanarpc.JSONRPCClient, opt *RetryOptions) solanarpc.JSONR
 	}
 	if opt.IsRetryableFunc == nil {
 		opt.IsRetryableFunc = isRetryableJSONRPC
+	}
+	if opt.MaxRetryAfter == 0 {
+		opt.MaxRetryAfter = defaultMaxRetryAfter
 	}
 	return &retryingJSONRPCClient{inner: inner, opt: *opt}
 }
@@ -112,10 +136,26 @@ func doRetry(ctx context.Context, opt RetryOptions, label string, idempotent boo
 		maxAttempts = 1
 	}
 
+	// The transport writes any Retry-After it sees into this slot, keyed on the
+	// context it hands down (see retryafter.go). The sink is per call, not per
+	// attempt, because take() clears it.
+	ctx, sink := withRetryAfterSink(ctx)
+
 	var lastErr error
+	var retryAfterSpent time.Duration
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if attempt > 1 {
-			if err := sleepBackoff(ctx, opt, attempt); err != nil {
+			wait, honored, ok := nextWait(opt, attempt, sink.take(), retryAfterSpent)
+			if !ok {
+				// The endpoint asked for longer than this call is allowed to wait.
+				// Retrying sooner than it asked is a refusal we have already paid
+				// for, so return the rate limit and let the caller's next poll
+				// arrive after the window instead.
+				retryAfterExceededTotal.WithLabelValues(label).Inc()
+				return lastErr
+			}
+			retryAfterSpent += honored
+			if err := sleepFor(ctx, wait); err != nil {
 				// Keep the error that caused the retry. A caller whose deadline is
 				// shorter than the retry budget would otherwise log only "context
 				// deadline exceeded" and lose the 503 behind it — the one thing
@@ -142,13 +182,39 @@ func doRetry(ctx context.Context, opt RetryOptions, label string, idempotent boo
 	return lastErr
 }
 
-// sleepBackoff waits before the given attempt, honoring ctx cancellation and
-// deadlines. The wait is jittered over [d/2, d] so that the ~60 doublezerod hosts
-// and dozen services reading the same ledger endpoint do not retry in lockstep and
-// re-spike an endpoint that is already shedding load. Jitter keeps a floor at half
-// the interval rather than reaching down to zero, so the total budget stays
-// predictable against the caller's poll interval.
-func sleepBackoff(ctx context.Context, opt RetryOptions, attempt int) error {
+// nextWait decides how long to wait before the given attempt.
+//
+// retryAfter is what the endpoint asked for on the attempt that just failed, 0 if it
+// asked for nothing. spent is what earlier attempts of this call already waited on
+// its say-so. It returns the wait, how much of that wait counts against the
+// Retry-After allowance, and whether to retry at all.
+//
+// An endpoint's own number always wins over our backoff, in both directions: it knows
+// its window and we are guessing. The one thing we do not do is wait a shorter time
+// than it asked — that spends the wait and still gets refused — so a request that
+// does not fit the remaining allowance ends the call instead.
+func nextWait(opt RetryOptions, attempt int, retryAfter, spent time.Duration) (wait, honored time.Duration, ok bool) {
+	if retryAfter > 0 && opt.MaxRetryAfter > 0 {
+		// Spread the resumption. Every client refused in the same window otherwise
+		// waits the same number of seconds and fires together, re-spiking an endpoint
+		// at the moment its window rolls. The spread is upward only, for the reason
+		// above: arriving early is arriving refused.
+		wait = retryAfter + rand.N(retryAfter/4+1)
+		if spent+wait > opt.MaxRetryAfter {
+			return 0, 0, false
+		}
+		return wait, wait, true
+	}
+	return jitteredBackoff(opt, attempt), 0, true
+}
+
+// jitteredBackoff is the wait for an endpoint that named no number of its own. It
+// grows linearly with the attempt and is jittered over [d/2, d] so that the ~60
+// doublezerod hosts and dozen services reading the same ledger endpoint do not retry
+// in lockstep and re-spike an endpoint that is already shedding load. Jitter keeps a
+// floor at half the interval rather than reaching down to zero, so the total budget
+// stays predictable against the caller's poll interval.
+func jitteredBackoff(opt RetryOptions, attempt int) time.Duration {
 	d := opt.BaseBackoff * time.Duration(attempt-1)
 	if d > opt.MaxBackoff {
 		d = opt.MaxBackoff
@@ -156,7 +222,11 @@ func sleepBackoff(ctx context.Context, opt RetryOptions, attempt int) error {
 	if d > 0 {
 		d = d/2 + rand.N(d/2+1)
 	}
+	return d
+}
 
+// sleepFor waits, honoring ctx cancellation and deadlines.
+func sleepFor(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
 	defer t.Stop()
 	select {

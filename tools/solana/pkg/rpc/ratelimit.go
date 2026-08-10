@@ -5,7 +5,9 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/malbeclabs/doublezero/tools/solana/pkg/jsonrpc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -52,6 +54,7 @@ const (
 	headerMethodLimit     = "X-Ratelimit-Method-Limit"
 	headerMethodRemaining = "X-Ratelimit-Method-Remaining"
 	headerRPCNode         = "X-RPC-Node"
+	headerRetryAfter      = "Retry-After"
 
 	// maxObservedBody bounds how much of a request body is read to recover the
 	// method name. JSON-RPC requests put "method" near the front, and this only
@@ -75,6 +78,15 @@ func (o *rateLimitObserver) RoundTrip(req *http.Request) (*http.Response, error)
 		node = "unknown"
 	}
 	responsesTotal.WithLabelValues(node).Inc()
+
+	// Hand any Retry-After to the retry loop, which cannot see it otherwise: the
+	// response is discarded before the error reaches it (see jsonrpc.NoteRetryAfter).
+	// Recorded on every response rather than only on a 429, because the refusals that
+	// motivated this arrived as HTTP 200 with the rate limit inside the JSON-RPC
+	// envelope, and the retry loop only reads the value when an attempt failed.
+	if d := jsonrpc.ParseRetryAfter(resp.Header.Get(headerRetryAfter), time.Now()); d > 0 {
+		jsonrpc.NoteRetryAfter(req.Context(), d)
+	}
 
 	// Cheap exit first. Most endpoints report nothing, and this must not add
 	// per-request work on the hot path when there is nothing to record — so the

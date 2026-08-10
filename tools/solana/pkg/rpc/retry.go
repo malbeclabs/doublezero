@@ -20,8 +20,10 @@ const (
 	// retry attempt. It must be short enough that an exhausted retry budget still
 	// fits inside a caller's poll interval: retry multiplies a hang by MaxAttempts,
 	// so a long per-attempt bound amplifies an endpoint stall instead of containing
-	// it. At the package retry defaults (4 attempts, ~3s of total jittered backoff)
-	// 10s puts the worst case at ~43s.
+	// it. At the package retry defaults (4 attempts, and up to 15s of waiting once a
+	// rate-limited endpoint's own Retry-After is honored) 10s puts the worst case at
+	// ~55s. Our own jittered backoff totals ~3s and applies only when the endpoint
+	// names no number, so the Retry-After allowance is what bounds the wait.
 	//
 	// 10s is chosen against the heaviest call we actually make, an unfiltered
 	// getProgramAccounts over the serviceability program. Measured against mainnet

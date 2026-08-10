@@ -328,7 +328,8 @@ func TestTools_Solana_JSONRPC_SleepBackoff_JitteredWithinBounds(t *testing.T) {
 	var sawBelowCeiling bool
 	for i := 0; i < 20; i++ {
 		start := time.Now()
-		require.NoError(t, sleepBackoff(context.Background(), opt, 3)) // nominal 40ms, capped at 40ms
+		// nominal 40ms, capped at 40ms
+		require.NoError(t, sleepFor(context.Background(), jitteredBackoff(opt, 3)))
 		elapsed := time.Since(start)
 		require.GreaterOrEqual(t, elapsed, 20*time.Millisecond, "jitter must not drop below half the interval")
 		if elapsed < 40*time.Millisecond {

@@ -321,10 +321,16 @@ func TestNew_DefaultRequestTimeoutIsBounded(t *testing.T) {
 
 	require.Equal(t, 10*time.Second, defaultRequestTimeout)
 
-	// Worst case for one logical call: every attempt burns the full timeout, plus
-	// the jittered backoff between them.
-	const maxAttempts = 4
-	worstCase := maxAttempts*defaultRequestTimeout + 3*time.Second
+	// Worst case for one logical call: every attempt burns the full timeout, plus the
+	// waiting between them. Waiting is now bounded by the Retry-After allowance rather
+	// than by our own backoff, because an endpoint that names a number gets that number
+	// (jsonrpc.defaultMaxRetryAfter). Both are that package's constants, restated here
+	// the same way maxAttempts is.
+	const (
+		maxAttempts   = 4
+		maxRetryAfter = 15 * time.Second
+	)
+	worstCase := maxAttempts*defaultRequestTimeout + maxRetryAfter
 	require.Less(t, worstCase, 60*time.Second,
 		"an exhausted retry budget must fit inside state-ingest's 60s refresh tick")
 

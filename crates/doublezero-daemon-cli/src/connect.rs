@@ -552,7 +552,8 @@ impl Connect {
     /// `(client_ip, user_type)` with no device — so out-of-metro feeds are reported, never
     /// silently dropped. Failing when this machine holds nothing and could take nothing is
     /// deliberate: exiting 0 with nothing subscribed is indistinguishable from success to an
-    /// unattended installer.
+    /// unattended installer. A re-run that holds a feed already still activates the user: a
+    /// disabled reconciler must not go unnoticed just because nothing new needed joining.
     async fn auto_join_purchased_feeds<D: DaemonClient, L: LedgerClient, W: Write>(
         &self,
         ledger: &L,
@@ -577,6 +578,16 @@ impl Connect {
                         eyre::eyre!("failed to fetch device {}: {err}", user.device_pk)
                     })?;
                 writeln!(out, "    An account already exists with Pubkey: {pk}")?;
+                // The user's device is fixed; a --device naming another one is a no-op the
+                // operator should hear about rather than have silently ignored.
+                if let Some(requested) = self.device.as_ref() {
+                    if *requested != user.device_pk.to_string() && *requested != device.code {
+                        eyre::bail!(
+                            "existing Multicast user {pk} is on device {}; run 'doublezero disconnect multicast' first, or omit --device",
+                            device.code
+                        );
+                    }
+                }
                 (FeedJoinUser::Existing(*pk), device, user.feed_pks.clone())
             }
             None => {
@@ -622,12 +633,7 @@ impl Connect {
                 .map(|seat| (seat.current_users, seat.max_users))
                 .unwrap_or((0, 0))
         };
-        let code_of = |feed_pk: &Pubkey| {
-            feeds
-                .get(feed_pk)
-                .map(|feed| feed.code.clone())
-                .unwrap_or_else(|| feed_pk.to_string())
-        };
+        let code_of = |feed_pk: &Pubkey| feed_code_or_pubkey(feed_pk, &feeds);
         let describe_full = |feed_pks: &[Pubkey]| {
             feed_pks
                 .iter()
@@ -654,16 +660,9 @@ impl Connect {
             )?;
         }
         if !selection.other_metro.is_empty() {
-            let described: Vec<String> = selection
-                .other_metro
-                .iter()
-                .map(|pk| {
-                    let exchange = feeds
-                        .get(pk)
-                        .map(|feed| feed.exchange.to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    format!("{} (exchange {exchange})", code_of(pk))
-                })
+            let described: Vec<String> = describe_other_metro(&selection.other_metro, &feeds)
+                .into_iter()
+                .map(|(code, exchange)| format!("{code} (exchange {exchange})"))
                 .collect();
             writeln!(out, "    Skipped, another metro: {}", described.join(", "))?;
         }
@@ -671,7 +670,7 @@ impl Connect {
             let codes: Vec<String> = selection.over_feed_limit.iter().map(code_of).collect();
             writeln!(
                 out,
-                "    Skipped, would exceed this machine's feed limit: {}",
+                "    Skipped, would exceed this machine's feed limit of {MAX_USER_FEEDS}: {}",
                 codes.join(", ")
             )?;
         }
@@ -686,9 +685,12 @@ impl Connect {
 
         if selection.join.is_empty() {
             // Already holding a feed means this machine is provisioned; joining nothing is then a
-            // successful re-run, not a failure.
+            // successful re-run, not a failure. Still activate: a re-run whose reconciler is
+            // disabled must not exit 0 while leaving the tunnel unprovisioned.
             if !selection.held.is_empty() {
-                return Ok(false);
+                self.user_activated(daemon, UserType::Multicast, spinner, out)
+                    .await?;
+                return Ok(true);
             }
             if !selection.full.is_empty() {
                 eyre::bail!(
@@ -697,26 +699,22 @@ impl Connect {
                 );
             }
             if !selection.other_metro.is_empty() {
-                let described: Vec<String> = selection
-                    .other_metro
-                    .iter()
-                    .map(|pk| {
-                        let exchange = feeds
-                            .get(pk)
-                            .map(|feed| feed.exchange.to_string())
-                            .unwrap_or_else(|| "unknown".to_string());
-                        format!("{} serves exchange {exchange}", code_of(pk))
-                    })
+                let described: Vec<String> = describe_other_metro(&selection.other_metro, &feeds)
+                    .into_iter()
+                    .map(|(code, exchange)| format!("{code} serves exchange {exchange}"))
                     .collect();
                 eyre::bail!(
-                    "no purchased feed serves the metro of device {}; {}. Connect from a machine in that metro.",
+                    "no purchased feed serves the metro of device {} (exchange {}); {}. Connect from a machine in that metro.",
                     device.code,
+                    device.exchange_pk,
                     described.join(", ")
                 );
             }
             eyre::bail!(
-                "the access pass carries {} purchased feed(s) but none could be joined",
-                accesspass.feed_seats().len()
+                "the access pass carries {} purchased feed(s) but none could be joined: {} over this machine's feed limit of {MAX_USER_FEEDS}, {} feed account(s) not found",
+                accesspass.feed_seats().len(),
+                selection.over_feed_limit.len(),
+                selection.unknown.len()
             );
         }
 
@@ -1674,6 +1672,34 @@ struct FeedSelection {
     unknown: Vec<Pubkey>,
 }
 
+/// A feed's code, or its pubkey if the feed account cannot be found. Shared by every place that
+/// renders a feed for the operator, so the lookup-and-fallback logic exists in exactly one place.
+fn feed_code_or_pubkey(feed_pk: &Pubkey, feeds: &HashMap<Pubkey, Feed>) -> String {
+    feeds
+        .get(feed_pk)
+        .map(|feed| feed.code.clone())
+        .unwrap_or_else(|| feed_pk.to_string())
+}
+
+/// Per-feed `(code, exchange)` for feeds in another metro, so both the skip line and the failure
+/// message in `auto_join_purchased_feeds` can render the same lookup with their own wording.
+fn describe_other_metro(
+    feed_pks: &[Pubkey],
+    feeds: &HashMap<Pubkey, Feed>,
+) -> Vec<(String, String)> {
+    feed_pks
+        .iter()
+        .map(|pk| {
+            let code = feed_code_or_pubkey(pk, feeds);
+            let exchange = feeds
+                .get(pk)
+                .map(|feed| feed.exchange.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            (code, exchange)
+        })
+        .collect()
+}
+
 /// Choose which of the pass's purchased feeds this machine should join, given the device it will
 /// connect through and the feeds it already holds.
 ///
@@ -1701,14 +1727,15 @@ fn select_purchased_feeds(
 
     let mut ordered: Vec<&FeedSeat> = seats.iter().collect();
     ordered.sort_by(|left, right| {
-        let code_of = |seat: &FeedSeat| {
-            feeds
-                .get(&seat.feed_key)
-                .map(|feed| feed.code.clone())
-                .unwrap_or_else(|| seat.feed_key.to_string())
-        };
-        code_of(left).cmp(&code_of(right))
+        feed_code_or_pubkey(&left.feed_key, feeds).cmp(&feed_code_or_pubkey(&right.feed_key, feeds))
     });
+
+    // Computed once, before the loop: `held_feed_pks` is fixed for the whole call, so counting it
+    // here (rather than growing `selection.held` as the code-ordered loop happens to reach each
+    // held feed) makes the cap check order-independent. It also covers feeds the user holds that
+    // are not seats on this pass at all — the program's own MAX_USER_FEEDS check counts every held
+    // feed, not just the ones this pass currently lists.
+    let held_count = held_feed_pks.len();
 
     for seat in ordered {
         if held_feed_pks.contains(&seat.feed_key) {
@@ -1727,7 +1754,7 @@ fn select_purchased_feeds(
             selection.full.push(seat.feed_key);
             continue;
         }
-        if selection.held.len() + selection.join.len() >= MAX_USER_FEEDS {
+        if held_count + selection.join.len() >= MAX_USER_FEEDS {
             selection.over_feed_limit.push(seat.feed_key);
             continue;
         }
@@ -1998,6 +2025,42 @@ mod tests {
 
         assert_eq!(selection.join.len(), 3);
         assert!(selection.over_feed_limit.is_empty());
+    }
+
+    /// Regression: the feed cap must count every held feed, not just the ones the code-ordered
+    /// loop has reached so far. These held feeds ("zzz...") sort after every candidate
+    /// ("aaa...") by code, so counting `selection.held.len()` — built during the same loop —
+    /// would still be zero at the point each candidate is considered, letting all of them
+    /// through and proposing a join the program's own MAX_USER_FEEDS check would reject.
+    #[test]
+    fn test_select_purchased_feeds_caps_against_held_feeds_sorted_after_candidates() {
+        let exchange = Pubkey::new_unique();
+        let mut feeds = HashMap::new();
+        let mut seats = Vec::new();
+
+        let held_count = 3;
+        let held_feed_pks: Vec<Pubkey> = (0..held_count)
+            .map(|index| {
+                let feed_pk = Pubkey::new_unique();
+                feeds.insert(feed_pk, feed_in(&format!("zzz-held-{index}"), exchange));
+                seats.push(seat(feed_pk, 1, 0));
+                feed_pk
+            })
+            .collect();
+        for index in 0..MAX_USER_FEEDS {
+            let feed_pk = Pubkey::new_unique();
+            feeds.insert(
+                feed_pk,
+                feed_in(&format!("aaa-candidate-{index:02}"), exchange),
+            );
+            seats.push(seat(feed_pk, 1, 0));
+        }
+
+        let selection = select_purchased_feeds(&seats, &feeds, &exchange, &held_feed_pks);
+
+        assert_eq!(selection.held.len(), held_count);
+        assert_eq!(selection.join.len(), MAX_USER_FEEDS - held_count);
+        assert_eq!(selection.over_feed_limit.len(), held_count);
     }
 
     struct TestFixture {
@@ -4529,7 +4592,9 @@ mod tests {
     }
 
     /// A machine that already holds a feed succeeds on a re-run even though it joins nothing and
-    /// the remaining feed is full. This is what makes repeated installs safe.
+    /// the remaining feed is full. This is what makes repeated installs safe, and it must still
+    /// activate the user: a re-run whose reconciler is disabled must not exit 0 while leaving the
+    /// tunnel unprovisioned.
     #[test]
     fn test_connect_command_bare_is_a_no_op_when_already_holding_a_feed() {
         block_on(async {
@@ -4544,6 +4609,13 @@ mod tests {
             let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
             user.feed_pks = vec![shreds_pk];
             fixture.add_user(&user);
+            // The tunnel was already provisioned on a previous run, so the re-run's
+            // user_activated poll finds it immediately rather than timing out.
+            fixture
+                .provisioned_services
+                .lock()
+                .unwrap()
+                .insert("Multicast".to_string());
 
             let (result, output) = run(&fixture, bare_multicast()).await;
             assert!(result.is_ok(), "{:?}\n{output}", result.err());
@@ -4553,6 +4625,7 @@ mod tests {
                     .any(|line| line == "    Already joined: shreds"),
                 "{output}"
             );
+            assert!(output.contains("✅  User Provisioned"), "{output}");
         });
     }
 
@@ -4562,7 +4635,7 @@ mod tests {
     fn test_connect_command_bare_fails_when_feeds_are_only_in_another_metro() {
         block_on(async {
             let mut fixture = TestFixture::new();
-            fixture.add_device(DeviceType::Hybrid, 100, true);
+            let (_device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
             let away_exchange = Pubkey::new_unique();
             let kalshi_pk = fixture.add_feed("kalshi", away_exchange, vec![Pubkey::new_unique()]);
             fixture.seat_feeds_with_caps(&[(kalshi_pk, 1, 0)]);
@@ -4570,7 +4643,39 @@ mod tests {
             let (result, output) = run(&fixture, bare_multicast()).await;
             assert_eq!(
                 result.unwrap_err().to_string(),
-                format!("no purchased feed serves the metro of device device1; kalshi serves exchange {away_exchange}. Connect from a machine in that metro."),
+                format!(
+                    "no purchased feed serves the metro of device device1 (exchange {}); kalshi serves exchange {away_exchange}. Connect from a machine in that metro.",
+                    device.exchange_pk
+                ),
+                "{output}"
+            );
+        });
+    }
+
+    /// --device naming a different device than the existing Multicast user's is rejected, not
+    /// silently ignored — mirrors the guard `resolve_feed_join` applies on the explicit-feed path.
+    #[test]
+    fn test_connect_command_bare_fails_when_device_flag_names_a_different_device() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            fixture.add_device(DeviceType::Hybrid, 200, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 2, 0)]);
+
+            let user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            let user_pk = fixture.add_user(&user);
+
+            let mut command = bare_multicast();
+            command.device = Some("device2".to_string());
+
+            let (result, output) = run(&fixture, command).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                format!(
+                    "existing Multicast user {user_pk} is on device device1; run 'doublezero disconnect multicast' first, or omit --device"
+                ),
                 "{output}"
             );
         });

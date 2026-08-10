@@ -22,7 +22,8 @@ use doublezero_sdk::{
     Device, Feed, User, UserCYOA, UserStatus, UserType,
 };
 use doublezero_serviceability::{
-    processors::multicastgroup::subscribe_feed::MAX_USER_FEEDS, state::accesspass::AccessPassType,
+    processors::multicastgroup::subscribe_feed::MAX_USER_FEEDS,
+    state::accesspass::{AccessPassType, FeedSeat},
 };
 use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
@@ -1460,6 +1461,80 @@ fn exclude_ips(
         .collect()
 }
 
+/// What auto-selection decided, so the caller can tell the operator about every feed it did not
+/// take and why.
+struct FeedSelection {
+    join: Vec<Pubkey>,
+    full: Vec<Pubkey>,
+    other_metro: Vec<Pubkey>,
+    over_feed_limit: Vec<Pubkey>,
+    held: Vec<Pubkey>,
+    unknown: Vec<Pubkey>,
+}
+
+/// Choose which of the pass's purchased feeds this machine should join, given the device it will
+/// connect through and the feeds it already holds.
+///
+/// Feeds are considered in code order so that which ones get taken when the feed limit binds is
+/// predictable rather than dependent on account iteration order. Headroom is measured against
+/// `max_users`, the field the program's `try_add_feed_user` actually enforces — `max_future_users`
+/// is unread today, so trusting it would propose feeds the program then rejects.
+///
+/// `MAX_USER_FEEDS` is the only bound applied. A join too large for one transaction is split by
+/// `SubscribeFeedCommand`, so selecting group-heavy feeds here is safe.
+fn select_purchased_feeds(
+    seats: &[FeedSeat],
+    feeds: &HashMap<Pubkey, Feed>,
+    device_exchange: &Pubkey,
+    held_feed_pks: &[Pubkey],
+) -> FeedSelection {
+    let mut selection = FeedSelection {
+        join: Vec::new(),
+        full: Vec::new(),
+        other_metro: Vec::new(),
+        over_feed_limit: Vec::new(),
+        held: Vec::new(),
+        unknown: Vec::new(),
+    };
+
+    let mut ordered: Vec<&FeedSeat> = seats.iter().collect();
+    ordered.sort_by(|left, right| {
+        let code_of = |seat: &FeedSeat| {
+            feeds
+                .get(&seat.feed_key)
+                .map(|feed| feed.code.clone())
+                .unwrap_or_else(|| seat.feed_key.to_string())
+        };
+        code_of(left).cmp(&code_of(right))
+    });
+
+    for seat in ordered {
+        if held_feed_pks.contains(&seat.feed_key) {
+            selection.held.push(seat.feed_key);
+            continue;
+        }
+        let Some(feed) = feeds.get(&seat.feed_key) else {
+            selection.unknown.push(seat.feed_key);
+            continue;
+        };
+        if feed.exchange != *device_exchange {
+            selection.other_metro.push(seat.feed_key);
+            continue;
+        }
+        if seat.current_users >= seat.max_users {
+            selection.full.push(seat.feed_key);
+            continue;
+        }
+        if selection.held.len() + selection.join.len() >= MAX_USER_FEEDS {
+            selection.over_feed_limit.push(seat.feed_key);
+            continue;
+        }
+        selection.join.push(seat.feed_key);
+    }
+
+    selection
+}
+
 /// Resolve `--subscribe-feed` values.
 fn resolve_feeds_for_metro(
     names: &[String],
@@ -1573,6 +1648,154 @@ mod tests {
     fn setup() {
         let temp_dir = get_temp_dir();
         println!("Using TMPDIR = {}", temp_dir.path().display());
+    }
+
+    /// Build a seat for `feed_key` with an explicit cap and live count.
+    fn seat(feed_key: Pubkey, max_users: u8, current_users: u8) -> FeedSeat {
+        FeedSeat {
+            feed_key,
+            max_users,
+            current_users,
+            ..Default::default()
+        }
+    }
+
+    /// Build a one-group feed in `exchange` with code `code`.
+    fn feed_in(code: &str, exchange: Pubkey) -> Feed {
+        Feed {
+            account_type: AccountType::Feed,
+            owner: Pubkey::new_unique(),
+            bump_seed: 1,
+            code: code.to_string(),
+            name: code.to_string(),
+            exchange,
+            groups: vec![Pubkey::new_unique()],
+        }
+    }
+
+    /// Both feeds have headroom in the device's metro, so both are selected, ordered by code.
+    #[test]
+    fn test_select_purchased_feeds_takes_every_feed_with_headroom() {
+        let exchange = Pubkey::new_unique();
+        let (kalshi_pk, shreds_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let mut feeds = HashMap::new();
+        feeds.insert(kalshi_pk, feed_in("kalshi", exchange));
+        feeds.insert(shreds_pk, feed_in("shreds", exchange));
+        let seats = [seat(shreds_pk, 2, 0), seat(kalshi_pk, 1, 0)];
+
+        let selection = select_purchased_feeds(&seats, &feeds, &exchange, &[]);
+
+        assert_eq!(selection.join, vec![kalshi_pk, shreds_pk]);
+        assert!(selection.full.is_empty());
+        assert!(selection.other_metro.is_empty());
+    }
+
+    /// A full seat is skipped, not an error at this layer: the caller decides.
+    #[test]
+    fn test_select_purchased_feeds_skips_a_full_seat() {
+        let exchange = Pubkey::new_unique();
+        let (kalshi_pk, shreds_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let mut feeds = HashMap::new();
+        feeds.insert(kalshi_pk, feed_in("kalshi", exchange));
+        feeds.insert(shreds_pk, feed_in("shreds", exchange));
+        let seats = [seat(shreds_pk, 2, 1), seat(kalshi_pk, 1, 1)];
+
+        let selection = select_purchased_feeds(&seats, &feeds, &exchange, &[]);
+
+        assert_eq!(selection.join, vec![shreds_pk]);
+        assert_eq!(selection.full, vec![kalshi_pk]);
+    }
+
+    /// A feed already held is reported as held and never re-joined, so a re-run is a no-op.
+    #[test]
+    fn test_select_purchased_feeds_reports_held_feeds_separately() {
+        let exchange = Pubkey::new_unique();
+        let shreds_pk = Pubkey::new_unique();
+        let mut feeds = HashMap::new();
+        feeds.insert(shreds_pk, feed_in("shreds", exchange));
+        // The seat is full precisely because this machine holds it.
+        let seats = [seat(shreds_pk, 1, 1)];
+
+        let selection = select_purchased_feeds(&seats, &feeds, &exchange, &[shreds_pk]);
+
+        assert!(selection.join.is_empty());
+        assert_eq!(selection.held, vec![shreds_pk]);
+        assert!(
+            selection.full.is_empty(),
+            "a feed this machine holds must not also be reported full"
+        );
+    }
+
+    /// A feed serving another exchange lands in other_metro, never in join.
+    #[test]
+    fn test_select_purchased_feeds_separates_other_metro() {
+        let here = Pubkey::new_unique();
+        let away = Pubkey::new_unique();
+        let (near_pk, far_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let mut feeds = HashMap::new();
+        feeds.insert(near_pk, feed_in("shreds", here));
+        feeds.insert(far_pk, feed_in("kalshi", away));
+        let seats = [seat(near_pk, 1, 0), seat(far_pk, 1, 0)];
+
+        let selection = select_purchased_feeds(&seats, &feeds, &here, &[]);
+
+        assert_eq!(selection.join, vec![near_pk]);
+        assert_eq!(selection.other_metro, vec![far_pk]);
+    }
+
+    /// A seat naming a feed account that cannot be read is reported, not silently dropped.
+    #[test]
+    fn test_select_purchased_feeds_reports_unknown_feed_accounts() {
+        let exchange = Pubkey::new_unique();
+        let missing_pk = Pubkey::new_unique();
+        let seats = [seat(missing_pk, 1, 0)];
+
+        let selection = select_purchased_feeds(&seats, &HashMap::new(), &exchange, &[]);
+
+        assert!(selection.join.is_empty());
+        assert_eq!(selection.unknown, vec![missing_pk]);
+    }
+
+    /// The per-user feed cap bounds the join. Nothing here bounds it by transaction size: the SDK
+    /// splits an oversized join across transactions on its own.
+    #[test]
+    fn test_select_purchased_feeds_respects_the_per_user_feed_cap() {
+        let exchange = Pubkey::new_unique();
+        let mut feeds = HashMap::new();
+        let mut seats = Vec::new();
+        for index in 0..(MAX_USER_FEEDS + 2) {
+            let feed_pk = Pubkey::new_unique();
+            // Two-digit codes keep the lexicographic order equal to the numeric order.
+            feeds.insert(feed_pk, feed_in(&format!("feed{index:02}"), exchange));
+            seats.push(seat(feed_pk, 1, 0));
+        }
+
+        let selection = select_purchased_feeds(&seats, &feeds, &exchange, &[]);
+
+        assert_eq!(selection.join.len(), MAX_USER_FEEDS);
+        assert_eq!(selection.over_feed_limit.len(), 2);
+    }
+
+    /// Feeds heavy enough to need several transactions are still all selected: splitting them is
+    /// the SDK's job, so selection must not silently drop any.
+    #[test]
+    fn test_select_purchased_feeds_does_not_bound_by_transaction_size() {
+        let exchange = Pubkey::new_unique();
+        let mut feeds = HashMap::new();
+        let mut seats = Vec::new();
+        // 3 feeds x 14 groups = 42 group accounts, well past one transaction's 25.
+        for index in 0..3 {
+            let feed_pk = Pubkey::new_unique();
+            let mut feed = feed_in(&format!("feed{index:02}"), exchange);
+            feed.groups = (0..14).map(|_| Pubkey::new_unique()).collect();
+            feeds.insert(feed_pk, feed);
+            seats.push(seat(feed_pk, 1, 0));
+        }
+
+        let selection = select_purchased_feeds(&seats, &feeds, &exchange, &[]);
+
+        assert_eq!(selection.join.len(), 3);
+        assert!(selection.over_feed_limit.is_empty());
     }
 
     struct TestFixture {

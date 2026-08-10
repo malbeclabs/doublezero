@@ -40,6 +40,7 @@ bincode = "1"
 bitvec = "1"
 md5 = "0.8"
 borsh = { version = "1", features = ["derive"] }
+bs58 = "0.5"
 bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
@@ -60,6 +61,7 @@ metrics = "0.24"
 metrics-exporter-prometheus = "0.17"
 mockall = "0.13"
 parquet = { version = "57", features = [ "async" ] }
+percent-encoding = "2"
 rayon = "1"
 # rustls-tls bundles the webpki Mozilla roots; rustls-tls-native-roots adds the
 # host OS certificate store so OS-installed private CAs stay trusted.
@@ -75,6 +77,7 @@ solana-client = "3.0"
 solana-commitment-config = "3.0"
 solana-compute-budget-interface = "3.0"
 solana-instruction = "3.0"
+solana-message = { version = "3.0", features = ["bincode"] }
 solana-pubkey = { version = "3.0", features = ["borsh", "bytemuck"] }
 solana-reward-info = "3.0"
 solana-rpc-client-types = "3.0"

@@ -1,4 +1,8 @@
-use crate::doublezerocommand::CliCommand;
+use crate::{
+    doublezerocommand::CliCommand,
+    helpers::parse_or_resolve_exchange,
+    validators::{validate_code, validate_pubkey_or_code},
+};
 use clap::Args;
 use doublezero_cli_core::{render_collection, CliContext, OutputFormat};
 use doublezero_program_common::serializer;
@@ -12,6 +16,12 @@ use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct ListFeedCliCommand {
+    /// Show only the feed with this code
+    #[arg(long, value_parser = validate_code)]
+    pub code: Option<String>,
+    /// Show only the feeds serving this metro (exchange), by pubkey or code
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub exchange: Option<String>,
     /// Output in JSON format
     #[arg(long, default_value_t = false)]
     pub json: bool,
@@ -41,11 +51,21 @@ impl ListFeedCliCommand {
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
+        let exchange = self
+            .exchange
+            .as_deref()
+            .map(|e| parse_or_resolve_exchange(client, e))
+            .transpose()?;
+
         let feeds = client.list_feed(ListFeedCommand)?;
         let mgroups = client.list_multicastgroup(ListMulticastGroupCommand)?;
 
         let mut displays = feeds
             .into_iter()
+            .filter(|(_, feed)| {
+                self.code.as_deref().is_none_or(|code| feed.code == code)
+                    && exchange.is_none_or(|ex| feed.exchange == ex)
+            })
             .map(|(pubkey, feed)| FeedDisplay {
                 account: pubkey,
                 code: feed.code,
@@ -80,7 +100,11 @@ impl ListFeedCliCommand {
 mod tests {
     use crate::{feed::list::ListFeedCliCommand, tests::utils::create_test_client};
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
-    use doublezero_sdk::{AccountType, Feed, MulticastGroup, MulticastGroupStatus};
+    use doublezero_sdk::{
+        commands::exchange::get::GetExchangeCommand, AccountType, Exchange, ExchangeStatus, Feed,
+        MulticastGroup, MulticastGroupStatus,
+    };
+    use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
 
@@ -133,6 +157,8 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             ListFeedCliCommand {
+                code: None,
+                exchange: None,
                 json: false,
                 json_compact: false,
             }
@@ -145,5 +171,132 @@ mod tests {
             output_str,
             " account                                   | code        | name        | exchange                                  | groups | group_codes                                     | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | qa-payments | QA Payments | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo3 | 2      | mg01, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo4 | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n"
         );
+    }
+
+    /// Three feeds, where two metros share the code `qa-payments`. The exchange `xams` resolves
+    /// from its code, so a run that passes `--exchange xams` exercises the lookup.
+    fn multi_metro_client(
+        xams_pk: Pubkey,
+        xfra_pk: Pubkey,
+    ) -> crate::doublezerocommand::MockCliCommand {
+        let mut client = create_test_client();
+
+        let feed = |code: &str, exchange: Pubkey| Feed {
+            account_type: AccountType::Feed,
+            owner: Pubkey::new_unique(),
+            bump_seed: 255,
+            code: code.to_string(),
+            name: code.to_string(),
+            exchange,
+            groups: vec![],
+        };
+
+        client.expect_list_feed().returning(move |_| {
+            let mut feeds = HashMap::new();
+            feeds.insert(Pubkey::new_unique(), feed("qa-payments", xams_pk));
+            feeds.insert(Pubkey::new_unique(), feed("qa-payments", xfra_pk));
+            feeds.insert(Pubkey::new_unique(), feed("shreds-lax", xams_pk));
+            Ok(feeds)
+        });
+        client
+            .expect_list_multicastgroup()
+            .returning(|_| Ok(HashMap::new()));
+
+        let xams = Exchange {
+            account_type: AccountType::Exchange,
+            index: 1,
+            bump_seed: 255,
+            reference_count: 0,
+            code: "xams".to_string(),
+            name: "Amsterdam".to_string(),
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
+            lat: 52.37,
+            lng: 4.89,
+            bgp_community: 1,
+            unused: 0,
+            status: ExchangeStatus::Activated,
+            owner: Pubkey::new_unique(),
+        };
+        client
+            .expect_get_exchange()
+            .with(predicate::eq(GetExchangeCommand {
+                pubkey_or_code: "xams".to_string(),
+            }))
+            .returning(move |_| Ok((xams_pk, xams.clone())));
+
+        client
+    }
+
+    fn list_feeds(
+        client: &crate::doublezerocommand::MockCliCommand,
+        code: Option<&str>,
+        exchange: Option<&str>,
+    ) -> serde_json::Value {
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            ListFeedCliCommand {
+                code: code.map(str::to_string),
+                exchange: exchange.map(str::to_string),
+                json: true,
+                json_compact: false,
+            }
+            .execute(&ctx, client, &mut output),
+        );
+        assert!(res.is_ok(), "{res:?}");
+        serde_json::from_slice(&output).unwrap()
+    }
+
+    #[test]
+    fn test_cli_feed_list_filters_by_code() {
+        let xams_pk = Pubkey::new_unique();
+        let xfra_pk = Pubkey::new_unique();
+        let client = multi_metro_client(xams_pk, xfra_pk);
+
+        let rows = list_feeds(&client, Some("qa-payments"), None);
+        let rows = rows.as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["code"], "qa-payments");
+        assert_eq!(rows[1]["code"], "qa-payments");
+    }
+
+    #[test]
+    fn test_cli_feed_list_filters_by_exchange_code() {
+        let xams_pk = Pubkey::new_unique();
+        let xfra_pk = Pubkey::new_unique();
+        let client = multi_metro_client(xams_pk, xfra_pk);
+
+        let rows = list_feeds(&client, None, Some("xams"));
+        let rows = rows.as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["code"], "qa-payments");
+        assert_eq!(rows[1]["code"], "shreds-lax");
+        assert_eq!(rows[0]["exchange"], xams_pk.to_string());
+        assert_eq!(rows[1]["exchange"], xams_pk.to_string());
+    }
+
+    /// The pair of filters names exactly one feed, which is what `feed get` used to do.
+    #[test]
+    fn test_cli_feed_list_filters_by_code_and_exchange() {
+        let xams_pk = Pubkey::new_unique();
+        let xfra_pk = Pubkey::new_unique();
+        let client = multi_metro_client(xams_pk, xfra_pk);
+
+        let rows = list_feeds(&client, Some("qa-payments"), Some(&xfra_pk.to_string()));
+        let rows = rows.as_array().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["code"], "qa-payments");
+        assert_eq!(rows[0]["exchange"], xfra_pk.to_string());
+    }
+
+    #[test]
+    fn test_cli_feed_list_renders_no_row_for_an_unknown_code() {
+        let xams_pk = Pubkey::new_unique();
+        let xfra_pk = Pubkey::new_unique();
+        let client = multi_metro_client(xams_pk, xfra_pk);
+
+        let rows = list_feeds(&client, Some("no-such-feed"), None);
+        assert!(rows.as_array().unwrap().is_empty());
     }
 }

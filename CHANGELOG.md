@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI
+  - `doublezero feed get` is removed, and `doublezero feed list` gains `--code` and `--exchange` filters in its place. `doublezero feed list --code shreds-lax --exchange xlax` returns the feed that `doublezero feed get --pubkey shreds-lax --exchange xlax` returned, plus the `group_codes` column the list view already carried. A code that matches no feed now prints an empty table instead of failing. (#4171)
+
 ### Changes
 
 - CLI

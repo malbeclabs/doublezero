@@ -76,15 +76,23 @@ func TestE2E_Feed_CRUD(t *testing.T) {
 	group3 := solana.NewWallet().PublicKey().String()
 
 	// Create a feed serving the xlax metro with two groups. The exchange is passed by code to
-	// exercise CLI code→pubkey resolution; the get below asserts it resolved to ex.Account.
+	// exercise CLI code→pubkey resolution; the read below asserts it resolved to ex.Account.
 	run(fmt.Sprintf(
 		`doublezero feed create --code shreds-lax --name "Shreds LAX" --exchange xlax --group %s --group %s`,
 		group1, group2,
 	))
 
-	// Get and verify the created feed.
-	var feed feedJSON
-	require.NoError(t, json.Unmarshal(run("doublezero feed get --pubkey shreds-lax --json"), &feed))
+	// getFeed narrows the list to the one feed with this code in the xlax metro.
+	getFeed := func() feedJSON {
+		var rows []feedJSON
+		require.NoError(t, json.Unmarshal(
+			run("doublezero feed list --code shreds-lax --exchange xlax --json"), &rows))
+		require.Len(t, rows, 1, "expected exactly one shreds-lax feed in xlax")
+		return rows[0]
+	}
+
+	// Read back and verify the created feed.
+	feed := getFeed()
 	require.NotEmpty(t, feed.Account)
 	require.Equal(t, "shreds-lax", feed.Code)
 	require.Equal(t, "Shreds LAX", feed.Name)
@@ -101,7 +109,7 @@ func TestE2E_Feed_CRUD(t *testing.T) {
 
 	// Update the name and replace the group set with a single group.
 	run(fmt.Sprintf(`doublezero feed update --pubkey shreds-lax --name "Shreds LAX v2" --group %s`, group3))
-	require.NoError(t, json.Unmarshal(run("doublezero feed get --pubkey shreds-lax --json"), &feed))
+	feed = getFeed()
 	require.Equal(t, "Shreds LAX v2", feed.Name)
 	require.Equal(t, ex.Account, feed.Exchange, "exchange is immutable across updates")
 	require.Equal(t, 1, feed.Groups)

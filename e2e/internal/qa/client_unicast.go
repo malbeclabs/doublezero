@@ -235,7 +235,7 @@ func pingFailureError(retries int, lastResp *pb.PingResult) error {
 	if lastResp == nil {
 		return fmt.Errorf("failed to ping after %d retries: no ping result returned", retries)
 	}
-	return fmt.Errorf("failed to ping after %d retries: %d/%d packets received",
+	return fmt.Errorf("failed to ping after %d retries: %d/%d packets received on the last attempt",
 		retries, lastResp.PacketsReceived, lastResp.PacketsSent)
 }
 

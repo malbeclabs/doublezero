@@ -778,6 +778,29 @@ func TestComputeFailureStats(t *testing.T) {
 		if len(stats.Retests) != 0 {
 			t.Errorf("expected no retests, got %+v", stats.Retests)
 		}
+		wantSkipped := []string{"drained1", "drained2", "drained3"}
+		if !reflect.DeepEqual(stats.Skipped, wantSkipped) {
+			t.Errorf("skipped: got %v, want %v", stats.Skipped, wantSkipped)
+		}
+	})
+
+	// Every device excluded must leave DeviceResults empty so the caller can
+	// tell "nothing was eligible" from "everything passed" — 0/0 is NaN and
+	// silently satisfies every threshold comparison.
+	t.Run("all devices skipped yields no results to rate", func(t *testing.T) {
+		drained := &Device{Code: "drained1", PubKey: "dpk1", Status: serviceability.DeviceStatusActivated}
+
+		stats := ComputeFailureStats(BatchData{0: {"hostA": fail(drained)}})
+
+		if len(stats.DeviceResults) != 0 {
+			t.Errorf("expected no device results, got %+v", stats.DeviceResults)
+		}
+		if len(stats.PerHost) != 0 {
+			t.Errorf("expected no per-host stats, got %+v", stats.PerHost)
+		}
+		if !reflect.DeepEqual(stats.Skipped, []string{"drained1"}) {
+			t.Errorf("skipped: got %v, want [drained1]", stats.Skipped)
+		}
 	})
 
 	t.Run("ignores devices that are not activated", func(t *testing.T) {

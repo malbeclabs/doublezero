@@ -108,10 +108,16 @@ type Device struct {
 	DeviceType                serviceability.DeviceDeviceType
 }
 
-// Ready reports whether the device can accept a user tunnel. A device left
-// activated with MaxUsers == 0 is drained on purpose: the CLI refuses the
-// connect ("Device is not accepting more users"), so failures against it say
+// Ready reports whether a connect against this device can get far enough to
+// tell us anything. MaxUsers == 0 means drained or never enabled; either way the
+// CLI's own precheck refuses the connect ("Device is not accepting more users")
+// before the onchain qa_allowlist can exempt us, so failures against it say
 // nothing about the network and must not count toward QA failure rates.
+//
+// This is a subset of the program's is_device_eligible_for_provisioning, which
+// also requires UsersCount+ReservedSeats < MaxUsers; a device at capacity still
+// reports as ready here. MaxUnicastUsers is deliberately not consulted: 0 there
+// means "no per-type limit", the inverse of drained.
 func (d *Device) Ready() bool {
 	return d.Status == serviceability.DeviceStatusActivated && d.MaxUsers > 0
 }

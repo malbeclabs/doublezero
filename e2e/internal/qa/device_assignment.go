@@ -331,6 +331,7 @@ type FailureStats struct {
 	DeviceResults []DeviceTestResult          // one per unique device code
 	PerHost       map[string]HostFailureStats // keyed by host
 	Retests       []DeviceRetest              // entries where Attempts > 1
+	Skipped       []string                    // sorted codes of devices that could not accept users
 }
 
 // ComputeFailureStats walks batchData once and applies the "any success
@@ -345,6 +346,7 @@ func ComputeFailureStats(batchData BatchData) FailureStats {
 	hostDeviceSuccesses := make(map[string]map[string]int)
 	deviceSucceeded := make(map[string]bool)
 	devicePubkey := make(map[string]string)
+	skipped := make(map[string]struct{})
 
 	batchNums := slices.Sorted(maps.Keys(batchData))
 	for _, batchNum := range batchNums {
@@ -353,7 +355,9 @@ func ComputeFailureStats(batchData BatchData) FailureStats {
 			assignment := batchData[batchNum][host]
 			// A device that cannot accept users is excluded entirely, not
 			// counted as a failure: it must not inflate the denominator either.
+			// Skipped is the caller's audit trail for what was left out.
 			if !assignment.Device.Ready() {
+				skipped[assignment.Device.Code] = struct{}{}
 				continue
 			}
 			code := assignment.Device.Code
@@ -419,5 +423,6 @@ func ComputeFailureStats(batchData BatchData) FailureStats {
 		DeviceResults: deviceResults,
 		PerHost:       perHost,
 		Retests:       retests,
+		Skipped:       slices.Sorted(maps.Keys(skipped)),
 	}
 }

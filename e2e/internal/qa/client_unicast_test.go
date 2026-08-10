@@ -334,12 +334,12 @@ func TestPingFailureError(t *testing.T) {
 		{
 			name:     "total loss reports the counts",
 			lastResp: &pb.PingResult{PacketsSent: 40, PacketsReceived: 0},
-			want:     "failed to ping after 3 retries: 0/40 packets received",
+			want:     "failed to ping after 3 retries: 0/40 packets received on the last attempt",
 		},
 		{
 			name:     "no packets sent reports zeroes",
 			lastResp: &pb.PingResult{},
-			want:     "failed to ping after 3 retries: 0/0 packets received",
+			want:     "failed to ping after 3 retries: 0/0 packets received on the last attempt",
 		},
 		{
 			name:     "no response at all says so",

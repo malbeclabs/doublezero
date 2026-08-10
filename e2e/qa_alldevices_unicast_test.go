@@ -230,8 +230,21 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		)
 	}
 
+	if len(stats.Skipped) > 0 {
+		t.Logf("SKIPPED %d devices not accepting users (excluded from failure rates): %s",
+			len(stats.Skipped), strings.Join(stats.Skipped, ", "))
+	}
+
 	// Evaluate failure rates against threshold
 	totalDevices := len(stats.DeviceResults)
+
+	// Guard the rate math: with no eligible devices the run proved nothing, and
+	// 0/0 is NaN, which silently passes every threshold comparison below.
+	if totalDevices == 0 {
+		t.Fatalf("no devices were eligible for testing (%d skipped as not accepting users): %s",
+			len(stats.Skipped), strings.Join(stats.Skipped, ", "))
+	}
+
 	failedDevices := 0
 	var failedDeviceCodes []string
 	for _, result := range stats.DeviceResults {

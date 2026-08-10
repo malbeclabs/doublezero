@@ -1673,7 +1673,8 @@ struct FeedSelection {
 }
 
 /// A feed's code, or its pubkey if the feed account cannot be found. Shared by every place that
-/// renders a feed for the operator, so the lookup-and-fallback logic exists in exactly one place.
+/// needs a feed's display name — operator output and the selection sort order alike — so the
+/// lookup-and-fallback logic exists in exactly one place.
 fn feed_code_or_pubkey(feed_pk: &Pubkey, feeds: &HashMap<Pubkey, Feed>) -> String {
     feeds
         .get(feed_pk)

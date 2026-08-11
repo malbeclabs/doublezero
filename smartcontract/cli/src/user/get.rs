@@ -1,5 +1,5 @@
 use crate::{
-    doublezerocommand::CliCommand, feed::resolve::get_feeds, helpers::slot_to_datetime,
+    doublezerocommand::CliCommand, feed::resolve::resolve_feed_labels, helpers::slot_to_datetime,
     validators::validate_pubkey,
 };
 use clap::Args;
@@ -100,7 +100,7 @@ impl GetUserCliCommand {
         let tenants = client.list_tenant(ListTenantCommand {})?;
         let devices = client.list_device(ListDeviceCommand {})?;
 
-        let feeds = get_feeds(client, &user.feed_pks)?;
+        let feeds = resolve_feed_labels(client, &user.feed_pks)?;
 
         let tenant_str = if user.tenant_pk == Pubkey::default() {
             String::new()
@@ -125,10 +125,12 @@ impl GetUserCliCommand {
             tunnel_endpoint: user.tunnel_endpoint.to_string(),
             validator_pubkey: user.validator_pubkey.to_string(),
             accesspass: accesspass_str.unwrap_or_default(),
+            // `code:metro`, as `access-pass get` names the same feeds: a feed is keyed by
+            // (code, exchange), so the code on its own does not say which feed is held.
             feeds: user
                 .feed_pks
                 .iter()
-                .map(|pk| feeds.get(pk).map_or(pk.to_string(), |f| f.code.clone()))
+                .map(|pk| feeds.label(pk))
                 .collect::<Vec<_>>()
                 .join(", "),
             publishers: user
@@ -194,7 +196,8 @@ mod tests {
             tenant::list::ListTenantCommand,
             user::{delete::DeleteUserCommand, get::GetUserCommand},
         },
-        AccountType, Device, Feed, MulticastGroup, User, UserCYOA, UserStatus, UserType,
+        AccountType, Device, Exchange, ExchangeStatus, Feed, MulticastGroup, User, UserCYOA,
+        UserStatus, UserType,
     };
     use doublezero_serviceability::{
         pda::{get_accesspass_pda, get_user_old_pda},
@@ -422,6 +425,7 @@ mod tests {
 
         let (pda_pubkey, _bump_seed) = get_user_old_pda(&client.get_program_id(), 1);
         let feed_key = Pubkey::new_unique();
+        let exchange_key = Pubkey::new_unique();
         let group_pubkey = Pubkey::new_unique();
 
         let user = User {
@@ -470,8 +474,25 @@ mod tests {
             bump_seed: 0,
             code: "qa-payments".to_string(),
             name: "QA Payments".to_string(),
-            exchange: Pubkey::new_unique(),
+            exchange: exchange_key,
             groups: vec![group_pubkey],
+        };
+
+        let exchange = Exchange {
+            account_type: AccountType::Exchange,
+            owner: Pubkey::new_unique(),
+            index: 1,
+            bump_seed: 255,
+            lat: 52.37,
+            lng: 4.89,
+            bgp_community: 10001,
+            unused: 0,
+            status: ExchangeStatus::Activated,
+            code: "xams".to_string(),
+            name: "Amsterdam".to_string(),
+            reference_count: 0,
+            device1_pk: Pubkey::default(),
+            device2_pk: Pubkey::default(),
         };
 
         client
@@ -495,12 +516,23 @@ mod tests {
             .expect_list_device()
             .with(predicate::eq(ListDeviceCommand {}))
             .returning(|_| Ok(std::collections::HashMap::new()));
+        // The feeds the user holds, then the metros those feeds serve; mockall tells the two reads
+        // apart by the keys asked for.
         client
             .expect_get_multiple_accounts()
             .with(predicate::eq(vec![feed_key]))
             .returning(move |_| {
                 Ok(vec![Some(Account {
                     data: borsh::to_vec(&feed).unwrap(),
+                    ..Account::default()
+                })])
+            });
+        client
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![exchange_key]))
+            .returning(move |_| {
+                Ok(vec![Some(Account {
+                    data: borsh::to_vec(&exchange).unwrap(),
                     ..Account::default()
                 })])
             });
@@ -528,7 +560,8 @@ mod tests {
                 .trim()
                 .to_string()
         };
-        assert_eq!(row("feeds"), "qa-payments");
+        // The same `code:metro` form `access-pass get` uses for the seat this user holds.
+        assert_eq!(row("feeds"), "qa-payments:xams");
         assert_eq!(row("subscribers"), "qa-payments-group");
     }
 

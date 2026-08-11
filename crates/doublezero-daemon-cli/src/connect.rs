@@ -19,7 +19,7 @@ use doublezero_sdk::{
         },
         user::{create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand},
     },
-    Device, Feed, User, UserCYOA, UserStatus, UserType,
+    Device, Exchange, Feed, User, UserCYOA, UserStatus, UserType,
 };
 use doublezero_serviceability::{
     processors::multicastgroup::subscribe_feed::MAX_USER_FEEDS,
@@ -565,6 +565,10 @@ impl Connect {
     ) -> eyre::Result<bool> {
         let feeds = ledger.list_feed()?;
         let users = ledger.list_user()?;
+        // Cosmetic only, for the metro names in the messages below: a device code
+        // conventionally leads with the metro, but that is a naming convention, not data, so a
+        // failure here must degrade to bare codes, never fail the connect.
+        let exchanges = ledger.list_exchange().unwrap_or_default();
         let mcast_user = users
             .iter()
             .find(|(_, u)| u.client_ip == client_ip && u.user_type == UserType::Multicast)
@@ -679,17 +683,20 @@ impl Connect {
                         }
                         devices.retain(|_, d| candidate_exchanges.contains(&d.exchange_pk));
                         if devices.is_empty() {
-                            let candidate_codes: Vec<String> =
-                                candidate_feed_pks.iter().map(code_of).collect();
+                            let candidate_descriptions: Vec<String> = candidate_feed_pks
+                                .iter()
+                                .map(|pk| feed_metro_description(pk, &feeds, &exchanges))
+                                .collect();
+                            let destination = destination_clause(&candidate_exchanges, &exchanges);
                             if full.is_empty() {
                                 eyre::bail!(
-                                    "no eligible device serves the metro of purchased feed(s) with a free seat: {}. Connect from a machine in that metro.",
-                                    candidate_codes.join(", ")
+                                    "no eligible device serves the metro of purchased feed(s) with a free seat: {}. Connect from a machine in {destination}.",
+                                    candidate_descriptions.join(", ")
                                 );
                             }
                             eyre::bail!(
-                                "no eligible device serves the metro of purchased feed(s) with a free seat: {}; also already at capacity: {}. Connect from a machine in that metro.",
-                                candidate_codes.join(", "),
+                                "no eligible device serves the metro of purchased feed(s) with a free seat: {}; also already at capacity: {}. Connect from a machine in {destination}.",
+                                candidate_descriptions.join(", "),
                                 describe_full(&full)
                             );
                         }
@@ -740,10 +747,18 @@ impl Connect {
                                     if chosen.avg_latency_ns - excluded_latency.avg_latency_ns
                                         > LOWER_LATENCY_NOTICE_THRESHOLD_NS
                                     {
+                                        let device_label = match metro_name(
+                                            &excluded_device.exchange_pk,
+                                            &exchanges,
+                                        ) {
+                                            Some(metro) => {
+                                                format!("{} in {metro}", excluded_device.code)
+                                            }
+                                            None => excluded_device.code.clone(),
+                                        };
                                         writeln!(
                                             out,
-                                            "ℹ️  Lower latency is available from {} ({} vs {})",
-                                            excluded_device.code,
+                                            "ℹ️  Lower latency is available from {device_label} ({} vs {})",
                                             format_latency_ms(excluded_latency.avg_latency_ns),
                                             format_latency_ms(chosen.avg_latency_ns),
                                         )?;
@@ -826,16 +841,16 @@ impl Connect {
                 let described: Vec<String> = selection
                     .other_metro
                     .iter()
-                    .map(|pk| {
-                        format!(
-                            "{} does not serve the metro of device {}",
-                            code_of(pk),
-                            device.code
-                        )
-                    })
+                    .map(|pk| feed_metro_description(pk, &feeds, &exchanges))
                     .collect();
+                let other_metro_exchanges: Vec<Pubkey> = selection
+                    .other_metro
+                    .iter()
+                    .filter_map(|pk| feeds.get(pk).map(|feed| feed.exchange))
+                    .collect();
+                let destination = destination_clause(&other_metro_exchanges, &exchanges);
                 eyre::bail!(
-                    "no purchased feed serves the metro of device {}: {}. Connect from a machine in that metro.",
+                    "no purchased feed serves the metro of device {}: {}. Connect from a machine in {destination}.",
                     device.code,
                     described.join(", ")
                 );
@@ -1812,6 +1827,57 @@ fn feed_code_or_pubkey(feed_pk: &Pubkey, feeds: &HashMap<Pubkey, Feed>) -> Strin
         .unwrap_or_else(|| feed_pk.to_string())
 }
 
+/// A human-readable metro name for `exchange_pk`: the exchange's `name`, falling back to its
+/// `code` when the name is empty, or `None` when the exchange cannot be resolved at all. Every
+/// caller is cosmetic — a device code conventionally leads with the metro, but that is a naming
+/// convention, not data, and it does not read as a place to a new customer — so a resolve
+/// failure must degrade to today's wording, never fail the connect.
+fn metro_name(exchange_pk: &Pubkey, exchanges: &HashMap<Pubkey, Exchange>) -> Option<String> {
+    exchanges.get(exchange_pk).map(|exchange| {
+        if exchange.name.is_empty() {
+            exchange.code.clone()
+        } else {
+            exchange.name.clone()
+        }
+    })
+}
+
+/// "{feed code} is served from {metro name}", or just the feed code when either the feed or its
+/// exchange cannot be resolved. See `metro_name` for why a resolve failure degrades quietly.
+fn feed_metro_description(
+    feed_pk: &Pubkey,
+    feeds: &HashMap<Pubkey, Feed>,
+    exchanges: &HashMap<Pubkey, Exchange>,
+) -> String {
+    let code = feed_code_or_pubkey(feed_pk, feeds);
+    match feeds
+        .get(feed_pk)
+        .and_then(|feed| metro_name(&feed.exchange, exchanges))
+    {
+        Some(metro) => format!("{code} is served from {metro}"),
+        None => code,
+    }
+}
+
+/// A closing clause naming the metro(s) resolved for `exchange_pks` — "Amsterdam", or "Amsterdam
+/// or Frankfurt" for several — falling back to the generic "that metro" when none resolve. Shared
+/// by both failure messages that point the operator toward a metro.
+fn destination_clause(exchange_pks: &[Pubkey], exchanges: &HashMap<Pubkey, Exchange>) -> String {
+    let mut names: Vec<String> = Vec::new();
+    for exchange_pk in exchange_pks {
+        if let Some(name) = metro_name(exchange_pk, exchanges) {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+    }
+    match names.len() {
+        0 => "that metro".to_string(),
+        1 => names.remove(0),
+        _ => names.join(" or "),
+    }
+}
+
 /// Feed seats ordered by their feed's code (or its pubkey if unresolved) — the ordering
 /// `select_purchased_feeds` and the pre-device capacity check share, so a feed's position in an
 /// error message never depends on account iteration order.
@@ -1994,6 +2060,7 @@ mod tests {
         accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat},
         accounttype::AccountType,
         device::{Device, DeviceStatus, DeviceType},
+        exchange::{Exchange, ExchangeStatus},
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
     };
@@ -2209,6 +2276,7 @@ mod tests {
         pub ledger: MockLedgerClient,
         pub daemon: MockDaemonClient,
         pub devices: Arc<Mutex<HashMap<Pubkey, Device>>>,
+        pub exchanges: Arc<Mutex<HashMap<Pubkey, Exchange>>>,
         pub users: Arc<Mutex<HashMap<Pubkey, User>>>,
         pub latencies: Arc<Mutex<Vec<LatencyRecord>>>,
         pub mcast_groups: Arc<Mutex<HashMap<Pubkey, MulticastGroup>>>,
@@ -2302,6 +2370,7 @@ mod tests {
                 ledger: MockLedgerClient::new(),
                 daemon: MockDaemonClient::new(),
                 devices: Arc::new(Mutex::new(HashMap::new())),
+                exchanges: Arc::new(Mutex::new(HashMap::new())),
                 users: Arc::new(Mutex::new(HashMap::new())),
                 latencies: Arc::new(Mutex::new(vec![])),
                 mcast_groups: Arc::new(Mutex::new(HashMap::new())),
@@ -2390,6 +2459,12 @@ mod tests {
                 .ledger
                 .expect_list_device()
                 .returning_st(move || Ok(devices.lock().unwrap().clone()));
+
+            let exchanges = fixture.exchanges.clone();
+            fixture
+                .ledger
+                .expect_list_exchange()
+                .returning_st(move || Ok(exchanges.lock().unwrap().clone()));
 
             let mcast_groups = fixture.mcast_groups.clone();
             fixture
@@ -2485,6 +2560,38 @@ mod tests {
                 avg_latency_ns: latency_ns,
                 reachable,
             });
+            // A real, resolvable exchange per device, cycling through actual metro names so
+            // tests can assert on them — a device code conventionally leads with the metro, but
+            // that is a naming convention, not the data the display code under test resolves.
+            const TEST_METRO_NAMES: [&str; 6] = [
+                "Amsterdam",
+                "Frankfurt",
+                "Singapore",
+                "New York",
+                "London",
+                "Tokyo",
+            ];
+            let exchange_pk = Pubkey::new_unique();
+            self.exchanges.lock().unwrap().insert(
+                exchange_pk,
+                Exchange {
+                    account_type: AccountType::Exchange,
+                    owner: Pubkey::new_unique(),
+                    index: device_number as u128,
+                    bump_seed: 1,
+                    lat: 0.0,
+                    lng: 0.0,
+                    bgp_community: 0,
+                    unused: 0,
+                    status: ExchangeStatus::Activated,
+                    code: format!("x{device_number}"),
+                    name: TEST_METRO_NAMES[(device_number - 1) % TEST_METRO_NAMES.len()]
+                        .to_string(),
+                    reference_count: 0,
+                    device1_pk: Pubkey::default(),
+                    device2_pk: Pubkey::default(),
+                },
+            );
             let device = Device {
                 account_type: AccountType::Device,
                 owner: Pubkey::new_unique(),
@@ -2493,7 +2600,7 @@ mod tests {
                 reference_count: 0,
                 contributor_pk: Pubkey::new_unique(),
                 location_pk: Pubkey::new_unique(),
-                exchange_pk: Pubkey::new_unique(),
+                exchange_pk,
                 device_type,
                 public_ip: device_ip.parse().unwrap(),
                 status: DeviceStatus::Activated,
@@ -4939,6 +5046,50 @@ mod tests {
 
             let (result, output) = run(&fixture, bare_multicast()).await;
             assert!(result.is_ok(), "{:?}\n{output}", result.err());
+            let fast_metro = fixture
+                .exchanges
+                .lock()
+                .unwrap()
+                .get(&fast_device.exchange_pk)
+                .unwrap()
+                .name
+                .clone();
+            assert!(
+                output.lines().any(|line| line
+                    == format!(
+                    "ℹ️  Lower latency is available from {} in {fast_metro} (5.00ms vs 20.00ms)",
+                    fast_device.code
+                )),
+                "{output}"
+            );
+        });
+    }
+
+    /// A metro name is cosmetic: when the excluded device's exchange cannot be resolved (e.g.
+    /// deleted after the device was created), the notice still prints, just with a bare device
+    /// code, and the connect still succeeds — a resolve failure here must never fail a connect.
+    #[test]
+    fn test_connect_command_bare_omits_the_metro_name_when_the_exchange_is_unresolvable() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (_fast_pk, fast_device) = fixture.add_device(DeviceType::Hybrid, 5_000_000, true);
+            let (far_pk, far_device) = fixture.add_device(DeviceType::Hybrid, 20_000_000, true);
+            fixture
+                .exchanges
+                .lock()
+                .unwrap()
+                .remove(&fast_device.exchange_pk);
+            let kalshi_pk =
+                fixture.add_feed("kalshi", far_device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds_with_caps(&[(kalshi_pk, 1, 0)]);
+
+            let user = fixture.create_user(UserType::Multicast, far_pk, "1.2.3.4");
+            let user_pk = Pubkey::new_unique();
+            fixture.expect_create_user_with_tenant(user_pk, &user, None);
+            fixture.expect_subscribe_feed(user_pk, vec![kalshi_pk]);
+
+            let (result, output) = run(&fixture, bare_multicast()).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
             assert!(
                 output.lines().any(|line| line
                     == format!(
@@ -4978,9 +5129,13 @@ mod tests {
     fn test_connect_command_bare_fails_when_existing_users_device_metro_has_no_purchased_feed() {
         block_on(async {
             let mut fixture = TestFixture::new();
-            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
-            let away_exchange = Pubkey::new_unique();
-            let kalshi_pk = fixture.add_feed("kalshi", away_exchange, vec![Pubkey::new_unique()]);
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true); // Amsterdam
+            let (_away_pk, away_device) = fixture.add_device(DeviceType::Hybrid, 200, true); // Frankfurt
+            let kalshi_pk = fixture.add_feed(
+                "kalshi",
+                away_device.exchange_pk,
+                vec![Pubkey::new_unique()],
+            );
             fixture.seat_feeds_with_caps(&[(kalshi_pk, 1, 0)]);
 
             let user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
@@ -4990,8 +5145,8 @@ mod tests {
             assert_eq!(
                 result.unwrap_err().to_string(),
                 format!(
-                    "no purchased feed serves the metro of device {}: kalshi does not serve the metro of device {}. Connect from a machine in that metro.",
-                    device.code, device.code
+                    "no purchased feed serves the metro of device {}: kalshi is served from Frankfurt. Connect from a machine in Frankfurt.",
+                    device.code
                 ),
                 "{output}"
             );

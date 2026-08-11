@@ -17,7 +17,7 @@ use doublezero_sdk::{
         },
         user::{create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand},
     },
-    Device, Feed, GlobalState, MulticastGroup, Tenant, User,
+    Device, Exchange, Feed, GlobalState, MulticastGroup, Tenant, User,
 };
 use doublezero_serviceability::state::accesspass::AccessPass;
 use mockall::automock;
@@ -56,6 +56,10 @@ pub trait LedgerClient: Send + Sync {
     /// List all devices known to the ledger, keyed by pubkey. Used by
     /// `latency` and `connect` to map latency records to onchain device state.
     fn list_device(&self) -> eyre::Result<HashMap<Pubkey, Device>>;
+
+    /// List all exchanges known to the ledger, keyed by pubkey. Used by `connect` to resolve a
+    /// device's `exchange_pk` to a human-readable metro name for operator-facing messages.
+    fn list_exchange(&self) -> eyre::Result<HashMap<Pubkey, Exchange>>;
 
     /// The current DZ ledger epoch (used for AccessPass expiry enforcement).
     fn get_epoch(&self) -> eyre::Result<u64>;

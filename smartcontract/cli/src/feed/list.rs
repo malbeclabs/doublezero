@@ -195,7 +195,7 @@ mod tests {
             let mut feeds = HashMap::new();
             feeds.insert(Pubkey::new_unique(), feed("qa-payments", xams_pk));
             feeds.insert(Pubkey::new_unique(), feed("qa-payments", xfra_pk));
-            feeds.insert(Pubkey::new_unique(), feed("shreds-lax", xams_pk));
+            feeds.insert(Pubkey::new_unique(), feed("shreds", xams_pk));
             Ok(feeds)
         });
         client
@@ -271,7 +271,7 @@ mod tests {
         let rows = rows.as_array().unwrap();
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0]["code"], "qa-payments");
-        assert_eq!(rows[1]["code"], "shreds-lax");
+        assert_eq!(rows[1]["code"], "shreds");
         assert_eq!(rows[0]["exchange"], xams_pk.to_string());
         assert_eq!(rows[1]["exchange"], xams_pk.to_string());
     }

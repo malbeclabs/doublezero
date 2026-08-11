@@ -77,6 +77,14 @@ impl<C: CliCommand + Sync> doublezero_daemon_cli::LedgerClient for LedgerAdapter
             .list_device(doublezero_sdk::commands::device::list::ListDeviceCommand)
     }
 
+    fn list_exchange(
+        &self,
+    ) -> eyre::Result<std::collections::HashMap<solana_sdk::pubkey::Pubkey, doublezero_sdk::Exchange>>
+    {
+        self.client
+            .list_exchange(doublezero_sdk::commands::exchange::list::ListExchangeCommand)
+    }
+
     fn get_epoch(&self) -> eyre::Result<u64> {
         self.client.get_epoch()
     }

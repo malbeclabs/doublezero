@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.35.0](https://github.com/malbeclabs/doublezero/compare/client/v0.34.0...client/v0.35.0) - 2026-08-11
+
+### Breaking
+
 - CLI
   - `doublezero feed get` is removed, and `doublezero feed list` gains `--code` and `--exchange` filters in its place. `doublezero feed list --code shreds --exchange xlax` returns the feed that `doublezero feed get --pubkey <pubkey> --exchange xlax` returned, plus the `group_codes` column the list view already carried. A code that matches no feed now prints an empty table instead of failing. The `exchange` column now carries the metro code, such as `xlax`, in place of the exchange pubkey, in both the table and the JSON. (#4171, #4172)
   - `doublezero feed update` and `doublezero feed delete` now name the feed as `--pubkey <PUBKEY>`, or as `--code <CODE>` with `--exchange <EXCHANGE>`. `--pubkey shreds-lax` used to accept a code and resolve it by reading every feed, which failed as soon as a second metro carried that code. Write `doublezero feed update --code shreds-lax --exchange xlax --name "Shreds LAX v2"` instead. (#4172)

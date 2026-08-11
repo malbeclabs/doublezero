@@ -1,6 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
-    feed::guard::unsubscribe_orphans,
+    feed::{guard::unsubscribe_orphans, resolve::pubkey_or_code},
     helpers::{parse_or_resolve_exchange, resolve_multicastgroup_pk},
     validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
 };
@@ -52,13 +52,8 @@ impl UpdateFeedCliCommand {
             .as_deref()
             .map(|e| parse_or_resolve_exchange(client, e))
             .transpose()?;
-        let pubkey_or_code = match (self.pubkey, self.code) {
-            (Some(pubkey), None) => pubkey,
-            (None, Some(code)) => code,
-            _ => eyre::bail!("pass --pubkey <PUBKEY>, or --code <CODE> with --exchange <EXCHANGE>"),
-        };
         let (pubkey, feed) = client.get_feed(GetFeedCommand {
-            pubkey_or_code,
+            pubkey_or_code: pubkey_or_code(self.pubkey, self.code)?,
             exchange,
         })?;
 

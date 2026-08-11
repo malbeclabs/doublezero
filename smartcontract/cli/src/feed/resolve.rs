@@ -4,6 +4,14 @@ use doublezero_serviceability::state::accountdata::AccountData;
 use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 
+pub(crate) fn pubkey_or_code(pubkey: Option<String>, code: Option<String>) -> eyre::Result<String> {
+    match (pubkey, code) {
+        (Some(pubkey), None) => Ok(pubkey),
+        (None, Some(code)) => Ok(code),
+        _ => eyre::bail!("pass --pubkey <PUBKEY>, or --code <CODE> with --exchange <EXCHANGE>"),
+    }
+}
+
 /// Read the named feeds in one `getMultipleAccounts` call. A pass names at most a handful of feeds,
 /// so this moves far fewer bytes than a scan of every feed account. A key that does not resolve to
 /// a feed is left out of the map, and the caller falls back to printing the key.

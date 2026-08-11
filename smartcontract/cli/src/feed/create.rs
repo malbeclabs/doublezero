@@ -1,11 +1,12 @@
 use crate::{
     doublezerocommand::CliCommand,
-    helpers::{parse_or_resolve_exchange, parse_or_resolve_multicastgroup},
+    helpers::{resolve_exchange_pk, resolve_multicastgroup_pk},
     validators::{validate_code, validate_pubkey_or_code},
 };
 use clap::Args;
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::feed::create::CreateFeedCommand;
+use eyre::WrapErr;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -36,11 +37,12 @@ impl CreateFeedCliCommand {
             RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
         );
 
-        let exchange = parse_or_resolve_exchange(client, &self.exchange)?;
+        let exchange = resolve_exchange_pk(client, &self.exchange)
+            .wrap_err_with(|| format!("Exchange not found: {}", self.exchange))?;
         let groups = self
             .groups
             .iter()
-            .map(|g| parse_or_resolve_multicastgroup(client, g))
+            .map(|g| resolve_multicastgroup_pk(client, g))
             .collect::<eyre::Result<Vec<_>>>()?;
 
         let (signature, _pubkey) = client.create_feed(CreateFeedCommand {
@@ -109,13 +111,30 @@ mod tests {
         client.expect_check_requirements().returning(|_| Ok(()));
 
         let exchange_pk = Pubkey::from_str_const("GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah");
-        // A pubkey with a leading zero byte renders to fewer than 43 base58 chars; it must still
-        // pass through as a pubkey rather than fall into the code-lookup path.
         let group_pk = Pubkey::from_str_const("1119DWteoLSdjvrT6g6L8C2PfDD2faiTQUpsjY2RiF");
         let feed_pk = Pubkey::new_unique();
         let signature = Signature::new_unique();
 
-        // Pubkey inputs are used as-is: no get_exchange/get_multicastgroup lookups.
+        // A pubkey input is read back too, so a feed cannot name a metro or a group that the ledger
+        // does not carry.
+        let exchange = test_exchange("xchi");
+        client
+            .expect_get_exchange()
+            .with(predicate::eq(GetExchangeCommand {
+                pubkey_or_code: exchange_pk.to_string(),
+            }))
+            .times(1)
+            .returning(move |_| Ok((exchange_pk, exchange.clone())));
+
+        let mgroup = test_multicastgroup("mg01");
+        client
+            .expect_get_multicastgroup()
+            .with(predicate::eq(GetMulticastGroupCommand {
+                pubkey_or_code: group_pk.to_string(),
+            }))
+            .times(1)
+            .returning(move |_| Ok((group_pk, mgroup.clone())));
+
         client
             .expect_create_feed()
             .with(predicate::eq(CreateFeedCommand {
@@ -207,8 +226,11 @@ mod tests {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
 
-        // The exchange is a pubkey, so only the group code triggers a lookup.
         let exchange_pk = Pubkey::from_str_const("GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah");
+        let exchange = test_exchange("xchi");
+        client
+            .expect_get_exchange()
+            .returning(move |_| Ok((exchange_pk, exchange.clone())));
         client
             .expect_get_multicastgroup()
             .returning(|_| Err(eyre::eyre!("MulticastGroup with code nope not found")));

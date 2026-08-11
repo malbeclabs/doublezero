@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand};
 
-use crate::feed::{create::*, delete::*, get::*, list::*, update::*};
+use crate::feed::{create::*, delete::*, list::*, update::*};
 
 #[derive(Args, Debug)]
 pub struct FeedCliCommand {
@@ -16,12 +16,9 @@ pub enum FeedCommands {
     /// Update a feed's name or group set
     #[clap()]
     Update(UpdateFeedCliCommand),
-    /// List all feeds
+    /// List feeds, optionally narrowed to one code or one metro
     #[clap()]
     List(ListFeedCliCommand),
-    /// Get details for a specific feed
-    #[clap()]
-    Get(GetFeedCliCommand),
     /// Delete a feed (must have no references)
     #[clap()]
     Delete(DeleteFeedCliCommand),

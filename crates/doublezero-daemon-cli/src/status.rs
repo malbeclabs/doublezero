@@ -140,7 +140,7 @@ impl Status {
             } else if svc.lowest_latency_device == current_device {
                 format!("✅ {}", svc.lowest_latency_device)
             } else if current_device != "N/A" {
-                format!("⚠️ {}", svc.lowest_latency_device)
+                format!("⚠️  {}", svc.lowest_latency_device)
             } else {
                 svc.lowest_latency_device.clone()
             };
@@ -752,7 +752,7 @@ mod tests {
                 .build_status(&daemon, &ledger)
                 .await
                 .unwrap();
-            assert_eq!(result[0].lowest_latency_device, "⚠️ device2");
+            assert_eq!(result[0].lowest_latency_device, "⚠️  device2");
         });
     }
 

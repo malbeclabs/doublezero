@@ -1,20 +1,24 @@
 use crate::{
     doublezerocommand::CliCommand,
-    feed::guard::unsubscribe_orphans,
-    helpers::{parse_or_resolve_exchange, parse_or_resolve_multicastgroup},
-    validators::validate_pubkey_or_code,
+    feed::{guard::unsubscribe_orphans, resolve::pubkey_or_code},
+    helpers::{parse_or_resolve_exchange, resolve_multicastgroup_pk},
+    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
 };
-use clap::Args;
+use clap::{ArgGroup, Args};
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::feed::{get::GetFeedCommand, update::UpdateFeedCommand};
 use std::io::Write;
 
 #[derive(Args, Debug)]
+#[clap(group(ArgGroup::new("target").args(&["pubkey", "code"]).required(true)))]
 pub struct UpdateFeedCliCommand {
-    /// Feed pubkey or code to update
-    #[arg(long, value_parser = validate_pubkey_or_code)]
-    pub pubkey: String,
-    /// Metro (exchange) pubkey or code to disambiguate a code that exists in multiple metros
+    /// Feed pubkey to update
+    #[arg(long, value_parser = validate_pubkey, conflicts_with = "exchange")]
+    pub pubkey: Option<String>,
+    /// Feed code to update, which names one feed only together with its metro
+    #[arg(long, value_parser = validate_code, requires = "exchange")]
+    pub code: Option<String>,
+    /// Metro (exchange) pubkey or code carrying the feed named by --code
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub exchange: Option<String>,
     /// Updated name for the feed
@@ -49,7 +53,7 @@ impl UpdateFeedCliCommand {
             .map(|e| parse_or_resolve_exchange(client, e))
             .transpose()?;
         let (pubkey, feed) = client.get_feed(GetFeedCommand {
-            pubkey_or_code: self.pubkey,
+            pubkey_or_code: pubkey_or_code(self.pubkey, self.code)?,
             exchange,
         })?;
 
@@ -60,7 +64,7 @@ impl UpdateFeedCliCommand {
             Some(
                 self.groups
                     .iter()
-                    .map(|g| parse_or_resolve_multicastgroup(client, g))
+                    .map(|g| resolve_multicastgroup_pk(client, g))
                     .collect::<eyre::Result<Vec<_>>>()?,
             )
         };
@@ -123,6 +127,7 @@ mod tests {
         let f = GuardFixture::new(2);
         let (g1, g2) = (f.groups[0], f.groups[1]);
         f.expect_get_feed(&mut client, vec![g1, g2]);
+        f.expect_get_groups(&mut client);
         f.expect_scan(&mut client, vec![g2]);
         client.expect_update_feed().times(0);
         client.expect_update_multicastgroup_roles().times(0);
@@ -131,7 +136,8 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                pubkey: f.feed_pk.to_string(),
+                pubkey: Some(f.feed_pk.to_string()),
+                code: None,
                 exchange: None,
                 name: None,
                 groups: vec![g1.to_string()],
@@ -160,6 +166,7 @@ mod tests {
         let (g1, g2) = (f.groups[0], f.groups[1]);
         let signature = Signature::new_unique();
         f.expect_get_feed(&mut client, vec![g1, g2]);
+        f.expect_get_groups(&mut client);
         f.expect_scan(&mut client, vec![g2]);
         // The mock does not mutate state, so the post-unsubscribe re-scan needs its own snapshot
         // with the membership gone.
@@ -191,7 +198,8 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                pubkey: f.feed_pk.to_string(),
+                pubkey: Some(f.feed_pk.to_string()),
+                code: None,
                 exchange: None,
                 name: None,
                 groups: vec![g1.to_string()],
@@ -216,6 +224,7 @@ mod tests {
         let (g1, g2) = (f.groups[0], f.groups[1]);
         let signature = Signature::new_unique();
         f.expect_get_feed(&mut client, vec![g1]);
+        f.expect_get_groups(&mut client);
         // The scanned feed carries [g1, g2] (the fixture's full set); the new set is a superset,
         // so nothing is dropped even though the user subscribes to g2.
         f.expect_scan(&mut client, vec![g2]);
@@ -234,7 +243,8 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                pubkey: f.feed_pk.to_string(),
+                pubkey: Some(f.feed_pk.to_string()),
+                code: None,
                 exchange: None,
                 name: None,
                 groups: vec![g1.to_string(), g2.to_string()],
@@ -253,6 +263,7 @@ mod tests {
         let f = GuardFixture::new(2);
         let (g1, g2) = (f.groups[0], f.groups[1]);
         f.expect_get_feed(&mut client, vec![g1, g2]);
+        f.expect_get_groups(&mut client);
         // Every scan sees the same still-subscribed user, as if a new subscription raced each
         // unsubscribe pass. Deliberately not `expect_scan` (capped per call): uncapped scans let
         // the guard run until its own round limit trips, which the removal count below then pins
@@ -290,7 +301,8 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                pubkey: f.feed_pk.to_string(),
+                pubkey: Some(f.feed_pk.to_string()),
+                code: None,
                 exchange: None,
                 name: None,
                 groups: vec![g1.to_string()],
@@ -316,6 +328,7 @@ mod tests {
         let f = GuardFixture::new(2);
         let (g1, g2) = (f.groups[0], f.groups[1]);
         f.expect_get_feed(&mut client, vec![g1, g2]);
+        f.expect_get_groups(&mut client);
 
         // One scan: the user publishes and subscribes g2; the sub allowlist still authorizes the
         // subscriber role, so only the publisher role is removable.
@@ -356,7 +369,8 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                pubkey: f.feed_pk.to_string(),
+                pubkey: Some(f.feed_pk.to_string()),
+                code: None,
                 exchange: None,
                 name: None,
                 groups: vec![g1.to_string()],
@@ -476,7 +490,8 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                pubkey: "feed01".to_string(),
+                pubkey: None,
+                code: Some("feed01".to_string()),
                 exchange: Some("xchi".to_string()),
                 name: Some("Feed v2".to_string()),
                 groups: vec!["mg01".to_string()],

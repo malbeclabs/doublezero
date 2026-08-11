@@ -29,7 +29,7 @@ use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
 
 use crate::{
-    client::{DaemonClient, StatusResponse},
+    client::{DaemonClient, LatencyRecord, StatusResponse},
     helpers::{init_spinner, resolve_client_ip},
     latency::{best_latency, retrieve_latencies, select_tunnel_endpoint},
     ledger::LedgerClient,
@@ -617,27 +617,9 @@ impl Connect {
                 (FeedJoinUser::Existing(*pk), device, user.feed_pks.clone())
             }
             None => {
-                // Only devices in a metro a purchased feed with headroom actually serves can
-                // ever admit this join — check_feed_metro_coverage enforces that onchain, so
-                // latency alone must not land the customer somewhere no purchased feed can
-                // follow. Seats without headroom are excluded here (not just filtered later):
-                // otherwise latency could still land the customer in a metro where every
-                // purchased feed there is full while another metro had a free seat.
-                let mut candidate_exchanges: Vec<Pubkey> = Vec::new();
-                for seat in accesspass.feed_seats() {
-                    if seat.current_users >= seat.max_users {
-                        continue;
-                    }
-                    if let Some(feed) = feeds.get(&seat.feed_key) {
-                        if !candidate_exchanges.contains(&feed.exchange) {
-                            candidate_exchanges.push(feed.exchange);
-                        }
-                    }
-                }
-
                 let mut devices = ledger.list_device()?;
                 let mut excluded_by_metro: HashMap<Pubkey, Device> = HashMap::new();
-                let mut latencies_before_metro_filter = None;
+                let mut devices_before_metro_filter = None;
                 if self.device.is_none() {
                     devices.retain(|_, d| {
                         d.is_device_eligible_for_provisioning()
@@ -645,17 +627,33 @@ impl Connect {
                                 .is_none()
                     });
 
+                    // Only devices in a metro a purchased feed with headroom actually serves can
+                    // ever admit this join — check_feed_metro_coverage enforces that onchain, so
+                    // latency alone must not land the customer somewhere no purchased feed can
+                    // follow. Full seats are excluded from `candidate_exchanges` here (not just
+                    // filtered later): otherwise latency could still land the customer in a metro
+                    // where every purchased feed there is full while another metro had a free
+                    // seat. Built only here, under this branch: unread when `--device` is set.
+                    let mut candidate_exchanges: Vec<Pubkey> = Vec::new();
+                    let mut candidate_feed_pks: Vec<Pubkey> = Vec::new();
+                    let mut full: Vec<Pubkey> = Vec::new();
+                    for seat in feed_seats_by_code(accesspass.feed_seats(), &feeds) {
+                        let Some(feed) = feeds.get(&seat.feed_key) else {
+                            continue;
+                        };
+                        if seat.current_users >= seat.max_users {
+                            full.push(seat.feed_key);
+                            continue;
+                        }
+                        candidate_feed_pks.push(seat.feed_key);
+                        if !candidate_exchanges.contains(&feed.exchange) {
+                            candidate_exchanges.push(feed.exchange);
+                        }
+                    }
+
                     if candidate_exchanges.is_empty() {
                         // No purchased feed has headroom, so no device could ever help; fail
                         // now with the same wording the post-device path below would give.
-                        let full: Vec<Pubkey> = feed_seats_by_code(accesspass.feed_seats(), &feeds)
-                            .into_iter()
-                            .filter(|seat| {
-                                feeds.contains_key(&seat.feed_key)
-                                    && seat.current_users >= seat.max_users
-                            })
-                            .map(|seat| seat.feed_key)
-                            .collect();
                         if !full.is_empty() {
                             eyre::bail!(
                                 "every purchased feed is already at capacity: {}. Free a seat by disconnecting another machine, or buy more.",
@@ -663,32 +661,38 @@ impl Connect {
                             );
                         }
                         eyre::bail!(
-                            "the access pass carries {} purchased feed(s) but none could be joined: {} over this machine's feed limit of {MAX_USER_FEEDS}, {} feed account(s) not found",
+                            "the access pass carries {} purchased feed(s) but none could be joined: 0 over this machine's feed limit of {MAX_USER_FEEDS}, {} feed account(s) not found",
                             accesspass.feed_seats().len(),
-                            0,
-                            accesspass.feed_seats().len() - full.len()
+                            accesspass.feed_seats().len()
                         );
                     }
 
-                    // Fetch latency data over every eligible device now, before narrowing to
-                    // the feeds' metro, so the notice below still has data for devices about
-                    // to be excluded. Best-effort: this is advisory only, so a fetch failure
-                    // must not fail the connect.
-                    latencies_before_metro_filter =
-                        retrieve_latencies(daemon, &devices, true, Some(spinner))
-                            .await
-                            .ok();
-
-                    for (pk, candidate_device) in devices.iter() {
-                        if !candidate_exchanges.contains(&candidate_device.exchange_pk) {
-                            excluded_by_metro.insert(*pk, candidate_device.clone());
+                    // Zero eligible devices is a device-availability problem unrelated to metro
+                    // coverage; let find_or_create_device's own error (via best_latency) surface
+                    // below rather than masking it behind a metro-specific message.
+                    if !devices.is_empty() {
+                        devices_before_metro_filter = Some(devices.clone());
+                        for (pk, candidate_device) in devices.iter() {
+                            if !candidate_exchanges.contains(&candidate_device.exchange_pk) {
+                                excluded_by_metro.insert(*pk, candidate_device.clone());
+                            }
                         }
-                    }
-                    devices.retain(|_, d| candidate_exchanges.contains(&d.exchange_pk));
-                    if devices.is_empty() {
-                        eyre::bail!(
-                            "no eligible device serves the metro of your purchased feed(s)"
-                        );
+                        devices.retain(|_, d| candidate_exchanges.contains(&d.exchange_pk));
+                        if devices.is_empty() {
+                            let candidate_codes: Vec<String> =
+                                candidate_feed_pks.iter().map(code_of).collect();
+                            if full.is_empty() {
+                                eyre::bail!(
+                                    "no eligible device serves the metro of purchased feed(s) with a free seat: {}. Connect from a machine in that metro.",
+                                    candidate_codes.join(", ")
+                                );
+                            }
+                            eyre::bail!(
+                                "no eligible device serves the metro of purchased feed(s) with a free seat: {}; also already at capacity: {}. Connect from a machine in that metro.",
+                                candidate_codes.join(", "),
+                                describe_full(&full)
+                            );
+                        }
                     }
                 }
                 let exclude_ips = exclude_ips(&users, &client_ip, &devices);
@@ -700,35 +704,51 @@ impl Connect {
                     return Err(eyre::eyre!(err_msg));
                 }
 
-                // Informational only: change 1 above deliberately routes past a nearer device
-                // outside the feeds' metro, so an excluded device that is meaningfully faster is
-                // an upsell signal, not a missed option — the wording must never imply the
-                // excluded device could have carried this connection today.
-                if let Some(latencies) = &latencies_before_metro_filter {
-                    if let Some(chosen) = latencies
-                        .iter()
-                        .find(|latency| latency.device_pk == device_pk.to_string())
-                    {
-                        let faster_excluded = excluded_by_metro
-                            .iter()
-                            .filter_map(|(pk, excluded_device)| {
-                                latencies
-                                    .iter()
-                                    .find(|latency| latency.device_pk == pk.to_string())
-                                    .map(|latency| (excluded_device, latency))
-                            })
-                            .min_by_key(|(_, latency)| latency.avg_latency_ns);
-                        if let Some((excluded_device, excluded_latency)) = faster_excluded {
-                            if chosen.avg_latency_ns - excluded_latency.avg_latency_ns
-                                > LOWER_LATENCY_NOTICE_THRESHOLD_NS
+                // Informational only: routing through the feeds' metro instead of the nearest
+                // device can leave a faster device excluded, which is an upsell signal, not a
+                // missed option — the wording must never imply the excluded device could have
+                // carried this connection today. Fetched only now, on the success path, and only
+                // when something was actually excluded: an advisory must cost nothing on a path
+                // that fails, and nothing when there is nothing to compare against.
+                if !excluded_by_metro.is_empty() {
+                    if let Some(devices_before_metro_filter) = &devices_before_metro_filter {
+                        if let Ok(latencies) = retrieve_latencies(
+                            daemon,
+                            devices_before_metro_filter,
+                            true,
+                            Some(spinner),
+                        )
+                        .await
+                        {
+                            if let Some(chosen) = latencies
+                                .iter()
+                                .find(|latency| latency.device_pk == device_pk.to_string())
                             {
-                                writeln!(
-                                    out,
-                                    "ℹ️  Lower latency is available from {} ({} vs {}), but your purchased feeds do not serve its metro. A feed there would reach this machine faster.",
-                                    excluded_device.code,
-                                    format_latency_ms(excluded_latency.avg_latency_ns),
-                                    format_latency_ms(chosen.avg_latency_ns),
-                                )?;
+                                let faster_excluded = excluded_by_metro
+                                    .iter()
+                                    .filter_map(|(pk, excluded_device)| {
+                                        latencies
+                                            .iter()
+                                            .find(|latency| latency.device_pk == pk.to_string())
+                                            .map(|latency| (excluded_device, latency))
+                                    })
+                                    .min_by(|(left_device, left_latency), (right_device, right_latency)| {
+                                        compare_latency_records(left_latency, right_latency)
+                                            .then_with(|| left_device.code.cmp(&right_device.code))
+                                    });
+                                if let Some((excluded_device, excluded_latency)) = faster_excluded {
+                                    if chosen.avg_latency_ns - excluded_latency.avg_latency_ns
+                                        > LOWER_LATENCY_NOTICE_THRESHOLD_NS
+                                    {
+                                        writeln!(
+                                            out,
+                                            "ℹ️  Lower latency is available from {} ({} vs {}), but your purchased feeds do not serve its metro. A feed there would reach this machine faster.",
+                                            excluded_device.code,
+                                            format_latency_ms(excluded_latency.avg_latency_ns),
+                                            format_latency_ms(chosen.avg_latency_ns),
+                                        )?;
+                                    }
+                                }
                             }
                         }
                     }
@@ -764,8 +784,10 @@ impl Connect {
             )?;
         }
         if !selection.other_metro.is_empty() {
-            let described = describe_other_metro(&selection.other_metro, &feeds, &device.code);
-            writeln!(out, "    Skipped, another metro: {}", described.join(", "))?;
+            // Bare codes only: the header already says "another metro" and the device selected
+            // a moment ago is two lines above, so repeating the comparison per feed adds nothing.
+            let codes: Vec<String> = selection.other_metro.iter().map(code_of).collect();
+            writeln!(out, "    Skipped, another metro: {}", codes.join(", "))?;
         }
         if !selection.over_feed_limit.is_empty() {
             let codes: Vec<String> = selection.over_feed_limit.iter().map(code_of).collect();
@@ -800,7 +822,18 @@ impl Connect {
                 );
             }
             if !selection.other_metro.is_empty() {
-                let described = describe_other_metro(&selection.other_metro, &feeds, &device.code);
+                // The full per-feed comparison lives only here: this is the one place it appears.
+                let described: Vec<String> = selection
+                    .other_metro
+                    .iter()
+                    .map(|pk| {
+                        format!(
+                            "{} does not serve the metro of device {}",
+                            code_of(pk),
+                            device.code
+                        )
+                    })
+                    .collect();
                 eyre::bail!(
                     "no purchased feed serves the metro of device {}: {}. Connect from a machine in that metro.",
                     device.code,
@@ -1779,26 +1812,6 @@ fn feed_code_or_pubkey(feed_pk: &Pubkey, feeds: &HashMap<Pubkey, Feed>) -> Strin
         .unwrap_or_else(|| feed_pk.to_string())
 }
 
-/// Per-feed description for feeds in another metro, comparing against the device's code — the
-/// only metro name an operator has, since resolving a human-readable name for a raw exchange
-/// pubkey would need a `list_exchange` ledger call this crate does not have. Shared by the skip
-/// line and the failure message in `auto_join_purchased_feeds`.
-fn describe_other_metro(
-    feed_pks: &[Pubkey],
-    feeds: &HashMap<Pubkey, Feed>,
-    device_code: &str,
-) -> Vec<String> {
-    feed_pks
-        .iter()
-        .map(|pk| {
-            format!(
-                "{} does not serve the metro of device {device_code}",
-                feed_code_or_pubkey(pk, feeds)
-            )
-        })
-        .collect()
-}
-
 /// Feed seats ordered by their feed's code (or its pubkey if unresolved) — the ordering
 /// `select_purchased_feeds` and the pre-device capacity check share, so a feed's position in an
 /// error message never depends on account iteration order.
@@ -1821,6 +1834,15 @@ const LOWER_LATENCY_NOTICE_THRESHOLD_NS: i64 = 1_000_000;
 /// depending on that private helper from another module.
 fn format_latency_ms(latency_ns: i64) -> String {
     format!("{:.2}ms", latency_ns as f64 / 1_000_000.0)
+}
+
+/// The same ranking device selection uses (`latency::compare_latency_min_then_avg`: min latency,
+/// then avg), replicated here since that comparator is private to the `latency` module. Used so
+/// the lower-latency notice names the same device selection itself would have preferred.
+fn compare_latency_records(a: &LatencyRecord, b: &LatencyRecord) -> std::cmp::Ordering {
+    a.min_latency_ns
+        .cmp(&b.min_latency_ns)
+        .then_with(|| a.avg_latency_ns.cmp(&b.avg_latency_ns))
 }
 
 /// Choose which of the pass's purchased feeds this machine should join, given the device it will
@@ -4742,6 +4764,12 @@ mod tests {
             assert!(
                 output
                     .lines()
+                    .any(|line| line == "    Device selected: device1"),
+                "{output}"
+            );
+            assert!(
+                output
+                    .lines()
                     .any(|line| line == "    Already joined: shreds"),
                 "{output}"
             );
@@ -4750,7 +4778,7 @@ mod tests {
     }
 
     /// Purchased feeds exist but no eligible device serves that metro: fail before selecting a
-    /// device at all, naming the gap rather than exiting 0 with nothing subscribed.
+    /// device at all, naming the feed the operator was trying to reach.
     #[test]
     fn test_connect_command_bare_fails_when_no_eligible_device_serves_the_feeds_metro() {
         block_on(async {
@@ -4763,7 +4791,95 @@ mod tests {
             let (result, output) = run(&fixture, bare_multicast()).await;
             assert_eq!(
                 result.unwrap_err().to_string(),
-                "no eligible device serves the metro of your purchased feed(s)",
+                "no eligible device serves the metro of purchased feed(s) with a free seat: kalshi. Connect from a machine in that metro.",
+                "{output}"
+            );
+        });
+    }
+
+    /// Zero eligible devices exist anywhere, unrelated to any feed's metro: the pre-existing
+    /// device-selection error must surface, not a metro-specific message that would mask it.
+    #[test]
+    fn test_connect_command_bare_surfaces_the_device_error_when_no_eligible_device_exists_at_all() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, mut device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            device.max_users = 0; // ineligible: no eligible device exists anywhere
+            fixture
+                .devices
+                .lock()
+                .unwrap()
+                .insert(device_pk, device.clone());
+            let kalshi_pk =
+                fixture.add_feed("kalshi", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds_with_caps(&[(kalshi_pk, 1, 0)]);
+
+            let (result, output) = run(&fixture, bare_multicast()).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "No activated devices found",
+                "{output}"
+            );
+        });
+    }
+
+    /// Mixed case: one purchased feed is already full, and the other has headroom but no
+    /// eligible device serves its metro. The failure must name both facts, not just one.
+    #[test]
+    fn test_connect_command_bare_names_both_the_full_feed_and_the_deviceless_metro() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (_device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            let away_exchange = Pubkey::new_unique(); // no device exists in this metro
+            let kalshi_pk = fixture.add_feed("kalshi", away_exchange, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 2, 2), (kalshi_pk, 1, 0)]);
+
+            let (result, output) = run(&fixture, bare_multicast()).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "no eligible device serves the metro of purchased feed(s) with a free seat: kalshi; also already at capacity: shreds (2 of 2 seats in use). Connect from a machine in that metro.",
+                "{output}"
+            );
+        });
+    }
+
+    /// A purchased feed in another metro is skipped with a bare code list, not the fuller
+    /// per-feed comparison — that full phrase belongs only to the failure message, since here the
+    /// "another metro" header and the "Device selected" line two above it already give context.
+    #[test]
+    fn test_connect_command_bare_prints_a_bare_code_list_for_a_skipped_other_metro_feed() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (near_pk, near_device) = fixture.add_device(DeviceType::Hybrid, 10, true);
+            let (_far_pk, far_device) = fixture.add_device(DeviceType::Hybrid, 500, true);
+            let kalshi_pk = fixture.add_feed(
+                "kalshi",
+                near_device.exchange_pk,
+                vec![Pubkey::new_unique()],
+            );
+            let wombat_pk =
+                fixture.add_feed("wombat", far_device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds_with_caps(&[(kalshi_pk, 1, 0), (wombat_pk, 1, 0)]);
+
+            let user = fixture.create_user(UserType::Multicast, near_pk, "1.2.3.4");
+            let user_pk = Pubkey::new_unique();
+            fixture.expect_create_user_with_tenant(user_pk, &user, None);
+            fixture.expect_subscribe_feed(user_pk, vec![kalshi_pk]);
+
+            let (result, output) = run(&fixture, bare_multicast()).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
+            assert!(
+                output
+                    .lines()
+                    .any(|line| line == "    Skipped, another metro: wombat"),
+                "{output}"
+            );
+            assert!(
+                output
+                    .lines()
+                    .any(|line| line == "    Joined feed(s): kalshi"),
                 "{output}"
             );
         });

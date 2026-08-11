@@ -742,7 +742,7 @@ impl Connect {
                                     {
                                         writeln!(
                                             out,
-                                            "ℹ️  Lower latency is available from {} ({} vs {}), but your purchased feeds do not serve its metro. A feed there would reach this machine faster.",
+                                            "ℹ️  Lower latency is available from {} ({} vs {})",
                                             excluded_device.code,
                                             format_latency_ms(excluded_latency.avg_latency_ns),
                                             format_latency_ms(chosen.avg_latency_ns),
@@ -4942,7 +4942,7 @@ mod tests {
             assert!(
                 output.lines().any(|line| line
                     == format!(
-                        "ℹ️  Lower latency is available from {} (5.00ms vs 20.00ms), but your purchased feeds do not serve its metro. A feed there would reach this machine faster.",
+                        "ℹ️  Lower latency is available from {} (5.00ms vs 20.00ms)",
                         fast_device.code
                     )),
                 "{output}"

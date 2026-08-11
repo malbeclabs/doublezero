@@ -202,9 +202,6 @@ pub fn find_orphans(
     }
 
     for (user_pk, user) in &snap.users {
-        // Cheapest test first: a user holding none of the dropped groups cannot be orphaned,
-        // whatever their pass or device looks like. Keeping it ahead of the lookups below also
-        // stops an unrelated user with a dangling `device_pk` from blocking every rotation.
         let held: Vec<&Pubkey> = dropped
             .iter()
             .filter(|g| user.publishers.contains(g) || user.subscribers.contains(g))
@@ -213,10 +210,7 @@ pub fn find_orphans(
             continue;
         }
 
-        // Every pass the program would accept for this user. Not the single pass the SDK read
-        // path prefers: `create_user` and `update_multicastgroup_roles` both accept either the
-        // exact-IP PDA or the shared UNSPECIFIED one, so a dynamic Prepaid pass must not be
-        // allowed to hide a live EdgeSeat pass at the other PDA.
+        // Every pass the program would accept for this user.
         let passes: Vec<&AccessPass> = passes_by_payer
             .get(&user.owner)
             .into_iter()
@@ -354,7 +348,8 @@ pub(crate) mod fixtures {
     use super::*;
     use crate::doublezerocommand::MockCliCommand;
     use doublezero_sdk::{
-        commands::feed::get::GetFeedCommand, AccountType, DeviceStatus, UserCYOA, UserStatus,
+        commands::{feed::get::GetFeedCommand, multicastgroup::get::GetMulticastGroupCommand},
+        AccountType, DeviceStatus, MulticastGroup, MulticastGroupStatus, UserCYOA, UserStatus,
         UserType,
     };
     use doublezero_serviceability::state::accesspass::{AccessPassStatus, FeedSeat};
@@ -377,6 +372,22 @@ pub(crate) mod fixtures {
             name: "Feed".to_string(),
             exchange,
             groups,
+        }
+    }
+
+    pub fn mgroup(code: &str) -> MulticastGroup {
+        MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            index: 1,
+            bump_seed: 255,
+            tenant_pk: Pubkey::default(),
+            code: code.to_string(),
+            multicast_ip: [239, 1, 1, 1].into(),
+            max_bandwidth: 1000,
+            status: MulticastGroupStatus::Activated,
+            owner: Pubkey::new_unique(),
+            publisher_count: 0,
+            subscriber_count: 0,
         }
     }
 
@@ -489,6 +500,20 @@ pub(crate) mod fixtures {
                 }))
                 .times(1)
                 .returning(move |_| Ok((feed_pk, feed_acct.clone())));
+        }
+
+        /// Stub `get_multicastgroup` for every group the fixture carries, keyed by pubkey, so a
+        /// `--group <pubkey>` argument resolves.
+        pub fn expect_get_groups(&self, client: &mut MockCliCommand) {
+            for (i, group_pk) in self.groups.iter().copied().enumerate() {
+                let group_acct = mgroup(&format!("mg{i}"));
+                client
+                    .expect_get_multicastgroup()
+                    .with(mockall::predicate::eq(GetMulticastGroupCommand {
+                        pubkey_or_code: group_pk.to_string(),
+                    }))
+                    .returning(move |_| Ok((group_pk, group_acct.clone())));
+            }
         }
 
         /// Stub one guard scan whose user holds `subscribers`. Stacked expectations match FIFO,

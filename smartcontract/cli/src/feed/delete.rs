@@ -1,18 +1,24 @@
 use crate::{
-    doublezerocommand::CliCommand, feed::guard::unsubscribe_orphans,
-    helpers::parse_or_resolve_exchange, validators::validate_pubkey_or_code,
+    doublezerocommand::CliCommand,
+    feed::guard::unsubscribe_orphans,
+    helpers::parse_or_resolve_exchange,
+    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
 };
-use clap::Args;
+use clap::{ArgGroup, Args};
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::feed::{delete::DeleteFeedCommand, get::GetFeedCommand};
 use std::io::Write;
 
 #[derive(Args, Debug)]
+#[clap(group(ArgGroup::new("target").args(&["pubkey", "code"]).required(true)))]
 pub struct DeleteFeedCliCommand {
-    /// Feed pubkey or code to delete
-    #[arg(long, value_parser = validate_pubkey_or_code)]
-    pub pubkey: String,
-    /// Metro (exchange) pubkey or code to disambiguate a code that exists in multiple metros
+    /// Feed pubkey to delete
+    #[arg(long, value_parser = validate_pubkey, conflicts_with = "exchange")]
+    pub pubkey: Option<String>,
+    /// Feed code to delete, which names one feed only together with its metro
+    #[arg(long, value_parser = validate_code, requires = "exchange")]
+    pub code: Option<String>,
+    /// Metro (exchange) pubkey or code carrying the feed named by --code
     #[arg(long, value_parser = validate_pubkey_or_code)]
     pub exchange: Option<String>,
     /// Unsubscribe EdgeSeat users from the deleted feed's groups, instead of refusing the delete.
@@ -39,8 +45,13 @@ impl DeleteFeedCliCommand {
             .as_deref()
             .map(|e| parse_or_resolve_exchange(client, e))
             .transpose()?;
+        let pubkey_or_code = match (self.pubkey, self.code) {
+            (Some(pubkey), None) => pubkey,
+            (None, Some(code)) => code,
+            _ => eyre::bail!("pass --pubkey <PUBKEY>, or --code <CODE> with --exchange <EXCHANGE>"),
+        };
         let (pubkey, feed) = client.get_feed(GetFeedCommand {
-            pubkey_or_code: self.pubkey,
+            pubkey_or_code,
             exchange,
         })?;
 
@@ -96,7 +107,8 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             DeleteFeedCliCommand {
-                pubkey: f.feed_pk.to_string(),
+                pubkey: Some(f.feed_pk.to_string()),
+                code: None,
                 exchange: None,
                 force_unsubscribe: false,
             }
@@ -145,7 +157,8 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             DeleteFeedCliCommand {
-                pubkey: f.feed_pk.to_string(),
+                pubkey: Some(f.feed_pk.to_string()),
+                code: None,
                 exchange: None,
                 force_unsubscribe: true,
             }
@@ -231,7 +244,8 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             DeleteFeedCliCommand {
-                pubkey: "feed01".to_string(),
+                pubkey: None,
+                code: Some("feed01".to_string()),
                 exchange: Some("xchi".to_string()),
                 force_unsubscribe: false,
             }

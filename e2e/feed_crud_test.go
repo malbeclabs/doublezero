@@ -10,7 +10,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	"github.com/stretchr/testify/require"
@@ -19,9 +18,9 @@ import (
 // TestE2E_Feed_CRUD exercises the `doublezero feed` CLI lifecycle (create → get → list → update →
 // delete) against a live devnet.
 //
-// A feed is scoped to a single metro (exchange) and references multicast groups by pubkey.
-// CreateFeed stores those pubkeys without requiring the group accounts to exist, so the test uses a
-// real exchange created during devnet init (xlax) and synthetic group pubkeys.
+// A feed is scoped to a single metro (exchange) and references multicast groups. The CLI reads back
+// both the metro and every group, so the test uses the xlax exchange that devnet init creates and
+// three multicast groups it creates first.
 func TestE2E_Feed_CRUD(t *testing.T) {
 	t.Parallel()
 
@@ -64,23 +63,12 @@ func TestE2E_Feed_CRUD(t *testing.T) {
 		Groups   int    `json:"groups"`
 	}
 
-	// Resolve a real exchange pubkey created during devnet init.
-	var ex struct {
-		Account string `json:"account"`
+	for _, group := range []string{"feed-mc01", "feed-mc02", "feed-mc03"} {
+		run(fmt.Sprintf("doublezero multicast group create --code %s --max-bandwidth 1Gbps --owner me -w", group))
 	}
-	require.NoError(t, json.Unmarshal(run("doublezero exchange get --code xlax --json"), &ex))
-	require.NotEmpty(t, ex.Account, "expected an xlax exchange pubkey")
 
-	group1 := solana.NewWallet().PublicKey().String()
-	group2 := solana.NewWallet().PublicKey().String()
-	group3 := solana.NewWallet().PublicKey().String()
-
-	// Create a feed serving the xlax metro with two groups. The exchange is passed by code to
-	// exercise CLI code→pubkey resolution; the read below asserts it resolved to ex.Account.
-	run(fmt.Sprintf(
-		`doublezero feed create --code shreds-lax --name "Shreds LAX" --exchange xlax --group %s --group %s`,
-		group1, group2,
-	))
+	// Create a feed serving the xlax metro with two groups.
+	run(`doublezero feed create --code shreds-lax --name "Shreds LAX" --exchange xlax --group feed-mc01 --group feed-mc02`)
 
 	// getFeed narrows the list to the one feed with this code in the xlax metro.
 	getFeed := func() feedJSON {
@@ -96,7 +84,7 @@ func TestE2E_Feed_CRUD(t *testing.T) {
 	require.NotEmpty(t, feed.Account)
 	require.Equal(t, "shreds-lax", feed.Code)
 	require.Equal(t, "Shreds LAX", feed.Name)
-	require.Equal(t, ex.Account, feed.Exchange)
+	require.Equal(t, "xlax", feed.Exchange)
 	require.Equal(t, 2, feed.Groups)
 
 	// List and verify it appears.
@@ -108,14 +96,14 @@ func TestE2E_Feed_CRUD(t *testing.T) {
 	)
 
 	// Update the name and replace the group set with a single group.
-	run(fmt.Sprintf(`doublezero feed update --pubkey shreds-lax --name "Shreds LAX v2" --group %s`, group3))
+	run(fmt.Sprintf(`doublezero feed update --pubkey %s --name "Shreds LAX v2" --group feed-mc03`, feed.Account))
 	feed = getFeed()
 	require.Equal(t, "Shreds LAX v2", feed.Name)
-	require.Equal(t, ex.Account, feed.Exchange, "exchange is immutable across updates")
+	require.Equal(t, "xlax", feed.Exchange, "exchange is immutable across updates")
 	require.Equal(t, 1, feed.Groups)
 
 	// Delete and verify it's gone from the list.
-	run("doublezero feed delete --pubkey shreds-lax")
+	run(fmt.Sprintf("doublezero feed delete --pubkey %s", feed.Account))
 	require.NoError(t, json.Unmarshal(run("doublezero feed list --json"), &feeds))
 	require.False(t,
 		slices.ContainsFunc(feeds, func(f feedJSON) bool { return f.Code == "shreds-lax" }),

@@ -104,12 +104,17 @@ jobs:
             missing=""
             for suite in jammy noble; do
               url="https://dl.cloudsmith.io/public/malbeclabs/doublezero-devnet/deb/ubuntu/dists/$suite/main/binary-amd64/Packages"
-              if ! curl -sfL --max-time 30 "$url" | grep -qF "Version: $VERSION"; then
+              index=$(curl -sfL --max-time 30 "$url" || true)
+              if ! grep -qF "Version: $VERSION" <<<"$index"; then
                 missing="$missing $suite"
               fi
             done
             if [ -z "$missing" ]; then
               echo "CloudSmith lists $VERSION on attempt $attempt"
+              # CloudFront serves the index with max-age=30, and each host reaches a
+              # different edge than this runner. Outlast an edge that cached the index
+              # just before CloudSmith rebuilt it.
+              sleep 35
               exit 0
             fi
             echo "attempt $attempt: $VERSION is missing from$missing"

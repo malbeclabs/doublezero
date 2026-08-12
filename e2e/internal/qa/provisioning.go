@@ -3,6 +3,7 @@
 package qa
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -29,6 +31,7 @@ type ProvisioningTest struct {
 	bmHost         string
 	infraPath      string
 	serviceability *serviceability.Client
+	versionWarning sync.Once
 }
 
 type DeviceInfo struct {
@@ -105,73 +108,31 @@ func NewProvisioningTest(ctx context.Context, log *slog.Logger, networkConfig *c
 
 func (p *ProvisioningTest) runCLI(ctx context.Context, args ...string) ([]byte, error) {
 	// Build SSH command: ssh <bm-host> doublezero <args...>
-	// The CLI writes its upgrade banner to stderr, and CombinedOutput folds that
-	// banner into the JSON the callers below parse.
-	sshArgs := []string{p.bmHost, "doublezero", "--no-version-warning"}
+	sshArgs := []string{p.bmHost, "doublezero"}
 	sshArgs = append(sshArgs, args...)
 
 	p.log.Debug("Running CLI command via SSH", "host", p.bmHost, "args", args)
 	cmd := exec.CommandContext(ctx, "ssh", sshArgs...)
-	output, err := cmd.CombinedOutput()
+	// Keep stderr out of the returned bytes, which the callers below parse as JSON. The
+	// CLI's upgrade banner, its tracing diagnostics and ssh's own host-key warning all
+	// write there.
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
 	if err != nil {
-		return output, fmt.Errorf("CLI command failed: %w, output: %s", err, string(output))
+		return output, fmt.Errorf("CLI command failed: %w, output: %s, stderr: %s", err, string(output), stderr.String())
 	}
+	p.warnOnUpgradeBanner(stderr.String())
 	return output, nil
 }
 
-type Versions struct {
-	Client  string
-	Program string
-}
-
-func (p *ProvisioningTest) GetVersions(ctx context.Context) (Versions, error) {
-	output, err := p.runCLI(ctx, "--version")
-	if err != nil {
-		return Versions{}, err
+func (p *ProvisioningTest) warnOnUpgradeBanner(stderr string) {
+	if !strings.Contains(stderr, "A new version of the client is available") {
+		return
 	}
-
-	var versions Versions
-	for _, line := range strings.Split(string(output), "\n") {
-		field, value, found := strings.Cut(line, ":")
-		if !found {
-			continue
-		}
-		switch strings.TrimSpace(field) {
-		case "client version":
-			versions.Client = strings.TrimSpace(value)
-		case "program version":
-			versions.Program = strings.TrimSpace(value)
-		}
-	}
-	if versions.Client == "" || versions.Program == "" {
-		return Versions{}, fmt.Errorf("could not read both versions from output: %s", string(output))
-	}
-	return versions, nil
-}
-
-func (v Versions) ClientIsOlder() bool {
-	client, clientOK := parseVersion(v.Client)
-	program, programOK := parseVersion(v.Program)
-	if !clientOK || !programOK {
-		return false
-	}
-	for i := range client {
-		if client[i] != program[i] {
-			return client[i] < program[i]
-		}
-	}
-	return false
-}
-
-// A nightly build carries a suffix, as in 0.35.1~git20260812143218.c72b0ec4, which
-// Sscanf stops at.
-func parseVersion(s string) ([3]int, bool) {
-	var version [3]int
-	n, err := fmt.Sscanf(s, "%d.%d.%d", &version[0], &version[1], &version[2])
-	if err != nil || n != 3 {
-		return version, false
-	}
-	return version, true
+	p.versionWarning.Do(func() {
+		p.log.Warn("The CLI is behind the program on the ledger", "host", p.bmHost, "banner", strings.TrimSpace(stderr))
+	})
 }
 
 func (p *ProvisioningTest) GetDeviceByCode(ctx context.Context, code string) (*DeviceInfo, error) {

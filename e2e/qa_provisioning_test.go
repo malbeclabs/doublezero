@@ -56,13 +56,6 @@ func TestQA_DeviceProvisioning(t *testing.T) {
 	prov, err := qa.NewProvisioningTest(ctx, log, networkConfig, envArg, bmHost)
 	require.NoError(t, err, "failed to create provisioning test")
 
-	versions, err := prov.GetVersions(ctx)
-	require.NoError(t, err, "failed to read the CLI and program versions")
-	t.Logf("CLI version %s, program version %s", versions.Client, versions.Program)
-	if versions.ClientIsOlder() {
-		t.Logf("WARNING: %s runs an older CLI than the program on the ledger, so it missed the latest client package", bmHost)
-	}
-
 	// Get device — fail early if it doesn't exist since we need its config to reprovision.
 	device, err := prov.GetDeviceByCode(ctx, deviceCode)
 	require.NoError(t, err, "failed to get device %s — cannot reprovision without existing config", deviceCode)

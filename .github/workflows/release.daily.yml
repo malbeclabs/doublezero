@@ -18,6 +18,8 @@ jobs:
   release:
     name: Build ${{ inputs.component }}
     runs-on: ubuntu-24.04-16c-64gb
+    outputs:
+      deb_version: ${{ steps.deb.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -75,11 +77,58 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
           CLOUDSMITH_TOKEN: ${{ secrets.CLOUDSMITH_TOKEN }}
+      - name: Read the deb version GoReleaser built
+        id: deb
+        run: |
+          version=""
+          deb=$(jq -r '[.[] | select(.type == "Linux Package" and (.name | endswith(".deb")))][0].name // empty' dist/artifacts.json)
+          if [ -n "$deb" ]; then
+            version=$(jq -r '.version' dist/metadata.json)
+            case "$deb" in
+              *"$version"*) ;;
+              *) echo "::error::$deb does not carry the version $version that CloudSmith will index"; exit 1 ;;
+            esac
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
   deploy:
     name: Deploy ${{ inputs.component }} to DevNet
     runs-on: self-hosted
     needs: release
     steps:
+      - name: Wait for CloudSmith to list the new package
+        if: needs.release.outputs.deb_version != ''
+        env:
+          VERSION: ${{ needs.release.outputs.deb_version }}
+        run: |
+          deadline=$((SECONDS + 600))
+          attempt=0
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            attempt=$((attempt + 1))
+            missing=""
+            for suite in jammy noble; do
+              url="https://dl.cloudsmith.io/public/malbeclabs/doublezero-devnet/deb/ubuntu/dists/$suite/main/binary-amd64/Packages"
+              status=0
+              index=$(curl -sfL --max-time 30 "$url") || status=$?
+              if [ "$status" -ne 0 ]; then
+                echo "attempt $attempt: $suite index fetch failed, curl exit $status"
+                missing="$missing $suite"
+              elif ! grep -qF "Version: $VERSION" <<<"$index"; then
+                missing="$missing $suite"
+              fi
+            done
+            if [ -z "$missing" ]; then
+              echo "CloudSmith lists $VERSION on attempt $attempt"
+              # CloudFront serves the index with max-age=30, and each host reaches a
+              # different edge than this runner. Outlast an edge that cached the index
+              # just before CloudSmith rebuilt it.
+              sleep 35
+              exit 0
+            fi
+            echo "attempt $attempt: $VERSION is missing from$missing"
+            sleep 15
+          done
+          echo "::error::CloudSmith did not list $VERSION after $attempt attempts over ${SECONDS}s"
+          exit 1
       - uses: actions/checkout@v4
       - name: Checkout infra repo with ansible playbooks
         uses: actions/checkout@v4

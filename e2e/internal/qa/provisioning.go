@@ -3,6 +3,7 @@
 package qa
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -29,6 +31,7 @@ type ProvisioningTest struct {
 	bmHost         string
 	infraPath      string
 	serviceability *serviceability.Client
+	versionWarning sync.Once
 }
 
 type DeviceInfo struct {
@@ -110,11 +113,26 @@ func (p *ProvisioningTest) runCLI(ctx context.Context, args ...string) ([]byte, 
 
 	p.log.Debug("Running CLI command via SSH", "host", p.bmHost, "args", args)
 	cmd := exec.CommandContext(ctx, "ssh", sshArgs...)
-	output, err := cmd.CombinedOutput()
+	// Keep stderr out of the returned bytes, which the callers below parse as JSON. The
+	// CLI's upgrade banner, its tracing diagnostics and ssh's own host-key warning all
+	// write there.
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	output, err := cmd.Output()
 	if err != nil {
-		return output, fmt.Errorf("CLI command failed: %w, output: %s", err, string(output))
+		return output, fmt.Errorf("CLI command failed: %w, output: %s, stderr: %s", err, string(output), stderr.String())
 	}
+	p.warnOnUpgradeBanner(stderr.String())
 	return output, nil
+}
+
+func (p *ProvisioningTest) warnOnUpgradeBanner(stderr string) {
+	if !strings.Contains(stderr, "A new version of the client is available") {
+		return
+	}
+	p.versionWarning.Do(func() {
+		p.log.Warn("The CLI is behind the program on the ledger", "host", p.bmHost, "banner", strings.TrimSpace(stderr))
+	})
 }
 
 func (p *ProvisioningTest) GetDeviceByCode(ctx context.Context, code string) (*DeviceInfo, error) {

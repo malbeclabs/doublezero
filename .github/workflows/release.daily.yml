@@ -100,12 +100,19 @@ jobs:
         env:
           VERSION: ${{ needs.release.outputs.deb_version }}
         run: |
-          for attempt in $(seq 1 40); do
+          deadline=$((SECONDS + 600))
+          attempt=0
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            attempt=$((attempt + 1))
             missing=""
             for suite in jammy noble; do
               url="https://dl.cloudsmith.io/public/malbeclabs/doublezero-devnet/deb/ubuntu/dists/$suite/main/binary-amd64/Packages"
-              index=$(curl -sfL --max-time 30 "$url" || true)
-              if ! grep -qF "Version: $VERSION" <<<"$index"; then
+              status=0
+              index=$(curl -sfL --max-time 30 "$url") || status=$?
+              if [ "$status" -ne 0 ]; then
+                echo "attempt $attempt: $suite index fetch failed, curl exit $status"
+                missing="$missing $suite"
+              elif ! grep -qF "Version: $VERSION" <<<"$index"; then
                 missing="$missing $suite"
               fi
             done
@@ -120,7 +127,7 @@ jobs:
             echo "attempt $attempt: $VERSION is missing from$missing"
             sleep 15
           done
-          echo "::error::CloudSmith did not list $VERSION within 10 minutes"
+          echo "::error::CloudSmith did not list $VERSION after $attempt attempts over ${SECONDS}s"
           exit 1
       - uses: actions/checkout@v4
       - name: Checkout infra repo with ansible playbooks

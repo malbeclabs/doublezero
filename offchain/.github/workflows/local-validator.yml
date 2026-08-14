@@ -39,7 +39,7 @@ jobs:
       - name: Start Solana mainnet-beta fork in background
         run: |
           MANAGER_PUBKEY=$(solana address -k manager_keypair.json)
-          cargo run --bin doublezero-solana-fork -- -um --reset --synthetic-vcr-manager "$MANAGER_PUBKEY" > /dev/null 2>&1 &
+          cargo run --bin doublezero-solana-fork -- -um --reset --synthetic-validator-client-rewards-manager "$MANAGER_PUBKEY" > /dev/null 2>&1 &
       - name: Build `doublezero-solana`
         run: cargo build --bin doublezero-solana
       - name: Run `doublezero-solana` tests

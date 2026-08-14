@@ -699,91 +699,45 @@ pub fn parse_metro_history_price_at_epoch(data: &[u8], epoch: u64) -> Option<u16
 }
 
 // ---------------------------------------------------------------------------
-// ValidatorClientRewards raw-byte parsing.
-//
-// Layout (Pod with 8-byte discriminator prefix):
-//   [0..8)     discriminator
-//   [8..10)    client_id: u16
-//   [10..11)   bump_seed: u8
-//   [11..16)   _padding_0: [u8; 5]
-//   [16..48)   manager_key: Pubkey
-//   [48..112)  short_description_bytes: [u8; 64]
-//   [112..116) claim_holding_count: u32
-//   ...        remaining fields (padding + StorageGap) unused by the CLI
+// ValidatorClientRewards, ShredRewardToken and ValidatorPublisherRewards:
+// layout mirrored from the onchain `doublezero-shred-subscription` program
+// (state module). Kept here to avoid pulling the program crate as a dependency
+// just for three account types. If the onchain layout changes, update both
+// this file and the discriminator strings together.
 // ---------------------------------------------------------------------------
 
-pub const VALIDATOR_CLIENT_REWARDS_DISCRIMINATOR: Discriminator<DISCRIMINATOR_LEN> =
-    Discriminator::new_sha2(b"dz::account::validator_client_rewards");
-
-pub const VCR_CLIENT_ID_OFFSET: usize = DISCRIMINATOR_LEN;
-pub const VCR_BUMP_SEED_OFFSET: usize = DISCRIMINATOR_LEN + 2;
-pub const VCR_MANAGER_KEY_OFFSET: usize = DISCRIMINATOR_LEN + 8;
-pub const VCR_SHORT_DESCRIPTION_OFFSET: usize = DISCRIMINATOR_LEN + 40;
-pub const VCR_CLAIM_HOLDING_COUNT_OFFSET: usize = DISCRIMINATOR_LEN + 104;
-pub const VCR_SHORT_DESCRIPTION_LEN: usize = 64;
-/// Total on-chain size of a `ValidatorClientRewards` account, including the
-/// 8-byte discriminator. Mirrors the program's
-/// `assert!(zero_copy::data_end::<ValidatorClientRewards>() == 184)`.
-/// Update both sides together if the on-chain layout changes.
-pub const VCR_ACCOUNT_DATA_LEN: usize = 184;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidatorClientRewardsInfo {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Pod, Zeroable)]
+#[repr(C, align(8))]
+pub struct ValidatorClientRewards {
     pub client_id: u16,
+    pub bump_seed: u8,
+    _padding_0: [u8; 5],
     pub manager_key: Pubkey,
-    pub short_description: Option<String>,
+    pub short_description_bytes: [u8; 64],
     pub claim_holding_count: u32,
+    _padding_1: [u8; 4],
+    _gap: StorageGap<2>,
 }
 
-/// Parse a `ValidatorClientRewards` from raw account data. Returns `None`
-/// when the data is too short or the discriminator does not match.
-pub fn parse_validator_client_rewards(data: &[u8]) -> Option<ValidatorClientRewardsInfo> {
-    if data.len() < VCR_CLAIM_HOLDING_COUNT_OFFSET + 4 {
-        return None;
-    }
-    let expected_disc = borsh::to_vec(&VALIDATOR_CLIENT_REWARDS_DISCRIMINATOR)
-        .expect("discriminator serialization");
-    if data[..DISCRIMINATOR_LEN] != expected_disc[..] {
-        return None;
-    }
-    let client_id = u16::from_le_bytes(
-        data[VCR_CLIENT_ID_OFFSET..VCR_CLIENT_ID_OFFSET + 2]
-            .try_into()
-            .ok()?,
-    );
-    let manager_key = Pubkey::new_from_array(
-        data[VCR_MANAGER_KEY_OFFSET..VCR_MANAGER_KEY_OFFSET + 32]
-            .try_into()
-            .ok()?,
-    );
-    let short_description_bytes = &data
-        [VCR_SHORT_DESCRIPTION_OFFSET..VCR_SHORT_DESCRIPTION_OFFSET + VCR_SHORT_DESCRIPTION_LEN];
-    let short_description = match short_description_bytes.iter().rposition(|&b| b != 0) {
-        Some(end) => std::str::from_utf8(&short_description_bytes[..=end])
-            .ok()
-            .map(str::to_string),
-        None => None,
-    };
-    let claim_holding_count = u32::from_le_bytes(
-        data[VCR_CLAIM_HOLDING_COUNT_OFFSET..VCR_CLAIM_HOLDING_COUNT_OFFSET + 4]
-            .try_into()
-            .ok()?,
-    );
-    Some(ValidatorClientRewardsInfo {
-        client_id,
-        manager_key,
-        short_description,
-        claim_holding_count,
-    })
+impl PrecomputedDiscriminator for ValidatorClientRewards {
+    const DISCRIMINATOR: Discriminator<8> =
+        Discriminator::new_sha2(b"dz::account::validator_client_rewards");
 }
 
-// ---------------------------------------------------------------------------
-// ShredRewardToken and ValidatorPublisherRewards: layout mirrored from
-// the on-chain `doublezero-shred-subscription` program (state module).
-// Kept here to avoid pulling the program crate as a dependency just for two
-// account types. If the on-chain layout changes, update both this file and
-// the discriminator strings together.
-// ---------------------------------------------------------------------------
+// `[u8; 64]` is wider than the array sizes `std` implements `Default` for, so
+// this cannot be derived. The onchain struct carries the same manual impl.
+impl Default for ValidatorClientRewards {
+    fn default() -> Self {
+        Zeroable::zeroed()
+    }
+}
+
+impl ValidatorClientRewards {
+    pub fn checked_short_description(&self) -> Option<&str> {
+        let end = self.short_description_bytes.iter().rposition(|&b| b != 0)?;
+        std::str::from_utf8(&self.short_description_bytes[..=end]).ok()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]
@@ -1015,6 +969,7 @@ impl ShredDistributionJournal {
 // `DISCRIMINATOR_LEN + size_of::<T>()`, so the offchain size assert is
 // `size_of::<T>() == N - DISCRIMINATOR_LEN`. If on-chain bumps either
 // value, update both sides together.
+const _: () = assert!(std::mem::size_of::<ValidatorClientRewards>() == 184 - DISCRIMINATOR_LEN);
 const _: () = assert!(std::mem::size_of::<ShredDistribution>() == 400 - DISCRIMINATOR_LEN);
 const _: () = assert!(std::mem::size_of::<ShredDistributionJournal>() == 296 - DISCRIMINATOR_LEN);
 // `ValidatorClientRewardsConfig` is a field inside `ShredDistribution`,
@@ -1135,53 +1090,43 @@ mod tests {
         assert_eq!(bump, expected_bump);
     }
 
-    fn vcr_data(client_id: u16, manager: Pubkey, desc: &[u8], count: u32) -> Vec<u8> {
-        let mut data = vec![0u8; VCR_CLAIM_HOLDING_COUNT_OFFSET + 4];
-        let disc_bytes = borsh::to_vec(&VALIDATOR_CLIENT_REWARDS_DISCRIMINATOR)
-            .expect("discriminator serialization");
-        data[..DISCRIMINATOR_LEN].copy_from_slice(&disc_bytes);
-        data[VCR_CLIENT_ID_OFFSET..VCR_CLIENT_ID_OFFSET + 2]
-            .copy_from_slice(&client_id.to_le_bytes());
-        data[VCR_MANAGER_KEY_OFFSET..VCR_MANAGER_KEY_OFFSET + 32].copy_from_slice(manager.as_ref());
-        let desc_end = VCR_SHORT_DESCRIPTION_OFFSET + desc.len();
-        data[VCR_SHORT_DESCRIPTION_OFFSET..desc_end].copy_from_slice(desc);
-        data[VCR_CLAIM_HOLDING_COUNT_OFFSET..VCR_CLAIM_HOLDING_COUNT_OFFSET + 4]
-            .copy_from_slice(&count.to_le_bytes());
-        data
+    fn validator_client_rewards_with_description(description: &[u8]) -> ValidatorClientRewards {
+        let mut validator_client_rewards = ValidatorClientRewards::default();
+        validator_client_rewards.short_description_bytes[..description.len()]
+            .copy_from_slice(description);
+        validator_client_rewards
     }
 
     #[test]
-    fn parse_validator_client_rewards_happy_path() {
-        use solana_sdk::pubkey::Pubkey;
-        let manager = Pubkey::new_from_array([11u8; 32]);
-        let data = vcr_data(42, manager, b"acme", 3);
-        let info = parse_validator_client_rewards(&data).expect("parse");
-        assert_eq!(info.client_id, 42);
-        assert_eq!(info.manager_key, manager);
-        assert_eq!(info.short_description.as_deref(), Some("acme"));
-        assert_eq!(info.claim_holding_count, 3);
+    fn test_checked_short_description_returns_str() {
+        let validator_client_rewards = validator_client_rewards_with_description(b"acme");
+        assert_eq!(
+            validator_client_rewards.checked_short_description(),
+            Some("acme")
+        );
     }
 
     #[test]
-    fn parse_validator_client_rewards_empty_description_returns_none_description() {
-        use solana_sdk::pubkey::Pubkey;
-        let data = vcr_data(0, Pubkey::default(), b"", 0);
-        let info = parse_validator_client_rewards(&data).expect("parse");
-        assert!(info.short_description.is_none());
+    fn test_checked_short_description_empty_returns_none() {
+        let validator_client_rewards = ValidatorClientRewards::default();
+        assert!(
+            validator_client_rewards
+                .checked_short_description()
+                .is_none()
+        );
     }
 
     #[test]
-    fn parse_validator_client_rewards_short_buffer_returns_none() {
-        let data = vec![0u8; VCR_CLAIM_HOLDING_COUNT_OFFSET + 3];
-        assert!(parse_validator_client_rewards(&data).is_none());
-    }
-
-    #[test]
-    fn parse_validator_client_rewards_wrong_discriminator_returns_none() {
-        use solana_sdk::pubkey::Pubkey;
-        let mut data = vcr_data(1, Pubkey::default(), b"x", 0);
-        data[0] ^= 0xff;
-        assert!(parse_validator_client_rewards(&data).is_none());
+    fn test_checked_short_description_full_length() {
+        // 64 is the width of short_description_bytes, so the fill leaves no
+        // trailing zero to scan back from.
+        let description = "a".repeat(64);
+        let validator_client_rewards =
+            validator_client_rewards_with_description(description.as_bytes());
+        assert_eq!(
+            validator_client_rewards.checked_short_description(),
+            Some(description.as_str())
+        );
     }
 
     #[test]

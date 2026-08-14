@@ -7,8 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- add `--synthetic-vcr-manager <PUBKEY>` flag that bakes a `ValidatorClientRewards` PDA for `client_id=65535` with the given manager into the fork at genesis, for exercising `shreds validator-client-rewards claim` in fork tests
-- fix: synthetic VCR account body is 184 bytes — `StorageGap<2>` is 64 bytes (not 48); the prior 176-byte account was rejected at runtime by the on-chain `data_end == 184` const assertion
+- add `--synthetic-validator-client-rewards-manager <PUBKEY>` flag that bakes a `ValidatorClientRewards` PDA for `client_id=65535` with the given manager into the fork at genesis, for exercising `shreds validator-client-rewards claim` in fork tests
+- build the synthetic `ValidatorClientRewards` account from the SDK's `Pod` mirror instead of copying bytes to hand-written offsets, so its size and field offsets follow the mirror rather than a separate constant table
+- the environment variable clap derives from that flag moved with its rename, from `SYNTHETIC_VCR_MANAGER` to `SYNTHETIC_VALIDATOR_CLIENT_REWARDS_MANAGER`. A value left under the old name is ignored rather than rejected, so the fork boots with no synthetic account and `sh/test_doublezero_solana_fork.sh` fails later at the first `validator-client-rewards show`
 - Load shred-subscription program and its accounts into the fork so CLI smoke tests (e.g. `shreds publisher-rewards`) can run end-to-end.
 - revert: seed journal and fills registry in localnet fork ([#322](https://github.com/doublezerofoundation/doublezero-offchain/pull/322))
 - seed journal and fills registry in localnet fork ([#309](https://github.com/doublezerofoundation/doublezero-offchain/pull/309))

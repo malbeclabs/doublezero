@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - migrate to Solana 3.0: workspace `solana-*` crates and `solana-sdk` move to the 3.0 line, `solana-program-test` to 3.0.12, and the doublezero SDK git-deps repin from `client/v0.27.1` to the malbeclabs/doublezero#3830 merge revision (malbeclabs/infra#1853)
 - remove `build_memo_instruction` (moved to `Wallet::build_memo_instruction` in `solana-client-tools`, alongside the memo compute-unit helpers)
 - add `find_claim_holding_address` PDA helper and `CLAIM_HOLDING_SEED_PREFIX` constant for `ValidatorClientRewards` claim holding accounts
-- add `ValidatorClientRewards` discriminator + offset constants and `parse_validator_client_rewards` parser
+- add `ValidatorClientRewards` as a `Pod` mirror of the onchain struct, with a `checked_short_description` accessor and a compile-time assertion pinning the account at 184 bytes
 - add `parse_program_config_shred_oracle_key` helper for reading `ProgramConfig.shred_oracle_key`
 - add `InitializeClaimHolding` and `ClaimValidatorClientRewards` instruction variants and the `ClaimHoldingId` Borsh struct (rename mirrors on-chain `shred-subscription/v0.6.6`: discriminator string `dz::ix::initialize_claim_holding_account` → `dz::ix::initialize_claim_holding`)
 - add `InitializeClaimHoldingAccounts` builder for the `InitializeClaimHolding` instruction

@@ -15,7 +15,10 @@ use doublezero_solana_sdk::{
         state::{Distribution, Journal, ProgramConfig as RevenueDistributionProgramConfig},
         types::DoubleZeroEpoch,
     },
-    shred_subscription::ID as SHRED_SUBSCRIPTION_PROGRAM_ID,
+    shred_subscription::{
+        ID as SHRED_SUBSCRIPTION_PROGRAM_ID,
+        state::{ValidatorClientRewards, find_validator_client_rewards_address},
+    },
     sol_conversion::{
         ID as SOL_CONVERSION_PROGRAM_ID, state::ProgramState as SolConversionProgramState,
     },
@@ -24,7 +27,9 @@ use doublezero_solana_sdk::{
 use serde::{Deserialize, Serialize};
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
-use solana_sdk::{account::Account, program_pack::Pack, pubkey::Pubkey, signer::Signer};
+use solana_sdk::{
+    account::Account, program_pack::Pack, pubkey::Pubkey, rent::Rent, signer::Signer,
+};
 use spl_token_interface::state::Mint;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -75,11 +80,11 @@ struct Args {
     next_completed_dz_epoch_override: Option<u64>,
 
     /// Pubkey to use as the manager of a synthetic ValidatorClientRewards PDA
-    /// (`client_id=65535`). When set, the fork loader bakes a VCR account at
+    /// (`client_id=65535`). When set, the fork loader bakes the account at
     /// genesis so the fork test can exercise `validator-client-rewards claim`.
-    /// Defaults to disabled (no synthetic VCR).
+    /// Defaults to disabled.
     #[arg(long, env, value_name = "PUBKEY")]
-    synthetic_vcr_manager: Option<Pubkey>,
+    synthetic_validator_client_rewards_manager: Option<Pubkey>,
 
     #[command(flatten)]
     solana_connection_options: SolanaConnectionOptions,
@@ -102,7 +107,7 @@ async fn main() -> Result<()> {
         reset: should_reset,
         god_mode: should_god_mode,
         next_completed_dz_epoch_override,
-        synthetic_vcr_manager,
+        synthetic_validator_client_rewards_manager,
         solana_connection_options,
     } = Args::parse();
 
@@ -157,7 +162,7 @@ async fn main() -> Result<()> {
                 // the fork. Used by fork tests to exercise
                 // `validator-client-rewards claim` without needing the
                 // shred-subscription admin keypair.
-                if let Some(ref manager) = synthetic_vcr_manager
+                if let Some(ref manager) = synthetic_validator_client_rewards_manager
                     && let Err(e) = try_write_synthetic_validator_client_rewards_account(
                         manager,
                         TMP_ACCOUNTS_PATH,
@@ -664,7 +669,7 @@ fn try_dump_program(
     Ok(())
 }
 
-const SYNTHETIC_VCR_CLIENT_ID: u16 = 65535;
+const SYNTHETIC_VALIDATOR_CLIENT_REWARDS_CLIENT_ID: u16 = 65535;
 
 /// Bake a synthetic `ValidatorClientRewards` PDA into the fork's accounts
 /// directory. `manager_key` is the test-wallet pubkey (the same key that
@@ -673,58 +678,19 @@ fn try_write_synthetic_validator_client_rewards_account(
     manager_key: &Pubkey,
     accounts_dir: &str,
 ) -> Result<()> {
-    use doublezero_solana_sdk::shred_subscription::{
-        ID as SHRED_SUBSCRIPTION_PROGRAM_ID,
-        state::{
-            VALIDATOR_CLIENT_REWARDS_DISCRIMINATOR, VCR_ACCOUNT_DATA_LEN, VCR_BUMP_SEED_OFFSET,
-            VCR_CLIENT_ID_OFFSET, VCR_MANAGER_KEY_OFFSET, find_validator_client_rewards_address,
-            parse_validator_client_rewards,
-        },
-    };
-    use solana_sdk::rent::Rent;
+    let (validator_client_rewards_key, bump) =
+        find_validator_client_rewards_address(SYNTHETIC_VALIDATOR_CLIENT_REWARDS_CLIENT_ID);
+    let mut validator_client_rewards = ValidatorClientRewards::default();
+    validator_client_rewards.client_id = SYNTHETIC_VALIDATOR_CLIENT_REWARDS_CLIENT_ID;
+    validator_client_rewards.bump_seed = bump;
+    validator_client_rewards.manager_key = *manager_key;
 
-    // The total account size and per-field offsets are owned by the SDK
-    // (`VCR_ACCOUNT_DATA_LEN`, `VCR_*_OFFSET`). The on-chain processor
-    // enforces the same total via
-    // `const _: () = assert!(zero_copy::data_end::<ValidatorClientRewards>() == 184);`.
-    // After construction we round-trip through `parse_validator_client_rewards`
-    // as a runtime sanity check — if the SDK and on-chain layouts ever drift,
-    // we fail loudly at fork-load time instead of silently producing broken
-    // bytes.
-    let (vcr_key, bump) = find_validator_client_rewards_address(SYNTHETIC_VCR_CLIENT_ID);
-    let mut data = vec![0u8; VCR_ACCOUNT_DATA_LEN];
-    let disc_bytes = borsh::to_vec(&VALIDATOR_CLIENT_REWARDS_DISCRIMINATOR)
-        .expect("discriminator serialization");
-    data[..disc_bytes.len()].copy_from_slice(&disc_bytes);
-    data[VCR_CLIENT_ID_OFFSET..VCR_CLIENT_ID_OFFSET + 2]
-        .copy_from_slice(&SYNTHETIC_VCR_CLIENT_ID.to_le_bytes());
-    data[VCR_BUMP_SEED_OFFSET] = bump;
-    data[VCR_MANAGER_KEY_OFFSET..VCR_MANAGER_KEY_OFFSET + 32].copy_from_slice(manager_key.as_ref());
-    // short_description stays zero (no description). claim_holding_count starts
-    // at 0. Both are covered by the initial vec![0; ...].
-
-    let parsed = parse_validator_client_rewards(&data).with_context(|| {
-        "synthetic ValidatorClientRewards bytes failed to parse — \
-         SDK layout constants and the on-chain struct may have drifted"
-    })?;
-    ensure!(
-        parsed.client_id == SYNTHETIC_VCR_CLIENT_ID,
-        "synthetic VCR client_id round-trip mismatch: wrote {SYNTHETIC_VCR_CLIENT_ID}, parsed {}",
-        parsed.client_id
-    );
-    ensure!(
-        parsed.manager_key == *manager_key,
-        "synthetic VCR manager_key round-trip mismatch: wrote {manager_key}, parsed {}",
-        parsed.manager_key
-    );
-    ensure!(
-        parsed.claim_holding_count == 0,
-        "synthetic VCR claim_holding_count round-trip mismatch: wrote 0, parsed {}",
-        parsed.claim_holding_count
-    );
+    let mut data = Vec::with_capacity(zero_copy::data_end::<ValidatorClientRewards>());
+    data.extend_from_slice(ValidatorClientRewards::discriminator_slice());
+    data.extend_from_slice(bytemuck::bytes_of(&validator_client_rewards));
 
     let rent = Rent::default();
-    let lamports = rent.minimum_balance(VCR_ACCOUNT_DATA_LEN);
+    let lamports = rent.minimum_balance(data.len());
 
     let account = Account {
         lamports,
@@ -736,10 +702,10 @@ fn try_write_synthetic_validator_client_rewards_account(
 
     tracing::info!(
         "Baking synthetic ValidatorClientRewards (client_id={}, manager={}) at {} into {}",
-        SYNTHETIC_VCR_CLIENT_ID,
+        SYNTHETIC_VALIDATOR_CLIENT_REWARDS_CLIENT_ID,
         manager_key,
-        vcr_key,
+        validator_client_rewards_key,
         accounts_dir,
     );
-    try_write_account_to_file(&vcr_key, &account, accounts_dir)
+    try_write_account_to_file(&validator_client_rewards_key, &account, accounts_dir)
 }

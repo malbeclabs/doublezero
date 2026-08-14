@@ -4,6 +4,7 @@ use anyhow::{Context, Result, bail, ensure};
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
+    account::zero_copy::ZeroCopyAccountOwnedData,
     payer::{TransactionOutcome, Wallet},
     rpc::try_fetch_multiple_accounts,
 };
@@ -15,9 +16,8 @@ use doublezero_solana_sdk::{
             account::ClaimValidatorClientRewardsAccounts,
         },
         state::{
-            find_claim_holding_address, find_program_config_address,
+            ValidatorClientRewards, find_claim_holding_address, find_program_config_address,
             find_validator_client_rewards_address, parse_program_config_shred_oracle_key,
-            parse_validator_client_rewards,
         },
     },
     try_build_instruction,
@@ -129,13 +129,14 @@ impl ClaimCommand {
                     self.client_id
                 )
             })?;
-        let validator_client_rewards_info = parse_validator_client_rewards(
-            &validator_client_rewards_account.data,
-        )
-        .with_context(|| {
-            format!("failed to parse ValidatorClientRewards at {validator_client_rewards_key}")
-        })?;
-        validate_manager(&wallet_key, &validator_client_rewards_info.manager_key)?;
+        let validator_client_rewards =
+            ZeroCopyAccountOwnedData::<ValidatorClientRewards>::from_account(
+                validator_client_rewards_account,
+            )
+            .with_context(|| {
+                format!("failed to decode ValidatorClientRewards at {validator_client_rewards_key}")
+            })?;
+        validate_manager(&wallet_key, &validator_client_rewards.manager_key)?;
 
         let config_account = accounts
             .get(1)
@@ -147,7 +148,7 @@ impl ClaimCommand {
         // Resolve the set of holdings to claim: explicit epochs (validated), or
         // every outstanding holding discovered on chain.
         let holdings = if self.subscription_epochs.is_empty() {
-            let target = validator_client_rewards_info.claim_holding_count as usize;
+            let target = validator_client_rewards.claim_holding_count as usize;
             if target == 0 {
                 writeln!(
                     out,
@@ -354,28 +355,25 @@ impl ClaimCommand {
 
             // Re-fetch the validator client rewards account to report the
             // post-tx claim_holding_count.
-            let post_count = match wallet
+            match wallet
                 .connection
-                .get_account_with_commitment(
+                .try_fetch_zero_copy_data_with_commitment::<ValidatorClientRewards>(
                     &validator_client_rewards_key,
                     CommitmentConfig::confirmed(),
                 )
                 .await
             {
-                Ok(response) => response.value.and_then(|account| {
-                    parse_validator_client_rewards(&account.data)
-                        .map(|info| info.claim_holding_count)
-                }),
+                Ok(refetched) => writeln!(
+                    out,
+                    "Remaining claim holding count: {}",
+                    refetched.claim_holding_count
+                )?,
                 Err(err) => {
                     eprintln!(
                         "warning: post-claim validator client rewards re-fetch failed: {err}"
                     );
-                    None
+                    writeln!(out, "Remaining claim holding count: (unavailable)")?;
                 }
-            };
-            match post_count {
-                Some(count) => writeln!(out, "Remaining claim holding count: {count}")?,
-                None => writeln!(out, "Remaining claim holding count: (unavailable)")?,
             }
         }
 

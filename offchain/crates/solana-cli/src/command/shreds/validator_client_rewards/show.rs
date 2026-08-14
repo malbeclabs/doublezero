@@ -3,10 +3,11 @@ use std::io::Write;
 use anyhow::{Context, Result, bail};
 use clap::Args;
 use doublezero_cli_core::CliContext;
-use doublezero_solana_client_tools::rpc::SolanaConnectionOptions;
+use doublezero_solana_client_tools::{
+    account::zero_copy::ZeroCopyAccountOwnedData, rpc::SolanaConnectionOptions,
+};
 use doublezero_solana_sdk::shred_subscription::state::{
-    ValidatorClientRewardsInfo, find_claim_holding_address, find_validator_client_rewards_address,
-    parse_validator_client_rewards,
+    ValidatorClientRewards, find_claim_holding_address, find_validator_client_rewards_address,
 };
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{program_pack::Pack, pubkey::Pubkey};
@@ -34,26 +35,23 @@ pub struct ShowCommand {
     connection_options: SolanaConnectionOptions,
 }
 
-pub(crate) fn render_vcr_summary(
-    client_id: u16,
-    vcr_key: &Pubkey,
-    info: &ValidatorClientRewardsInfo,
+pub(crate) fn render_validator_client_rewards_summary(
+    validator_client_rewards_key: &Pubkey,
+    validator_client_rewards: &ValidatorClientRewards,
 ) -> String {
-    let mut out = String::new();
-    out.push_str(&format!(
-        "Validator client rewards (client_id={client_id})\n"
-    ));
-    out.push_str(&format!("  PDA                 : {vcr_key}\n"));
-    out.push_str(&format!("  manager             : {}\n", info.manager_key));
-    out.push_str(&format!(
-        "  description         : {}\n",
-        info.short_description.as_deref().unwrap_or("(none)")
-    ));
-    out.push_str(&format!(
-        "  claim holding count : {}\n",
-        info.claim_holding_count
-    ));
-    out
+    format!(
+        "Validator client rewards (client_id={})\n  \
+         PDA                 : {validator_client_rewards_key}\n  \
+         manager             : {}\n  \
+         description         : {}\n  \
+         claim holding count : {}\n",
+        validator_client_rewards.client_id,
+        validator_client_rewards.manager_key,
+        validator_client_rewards
+            .checked_short_description()
+            .unwrap_or("(none)"),
+        validator_client_rewards.claim_holding_count,
+    )
 }
 
 /// Status of a token-bearing account (manager ATA or per-epoch holding PDA)
@@ -138,29 +136,39 @@ impl ShowCommand {
 
         let connection = crate::command::solana_connection(ctx, &self.connection_options);
 
-        let vcr_key = find_validator_client_rewards_address(self.client_id).0;
-        let vcr_account = connection
-            .get_account_with_commitment(&vcr_key, CommitmentConfig::confirmed())
+        let validator_client_rewards_key = find_validator_client_rewards_address(self.client_id).0;
+        let validator_client_rewards_account = connection
+            .get_account_with_commitment(
+                &validator_client_rewards_key,
+                CommitmentConfig::confirmed(),
+            )
             .await
-            .with_context(|| format!("fetching VCR PDA {vcr_key}"))?
+            .with_context(|| {
+                format!("fetching validator client rewards PDA {validator_client_rewards_key}")
+            })?
             .value;
-        let vcr_data = match vcr_account {
-            Some(acct) => acct.data,
-            None => {
-                writeln!(
-                    out,
-                    "Validator client rewards not initialized for client-id {} (PDA {vcr_key})",
-                    self.client_id
-                )?;
-                return Ok(());
-            }
+        let Some(validator_client_rewards_account) = validator_client_rewards_account else {
+            writeln!(
+                out,
+                "Validator client rewards not initialized for client-id {} (PDA {validator_client_rewards_key})",
+                self.client_id
+            )?;
+            return Ok(());
         };
-        let info = parse_validator_client_rewards(&vcr_data)
-            .with_context(|| format!("failed to parse ValidatorClientRewards at {vcr_key}"))?;
+        let validator_client_rewards =
+            ZeroCopyAccountOwnedData::<ValidatorClientRewards>::from_account(
+                &validator_client_rewards_account,
+            )
+            .with_context(|| {
+                format!("failed to decode ValidatorClientRewards at {validator_client_rewards_key}")
+            })?;
         write!(
             out,
             "{}",
-            render_vcr_summary(self.client_id, &vcr_key, &info)
+            render_validator_client_rewards_summary(
+                &validator_client_rewards_key,
+                &validator_client_rewards
+            )
         )?;
 
         // When a mint is supplied, always print the manager's ATA address and
@@ -168,25 +176,26 @@ impl ShowCommand {
         // supplies one or more `--subscription-epoch` values.
         if let Some(mint) = self.rewards_token_mint {
             writeln!(out, "Claim holdings for mint {mint}:")?;
-            let manager_ata = get_associated_token_address(&info.manager_key, &mint);
+            let manager_ata_key =
+                get_associated_token_address(&validator_client_rewards.manager_key, &mint);
             let ata_account = connection
-                .get_account_with_commitment(&manager_ata, CommitmentConfig::confirmed())
+                .get_account_with_commitment(&manager_ata_key, CommitmentConfig::confirmed())
                 .await
-                .with_context(|| format!("fetching manager ATA {manager_ata}"))?
+                .with_context(|| format!("fetching manager ATA {manager_ata_key}"))?
                 .value;
             let ata_status = classify_token_account(ata_account.as_ref(), Some(&mint));
             writeln!(
                 out,
                 "{}",
-                render_manager_ata_row(&manager_ata, &ata_status, Some(&mint))
+                render_manager_ata_row(&manager_ata_key, &ata_status, Some(&mint))
             )?;
 
             if !self.subscription_epochs.is_empty() {
-                let holding_keys: Vec<Pubkey> = self
+                let holding_keys = self
                     .subscription_epochs
                     .iter()
-                    .map(|e| find_claim_holding_address(&vcr_key, *e, &mint).0)
-                    .collect();
+                    .map(|e| find_claim_holding_address(&validator_client_rewards_key, *e, &mint).0)
+                    .collect::<Vec<_>>();
                 let holding_accounts = connection
                     .get_multiple_accounts(&holding_keys)
                     .await
@@ -251,33 +260,46 @@ mod tests {
     }
 
     #[test]
-    fn render_vcr_summary_uses_none_when_description_empty() {
-        let info = ValidatorClientRewardsInfo {
-            client_id: 7,
-            manager_key: Pubkey::new_from_array([1u8; 32]),
-            short_description: None,
-            claim_holding_count: 0,
-        };
-        let key = Pubkey::new_from_array([2u8; 32]);
-        let out = render_vcr_summary(7, &key, &info);
-        assert!(out.contains("description         : (none)"));
-        assert!(out.contains("claim holding count : 0"));
-        assert!(out.contains(&info.manager_key.to_string()));
-        assert!(out.contains(&key.to_string()));
+    fn test_render_validator_client_rewards_summary_uses_none_when_description_empty() {
+        let mut validator_client_rewards = ValidatorClientRewards::default();
+        validator_client_rewards.client_id = 7;
+        validator_client_rewards.manager_key = Pubkey::new_from_array([1; 32]);
+        let validator_client_rewards_key = Pubkey::new_from_array([2; 32]);
+        let out = render_validator_client_rewards_summary(
+            &validator_client_rewards_key,
+            &validator_client_rewards,
+        );
+        assert_eq!(
+            out,
+            [
+                "Validator client rewards (client_id=7)",
+                &format!("  PDA                 : {validator_client_rewards_key}"),
+                &format!(
+                    "  manager             : {}",
+                    validator_client_rewards.manager_key
+                ),
+                "  description         : (none)",
+                "  claim holding count : 0",
+                "",
+            ]
+            .join("\n")
+        );
     }
 
     #[test]
-    fn render_vcr_summary_renders_description() {
-        let info = ValidatorClientRewardsInfo {
-            client_id: 7,
-            manager_key: Pubkey::new_from_array([1u8; 32]),
-            short_description: Some("acme".to_string()),
-            claim_holding_count: 4,
-        };
-        let key = Pubkey::new_from_array([2u8; 32]);
-        let out = render_vcr_summary(7, &key, &info);
-        assert!(out.contains("description         : acme"));
-        assert!(out.contains("claim holding count : 4"));
+    fn test_render_validator_client_rewards_summary_renders_description() {
+        let mut validator_client_rewards = ValidatorClientRewards::default();
+        validator_client_rewards.client_id = 7;
+        validator_client_rewards.manager_key = Pubkey::new_from_array([1; 32]);
+        validator_client_rewards.short_description_bytes[..4].copy_from_slice(b"acme");
+        validator_client_rewards.claim_holding_count = 4;
+        let validator_client_rewards_key = Pubkey::new_from_array([2; 32]);
+        let out = render_validator_client_rewards_summary(
+            &validator_client_rewards_key,
+            &validator_client_rewards,
+        );
+        assert!(out.contains("  description         : acme"));
+        assert!(out.contains("  claim holding count : 4"));
     }
 
     #[test]

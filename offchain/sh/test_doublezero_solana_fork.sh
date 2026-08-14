@@ -235,7 +235,7 @@ echo
 #
 #   solana-keygen new --silent --no-bip39-passphrase -o manager_keypair.json
 #   cargo run --bin doublezero-solana-fork -- -um --reset \
-#       --synthetic-vcr-manager $(solana address -k manager_keypair.json)
+#       --synthetic-validator-client-rewards-manager $(solana address -k manager_keypair.json)
 #   bash sh/test_doublezero_solana_fork.sh
 #
 # The fork loader bakes a synthetic ValidatorClientRewards PDA at
@@ -306,7 +306,7 @@ else
     echo "Skipping validator-client claim commands: $MANAGER_KEY_PATH not found."
     echo "To exercise this block, generate the keypair before starting the fork loader:"
     echo "  solana-keygen new --silent --no-bip39-passphrase -o $MANAGER_KEY_PATH"
-    echo "  cargo run --bin doublezero-solana-fork -- -um --reset --synthetic-vcr-manager \$(solana address -k $MANAGER_KEY_PATH)"
+    echo "  cargo run --bin doublezero-solana-fork -- -um --reset --synthetic-validator-client-rewards-manager \$(solana address -k $MANAGER_KEY_PATH)"
     echo
 fi
 

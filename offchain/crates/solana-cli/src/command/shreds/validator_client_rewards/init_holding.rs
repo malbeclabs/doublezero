@@ -9,8 +9,8 @@ use doublezero_solana_sdk::{
         ID,
         instruction::{ShredSubscriptionInstructionData, account::InitializeClaimHoldingAccounts},
         state::{
-            find_claim_holding_address, find_validator_client_rewards_address,
-            parse_validator_client_rewards,
+            ValidatorClientRewards, find_claim_holding_address,
+            find_validator_client_rewards_address,
         },
     },
     try_build_instruction,
@@ -60,42 +60,42 @@ impl InitHoldingCommand {
         let wallet = crate::command::build_wallet(ctx, self.write_opts)?;
         let wallet_key = wallet.pubkey();
 
-        let vcr_key = find_validator_client_rewards_address(self.client_id).0;
+        let validator_client_rewards_key = find_validator_client_rewards_address(self.client_id).0;
 
-        // Verify VCR exists and has the right discriminator.
-        let vcr_account = wallet
+        wallet
             .connection
-            .get_account_with_commitment(&vcr_key, CommitmentConfig::confirmed())
+            .try_fetch_zero_copy_data_with_commitment::<ValidatorClientRewards>(
+                &validator_client_rewards_key,
+                CommitmentConfig::confirmed(),
+            )
             .await
-            .with_context(|| format!("fetching VCR PDA {vcr_key}"))?
-            .value;
-        let vcr_data = match vcr_account {
-            Some(acct) => acct.data,
-            None => bail!(
-                "validator client rewards not initialized for client-id {} (PDA {})",
-                self.client_id,
-                vcr_key
-            ),
-        };
-        if parse_validator_client_rewards(&vcr_data).is_none() {
-            bail!(
-                "account at {vcr_key} is not a ValidatorClientRewards (unexpected discriminator or data layout)"
-            );
-        }
+            .with_context(|| {
+                format!(
+                    "failed to read validator client rewards for client-id {} (PDA {validator_client_rewards_key})",
+                    self.client_id
+                )
+            })?;
 
         // Pre-flight: filter epochs whose holding account already exists.
-        let holding_keys: Vec<Pubkey> = self
+        let holding_keys = self
             .subscription_epochs
             .iter()
-            .map(|epoch| find_claim_holding_address(&vcr_key, *epoch, &self.rewards_token_mint).0)
-            .collect();
+            .map(|epoch| {
+                find_claim_holding_address(
+                    &validator_client_rewards_key,
+                    *epoch,
+                    &self.rewards_token_mint,
+                )
+                .0
+            })
+            .collect::<Vec<_>>();
         let holding_accounts = wallet
             .connection
             .get_multiple_accounts(&holding_keys)
             .await
             .with_context(|| "fetching claim holding accounts")?;
 
-        let mut to_init: Vec<(u64, Pubkey)> = Vec::new();
+        let mut to_init = Vec::new();
         for ((epoch, key), maybe_acct) in self
             .subscription_epochs
             .iter()

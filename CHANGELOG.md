@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- RFCs
+  - RFC-27: IP Ownership Verification Service for user connection
+
 ## [v0.36.0](https://github.com/malbeclabs/doublezero/compare/client/v0.35.0...client/v0.36.0) - 2026-08-14
 
 ### Breaking
@@ -1339,7 +1342,6 @@ All notable changes to this project will be documented in this file.
 
 - RFCs
   - RFC-10: Version Compatibility Windows
-  - RFC-22 — IP Ownership Verification Service.
 - CLI
   - IP address lookups via ifconfig.me are retried up to 3 times to minimize transient network errors.
   - Added global `--no-version-warning` flag to the `doublezero` client and now emit version warnings to STDERR instead of STDOUT to improve scriptability and logging.

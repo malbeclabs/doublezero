@@ -1,4 +1,4 @@
-# RFC 22: IP Ownership Verification Service for user connection
+# RFC 27: IP Ownership Verification Service for user connection
 
 ## Summary
 

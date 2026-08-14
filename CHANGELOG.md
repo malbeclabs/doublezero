@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.36.0](https://github.com/malbeclabs/doublezero/compare/client/v0.35.0...client/v0.36.0) - 2026-08-14
+
+### Breaking
+
+### Changes
+
 - CI
   - The devnet daily deploy waits for CloudSmith to list the nightly it just built before it runs ansible. On 2026-08-12 the client package finished uploading at 14:37:00 UTC, and four devnet hosts ran `apt-get update` between 14:37:21 and 14:37:24. Those four hosts read the old index and stayed on the 2026-08-11 nightly, while the four hosts that ansible reached 7 seconds later upgraded. The new step polls the jammy and noble package indexes for up to 10 minutes, then fails the deploy. CloudFront serves those indexes with `max-age=30`, so the step waits another 35 seconds after the indexes list the version, because a host reaches a different edge than the runner. A component that builds no deb skips the step. (#4181)
 - E2E/QA

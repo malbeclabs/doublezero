@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- RFCs
+  - RFC-27: IP Ownership Verification Service for user connection
+
 ## [v0.36.0](https://github.com/malbeclabs/doublezero/compare/client/v0.35.0...client/v0.36.0) - 2026-08-14
 
 ### Breaking

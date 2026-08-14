@@ -5,12 +5,26 @@
 ### Naming and prose
 
 - Always write "onchain", never "on-chain".
-- **No abbreviations for account or variable names — anywhere.** Spell out `validator_client_rewards`, not `vcr`. `validator_publisher_rewards`, not `vpr`. `shred_distribution`, not `sd`. This applies to source variable names, test bindings, code comments, program logs, PR titles, branch names, commit subjects, and any prose in this codebase. Acronyms that are universally known in the Solana/SPL ecosystem are fine — `PDA`, `ATA`, `CPI`, `SPL`, `SVM`, `IDL`. Project-specific shorthand is not — write out the full name even if it appears many times in a single function.
+- **No abbreviations for account or variable names — anywhere.** Spell out `validator_client_rewards`, not `vcr`. `validator_publisher_rewards`, not `vpr`. `shred_distribution`, not `sd`. This applies to source variable names, test bindings, code comments, program logs, PR titles, branch names, commit subjects, and any prose in this codebase. Acronyms that are universally known in the Solana/SPL ecosystem are fine — `tx`, `PDA`, `ATA`, `CPI`, `SPL`, `SVM`, `IDL`. Project-specific shorthand is not — write out the full name even if it appears many times in a single function.
+- **The `try_` prefix is reserved for functions returning `Result`.** A fallible-looking function returning `bool` or `Option` takes a plain name (`add_requested_feeds(...) -> bool`, not `try_add_requested_feeds`). Giving an existing function a `Result` return means renaming it to `try_`, and its callers with it. Where an existing `try_`-named function returns something else, treat it as a straggler rather than a pattern to copy.
+- **Prose in this repo uses no contractions, no emdashes, and no sentence-chaining semicolons, and American spelling throughout.** Write "do not" rather than "don't", a comma or a period or parentheses rather than an emdash, two sentences rather than one joined by a semicolon, and "behavior" rather than "behaviour". This covers code comments, docstrings, READMEs, CHANGELOG entries, commit subjects, and PR and issue bodies. Semicolons inside a list are fine. The rule is for text you write or substantively change. Existing text, including the older parts of this file, is not worth a cleanup pass.
 
 ### Type annotations
 
 - **Never** define types anywhere the Rust compiler can infer them. This is non-negotiable and applies everywhere — `let` bindings (source and tests), numeric literals, function-call turbofishes, test helpers, struct field initializers, function arguments. If `let x = ...;` compiles, do not write `let x: Foo = ...;`. If `5_000` compiles, do not write `5_000u16` or `5_000_u32`. If `.collect()` compiles, do not write `.collect::<Vec<_>>()`. **In particular, do not write `let mut x: u64 = 0;` — write `let mut x = 0;` and let the first usage drive inference.** Only add annotations when the compiler genuinely cannot infer. When in doubt, write without the annotation and add one only if the compiler asks.
 - When the compiler does need a type hint, prefer **turbofish on the call site** (`.collect::<Vec<_>>()`, `<u32>::try_from(x)`) over annotating the `let` binding (`let xs: Vec<_> = ...`). Turbofish documents the type at the point it is needed; a let-binding annotation hides that intent and decays as the surrounding code changes.
+
+### Numeric literals
+
+- **Derive a constant in code, not in a comment.** When a constant is a sum of parts (a byte layout, a size reserve), write the sum with one term per line and a comment naming each term, then pin the total with `const _: () = assert!(NAME == 384);`. A literal carrying its arithmetic in a comment cannot be checked: the terms can fail to add up to it, and a term that changes leaves the literal stale with nothing to catch it. Group a long derivation into named block consts, each with its own assertion, and reference one from another where the same cost appears in both.
+- **Annotate per literal, never above a run.** A comment above `3 + 1 + 96 + 32` leaves the reader mapping prose onto numbers by position, and gives no way to tell a wrong mapping from a right one. Break the expression across lines so each literal carries its own comment.
+- **Do not pre-multiply, and do not repeat a literal that has a meaning.** `96` for three account keys hides both the count and which three, so write `3 * 32` where the items are interchangeable or one `32` per item where each has a name worth checking. A literal appearing in more than one expression is a constant that has not been named yet.
+- Prefer a plain literal whose comment names the field over `size_of::<T>()`. Reach for `size_of::<T>()` where the width follows from a type that could plausibly change, or where the term is a composite no short comment makes obvious.
+- All of the above apply in tests exactly as in source.
+
+### Workspace dependencies
+
+- **Put required features on the `[workspace.dependencies]` entry, not in a per-crate `{ workspace = true, features = [...] }` override.** Cargo unifies features across a build, so a per-crate feature is not isolated to that crate: every user of that dependency in the same build graph gets it anyway. The override buys no isolation and splits the dependency's feature set across manifests. A feature enabled in one member but missing from the workspace entry is the smell.
 
 ### Comments and docstrings
 

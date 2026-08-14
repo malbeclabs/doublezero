@@ -89,7 +89,7 @@ multisig and its vault.
 ### Emitting a transaction for the UI
 
 ```rust
-print_vault_transaction(&connection, &vault_key, &[instruction]);
+try_print_vault_transaction(&connection, &vault_key, &[instruction])?;
 ```
 
 Alongside the base58 payload this prints an explorer transaction inspector link
@@ -113,7 +113,7 @@ that it is now part of the link, since an endpoint on another SVM network is
 unrecognizable from here and that says nothing either way about how sensitive it
 is. Whether it matters is the caller's call.
 
-`encode_vault_transaction` is the same thing without the surrounding output, for
+`try_encode_vault_transaction` is the same thing without the surrounding output, for
 callers that want the string.
 
 This is a wire contract with the Squads UI, so it is worth stating exactly: a
@@ -124,6 +124,47 @@ into a vault transaction. How members import it differs by UI.
 The format is pinned by a test that decodes the output back and asserts those
 properties, and it has been confirmed by executing emitted transactions against a
 devnet Squad.
+
+### Sizing a payload
+
+The transaction that has to carry a payload is the one Squads wraps around it, not
+the payload itself. That wrapper is a `vault_transaction_create` carrying the payload
+as its `transaction_message`, bundled with the compute budget pair, a
+`proposal_create`, and a `proposal_approve`, which is how one transaction takes a
+payload all the way to the approvers. A payload that overruns it is refused at import,
+before any approval exists.
+
+| Function                                              | Purpose                                  |
+|-------------------------------------------------------|------------------------------------------|
+| `vault_transaction_payload_budget(instruction_count)` | Bytes the payload's message may occupy.  |
+| `try_encode_vault_transaction(vault, instructions)`   | Encodes, or refuses an unusable payload. |
+
+The budget governs the serialized legacy message, meaning
+`Message::serialize().len()`, not the base58 string the encoder returns, which is
+around 1.37 times longer. A caller sizing its own instruction measures the former.
+
+It is `MAX_TRANSACTION_SIZE` less a 384-byte reserve, less one byte per payload
+instruction. The derivation, and the Squads app behavior it deliberately does not
+cover, sit beside the constant. A memo typed at import is unbounded, so no reserve can
+cover one, which is the reason a payload sized to the last byte is a payload a memo
+breaks. A test assembles the wrapper and asserts that a payload sized to the budget
+still fits, so the arithmetic beside the constant is executable rather than asserted.
+
+Size is not the only thing that makes a payload unusable, and the other two checks
+matter more, because a size failure surfaces at import while these surface at execute,
+after the approvals are spent. The encoder refuses a payload naming a signer other than
+the vault, since any such key has to sign the execute transaction itself and nothing
+here knows who will run it. It refuses more than 48 instructions, since each runs as
+its own invocation against an instruction trace the whole execute transaction shares.
+That 48 is an arbitrarily conservative lower bound, not the runtime's limit.
+
+An empty payload is refused too, which is a courtesy rather than a correctness matter:
+it imports and executes nothing, at the cost of the approvals.
+
+`vault_transaction_execute` is checked as well, though nothing the budget accepts can
+overrun it. By execute the payload's instruction data lives in the transaction account
+and no longer travels, which leaves execute looser than create at every size, so create
+binds. A test pins that pairing rather than leaving it a claim.
 
 ### Reading loader-v3 authorities
 

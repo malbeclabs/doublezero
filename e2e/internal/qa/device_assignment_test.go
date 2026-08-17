@@ -795,11 +795,15 @@ func TestComputeFailureStats(t *testing.T) {
 		if len(stats.DeviceResults) != 0 {
 			t.Errorf("expected no device results, got %+v", stats.DeviceResults)
 		}
-		if len(stats.PerHost) != 0 {
-			t.Errorf("expected no per-host stats, got %+v", stats.PerHost)
-		}
 		if !reflect.DeepEqual(stats.Skipped, []string{"drained1"}) {
 			t.Errorf("skipped: got %v, want [drained1]", stats.Skipped)
+		}
+		if stats.SkippedRate() != 1 {
+			t.Errorf("skipped rate: got %v, want 1", stats.SkippedRate())
+		}
+		hostA := stats.PerHost["hostA"]
+		if hostA.Total != 0 || hostA.Skipped != 1 {
+			t.Errorf("hostA: got %+v, want total=0 skipped=1", hostA)
 		}
 	})
 
@@ -817,8 +821,41 @@ func TestComputeFailureStats(t *testing.T) {
 		if !reflect.DeepEqual(stats.DeviceResults, wantDevices) {
 			t.Errorf("device results: got %+v, want %+v", stats.DeviceResults, wantDevices)
 		}
-		if _, ok := stats.PerHost["hostB"]; ok {
-			t.Errorf("hostB should be absent when its only device is not ready, got %+v", stats.PerHost["hostB"])
+		// hostB tested nothing, which must be visible as skipped coverage rather
+		// than as an absent host indistinguishable from a clean run.
+		hostB := stats.PerHost["hostB"]
+		if hostB.Total != 0 || hostB.Skipped != 1 || hostB.Failed != 0 {
+			t.Errorf("hostB: got %+v, want total=0 skipped=1 failed=0", hostB)
+		}
+		if hostB.SkippedRate() != 1 {
+			t.Errorf("hostB skipped rate: got %v, want 1", hostB.SkippedRate())
+		}
+	})
+
+	// A metro draining takes one host's whole pool while barely moving the
+	// fleet-wide rate, so the skipped count has to be attributed per host.
+	t.Run("attributes skipped devices to their host", func(t *testing.T) {
+		drained1 := &Device{Code: "drained1", PubKey: "dpk1", Status: serviceability.DeviceStatusActivated}
+		drained2 := &Device{Code: "drained2", PubKey: "dpk2", Status: serviceability.DeviceStatusActivated}
+
+		batchData := BatchData{
+			0: {"hostA": fail(drained1), "hostB": pass(dev1)},
+			1: {"hostA": fail(drained2), "hostB": pass(dev2)},
+			2: {"hostA": fail(drained2), "hostB": pass(dev3)},
+		}
+		stats := ComputeFailureStats(batchData)
+
+		hostA := stats.PerHost["hostA"]
+		if hostA.Total != 0 || hostA.Skipped != 2 {
+			t.Errorf("hostA: got %+v, want total=0 skipped=2 (drained2 deduped)", hostA)
+		}
+		hostB := stats.PerHost["hostB"]
+		if hostB.Total != 3 || hostB.Skipped != 0 || hostB.SkippedRate() != 0 {
+			t.Errorf("hostB: got %+v rate=%v, want total=3 skipped=0 rate=0", hostB, hostB.SkippedRate())
+		}
+		// 2 of 5 fleet-wide stays under a 0.5 gate while hostA tested nothing.
+		if stats.SkippedRate() != 2.0/5.0 {
+			t.Errorf("fleet skipped rate: got %v, want %v", stats.SkippedRate(), 2.0/5.0)
 		}
 	})
 
@@ -845,4 +882,36 @@ func TestComputeFailureStats(t *testing.T) {
 			t.Errorf("hostA failedDevices: got %v, want [dev1]", hostA.FailedDevices)
 		}
 	})
+}
+
+func TestFailureStatsSkippedRate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		tested  int
+		skipped []string
+		want    float64
+	}{
+		{name: "nothing skipped", tested: 4, want: 0},
+		{name: "partial drain", tested: 10, skipped: []string{"d1", "d2", "d3"}, want: 3.0 / 13.0},
+		{name: "majority drained", tested: 3, skipped: []string{"d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9", "d10"}, want: 10.0 / 13.0},
+		// Nothing testable must read as a total loss of coverage, not as 0/0.
+		{name: "everything skipped", skipped: []string{"d1"}, want: 1},
+		{name: "nothing assigned", want: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			stats := FailureStats{
+				DeviceResults: make([]DeviceTestResult, tt.tested),
+				Skipped:       tt.skipped,
+			}
+			if got := stats.SkippedRate(); got != tt.want {
+				t.Errorf("SkippedRate() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

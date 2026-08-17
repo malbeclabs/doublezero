@@ -26,6 +26,7 @@ var (
 	allocateAddrHosts       = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
 	failureThreshold        = flag.Float64("failure-threshold", 0.1, "maximum allowed overall device failure rate (0.0-1.0) before the test is marked as failed")
 	perHostFailureThreshold = flag.Float64("per-host-failure-threshold", 0.2, "maximum allowed per-host device failure rate (0.0-1.0) before the test is marked as failed")
+	skippedThreshold        = flag.Float64("skipped-threshold", 0.5, "maximum allowed rate of assigned devices skipped for not accepting users (0.0-1.0) before the test is marked as failed")
 )
 
 func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
@@ -230,19 +231,25 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		)
 	}
 
-	if len(stats.Skipped) > 0 {
-		t.Logf("SKIPPED %d devices not accepting users (excluded from failure rates): %s",
-			len(stats.Skipped), strings.Join(stats.Skipped, ", "))
-	}
-
 	// Evaluate failure rates against threshold
 	totalDevices := len(stats.DeviceResults)
+	assignedDevices := totalDevices + len(stats.Skipped)
 
-	// Guard the rate math: with no eligible devices the run proved nothing, and
-	// 0/0 is NaN, which silently passes every threshold comparison below.
+	if len(stats.Skipped) > 0 {
+		t.Logf("SKIPPED %d of %d devices not accepting users (excluded from failure rates): %s",
+			len(stats.Skipped), assignedDevices, strings.Join(stats.Skipped, ", "))
+	}
+
+	// A run whose fleet was mostly unusable proves nothing about the network and
+	// must not report green over the remnant. Errorf, not Fatalf: the metrics
+	// published below are the only durable record of the lost coverage.
+	if skippedRate := stats.SkippedRate(); skippedRate > *skippedThreshold {
+		t.Errorf("Skipped device rate %.1f%% (%d/%d not accepting users) exceeds threshold %.1f%%; only %d devices were tested",
+			skippedRate*100, len(stats.Skipped), assignedDevices, *skippedThreshold*100, totalDevices)
+	}
+	// Testing nothing fails even at -skipped-threshold=1, which the gate above satisfies.
 	if totalDevices == 0 {
-		t.Fatalf("no devices were eligible for testing (%d skipped as not accepting users): %s",
-			len(stats.Skipped), strings.Join(stats.Skipped, ", "))
+		t.Errorf("No devices were eligible for testing; all %d assigned devices were not accepting users", assignedDevices)
 	}
 
 	failedDevices := 0
@@ -254,21 +261,34 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		}
 	}
 
-	overallRate := float64(failedDevices) / float64(totalDevices)
-	log.Debug("Overall failure rate",
-		"failed", failedDevices,
-		"total", totalDevices,
-		"rate", fmt.Sprintf("%.1f%%", overallRate*100),
-		"threshold", fmt.Sprintf("%.1f%%", *failureThreshold*100),
-	)
-	if overallRate > *failureThreshold {
-		t.Errorf("Overall device failure rate %.1f%% (%d/%d) exceeds threshold %.1f%%. Failed devices: %s",
-			overallRate*100, failedDevices, totalDevices, *failureThreshold*100,
-			strings.Join(failedDeviceCodes, ", "))
+	// 0/0 is NaN and NaN > threshold is false, so an all-skipped run would pass
+	// this silently; the gate above has already reported it.
+	if totalDevices > 0 {
+		overallRate := float64(failedDevices) / float64(totalDevices)
+		log.Debug("Overall failure rate",
+			"failed", failedDevices,
+			"total", totalDevices,
+			"rate", fmt.Sprintf("%.1f%%", overallRate*100),
+			"threshold", fmt.Sprintf("%.1f%%", *failureThreshold*100),
+		)
+		if overallRate > *failureThreshold {
+			t.Errorf("Overall device failure rate %.1f%% (%d/%d) exceeds threshold %.1f%%. Failed devices: %s",
+				overallRate*100, failedDevices, totalDevices, *failureThreshold*100,
+				strings.Join(failedDeviceCodes, ", "))
+		}
 	}
 
+	// Coverage is gated per host as well: a drained metro is a few percent of the
+	// fleet but all of one host's pool.
 	for _, host := range slices.Sorted(maps.Keys(stats.PerHost)) {
 		hs := stats.PerHost[host]
+		if skippedRate := hs.SkippedRate(); skippedRate > *skippedThreshold {
+			t.Errorf("Host %s skipped device rate %.1f%% (%d/%d not accepting users) exceeds threshold %.1f%%; only %d devices were tested",
+				host, skippedRate*100, hs.Skipped, hs.Skipped+hs.Total, *skippedThreshold*100, hs.Total)
+		}
+		if hs.Total == 0 {
+			continue
+		}
 		hostRate := float64(hs.Failed) / float64(hs.Total)
 		log.Debug("Per-host failure rate",
 			"host", host,
@@ -283,10 +303,10 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		}
 	}
 
-	if err := qa.PublishMetrics(ctx, log, qa.MetricsConfigFromEnv(), envArg, stats.DeviceResults, time.Since(startTime)); err != nil {
+	if err := qa.PublishMetrics(ctx, log, qa.MetricsConfigFromEnv(), envArg, stats.DeviceResults, len(stats.Skipped), time.Since(startTime)); err != nil {
 		log.Error("Failed to publish metrics", "error", err)
 	}
-	if err := qa.PublishToClickhouse(ctx, log, qa.ClickhouseConfigFromEnv(), envArg, stats.DeviceResults, time.Since(startTime)); err != nil {
+	if err := qa.PublishToClickhouse(ctx, log, qa.ClickhouseConfigFromEnv(), envArg, stats.DeviceResults, len(stats.Skipped), time.Since(startTime)); err != nil {
 		log.Error("Failed to publish metrics to ClickHouse", "error", err)
 	}
 }

@@ -47,7 +47,7 @@ func MetricsConfigFromEnv() *MetricsConfig {
 	}
 }
 
-func PublishMetrics(ctx context.Context, log *slog.Logger, cfg *MetricsConfig, env string, results []DeviceTestResult, duration time.Duration) error {
+func PublishMetrics(ctx context.Context, log *slog.Logger, cfg *MetricsConfig, env string, results []DeviceTestResult, skippedDevices int, duration time.Duration) error {
 	if cfg == nil {
 		log.Debug("Metrics publishing skipped: no InfluxDB configuration")
 		return nil
@@ -98,6 +98,7 @@ func PublishMetrics(ctx context.Context, log *slog.Logger, cfg *MetricsConfig, e
 			"devices_tested":  len(results),
 			"devices_success": successCount,
 			"devices_failed":  failureCount,
+			"devices_skipped": skippedDevices,
 			"duration_s":      duration.Seconds(),
 		},
 		now,
@@ -112,6 +113,7 @@ func PublishMetrics(ctx context.Context, log *slog.Logger, cfg *MetricsConfig, e
 		"devices", len(results),
 		"success", successCount,
 		"failed", failureCount,
+		"skipped", skippedDevices,
 	)
 
 	return nil

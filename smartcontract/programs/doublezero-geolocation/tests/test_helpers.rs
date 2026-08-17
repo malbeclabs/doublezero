@@ -83,6 +83,7 @@ pub fn create_mock_globalstate_account_shared(
         qa_allowlist: vec![],
         feature_flags: 0,
         feed_authority_pk: Pubkey::new_unique(),
+        ip_verifier_authority_pk: Pubkey::new_unique(),
     };
 
     let data = borsh::to_vec(&globalstate).unwrap();

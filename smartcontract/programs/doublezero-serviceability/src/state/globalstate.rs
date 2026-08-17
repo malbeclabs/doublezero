@@ -30,6 +30,10 @@ pub struct GlobalState {
     pub qa_allowlist: Vec<Pubkey>,         // 4 + 32 * len
     pub feature_flags: u128,               // 16
     pub feed_authority_pk: Pubkey,         // 32
+    /// Trust root for IP ownership proof validation (RFC-27). `Pubkey::default()`
+    /// means no verifier is configured, which enforcement must treat as a hard
+    /// reject rather than "any signature passes".
+    pub ip_verifier_authority_pk: Pubkey, // 32
 }
 
 impl Default for GlobalState {
@@ -49,6 +53,7 @@ impl Default for GlobalState {
             qa_allowlist: Vec::new(),
             feature_flags: 0,
             feed_authority_pk: Pubkey::default(),
+            ip_verifier_authority_pk: Pubkey::default(),
         }
     }
 }
@@ -78,7 +83,11 @@ health_oracle_pk: {:?}",
             self.user_airdrop_lamports,
             self.health_oracle_pk,
         )?;
-        write!(f, ", feature_flags: {}", self.feature_flags)
+        write!(
+            f,
+            ", feature_flags: {}, feed_authority_pk: {:?}, ip_verifier_authority_pk: {:?}",
+            self.feature_flags, self.feed_authority_pk, self.ip_verifier_authority_pk
+        )
     }
 }
 
@@ -102,6 +111,7 @@ impl TryFrom<&[u8]> for GlobalState {
             qa_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             feature_flags: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             feed_authority_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            ip_verifier_authority_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::GlobalState {
@@ -147,6 +157,11 @@ impl Validate for GlobalState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{engine::general_purpose, Engine as _};
+
+    /// A mainnet GlobalState account captured before `ip_verifier_authority_pk`
+    /// existed, i.e. its serialized bytes end at `feed_authority_pk`.
+    const LEGACY_GLOBALSTATE_VECTOR: &str = "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";
 
     #[test]
     fn test_state_compatibility_globalstate() {
@@ -155,9 +170,55 @@ mod tests {
         solana account 5cNB1387r3wt3aBAT1uoTge7y1LAadWkC9DFQ3F89Dt6 --output json  -u  https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16
 
          */
-        let versions = ["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"];
+        let versions = [
+            LEGACY_GLOBALSTATE_VECTOR,
+            &globalstate_vector_with_ip_verifier(IP_VERIFIER_VECTOR_PK),
+        ];
 
         crate::helper::base_tests::test_parsing::<GlobalState>(&versions).unwrap();
+    }
+
+    /// The pubkey written into the vector below (32 bytes of 0x11).
+    const IP_VERIFIER_VECTOR_PK: Pubkey = Pubkey::new_from_array([0x11; 32]);
+
+    /// The legacy account re-serialized under the current layout with
+    /// `ip_verifier_authority_pk` set — i.e. what the account looks like after a
+    /// SetAuthority rotation writes it back.
+    fn globalstate_vector_with_ip_verifier(pk: Pubkey) -> String {
+        let bytes = general_purpose::STANDARD
+            .decode(LEGACY_GLOBALSTATE_VECTOR)
+            .unwrap();
+
+        let mut parsed = GlobalState::try_from(&bytes[..]).unwrap();
+        parsed.ip_verifier_authority_pk = pk;
+
+        general_purpose::STANDARD.encode(borsh::to_vec(&parsed).unwrap())
+    }
+
+    #[test]
+    fn test_state_globalstate_ip_verifier_authority_backwards_compatible() {
+        // An account written before the field existed reads back as "unset".
+        let legacy = general_purpose::STANDARD
+            .decode(LEGACY_GLOBALSTATE_VECTOR)
+            .unwrap();
+        let old = GlobalState::try_from(&legacy[..]).unwrap();
+        assert_eq!(old.ip_verifier_authority_pk, Pubkey::default());
+
+        // Once the field is written, it round-trips.
+        let extended = general_purpose::STANDARD
+            .decode(globalstate_vector_with_ip_verifier(IP_VERIFIER_VECTOR_PK))
+            .unwrap();
+        let new = GlobalState::try_from(&extended[..]).unwrap();
+        assert_eq!(new.ip_verifier_authority_pk, IP_VERIFIER_VECTOR_PK);
+
+        // Nothing ahead of the new field shifted.
+        assert_eq!(
+            GlobalState {
+                ip_verifier_authority_pk: Pubkey::default(),
+                ..new
+            },
+            old
+        );
     }
 
     #[test]
@@ -176,6 +237,7 @@ mod tests {
         assert_eq!(val.user_airdrop_lamports, 0);
         assert_eq!(val.feature_flags, 0);
         assert_eq!(val.feed_authority_pk, Pubkey::default());
+        assert_eq!(val.ip_verifier_authority_pk, Pubkey::default());
     }
 
     #[test]
@@ -195,6 +257,7 @@ mod tests {
             qa_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             feature_flags: 1,
             feed_authority_pk: Pubkey::new_unique(),
+            ip_verifier_authority_pk: Pubkey::new_unique(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -225,6 +288,7 @@ mod tests {
         assert_eq!(val.user_airdrop_lamports, val2.user_airdrop_lamports);
         assert_eq!(val.feature_flags, val2.feature_flags);
         assert_eq!(val.feed_authority_pk, val2.feed_authority_pk);
+        assert_eq!(val.ip_verifier_authority_pk, val2.ip_verifier_authority_pk);
     }
 
     #[test]
@@ -244,6 +308,7 @@ mod tests {
             qa_allowlist: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             feature_flags: 0,
             feed_authority_pk: Pubkey::new_unique(),
+            ip_verifier_authority_pk: Pubkey::new_unique(),
         };
         let err = val.validate();
         assert!(err.is_err());

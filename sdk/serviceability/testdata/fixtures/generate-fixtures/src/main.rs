@@ -379,6 +379,7 @@ fn generate_global_state(dir: &Path) {
     let health_oracle_pk = pubkey_from_byte(0x04);
     let qa_pk = pubkey_from_byte(0x05);
     let feed_authority_pk = pubkey_from_byte(0x06);
+    let ip_verifier_authority_pk = pubkey_from_byte(0x07);
 
     let val = GlobalState {
         account_type: AccountType::GlobalState,
@@ -395,6 +396,7 @@ fn generate_global_state(dir: &Path) {
         qa_allowlist: vec![qa_pk],
         feature_flags: 1,
         feed_authority_pk: feed_authority_pk,
+        ip_verifier_authority_pk,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -419,6 +421,7 @@ fn generate_global_state(dir: &Path) {
             FieldValue { name: "QaAllowlist0".into(), value: pubkey_bs58(&qa_pk), typ: "pubkey".into() },
             FieldValue { name: "FeatureFlags".into(), value: "1".into(), typ: "u128".into() },
             FieldValue { name: "FeedAuthorityPk".into(), value: pubkey_bs58(&feed_authority_pk), typ: "pubkey".into() },
+            FieldValue { name: "IpVerifierAuthorityPk".into(), value: pubkey_bs58(&ip_verifier_authority_pk), typ: "pubkey".into() },
         ],
     };
 

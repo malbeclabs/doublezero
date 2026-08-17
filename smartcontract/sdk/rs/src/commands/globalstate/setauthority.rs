@@ -9,6 +9,7 @@ pub struct SetAuthorityCommand {
     pub sentinel_authority_pk: Option<Pubkey>,
     pub health_oracle_pk: Option<Pubkey>,
     pub feed_authority_pk: Option<Pubkey>,
+    pub ip_verifier_authority_pk: Option<Pubkey>,
 }
 
 impl SetAuthorityCommand {
@@ -21,6 +22,7 @@ impl SetAuthorityCommand {
                 sentinel_authority_pk: self.sentinel_authority_pk,
                 health_oracle_pk: self.health_oracle_pk,
                 feed_authority_pk: self.feed_authority_pk,
+                ip_verifier_authority_pk: self.ip_verifier_authority_pk,
             },
         ))
     }
@@ -48,6 +50,7 @@ mod tests {
         let sentinel_authority_pk = Pubkey::new_unique();
         let health_oracle_pk = Pubkey::new_unique();
         let feed_authority_pk = Pubkey::new_unique();
+        let ip_verifier_authority_pk = Pubkey::new_unique();
 
         let expected = set_authority(
             &program_id,
@@ -57,6 +60,7 @@ mod tests {
                 sentinel_authority_pk: Some(sentinel_authority_pk),
                 health_oracle_pk: Some(health_oracle_pk),
                 feed_authority_pk: Some(feed_authority_pk),
+                ip_verifier_authority_pk: Some(ip_verifier_authority_pk),
             },
         );
         client
@@ -69,6 +73,7 @@ mod tests {
             sentinel_authority_pk: Some(sentinel_authority_pk),
             health_oracle_pk: Some(health_oracle_pk),
             feed_authority_pk: Some(feed_authority_pk),
+            ip_verifier_authority_pk: Some(ip_verifier_authority_pk),
         }
         .execute(&client);
         assert!(res.is_ok());

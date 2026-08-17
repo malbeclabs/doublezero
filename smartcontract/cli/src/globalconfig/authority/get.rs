@@ -25,6 +25,8 @@ pub struct AuthorityDisplay {
     pub feed_authority: Pubkey,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub health_oracle: Pubkey,
+    #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
+    pub ip_verifier_authority: Pubkey,
 }
 
 impl GetAuthorityCliCommand {
@@ -41,6 +43,7 @@ impl GetAuthorityCliCommand {
             access_authority: gstate.sentinel_authority_pk,
             feed_authority: gstate.feed_authority_pk,
             health_oracle: gstate.health_oracle_pk,
+            ip_verifier_authority: gstate.ip_verifier_authority_pk,
         };
 
         if self.json {
@@ -79,6 +82,7 @@ mod tests {
         let sentinel_authority = Pubkey::new_unique();
         let feed_authority = Pubkey::new_unique();
         let health_oracle = Pubkey::new_unique();
+        let ip_verifier_authority = Pubkey::new_unique();
         let globalstate = GlobalState {
             account_type: AccountType::GlobalState,
             bump_seed: 0,
@@ -94,6 +98,7 @@ mod tests {
             qa_allowlist: vec![],
             feature_flags: 0,
             feed_authority_pk: feed_authority,
+            ip_verifier_authority_pk: ip_verifier_authority,
         };
 
         client
@@ -129,6 +134,10 @@ mod tests {
             has_row("health_oracle", &health_oracle.to_string()),
             "health_oracle row should contain value"
         );
+        assert!(
+            has_row("ip_verifier_authority", &ip_verifier_authority.to_string()),
+            "ip_verifier_authority row should contain value"
+        );
 
         // JSON output
         let mut output = Vec::new();
@@ -152,6 +161,10 @@ mod tests {
         assert_eq!(
             json["health_oracle"].as_str().unwrap(),
             health_oracle.to_string()
+        );
+        assert_eq!(
+            json["ip_verifier_authority"].as_str().unwrap(),
+            ip_verifier_authority.to_string()
         );
     }
 }

@@ -21,14 +21,19 @@ pub struct SetAuthorityArgs {
     pub sentinel_authority_pk: Option<Pubkey>,
     pub health_oracle_pk: Option<Pubkey>,
     pub feed_authority_pk: Option<Pubkey>,
+    pub ip_verifier_authority_pk: Option<Pubkey>,
 }
 
 impl fmt::Debug for SetAuthorityArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "activator_authority_pk: {:?}, sentinel_authority_pk: {:?}, health_oracle_pk: {:?}, feed_authority_pk: {:?}",
-            self.activator_authority_pk, self.sentinel_authority_pk, self.health_oracle_pk, self.feed_authority_pk
+            "activator_authority_pk: {:?}, sentinel_authority_pk: {:?}, health_oracle_pk: {:?}, feed_authority_pk: {:?}, ip_verifier_authority_pk: {:?}",
+            self.activator_authority_pk,
+            self.sentinel_authority_pk,
+            self.health_oracle_pk,
+            self.feed_authority_pk,
+            self.ip_verifier_authority_pk
         )
     }
 }
@@ -95,6 +100,9 @@ pub fn process_set_authority(
     if let Some(feed_authority_pk) = value.feed_authority_pk {
         globalstate.feed_authority_pk = feed_authority_pk;
     }
+    if let Some(ip_verifier_authority_pk) = value.ip_verifier_authority_pk {
+        globalstate.ip_verifier_authority_pk = ip_verifier_authority_pk;
+    }
 
     try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
 
@@ -102,4 +110,38 @@ pub fn process_set_authority(
     msg!("Updated: {:?}", globalstate);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Transactions built before `ip_verifier_authority_pk` existed encode only the
+    /// first four options. `BorshDeserializeIncremental` must still decode them,
+    /// leaving the new field as `None` (i.e. "leave it alone").
+    #[test]
+    fn test_setauthority_args_decodes_pre_ip_verifier_encoding() {
+        let feed = Pubkey::new_unique();
+
+        let mut data = Vec::new();
+        None::<Pubkey>.serialize(&mut data).unwrap();
+        None::<Pubkey>.serialize(&mut data).unwrap();
+        None::<Pubkey>.serialize(&mut data).unwrap();
+        Some(feed).serialize(&mut data).unwrap();
+
+        let args = SetAuthorityArgs::try_from(&data[..]).unwrap();
+        assert_eq!(args.feed_authority_pk, Some(feed));
+        assert_eq!(args.ip_verifier_authority_pk, None);
+    }
+
+    #[test]
+    fn test_setauthority_args_roundtrips_ip_verifier() {
+        let args = SetAuthorityArgs {
+            ip_verifier_authority_pk: Some(Pubkey::new_unique()),
+            ..Default::default()
+        };
+
+        let data = borsh::to_vec(&args).unwrap();
+        assert_eq!(SetAuthorityArgs::try_from(&data[..]).unwrap(), args);
+    }
 }

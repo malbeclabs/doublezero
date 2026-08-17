@@ -224,8 +224,8 @@ pub fn process_create_subscribe_user(
         value.subscriber && !feed_gated,
     )?;
 
-    // Subscribe user to the primary multicast group. create_user_core already ran the
-    // EdgeSeat feed metro gate (coverage check + one seat tick) against this group.
+    // Subscribe user to the primary multicast group; the feed metro gate above already
+    // covered it (and ticked the seat) for EdgeSeat passes.
     let subscribe_result = update_user_multicastgroup_roles(
         mgroup_account,
         &mut result.user,
@@ -237,9 +237,9 @@ pub fn process_create_subscribe_user(
     // publisher allowlist always applies, and the subscriber role comes from the
     // allowlist unless the feed metro gate covers it — extra groups on EdgeSeat
     // passes get a coverage-only check against the same feed (a feed carries a
-    // group set; the seat is per-user-per-feed and was ticked once by
-    // create_user_core). Any failure aborts the whole instruction: no user
-    // account, counters, or seat tick survive a partial batch.
+    // group set; the seat is per-user-per-feed and was ticked once by the gate
+    // above). Any failure aborts the whole instruction: no user account,
+    // counters, or seat tick survive a partial batch.
     for extra_group_account in extra_group_accounts {
         validate_program_account!(
             *extra_group_account,

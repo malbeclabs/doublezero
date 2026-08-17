@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Onchain programs
+  - New `doublezero-ip-proof` crate defines the RFC-27 `IpOwnershipProof` and the exact bytes the verifier signs, in one place the serviceability program, the CLI, and the verification service all share. Nothing consumes it yet. (#4195, #4206)
 - RFCs
   - RFC-27: IP Ownership Verification Service for user connection
 

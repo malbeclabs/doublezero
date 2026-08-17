@@ -5337,7 +5337,7 @@ mod tests {
             fixture.expect_create_subscribe_user(
                 Pubkey::new_unique(),
                 &user,
-                group_pk,
+                vec![group_pk],
                 false,
                 true,
             );

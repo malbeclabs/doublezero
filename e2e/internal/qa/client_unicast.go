@@ -136,14 +136,12 @@ func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targ
 	}
 
 	var lastResp *pb.PingResult
-	var lastErr error
 	for i := range unicastPingMaxRetries {
 		resp, err := c.pingOnce(ctx, targetIP, sourceIP, iface)
 		if err != nil {
 			return nil, fmt.Errorf("failed to ping: %w", err)
 		}
 		lastResp = resp
-		lastErr = err
 
 		if resp.PacketsSent == 0 {
 			c.log.Warn("No packets sent",
@@ -227,7 +225,18 @@ func (c *Client) TestUnicastConnectivity(t *testing.T, ctx context.Context, targ
 			PacketsReceived: lastResp.PacketsReceived,
 		}
 	}
-	return result, fmt.Errorf("failed to ping after %d retries: %w", unicastPingMaxRetries, lastErr)
+	return result, pingFailureError(unicastPingMaxRetries, lastResp)
+}
+
+// pingFailureError describes a ping that never got a reply. Every attempt's RPC
+// succeeded — the loop above returns early otherwise — so there is no error to
+// wrap and the packet counts are the only diagnostic available.
+func pingFailureError(retries int, lastResp *pb.PingResult) error {
+	if lastResp == nil {
+		return fmt.Errorf("failed to ping after %d retries: no ping result returned", retries)
+	}
+	return fmt.Errorf("failed to ping after %d retries: %d/%d packets received on the last attempt",
+		retries, lastResp.PacketsReceived, lastResp.PacketsSent)
 }
 
 func (c *Client) pingOnce(ctx context.Context, targetIP string, sourceIP string, iface string) (*pb.PingResult, error) {

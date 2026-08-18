@@ -23,8 +23,9 @@ type ClickhouseConfig struct {
 // ClickhouseConfigFromEnv reads ClickHouse connection settings from environment variables.
 // Returns nil if CLICKHOUSE_ADDR is not set, which disables ClickHouse publishing.
 //
-// Schema changes to the tables created by PublishToClickhouse require manual ALTER TABLE
-// or DROP TABLE on the ClickHouse side — there is no migration tooling (same as the controller).
+// There is no migration tooling for the tables created by PublishToClickhouse (same as the
+// controller): a new column must be added to the CREATE TABLE *and* to an idempotent ALTER
+// in createQATables, or inserts break against deployments that already have the table.
 func ClickhouseConfigFromEnv() *ClickhouseConfig {
 	addr := os.Getenv("CLICKHOUSE_ADDR")
 	if addr == "" {
@@ -76,7 +77,7 @@ func buildClickhouseOptions(addr, db, user, pass string, disableTLS bool) *click
 // PublishToClickhouse writes per-device results and a summary row to ClickHouse.
 // Both tables are created automatically on first use (CREATE TABLE IF NOT EXISTS).
 // If cfg is nil, publishing is skipped silently.
-func PublishToClickhouse(ctx context.Context, log *slog.Logger, cfg *ClickhouseConfig, env string, results []DeviceTestResult, duration time.Duration) error {
+func PublishToClickhouse(ctx context.Context, log *slog.Logger, cfg *ClickhouseConfig, env string, results []DeviceTestResult, skippedDevices int, duration time.Duration) error {
 	if cfg == nil {
 		log.Debug("ClickHouse publishing skipped: no configuration")
 		return nil
@@ -101,11 +102,11 @@ func PublishToClickhouse(ctx context.Context, log *slog.Logger, cfg *ClickhouseC
 		return err
 	}
 
-	if err := insertMetadata(ctx, conn, cfg.DB, env, results, duration); err != nil {
+	if err := insertMetadata(ctx, conn, cfg.DB, env, results, skippedDevices, duration); err != nil {
 		return err
 	}
 
-	log.Debug("published QA results to ClickHouse", "devices", len(results))
+	log.Debug("published QA results to ClickHouse", "devices", len(results), "skipped", skippedDevices)
 	return nil
 }
 
@@ -130,6 +131,7 @@ func createQATables(ctx context.Context, conn clickhouse.Conn, db string) error 
 				devices_tested  UInt32,
 				devices_success UInt32,
 				devices_failed  UInt32,
+				devices_skipped UInt32,
 				duration_s      Float64
 			) ENGINE = MergeTree
 			PARTITION BY toYYYYMM(timestamp)
@@ -143,6 +145,13 @@ func createQATables(ctx context.Context, conn clickhouse.Conn, db string) error 
 			return fmt.Errorf("failed to create QA table: %w", err)
 		}
 	}
+
+	// The CREATE above is a no-op where the table predates devices_skipped. Best
+	// effort so a writer without ALTER rights still gets its per-device results
+	// in; a column that really is missing surfaces on the metadata insert.
+	_ = conn.Exec(ctx, fmt.Sprintf(
+		`ALTER TABLE "%s".qa_alldevices_metadata ADD COLUMN IF NOT EXISTS devices_skipped UInt32 AFTER devices_failed`, db,
+	))
 	return nil
 }
 
@@ -172,7 +181,7 @@ func insertResults(ctx context.Context, conn clickhouse.Conn, db, env string, re
 	return batch.Close()
 }
 
-func insertMetadata(ctx context.Context, conn clickhouse.Conn, db, env string, results []DeviceTestResult, duration time.Duration) error {
+func insertMetadata(ctx context.Context, conn clickhouse.Conn, db, env string, results []DeviceTestResult, skippedDevices int, duration time.Duration) error {
 	var successCount, failedCount uint32
 	for _, r := range results {
 		if r.Success {
@@ -183,13 +192,13 @@ func insertMetadata(ctx context.Context, conn clickhouse.Conn, db, env string, r
 	}
 
 	batch, err := conn.PrepareBatch(ctx, fmt.Sprintf(
-		`INSERT INTO "%s".qa_alldevices_metadata (timestamp, env, devices_tested, devices_success, devices_failed, duration_s)`, db,
+		`INSERT INTO "%s".qa_alldevices_metadata (timestamp, env, devices_tested, devices_success, devices_failed, devices_skipped, duration_s)`, db,
 	))
 	if err != nil {
 		return fmt.Errorf("failed to prepare metadata batch: %w", err)
 	}
 
-	if err := batch.Append(time.Now(), env, uint32(len(results)), successCount, failedCount, duration.Seconds()); err != nil {
+	if err := batch.Append(time.Now(), env, uint32(len(results)), successCount, failedCount, uint32(skippedDevices), duration.Seconds()); err != nil {
 		return fmt.Errorf("failed to append metadata row: %w", err)
 	}
 

@@ -305,9 +305,16 @@ func AssignDevicesToClients(devices []*Device, clients []*Client, clientLatencie
 // HostFailureStats aggregates per-host failure information after deduping
 // repeated tests of the same (host, device) pair.
 type HostFailureStats struct {
-	Total         int      // unique devices assigned to this host
+	Total         int      // unique testable devices assigned to this host
 	Failed        int      // unique devices that never succeeded on this host
+	Skipped       int      // unique devices excluded for not accepting users; disjoint from Total
 	FailedDevices []string // sorted, deduped device codes
+}
+
+// SkippedRate is this host's share of assigned devices that could not accept
+// users. See FailureStats.SkippedRate for the fleet-wide equivalent.
+func (h HostFailureStats) SkippedRate() float64 {
+	return skippedRate(h.Total, h.Skipped)
 }
 
 // DeviceRetest describes a (host, device) pair that was tested more than once.
@@ -331,12 +338,30 @@ type FailureStats struct {
 	DeviceResults []DeviceTestResult          // one per unique device code
 	PerHost       map[string]HostFailureStats // keyed by host
 	Retests       []DeviceRetest              // entries where Attempts > 1
+	Skipped       []string                    // sorted codes of devices that could not accept users
+}
+
+// SkippedRate is the fraction of assigned devices left out of the tallies for
+// not accepting users.
+func (s FailureStats) SkippedRate() float64 {
+	return skippedRate(len(s.DeviceResults), len(s.Skipped))
+}
+
+// skippedRate is 1 when nothing was testable at all, so a gate on it never
+// divides by zero nor reads a NaN as a pass.
+func skippedRate(tested, skipped int) float64 {
+	assigned := tested + skipped
+	if assigned == 0 {
+		return 1
+	}
+	return float64(skipped) / float64(assigned)
 }
 
 // ComputeFailureStats walks batchData once and applies the "any success
 // counts as success" rule per device. Repeated tests of the same
 // (host, device) collapse into a single result for both the overall device
-// list and per-host stats.
+// list and per-host stats. Devices that are not Ready are left out of the
+// failure tallies and counted as skipped instead, fleet-wide and per host.
 func ComputeFailureStats(batchData BatchData) FailureStats {
 	// hostDeviceAttempts[host][code] = number of attempts
 	hostDeviceAttempts := make(map[string]map[string]int)
@@ -344,12 +369,26 @@ func ComputeFailureStats(batchData BatchData) FailureStats {
 	hostDeviceSuccesses := make(map[string]map[string]int)
 	deviceSucceeded := make(map[string]bool)
 	devicePubkey := make(map[string]string)
+	skipped := make(map[string]struct{})
+	// hostSkipped[host] = set of codes skipped on that host
+	hostSkipped := make(map[string]map[string]struct{})
 
 	batchNums := slices.Sorted(maps.Keys(batchData))
 	for _, batchNum := range batchNums {
 		hosts := slices.Sorted(maps.Keys(batchData[batchNum]))
 		for _, host := range hosts {
 			assignment := batchData[batchNum][host]
+			// A device that cannot accept users is excluded entirely, not
+			// counted as a failure: it must not inflate the denominator either.
+			// Skipped is the caller's audit trail for what was left out.
+			if !assignment.Device.Ready() {
+				skipped[assignment.Device.Code] = struct{}{}
+				if hostSkipped[host] == nil {
+					hostSkipped[host] = make(map[string]struct{})
+				}
+				hostSkipped[host][assignment.Device.Code] = struct{}{}
+				continue
+			}
 			code := assignment.Device.Code
 			if hostDeviceAttempts[host] == nil {
 				hostDeviceAttempts[host] = make(map[string]int)
@@ -389,6 +428,14 @@ func ComputeFailureStats(batchData BatchData) FailureStats {
 		perHost[host] = stats
 	}
 
+	// A host left with nothing testable gets an entry with Total 0: absent from
+	// the map, its lost coverage would be indistinguishable from a clean run.
+	for host, codes := range hostSkipped {
+		hs := perHost[host]
+		hs.Skipped = len(codes)
+		perHost[host] = hs
+	}
+
 	var retests []DeviceRetest
 	hosts := slices.Sorted(maps.Keys(hostDeviceAttempts))
 	for _, host := range hosts {
@@ -413,5 +460,6 @@ func ComputeFailureStats(batchData BatchData) FailureStats {
 		DeviceResults: deviceResults,
 		PerHost:       perHost,
 		Retests:       retests,
+		Skipped:       slices.Sorted(maps.Keys(skipped)),
 	}
 }

@@ -322,3 +322,38 @@ func TestFindIBRLStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestPingFailureError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		lastResp *pb.PingResult
+		want     string
+	}{
+		{
+			name:     "total loss reports the counts",
+			lastResp: &pb.PingResult{PacketsSent: 40, PacketsReceived: 0},
+			want:     "failed to ping after 3 retries: 0/40 packets received on the last attempt",
+		},
+		{
+			name:     "no packets sent reports zeroes",
+			lastResp: &pb.PingResult{},
+			want:     "failed to ping after 3 retries: 0/0 packets received on the last attempt",
+		},
+		{
+			name:     "no response at all says so",
+			lastResp: nil,
+			want:     "failed to ping after 3 retries: no ping result returned",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := pingFailureError(3, tt.lastResp)
+			require.EqualError(t, err, tt.want)
+			require.NotContains(t, err.Error(), "%!w", "must not format a nil error with %%w")
+		})
+	}
+}

@@ -1,6 +1,6 @@
 //! The RFC-27 `IpOwnershipProof`: a signed attestation from the DoubleZero IP verification
 //! service that a given payer originated a request from a given client IP around a given epoch,
-//! for a specific User account.
+//! for a given user type.
 //!
 //! The signed bytes are consumed by three independent places — the serviceability program (BPF),
 //! the CLI, and the verification service — which must agree byte for byte or every proof fails
@@ -16,7 +16,7 @@ use std::net::Ipv4Addr;
 #[cfg(feature = "signer")]
 mod signer;
 #[cfg(feature = "signer")]
-pub use signer::{sign, verify};
+pub use signer::{sign, sign_version, verify};
 
 #[cfg(feature = "test-vectors")]
 pub mod test_vectors;
@@ -25,34 +25,51 @@ pub mod test_vectors;
 /// message a verifier key might ever be asked to sign.
 pub const IP_PROOF_DOMAIN: &[u8; 11] = b"DZ_IP_PROOF";
 
-/// Layout version of the signed message. Bump for any change to the field set or ordering — for
-/// example a v2 that carries an IPv6 client address.
+/// Layout version an issuer writes into [`IpOwnershipProof::version`]. Bump for any change to the
+/// field set or ordering — for example a v2 that carries an IPv6 client address.
 pub const IP_PROOF_VERSION: u8 = 1;
 
-/// Length of the signed message: prefix(11) + version(1) + payer(32) + client_ip(4) + epoch(8) +
-/// user_pubkey(32).
-pub const SIGNED_MESSAGE_LEN: usize = 88;
+/// Versions a verifier accepts. The version travels in the proof, so a new layout can be rolled
+/// out by teaching verifiers to accept both before issuers start writing the new one; drop the old
+/// entry once no outstanding proof can still be inside its freshness window.
+pub const SUPPORTED_IP_PROOF_VERSIONS: &[u8] = &[IP_PROOF_VERSION];
+
+/// Whether a verifier accepts proofs at this layout version.
+pub fn is_supported_version(version: u8) -> bool {
+    SUPPORTED_IP_PROOF_VERSIONS.contains(&version)
+}
 
 const DOMAIN_END: usize = IP_PROOF_DOMAIN.len();
 const VERSION_END: usize = DOMAIN_END + 1;
 const PAYER_END: usize = VERSION_END + 32;
 const CLIENT_IP_END: usize = PAYER_END + 4;
 const EPOCH_END: usize = CLIENT_IP_END + 8;
+const USER_TYPE_END: usize = EPOCH_END + 1;
+
+/// Length of the signed message: prefix(11) + version(1) + payer(32) + client_ip(4) + epoch(8) +
+/// user_type(1). Derived from the field offsets so inserting a field cannot leave the length
+/// behind.
+pub const SIGNED_MESSAGE_LEN: usize = USER_TYPE_END;
 
 /// A signed attestation of IP ownership, carried in instruction data alongside the Ed25519
 /// precompile instruction that actually verifies [`IpOwnershipProof::signature`].
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IpOwnershipProof {
+    /// Layout version of the signed message, written by the issuer. Verifiers reconstruct the
+    /// bytes for *this* version and reject a version they do not support.
+    pub version: u8,
     /// The account paying for / owning the user being created.
     pub payer: Pubkey,
     /// The address the verification service observed the request originate from.
     pub client_ip: Ipv4Addr,
     /// The DoubleZero ledger epoch the proof was issued in.
     pub epoch: u64,
-    /// The User account this proof authorizes. Binding it stops a proof obtained for a routine
-    /// connect from being replayed into another operation on a different account in the same
-    /// epoch.
-    pub user_pubkey: Pubkey,
+    /// Discriminant of the serviceability `UserType` this proof authorizes, kept as a `u8` so this
+    /// crate does not depend on the program it is consumed by. Binding it stops a proof obtained
+    /// for one connection type from being replayed into a different one on the same IP in the same
+    /// epoch — the User PDA is `f(client_ip, user_type)`, so `client_ip` alone does not pin the
+    /// account being created.
+    pub user_type: u8,
     /// Ed25519 signature by the verifier key over [`IpOwnershipProof::signed_message`].
     pub signature: [u8; 64],
 }
@@ -60,7 +77,13 @@ pub struct IpOwnershipProof {
 impl IpOwnershipProof {
     /// The exact bytes the verifier signed. See [`signed_message_for`].
     pub fn signed_message(&self) -> [u8; SIGNED_MESSAGE_LEN] {
-        signed_message_for(&self.payer, &self.client_ip, self.epoch, &self.user_pubkey)
+        signed_message_for(
+            self.version,
+            &self.payer,
+            &self.client_ip,
+            self.epoch,
+            self.user_type,
+        )
     }
 }
 
@@ -73,28 +96,30 @@ impl IpOwnershipProof {
 /// ```text
 /// offset  len  field
 ///      0   11  b"DZ_IP_PROOF"
-///     11    1  version (1)
+///     11    1  version
 ///     12   32  payer
 ///     44    4  client_ip, network order
 ///     48    8  epoch, little-endian
-///     56   32  user_pubkey
+///     56    1  user_type
 /// ```
 pub fn signed_message_for(
+    version: u8,
     payer: &Pubkey,
     client_ip: &Ipv4Addr,
     epoch: u64,
-    user_pubkey: &Pubkey,
+    user_type: u8,
 ) -> [u8; SIGNED_MESSAGE_LEN] {
     let mut message = [0u8; SIGNED_MESSAGE_LEN];
     message[..DOMAIN_END].copy_from_slice(IP_PROOF_DOMAIN);
-    message[DOMAIN_END] = IP_PROOF_VERSION;
+    message[DOMAIN_END] = version;
     message[VERSION_END..PAYER_END].copy_from_slice(payer.as_ref());
     message[PAYER_END..CLIENT_IP_END].copy_from_slice(&client_ip.octets());
     message[CLIENT_IP_END..EPOCH_END].copy_from_slice(&epoch.to_le_bytes());
-    message[EPOCH_END..].copy_from_slice(user_pubkey.as_ref());
+    message[EPOCH_END] = user_type;
     message
 }
 
+#[cfg(feature = "signer")]
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
 pub enum IpProofError {
     #[error("ip ownership proof signature does not verify against the verifier key")]
@@ -110,10 +135,11 @@ mod tests {
     // derived by the same code it is meant to check.
     fn proof() -> IpOwnershipProof {
         IpOwnershipProof {
+            version: 1,
             payer: Pubkey::new_from_array([1u8; 32]),
             client_ip: Ipv4Addr::new(203, 0, 113, 7),
             epoch: 0x0102_0304_0506_0708,
-            user_pubkey: Pubkey::new_from_array([2u8; 32]),
+            user_type: 3,
             signature: [3u8; 64],
         }
     }
@@ -126,14 +152,14 @@ mod tests {
         expected.extend_from_slice(&[1u8; 32]);
         expected.extend_from_slice(&[203, 0, 113, 7]);
         expected.extend_from_slice(&[0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01]);
-        expected.extend_from_slice(&[2u8; 32]);
+        expected.push(3);
 
         assert_eq!(proof().signed_message().as_slice(), expected.as_slice());
     }
 
     #[test]
     fn signed_message_layout_is_pinned() {
-        assert_eq!(SIGNED_MESSAGE_LEN, 88);
+        assert_eq!(SIGNED_MESSAGE_LEN, 57);
 
         let message = proof().signed_message();
         assert_eq!(&message[..11], b"DZ_IP_PROOF");
@@ -141,12 +167,16 @@ mod tests {
         assert_eq!(&message[12..44], &[1u8; 32]);
         assert_eq!(&message[44..48], &[203, 0, 113, 7]);
         assert_eq!(message[48], 0x08, "epoch is little-endian");
-        assert_eq!(&message[56..88], &[2u8; 32]);
+        assert_eq!(message[56], 3);
     }
 
     #[test]
     fn signed_message_is_sensitive_to_every_field() {
         let base = proof().signed_message();
+
+        let mut other = proof();
+        other.version = 2;
+        assert_ne!(base, other.signed_message());
 
         let mut other = proof();
         other.payer = Pubkey::new_from_array([9u8; 32]);
@@ -161,7 +191,7 @@ mod tests {
         assert_ne!(base, other.signed_message());
 
         let mut other = proof();
-        other.user_pubkey = Pubkey::new_from_array([9u8; 32]);
+        other.user_type = 0;
         assert_ne!(base, other.signed_message());
 
         // The signature is not part of what is signed.
@@ -171,12 +201,31 @@ mod tests {
     }
 
     #[test]
+    fn a_proof_reconstructs_the_version_it_carries_not_the_current_one() {
+        let mut v2 = proof();
+        v2.version = 2;
+
+        assert_eq!(v2.signed_message()[11], 2);
+        assert_eq!(
+            v2.signed_message(),
+            signed_message_for(2, &v2.payer, &v2.client_ip, v2.epoch, v2.user_type),
+        );
+    }
+
+    #[test]
+    fn only_the_declared_versions_are_supported() {
+        assert!(is_supported_version(IP_PROOF_VERSION));
+        assert!(!is_supported_version(0));
+        assert!(!is_supported_version(2));
+    }
+
+    #[test]
     fn borsh_round_trip() {
         let original = proof();
         let bytes = to_vec(&original).unwrap();
 
-        // 32 + 4 + 8 + 32 + 64. Pinned so a field reorder or width change fails loudly.
-        assert_eq!(bytes.len(), 140);
+        // 1 + 32 + 4 + 8 + 1 + 64. Pinned so a field reorder or width change fails loudly.
+        assert_eq!(bytes.len(), 110);
 
         assert_eq!(IpOwnershipProof::try_from_slice(&bytes).unwrap(), original);
     }
@@ -184,6 +233,6 @@ mod tests {
     #[test]
     fn borsh_serializes_client_ip_in_network_order() {
         let bytes = to_vec(&proof()).unwrap();
-        assert_eq!(&bytes[32..36], &[203, 0, 113, 7]);
+        assert_eq!(&bytes[33..37], &[203, 0, 113, 7]);
     }
 }

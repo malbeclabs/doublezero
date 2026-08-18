@@ -16,23 +16,28 @@ name = "doublezero_ip_proof"
 
 # The RFC-27 IpOwnershipProof layout, shared by three independent consumers that
 # must agree byte for byte: the serviceability program (BPF), the CLI, and the
-# verification service. The default build stays BPF-clean — only borsh,
-# solana-program's Pubkey, and thiserror. Signing/verification lives behind the
-# `signer` feature so no crypto crate reaches the program.
+# verification service. The default build stays BPF-clean — only borsh and
+# solana-program's Pubkey. Signing/verification lives behind the `signer`
+# feature so no crypto crate reaches the program.
 [dependencies]
 borsh.workspace = true
 solana-program.workspace = true
-thiserror.workspace = true
 
 hex = { workspace = true, optional = true }
 solana-keypair = { workspace = true, optional = true }
 solana-signature = { workspace = true, optional = true }
 solana-signer = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
 
 [features]
 default = []
 # Off for the BPF build; the program only reconstructs the signed bytes and
 # compares them against what the Ed25519 precompile instruction covers.
-signer = ["dep:solana-keypair", "dep:solana-signature", "dep:solana-signer"]
+signer = [
+  "dep:solana-keypair",
+  "dep:solana-signature",
+  "dep:solana-signer",
+  "dep:thiserror",
+]
 # Committed cross-consumer test vectors. Enabled by consumers in dev-dependencies.
 test-vectors = ["dep:hex"]

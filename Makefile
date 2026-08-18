@@ -95,6 +95,10 @@ rust-build-programs:
 rust-lint: rust-fmt-check
 	@cargo install cargo-hack
 	cargo hack clippy --workspace --all-targets --exclude doublezero-telemetry --exclude doublezero-serviceability --exclude doublezero-program-common --exclude doublezero-record --exclude doublezero-geolocation -- -Dclippy::all -Dclippy::unreadable_literal -Dwarnings
+	# doublezero-ip-proof has an empty default feature set, so the workspace pass above never
+	# reaches signer.rs or test_vectors.rs. --each-feature over the whole tree would be far too
+	# slow; scoping it to this crate is cheap.
+	cargo hack clippy -p doublezero-ip-proof --each-feature --all-targets -- -Dclippy::all -Dclippy::unreadable_literal -Dwarnings
 	cd smartcontract && $(MAKE) lint-programs
 
 .PHONY: rust-fmt

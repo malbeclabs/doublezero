@@ -14,6 +14,7 @@ members = [
     "crates/doublezero-serviceability-instruction",
     "crates/doublezero-daemon-cli",
     "crates/doublezero-geolocation-cli",
+    "crates/doublezero-ip-proof",
     "crates/sentinel",
 ]
 default-members = []
@@ -59,6 +60,7 @@ env_logger = "0"
 eyre = "0"
 futures = "0"
 futures-util = "0"
+hex = "0.4"
 http = "1"
 http-body-util = "0"
 hyper = "1"
@@ -85,6 +87,7 @@ solana-client = "3.0"
 solana-bincode = "3.0"
 solana-commitment-config = "3.0"
 solana-compute-budget-interface = "3.0"
+solana-keypair = "3.1"
 solana-loader-v3-interface = { version = "6", features = ["serde"] }
 solana-program = "3.0"
 solana-program-test = "=3.0.12"
@@ -92,6 +95,8 @@ solana-pubsub-client = "3.0"
 solana-rpc-client-api = "3.0"
 solana-sdk = "=3.0"
 solana-sdk-ids = "3.0"
+solana-signature = "3.4"
+solana-signer = "3.0"
 solana-system-interface = { version = "3", features = ["bincode"] }
 solana-transaction-status = "3.0"
 bitflags = "2"
@@ -113,6 +118,7 @@ doublezero-cli-core = { path = "crates/doublezero-cli-core" }
 doublezero-config = { path = "config" }
 doublezero-daemon-cli = { path = "crates/doublezero-daemon-cli" }
 doublezero-geolocation-cli = { path = "crates/doublezero-geolocation-cli" }
+doublezero-ip-proof = { path = "crates/doublezero-ip-proof" }
 # default-features = false MUST be set here, not on the consumer edge: an inheriting
 # member's `default-features = false` is ignored unless the workspace dep declares it.
 # This keeps sentinel's server-only deps (Prometheus exporter → rustls/aws-lc-sys) out of

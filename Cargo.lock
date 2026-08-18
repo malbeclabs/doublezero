@@ -1789,6 +1789,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-ip-proof"
+version = "0.36.0"
+dependencies = [
+ "borsh",
+ "hex",
+ "solana-keypair",
+ "solana-program",
+ "solana-signature",
+ "solana-signer",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "doublezero-program-common"
 version = "0.36.0"
 dependencies = [

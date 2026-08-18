@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - RFCs
   - RFC-27: IP Ownership Verification Service for user connection
+- Utility crates
+  - New `doublezero-ip-proof` crate defines the RFC-27 `IpOwnershipProof` and the exact bytes the verifier signs, in one place the serviceability program, the CLI, and the verification service all share. Nothing consumes it yet. (#4195, #4206)
 
 ## [v0.36.0](https://github.com/malbeclabs/doublezero/compare/client/v0.35.0...client/v0.36.0) - 2026-08-14
 

@@ -58,8 +58,9 @@ connect from a non‑preregistered or changing IP.
 
 - **IP Verification Service** — A DoubleZero‑operated HTTP service that observes the source IP of an
   inbound request and returns a signed `IpOwnershipProof`.
-- **`IpOwnershipProof`** — A signed attestation `{ payer, client_ip, epoch, signature }` produced by
-  the verifier keypair.
+- **`IpOwnershipProof`** — A signed attestation
+  `{ version, payer, client_ip, epoch, user_type, signature }` produced by the verifier keypair. Its
+  layout is defined once, normatively, in `crates/doublezero-ip-proof`.
 - **Verifier keypair** — The Ed25519 keypair owned by DoubleZero whose public key is the trust root
   for proof validation; its pubkey is stored in onchain global state.
 - **Wildcard access pass** — An AccessPass stored at the unspecified IP (`0.0.0.0`, `IS_DYNAMIC`)
@@ -96,15 +97,15 @@ sequenceDiagram
     U->>C: doublezero connect ibrl
     Note right of C: client_ip not yet certified
 
-    C->>V: POST https://verify.doublezero.xyz { payer }
+    C->>V: POST https://verify.doublezero.xyz { payer, user_type }
     Note right of V: observes the request's source IP
-    V-->>C: IpOwnershipProof { payer, client_ip, epoch, signature }
+    V-->>C: IpOwnershipProof { version, payer, client_ip, epoch, user_type, signature }
 
     Note over C: client_ip = the IP the service observed
 
     C->>S: CreateUser(client_ip, ...) + Ed25519 verify ix + IpOwnershipProof
     S->>S: Confirm Ed25519 precompile verified (verifier_key, message, signature)
-    S->>S: Check payer, client_ip, epoch freshness
+    S->>S: Check version supported, payer, client_ip, user_type, epoch freshness
 
     alt Proof valid
         S-->>C: User created, IP bound
@@ -116,26 +117,34 @@ sequenceDiagram
 ### Steps
 
 1. The CLI sends a request to the verification service. The service uses the **source IP of the
-   request** as `client_ip`, the `payer` from the body, and the current DoubleZero epoch:
+   request** as `client_ip`, the `payer` and `user_type` from the body, and the current DoubleZero
+   epoch:
 
    ```
    POST https://verify.doublezero.xyz
-   { "payer": "<Pubkey>" }
+   { "payer": "<Pubkey>", "user_type": <u8> }
    ```
+
+   The client does **not** send `client_ip`: the observed source IP is the whole point of the
+   exchange, and a client-supplied IP would defeat it. `user_type` is client-supplied, which is safe
+   — it is not a trust boundary, and the program checks it against the user it is creating.
 
 2. The service returns a signed proof:
 
    ```json
    {
+     "version": <u8>,
      "payer": "<payer_pubkey>",
      "client_ip": "<a.b.c.d>",
      "epoch": <u64>,
+     "user_type": <u8>,
      "signature": "<ed25519_signature>"
    }
    ```
 
-   The signed message is the byte concatenation `payer || client_ip || epoch` (the proof fields in a
-   fixed layout — see below), signed by the verifier keypair.
+   The signed message is a fixed 57-byte layout — a domain-separation prefix and version byte
+   followed by `payer || client_ip || epoch || user_type` — signed by the verifier keypair. See
+   below.
 
 3. The CLI submits the user‑creation transaction carrying both:
    - the `IpOwnershipProof`, and
@@ -146,17 +155,53 @@ sequenceDiagram
 
 ### Proof Specification
 
+`crates/doublezero-ip-proof` is the **normative** definition of both the struct and the signed
+bytes; `signed_message_for()` there is the single source of truth that the program, the CLI, and the
+service all reconstruct from. This section describes it — where the two disagree, the crate wins.
+
 ```rust
 pub struct IpOwnershipProof {
+    pub version: u8,          // 1  layout version, written by the issuer
     pub payer: Pubkey,        // 32
     pub client_ip: Ipv4Addr,  // 4 (IPv4)
     pub epoch: u64,           // 8
+    pub user_type: u8,        // 1  serviceability UserType discriminant
     pub signature: [u8; 64],  // Ed25519
 }
 ```
 
-The signed message is the fixed‑layout serialization of `(payer, client_ip, epoch)`. `Ipv4Addr` is
-used to match the type used throughout the program; it is serialized as its 4 network‑order octets.
+The signed message is 57 bytes, with no length prefixes and no Borsh, so the program can build it on
+the stack and compare it against what the Ed25519 precompile instruction covers:
+
+```text
+offset  len  field
+     0   11  b"DZ_IP_PROOF"       domain separation
+    11    1  version
+    12   32  payer
+    44    4  client_ip, network order
+    48    8  epoch, little-endian
+    56    1  user_type
+```
+
+`Ipv4Addr` is used to match the type used throughout the program; it is serialized as its 4
+network‑order octets.
+
+**Domain separation.** The `DZ_IP_PROOF` prefix keeps these bytes from colliding with any other
+DoubleZero message the verifier key might ever be asked to sign.
+
+**Versioning.** `version` travels *in* the proof rather than being a compile-time constant, so
+verifiers can reconstruct the bytes for any version they accept. A new layout rolls out by teaching
+the program and the service to accept both versions, then switching issuers over, then dropping the
+old version once no outstanding proof can still be inside its freshness window — no atomic cutover
+across program, service, and every deployed CLI.
+
+**`user_type`, and why not the User pubkey.** The User account is a PDA over
+`(client_ip, user_type)`, so `client_ip` alone does not pin the account being created: a proof for an
+IP would otherwise be reusable for a different connection type on that IP. Binding `user_type`
+closes that. Binding the derived User pubkey instead would *not* work: the service is the party that
+discovers `client_ip`, so the client would have to send a pubkey derived from its own autodetected
+IP, and on any NATed or multi-homed host that pubkey disagrees with the IP the service observed —
+producing a validly signed proof that can never verify.
 
 ### Onchain Validation
 
@@ -164,16 +209,19 @@ Solana programs cannot verify an Ed25519 signature directly inside BPF cheaply. 
 the **native Ed25519 precompile**: the CLI includes an `Ed25519SigVerify` instruction in the same
 transaction, and the serviceability program **introspects the Instructions sysvar** to confirm that
 instruction is present and that its public key, message, and signature match the expected verifier
-key and the reconstructed `payer || client_ip || epoch` message.
+key and the reconstructed message.
 
 Required checks:
 
-1. Read `IpOwnershipProof` from instruction data; reconstruct `message = payer || client_ip || epoch`.
+1. Read `IpOwnershipProof` from instruction data; confirm `proof.version` is supported
+   (`doublezero_ip_proof::is_supported_version`) and reconstruct the message with
+   `signed_message_for(proof.version, ...)`.
 2. Load the Ed25519 instruction from the Instructions sysvar and confirm it verifies `signature`
    over `message` with the **verifier public key from global state**.
 3. `proof.payer == user_payer` (the account paying / owning the user).
 4. `proof.client_ip == client_ip` being bound to the user.
-5. `proof.epoch` is within the allowed freshness window relative to `Clock::get()?.epoch`.
+5. `proof.user_type == user_type` being created.
+6. `proof.epoch` is within the allowed freshness window relative to `Clock::get()?.epoch`.
 
 #### Rejection conditions
 
@@ -182,6 +230,8 @@ The program MUST reject when any of the following holds:
 - the Ed25519 verify instruction is absent or does not match (`verifier_key`, `message`, `signature`);
 - `payer` mismatch;
 - `client_ip` mismatch with the value being bound;
+- `user_type` mismatch with the user being created;
+- `proof.version` is not in the supported set;
 - the proof is stale (epoch outside the freshness window);
 - the proof is malformed.
 
@@ -217,6 +267,8 @@ may bind:
   source IP).
 - **Operational:** the service must observe the real client source IP. Behind a proxy/CDN it must use
   a trusted forwarded‑for header; otherwise it would sign the proxy's IP.
+- **Shared format crate:** `crates/doublezero-ip-proof` holds the layout all three consumers build
+  against, so none of them reimplements the signed bytes from prose.
 
 ## Security Considerations
 
@@ -235,9 +287,10 @@ may bind:
 - **Centralized trust root.** The verifier keypair is a DoubleZero‑operated authority. The benefit
   delivered is automated, non‑bypassable per‑IP verification — not decentralization. Key rotation is
   supported via global state.
-- **Replay.** The epoch window bounds proof reuse; because the proof binds `payer` and `client_ip`,
-  reuse only re‑asserts the same binding. A nonce or binding to the specific user account can further
-  constrain reuse if needed (see Open Questions).
+- **Replay.** The epoch window bounds proof reuse; because the proof binds `payer`, `client_ip`, and
+  `user_type`, reuse only re‑asserts the same binding — and since the User PDA is
+  `f(client_ip, user_type)`, that is the same User account. A nonce would further constrain reuse
+  within an epoch if needed (see Open Questions).
 
 ## Backward Compatibility
 
@@ -253,7 +306,7 @@ flow removed) once adoption is sufficient, consistent with RFC‑10 version‑co
 ## Open Questions
 
 - Should proofs be persisted onchain for auditing, or is the bound `client_ip` sufficient?
-- Should the proof bind to the specific user account (or a nonce) to further constrain replay within
+- Is `user_type` binding enough, or should the proof also carry a nonce to constrain replay within
   an epoch?
 - Should IP re‑verification be periodic (re‑prove on a schedule), or only at user creation?
 - Should IPv6 be supported?

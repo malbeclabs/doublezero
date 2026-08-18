@@ -384,6 +384,7 @@ async fn test_create_subscribe_user_atomic_publisher() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -468,6 +469,7 @@ async fn test_create_subscribe_user_atomic_subscriber() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -640,6 +642,7 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -729,6 +732,7 @@ async fn test_create_subscribe_user_ignores_expired_epoch() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -798,6 +802,7 @@ async fn test_check_access_pass_multicast_stays_activated() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1122,6 +1127,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: custom_owner,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1427,6 +1433,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: custom_owner,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1719,6 +1726,7 @@ async fn test_create_subscribe_user_user_admin_owner_override() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: custom_owner,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2007,6 +2015,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
             owner: custom_owner,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2066,6 +2075,7 @@ async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2170,6 +2180,7 @@ async fn test_subscribe_pending_user_succeeds() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2286,6 +2297,7 @@ async fn test_create_subscribe_user_inactive_mgroup_fails() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2347,6 +2359,7 @@ async fn test_publisher_multicast_publisher_persists_through_disconnect() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2459,6 +2472,7 @@ async fn test_publisher_disconnect_delete_decrements_publishers_count() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

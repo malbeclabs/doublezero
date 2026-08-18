@@ -364,6 +364,7 @@ async fn try_subscribe_with_feed(
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
         }),
         &accounts,
         &f.payer,

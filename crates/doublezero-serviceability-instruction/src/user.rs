@@ -35,6 +35,13 @@ use solana_program::{
 /// feed                        (readonly)  — OPTIONAL, appended only when Some
 /// ```
 ///
+/// A further optional account, the **Instructions sysvar**, is appended *after*
+/// everything — after `[payer, system]` and after any Permission account — when the
+/// args carry an RFC-27 `ip_proof`. The processor peels it off the tail by its fixed
+/// key (`split_trailing_instructions_sysvar`) before any other parsing runs, so it
+/// cannot be confused with the Permission slot below. Carrying it is issue #4200's
+/// job; the position is fixed here so the two land consistently.
+///
 /// `CreateSubscribeUser` is in the **`split_trailing_permission`** family (it
 /// routes through `authorize()` for the USER_ADMIN owner-override), NOT the
 /// length-detected family. The optional `feed` sits in the leading slice (before
@@ -128,6 +135,13 @@ pub fn create_subscribe_user(
 /// dz_prefix_block[i]          (writable)  — one per dz_prefix_count
 /// tenant                      (writable)  — OPTIONAL, only when Some and non-default
 /// ```
+///
+/// A further optional account, the **Instructions sysvar**, is appended *after*
+/// `[payer, system]` when the args carry an RFC-27 `ip_proof`. It is the one account
+/// that may follow them, and it is safe there precisely because the processor peels it
+/// off the tail by its fixed key (`split_trailing_instructions_sysvar`) *before* the
+/// length arithmetic below runs — so the tenant detection still counts the same
+/// accounts it always did. Carrying it is issue #4200's job.
 ///
 /// `CreateUser` is the genuine **length-detected** instruction: its processor
 /// identifies the optional trailing `tenant` account via `accounts.len()` and
@@ -495,6 +509,7 @@ mod tests {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
             owner: Pubkey::default(),
+            ip_proof: None,
         }
     }
 
@@ -599,6 +614,7 @@ mod tests {
             client_ip,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            ip_proof: None,
         }
     }
 

@@ -269,6 +269,7 @@ async fn setup_user_onchain_allocation_test(
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -551,6 +552,7 @@ async fn atomic_create_user_with_resources(
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1732,6 +1734,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user2_pubkey, false),

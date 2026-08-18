@@ -101,6 +101,7 @@ impl CreateSubscribeUserCommand {
                 tunnel_endpoint: self.tunnel_endpoint,
                 dz_prefix_count: dz_prefix_count_u8,
                 owner: self.owner.unwrap_or_default(),
+                ip_proof: None,
             },
         );
 
@@ -211,6 +212,7 @@ mod tests {
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 dz_prefix_count: 1,
                 owner: Pubkey::default(),
+                ip_proof: None,
             },
         );
         client

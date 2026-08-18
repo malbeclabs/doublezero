@@ -216,6 +216,37 @@ pub enum DoubleZeroError {
     UserFeedLimitExceeded, // variant 103
     #[error("An EdgeSeat feed seat is only held by a Multicast user")]
     EdgeSeatIsMulticastOnly, // variant 104
+    // RFC-27 IP ownership proof. Split finely on purpose: the CLI prints these straight through,
+    // and "proof rejected" is not enough for an operator to tell a stale proof from a rotated
+    // verifier key from a client that never attached the Ed25519 instruction at all.
+    #[error("An IP ownership proof is required to create a user")]
+    IpOwnershipProofRequired, // variant 105
+    #[error("No IP verifier authority is configured in global state")]
+    IpVerifierNotConfigured, // variant 106
+    #[error("IP ownership proof was issued for a different payer")]
+    IpProofPayerMismatch, // variant 107
+    #[error("IP ownership proof was issued for a different client IP")]
+    IpProofClientIpMismatch, // variant 108
+    #[error("IP ownership proof was issued for a different user type")]
+    IpProofUserTypeMismatch, // variant 109
+    #[error("IP ownership proof epoch is outside the freshness window")]
+    IpProofEpochOutOfWindow, // variant 110
+    #[error("The Instructions sysvar account is required to validate an IP ownership proof")]
+    IpProofInstructionsSysvarMissing, // variant 111
+    #[error("The transaction carries no matching Ed25519 signature verification instruction")]
+    IpProofEd25519InstructionMissing, // variant 112
+    #[error("The Ed25519 instruction's offsets are malformed or point outside the instruction")]
+    IpProofEd25519OffsetsInvalid, // variant 113
+    #[error("The Ed25519 instruction must carry exactly one signature")]
+    IpProofSignatureCountInvalid, // variant 114
+    #[error("The Ed25519 instruction verifies a key other than the IP verifier authority")]
+    IpProofVerifierKeyMismatch, // variant 115
+    #[error("The Ed25519 instruction verifies a signature other than the proof's")]
+    IpProofSignatureMismatch, // variant 116
+    #[error("The Ed25519 instruction verifies a message other than the IP ownership proof")]
+    IpProofMessageMismatch, // variant 117
+    #[error("IP ownership proof carries an unsupported layout version")]
+    IpProofVersionUnsupported, // variant 118
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -326,6 +357,20 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::UserDeviceMismatch => ProgramError::Custom(102),
             DoubleZeroError::UserFeedLimitExceeded => ProgramError::Custom(103),
             DoubleZeroError::EdgeSeatIsMulticastOnly => ProgramError::Custom(104),
+            DoubleZeroError::IpOwnershipProofRequired => ProgramError::Custom(105),
+            DoubleZeroError::IpVerifierNotConfigured => ProgramError::Custom(106),
+            DoubleZeroError::IpProofPayerMismatch => ProgramError::Custom(107),
+            DoubleZeroError::IpProofClientIpMismatch => ProgramError::Custom(108),
+            DoubleZeroError::IpProofUserTypeMismatch => ProgramError::Custom(109),
+            DoubleZeroError::IpProofEpochOutOfWindow => ProgramError::Custom(110),
+            DoubleZeroError::IpProofInstructionsSysvarMissing => ProgramError::Custom(111),
+            DoubleZeroError::IpProofEd25519InstructionMissing => ProgramError::Custom(112),
+            DoubleZeroError::IpProofEd25519OffsetsInvalid => ProgramError::Custom(113),
+            DoubleZeroError::IpProofSignatureCountInvalid => ProgramError::Custom(114),
+            DoubleZeroError::IpProofVerifierKeyMismatch => ProgramError::Custom(115),
+            DoubleZeroError::IpProofSignatureMismatch => ProgramError::Custom(116),
+            DoubleZeroError::IpProofMessageMismatch => ProgramError::Custom(117),
+            DoubleZeroError::IpProofVersionUnsupported => ProgramError::Custom(118),
         }
     }
 }
@@ -437,6 +482,20 @@ impl From<u32> for DoubleZeroError {
             102 => DoubleZeroError::UserDeviceMismatch,
             103 => DoubleZeroError::UserFeedLimitExceeded,
             104 => DoubleZeroError::EdgeSeatIsMulticastOnly,
+            105 => DoubleZeroError::IpOwnershipProofRequired,
+            106 => DoubleZeroError::IpVerifierNotConfigured,
+            107 => DoubleZeroError::IpProofPayerMismatch,
+            108 => DoubleZeroError::IpProofClientIpMismatch,
+            109 => DoubleZeroError::IpProofUserTypeMismatch,
+            110 => DoubleZeroError::IpProofEpochOutOfWindow,
+            111 => DoubleZeroError::IpProofInstructionsSysvarMissing,
+            112 => DoubleZeroError::IpProofEd25519InstructionMissing,
+            113 => DoubleZeroError::IpProofEd25519OffsetsInvalid,
+            114 => DoubleZeroError::IpProofSignatureCountInvalid,
+            115 => DoubleZeroError::IpProofVerifierKeyMismatch,
+            116 => DoubleZeroError::IpProofSignatureMismatch,
+            117 => DoubleZeroError::IpProofMessageMismatch,
+            118 => DoubleZeroError::IpProofVersionUnsupported,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -471,7 +530,7 @@ mod tests {
         }
 
         // EnumIter generates Custom(0) by default, so we explicitly test values
-        // outside the known variant range (currently 0-100) to ensure the conversion
+        // outside the known variant range (currently 0-117) to ensure the conversion
         // logic handles arbitrary custom codes correctly.
         for code in [1000u32, 100_000, u32::MAX] {
             let err = DoubleZeroError::Custom(code);

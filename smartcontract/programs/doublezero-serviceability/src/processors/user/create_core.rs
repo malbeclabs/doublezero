@@ -1,6 +1,7 @@
 use crate::{
     authorize::authorize,
     error::DoubleZeroError,
+    ip_proof::validate_ip_ownership_proof,
     pda::{get_accesspass_pda, get_user_old_pda, get_user_pda},
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
@@ -12,6 +13,7 @@ use crate::{
         user::*,
     },
 };
+use doublezero_ip_proof::IpOwnershipProof;
 use doublezero_program_common::types::NetworkV4;
 use solana_program::{
     account_info::AccountInfo, clock::Clock, msg, program_error::ProgramError, pubkey::Pubkey,
@@ -39,6 +41,10 @@ pub struct CreateUserCoreAccounts<'a, 'b> {
     // USER_ADMIN holder may set a custom owner; None for CreateUser, which never overrides the
     // owner. Consumed by authorize() in the owner-override check.
     pub permission_account: Option<&'a AccountInfo<'b>>,
+    // Optional trailing Instructions sysvar, peeled by both processors via
+    // `split_trailing_instructions_sysvar`. Needed to read the Ed25519 precompile instruction that
+    // verifies an RFC-27 IP ownership proof; absent for callers that supply no proof.
+    pub instructions_sysvar_account: Option<&'a AccountInfo<'b>>,
 }
 
 /// Result returned by `create_user_core` containing mutable state for callers to finish writing.
@@ -61,6 +67,11 @@ pub struct CreateUserCoreResult {
 /// user type, and tenant; a mismatch errors with `AccountAlreadyInitialized`, and a banned user
 /// with `InvalidStatus`.
 ///
+/// The RFC-27 IP ownership proof is validated *before* that idempotent early return, so a rerun
+/// against an existing user needs a proof just as much as the creation did. Skipping it there
+/// would let an account squatted before the flag was set absorb every later call without its owner
+/// ever demonstrating control of the address.
+///
 /// Callers are responsible for:
 /// - Parsing the required resource extension accounts
 /// - Onchain allocation + try_activate
@@ -77,6 +88,7 @@ pub fn create_user_core(
     tunnel_endpoint: Ipv4Addr,
     is_publisher: bool,
     owner_override: Option<Pubkey>,
+    ip_proof: Option<&IpOwnershipProof>,
 ) -> Result<Option<CreateUserCoreResult>, ProgramError> {
     // Check if the payer is a signer
     assert!(core.payer_account.is_signer, "Payer must be a signer");
@@ -153,6 +165,23 @@ pub fn create_user_core(
         );
         return Err(DoubleZeroError::InvalidUserPubkey.into());
     };
+
+    // Read once and reuse for the epoch gate further down; Clock::get() is a syscall.
+    let clock = Clock::get()?;
+
+    // RFC-27. Placed here because the PDA check above has just established that user_account.key
+    // is a legitimate User PDA — under either derivation — so the (client_ip, user_type) pair the
+    // proof binds is the pair this account is derived from. Placed before the already_exists
+    // return below so a rerun is covered too.
+    validate_ip_ownership_proof(
+        core.instructions_sysvar_account,
+        ip_proof,
+        &globalstate,
+        core.payer_account.key,
+        &client_ip,
+        user_type as u8,
+        clock.epoch,
+    )?;
 
     // Check account Types
     if core.device_account.data_is_empty()
@@ -264,16 +293,15 @@ pub fn create_user_core(
 
     // Enforce epoch validity for unicast users only. Multicast access (publisher or
     // subscriber) is governed by mgroup_*_allowlist on the access pass, not by epoch.
-    if user_type.is_epoch_gated() {
-        let clock = Clock::get()?;
-        if !epoch_allows_connection(user_type, accesspass.last_access_epoch, clock.epoch) {
-            msg!(
-                "Invalid epoch last_access_epoch: {} < current_epoch: {}",
-                accesspass.last_access_epoch,
-                clock.epoch
-            );
-            return Err(DoubleZeroError::AccessPassUnauthorized.into());
-        }
+    if user_type.is_epoch_gated()
+        && !epoch_allows_connection(user_type, accesspass.last_access_epoch, clock.epoch)
+    {
+        msg!(
+            "Invalid epoch last_access_epoch: {} < current_epoch: {}",
+            accesspass.last_access_epoch,
+            clock.epoch
+        );
+        return Err(DoubleZeroError::AccessPassUnauthorized.into());
     }
 
     // Read validator_pubkey from AccessPass

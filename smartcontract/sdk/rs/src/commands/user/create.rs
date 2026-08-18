@@ -68,6 +68,7 @@ impl CreateUserCommand {
                 client_ip: self.client_ip,
                 tunnel_endpoint: self.tunnel_endpoint,
                 dz_prefix_count: dz_prefix_count_u8,
+                ip_proof: None,
             },
         );
 
@@ -163,6 +164,7 @@ mod tests {
                 client_ip,
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 dz_prefix_count: 1,
+                ip_proof: None,
             },
         );
         client

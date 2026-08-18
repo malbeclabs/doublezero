@@ -8,9 +8,10 @@ use doublezero_revenue_distribution::{
         account::{ConfigureDistributionRewardsAccounts, FinalizeDistributionRewardsAccounts},
         ProgramConfiguration, RevenueDistributionInstructionData,
     },
-    state::{self, Distribution},
+    integration::{find_integration_bucket_address, find_integration_distribution_address},
+    state::{self, Distribution, Journal},
     types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
-    ID,
+    DOUBLEZERO_MINT_KEY, ID,
 };
 use solana_program_test::{tokio, BanksClientError};
 use solana_sdk::{
@@ -18,6 +19,7 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::TransactionError,
 };
+use spl_associated_token_account_interface::address::get_associated_token_address;
 use svm_hash::sha2::Hash;
 
 //
@@ -295,6 +297,417 @@ async fn test_finalize_distribution_rewards() {
         program_logs.get(3).unwrap(),
         "Program log: Distribution rewards have already been finalized"
     );
+}
+
+//
+// Null-root guard — collected prepaid 2Z blocks finalize.
+//
+
+#[tokio::test]
+async fn test_cannot_finalize_null_root_with_collected_prepaid_2z() {
+    let mut test_setup = common::start_test().await;
+
+    let configured = test_setup.setup_configured_program().await.unwrap();
+
+    let dz_epoch = DoubleZeroEpoch::new(1);
+
+    let journal_key = Journal::find_address().0;
+    let journal_ata_key = get_associated_token_address(&journal_key, &DOUBLEZERO_MINT_KEY);
+    let prepaid_2z_amount = 100_000_000;
+
+    // The first initialize_distribution creates epoch 0; the tested epoch 1 is
+    // created by the second one. Fund the journal's 2Z ATA between the two so it
+    // is the epoch-1 distribution that sweeps the prepaid 2Z.
+    test_setup
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        .create_2z_ata(&journal_key)
+        .await
+        .unwrap()
+        .transfer_2z(&journal_ata_key, prepaid_2z_amount)
+        .await
+        .unwrap()
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        .configure_distribution_debt(
+            dz_epoch,
+            &configured.debt_accountant_signer,
+            0,
+            0,
+            Hash::default(),
+        )
+        .await
+        .unwrap()
+        .finalize_distribution_debt(dz_epoch, &configured.debt_accountant_signer)
+        .await
+        .unwrap()
+        .configure_program(
+            &configured.admin_signer,
+            [ProgramConfiguration::MinimumEpochDurationToFinalizeRewards(
+                2,
+            )],
+        )
+        .await
+        .unwrap()
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap();
+
+    let (_, distribution, _, _, _) = test_setup.fetch_distribution(dz_epoch).await;
+    assert_eq!(
+        distribution.collected_prepaid_2z_payments,
+        prepaid_2z_amount
+    );
+    assert_eq!(distribution.checked_total_sol_debt().unwrap(), 0);
+
+    // Zero SOL debt but collected prepaid 2Z means the null root is rejected by
+    // the collected-2Z check.
+    let (tx_err, program_logs) = simulate_finalize_revert(&mut test_setup, dz_epoch)
+        .await
+        .unwrap();
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(3).unwrap(),
+        "Program log: Rewards root cannot be null with collected 2Z"
+    );
+
+    // Posting a real root unblocks finalize.
+    test_setup
+        .configure_distribution_rewards(
+            dz_epoch,
+            &configured.rewards_accountant_signer,
+            69,
+            Hash::new_unique(),
+        )
+        .await
+        .unwrap()
+        .finalize_distribution_rewards(dz_epoch)
+        .await
+        .unwrap();
+
+    let (_, distribution, _, _, _) = test_setup.fetch_distribution(dz_epoch).await;
+    assert!(distribution.is_rewards_calculation_finalized());
+}
+
+//
+// Null-root guard — collected integration 2Z blocks finalize.
+//
+
+#[tokio::test]
+async fn test_cannot_finalize_null_root_with_collected_integration_2z() {
+    let mut test_setup = common::start_test().await;
+
+    let configured = test_setup.setup_configured_program().await.unwrap();
+
+    let dz_epoch = DoubleZeroEpoch::new(1);
+
+    // Register the integration before the target distribution is initialized so
+    // its snapshot captures the one registered integration.
+    test_setup
+        .initialize_rewards_integration(&configured.admin_signer, &mock_rewards_integration::ID)
+        .await
+        .unwrap()
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap();
+
+    let (integration_distribution_key, _) =
+        find_integration_distribution_address(&mock_rewards_integration::ID, dz_epoch);
+    let (integration_2z_bucket_key, _) = find_integration_bucket_address(
+        &mock_rewards_integration::ID,
+        &integration_distribution_key,
+    );
+
+    let collected_integration_2z_amount = 100_000_000;
+
+    // Epoch 1 (the tested epoch) is created by the second initialize_distribution
+    // below; collect only after its distribution PDA exists.
+    test_setup
+        .mock_initialize_integration_distribution(dz_epoch)
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap()
+        .transfer_2z(&integration_2z_bucket_key, collected_integration_2z_amount)
+        .await
+        .unwrap()
+        .collect_integration_rewards(
+            dz_epoch,
+            &mock_rewards_integration::ID,
+            &integration_distribution_key,
+            &integration_2z_bucket_key,
+        )
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        .configure_distribution_debt(
+            dz_epoch,
+            &configured.debt_accountant_signer,
+            0,
+            0,
+            Hash::default(),
+        )
+        .await
+        .unwrap()
+        .finalize_distribution_debt(dz_epoch, &configured.debt_accountant_signer)
+        .await
+        .unwrap()
+        .configure_program(
+            &configured.admin_signer,
+            [ProgramConfiguration::MinimumEpochDurationToFinalizeRewards(
+                2,
+            )],
+        )
+        .await
+        .unwrap()
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap();
+
+    let (_, distribution, _, _, _) = test_setup.fetch_distribution(dz_epoch).await;
+    assert_eq!(
+        distribution.collected_2z_from_integrations,
+        collected_integration_2z_amount
+    );
+    assert!(distribution.are_all_integrations_collected());
+    assert_eq!(distribution.checked_total_sol_debt().unwrap(), 0);
+
+    // Nonzero collected integration 2Z rejects the null root via the
+    // collected-2Z check (integrations are also fully collected here).
+    let (tx_err, program_logs) = simulate_finalize_revert(&mut test_setup, dz_epoch)
+        .await
+        .unwrap();
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(3).unwrap(),
+        "Program log: Rewards root cannot be null with collected 2Z"
+    );
+
+    // Posting a real root unblocks finalize.
+    test_setup
+        .configure_distribution_rewards(
+            dz_epoch,
+            &configured.rewards_accountant_signer,
+            69,
+            Hash::new_unique(),
+        )
+        .await
+        .unwrap()
+        .finalize_distribution_rewards(dz_epoch)
+        .await
+        .unwrap();
+
+    let (_, distribution, _, _, _) = test_setup.fetch_distribution(dz_epoch).await;
+    assert!(distribution.is_rewards_calculation_finalized());
+}
+
+//
+// Null-root guard — uncollected integration blocks finalize, zero-value collect
+// then unblocks it.
+//
+
+#[tokio::test]
+async fn test_cannot_finalize_null_root_with_uncollected_integration() {
+    let mut test_setup = common::start_test().await;
+
+    let configured = test_setup.setup_configured_program().await.unwrap();
+
+    let dz_epoch = DoubleZeroEpoch::new(1);
+
+    test_setup
+        .initialize_rewards_integration(&configured.admin_signer, &mock_rewards_integration::ID)
+        .await
+        .unwrap()
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap();
+
+    let (integration_distribution_key, _) =
+        find_integration_distribution_address(&mock_rewards_integration::ID, dz_epoch);
+    let (integration_2z_bucket_key, _) = find_integration_bucket_address(
+        &mock_rewards_integration::ID,
+        &integration_distribution_key,
+    );
+
+    // Initialize the integration distribution but leave its bucket empty and do
+    // not collect, so the integration stays pending.
+    test_setup
+        .mock_initialize_integration_distribution(dz_epoch)
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        .configure_distribution_debt(
+            dz_epoch,
+            &configured.debt_accountant_signer,
+            0,
+            0,
+            Hash::default(),
+        )
+        .await
+        .unwrap()
+        .finalize_distribution_debt(dz_epoch, &configured.debt_accountant_signer)
+        .await
+        .unwrap()
+        .configure_program(
+            &configured.admin_signer,
+            [ProgramConfiguration::MinimumEpochDurationToFinalizeRewards(
+                2,
+            )],
+        )
+        .await
+        .unwrap()
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap();
+
+    let (_, distribution, _, _, _) = test_setup.fetch_distribution(dz_epoch).await;
+    assert_eq!(distribution.checked_total_sol_debt().unwrap(), 0);
+    assert_eq!(distribution.total_collected_2z_tokens(), 0);
+    assert!(!distribution.are_all_integrations_collected());
+
+    // Zero debt and zero collected 2Z, but the pending integration blocks the
+    // null root.
+    let (tx_err, program_logs) = simulate_finalize_revert(&mut test_setup, dz_epoch)
+        .await
+        .unwrap();
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(3).unwrap(),
+        "Program log: Rewards root cannot be null with uncollected integrations"
+    );
+
+    // Collecting against the empty bucket adds no 2Z but marks the integration
+    // collected, so the null-root finalize now succeeds.
+    test_setup
+        .collect_integration_rewards(
+            dz_epoch,
+            &mock_rewards_integration::ID,
+            &integration_distribution_key,
+            &integration_2z_bucket_key,
+        )
+        .await
+        .unwrap();
+
+    let (_, distribution, _, _, _) = test_setup.fetch_distribution(dz_epoch).await;
+    assert_eq!(distribution.total_collected_2z_tokens(), 0);
+    assert!(distribution.are_all_integrations_collected());
+
+    test_setup
+        .finalize_distribution_rewards(dz_epoch)
+        .await
+        .unwrap();
+
+    let (_, distribution, _, _, _) = test_setup.fetch_distribution(dz_epoch).await;
+    assert!(distribution.is_rewards_calculation_finalized());
+}
+
+//
+// Rooted path is unaffected by an uncollected integration.
+//
+
+#[tokio::test]
+async fn test_finalize_rooted_with_uncollected_integration() {
+    let mut test_setup = common::start_test().await;
+
+    let configured = test_setup.setup_configured_program().await.unwrap();
+
+    let dz_epoch = DoubleZeroEpoch::new(1);
+
+    test_setup
+        .initialize_rewards_integration(&configured.admin_signer, &mock_rewards_integration::ID)
+        .await
+        .unwrap()
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap()
+        .mock_initialize_integration_distribution(dz_epoch)
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap()
+        .warp_timestamp_by(60)
+        .await
+        .unwrap()
+        .configure_distribution_debt(
+            dz_epoch,
+            &configured.debt_accountant_signer,
+            0,
+            0,
+            Hash::default(),
+        )
+        .await
+        .unwrap()
+        .finalize_distribution_debt(dz_epoch, &configured.debt_accountant_signer)
+        .await
+        .unwrap()
+        .configure_distribution_rewards(
+            dz_epoch,
+            &configured.rewards_accountant_signer,
+            69,
+            Hash::new_unique(),
+        )
+        .await
+        .unwrap()
+        .configure_program(
+            &configured.admin_signer,
+            [ProgramConfiguration::MinimumEpochDurationToFinalizeRewards(
+                2,
+            )],
+        )
+        .await
+        .unwrap()
+        .initialize_distribution(&configured.debt_accountant_signer)
+        .await
+        .unwrap();
+
+    let (_, distribution, _, _, _) = test_setup.fetch_distribution(dz_epoch).await;
+    assert!(!distribution.are_all_integrations_collected());
+    assert_ne!(distribution.rewards_merkle_root, Hash::default());
+
+    // A non-null root skips the entire null-root guard block, so the pending
+    // integration does not block finalize.
+    test_setup
+        .finalize_distribution_rewards(dz_epoch)
+        .await
+        .unwrap();
+
+    let (_, distribution, _, _, _) = test_setup.fetch_distribution(dz_epoch).await;
+    assert!(distribution.is_rewards_calculation_finalized());
 }
 
 //

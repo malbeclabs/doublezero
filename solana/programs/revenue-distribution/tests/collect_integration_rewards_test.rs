@@ -312,3 +312,61 @@ async fn test_cannot_collect_integration_rewards_when_paused() {
         "Program log: Program is paused"
     );
 }
+
+//
+// An integration registered after this distribution was initialized is outside
+// its snapshot and cannot be collected into it.
+//
+
+#[tokio::test]
+async fn test_cannot_collect_integration_rewards_registered_after_initialization() {
+    let CollectIntegrationRewardsSetup {
+        mut test_setup,
+        admin_signer,
+        dz_epoch,
+        ..
+    } = setup_for_collect_integration_rewards().await;
+
+    // The setup registered one integration before initializing the distribution,
+    // so the snapshot is 1 (indices 0..=0). Registering a second integration now
+    // gives it registration index 1, outside this distribution's snapshot.
+    // `mock_swap_sol_2z` is already loaded as an executable program by the test
+    // harness, satisfying registration's must-be-executable check.
+    let late_integration_program_id = mock_swap_sol_2z::ID;
+    test_setup
+        .initialize_rewards_integration(&admin_signer, &late_integration_program_id)
+        .await
+        .unwrap();
+
+    let (late_integration_distribution_key, _) =
+        find_integration_distribution_address(&late_integration_program_id, dz_epoch);
+    let (late_integration_2z_bucket_key, _) = find_integration_bucket_address(
+        &late_integration_program_id,
+        &late_integration_distribution_key,
+    );
+
+    let ix = try_build_instruction(
+        &doublezero_revenue_distribution::ID,
+        CollectIntegrationRewardsAccounts::new(
+            dz_epoch,
+            &late_integration_program_id,
+            &late_integration_distribution_key,
+            &late_integration_2z_bucket_key,
+        ),
+        &RevenueDistributionInstructionData::CollectIntegrationRewards,
+    )
+    .unwrap();
+
+    let (tx_err, program_logs) = test_setup
+        .unwrap_simulation_error(&[ix], &[])
+        .await
+        .unwrap();
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(2).unwrap(),
+        "Program log: Integration registration index 1 is at or beyond this distribution's snapshot count of 1"
+    );
+}

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- reject null-root rewards finalize while 2Z is owed to contributors (malbeclabs/infra#1868)
+- reject collecting an integration registered after a distribution's snapshot (malbeclabs/infra#1868)
+
 ## [v0.3.7]
 
 - migrate distributions to fix integrations_count_snapshot

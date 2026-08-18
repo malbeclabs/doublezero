@@ -1167,12 +1167,25 @@ fn try_finalize_distribution_rewards(accounts: &[AccountInfo]) -> ProgramResult 
     // finalized.
     distribution.try_require_finalized_debt_calculation()?;
 
-    // Ensure that the rewards root is not null if there is calculated debt.
-    if distribution.checked_total_sol_debt().unwrap() != 0
-        && distribution.rewards_merkle_root == Hash::default()
-    {
-        msg!("Rewards root cannot be null with calculated debt");
-        return Err(ProgramError::InvalidAccountData);
+    // A null rewards root can only be finalized when provably nothing is owed
+    // to contributors: no SOL debt (converted to 2Z at sweep), no collected 2Z
+    // (prepaid payments, integration rewards), and no integration still pending
+    // collection. Finalize is permissionless and one-way, so this guard is the
+    // only thing standing between a premature finalize and permanently stranded
+    // 2Z.
+    if distribution.rewards_merkle_root == Hash::default() {
+        if distribution.checked_total_sol_debt().unwrap() != 0 {
+            msg!("Rewards root cannot be null with calculated debt");
+            return Err(ProgramError::InvalidAccountData);
+        }
+        if distribution.total_collected_2z_tokens() != 0 {
+            msg!("Rewards root cannot be null with collected 2Z");
+            return Err(ProgramError::InvalidAccountData);
+        }
+        if !distribution.are_all_integrations_collected() {
+            msg!("Rewards root cannot be null with uncollected integrations");
+            return Err(ProgramError::InvalidAccountData);
+        }
     }
 
     // The distribution must have been created at least the minimum number of
@@ -1913,6 +1926,22 @@ fn try_collect_integration_rewards(accounts: &[AccountInfo]) -> ProgramResult {
         ZeroCopyAccount::<RewardsIntegration>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
 
     let registration_index = rewards_integration.registration_index;
+
+    // Only integrations that existed when this distribution was initialized
+    // belong to its snapshot. Collecting one registered afterward (index at or
+    // beyond the snapshot) would bump integrations_collected_count toward the
+    // snapshot without collecting a snapshot integration, letting
+    // are_all_integrations_collected() report true while a real snapshot
+    // integration stays pending. Reject it so that gate stays honest.
+    if registration_index >= distribution.integrations_count_snapshot {
+        msg!(
+            "Integration registration index {} is at or beyond this distribution's snapshot count of {}",
+            registration_index,
+            distribution.integrations_count_snapshot
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
     let already_collected = distribution
         .checked_is_integration_collected(registration_index)
         .ok_or_else(|| {

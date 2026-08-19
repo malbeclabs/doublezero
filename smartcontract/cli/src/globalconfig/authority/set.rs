@@ -25,6 +25,10 @@ pub struct SetAuthorityCliCommand {
     /// New feed authority public key
     #[arg(long)]
     pub feed_authority: Option<String>,
+
+    /// New IP ownership verifier authority public key (RFC-27)
+    #[arg(long)]
+    pub ip_verifier_authority: Option<String>,
 }
 
 impl SetAuthorityCliCommand {
@@ -82,11 +86,24 @@ impl SetAuthorityCliCommand {
             }
         };
 
+        let ip_verifier_authority_pk = {
+            if let Some(ip_verifier_authority) = &self.ip_verifier_authority {
+                if ip_verifier_authority.eq_ignore_ascii_case("me") {
+                    Some(client.get_payer())
+                } else {
+                    Some(Pubkey::from_str(ip_verifier_authority)?)
+                }
+            } else {
+                None
+            }
+        };
+
         let signature = client.set_authority(SetAuthorityCommand {
             activator_authority_pk,
             sentinel_authority_pk,
             health_oracle_pk,
             feed_authority_pk,
+            ip_verifier_authority_pk,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -122,6 +139,7 @@ mod tests {
         let sentinel_authority_pk = Pubkey::new_unique();
         let health_oracle_pk = Pubkey::new_unique();
         let feed_authority_pk = Pubkey::new_unique();
+        let ip_verifier_authority_pk = Pubkey::new_unique();
 
         client
             .expect_check_requirements()
@@ -134,6 +152,7 @@ mod tests {
                 sentinel_authority_pk: Some(sentinel_authority_pk),
                 health_oracle_pk: Some(health_oracle_pk),
                 feed_authority_pk: Some(feed_authority_pk),
+                ip_verifier_authority_pk: Some(ip_verifier_authority_pk),
             }))
             .returning(move |_| Ok(signature));
 
@@ -147,6 +166,7 @@ mod tests {
                 sentinel_authority: Some(sentinel_authority_pk.to_string()),
                 health_oracle: Some(health_oracle_pk.to_string()),
                 feed_authority: Some(feed_authority_pk.to_string()),
+                ip_verifier_authority: Some(ip_verifier_authority_pk.to_string()),
             }
             .execute(&ctx, &client, &mut output1),
         );

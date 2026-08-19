@@ -520,6 +520,33 @@ pub async fn wait_for_new_blockhash(banks_client: &mut BanksClient) -> solana_pr
     new_blockhash
 }
 
+/// Send `InitGlobalState` and nothing else. Split out of
+/// [`init_globalstate_and_config`] so tests that only need GlobalState (for example
+/// `SetAuthority` coverage) share one definition instead of duplicating it.
+#[allow(dead_code)]
+pub async fn init_globalstate(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    payer: &Keypair,
+    recent_blockhash: solana_program::hash::Hash,
+) {
+    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::InitGlobalState(),
+        vec![
+            AccountMeta::new(program_config_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+    )
+    .await;
+}
+
 /// Setup program with global state and global config initialized.
 /// Returns (banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey)
 /// Initialize global state and set global config (creating all resource extension accounts).
@@ -532,7 +559,6 @@ pub async fn init_globalstate_and_config(
     payer: &Keypair,
     recent_blockhash: solana_program::hash::Hash,
 ) {
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
     let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
     let (device_tunnel_block_pda, _, _) =
@@ -550,18 +576,7 @@ pub async fn init_globalstate_and_config(
     let (admin_group_bits_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
 
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
+    init_globalstate(banks_client, program_id, payer, recent_blockhash).await;
 
     execute_transaction(
         banks_client,

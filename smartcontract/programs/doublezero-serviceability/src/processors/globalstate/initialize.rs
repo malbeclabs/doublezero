@@ -108,6 +108,7 @@ pub fn initialize_global_state(program_id: &Pubkey, accounts: &[AccountInfo]) ->
         qa_allowlist: vec![*payer_account.key],
         feature_flags: 0,
         feed_authority_pk: Pubkey::default(),
+        ip_verifier_authority_pk: Pubkey::default(),
     };
 
     try_acc_create(

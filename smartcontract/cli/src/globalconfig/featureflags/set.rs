@@ -99,6 +99,7 @@ mod tests {
             qa_allowlist: vec![],
             feature_flags,
             feed_authority_pk: Pubkey::default(),
+            ip_verifier_authority_pk: Pubkey::default(),
         }
     }
 

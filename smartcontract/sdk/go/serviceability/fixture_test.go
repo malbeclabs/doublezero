@@ -333,3 +333,45 @@ func TestFixtureAccessPassLegacyCapDefaults(t *testing.T) {
 	assert.Equal(t, uint16(0), ap.MulticastUserCount)
 	assert.Equal(t, uint16(1), ap.MaxMulticastUsers)
 }
+
+func TestFixtureGlobalState(t *testing.T) {
+	data, meta := loadFixture(t, "global_state")
+	require.Equal(t, "GlobalState", meta.Name)
+	require.Equal(t, uint8(serviceability.GlobalStateType), meta.AccountType)
+
+	var gs serviceability.GlobalState
+	serviceability.DeserializeGlobalState(serviceability.NewByteReader(data), &gs)
+
+	assert.Equal(t, serviceability.GlobalStateType, gs.AccountType)
+	assert.Equal(t, uint8(254), gs.BumpSeed)
+	require.Len(t, gs.FoundationAllowlist, 1)
+	assert.Equal(t, fixtureFieldValue(t, meta, "FoundationAllowlist0"), base58.Encode(gs.FoundationAllowlist[0][:]))
+	assert.Equal(t, fixtureFieldValue(t, meta, "ActivatorAuthorityPk"), base58.Encode(gs.ActivatorAuthorityPK[:]))
+	assert.Equal(t, fixtureFieldValue(t, meta, "SentinelAuthorityPk"), base58.Encode(gs.SentinelAuthorityPK[:]))
+	assert.Equal(t, uint64(1000000000), gs.ContributorAirdropLamports)
+	assert.Equal(t, uint64(50000), gs.UserAirdropLamports)
+	assert.Equal(t, fixtureFieldValue(t, meta, "HealthOraclePk"), base58.Encode(gs.HealthOraclePK[:]))
+	require.Len(t, gs.QAAllowlist, 1)
+	assert.Equal(t, fixtureFieldValue(t, meta, "QaAllowlist0"), base58.Encode(gs.QAAllowlist[0][:]))
+	assert.Equal(t, fixtureFieldValue(t, meta, "FeedAuthorityPk"), base58.Encode(gs.FeedAuthorityPK[:]))
+
+	// ip_verifier_authority_pk is the trailing field; asserting it against the
+	// fixture pins the field order as well as the value.
+	assert.Equal(t, fixtureFieldValue(t, meta, "IpVerifierAuthorityPk"), base58.Encode(gs.IpVerifierAuthorityPK[:]))
+}
+
+// An account written before ip_verifier_authority_pk existed ends after
+// feed_authority_pk. The absent field must read as the all-zero sentinel, which
+// enforcement treats as "no verifier configured".
+func TestFixtureGlobalStateLegacyNoIpVerifier(t *testing.T) {
+	data, meta := loadFixture(t, "global_state")
+	legacy := data[:len(data)-32] // drop ip_verifier_authority_pk
+
+	var gs serviceability.GlobalState
+	serviceability.DeserializeGlobalState(serviceability.NewByteReader(legacy), &gs)
+
+	// Everything before the dropped field still decodes.
+	assert.Equal(t, serviceability.GlobalStateType, gs.AccountType)
+	assert.Equal(t, fixtureFieldValue(t, meta, "FeedAuthorityPk"), base58.Encode(gs.FeedAuthorityPK[:]))
+	assert.Equal(t, [32]byte{}, gs.IpVerifierAuthorityPK)
+}

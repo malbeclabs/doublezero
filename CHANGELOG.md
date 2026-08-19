@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - RFCs
   - RFC-27: IP Ownership Verification Service for user connection
+- Serviceability
+  - `GlobalState` carries `ip_verifier_authority_pk`, the RFC-27 trust root for IP ownership proof validation, which `SetAuthority` and `doublezero global-config authority set --ip-verifier-authority <pubkey|me>` rotate without a program upgrade. (#4196)
 - Utility crates
   - New `doublezero-ip-proof` crate defines the RFC-27 `IpOwnershipProof` and the exact bytes the verifier signs, in one place the serviceability program, the CLI, and the verification service all share. Nothing consumes it yet. (#4195, #4206)
 

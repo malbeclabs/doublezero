@@ -25,6 +25,28 @@ pub struct AuthorityDisplay {
     pub feed_authority: Pubkey,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub health_oracle: Pubkey,
+    /// `None` when the onchain field is `Pubkey::default()`, the sentinel for
+    /// "no verifier configured".
+    #[tabled(display = "display_optional_pubkey")]
+    #[serde(serialize_with = "serialize_optional_pubkey")]
+    pub ip_verifier_authority: Option<Pubkey>,
+}
+
+fn display_optional_pubkey(pubkey: &Option<Pubkey>) -> String {
+    match pubkey {
+        Some(pubkey) => pubkey.to_string(),
+        None => "not set".to_string(),
+    }
+}
+
+fn serialize_optional_pubkey<S>(pubkey: &Option<Pubkey>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match pubkey {
+        Some(pubkey) => serializer.serialize_str(&pubkey.to_string()),
+        None => serializer.serialize_none(),
+    }
 }
 
 impl GetAuthorityCliCommand {
@@ -41,6 +63,8 @@ impl GetAuthorityCliCommand {
             access_authority: gstate.sentinel_authority_pk,
             feed_authority: gstate.feed_authority_pk,
             health_oracle: gstate.health_oracle_pk,
+            ip_verifier_authority: (gstate.ip_verifier_authority_pk != Pubkey::default())
+                .then_some(gstate.ip_verifier_authority_pk),
         };
 
         if self.json {
@@ -79,6 +103,7 @@ mod tests {
         let sentinel_authority = Pubkey::new_unique();
         let feed_authority = Pubkey::new_unique();
         let health_oracle = Pubkey::new_unique();
+        let ip_verifier_authority = Pubkey::new_unique();
         let globalstate = GlobalState {
             account_type: AccountType::GlobalState,
             bump_seed: 0,
@@ -94,6 +119,7 @@ mod tests {
             qa_allowlist: vec![],
             feature_flags: 0,
             feed_authority_pk: feed_authority,
+            ip_verifier_authority_pk: ip_verifier_authority,
         };
 
         client
@@ -129,6 +155,10 @@ mod tests {
             has_row("health_oracle", &health_oracle.to_string()),
             "health_oracle row should contain value"
         );
+        assert!(
+            has_row("ip_verifier_authority", &ip_verifier_authority.to_string()),
+            "ip_verifier_authority row should contain value"
+        );
 
         // JSON output
         let mut output = Vec::new();
@@ -153,5 +183,64 @@ mod tests {
             json["health_oracle"].as_str().unwrap(),
             health_oracle.to_string()
         );
+        assert_eq!(
+            json["ip_verifier_authority"].as_str().unwrap(),
+            ip_verifier_authority.to_string()
+        );
+    }
+
+    #[test]
+    fn test_cli_globalconfig_authority_get_unset_ip_verifier() {
+        let mut client = create_test_client();
+
+        let gstate_pubkey = Pubkey::new_unique();
+        let globalstate = GlobalState {
+            account_type: AccountType::GlobalState,
+            bump_seed: 0,
+            account_index: 0,
+            foundation_allowlist: vec![],
+            _device_allowlist: vec![],
+            _user_allowlist: vec![],
+            activator_authority_pk: Pubkey::new_unique(),
+            sentinel_authority_pk: Pubkey::new_unique(),
+            contributor_airdrop_lamports: 0,
+            user_airdrop_lamports: 0,
+            health_oracle_pk: Pubkey::new_unique(),
+            qa_allowlist: vec![],
+            feature_flags: 0,
+            feed_authority_pk: Pubkey::new_unique(),
+            ip_verifier_authority_pk: Pubkey::default(),
+        };
+
+        client
+            .expect_get_globalstate()
+            .with(predicate::eq(GetGlobalStateCommand))
+            .returning(move |_| Ok((gstate_pubkey, globalstate.clone())));
+
+        // Table output renders the sentinel as "not set", not as a valid-looking pubkey.
+        let mut output = Vec::new();
+        let ctx = cli_context_default_for_tests();
+        let res =
+            block_on(GetAuthorityCliCommand { json: false }.execute(&ctx, &client, &mut output));
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        let row = output_str
+            .lines()
+            .find(|l| l.contains("ip_verifier_authority"))
+            .expect("ip_verifier_authority row should be present");
+        assert!(row.contains("not set"), "row was: {row}");
+        assert!(
+            !row.contains(&Pubkey::default().to_string()),
+            "row was: {row}"
+        );
+
+        // JSON output reports null.
+        let mut output = Vec::new();
+        let res =
+            block_on(GetAuthorityCliCommand { json: true }.execute(&ctx, &client, &mut output));
+        assert!(res.is_ok());
+        let json: serde_json::Value =
+            serde_json::from_str(&String::from_utf8(output).unwrap()).unwrap();
+        assert!(json["ip_verifier_authority"].is_null());
     }
 }

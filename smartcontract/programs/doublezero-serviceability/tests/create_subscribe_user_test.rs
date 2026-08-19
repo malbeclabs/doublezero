@@ -1216,6 +1216,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             sentinel_authority_pk: Some(sentinel.pubkey()),
             health_oracle_pk: None,
             feed_authority_pk: None,
+            ip_verifier_authority_pk: None,
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,

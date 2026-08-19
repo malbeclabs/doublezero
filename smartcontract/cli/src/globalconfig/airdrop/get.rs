@@ -80,6 +80,7 @@ mod tests {
             qa_allowlist: vec![],
             feature_flags: 0,
             feed_authority_pk: Pubkey::default(),
+            ip_verifier_authority_pk: Pubkey::default(),
         };
 
         client

@@ -20,6 +20,9 @@ func DeserializeGlobalState(reader *ByteReader, gs *GlobalState) {
 	gs.QAAllowlist = reader.ReadPubkeySlice()
 	gs.FeatureFlags = reader.ReadU128()
 	gs.FeedAuthorityPK = reader.ReadPubkey()
+	// Absent on accounts written before the field existed; ReadPubkey yields the
+	// all-zero key at EOF, matching the program's Pubkey::default() sentinel.
+	gs.IpVerifierAuthorityPK = reader.ReadPubkey()
 }
 
 func DeserializeGlobalConfig(reader *ByteReader, cfg *GlobalConfig) {

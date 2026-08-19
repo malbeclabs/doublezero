@@ -84,7 +84,11 @@ type GlobalState struct {
 	QAAllowlist                [][32]byte
 	FeatureFlags               Uint128
 	FeedAuthorityPK            [32]byte
-	PubKey                     [32]byte
+	// IpVerifierAuthorityPK is the RFC-27 trust root for IP ownership proof
+	// validation. An all-zero value means no verifier is configured, which
+	// enforcement must treat as a hard reject, not "any signature passes".
+	IpVerifierAuthorityPK [32]byte
+	PubKey                [32]byte
 }
 
 type Location struct {

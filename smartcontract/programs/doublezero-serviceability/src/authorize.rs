@@ -498,7 +498,6 @@ mod tests {
     fn gs_with_feed(authority: &Pubkey) -> GlobalState {
         GlobalState {
             feed_authority_pk: *authority,
-            ip_verifier_authority_pk: Pubkey::default(),
             ..GlobalState::default()
         }
     }
@@ -524,7 +523,6 @@ mod tests {
             sentinel_authority_pk: sentinel,
             health_oracle_pk: health_oracle,
             feed_authority_pk: feed,
-            ip_verifier_authority_pk: Pubkey::default(),
             ..GlobalState::default()
         };
 

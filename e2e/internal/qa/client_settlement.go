@@ -151,10 +151,12 @@ func (c *Client) RetransmitOnlyExchangeKeys(ctx context.Context) (map[string]boo
 // cannot: an empty set means no metro is flagged retransmit-only (the feature
 // is not configured on this network, so the caller may skip), while a non-empty
 // set with a nil device means metros are flagged but none of their devices is
-// reachable — the feature under test cannot be exercised, so the caller should
-// fail rather than silently skip and lose the alert signal. Like ClosestDevice,
-// it does not filter on capacity: the QA user pubkey is on the onchain
-// qa_allowlist, which bypasses capacity limits for QA connections.
+// reachable and eligible for a new shred seat — the feature under test cannot
+// be exercised, so the caller should fail rather than silently skip and lose
+// the alert signal. Serviceability status and capacity are deliberately not
+// considered: the QA user pubkey is on that program's qa_allowlist. Shred seat
+// capacity is independent and must be considered because `shreds pay` does not
+// have the same bypass.
 func (c *Client) ClosestRetransmitOnlyDevice(ctx context.Context) (*Device, map[string]bool, error) {
 	retransmitOnly, err := c.RetransmitOnlyExchangeKeys(ctx)
 	if err != nil {
@@ -183,21 +185,60 @@ func (c *Client) ClosestNonRetransmitOnlyDevice(ctx context.Context) (*Device, e
 }
 
 // closestDeviceInMetros returns the lowest-latency reachable device whose metro
-// membership in exchangeKeys equals want.
+// membership in exchangeKeys equals want and which can accept a new shred seat.
 func (c *Client) closestDeviceInMetros(ctx context.Context, exchangeKeys map[string]bool, want bool) (*Device, error) {
+	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse shred subscription program ID %q: %w", c.ShredSubscriptionProgramID, err)
+	}
+	histories, err := c.shredsClient(programID).FetchAllDeviceHistories(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch device histories on host %s: %w", c.Host, err)
+	}
+	availableDeviceKeys := availableShredDeviceKeys(histories)
+
 	latencies, err := c.GetLatency(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latency on host %s: %w", c.Host, err)
 	}
 
+	bestDevice, bestAvg := closestAvailableDeviceInMetros(latencies, c.devices, exchangeKeys, availableDeviceKeys, want)
+	if bestDevice != nil {
+		c.log.Debug("Determined closest device", "host", c.Host, "deviceCode", bestDevice.Code,
+			"avgLatencyNs", bestAvg, "retransmitOnly", want)
+	}
+	return bestDevice, nil
+}
+
+// availableShredDeviceKeys returns device pubkeys that the shred price command
+// would report without --all. Use the active header counts rather than the
+// subscription ring: instant allocations and withdrawals update these fields
+// immediately, so they represent the capacity available at selection time.
+func availableShredDeviceKeys(histories []shreds.KeyedDeviceHistory) map[string]bool {
+	available := make(map[string]bool)
+	for _, history := range histories {
+		if history.IsEnabled() && history.ActiveGrantedSeats < history.ActiveTotalAvailableSeats {
+			available[history.DeviceKey.String()] = true
+		}
+	}
+	return available
+}
+
+func closestAvailableDeviceInMetros(
+	latencies []*pb.Latency,
+	devices map[string]*Device,
+	exchangeKeys map[string]bool,
+	availableDeviceKeys map[string]bool,
+	want bool,
+) (*Device, uint64) {
 	var bestDevice *Device
-	var bestAvg uint64 = math.MaxUint64
+	bestAvg := uint64(math.MaxUint64)
 	for _, l := range latencies {
 		if !l.Reachable {
 			continue
 		}
-		device, ok := c.devices[l.DeviceCode]
-		if !ok || exchangeKeys[device.ExchangePubKey] != want {
+		device, ok := devices[l.DeviceCode]
+		if !ok || !availableDeviceKeys[device.PubKey] || exchangeKeys[device.ExchangePubKey] != want {
 			continue
 		}
 		if l.AvgLatencyNs < bestAvg {
@@ -205,11 +246,7 @@ func (c *Client) closestDeviceInMetros(ctx context.Context, exchangeKeys map[str
 			bestDevice = device
 		}
 	}
-	if bestDevice != nil {
-		c.log.Debug("Determined closest device", "host", c.Host, "deviceCode", bestDevice.Code,
-			"avgLatencyNs", bestAvg, "retransmitOnly", want)
-	}
-	return bestDevice, nil
+	return bestDevice, bestAvg
 }
 
 // FeedSeatPrice calls the FeedSeatPrice RPC to query seat pricing for a single

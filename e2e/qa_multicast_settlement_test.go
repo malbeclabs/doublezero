@@ -94,7 +94,7 @@ func selectRetransmitOnlyDevice(t *testing.T, ctx context.Context, log *slog.Log
 			t.Skip("Skipping: no metro is flagged retransmit-only (feature not deployed/configured on this network)")
 		}
 		require.NotNil(t, selected,
-			"retransmit-only metros %v are configured but no reachable device matched; the feature under test cannot be exercised",
+			"retransmit-only metros %v are configured but no reachable device with an available shred seat matched; the feature under test cannot be exercised",
 			flaggedMetroCodes(test, retransmitOnly))
 		device = selected
 	}

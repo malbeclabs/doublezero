@@ -7,18 +7,88 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
+	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
 	shreds "github.com/malbeclabs/doublezero/sdk/shreds/go"
 )
 
-func seat(pubkey byte, ipBits uint32, tenure uint16) shreds.KeyedClientSeat {
+func markedPubkey(marker byte) solana.PublicKey {
 	var pk solana.PublicKey
-	pk[0] = pubkey
+	pk[0] = marker
+	return pk
+}
+
+func seat(pubkey byte, ipBits uint32, tenure uint16) shreds.KeyedClientSeat {
 	return shreds.KeyedClientSeat{
-		Pubkey: pk,
+		Pubkey: markedPubkey(pubkey),
 		ClientSeat: shreds.ClientSeat{
 			ClientIPBits: ipBits,
 			TenureEpochs: tenure,
 		},
+	}
+}
+
+func TestAvailableShredDeviceKeys(t *testing.T) {
+	histories := []shreds.KeyedDeviceHistory{
+		{DeviceHistory: shreds.DeviceHistory{
+			DeviceKey: markedPubkey(1), Flags: 1 << 1,
+			ActiveGrantedSeats: 0, ActiveTotalAvailableSeats: 1,
+		}},
+		{DeviceHistory: shreds.DeviceHistory{
+			DeviceKey: markedPubkey(2), Flags: 1 << 1,
+			ActiveGrantedSeats: 0, ActiveTotalAvailableSeats: 0,
+		}},
+		{DeviceHistory: shreds.DeviceHistory{
+			DeviceKey: markedPubkey(3), Flags: 1 << 1,
+			ActiveGrantedSeats: 2, ActiveTotalAvailableSeats: 2,
+		}},
+		{DeviceHistory: shreds.DeviceHistory{
+			DeviceKey:          markedPubkey(4),
+			ActiveGrantedSeats: 0, ActiveTotalAvailableSeats: 1,
+		}},
+	}
+
+	available := availableShredDeviceKeys(histories)
+	if len(available) != 1 || !available[markedPubkey(1).String()] {
+		t.Fatalf("availableShredDeviceKeys() = %v, want only device 1", available)
+	}
+}
+
+func TestClosestAvailableDeviceInMetros(t *testing.T) {
+	closestUnavailable := &Device{
+		PubKey: markedPubkey(1).String(), Code: "closest-unavailable", ExchangePubKey: "retransmit",
+	}
+	qaBypassDevice := &Device{
+		// Pending with max_users=0: the QA pubkey bypasses these serviceability
+		// checks, so shred capacity is the only capacity filter this selector adds.
+		PubKey: markedPubkey(2).String(), Code: "qa-bypass", ExchangePubKey: "retransmit",
+	}
+	fartherAvailable := &Device{
+		PubKey: markedPubkey(3).String(), Code: "available", ExchangePubKey: "retransmit",
+	}
+	wrongMetro := &Device{
+		PubKey: markedPubkey(4).String(), Code: "wrong-metro", ExchangePubKey: "other",
+	}
+	devices := map[string]*Device{
+		closestUnavailable.Code: closestUnavailable,
+		qaBypassDevice.Code:     qaBypassDevice,
+		fartherAvailable.Code:   fartherAvailable,
+		wrongMetro.Code:         wrongMetro,
+	}
+	latencies := []*pb.Latency{
+		{DeviceCode: closestUnavailable.Code, Reachable: true, AvgLatencyNs: 1},
+		{DeviceCode: qaBypassDevice.Code, Reachable: true, AvgLatencyNs: 2},
+		{DeviceCode: wrongMetro.Code, Reachable: true, AvgLatencyNs: 3},
+		{DeviceCode: fartherAvailable.Code, Reachable: true, AvgLatencyNs: 4},
+	}
+	available := map[string]bool{
+		qaBypassDevice.PubKey:   true,
+		wrongMetro.PubKey:       true,
+		fartherAvailable.PubKey: true,
+	}
+
+	got, avg := closestAvailableDeviceInMetros(latencies, devices, map[string]bool{"retransmit": true}, available, true)
+	if got != qaBypassDevice || avg != 2 {
+		t.Fatalf("closestAvailableDeviceInMetros() = (%v, %d), want (%v, 2)", got, avg, qaBypassDevice)
 	}
 }
 

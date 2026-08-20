@@ -389,7 +389,11 @@ func TestAgentTelemetry_Pinger(t *testing.T) {
 		}
 
 		handler := newRecordingHandler()
-		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1024)
+		// Capacity has to outrun this test's worst case, not its expected case: Add applies
+		// backpressure by blocking, and with no submitter draining the partition a full one wedges
+		// Tick for good, so probing would never resume under the fresh epoch. The Eventually
+		// timeouts below allow ~25s of probing at 5ms per sample, so size for ~5k samples.
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1 << 16)
 		pinger := telemetry.NewPinger(slog.New(handler), &telemetry.PingerConfig{
 			LocalDevicePK:        devicePK,
 			Interval:             5 * time.Millisecond,
@@ -927,7 +931,10 @@ func TestAgentTelemetry_PingerEpochMetrics(t *testing.T) {
 
 		handler := newRecordingHandler()
 		devicePK, peerPK, linkPK := newPK(59), newPK(60), newPK(61)
-		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](4096)
+		// Nothing drains this partition and a full one blocks Add for good, so the driver loop below
+		// is paced to the pinger's own interval and the partition sized to hold every sample the
+		// Eventually window allows.
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1 << 16)
 		pinger := telemetry.NewPinger(slog.New(handler), &telemetry.PingerConfig{
 			LocalDevicePK:        devicePK,
 			Interval:             time.Millisecond,
@@ -955,6 +962,7 @@ func TestAgentTelemetry_PingerEpochMetrics(t *testing.T) {
 			defer wg.Done()
 			for ctx.Err() == nil {
 				pinger.Tick(ctx)
+				time.Sleep(time.Millisecond)
 			}
 		}()
 

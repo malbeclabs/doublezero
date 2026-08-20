@@ -7,6 +7,7 @@ use doublezero_serviceability::{
     },
 };
 use doublezero_serviceability_instruction::{compute_budget_prelude, user::create_subscribe_user};
+use eyre::Context;
 use solana_sdk::{message::Message, pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
 
@@ -77,7 +78,7 @@ impl CreateSubscribeUserCommand {
                 pubkey_or_code: mgroup_pk.to_string(),
             }
             .execute(client)
-            .map_err(|_err| eyre::eyre!("MulticastGroup not found ({mgroup_pk})"))?;
+            .wrap_err_with(|| format!("MulticastGroup not found ({mgroup_pk})"))?;
 
             if mgroup.status != MulticastGroupStatus::Activated {
                 eyre::bail!("MulticastGroup not active ({mgroup_pk})");
@@ -103,7 +104,7 @@ impl CreateSubscribeUserCommand {
             pubkey_or_code: self.device_pk.to_string(),
         }
         .execute(client)
-        .map_err(|_| eyre::eyre!("Device not found"))?;
+        .wrap_err_with(|| format!("Device not found ({})", self.device_pk))?;
         let dz_prefix_count = device.dz_prefixes.len();
         if dz_prefix_count == 0 {
             return Err(eyre::eyre!(

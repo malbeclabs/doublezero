@@ -12,6 +12,7 @@ use doublezero_serviceability::{
     state::multicastgroup::MulticastGroupStatus,
 };
 use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles;
+use eyre::Context;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 /// Upper bound on multicast groups per role-update transaction. Each group adds a
@@ -64,7 +65,7 @@ impl UpdateMulticastGroupRolesCommand {
                 pubkey_or_code: group_pk.to_string(),
             }
             .execute(client)
-            .map_err(|_err| eyre::eyre!("MulticastGroup not found ({group_pk})"))?;
+            .wrap_err_with(|| format!("MulticastGroup not found ({group_pk})"))?;
 
             if mgroup.status != MulticastGroupStatus::Activated {
                 eyre::bail!("MulticastGroup not active ({group_pk})");
@@ -75,7 +76,7 @@ impl UpdateMulticastGroupRolesCommand {
             pubkey: self.user_pk,
         }
         .execute(client)
-        .map_err(|_err| eyre::eyre!("User not found"))?;
+        .wrap_err_with(|| format!("User not found ({})", self.user_pk))?;
 
         // GetAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
         // back to the exact client-IP pass.

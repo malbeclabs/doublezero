@@ -3655,7 +3655,7 @@ mod tests {
 
     /// Existing multicast user subscribes to a new group with expired access pass.
     /// Exercises the `(_, Some(mcast))` branch of `find_or_create_user_and_subscribe`,
-    /// which calls UpdateMulticastGroupRoles (the on-chain processor never had an epoch
+    /// which calls UpdateMulticastGroupRoles (the onchain processor never had an epoch
     /// check; this test verifies the CLI gate no longer blocks it either).
     /// A group requested in BOTH --publish and --subscribe on an existing Multicast
     /// user gets one update with both flags, instead of a publisher add that a later

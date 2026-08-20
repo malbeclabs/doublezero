@@ -35,7 +35,12 @@ use doublezero_serviceability::{
     },
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
+use solana_sdk::{
+    instruction::{AccountMeta, InstructionError},
+    pubkey::Pubkey,
+    signature::Signer,
+    transaction::TransactionError,
+};
 use std::net::Ipv4Addr;
 
 mod test_helpers;
@@ -375,6 +380,18 @@ async fn try_subscribe_with_feed(
     f.banks_client.process_transaction(tx).await
 }
 
+/// Match the error structurally rather than on its debug text, so a test cannot pass because some
+/// other instruction in the transaction failed or because the formatting changed.
+fn assert_custom_error(err: &BanksClientError, code: u32) {
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(actual),
+        )) if *actual == code => {}
+        other => panic!("expected Custom({code}), got {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn test_right_metro_joins_group_set() {
     let mut f = setup_feed_fixture([100, 0, 0, 20]).await;
@@ -449,10 +466,7 @@ async fn test_wrong_metro_device_rejected() {
     let err = try_subscribe_with_feed(&mut f, feed)
         .await
         .expect_err("wrong-metro subscribe should be rejected");
-    assert!(
-        format!("{err:?}").contains("Custom(91)"),
-        "expected MetroMismatch (Custom(91)), got: {err:?}"
-    );
+    assert_custom_error(&err, 91); // MetroMismatch
 }
 
 #[tokio::test]
@@ -530,10 +544,7 @@ async fn test_group_not_in_feed_rejected() {
     let err = try_subscribe_with_feed(&mut f, feed)
         .await
         .expect_err("group outside the feed should be rejected");
-    assert!(
-        format!("{err:?}").contains("Custom(94)"),
-        "expected GroupNotInFeed (Custom(94)), got: {err:?}"
-    );
+    assert_custom_error(&err, 94); // GroupNotInFeed
 }
 
 // ============================================================================
@@ -683,10 +694,7 @@ async fn test_batch_extra_group_not_in_feed_rejected_and_seat_not_ticked() {
     let err = try_subscribe_batch_with_feed(&mut f, feed, mgroup2)
         .await
         .expect_err("extra group outside the feed's set should be rejected");
-    assert!(
-        format!("{err:?}").contains("Custom(94)"),
-        "expected GroupNotInFeed (Custom(94)), got: {err:?}"
-    );
+    assert_custom_error(&err, 94); // GroupNotInFeed
 
     // The whole transaction rolled back: no user, no seat consumed.
     let (user_pubkey, _) = get_user_pda(&f.program_id, &f.user_ip, UserType::Multicast);

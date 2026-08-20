@@ -23,7 +23,6 @@ use crate::{
 use doublezero_ip_proof::{
     is_supported_version, signed_message_for, IpOwnershipProof, SIGNED_MESSAGE_LEN,
 };
-use solana_instructions_sysvar::load_instruction_at_checked;
 use solana_program::{
     account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey,
     sysvar::instructions,
@@ -43,6 +42,9 @@ const SIGNATURE_OFFSETS_SERIALIZED_SIZE: usize = 14;
 /// Sentinel meaning "the data lives in this same instruction". Any other value names another
 /// instruction in the transaction.
 const CURRENT_INSTRUCTION: u16 = u16::MAX;
+
+/// One account meta in the Instructions sysvar: a flags byte plus a 32-byte pubkey.
+const ACCOUNT_META_LEN: usize = 33;
 
 /// Splits a trailing Instructions sysvar account off the end of an account list.
 ///
@@ -67,11 +69,21 @@ pub fn split_trailing_instructions_sysvar<'a, 'info>(
 /// enforcement has been switched on, and letting it through would mask that until the flag flips.
 /// With the flag set, a proof is required for every user creation, wildcard and specific-IP passes
 /// alike (#4192 item 3: a legacy path that skips the proof is exactly the hole the RFC exists to
-/// close).
+/// close) — with one exception, `payer_is_sentinel`.
+///
+/// `payer_is_sentinel` waives the *requirement* only, never validation. The shred-oracle
+/// provisions multicast publishers owned by validators (`crates/sentinel`), so the proof would have
+/// to name the validator for an address the oracle never observes a request from; there is no proof
+/// the oracle could obtain today. Unlike the wildcard-pass hole this RFC closes, the exemption is
+/// not reachable by a registrant: it requires `globalstate.sentinel_authority_pk`, a
+/// DoubleZero-operated key. The residual risk is that a compromised sentinel key can bind any IP,
+/// which it already could. A proof the sentinel *does* attach is still checked in full, so the
+/// oracle can start carrying real proofs without a program change (#4215).
 ///
 /// `user_type` binds the proof to the account it authorizes: the User PDA is
 /// `f(client_ip, user_type)`, so `client_ip` alone would leave a proof reusable for a different
 /// connection type on the same address within the same epoch.
+#[allow(clippy::too_many_arguments)]
 pub fn validate_ip_ownership_proof(
     instructions_sysvar: Option<&AccountInfo>,
     proof: Option<&IpOwnershipProof>,
@@ -80,11 +92,14 @@ pub fn validate_ip_ownership_proof(
     client_ip: &Ipv4Addr,
     user_type: u8,
     current_epoch: u64,
+    payer_is_sentinel: bool,
 ) -> Result<(), ProgramError> {
     let proof = match proof {
         Some(proof) => proof,
         None => {
-            return if is_feature_enabled(
+            return if payer_is_sentinel {
+                Ok(())
+            } else if is_feature_enabled(
                 globalstate.feature_flags,
                 FeatureFlag::RequireIpOwnershipProof,
             ) {
@@ -176,15 +191,23 @@ fn find_matching_ed25519_instruction(
     message: &[u8; SIGNED_MESSAGE_LEN],
     signature: &[u8; 64],
 ) -> Result<(), ProgramError> {
-    // The sysvar data opens with a little-endian u16 instruction count. Reading it directly is
-    // cheaper than probing `load_instruction_at_checked` until it errors.
-    let num_instructions = {
-        let data = sysvar.try_borrow_data()?;
-        if data.len() < 2 {
-            msg!("Instructions sysvar data is truncated");
-            return Err(DoubleZeroError::IpProofInstructionsSysvarMissing.into());
-        }
-        u16::from_le_bytes([data[0], data[1]])
+    let data = sysvar.try_borrow_data()?;
+    scan_for_ed25519_instruction(&data, verifier, message, signature)
+}
+
+/// The scan itself, over the raw sysvar bytes.
+///
+/// Split out from the account handling so it can be unit-tested against buffers built by the
+/// runtime's own serializer, rather than only end to end.
+fn scan_for_ed25519_instruction(
+    data: &[u8],
+    verifier: &Pubkey,
+    message: &[u8; SIGNED_MESSAGE_LEN],
+    signature: &[u8; 64],
+) -> Result<(), ProgramError> {
+    let Some(num_instructions) = read_u16(data, 0) else {
+        msg!("Instructions sysvar data is truncated");
+        return Err(DoubleZeroError::IpProofInstructionsSysvarMissing.into());
     };
 
     // Remember why the first Ed25519 instruction was rejected. Returning that beats a generic
@@ -193,11 +216,16 @@ fn find_matching_ed25519_instruction(
     let mut first_rejection: Option<DoubleZeroError> = None;
 
     for index in 0..num_instructions {
-        let instruction = load_instruction_at_checked(index as usize, sysvar)?;
-        if !solana_program::ed25519_program::check_id(&instruction.program_id) {
+        let Some((program_id, instruction_data)) = instruction_at(data, index) else {
+            // The runtime builds this buffer, so a record that does not parse means the sysvar is
+            // not the sysvar. Refusing beats continuing over bytes we cannot interpret.
+            msg!("Instructions sysvar record {} is malformed", index);
+            return Err(DoubleZeroError::IpProofInstructionsSysvarMissing.into());
+        };
+        if program_id != solana_program::ed25519_program::ID.as_ref() {
             continue;
         }
-        match check_ed25519_instruction(&instruction.data, index, verifier, message, signature) {
+        match check_ed25519_instruction(instruction_data, index, verifier, message, signature) {
             Ok(()) => return Ok(()),
             Err(e) => first_rejection.get_or_insert(e),
         };
@@ -209,6 +237,52 @@ fn find_matching_ed25519_instruction(
         error
     );
     Err(error.into())
+}
+
+/// Borrows one instruction's program ID and data straight out of the sysvar buffer.
+///
+/// `load_instruction_at_checked` would be the obvious call here, but it materializes a full
+/// `Instruction` per record — a `Vec<AccountMeta>` sized to the account count plus a copy of the
+/// data — and the BPF heap is a 32 KiB bump allocator that never frees. Scanning a transaction
+/// would then allocate for every instruction in it, including the account metas of instructions
+/// that have nothing to do with the proof, so cost would scale with the rest of the transaction
+/// and a large enough batch would abort on allocation failure instead of returning one of the
+/// named errors below. Reading the two fields we actually need costs no allocation and skips the
+/// account metas by arithmetic instead of decoding them.
+///
+/// Layout, from `solana_instructions_sysvar`:
+///
+/// ```text
+/// [0..2]                      num_instructions (u16)
+/// [2..2 + 2*N]                offset of each instruction record (u16 each)
+/// per record, at `offset`:
+///   [0..2]                    num_accounts (u16), call it A
+///   [2..2 + 33*A]             account metas, 33 bytes each
+///   [2 + 33*A..34 + 33*A]     program_id
+///   [34 + 33*A..36 + 33*A]    data_len (u16), call it D
+///   [36 + 33*A..36 + 33*A+D]  data
+/// ```
+fn instruction_at(data: &[u8], index: u16) -> Option<(&[u8], &[u8])> {
+    let offset = read_u16(data, 2 + 2 * index as usize)? as usize;
+    let num_accounts = read_u16(data, offset)? as usize;
+
+    let program_id_start = offset
+        .checked_add(2)?
+        .checked_add(num_accounts.checked_mul(ACCOUNT_META_LEN)?)?;
+    let data_len_start = program_id_start.checked_add(32)?;
+    let program_id = data.get(program_id_start..data_len_start)?;
+
+    let data_len = read_u16(data, data_len_start)? as usize;
+    let data_start = data_len_start.checked_add(2)?;
+    let instruction_data = data.get(data_start..data_start.checked_add(data_len)?)?;
+
+    Some((program_id, instruction_data))
+}
+
+/// Little-endian `u16` at `at`, or `None` if the buffer does not reach that far.
+fn read_u16(data: &[u8], at: usize) -> Option<u16> {
+    let bytes = data.get(at..at.checked_add(2)?)?;
+    Some(u16::from_le_bytes([bytes[0], bytes[1]]))
 }
 
 /// Checks one Ed25519 precompile instruction against the proof.
@@ -341,6 +415,168 @@ mod tests {
 
     fn check(data: &[u8], index: u16) -> Result<(), DoubleZeroError> {
         check_ed25519_instruction(data, index, &verifier(), &message(), &signature())
+    }
+
+    /// Serializes a transaction's instruction list exactly as the runtime does, so the scan is
+    /// exercised against the real encoding rather than an imitation of it.
+    ///
+    /// `account_counts` gives each instruction its own number of accounts: the scan skips account
+    /// metas by arithmetic instead of decoding them, so a wrong stride would only show up when the
+    /// instruction ahead of the Ed25519 one carries a non-trivial number of accounts.
+    fn sysvar_data(instructions: &[(Pubkey, Vec<u8>, usize)]) -> Vec<u8> {
+        use solana_instruction::{BorrowedAccountMeta, BorrowedInstruction};
+
+        let account_keys: Vec<Vec<Pubkey>> = instructions
+            .iter()
+            .map(|(_, _, count)| (0..*count).map(|_| Pubkey::new_unique()).collect())
+            .collect();
+
+        let borrowed: Vec<BorrowedInstruction> = instructions
+            .iter()
+            .zip(&account_keys)
+            .map(|((program_id, data, _), keys)| BorrowedInstruction {
+                program_id,
+                accounts: keys
+                    .iter()
+                    .map(|pubkey| BorrowedAccountMeta {
+                        pubkey,
+                        is_signer: false,
+                        is_writable: true,
+                    })
+                    .collect(),
+                data,
+            })
+            .collect();
+
+        solana_instructions_sysvar::construct_instructions_data(&borrowed)
+    }
+
+    fn scan(data: &[u8]) -> Result<(), ProgramError> {
+        scan_for_ed25519_instruction(data, &verifier(), &message(), &signature())
+    }
+
+    fn expect_error(result: Result<(), ProgramError>, expected: DoubleZeroError) {
+        assert_eq!(result, Err(ProgramError::from(expected)));
+    }
+
+    #[test]
+    fn scan_finds_the_ed25519_instruction_at_any_position() {
+        let ed25519 = (
+            solana_program::ed25519_program::ID,
+            instruction_data(
+                1,
+                CURRENT_INSTRUCTION,
+                CURRENT_INSTRUCTION,
+                CURRENT_INSTRUCTION,
+            ),
+            0,
+        );
+        // A program instruction with the account count a real CreateUser carries, so the
+        // account-meta stride is genuinely exercised rather than skipped over an empty list.
+        let other = |accounts: usize| (Pubkey::new_unique(), vec![7u8; 40], accounts);
+
+        for position in 0..4 {
+            let mut instructions: Vec<_> = (0..4).map(|i| other(i * 4 + 1)).collect();
+            instructions[position] = ed25519.clone();
+            // The offsets in `ed25519` name "this instruction" via the sentinel, so they stay
+            // valid wherever it lands.
+            assert_eq!(
+                scan(&sysvar_data(&instructions)),
+                Ok(()),
+                "Ed25519 instruction at index {position} must be found"
+            );
+        }
+    }
+
+    #[test]
+    fn scan_reports_no_ed25519_instruction_when_there_is_none() {
+        let instructions = vec![
+            (Pubkey::new_unique(), vec![1u8; 16], 11),
+            (Pubkey::new_unique(), vec![2u8; 8], 2),
+        ];
+        expect_error(
+            scan(&sysvar_data(&instructions)),
+            DoubleZeroError::IpProofEd25519InstructionMissing,
+        );
+    }
+
+    #[test]
+    fn scan_returns_the_first_rejection_rather_than_a_generic_miss() {
+        // One Ed25519 instruction, verifying someone else's key. Reporting "none found" here would
+        // send an operator looking for a missing instruction that is right there.
+        let mut data = instruction_data(
+            1,
+            CURRENT_INSTRUCTION,
+            CURRENT_INSTRUCTION,
+            CURRENT_INSTRUCTION,
+        );
+        data[HEADER as usize] ^= 0xff;
+        let instructions = vec![(solana_program::ed25519_program::ID, data, 0)];
+        expect_error(
+            scan(&sysvar_data(&instructions)),
+            DoubleZeroError::IpProofVerifierKeyMismatch,
+        );
+    }
+
+    #[test]
+    fn scan_rejects_a_truncated_buffer_without_panicking() {
+        let instructions = vec![(
+            solana_program::ed25519_program::ID,
+            instruction_data(
+                1,
+                CURRENT_INSTRUCTION,
+                CURRENT_INSTRUCTION,
+                CURRENT_INSTRUCTION,
+            ),
+            3,
+        )];
+        let full = sysvar_data(&instructions);
+
+        // Every prefix of a valid buffer. The count, the offset table, and each record field are
+        // read with bounds checks, so a truncated buffer is an error rather than a panic or a read
+        // of whatever follows in the account. The last two bytes are the current-instruction index,
+        // which the scan never reads, so cutting only those leaves the records intact.
+        let records_end = full.len() - 2;
+        for len in 0..records_end {
+            let result = scan(&full[..len]);
+            assert!(
+                result.is_err(),
+                "{len} of {} bytes must be rejected",
+                full.len()
+            );
+        }
+        assert_eq!(scan(&full[..records_end]), Ok(()));
+        assert_eq!(scan(&full), Ok(()));
+    }
+
+    #[test]
+    fn scan_rejects_an_offset_pointing_outside_the_buffer() {
+        let instructions = vec![(
+            solana_program::ed25519_program::ID,
+            instruction_data(
+                1,
+                CURRENT_INSTRUCTION,
+                CURRENT_INSTRUCTION,
+                CURRENT_INSTRUCTION,
+            ),
+            1,
+        )];
+        let mut data = sysvar_data(&instructions);
+        // The record offset is the first entry of the offset table, at [2..4].
+        data[2..4].copy_from_slice(&u16::MAX.to_le_bytes());
+        expect_error(
+            scan(&data),
+            DoubleZeroError::IpProofInstructionsSysvarMissing,
+        );
+
+        // An account count large enough that the program_id would sit past the end.
+        let mut data = sysvar_data(&instructions);
+        let record = u16::from_le_bytes([data[2], data[3]]) as usize;
+        data[record..record + 2].copy_from_slice(&u16::MAX.to_le_bytes());
+        expect_error(
+            scan(&data),
+            DoubleZeroError::IpProofInstructionsSysvarMissing,
+        );
     }
 
     #[test]

@@ -101,6 +101,22 @@ pub(crate) fn build_with_permission(
     build(program_id, instruction, accounts, payer)
 }
 
+/// Append the RFC-27 Instructions sysvar as the **very last** account.
+///
+/// Called on the already-built instruction, not from inside [`build`], because it has to land
+/// after everything the shared trailing convention appends — including the Permission PDA that
+/// [`build_with_permission`] will append once that rollout activates. `split_trailing_permission`
+/// identifies the Permission account by PDA match and `split_trailing_instructions_sysvar`
+/// identifies this one by its fixed key, and the processor peels the sysvar first, so "sysvar
+/// last, Permission second-to-last" is the only order both can parse.
+pub(crate) fn append_instructions_sysvar(mut instruction: Instruction) -> Instruction {
+    instruction.accounts.push(AccountMeta::new_readonly(
+        solana_program::sysvar::instructions::ID,
+        false,
+    ));
+    instruction
+}
+
 /// Assemble a builder whose only instruction-specific account is GlobalState
 /// (writable). Shared by the single-GlobalState setters and allowlist toggles;
 /// all route through `authorize()` -> [`build_with_permission`].

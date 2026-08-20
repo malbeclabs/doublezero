@@ -21,7 +21,7 @@ Today the serviceability program gates user creation with an **AccessPass** keye
 `(client_ip, user_payer)`. For a pass bound to a specific IP, the program enforces that the user's
 `client_ip` matches the pass, so the issuing authority effectively chose the IP. But for **wildcard
 passes** the program skips that check entirely
-(`smartcontract/programs/doublezero-serviceability/src/processors/user/create_core.rs:186-201`):
+(`smartcontract/programs/doublezero-serviceability/src/processors/user/create_core.rs:215-228`):
 
 ```rust
 // A pass stored at the UNSPECIFIED PDA (0.0.0.0) is valid for any client IP by construction
@@ -38,7 +38,7 @@ caller owns it.
 This is a real risk for wildcard passes:
 
 - **IP squatting → denial of service.** The `User` PDA is derived from `(client_ip, user_type)`
-  (`create_core.rs:141`). Registering an IP occupies that slot and can prevent the legitimate
+  (`create_core.rs:153`). Registering an IP occupies that slot and can prevent the legitimate
   operator of that IP from creating their own user.
 - **Traffic misdirection.** The controller provisions the GRE tunnel and routes toward the declared
   `client_ip`; an IP the registrant does not control points device traffic at an unrelated third
@@ -220,7 +220,11 @@ Required checks:
    hard reject, never "any signature passes".
 3. Load the Ed25519 instruction from the Instructions sysvar and confirm it verifies `signature`
    over `message` with the **verifier public key from global state**.
-4. `proof.payer == user_payer` (the account paying / owning the user).
+4. `proof.payer == user_payer` — the account that *owns* the user, which the program computes as
+   `effective_owner`, not the transaction payer. On the ordinary path they are the same account. On
+   the owner-override path (the sentinel or a USER_ADMIN holder creating a user owned by someone
+   else) they differ, and it is the owner who operates `client_ip` and whom the AccessPass is keyed
+   on; a proof naming the payer could never be obtained for an address the payer does not operate.
 5. `proof.client_ip == client_ip` being bound to the user.
 6. `proof.user_type == user_type` being created.
 7. `proof.epoch` is within the freshness window: `clock.epoch` or `clock.epoch - 1`. A proof fetched
@@ -253,6 +257,9 @@ The program MUST reject when any of the following holds:
 - the proof is stale (epoch outside the freshness window) or dated to a future epoch;
 - no verifier public key is configured in global state;
 - the proof is malformed.
+
+A proof that is *absent* is rejected only when the flag is set and the payer is not the sentinel
+authority; see Backward Compatibility.
 
 Each class has its own `DoubleZeroError` variant, so an operator can tell a stale proof from a
 rotated verifier key from a client that never attached the Ed25519 instruction.
@@ -324,7 +331,19 @@ set per environment through the existing `SetFeatureFlags` instruction.
   working. A creation that *does* supply one is still validated in full: a client attaching a broken
   proof is broken now, not at rollout, and letting it through would hide that until the flag flips.
 - **Flag set.** Every user creation requires a valid proof — wildcard and specific-IP passes alike,
-  and on the idempotent rerun path as well as on first creation.
+  and on the idempotent rerun path as well as on first creation. One exception: a creation paid for
+  by `globalstate.sentinel_authority_pk` may omit the proof.
+
+**The sentinel exemption.** The shred-oracle provisions multicast publishers owned by validators, so
+the proof would have to name the validator for an address the verification service never sees a
+request from — there is no proof the oracle could obtain, and without the exemption setting the flag
+would break that path outright. Unlike the wildcard-pass gap this RFC closes, the exemption is not
+reachable by a registrant: it requires a DoubleZero-operated key. It waives the *requirement* only;
+a proof the sentinel does attach is still validated in full, so the oracle can start carrying real
+proofs without a program change. The residual risk is that a compromised sentinel key can bind any
+IP, and that `InitGlobalState` seeds `sentinel_authority_pk` to whoever initialized global state, so
+in a fresh environment the exemption belongs to the deployer until the key is rotated. Replacing it
+is tracked in issue #4215.
 
 The proof is optional on the wire rather than on the instruction: `BorshDeserializeIncremental`
 decodes an older client's shorter payload as `None`, and whether `None` is acceptable is the flag's
@@ -336,10 +355,10 @@ simply uses the legacy path. A flag makes the transition an operator decision wi
 per-environment moment of enforcement, rather than a property of whatever client version happens to
 be in the field.
 
-Uniform enforcement is deliberate. The proof is redundant for a specific-IP pass, whose address the
-issuing authority already chose, but "required except when redundant" is a second code path through
-the most security-sensitive check in user creation, and the redundant check costs roughly 1,300 CU
-against a 1,400,000 budget.
+Uniform enforcement is otherwise deliberate. The proof is redundant for a specific-IP pass, whose
+address the issuing authority already chose, but "required except when redundant" is a second code
+path through the most security-sensitive check in user creation, and the redundant check costs
+roughly 650 CU against a 1,400,000 budget.
 
 ## Non-Goals
 

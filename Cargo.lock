@@ -1881,6 +1881,7 @@ dependencies = [
  "serde_bytes",
  "solana-compute-budget-interface",
  "solana-ed25519-program",
+ "solana-instruction",
  "solana-instructions-sysvar",
  "solana-keypair",
  "solana-program",
@@ -1934,6 +1935,7 @@ dependencies = [
 name = "doublezero-serviceability-instruction"
 version = "0.36.0"
 dependencies = [
+ "doublezero-ip-proof",
  "doublezero-serviceability",
  "solana-compute-budget-interface",
  "solana-program",

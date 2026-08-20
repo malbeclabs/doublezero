@@ -247,6 +247,135 @@ impl Fixture {
         .await;
     }
 
+    /// Makes the fixture's payer the sentinel authority, the identity the shred-oracle signs with.
+    async fn set_sentinel_authority(&mut self, pubkey: Pubkey) {
+        let payer = self.payer.insecure_clone();
+        let (program_id, globalstate) = (self.program_id, self.globalstate);
+        let blockhash = wait_for_new_blockhash(self.banks()).await;
+        execute_transaction(
+            self.banks(),
+            blockhash,
+            program_id,
+            DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
+                sentinel_authority_pk: Some(pubkey),
+                ..Default::default()
+            }),
+            vec![AccountMeta::new(globalstate, false)],
+            &payer,
+        )
+        .await;
+    }
+
+    /// Provisions the AccessPass and multicast sub-allowlist for a custom `owner`, the way the
+    /// shred-oracle flow does before it creates a validator-owned user. Returns the AccessPass PDA,
+    /// which is keyed on the owner rather than the payer.
+    async fn provision_owner(&mut self, owner: Pubkey, client_ip: Ipv4Addr) -> Pubkey {
+        let program_id = self.program_id;
+        let globalstate = self.globalstate;
+        let mgroup = self.mgroup;
+        let payer = self.payer.insecure_clone();
+        let blockhash = self.context.last_blockhash;
+
+        let (accesspass, _) = get_accesspass_pda(&program_id, &client_ip, &owner);
+        execute_transaction(
+            self.banks(),
+            blockhash,
+            program_id,
+            DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip,
+                last_access_epoch: 9999,
+                allow_multiple_ip: false,
+                max_unicast_users: 4,
+                max_multicast_users: 4,
+            }),
+            vec![
+                AccountMeta::new(accesspass, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(owner, false),
+            ],
+            &payer,
+        )
+        .await;
+
+        execute_transaction(
+            self.banks(),
+            blockhash,
+            program_id,
+            DoubleZeroInstruction::AddMulticastGroupSubAllowlist(
+                AddMulticastGroupSubAllowlistArgs {
+                    client_ip,
+                    user_payer: owner,
+                },
+            ),
+            vec![
+                AccountMeta::new(mgroup, false),
+                AccountMeta::new(accesspass, false),
+                AccountMeta::new(globalstate, false),
+            ],
+            &payer,
+        )
+        .await;
+
+        accesspass
+    }
+
+    /// `CreateSubscribeUser` with an explicit `owner`, carrying `proof`. The AccessPass account is
+    /// passed in because the override path keys it on the owner, not on `self.payer`.
+    async fn create_subscribe_with_owner(
+        &mut self,
+        owner: Pubkey,
+        accesspass: Pubkey,
+        client_ip: Ipv4Addr,
+        proof: Option<IpOwnershipProof>,
+    ) -> Result<(), BanksClientError> {
+        let user = self.user_pda(client_ip, UserType::Multicast);
+        let mut accounts = self.create_subscribe_accounts(user);
+        // The fixture's own AccessPass is keyed on the payer; swap in the owner's.
+        accounts[3] = AccountMeta::new(accesspass, false);
+        accounts.push(AccountMeta::new(self.payer.pubkey(), true));
+        accounts.push(AccountMeta::new(
+            solana_system_interface::program::ID,
+            false,
+        ));
+
+        let prelude: Vec<_> = proof
+            .as_ref()
+            .map(|p| {
+                vec![ed25519_instruction(
+                    &self.verifier.pubkey(),
+                    &p.signature,
+                    &p.signed_message(),
+                )]
+            })
+            .unwrap_or_default();
+        if proof.is_some() {
+            accounts.push(instructions_sysvar_meta());
+        }
+
+        let payer = self.payer.insecure_clone();
+        let program_id = self.program_id;
+        process_transaction_with_prelude(
+            self.banks(),
+            program_id,
+            &DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+                user_type: UserType::Multicast,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip,
+                publisher: false,
+                subscriber: true,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                dz_prefix_count: 1,
+                owner,
+                ip_proof: proof,
+            }),
+            &accounts,
+            &payer,
+            &prelude,
+        )
+        .await
+    }
+
     async fn user_exists(&mut self, client_ip: Ipv4Addr, user_type: UserType) -> bool {
         let pda = self.user_pda(client_ip, user_type);
         get_account_data(self.banks(), pda)
@@ -497,6 +626,11 @@ async fn setup() -> Fixture {
     };
     let verifier_pubkey = fixture.verifier.pubkey();
     fixture.set_verifier(verifier_pubkey).await;
+    // `InitGlobalState` seeds `sentinel_authority_pk` to whoever initialized it, which here is the
+    // fixture's payer — and the sentinel is exempt from the proof requirement. Rotating it away
+    // means every test below exercises an ordinary, non-exempt payer; the sentinel tests set it
+    // back deliberately.
+    fixture.set_sentinel_authority(Pubkey::new_unique()).await;
     fixture
 }
 
@@ -680,6 +814,107 @@ async fn test_proof_for_a_different_user_type_is_rejected() {
 
     let result = f.create_user(Some(proof), &prelude, true).await;
     assert_rejected(result, DoubleZeroError::IpProofUserTypeMismatch);
+}
+
+#[tokio::test]
+async fn test_owner_override_proof_binds_the_owner_not_the_payer() {
+    let mut f = setup().await;
+    f.require_proof().await;
+
+    // The shred-oracle shape: the sentinel or a USER_ADMIN holder pays, and the user it creates is
+    // owned by a validator. The AccessPass is keyed on that owner, and it is the owner who
+    // operates `client_ip` — so the owner is who the proof must name. A proof naming the payer
+    // could never be obtained for an address the payer does not operate.
+    let owner = Pubkey::new_unique();
+    let accesspass = f.provision_owner(owner, CLIENT_IP).await;
+    let proof = f.proof(&owner, CLIENT_IP, 0, UserType::Multicast);
+
+    f.create_subscribe_with_owner(owner, accesspass, CLIENT_IP, Some(proof))
+        .await
+        .expect("a proof naming the effective owner must be accepted on the override path");
+
+    assert!(f.user_exists(CLIENT_IP, UserType::Multicast).await);
+}
+
+#[tokio::test]
+async fn test_owner_override_proof_naming_the_payer_is_rejected() {
+    let mut f = setup().await;
+    f.require_proof().await;
+
+    // The mirror image, and the one that would silently pass if the binding used the transaction
+    // payer: a proof for the *payer* says nothing about who controls the address the user is
+    // being created for.
+    let owner = Pubkey::new_unique();
+    let accesspass = f.provision_owner(owner, CLIENT_IP).await;
+    let proof = f.proof(&f.payer.pubkey(), CLIENT_IP, 0, UserType::Multicast);
+
+    let result = f
+        .create_subscribe_with_owner(owner, accesspass, CLIENT_IP, Some(proof))
+        .await;
+    assert_rejected(result, DoubleZeroError::IpProofPayerMismatch);
+    assert!(!f.user_exists(CLIENT_IP, UserType::Multicast).await);
+}
+
+#[tokio::test]
+async fn test_sentinel_payer_may_create_without_a_proof_while_the_flag_is_set() {
+    let mut f = setup().await;
+    f.require_proof().await;
+
+    // The shred-oracle provisions multicast publishers owned by validators, so a proof would have
+    // to name the validator for an address the oracle never observes a request from — there is no
+    // proof it could obtain. The exemption is keyed on the sentinel authority, a
+    // DoubleZero-operated key, so it is not a path a registrant can reach.
+    let sentinel = f.payer.pubkey();
+    f.set_sentinel_authority(sentinel).await;
+
+    let owner = Pubkey::new_unique();
+    let accesspass = f.provision_owner(owner, CLIENT_IP).await;
+
+    f.create_subscribe_with_owner(owner, accesspass, CLIENT_IP, None)
+        .await
+        .expect("the sentinel authority is exempt from the proof requirement");
+
+    assert!(f.user_exists(CLIENT_IP, UserType::Multicast).await);
+}
+
+#[tokio::test]
+async fn test_sentinel_payer_still_has_a_supplied_proof_validated() {
+    let mut f = setup().await;
+    f.require_proof().await;
+
+    // The exemption waives the requirement, not validation. Keeping a supplied proof checked is
+    // what lets the oracle start carrying real proofs without a program change, and it means a
+    // broken one is a visible error rather than a silent bypass.
+    let sentinel = f.payer.pubkey();
+    f.set_sentinel_authority(sentinel).await;
+
+    let owner = Pubkey::new_unique();
+    let accesspass = f.provision_owner(owner, CLIENT_IP).await;
+    // Signed for the wrong IP.
+    let proof = f.proof(&owner, OTHER_IP, 0, UserType::Multicast);
+
+    let result = f
+        .create_subscribe_with_owner(owner, accesspass, CLIENT_IP, Some(proof))
+        .await;
+    assert_rejected(result, DoubleZeroError::IpProofClientIpMismatch);
+    assert!(!f.user_exists(CLIENT_IP, UserType::Multicast).await);
+}
+
+#[tokio::test]
+async fn test_non_sentinel_payer_is_not_exempt() {
+    let mut f = setup().await;
+    f.require_proof().await;
+
+    // The mirror of the exemption test: the fixture's sentinel authority is somebody else, so the
+    // same creation from the same payer is rejected. Without this, "sentinel is exempt" could be
+    // passing because the check is vacuous.
+    let owner = Pubkey::new_unique();
+    let accesspass = f.provision_owner(owner, CLIENT_IP).await;
+
+    let result = f
+        .create_subscribe_with_owner(owner, accesspass, CLIENT_IP, None)
+        .await;
+    assert_rejected(result, DoubleZeroError::IpOwnershipProofRequired);
 }
 
 #[tokio::test]

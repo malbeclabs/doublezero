@@ -36,11 +36,12 @@ use solana_program::{
 /// ```
 ///
 /// A further optional account, the **Instructions sysvar**, is appended *after*
-/// everything — after `[payer, system]` and after any Permission account — when the
+/// everything — after `[payer, system]` and after any Permission account — whenever the
 /// args carry an RFC-27 `ip_proof`. The processor peels it off the tail by its fixed
 /// key (`split_trailing_instructions_sysvar`) before any other parsing runs, so it
-/// cannot be confused with the Permission slot below. Carrying it is issue #4200's
-/// job; the position is fixed here so the two land consistently.
+/// cannot be confused with the Permission slot below. The builder appends it itself:
+/// the proof cannot be validated without it, so a caller supplying one must not be
+/// able to build a transaction that is certain to fail.
 ///
 /// `CreateSubscribeUser` is in the **`split_trailing_permission`** family (it
 /// routes through `authorize()` for the USER_ADMIN owner-override), NOT the
@@ -111,12 +112,21 @@ pub fn create_subscribe_user(
         accounts.push(AccountMeta::new_readonly(*feed, false));
     }
 
-    common::build_with_permission(
+    // The proof cannot be verified without the sysvar, so a caller that supplies one gets it
+    // appended here rather than a transaction that is certain to fail with
+    // `IpProofInstructionsSysvarMissing`.
+    let needs_instructions_sysvar = args.ip_proof.is_some();
+    let instruction = common::build_with_permission(
         program_id,
         DoubleZeroInstruction::CreateSubscribeUser(args),
         accounts,
         payer,
-    )
+    );
+    if needs_instructions_sysvar {
+        common::append_instructions_sysvar(instruction)
+    } else {
+        instruction
+    }
 }
 
 /// `CreateUser` (variant 36).
@@ -137,11 +147,11 @@ pub fn create_subscribe_user(
 /// ```
 ///
 /// A further optional account, the **Instructions sysvar**, is appended *after*
-/// `[payer, system]` when the args carry an RFC-27 `ip_proof`. It is the one account
+/// `[payer, system]` whenever the args carry an RFC-27 `ip_proof`. It is the one account
 /// that may follow them, and it is safe there precisely because the processor peels it
 /// off the tail by its fixed key (`split_trailing_instructions_sysvar`) *before* the
 /// length arithmetic below runs — so the tenant detection still counts the same
-/// accounts it always did. Carrying it is issue #4200's job.
+/// accounts it always did. The builder appends it itself; see `create_subscribe_user`.
 ///
 /// `CreateUser` is the genuine **length-detected** instruction: its processor
 /// identifies the optional trailing `tenant` account via `accounts.len()` and
@@ -194,12 +204,19 @@ pub fn create_user(
         }
     }
 
-    common::build(
+    // See `create_subscribe_user`: a supplied proof brings its own sysvar account.
+    let needs_instructions_sysvar = args.ip_proof.is_some();
+    let instruction = common::build(
         program_id,
         DoubleZeroInstruction::CreateUser(args),
         accounts,
         payer,
-    )
+    );
+    if needs_instructions_sysvar {
+        common::append_instructions_sysvar(instruction)
+    } else {
+        instruction
+    }
 }
 
 /// `UpdateUser` (variant 39).
@@ -495,9 +512,22 @@ pub fn set_user_bgp_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use doublezero_ip_proof::IpOwnershipProof;
     use doublezero_serviceability::state::user::{BGPStatus, UserCYOA, UserType};
     use solana_system_interface::program as system_program;
     use std::net::Ipv4Addr;
+
+    /// Contents are irrelevant here — only whether the field is `Some` drives the account list.
+    fn dummy_proof(client_ip: Ipv4Addr) -> IpOwnershipProof {
+        IpOwnershipProof {
+            version: 1,
+            payer: Pubkey::new_unique(),
+            client_ip,
+            epoch: 7,
+            user_type: UserType::IBRLWithAllocatedIP as u8,
+            signature: [0u8; 64],
+        }
+    }
 
     fn base_args(client_ip: Ipv4Addr) -> UserCreateSubscribeArgs {
         UserCreateSubscribeArgs {
@@ -605,6 +635,85 @@ mod tests {
         // Permission append is deferred (build_with_permission delegates to build
         // today), so the last account is the system program.
         assert_eq!(ix.accounts.last().unwrap().pubkey, system_program::ID);
+    }
+
+    #[test]
+    fn test_create_subscribe_user_appends_the_instructions_sysvar_for_a_proof() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        let device = Pubkey::new_unique();
+        let mgroup = Pubkey::new_unique();
+        let accesspass = Pubkey::new_unique();
+
+        let build = |ip_proof| {
+            create_subscribe_user(
+                &pid,
+                &payer,
+                &device,
+                &mgroup,
+                &accesspass,
+                1,
+                None,
+                UserCreateSubscribeArgs {
+                    ip_proof,
+                    ..base_args(client_ip)
+                },
+            )
+        };
+
+        // Without a proof the account list is untouched: 8 fixed + 1 dz_prefix + payer + system.
+        let without = build(None);
+        assert_eq!(without.accounts.len(), 11);
+        assert_eq!(without.accounts.last().unwrap().pubkey, system_program::ID);
+
+        // With one, the sysvar is appended last and read-only. The processor cannot verify the
+        // proof without it, so building a transaction that is certain to fail with
+        // `IpProofInstructionsSysvarMissing` must not be reachable through the builder.
+        let with = build(Some(dummy_proof(client_ip)));
+        assert_eq!(with.accounts.len(), 12);
+        let sysvar = with.accounts.last().unwrap();
+        assert_eq!(sysvar.pubkey, solana_program::sysvar::instructions::ID);
+        assert!(!sysvar.is_writable);
+        assert!(!sysvar.is_signer);
+        // Everything ahead of it is exactly the no-proof layout.
+        assert_eq!(with.accounts[..11], without.accounts[..]);
+    }
+
+    #[test]
+    fn test_create_user_appends_the_instructions_sysvar_after_payer_and_system() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let tenant = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        // With the optional tenant present too, so the ordering that the processor's length
+        // arithmetic depends on is pinned: [.., tenant, payer, system, sysvar].
+        let ix = create_user(
+            &pid,
+            &payer,
+            &device,
+            &Pubkey::new_unique(),
+            1,
+            Some(tenant),
+            UserCreateArgs {
+                ip_proof: Some(dummy_proof(client_ip)),
+                ..create_args(client_ip)
+            },
+        );
+
+        // 7 fixed + 1 dz_prefix + tenant + payer + system + sysvar = 12.
+        assert_eq!(ix.accounts.len(), 12);
+        assert_eq!(ix.accounts[8].pubkey, tenant);
+        assert_eq!(ix.accounts[9].pubkey, payer);
+        assert_eq!(ix.accounts[10].pubkey, system_program::ID);
+        assert_eq!(
+            ix.accounts[11].pubkey,
+            solana_program::sysvar::instructions::ID
+        );
+        assert!(!ix.accounts[11].is_writable);
     }
 
     fn create_args(client_ip: Ipv4Addr) -> UserCreateArgs {

@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
   - RFC-27: IP Ownership Verification Service for user connection
 - Serviceability
   - `GlobalState` carries `ip_verifier_authority_pk`, the RFC-27 trust root for IP ownership proof validation, which `SetAuthority` and `doublezero global-config authority set --ip-verifier-authority <pubkey|me>` rotate without a program upgrade. (#4196)
-  - `CreateUser` and `CreateSubscribeUser` validate an optional RFC-27 `IpOwnershipProof`, verified through the native Ed25519 precompile and signed by `globalstate.ip_verifier_authority_pk`, so a caller can no longer bind a `client_ip` it cannot originate traffic from. Enforcement is gated on the new `require-ip-ownership-proof` feature flag: while it is clear a missing proof is accepted, and a supplied proof is validated in full either way. (#4197)
+  - `CreateUser` and `CreateSubscribeUser` validate an optional RFC-27 `IpOwnershipProof`, verified through the native Ed25519 precompile and signed by `globalstate.ip_verifier_authority_pk`, so a caller can no longer bind a `client_ip` it cannot originate traffic from. Enforcement is gated on the new `require-ip-ownership-proof` feature flag: while it is clear a missing proof is accepted, and a supplied proof is validated in full either way. The sentinel authority may omit the proof, because the shred-oracle provisions users owned by validators and has no proof it could obtain; a proof it does supply is still validated (#4215). (#4197)
 - Utility crates
   - New `doublezero-ip-proof` crate defines the RFC-27 `IpOwnershipProof` and the exact bytes the verifier signs, in one place the serviceability program, the CLI, and the verification service all share. Nothing consumes it yet. (#4195, #4206)
 

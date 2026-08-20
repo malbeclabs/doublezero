@@ -23,4 +23,7 @@ solana-system-interface.workspace = true
 solana-compute-budget-interface.workspace = true
 
 [dev-dependencies]
+# The RFC-27 proof struct, to assert the Instructions sysvar append. Default features
+# only — no signer, so no crypto crate enters the build.
+doublezero-ip-proof.workspace = true
 solana-sdk.workspace = true

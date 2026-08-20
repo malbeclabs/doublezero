@@ -124,9 +124,13 @@ pub fn create_user_core(
     // USER_ADMIN authority (foundation allowlist), so only the sentinel needs a separate check.
     // This is what lets the oracle provision validator-owned subscribe-users (owner = validator)
     // via its USER_ADMIN grant, without foundation membership.
+    // The sentinel authority, hoisted out of the match below because RFC-27 proof validation also
+    // needs it. Guarded against the unset default so an absent sentinel never matches.
+    let is_sentinel = globalstate.sentinel_authority_pk != Pubkey::default()
+        && globalstate.sentinel_authority_pk == *core.payer_account.key;
+
     let effective_owner = match owner_override {
         Some(pk) if pk != Pubkey::default() => {
-            let is_sentinel = globalstate.sentinel_authority_pk == *core.payer_account.key;
             let has_user_admin = authorize(
                 program_id,
                 &mut core.permission_account.into_iter(),
@@ -173,14 +177,21 @@ pub fn create_user_core(
     // is a legitimate User PDA — under either derivation — so the (client_ip, user_type) pair the
     // proof binds is the pair this account is derived from. Placed before the already_exists
     // return below so a rerun is covered too.
+    //
+    // Bound to `effective_owner`, not the transaction payer: the owner-override path lets the
+    // sentinel or a USER_ADMIN holder create a user owned by somebody else, and it is that owner
+    // who must have demonstrated control of `client_ip` — which is also the identity the AccessPass
+    // is keyed on (`accesspass.user_payer` below). On the ordinary path the two are the same
+    // account.
     validate_ip_ownership_proof(
         core.instructions_sysvar_account,
         ip_proof,
         &globalstate,
-        core.payer_account.key,
+        &effective_owner,
         &client_ip,
         user_type as u8,
         clock.epoch,
+        is_sentinel,
     )?;
 
     // Check account Types

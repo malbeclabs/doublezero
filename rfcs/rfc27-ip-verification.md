@@ -121,7 +121,7 @@ sequenceDiagram
    epoch:
 
    ```
-   POST https://verify.doublezero.xyz
+   POST https://verify.doublezero.xyz/v1/proof
    { "payer": "<Pubkey>", "user_type": <u8> }
    ```
 
@@ -293,7 +293,7 @@ may bind:
   Separately, `check_accesspass` should also probe the dynamic (`0.0.0.0`) AccessPass PDA, which it
   does not today (`smartcontract/cli/src/requirements.rs`).
 - **New off‑chain component:** the IP Verification Service (stateless signer that echoes the observed
-  source IP).
+  source IP), implemented in `crates/doublezero-ip-verifier`.
 - **Operational:** the service must observe the real client source IP. Behind a proxy/CDN it must use
   a trusted forwarded‑for header; otherwise it would sign the proxy's IP.
 - **Shared format crate:** `crates/doublezero-ip-proof` holds the layout all three consumers build

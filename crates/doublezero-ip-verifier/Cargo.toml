@@ -1,0 +1,52 @@
+[package]
+name = "doublezero-ip-verifier"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "RFC-27 IP ownership verification service"
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+axum = { workspace = true, features = ["json", "tokio", "http1"] }
+# `env` is additive on top of the workspace feature set: config comes from flags or env vars.
+clap = { workspace = true, features = ["env"] }
+doublezero-config.workspace = true
+doublezero-ip-proof = { workspace = true, features = ["signer"] }
+# Only for `helper::is_global`. The service must refuse to sign any address the program would
+# refuse to accept, so it calls the program's own predicate rather than a second copy of it.
+doublezero-serviceability.workspace = true
+ipnetwork.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+solana-client.workspace = true
+solana-commitment-config.workspace = true
+solana-keypair.workspace = true
+solana-signature.workspace = true
+solana-signer.workspace = true
+solana-program.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "time"] }
+tokio-util.workspace = true
+tower.workspace = true
+tower-http = { workspace = true, features = ["timeout", "limit", "trace"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+doublezero-ip-proof = { workspace = true, features = ["signer", "test-vectors"] }
+hex.workspace = true
+reqwest = { workspace = true, features = ["json"] }
+tokio = { workspace = true, features = ["macros", "net", "test-util", "time"] }
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "doublezero-ip-verifier"
+path = "src/main.rs"

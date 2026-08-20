@@ -1,6 +1,9 @@
 //! Command-line and environment configuration.
 
-use crate::{epoch::EpochCache, rate_limit::RateLimiter, server::RequestLimits};
+use crate::{
+    client_ip::ForwardedHeader, epoch::EpochCache, ledger::Ledger, rate_limit::RateLimiter,
+    server::RequestLimits,
+};
 use anyhow::Context;
 use clap::Parser;
 use doublezero_config::Environment;
@@ -57,6 +60,18 @@ pub struct AppArgs {
     )]
     pub log: String,
 
+    /// Header a trusted proxy writes the client address into. Only read for connections from a
+    /// `--trusted-proxy` CIDR, and only this header is read: whichever one the proxy does not
+    /// write is ignored even when present, because a proxy that forwards the other one untouched
+    /// would let a client name its own address.
+    #[arg(
+        long,
+        env = "DZ_IP_VERIFIER_FORWARDED_HEADER",
+        default_value = "x-forwarded-for",
+        value_enum
+    )]
+    pub forwarded_header: ForwardedHeader,
+
     /// CIDR whose connections may carry a forwarded client address. Repeatable. With none set,
     /// forwarded headers are ignored entirely and the connection peer address is used — the correct
     /// setting for a service clients reach directly.
@@ -71,6 +86,15 @@ pub struct AppArgs {
     /// Seconds between ledger epoch refreshes.
     #[arg(long, env = "DZ_IP_VERIFIER_EPOCH_REFRESH_SECS", default_value = "10")]
     pub epoch_refresh_secs: u64,
+
+    /// Seconds between re-reads of `GlobalState.ip_verifier_authority_pk`. A rotation this service
+    /// was not redeployed for stops it serving within roughly this long.
+    #[arg(
+        long,
+        env = "DZ_IP_VERIFIER_AUTHORITY_REFRESH_SECS",
+        default_value = "60"
+    )]
+    pub authority_refresh_secs: u64,
 
     /// Age at which a cached epoch stops being signed with. Past this the service refuses requests
     /// rather than issuing proofs dated to an epoch it can no longer vouch for.
@@ -89,7 +113,10 @@ pub struct AppArgs {
     )]
     pub rate_limit_per_minute: u32,
 
-    /// Source addresses tracked for rate limiting before idle entries are dropped.
+    /// Source addresses tracked for rate limiting before idle entries are dropped. A soft target
+    /// rather than a hard bound: only buckets that have refilled to full capacity are dropped, so
+    /// pushing `--rate-limit-burst` and `--rate-limit-per-minute` toward a long refill time lets
+    /// the map grow past this.
     #[arg(
         long,
         env = "DZ_IP_VERIFIER_RATE_LIMIT_MAX_ENTRIES",
@@ -130,6 +157,20 @@ impl AppArgs {
                 .with_context(|| format!("no ledger RPC URL for environment {}", self.env))?
                 .ledger_public_rpc_url),
         }
+    }
+
+    /// The ledger client both background loops read through.
+    pub fn ledger(&self) -> anyhow::Result<Ledger> {
+        let config = self
+            .env
+            .config()
+            .map_err(|err| anyhow::anyhow!("{err}"))
+            .with_context(|| format!("no network config for environment {}", self.env))?;
+
+        Ok(Ledger::new(
+            self.ledger_rpc_url()?,
+            config.serviceability_program_id,
+        ))
     }
 
     pub fn epoch_cache(&self) -> EpochCache {

@@ -7,7 +7,8 @@
 //! not somewhere to be inventing plumbing.
 
 use crate::{
-    client_ip::{resolve_client_ip, ClientIpError, ResolvedClientIp},
+    authority::{AuthorityStatus, AuthorityWatch},
+    client_ip::{resolve_client_ip, ClientIpError, ForwardedHeader, ResolvedClientIp},
     epoch::{EpochCache, EpochError},
     rate_limit::RateLimiter,
 };
@@ -41,22 +42,30 @@ pub struct AppState {
     /// The signing key. Only ever used to sign; never logged, never serialized, never returned.
     verifier: Arc<Keypair>,
     epoch: Arc<EpochCache>,
+    authority: Arc<AuthorityWatch>,
     limiter: Arc<RateLimiter>,
     trusted_proxies: Arc<Vec<IpNetwork>>,
+    /// Which forwarded header a trusted proxy's client address is read from. Only consulted for
+    /// connections from a trusted proxy.
+    forwarded_header: ForwardedHeader,
 }
 
 impl AppState {
     pub fn new(
         verifier: Arc<Keypair>,
         epoch: Arc<EpochCache>,
+        authority: Arc<AuthorityWatch>,
         limiter: Arc<RateLimiter>,
         trusted_proxies: Vec<IpNetwork>,
+        forwarded_header: ForwardedHeader,
     ) -> Self {
         Self {
             verifier,
             epoch,
+            authority,
             limiter,
             trusted_proxies: Arc::new(trusted_proxies),
+            forwarded_header,
         }
     }
 }
@@ -133,6 +142,10 @@ pub enum ProofError {
     ClientIpUnresolved(#[from] ClientIpError),
     #[error("{0}")]
     EpochUnavailable(#[from] EpochError),
+    #[error(
+        "GlobalState.ip_verifier_authority_pk is {onchain}, not this service's key: a proof signed          here would be rejected onchain"
+    )]
+    VerifierKeyMismatch { onchain: Pubkey },
 }
 
 impl ProofError {
@@ -142,8 +155,15 @@ impl ProofError {
             Self::RateLimited(_) => "rate_limited",
             Self::Ipv6Unsupported => "ipv6_unsupported",
             Self::NotGloballyRoutable(_) => "not_globally_routable",
+            // A malformed entry is the one unresolvable case a client can cause: proxies commonly
+            // concatenate whatever the client sent. It gets its own reason so it does not pollute
+            // the "our proxy configuration is wrong" signal.
+            Self::ClientIpUnresolved(ClientIpError::MalformedForwardedEntry(_)) => {
+                "invalid_forwarded_header"
+            }
             Self::ClientIpUnresolved(_) => "client_ip_unresolved",
             Self::EpochUnavailable(_) => "epoch_unavailable",
+            Self::VerifierKeyMismatch { .. } => "verifier_key_mismatch",
         }
     }
 
@@ -153,11 +173,18 @@ impl ProofError {
                 StatusCode::BAD_REQUEST
             }
             Self::RateLimited(_) => StatusCode::TOO_MANY_REQUESTS,
-            // A malformed forwarded header is the client's fault only if it reached us directly,
-            // and it cannot have: headers are read solely for connections from a trusted proxy. So
-            // an unresolvable chain means our own proxy configuration is wrong.
+            // Client-controllable, so a 4xx: the chain a proxy forwards carries whatever the client
+            // put in it. Reporting 5xx here would page someone over a header a stranger typed.
+            Self::ClientIpUnresolved(ClientIpError::MalformedForwardedEntry(_)) => {
+                StatusCode::BAD_REQUEST
+            }
+            // A missing header or an all-trusted chain, on the other hand, cannot come from the
+            // client: headers are read solely for connections from a trusted proxy, so an
+            // unresolvable chain means our own proxy configuration is wrong.
             Self::ClientIpUnresolved(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::EpochUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+            Self::EpochUnavailable(_) | Self::VerifierKeyMismatch { .. } => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
         }
     }
 }
@@ -199,20 +226,51 @@ pub fn router(state: AppState, limits: RequestLimits) -> Router {
 }
 
 async fn health(State(state): State<AppState>) -> Response {
-    // Readiness, not just liveness: an instance that cannot name the current epoch cannot issue a
-    // usable proof, and should be taken out of rotation rather than left answering requests.
-    match state.epoch.current() {
-        Ok(epoch) => (
-            StatusCode::OK,
-            Json(serde_json::json!({ "status": "ok", "epoch": epoch })),
-        )
-            .into_response(),
-        Err(err) => (
+    // Readiness, not just liveness: an instance that cannot name the current epoch, or whose key is
+    // no longer the authority the program accepts, cannot issue a usable proof. It should be taken
+    // out of rotation rather than left answering requests that fail later, onchain, somewhere the
+    // client cannot see why.
+    let authority = state.authority.status();
+
+    let epoch = match state.epoch.current() {
+        Ok(epoch) => epoch,
+        Err(err) => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "status": "unavailable",
+                    "reason": err.to_string(),
+                    "verifier_key": authority.as_str(),
+                })),
+            )
+                .into_response()
+        }
+    };
+
+    if let AuthorityStatus::Mismatch { onchain } = authority {
+        return (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({ "status": "unavailable", "reason": err.to_string() })),
+            Json(serde_json::json!({
+                "status": "unavailable",
+                "reason": format!(
+                    "GlobalState.ip_verifier_authority_pk is {onchain}, not this service's key"
+                ),
+                "epoch": epoch,
+                "verifier_key": authority.as_str(),
+            })),
         )
-            .into_response(),
+            .into_response();
     }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "ok",
+            "epoch": epoch,
+            "verifier_key": authority.as_str(),
+        })),
+    )
+        .into_response()
 }
 
 /// The body is taken as bytes rather than through the `Json` extractor so that the rate limit is
@@ -223,8 +281,23 @@ async fn issue_proof(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Json<ProofResponse>, ProofError> {
-    let ResolvedClientIp { addr, source } =
-        resolve_client_ip(peer, &headers, &state.trusted_proxies)?;
+    let ResolvedClientIp { addr, source } = match resolve_client_ip(
+        peer,
+        &headers,
+        &state.trusted_proxies,
+        state.forwarded_header,
+    ) {
+        Ok(resolved) => resolved,
+        Err(err) => {
+            // No client address to charge, so charge the peer. Otherwise a single peer sending
+            // headers that cannot resolve drives unlimited error responses, log lines, and metric
+            // increments through an entirely unmetered path.
+            if !state.limiter.check(peer.ip()) {
+                return Err(ProofError::RateLimited(peer.ip()));
+            }
+            return Err(err.into());
+        }
+    };
 
     if !state.limiter.check(addr) {
         return Err(ProofError::RateLimited(addr));
@@ -248,6 +321,13 @@ async fn issue_proof(
         .map_err(|err| ProofError::InvalidRequest(format!("invalid request body: {err}")))?;
     let payer = Pubkey::from_str(&request.payer)
         .map_err(|err| ProofError::InvalidRequest(format!("invalid payer pubkey: {err}")))?;
+
+    // Refusing here, and not only through `/health`, matters for anything reaching this instance
+    // directly: handing back a proof this service knows the program will reject sends the client
+    // off to fail onchain instead of failing where the reason is legible.
+    if let AuthorityStatus::Mismatch { onchain } = state.authority.status() {
+        return Err(ProofError::VerifierKeyMismatch { onchain });
+    }
 
     let epoch = state.epoch.current()?;
     let proof = sign(

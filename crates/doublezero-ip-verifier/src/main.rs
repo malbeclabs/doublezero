@@ -1,7 +1,8 @@
 use anyhow::Context;
 use clap::Parser;
 use doublezero_ip_verifier::{
-    epoch::{run_refresher, LedgerEpochSource},
+    authority::{check_at_startup, run_watcher, AuthorityWatch},
+    epoch::run_refresher,
     server::{router, AppState},
     settings::AppArgs,
 };
@@ -30,7 +31,9 @@ async fn main() -> anyhow::Result<()> {
 
     let verifier = args.keypair()?;
     let ledger_rpc_url = args.ledger_rpc_url()?;
+    let ledger = Arc::new(args.ledger()?);
     let epoch = Arc::new(args.epoch_cache());
+    let authority = Arc::new(AuthorityWatch::new(verifier.pubkey()));
     let limiter = Arc::new(args.rate_limiter());
 
     info!(
@@ -39,6 +42,7 @@ async fn main() -> anyhow::Result<()> {
         metrics_addr = %args.metrics_addr,
         verifier_pubkey = %verifier.pubkey(),
         trusted_proxies = ?args.trusted_proxies,
+        forwarded_header = ?args.forwarded_header,
         epoch_refresh_secs = args.epoch_refresh_secs,
         max_epoch_age_secs = args.max_epoch_age_secs,
         "DoubleZero IP verifier starting"
@@ -50,16 +54,33 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    // Before serving anything: a keypair the program will not accept is a startup error, not
+    // something to discover from a client's failed connect.
+    check_at_startup(&authority, ledger.as_ref()).await?;
+
     let shutdown = shutdown_listener();
 
     let refresher = tokio::spawn(run_refresher(
         epoch.clone(),
-        Arc::new(LedgerEpochSource::new(ledger_rpc_url)),
+        ledger.clone(),
         Duration::from_secs(args.epoch_refresh_secs),
         shutdown.clone(),
     ));
+    let authority_watcher = tokio::spawn(run_watcher(
+        authority.clone(),
+        ledger,
+        Duration::from_secs(args.authority_refresh_secs),
+        shutdown.clone(),
+    ));
 
-    let state = AppState::new(verifier, epoch, limiter, args.trusted_proxies.clone());
+    let state = AppState::new(
+        verifier,
+        epoch,
+        authority,
+        limiter,
+        args.trusted_proxies.clone(),
+        args.forwarded_header,
+    );
     let listener = tokio::net::TcpListener::bind(args.listen_addr)
         .await
         .with_context(|| format!("failed to bind {}", args.listen_addr))?;
@@ -75,6 +96,7 @@ async fn main() -> anyhow::Result<()> {
     .context("HTTP server failed")?;
 
     refresher.await.ok();
+    authority_watcher.await.ok();
     info!("DoubleZero IP verifier shutting down");
 
     Ok(())

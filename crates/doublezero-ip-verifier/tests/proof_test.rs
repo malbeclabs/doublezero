@@ -8,6 +8,8 @@ use doublezero_ip_proof::{
     signed_message_for, test_vectors, verify, IpOwnershipProof, IP_PROOF_VERSION,
 };
 use doublezero_ip_verifier::{
+    authority::AuthorityWatch,
+    client_ip::ForwardedHeader,
     epoch::EpochCache,
     rate_limit::RateLimiter,
     server::{router, AppState, RequestLimits},
@@ -32,9 +34,33 @@ struct Service {
     verifier_pubkey: Pubkey,
 }
 
+/// Whether the ledger names this service's key as the verifier authority.
+enum Authority {
+    Matches,
+    /// `GlobalState` names someone else — a rotation this instance was not redeployed for.
+    Mismatch,
+}
+
 /// Starts the service on loopback. `trusted_proxies` covers 127.0.0.0/8 in the forwarded-header
 /// tests, which is the only way a test client can present itself as a proxy.
 async fn start(trusted_proxies: &[&str], epoch: Option<u64>, burst: u32) -> Service {
+    start_with(
+        trusted_proxies,
+        epoch,
+        burst,
+        ForwardedHeader::XForwardedFor,
+        Authority::Matches,
+    )
+    .await
+}
+
+async fn start_with(
+    trusted_proxies: &[&str],
+    epoch: Option<u64>,
+    burst: u32,
+    forwarded_header: ForwardedHeader,
+    authority: Authority,
+) -> Service {
     let verifier = Arc::new(Keypair::new());
     let verifier_pubkey = verifier.pubkey();
 
@@ -43,14 +69,22 @@ async fn start(trusted_proxies: &[&str], epoch: Option<u64>, burst: u32) -> Serv
         cache.store(epoch);
     }
 
+    let watch = Arc::new(AuthorityWatch::new(verifier_pubkey));
+    watch.observe(match authority {
+        Authority::Matches => verifier_pubkey,
+        Authority::Mismatch => Pubkey::new_unique(),
+    });
+
     let state = AppState::new(
         verifier,
         cache,
+        watch,
         Arc::new(RateLimiter::new(burst, 60, 1024)),
         trusted_proxies
             .iter()
             .map(|cidr| IpNetwork::from_str(cidr).expect("test CIDR is valid"))
             .collect(),
+        forwarded_header,
     );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -306,6 +340,7 @@ async fn health_reports_readiness_from_the_epoch_cache() {
     let body: serde_json::Value = response.json().await.expect("response is JSON");
     assert_eq!(body["status"], "ok");
     assert_eq!(body["epoch"], EPOCH);
+    assert_eq!(body["verifier_key"], "matches");
 }
 
 #[tokio::test]
@@ -384,4 +419,110 @@ async fn issued_signatures_match_the_committed_test_vectors() {
             vector.name
         );
     }
+}
+
+#[tokio::test]
+async fn a_rotated_verifier_authority_takes_the_instance_out_of_service() {
+    // The key still signs perfectly well; the program just will not accept it any more. Failing
+    // here beats handing back a proof that dies onchain where the client cannot see why.
+    let service = start_with(
+        &["127.0.0.0/8"],
+        Some(EPOCH),
+        5,
+        ForwardedHeader::XForwardedFor,
+        Authority::Mismatch,
+    )
+    .await;
+
+    let response = service
+        .request_proof_with_headers(
+            &Pubkey::new_unique(),
+            0,
+            &[("x-forwarded-for", "198.18.0.42")],
+        )
+        .await;
+    assert_eq!(response.status(), 503);
+
+    let body: serde_json::Value = response.json().await.expect("response is JSON");
+    assert_eq!(body["error"], "verifier_key_mismatch");
+
+    let response = reqwest::get(format!("{}/health", service.base_url))
+        .await
+        .expect("health request");
+    assert_eq!(response.status(), 503);
+
+    let body: serde_json::Value = response.json().await.expect("response is JSON");
+    assert_eq!(body["verifier_key"], "mismatch");
+}
+
+#[tokio::test]
+async fn only_the_configured_forwarded_header_is_read() {
+    // A proxy writing RFC 7239 `Forwarded` while passing the client's `X-Forwarded-For` through:
+    // the claimed address must not win.
+    let service = start_with(
+        &["127.0.0.0/8"],
+        Some(EPOCH),
+        5,
+        ForwardedHeader::Forwarded,
+        Authority::Matches,
+    )
+    .await;
+
+    let response = service
+        .request_proof_with_headers(
+            &Pubkey::new_unique(),
+            0,
+            &[
+                ("x-forwarded-for", "198.18.0.99"),
+                ("forwarded", "for=198.18.0.42"),
+            ],
+        )
+        .await;
+    assert_eq!(response.status(), 200);
+
+    let proof = proof_from(response).await;
+    assert_eq!(proof.client_ip, Ipv4Addr::new(198, 18, 0, 42));
+}
+
+#[tokio::test]
+async fn an_unparsable_hop_left_of_the_client_hop_is_tolerated() {
+    // nginx's `$proxy_add_x_forwarded_for` concatenates whatever the client sent, and `unknown` is
+    // a real value clients emit. The hop the proxy observed is still trustworthy.
+    let service = start(&["127.0.0.0/8"], Some(EPOCH), 5).await;
+
+    let response = service
+        .request_proof_with_headers(
+            &Pubkey::new_unique(),
+            0,
+            &[("x-forwarded-for", "unknown, 198.18.0.42")],
+        )
+        .await;
+    assert_eq!(response.status(), 200);
+
+    let proof = proof_from(response).await;
+    assert_eq!(proof.client_ip, Ipv4Addr::new(198, 18, 0, 42));
+}
+
+#[tokio::test]
+async fn an_unresolvable_chain_is_a_client_error_and_is_rate_limited() {
+    let service = start(&["127.0.0.0/8"], Some(EPOCH), 2).await;
+    let headers = [("x-forwarded-for", "unknown")];
+
+    for _ in 0..2 {
+        let response = service
+            .request_proof_with_headers(&Pubkey::new_unique(), 0, &headers)
+            .await;
+        // 4xx, not 5xx: a stranger's header must not page anyone.
+        assert_eq!(response.status(), 400);
+
+        let body: serde_json::Value = response.json().await.expect("response is JSON");
+        assert_eq!(body["error"], "invalid_forwarded_header");
+    }
+
+    // Charged against the peer address, so the flood is metered even with no client address to
+    // charge it to.
+    let response = service
+        .request_proof_with_headers(&Pubkey::new_unique(), 0, &headers)
+        .await;
+    assert_eq!(response.status(), 429);
 }

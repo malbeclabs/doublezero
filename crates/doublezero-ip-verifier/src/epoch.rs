@@ -6,8 +6,6 @@
 //! it, requests are refused rather than served with a number the service cannot vouch for.
 
 use async_trait::async_trait;
-use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_commitment_config::CommitmentConfig;
 use std::{
     sync::RwLock,
     time::{Duration, Instant},
@@ -15,30 +13,11 @@ use std::{
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-/// Where the current epoch comes from. A trait so tests can drive the cache without an RPC node.
+/// Where the current epoch comes from. A trait so tests can drive the cache without an RPC node;
+/// [`crate::ledger::Ledger`] is the implementation the service runs with.
 #[async_trait]
 pub trait EpochSource: Send + Sync {
     async fn current_epoch(&self) -> anyhow::Result<u64>;
-}
-
-/// The DoubleZero ledger, over JSON RPC.
-pub struct LedgerEpochSource {
-    rpc: RpcClient,
-}
-
-impl LedgerEpochSource {
-    pub fn new(ledger_rpc_url: String) -> Self {
-        Self {
-            rpc: RpcClient::new_with_commitment(ledger_rpc_url, CommitmentConfig::confirmed()),
-        }
-    }
-}
-
-#[async_trait]
-impl EpochSource for LedgerEpochSource {
-    async fn current_epoch(&self) -> anyhow::Result<u64> {
-        Ok(self.rpc.get_epoch_info().await?.epoch)
-    }
 }
 
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]

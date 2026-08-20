@@ -7,8 +7,10 @@
 //! "which address did I actually see?" the entire security property. That question lives in
 //! [`client_ip`].
 
+pub mod authority;
 pub mod client_ip;
 pub mod epoch;
+pub mod ledger;
 pub mod rate_limit;
 pub mod server;
 pub mod settings;

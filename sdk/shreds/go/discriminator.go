@@ -20,6 +20,13 @@ var (
 	DiscriminatorMetroHistory                 = sha256First8("dz::account::metro_history")
 	DiscriminatorDeviceHistory                = sha256First8("dz::account::device_history")
 
+	// FeedDistribution belongs to the feed subscription program (FeedProgramID),
+	// not to the shred subscription program above. The ::v2 suffix is part of the
+	// seed the program hashes: v2 replaced the per-month vault with a per-feed
+	// vault, which orphaned every v1 account. A v1 account must therefore fail
+	// validation rather than decode into a wrong collected amount.
+	DiscriminatorFeedDistribution = sha256First8("dz::account::feed_distribution::v2")
+
 	ErrInvalidDiscriminator = errors.New("invalid account discriminator")
 )
 

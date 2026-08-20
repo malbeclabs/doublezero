@@ -20,13 +20,11 @@ const (
 	solanaTestnetSlotTime = 200 * time.Millisecond
 )
 
-// slotTimeForChain returns the slot time to use for a chain in a given DoubleZero
-// environment. Anything that is not Solana L1 — and any environment not named
-// below — gets the DoubleZero ledger's slot time.
-func slotTimeForChain(chainName, env string) time.Duration {
-	if chainName != chainSolana {
-		return dzLedgerSlotTime
-	}
+// solanaSlotTime returns the slot time of the Solana cluster a DoubleZero
+// environment dials by default. A SOLANA_RPC_URL override repoints the cluster
+// without changing the environment (see config.NetworkConfigForEnv), so pointing
+// one environment's monitor at another cluster skews the estimate again.
+func solanaSlotTime(env string) time.Duration {
 	switch env {
 	case config.EnvMainnetBeta, config.EnvMainnet:
 		return solanaMainnetSlotTime
@@ -35,12 +33,20 @@ func slotTimeForChain(chainName, env string) time.Duration {
 	case config.EnvTestnet, config.EnvDevnet:
 		return solanaTestnetSlotTime
 	default:
+		// Localnet runs a local test validator, which targets 400ms; so does any
+		// environment we do not recognize, which keeps the previous behavior.
 		return dzLedgerSlotTime
 	}
 }
 
 // CalculateEpochTimes calculates the estimated start time of the previous and next epochs.
 func CalculateEpochTimes(slotIndex, slotsInEpoch uint64, slotTime time.Duration) (currentEpochStartTime, nextEpochTime time.Time) {
+	// A malformed getEpochInfo response would wrap the arithmetic below into a
+	// plausible-looking timestamp; return zero times so the log shows it plainly.
+	if slotsInEpoch == 0 || slotIndex > slotsInEpoch {
+		return time.Time{}, time.Time{}
+	}
+
 	nowUTC := time.Now().UTC()
 
 	// calculate epoch start

@@ -7,30 +7,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestServiceability_SlotTimeForChain(t *testing.T) {
+func TestServiceability_SolanaSlotTime(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		chain string
-		env   string
-		want  time.Duration
+		name string
+		env  string
+		want time.Duration
 	}{
-		{"solana mainnet-beta", chainSolana, "mainnet-beta", 350 * time.Millisecond},
-		{"solana mainnet", chainSolana, "mainnet", 350 * time.Millisecond},
-		{"solana testnet", chainSolana, "testnet", 200 * time.Millisecond},
+		{"mainnet-beta", "mainnet-beta", 350 * time.Millisecond},
+		{"mainnet", "mainnet", 350 * time.Millisecond},
+		{"testnet", "testnet", 200 * time.Millisecond},
 		// DZ devnet dials Solana testnet.
-		{"solana devnet", chainSolana, "devnet", 200 * time.Millisecond},
-		{"solana localnet", chainSolana, "localnet", 400 * time.Millisecond},
-		{"solana unknown env", chainSolana, "", 400 * time.Millisecond},
-		{"doublezero mainnet-beta", chainDoubleZero, "mainnet-beta", 400 * time.Millisecond},
-		{"doublezero testnet", chainDoubleZero, "testnet", 400 * time.Millisecond},
+		{"devnet", "devnet", 200 * time.Millisecond},
+		{"localnet", "localnet", 400 * time.Millisecond},
+		{"unknown env", "", 400 * time.Millisecond},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.want, slotTimeForChain(tt.chain, tt.env))
+			require.Equal(t, tt.want, solanaSlotTime(tt.env))
 		})
 	}
 }
@@ -66,6 +63,31 @@ func TestServiceability_CalculateEpochTimes(t *testing.T) {
 
 			require.WithinDuration(t, now.Add(-time.Duration(tt.slotIndex)*tt.slotTime), start, tolerance)
 			require.WithinDuration(t, now.Add(time.Duration(slotsInEpoch-tt.slotIndex)*tt.slotTime), next, tolerance)
+		})
+	}
+}
+
+func TestServiceability_CalculateEpochTimes_MalformedEpochInfo(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		slotIndex    uint64
+		slotsInEpoch uint64
+	}{
+		{"no slots in epoch", 0, 0},
+		{"slot index past end of epoch", 432_001, 432_000},
+		// Would otherwise overflow the duration multiplication.
+		{"absurd slot index", 1 << 62, 432_000},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			start, next := CalculateEpochTimes(tt.slotIndex, tt.slotsInEpoch, solanaMainnetSlotTime)
+			require.True(t, start.IsZero())
+			require.True(t, next.IsZero())
 		})
 	}
 }

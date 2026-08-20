@@ -19,6 +19,11 @@ import (
 
 const (
 	watcherName = "serviceability"
+
+	// Chain names. These appear in log fields and select the slot time used for
+	// epoch estimates.
+	chainDoubleZero = "doublezero"
+	chainSolana     = "solana"
 )
 
 var (
@@ -132,8 +137,8 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 	w.cacheUsers = data.Users
 
 	// detect current epoch info
-	w.detectEpochChange("doublezero", w.cfg.LedgerRPCClient, &w.currDZEpoch)
-	w.detectEpochChange("solana", w.cfg.SolanaRPCClient, &w.currSolanaEpoch)
+	w.detectEpochChange(chainDoubleZero, w.cfg.LedgerRPCClient, &w.currDZEpoch)
+	w.detectEpochChange(chainSolana, w.cfg.SolanaRPCClient, &w.currSolanaEpoch)
 	return nil
 }
 
@@ -147,7 +152,7 @@ func (w *ServiceabilityWatcher) detectEpochChange(chainName string, rpcClient Le
 	}
 
 	currEpoch := epochInfo.Epoch
-	prevEpochStart, nextEpochStart := CalculateEpochTimes(epochInfo.SlotIndex, epochInfo.SlotsInEpoch)
+	prevEpochStart, nextEpochStart := CalculateEpochTimes(epochInfo.SlotIndex, epochInfo.SlotsInEpoch, slotTimeForChain(chainName, w.cfg.Env))
 	w.log.Debug("epoch status", "chain", chainName, "current_epoch", currEpoch, "previous_epoch_start", prevEpochStart, "next_epoch_start", nextEpochStart)
 
 	// if epoch is 0, we just restarted

@@ -7,13 +7,8 @@ import (
 )
 
 // The slot times below are *observed* rates, not protocol constants: actual slot
-// time varies with network conditions.
-//
-// Solana is mid-rollout to 200ms slots. Testnet is already there; mainnet still
-// produces slots in ~350ms, and solanaMainnetSlotTime must be changed to 200ms
-// once mainnet completes the migration.
-//
-// The DoubleZero ledger targets 400ms and runs slightly ahead of it.
+// time varies with network conditions, and a cluster that changes its slot
+// cadence needs its value here updated.
 const (
 	dzLedgerSlotTime      = 400 * time.Millisecond
 	solanaMainnetSlotTime = 350 * time.Millisecond

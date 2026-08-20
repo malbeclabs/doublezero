@@ -39,6 +39,7 @@ use crate::{
     keygen::KeyGenCliCommand,
     logcommand::LogCliCommand,
     subscribe::SubscribeCliCommand,
+    transfer::TransferCliCommand,
     version::VersionCliCommand,
 };
 
@@ -51,8 +52,10 @@ pub enum ServiceabilityCommand {
 
     /// Get your public key
     Address(AddressCliCommand),
-    /// Get your balance
+    /// Get an account balance (defaults to your own)
     Balance(BalanceCliCommand),
+    /// Transfer credits to another account
+    Transfer(TransferCliCommand),
 
     /// local configuration
     Config(ConfigCliCommand),
@@ -121,6 +124,7 @@ impl ServiceabilityCommand {
             },
             Self::Address(args) => args.execute(ctx, client, out).await,
             Self::Balance(args) => args.execute(ctx, client, out).await,
+            Self::Transfer(args) => args.execute(ctx, client, out).await,
             Self::Export(args) => args.execute(ctx, client, out).await,
             Self::Keygen(args) => args.execute(ctx, client, out).await,
 
@@ -470,6 +474,33 @@ mod tests {
                 command: DeviceCommands::MigrateUnicastCounts(_),
             })
         ));
+    }
+
+    // `balance` takes an optional address, so both the bare and the addressed
+    // form must parse (mirroring `solana balance [ADDRESS]`).
+    #[test]
+    fn parses_balance_with_and_without_pubkey() {
+        let bare = TestCli::try_parse_from(["test", "balance"]).unwrap();
+        assert!(matches!(bare.command, ServiceabilityCommand::Balance(_)));
+
+        let addressed = TestCli::try_parse_from(["test", "balance", TEST_PUBKEY]).unwrap();
+        assert!(matches!(
+            addressed.command,
+            ServiceabilityCommand::Balance(_)
+        ));
+    }
+
+    #[test]
+    fn parses_transfer() {
+        let parsed = TestCli::try_parse_from(["test", "transfer", TEST_PUBKEY, "1.5"]).unwrap();
+        assert!(matches!(parsed.command, ServiceabilityCommand::Transfer(_)));
+
+        let all = TestCli::try_parse_from(["test", "transfer", TEST_PUBKEY, "ALL"]).unwrap();
+        assert!(matches!(all.command, ServiceabilityCommand::Transfer(_)));
+
+        // The amount is required and must be a credit amount or `ALL`.
+        assert!(TestCli::try_parse_from(["test", "transfer", TEST_PUBKEY]).is_err());
+        assert!(TestCli::try_parse_from(["test", "transfer", TEST_PUBKEY, "nope"]).is_err());
     }
 
     #[test]

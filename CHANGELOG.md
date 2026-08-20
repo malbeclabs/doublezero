@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - RFCs
   - RFC-27: IP Ownership Verification Service for user connection
+- SDK
+  - `sdk/shreds/go` carries the feed subscription program's `FeedDistribution` account: how much USDC one feed collected for one calendar month. The program is a second program alongside shred subscription and had nothing in this SDK, so each consumer decoded the account at fixed byte offsets itself, lake included. The account is a bytemuck Pod read here field by field, which agrees with the Pod bytes only because the field order leaves no interior padding; `TestStructSizes` pins the 120-byte total and a new test pins every field against a real mainnet account. `Client` is built around one program ID and so gains no fetch method, and `DeserializeFeedDistribution` is exported for a caller that makes its own `getProgramAccounts` call. `make sdk-test` never ran `./sdk/shreds/go/...`, so this package's layout pins have never run in CI; it runs them now. (#4216)
 
 ## [v0.36.0](https://github.com/malbeclabs/doublezero/compare/client/v0.35.0...client/v0.36.0) - 2026-08-14
 

@@ -1697,7 +1697,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1736,7 +1736,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-cli-core"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "bitflags",
  "clap",
@@ -1757,7 +1757,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-config"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "eyre",
  "serde",
@@ -1767,7 +1767,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-daemon-cli"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "backon",
  "chrono",
@@ -1797,7 +1797,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-geolocation"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "bincode 2.0.1",
  "borsh",
@@ -1820,7 +1820,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-geolocation-cli"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "clap",
  "doublezero-cli-core",
@@ -1838,7 +1838,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-ip-proof"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "borsh",
  "hex",
@@ -1851,7 +1851,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-ip-verifier"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1884,7 +1884,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "borsh",
  "byteorder",
@@ -1897,7 +1897,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-record"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -1944,7 +1944,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "base64 0.22.1",
  "bitflags",
@@ -1977,7 +1977,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability-cli"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "borsh",
@@ -2014,7 +2014,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability-instruction"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "doublezero-ip-proof",
  "doublezero-serviceability",
@@ -2026,7 +2026,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-telemetry"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "bincode 2.0.1",
  "borsh",
@@ -2048,7 +2048,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero_sdk"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-trait",
  "backon",
@@ -2521,7 +2521,7 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "fork-accounts"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "base64 0.22.1",
  "borsh",

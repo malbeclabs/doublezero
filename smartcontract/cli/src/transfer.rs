@@ -23,6 +23,10 @@ const WALLET_DATA_LEN: usize = 0;
 /// the system transfer creates the account, and the amount is topped up to the
 /// rent-exempt minimum when it would otherwise be too small for the runtime to
 /// accept.
+///
+/// The same minimum applies to the sender: the runtime rejects a transaction
+/// that leaves an account holding a nonzero balance below it, so a transfer is
+/// refused unless the sender ends up either empty or at or above that minimum.
 #[derive(Args, Debug)]
 pub struct TransferCliCommand {
     /// Recipient account
@@ -74,6 +78,9 @@ impl TransferCliCommand {
 
         let from = client.get_payer();
         let from_balance = client.get_balance()?;
+        // A wallet holds no data, so this is both the floor a brand-new
+        // recipient has to land on and the floor the sender has to stay on.
+        let rent_min = client.get_minimum_balance_for_rent_exemption(WALLET_DATA_LEN)?;
 
         let mut lamports = match self.amount {
             TransferAmount::All => from_balance
@@ -91,17 +98,14 @@ impl TransferCliCommand {
         // The transfer itself creates a recipient that does not exist yet, but
         // the runtime rejects it unless the account lands at or above the
         // rent-exempt minimum, so top the amount up for a new recipient.
-        if get_account_balance(client, self.to)? == 0 {
-            let rent_min = client.get_minimum_balance_for_rent_exemption(WALLET_DATA_LEN)?;
-            if lamports < rent_min {
-                writeln!(
-                    out,
-                    "Recipient {} is not funded yet; sending the rent-exempt minimum of {} Credits to create it",
-                    self.to,
-                    credits(rent_min)
-                )?;
-                lamports = rent_min;
-            }
+        if get_account_balance(client, self.to)? == 0 && lamports < rent_min {
+            writeln!(
+                out,
+                "Recipient {} is not funded yet; sending the rent-exempt minimum of {} Credits to create it",
+                self.to,
+                credits(rent_min)
+            )?;
+            lamports = rent_min;
         }
 
         let required = lamports.saturating_add(SIGNATURE_FEE_LAMPORTS);
@@ -110,6 +114,29 @@ impl TransferCliCommand {
                 "Insufficient funds: {from} holds {} Credits, but the transfer needs {} Credits including the transaction fee",
                 credits(from_balance),
                 credits(required)
+            );
+        }
+
+        // The runtime also rejects a transaction that leaves the sender holding
+        // a nonzero balance below the rent-exempt minimum, so the leftover has
+        // to be either nothing at all or at least that minimum.
+        let leftover = from_balance - required;
+        if leftover > 0 && leftover < rent_min {
+            let most = from_balance.saturating_sub(SIGNATURE_FEE_LAMPORTS + rent_min);
+            let advice = if most > 0 {
+                format!(
+                    "send at most {} Credits, or 'ALL' to empty the account",
+                    credits(most)
+                )
+            } else {
+                "send 'ALL' to empty the account".to_string()
+            };
+            eyre::bail!(
+                "Insufficient funds: {from} holds {} Credits, and sending {} Credits would leave {} Credits behind, under the {} Credits an account has to keep to stay rent-exempt; {advice}",
+                credits(from_balance),
+                credits(lamports),
+                credits(leftover),
+                credits(rent_min)
             );
         }
 
@@ -327,6 +354,80 @@ mod tests {
         assert!(err
             .to_string()
             .contains("does not cover the transaction fee"));
+    }
+
+    // The runtime rejects a transaction that leaves the sender with a nonzero
+    // balance below the rent-exempt minimum: a recipient created at exactly the
+    // minimum cannot pass part of it on, only all of it.
+    #[test]
+    fn test_cli_transfer_rejects_dust_leftover_on_the_sender() {
+        let to = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let client = client_with(RENT_MIN, funded(RENT_MIN));
+
+        let ctx = cli_context_default_for_tests();
+        let mut out = Vec::new();
+        let res = block_on(
+            TransferCliCommand {
+                to,
+                amount: TransferAmount::Lamports(10_000),
+            }
+            .execute(&ctx, &client, &mut out),
+        );
+
+        let err = res.expect_err("leaving the sender below the rent minimum must fail");
+        let msg = err.to_string();
+        assert!(msg.contains("Insufficient funds"));
+        assert!(msg.contains("would leave 0.00087588 Credits behind"));
+        assert!(msg.contains("send 'ALL' to empty the account"));
+    }
+
+    // When a smaller amount would still clear the minimum, say so.
+    #[test]
+    fn test_cli_transfer_dust_leftover_names_the_largest_payable_amount() {
+        let to = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let client = client_with(2 * RENT_MIN, funded(RENT_MIN));
+
+        let ctx = cli_context_default_for_tests();
+        let mut out = Vec::new();
+        let res = block_on(
+            TransferCliCommand {
+                to,
+                amount: TransferAmount::Lamports(RENT_MIN + 500),
+            }
+            .execute(&ctx, &client, &mut out),
+        );
+
+        let err = res.expect_err("leaving the sender below the rent minimum must fail");
+        assert!(err
+            .to_string()
+            .contains("send at most 0.00088588 Credits, or 'ALL' to empty the account"));
+    }
+
+    // Leaving nothing behind is fine; only a dust leftover is rejected.
+    #[test]
+    fn test_cli_transfer_allows_an_exact_drain() {
+        let to = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
+        let amount = LAMPORTS_PER_CREDIT - SIGNATURE_FEE_LAMPORTS;
+        let mut client = client_with(LAMPORTS_PER_CREDIT, funded(RENT_MIN));
+        client
+            .expect_transfer_sol()
+            .with(predicate::eq(to), predicate::eq(amount))
+            .returning(|_, _| Ok(Signature::default()));
+
+        let ctx = cli_context_default_for_tests();
+        let mut out = Vec::new();
+        let res = block_on(
+            TransferCliCommand {
+                to,
+                amount: TransferAmount::Lamports(amount),
+            }
+            .execute(&ctx, &client, &mut out),
+        );
+
+        assert!(res.is_ok());
+        assert!(String::from_utf8(out)
+            .unwrap()
+            .contains("Transferred 0.999995 Credits"));
     }
 
     #[test]

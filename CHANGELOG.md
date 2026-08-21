@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - `doublezero balance` takes an optional address, so `doublezero balance <pubkey>` reports that account's balance while the bare form keeps reporting the configured keypair's. Querying another account needs no local keypair. An address that was never funded prints `0 Credits` instead of failing the account lookup.
-  - New `doublezero transfer <RECIPIENT> <AMOUNT>` sends credits from the configured keypair to another account on the DoubleZero Ledger, mirroring `solana transfer`: `AMOUNT` is a credit amount, or `ALL` to send the whole balance minus the transaction fee. A recipient that does not exist yet is created by the transfer, with the amount raised to the rent-exempt minimum when it falls below it, so no opt-in flag is needed for an unfunded recipient.
+  - New `doublezero transfer <RECIPIENT> <AMOUNT>` sends credits from the configured keypair to another account on the DoubleZero Ledger, mirroring `solana transfer`: `AMOUNT` is a credit amount, or `ALL` to send the whole balance minus the transaction fee. A recipient that does not exist yet is created by the transfer, with the amount raised to the rent-exempt minimum when it falls below it, so no opt-in flag is needed for an unfunded recipient. A transfer that would leave the sender holding a nonzero balance below that same minimum is refused up front, with the largest payable amount named, since the runtime would reject it.
 - RFCs
   - RFC-27: IP Ownership Verification Service for user connection
 - Serviceability

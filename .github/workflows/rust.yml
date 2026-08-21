@@ -75,11 +75,7 @@ jobs:
             exit 1
           fi
   # The release bump runs `cargo update --workspace`, which can silently rebind
-  # members onto a different locked minor. bump-version.sh already fails on that,
-  # but it only ran at release time, so the rebind that broke the v0.37.0 release
-  # sat dormant for a week after its PR (#4213, #4219). Running the real script
-  # here surfaces it on the PR that causes it. Own checkout, so no other job sees
-  # the bumped tree; no rust-cache, whose key is the Cargo.lock this job rewrites.
+  # members onto a different locked minor.
   release-bump-dry-run:
     runs-on: ubuntu-24.04
     steps:

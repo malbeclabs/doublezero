@@ -8,6 +8,7 @@ mod helper;
 pub mod id_allocator;
 pub mod instructions;
 pub mod ip_allocator;
+pub mod ip_proof;
 mod min_version;
 pub mod pda;
 pub mod processors;

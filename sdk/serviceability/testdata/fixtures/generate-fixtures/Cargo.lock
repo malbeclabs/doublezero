@@ -322,6 +322,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-ip-proof"
+version = "0.36.0"
+dependencies = [
+ "borsh",
+ "solana-program",
+ "thiserror",
+]
+
+[[package]]
 name = "doublezero-program-common"
 version = "0.36.0"
 dependencies = [
@@ -341,8 +350,10 @@ dependencies = [
  "borsh",
  "borsh-incremental",
  "bytemuck",
+ "doublezero-ip-proof",
  "doublezero-program-common",
  "ipnetwork",
+ "solana-instructions-sysvar",
  "solana-program",
  "solana-system-interface 3.2.0",
  "thiserror",

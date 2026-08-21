@@ -1871,6 +1871,7 @@ dependencies = [
  "borsh-incremental",
  "bytemuck",
  "ctor",
+ "doublezero-ip-proof",
  "doublezero-program-common",
  "doublezero-serviceability-instruction",
  "env_logger",
@@ -1878,6 +1879,11 @@ dependencies = [
  "log",
  "serde",
  "serde_bytes",
+ "solana-compute-budget-interface",
+ "solana-ed25519-program",
+ "solana-instruction",
+ "solana-instructions-sysvar",
+ "solana-keypair",
  "solana-program",
  "solana-program-test",
  "solana-sdk",
@@ -1929,6 +1935,7 @@ dependencies = [
 name = "doublezero-serviceability-instruction"
 version = "0.36.0"
 dependencies = [
+ "doublezero-ip-proof",
  "doublezero-serviceability",
  "solana-compute-budget-interface",
  "solana-program",

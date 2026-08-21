@@ -26,6 +26,11 @@
       "name": "DzPrefixCount",
       "value": "2",
       "typ": "u8"
+    },
+    {
+      "name": "IpProof",
+      "value": "none",
+      "typ": "option"
     }
   ]
 }

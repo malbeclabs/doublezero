@@ -1,6 +1,7 @@
 use crate::{
     authorize::split_trailing_permission,
     error::DoubleZeroError,
+    ip_proof::split_trailing_instructions_sysvar,
     seeds::{SEED_PREFIX, SEED_USER},
     serializer::{try_acc_create, try_acc_write},
     state::user::*,
@@ -8,6 +9,7 @@ use crate::{
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
+use doublezero_ip_proof::IpOwnershipProof;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -47,19 +49,26 @@ pub struct UserCreateSubscribeArgs {
     /// The access pass is looked up using this owner instead of the payer.
     #[incremental(default = Pubkey::default())]
     pub owner: Pubkey,
+    /// RFC-27 proof that the caller can originate traffic from `client_ip`. Optional on the wire:
+    /// a client built before RFC-27 sends a payload that simply ends here, and
+    /// `BorshDeserializeIncremental` reads that clean EOF as `None`. Whether `None` is acceptable
+    /// is `FeatureFlag::RequireIpOwnershipProof`'s call, not the decoder's.
+    #[incremental(default = None)]
+    pub ip_proof: Option<IpOwnershipProof>,
 }
 
 impl fmt::Debug for UserCreateSubscribeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}, owner: {}",
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}, owner: {}, ip_proof: {}",
             self.user_type,
             self.cyoa_type,
             self.client_ip,
             self.tunnel_endpoint,
             self.dz_prefix_count,
             self.owner,
+            self.ip_proof.is_some(),
         )
     }
 }
@@ -74,6 +83,10 @@ pub fn process_create_subscribe_user(
         return Err(DoubleZeroError::InvalidArgument.into());
     }
 
+    // Peel the optional trailing Instructions sysvar first, so split_trailing_permission below
+    // still sees [.., payer, system, permission?] as the last thing in the list.
+    let (accounts, instructions_sysvar_account) = split_trailing_instructions_sysvar(accounts);
+
     let accounts_iter = &mut accounts.iter();
 
     let user_account = next_account_info(accounts_iter)?;
@@ -86,7 +99,8 @@ pub fn process_create_subscribe_user(
     // Account layout:
     //   [user, device, mgroup, accesspass, globalstate,
     //    user_tunnel_block, multicast_publisher_block, device_tunnel_ids, dz_prefix_0..N,
-    //    payer, system]
+    //    payer, system, optional_instructions_sysvar]
+    // The sysvar has already been split off above, so `accounts` here ends at the permission slot.
     let (
         user_tunnel_block_ext,
         multicast_publisher_block_ext,
@@ -120,6 +134,7 @@ pub fn process_create_subscribe_user(
         tenant_account: None, // No tenant support for multicast group users
         payer_account,
         permission_account,
+        instructions_sysvar_account,
     };
 
     let owner_override = if value.owner != Pubkey::default() {
@@ -138,6 +153,7 @@ pub fn process_create_subscribe_user(
         value.tunnel_endpoint,
         value.publisher,
         owner_override,
+        value.ip_proof.as_ref(),
     )?
     else {
         // A duplicate is an error here, not a no-op: falling through would tick a second feed

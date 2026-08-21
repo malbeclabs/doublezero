@@ -51,8 +51,19 @@ func TestBuildCreateUserInstruction(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, data, 12, "opcode (1) + borsh UserCreateArgs (11) = 12 bytes")
 	assert.Equal(t, byte(instructionCreateUser), data[0])
-	assert.Equal(t, loadArgsFixture(t, "user_create_args"), data[1:],
-		"borsh body must match Rust-generated user_create_args.bin")
+
+	// Rust's UserCreateArgs gained a trailing RFC-27 ip_proof (issue #4197), so the
+	// fixture is one byte longer: an Option discriminant of 0 for "no proof". This
+	// builder does not carry a proof yet (issue #4200), and the program decodes the
+	// shorter payload as None via BorshDeserializeIncremental, so what the builder
+	// emits must equal the fixture with that discriminant removed. Both halves are
+	// asserted, so neither the shared fields nor the assumption of an absent proof
+	// can drift unnoticed.
+	fixture := loadArgsFixture(t, "user_create_args")
+	require.Len(t, fixture, 12, "fixture is the borsh body including the ip_proof discriminant")
+	assert.Equal(t, byte(0), fixture[len(fixture)-1], "fixture must encode ip_proof as absent")
+	assert.Equal(t, fixture[:len(fixture)-1], data[1:],
+		"borsh body must match Rust-generated user_create_args.bin up to ip_proof")
 
 	// User PDA derivation is deterministic from (program_id, client_ip, user_type).
 	expectedPDA, _, err := GetUserPDA(executor.programID, args.ClientIP, args.UserType)

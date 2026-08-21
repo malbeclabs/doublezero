@@ -648,6 +648,7 @@ async fn test_builder_create_subscribe_user() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
         },
     );
     submit(&mut banks_client, &payer, ix)

@@ -326,6 +326,7 @@ async fn test_user() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -945,6 +946,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_1_pubkey, false),
@@ -1017,6 +1019,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_2_pubkey, false),
@@ -1267,6 +1270,7 @@ async fn setup_activated_user() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1516,6 +1520,7 @@ async fn test_user_create_rerun_is_noop() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1637,6 +1642,7 @@ async fn test_user_create_existing_different_device_rejected() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1735,6 +1741,7 @@ async fn test_user_create_existing_different_tenant_rejected() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1838,6 +1845,7 @@ async fn test_user_create_existing_different_owner_rejected() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1939,6 +1947,7 @@ async fn test_user_create_rerun_succeeds_on_full_device() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2031,6 +2040,7 @@ async fn test_user_create_rerun_on_banned_user_rejected() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

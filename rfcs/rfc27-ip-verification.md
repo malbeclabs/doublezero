@@ -21,7 +21,7 @@ Today the serviceability program gates user creation with an **AccessPass** keye
 `(client_ip, user_payer)`. For a pass bound to a specific IP, the program enforces that the user's
 `client_ip` matches the pass, so the issuing authority effectively chose the IP. But for **wildcard
 passes** the program skips that check entirely
-(`smartcontract/programs/doublezero-serviceability/src/processors/user/create_core.rs:173-183`):
+(`smartcontract/programs/doublezero-serviceability/src/processors/user/create_core.rs:215-228`):
 
 ```rust
 // A pass stored at the UNSPECIFIED PDA (0.0.0.0) is valid for any client IP by construction
@@ -38,7 +38,7 @@ caller owns it.
 This is a real risk for wildcard passes:
 
 - **IP squatting → denial of service.** The `User` PDA is derived from `(client_ip, user_type)`
-  (`create_core.rs:125`). Registering an IP occupies that slot and can prevent the legitimate
+  (`create_core.rs:153`). Registering an IP occupies that slot and can prevent the legitimate
   operator of that IP from creating their own user.
 - **Traffic misdirection.** The controller provisions the GRE tunnel and routes toward the declared
   `client_ip`; an IP the registrant does not control points device traffic at an unrelated third
@@ -209,31 +209,60 @@ Solana programs cannot verify an Ed25519 signature directly inside BPF cheaply. 
 the **native Ed25519 precompile**: the CLI includes an `Ed25519SigVerify` instruction in the same
 transaction, and the serviceability program **introspects the Instructions sysvar** to confirm that
 instruction is present and that its public key, message, and signature match the expected verifier
-key and the reconstructed message.
+key and the message the program reconstructs from this creation's own arguments.
 
 Required checks:
 
 1. Read `IpOwnershipProof` from instruction data; confirm `proof.version` is supported
    (`doublezero_ip_proof::is_supported_version`) and reconstruct the message with
    `signed_message_for(proof.version, ...)`.
-2. Load the Ed25519 instruction from the Instructions sysvar and confirm it verifies `signature`
+2. `globalstate.ip_verifier_authority_pk` is not `Pubkey::default()`. An unconfigured verifier is a
+   hard reject, never "any signature passes".
+3. Load the Ed25519 instruction from the Instructions sysvar and confirm it verifies `signature`
    over `message` with the **verifier public key from global state**.
-3. `proof.payer == user_payer` (the account paying / owning the user).
-4. `proof.client_ip == client_ip` being bound to the user.
-5. `proof.user_type == user_type` being created.
-6. `proof.epoch` is within the allowed freshness window relative to `Clock::get()?.epoch`.
+4. `proof.payer == user_payer` — the account that *owns* the user, which the program computes as
+   `effective_owner`, not the transaction payer. On the ordinary path they are the same account. On
+   the owner-override path (the sentinel or a USER_ADMIN holder creating a user owned by someone
+   else) they differ, and it is the owner who operates `client_ip` and whom the AccessPass is keyed
+   on; a proof naming the payer could never be obtained for an address the payer does not operate.
+5. `proof.client_ip == client_ip` being bound to the user.
+6. `proof.user_type == user_type` being created.
+7. `proof.epoch` is within the freshness window: `clock.epoch` or `clock.epoch - 1`. A proof fetched
+   moments before an epoch rollover must still work, so the window carries one epoch of slack;
+   anything older, or claiming an epoch that has not happened, is rejected. Fixed constant, not
+   configurable.
+
+The program scans the Instructions sysvar for the Ed25519 instruction rather than reading a fixed
+index, so a client may place it anywhere and interleave compute-budget instructions freely.
+
+The precompile's own offsets need checking, not just its payload. Each of the three
+`*_instruction_index` fields may name a *different* instruction to read the key, signature, or
+message from; if one does, the precompile verified bytes the program never inspects, and comparing
+against the Ed25519 instruction's own data would accept a signature over something else entirely.
+The program therefore rejects any instruction whose offsets name another instruction, whose offsets
+run past the end of its data, or that carries other than exactly one signature.
 
 #### Rejection conditions
 
 The program MUST reject when any of the following holds:
 
 - the Ed25519 verify instruction is absent or does not match (`verifier_key`, `message`, `signature`);
+- the Ed25519 instruction's offsets name another instruction, run past the end of its data, or it
+  carries other than exactly one signature;
+- the Instructions sysvar account is not supplied;
 - `payer` mismatch;
 - `client_ip` mismatch with the value being bound;
 - `user_type` mismatch with the user being created;
 - `proof.version` is not in the supported set;
-- the proof is stale (epoch outside the freshness window);
+- the proof is stale (epoch outside the freshness window) or dated to a future epoch;
+- no verifier public key is configured in global state;
 - the proof is malformed.
+
+A proof that is *absent* is rejected only when the flag is set and the payer is not the sentinel
+authority; see Backward Compatibility.
+
+Each class has its own `DoubleZeroError` variant, so an operator can tell a stale proof from a
+rotated verifier key from a client that never attached the Ed25519 instruction.
 
 ### Trust Root and Key Management
 
@@ -290,24 +319,74 @@ may bind:
 - **Replay.** The epoch window bounds proof reuse; because the proof binds `payer`, `client_ip`, and
   `user_type`, reuse only re‑asserts the same binding — and since the User PDA is
   `f(client_ip, user_type)`, that is the same User account. A nonce would further constrain reuse
-  within an epoch if needed (see Open Questions).
+  within an epoch, at the cost of the service holding state; it is not needed for the operations in
+  scope here.
 
 ## Backward Compatibility
 
-To allow a smooth transition, the serviceability program can support both flows for a limited number
-of versions:
+Rollout is gated on `FeatureFlag::RequireIpOwnershipProof` (bit 2, `require-ip-ownership-proof`),
+set per environment through the existing `SetFeatureFlags` instruction.
 
-1. the legacy flow, where the CLI supplies `client_ip` without a proof, and
-2. the new flow, where the IP is bound only after a valid `IpOwnershipProof`.
+- **Flag clear.** A creation that supplies no proof is accepted, so clients built before RFC-27 keep
+  working. A creation that *does* supply one is still validated in full: a client attaching a broken
+  proof is broken now, not at rollout, and letting it through would hide that until the flag flips.
+- **Flag set.** Every user creation requires a valid proof — wildcard and specific-IP passes alike,
+  and on the idempotent rerun path as well as on first creation. One exception: a creation paid for
+  by `globalstate.sentinel_authority_pk` may omit the proof.
 
-This maintains a compatibility window until clients upgrade. Enforcement can be tightened (legacy
-flow removed) once adoption is sufficient, consistent with RFC‑10 version‑compatibility windows.
+**The sentinel exemption.** The shred-oracle provisions multicast publishers owned by validators, so
+the proof would have to name the validator for an address the verification service never sees a
+request from — there is no proof the oracle could obtain, and without the exemption setting the flag
+would break that path outright. Unlike the wildcard-pass gap this RFC closes, the exemption is not
+reachable by a registrant: it requires a DoubleZero-operated key. It waives the *requirement* only;
+a proof the sentinel does attach is still validated in full, so the oracle can start carrying real
+proofs without a program change. The residual risk is that a compromised sentinel key can bind any
+IP, and that `InitGlobalState` seeds `sentinel_authority_pk` to whoever initialized global state, so
+in a fresh environment the exemption belongs to the deployer until the key is rotated. Replacing it
+is tracked in issue #4215.
+
+The proof is optional on the wire rather than on the instruction: `BorshDeserializeIncremental`
+decodes an older client's shorter payload as `None`, and whether `None` is acceptable is the flag's
+decision, not the decoder's.
+
+This replaces the version-window approach an earlier draft proposed. A blanket window in which the
+legacy no-proof flow stays available reopens exactly the gap this RFC exists to close: a squatter
+simply uses the legacy path. A flag makes the transition an operator decision with a known,
+per-environment moment of enforcement, rather than a property of whatever client version happens to
+be in the field.
+
+Uniform enforcement is otherwise deliberate. The proof is redundant for a specific-IP pass, whose
+address the issuing authority already chose, but "required except when redundant" is a second code
+path through the most security-sensitive check in user creation, and the redundant check costs
+roughly 650 CU against a 1,400,000 budget.
+
+## Non-Goals
+
+- **Releasing a User account whose IP has since changed hands.** The proof is issued once, at
+  creation, and never rechecked, so it says nothing after the fact. The common production case is
+  not a malicious registrant but an honest one whose control of the address lapses later; a new
+  operator can hold a perfect proof for that address and still be locked out, because
+  `create_user_core` rejects on the occupied PDA before a proof is relevant. Reclaiming such an
+  account is tracked separately (issues #4193 and #4190).
+- **Periodic re-verification.** Re-proving on a schedule is out of scope here, and depends on the
+  reclaim design above.
+- **IPv6.** The program's `client_ip` surface is `Ipv4Addr` and the User PDA derives from it. The
+  version byte in the signed message leaves room for a v2 layout.
 
 ## Open Questions
 
-- Should proofs be persisted onchain for auditing, or is the bound `client_ip` sufficient?
-- Is `user_type` binding enough, or should the proof also carry a nonce to constrain replay within
-  an epoch?
-- Should IP re‑verification be periodic (re‑prove on a schedule), or only at user creation?
-- Should IPv6 be supported?
+Resolved:
+
+- **Should the proof bind to the specific user account (or a nonce) to further constrain replay
+  within an epoch?** Yes, by way of `user_type`: the User PDA is `f(client_ip, user_type)`, so
+  binding both pins the account a proof authorizes. Binding the derived pubkey itself would not
+  work — see the proof specification above.
+- **What is the freshness window?** `clock.epoch` and `clock.epoch - 1`.
+- **Should proofs be persisted onchain for auditing, or is the bound `client_ip` sufficient?** Not
+  persisted. The bound `client_ip` plus transaction history is the audit record.
+- **Should IP re-verification be periodic?** Out of scope — see Non-Goals.
+- **Should IPv6 be supported?** Not in v1 — see Non-Goals.
+
+Open:
+
 - On what cadence should the verifier key rotate?

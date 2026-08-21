@@ -358,6 +358,7 @@ async fn try_create_user_at(
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
         }),
         &accounts,
         &f.payer,
@@ -469,6 +470,7 @@ async fn create_ibrl_user(f: &mut Fixture, ip: Ipv4Addr) {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1080,6 +1082,7 @@ async fn test_naked_create_then_subscribe_feed() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(f.user_pubkey, false),

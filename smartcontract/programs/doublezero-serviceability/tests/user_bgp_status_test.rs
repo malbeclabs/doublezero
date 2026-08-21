@@ -277,6 +277,7 @@ async fn setup() -> BgpStatusTestEnv {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),

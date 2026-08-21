@@ -2711,6 +2711,7 @@ async fn test_create_subscribe_user_batch_two_groups() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
             extra_group_count: 1,
         }),
         vec![
@@ -2800,6 +2801,7 @@ async fn test_create_subscribe_user_batch_atomic_bad_extra_group() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
             extra_group_count: 1,
         }),
         vec![
@@ -2879,6 +2881,7 @@ async fn test_create_subscribe_user_batch_count_exceeding_accounts_rejected() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
             extra_group_count: 3, // no extra accounts supplied
         }),
         vec![
@@ -2933,7 +2936,8 @@ async fn test_create_subscribe_user_batch_old_encoding_single_group() {
     } = f;
 
     // Serialize the new args and strip the trailing extra_group_count byte to get
-    // the exact bytes an old client emits.
+    // the exact bytes a pre-batching (post-RFC-27) client emits: the payload ends
+    // at the ip_proof None tag.
     let mut data = borsh::to_vec(&DoubleZeroInstruction::CreateSubscribeUser(
         UserCreateSubscribeArgs {
             user_type: UserType::Multicast,
@@ -2944,6 +2948,7 @@ async fn test_create_subscribe_user_batch_old_encoding_single_group() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
             extra_group_count: 0,
         },
     ))
@@ -3021,6 +3026,7 @@ async fn test_create_subscribe_user_batch_duplicate_group_rejected() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
             extra_group_count: 1,
         }),
         vec![
@@ -3114,6 +3120,7 @@ async fn test_create_subscribe_user_batch_duplicate_extra_rejected() {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
             extra_group_count: 2,
         }),
         vec![

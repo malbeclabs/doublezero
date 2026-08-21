@@ -374,7 +374,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-config"
-version = "0.32.0"
+version = "0.36.0"
 dependencies = [
  "eyre",
  "serde",
@@ -382,8 +382,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-ip-proof"
+version = "0.36.0"
+dependencies = [
+ "borsh",
+ "solana-program",
+]
+
+[[package]]
 name = "doublezero-program-common"
-version = "0.32.0"
+version = "0.36.0"
 dependencies = [
  "borsh",
  "byteorder",
@@ -395,12 +403,13 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.32.0"
+version = "0.36.0"
 dependencies = [
  "bitflags",
  "borsh",
  "borsh-incremental",
  "bytemuck",
+ "doublezero-ip-proof",
  "doublezero-program-common",
  "ipnetwork",
  "solana-program",
@@ -410,7 +419,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-telemetry"
-version = "0.32.0"
+version = "0.36.0"
 dependencies = [
  "borsh",
  "borsh-incremental",

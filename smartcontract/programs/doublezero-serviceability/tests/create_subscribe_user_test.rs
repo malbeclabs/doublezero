@@ -385,6 +385,7 @@ async fn test_create_subscribe_user_atomic_publisher() {
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -470,6 +471,7 @@ async fn test_create_subscribe_user_atomic_subscriber() {
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -643,6 +645,7 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -733,6 +736,7 @@ async fn test_create_subscribe_user_ignores_expired_epoch() {
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -803,6 +807,7 @@ async fn test_check_access_pass_multicast_stays_activated() {
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1128,6 +1133,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             dz_prefix_count: 1,
             owner: custom_owner,
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1434,6 +1440,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             dz_prefix_count: 1,
             owner: custom_owner,
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -1727,6 +1734,7 @@ async fn test_create_subscribe_user_user_admin_owner_override() {
             dz_prefix_count: 1,
             owner: custom_owner,
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2016,6 +2024,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             dz_prefix_count: 0,
             owner: custom_owner,
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2076,6 +2085,7 @@ async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2111,6 +2121,7 @@ async fn test_unsubscribe_pending_user_created_via_create_subscribe() {
             publisher: false,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -2181,6 +2192,7 @@ async fn test_subscribe_pending_user_succeeds() {
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2218,6 +2230,7 @@ async fn test_subscribe_pending_user_succeeds() {
             publisher: true,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -2298,6 +2311,7 @@ async fn test_create_subscribe_user_inactive_mgroup_fails() {
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2360,6 +2374,7 @@ async fn test_publisher_multicast_publisher_persists_through_disconnect() {
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2408,6 +2423,7 @@ async fn test_publisher_multicast_publisher_persists_through_disconnect() {
             publisher: false,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -2473,6 +2489,7 @@ async fn test_publisher_disconnect_delete_decrements_publishers_count() {
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: None,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -2500,6 +2517,7 @@ async fn test_publisher_disconnect_delete_decrements_publishers_count() {
             publisher: false,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -2556,5 +2574,588 @@ async fn test_publisher_disconnect_delete_decrements_publishers_count() {
     assert_eq!(
         device_after.multicast_subscribers_count, 0,
         "subscribers_count must NOT change — user was created as publisher"
+    );
+}
+
+// ============================================================================
+// Batch (extra_group_count) tests
+// ============================================================================
+
+/// Create a second activated multicast group; optionally add it to the pass's
+/// pub+sub allowlists.
+async fn create_second_group(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    payer: &solana_sdk::signature::Keypair,
+    globalstate_pubkey: Pubkey,
+    accesspass_pubkey: Pubkey,
+    user_ip: Ipv4Addr,
+    allowlist: bool,
+) -> Pubkey {
+    let gs = get_globalstate(banks_client, globalstate_pubkey).await;
+    let (mgroup2_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "group2".to_string(),
+            max_bandwidth: 1000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup2_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
+        ],
+        payer,
+    )
+    .await;
+
+    if allowlist {
+        let recent_blockhash = wait_for_new_blockhash(banks_client).await;
+        execute_transaction(
+            banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::AddMulticastGroupPubAllowlist(
+                AddMulticastGroupPubAllowlistArgs {
+                    client_ip: user_ip,
+                    user_payer: payer.pubkey(),
+                },
+            ),
+            vec![
+                AccountMeta::new(mgroup2_pubkey, false),
+                AccountMeta::new(accesspass_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(payer.pubkey(), false),
+            ],
+            payer,
+        )
+        .await;
+        execute_transaction(
+            banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::AddMulticastGroupSubAllowlist(
+                AddMulticastGroupSubAllowlistArgs {
+                    client_ip: user_ip,
+                    user_payer: payer.pubkey(),
+                },
+            ),
+            vec![
+                AccountMeta::new(mgroup2_pubkey, false),
+                AccountMeta::new(accesspass_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(payer.pubkey(), false),
+            ],
+            payer,
+        )
+        .await;
+    }
+
+    mgroup2_pubkey
+}
+
+/// CreateSubscribeUser with an extra group: the user is created Activated with both
+/// subscriptions, per-group counters are right, and resources are allocated once.
+#[tokio::test]
+async fn test_create_subscribe_user_batch_two_groups() {
+    let client_ip = [100, 0, 0, 41];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+        ..
+    } = f;
+
+    let mgroup2_pubkey = create_second_group(
+        &mut banks_client,
+        program_id,
+        &payer,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_ip,
+        true,
+    )
+    .await;
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    // Extra group after the dz_prefix blocks, before the trailing [payer, system].
+    try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+            ip_proof: None,
+            extra_group_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+            AccountMeta::new(mgroup2_pubkey, false),
+        ],
+        &payer,
+    )
+    .await
+    .expect("batch create-subscribe should succeed");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+    assert_eq!(user.subscribers, vec![mgroup_pubkey, mgroup2_pubkey]);
+    assert!(user.publishers.is_empty());
+    assert_ne!(user.tunnel_id, 0, "tunnel resources allocated once");
+
+    for mgroup_pk in [mgroup_pubkey, mgroup2_pubkey] {
+        let mgroup = get_account_data(&mut banks_client, mgroup_pk)
+            .await
+            .expect("MulticastGroup should exist")
+            .get_multicastgroup()
+            .unwrap();
+        assert_eq!(mgroup.subscriber_count, 1);
+        assert_eq!(mgroup.publisher_count, 0);
+    }
+}
+
+/// A bad extra group (off the allowlist) aborts the whole create: no user account,
+/// no counter movement on the good group.
+#[tokio::test]
+async fn test_create_subscribe_user_batch_atomic_bad_extra_group() {
+    let client_ip = [100, 0, 0, 42];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+        ..
+    } = f;
+
+    // Second group NOT in the pass's allowlists.
+    let mgroup2_pubkey = create_second_group(
+        &mut banks_client,
+        program_id,
+        &payer,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_ip,
+        false,
+    )
+    .await;
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+            ip_proof: None,
+            extra_group_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+            AccountMeta::new(mgroup2_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+    match result {
+        Err(BanksClientError::TransactionError(
+            solana_sdk::transaction::TransactionError::InstructionError(
+                0,
+                solana_sdk::instruction::InstructionError::Custom(8), // NotAllowed
+            ),
+        )) => {}
+        _ => panic!("Expected NotAllowed error (Custom(8)), got {:?}", result),
+    }
+
+    // Nothing survives: no user account, primary group's counter untouched.
+    assert!(
+        get_account_data(&mut banks_client, user_pubkey)
+            .await
+            .is_none(),
+        "user account must not be created on a failed batch"
+    );
+    let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
+        .await
+        .expect("MulticastGroup should exist")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup.subscriber_count, 0);
+}
+
+/// An `extra_group_count` larger than the supplied accounts is rejected with
+/// InvalidArgument instead of misparsing the trailing region.
+#[tokio::test]
+async fn test_create_subscribe_user_batch_count_exceeding_accounts_rejected() {
+    let client_ip = [100, 0, 0, 43];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+        ..
+    } = f;
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+            ip_proof: None,
+            extra_group_count: 3, // no extra accounts supplied
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(
+            solana_sdk::transaction::TransactionError::InstructionError(
+                0,
+                solana_sdk::instruction::InstructionError::Custom(65), // InvalidArgument
+            ),
+        )) => {}
+        _ => panic!(
+            "Expected InvalidArgument error (Custom(65)), got {:?}",
+            result
+        ),
+    }
+}
+
+/// The pre-batch encoding (no extra_group_count byte) still decodes and executes as
+/// a single-group create-subscribe — wire compatibility for old clients.
+#[tokio::test]
+async fn test_create_subscribe_user_batch_old_encoding_single_group() {
+    let client_ip = [100, 0, 0, 44];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+        ..
+    } = f;
+
+    // Serialize the new args and strip the trailing extra_group_count byte to get
+    // the exact bytes a pre-batching (post-RFC-27) client emits: the payload ends
+    // at the ip_proof None tag.
+    let mut data = borsh::to_vec(&DoubleZeroInstruction::CreateSubscribeUser(
+        UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+            ip_proof: None,
+            extra_group_count: 0,
+        },
+    ))
+    .unwrap();
+    assert_eq!(data.pop(), Some(0), "last byte must be extra_group_count");
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let accounts = vec![
+        AccountMeta::new(user_pubkey, false),
+        AccountMeta::new(device_pubkey, false),
+        AccountMeta::new(mgroup_pubkey, false),
+        AccountMeta::new(accesspass_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+        AccountMeta::new(user_tunnel_block, false),
+        AccountMeta::new(multicast_publisher_block, false),
+        AccountMeta::new(tunnel_ids, false),
+        AccountMeta::new(dz_prefix_block, false),
+        AccountMeta::new(payer.pubkey(), true),
+        AccountMeta::new(solana_system_interface::program::ID, false),
+    ];
+    let instruction =
+        solana_sdk::instruction::Instruction::new_with_bytes(program_id, &data, accounts);
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx =
+        solana_sdk::transaction::Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
+    tx.try_sign(&[&payer], recent_blockhash).unwrap();
+    banks_client
+        .process_transaction(tx)
+        .await
+        .expect("old encoding should execute single-group");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+    assert_eq!(user.subscribers, vec![mgroup_pubkey]);
+}
+
+/// A duplicate group in a batch (primary repeated as an extra) is rejected with
+/// InvalidArgument and no user is created.
+#[tokio::test]
+async fn test_create_subscribe_user_batch_duplicate_group_rejected() {
+    let client_ip = [100, 0, 0, 45];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+        ..
+    } = f;
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+            ip_proof: None,
+            extra_group_count: 1,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+            AccountMeta::new(mgroup_pubkey, false), // primary again as the extra
+        ],
+        &payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(
+            solana_sdk::transaction::TransactionError::InstructionError(
+                0,
+                solana_sdk::instruction::InstructionError::Custom(65), // InvalidArgument
+            ),
+        )) => {}
+        _ => panic!(
+            "Expected InvalidArgument error (Custom(65)), got {:?}",
+            result
+        ),
+    }
+
+    assert!(
+        get_account_data(&mut banks_client, user_pubkey)
+            .await
+            .is_none(),
+        "user account must not be created on a rejected batch"
+    );
+    let mgroup = get_account_data(&mut banks_client, mgroup_pubkey)
+        .await
+        .expect("MulticastGroup should exist")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup.subscriber_count, 0);
+}
+
+/// Two identical extra groups (extra-vs-extra duplicate) are rejected with
+/// InvalidArgument, exercising the pairwise branch of the duplicate scan.
+#[tokio::test]
+async fn test_create_subscribe_user_batch_duplicate_extra_rejected() {
+    let client_ip = [100, 0, 0, 46];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+        ..
+    } = f;
+
+    let mgroup2_pubkey = create_second_group(
+        &mut banks_client,
+        program_id,
+        &payer,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_ip,
+        true,
+    )
+    .await;
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+            ip_proof: None,
+            extra_group_count: 2,
+        }),
+        vec![
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(user_tunnel_block, false),
+            AccountMeta::new(multicast_publisher_block, false),
+            AccountMeta::new(tunnel_ids, false),
+            AccountMeta::new(dz_prefix_block, false),
+            AccountMeta::new(mgroup2_pubkey, false),
+            AccountMeta::new(mgroup2_pubkey, false), // same extra twice
+        ],
+        &payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(
+            solana_sdk::transaction::TransactionError::InstructionError(
+                0,
+                solana_sdk::instruction::InstructionError::Custom(65), // InvalidArgument
+            ),
+        )) => {}
+        _ => panic!(
+            "Expected InvalidArgument error (Custom(65)), got {:?}",
+            result
+        ),
+    }
+    assert!(
+        get_account_data(&mut banks_client, user_pubkey)
+            .await
+            .is_none(),
+        "user account must not be created on a rejected batch"
     );
 }

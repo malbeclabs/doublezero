@@ -5,7 +5,8 @@ use crate::{
         accesspass::get::GetAccessPassCommand,
         device::get::GetDeviceCommand,
         multicastgroup::{
-            list::ListMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
+            list::ListMulticastGroupCommand,
+            subscribe::{UpdateMulticastGroupRolesCommand, MAX_GROUPS_PER_TRANSACTION},
         },
     },
     DoubleZeroClient,
@@ -42,19 +43,23 @@ impl DeleteUserCommand {
             .into_iter()
             .collect();
         let multicastgroups = ListMulticastGroupCommand {}.execute(client)?;
-        for mgroup_pk in &unique_mgroup_pks {
-            if multicastgroups.contains_key(mgroup_pk) {
-                UpdateMulticastGroupRolesCommand {
-                    group_pk: *mgroup_pk,
-                    user_pk: self.pubkey,
-                    client_ip: user.client_ip,
-                    publisher: false,
-                    subscriber: false,
-                    device_pk: None,
-                    feed_pk: None,
-                }
-                .execute(client)?;
+        // Strip every remaining multicast role, batched atomically per chunk (one
+        // transaction each, bounded by the transaction size limit).
+        let group_pks: Vec<Pubkey> = unique_mgroup_pks
+            .into_iter()
+            .filter(|pk| multicastgroups.contains_key(pk))
+            .collect();
+        for chunk in group_pks.chunks(MAX_GROUPS_PER_TRANSACTION) {
+            UpdateMulticastGroupRolesCommand {
+                group_pks: chunk.to_vec(),
+                user_pk: self.pubkey,
+                client_ip: user.client_ip,
+                publisher: false,
+                subscriber: false,
+                device_pk: None,
+                feed_pk: None,
             }
+            .execute(client)?;
         }
 
         // GetAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
@@ -280,11 +285,13 @@ mod tests {
                 &mgroup_pubkey,
                 &accesspass_pubkey,
                 &user_pubkey,
+                &[],
                 UpdateMulticastGroupRolesArgs {
                     publisher: false,
                     subscriber: false,
                     client_ip,
                     use_onchain_allocation: true,
+                    extra_group_count: 0,
                 },
             )))
             .times(1)
@@ -483,11 +490,13 @@ mod tests {
                 &mgroup_pubkey,
                 &accesspass_pubkey,
                 &user_pubkey,
+                &[],
                 UpdateMulticastGroupRolesArgs {
                     publisher: false,
                     subscriber: false,
                     client_ip,
                     use_onchain_allocation: true,
+                    extra_group_count: 0,
                 },
             )))
             .times(1)
@@ -726,11 +735,13 @@ mod tests {
                 &mgroup_pubkey,
                 &accesspass_pubkey,
                 &user_pubkey,
+                &[],
                 UpdateMulticastGroupRolesArgs {
                     publisher: false,
                     subscriber: false,
                     client_ip,
                     use_onchain_allocation: true,
+                    extra_group_count: 0,
                 },
             )))
             .times(1)

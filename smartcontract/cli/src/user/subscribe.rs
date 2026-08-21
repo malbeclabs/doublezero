@@ -7,9 +7,13 @@ use crate::{
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::{
-    multicastgroup::{get::GetMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand},
+    multicastgroup::{
+        get::GetMulticastGroupCommand,
+        subscribe::{UpdateMulticastGroupRolesCommand, MAX_GROUPS_PER_TRANSACTION},
+    },
     user::get::GetUserCommand,
 };
+use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -75,16 +79,21 @@ impl SubscribeUserCliCommand {
             group_pks.push(group_pk);
         }
 
-        // Update roles for each group. An omitted flag preserves the user's
+        // Update roles for the groups. An omitted flag preserves the user's
         // current role for that group; the processor sets absolute state
         // (idempotent add when true, idempotent remove when false), not a
         // relative toggle.
+        //
+        // The instruction applies one (publisher, subscriber) pair to every group
+        // it carries, so groups are batched by their effective flag pair — one
+        // atomic transaction per pair (at most 4, typically 1).
         //
         // Preserving an already-held role re-asserts it as `true`, which the
         // processor re-checks against the current onchain allowlist before the
         // idempotent add/remove. If that allowlist drifted since the user
         // subscribed, an unrelated role removal can be rejected with NotAllowed.
         // This is an inherited processor property, not a regression here.
+        let mut batches: Vec<((bool, bool), Vec<Pubkey>)> = Vec::new();
         for group_pk in &group_pks {
             let publisher = self
                 .publisher
@@ -92,17 +101,30 @@ impl SubscribeUserCliCommand {
             let subscriber = self
                 .subscriber
                 .unwrap_or_else(|| user.subscribers.contains(group_pk));
-            let signature =
-                client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
-                    user_pk,
-                    group_pk: *group_pk,
-                    client_ip: user.client_ip,
-                    publisher,
-                    subscriber,
-                    device_pk: None,
-                    feed_pk: None,
-                })?;
-            writeln!(out, "Updated roles for {group_pk}: {signature}")?;
+            match batches
+                .iter_mut()
+                .find(|(flags, _)| *flags == (publisher, subscriber))
+            {
+                Some((_, pks)) => pks.push(*group_pk),
+                None => batches.push(((publisher, subscriber), vec![*group_pk])),
+            }
+        }
+        for ((publisher, subscriber), batch_pks) in batches {
+            for chunk in batch_pks.chunks(MAX_GROUPS_PER_TRANSACTION) {
+                let signature =
+                    client.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
+                        user_pk,
+                        group_pks: chunk.to_vec(),
+                        client_ip: user.client_ip,
+                        publisher,
+                        subscriber,
+                        device_pk: None,
+                        feed_pk: None,
+                    })?;
+                for group_pk in chunk {
+                    writeln!(out, "Updated roles for {group_pk}: {signature}")?;
+                }
+            }
         }
 
         if self.wait {
@@ -217,7 +239,7 @@ mod tests {
             .expect_update_multicastgroup_roles()
             .with(predicate::eq(UpdateMulticastGroupRolesCommand {
                 user_pk: user_pubkey,
-                group_pk: mgroup_pubkey,
+                group_pks: vec![mgroup_pubkey],
                 client_ip,
                 publisher: false,
                 subscriber: true,
@@ -340,9 +362,21 @@ mod tests {
                 pubkey_or_code: mgroup_pubkey2.to_string(),
             }))
             .returning(move |_| Ok((mgroup_pubkey2, mgroup2.clone())));
+        // The user holds no roles and both flags are explicit, so both groups share
+        // the same effective (publisher, subscriber) pair and are batched into a
+        // single atomic transaction.
         client
             .expect_update_multicastgroup_roles()
-            .times(2)
+            .with(predicate::eq(UpdateMulticastGroupRolesCommand {
+                user_pk: user_pubkey,
+                group_pks: vec![mgroup_pubkey1, mgroup_pubkey2],
+                client_ip,
+                publisher: false,
+                subscriber: true,
+                device_pk: None,
+                feed_pk: None,
+            }))
+            .times(1)
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/
@@ -364,6 +398,147 @@ mod tests {
         assert_eq!(
             output_str,
             format!("Updated roles for {mgroup_pubkey1}: {sig_str}\nUpdated roles for {mgroup_pubkey2}: {sig_str}\n")
+        );
+    }
+
+    #[test]
+    fn test_cli_user_subscribe_splits_batches_by_effective_flag_pair() {
+        let mut client = create_test_client();
+
+        let (user_pubkey, _bump_seed) = get_user_old_pda(&client.get_program_id(), 1);
+        let signature1 = Signature::new_unique();
+        let signature2 = Signature::new_unique();
+        let client_ip = [192, 168, 1, 100].into();
+
+        let mgroup_pubkey1 = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
+        let mgroup_pubkey2 = Pubkey::from_str_const("11111116EPqoQskEM2Pddp8KTL9JoFhVBkC8GXfRH");
+
+        // The user publishes to the first group only; neither group is subscribed.
+        let user = User {
+            account_type: AccountType::User,
+            index: 1,
+            bump_seed: 255,
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            device_pk: Pubkey::new_unique(),
+            owner: client.get_payer(),
+            tenant_pk: Pubkey::default(),
+            client_ip,
+            dz_ip: client_ip,
+            tunnel_id: 12345,
+            tunnel_net: "192.168.1.0/24".parse().unwrap(),
+            status: doublezero_sdk::UserStatus::Activated,
+            publishers: vec![mgroup_pubkey1],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
+            ..Default::default()
+        };
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_user()
+            .with(predicate::eq(GetUserCommand {
+                pubkey: user_pubkey,
+            }))
+            .returning(move |_| Ok((user_pubkey, user.clone())));
+
+        let mgroup1 = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            index: 1,
+            bump_seed: 255,
+            tenant_pk: Pubkey::new_unique(),
+            multicast_ip: [239, 1, 1, 1].into(),
+            max_bandwidth: 1000,
+            status: MulticastGroupStatus::Activated,
+            code: "group1".to_string(),
+            owner: mgroup_pubkey1,
+            publisher_count: 1,
+            subscriber_count: 0,
+        };
+        let mgroup2 = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            index: 2,
+            bump_seed: 254,
+            tenant_pk: Pubkey::new_unique(),
+            multicast_ip: [239, 1, 1, 2].into(),
+            max_bandwidth: 1000,
+            status: MulticastGroupStatus::Activated,
+            code: "group2".to_string(),
+            owner: mgroup_pubkey2,
+            publisher_count: 0,
+            subscriber_count: 0,
+        };
+        client
+            .expect_get_multicastgroup()
+            .with(predicate::eq(GetMulticastGroupCommand {
+                pubkey_or_code: mgroup_pubkey1.to_string(),
+            }))
+            .returning(move |_| Ok((mgroup_pubkey1, mgroup1.clone())));
+        client
+            .expect_get_multicastgroup()
+            .with(predicate::eq(GetMulticastGroupCommand {
+                pubkey_or_code: mgroup_pubkey2.to_string(),
+            }))
+            .returning(move |_| Ok((mgroup_pubkey2, mgroup2.clone())));
+
+        // `--publisher` is omitted, so each group preserves its own current
+        // publisher role: group1 -> (true, true), group2 -> (false, true). The two
+        // effective flag pairs differ, so the groups cannot share a transaction and
+        // are split into one batch per pair.
+        client
+            .expect_update_multicastgroup_roles()
+            .with(predicate::eq(UpdateMulticastGroupRolesCommand {
+                user_pk: user_pubkey,
+                group_pks: vec![mgroup_pubkey1],
+                client_ip,
+                publisher: true,
+                subscriber: true,
+                device_pk: None,
+                feed_pk: None,
+            }))
+            .times(1)
+            .returning(move |_| Ok(signature1));
+        client
+            .expect_update_multicastgroup_roles()
+            .with(predicate::eq(UpdateMulticastGroupRolesCommand {
+                user_pk: user_pubkey,
+                group_pks: vec![mgroup_pubkey2],
+                client_ip,
+                publisher: false,
+                subscriber: true,
+                device_pk: None,
+                feed_pk: None,
+            }))
+            .times(1)
+            .returning(move |_| Ok(signature2));
+
+        let mut output = Vec::new();
+        let ctx = cli_context_default_for_tests();
+        let res = block_on(
+            SubscribeUserCliCommand {
+                user: user_pubkey.to_string(),
+                groups: vec![mgroup_pubkey1.to_string(), mgroup_pubkey2.to_string()],
+                publisher: None,
+                subscriber: Some(true),
+                wait: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok());
+        let output_str = String::from_utf8(output).unwrap();
+        // Each group is reported with the signature of the batch that carried it.
+        assert_eq!(
+            output_str,
+            format!("Updated roles for {mgroup_pubkey1}: {signature1}\nUpdated roles for {mgroup_pubkey2}: {signature2}\n")
         );
     }
 
@@ -439,7 +614,7 @@ mod tests {
             .expect_update_multicastgroup_roles()
             .with(predicate::eq(UpdateMulticastGroupRolesCommand {
                 user_pk: user_pubkey,
-                group_pk: mgroup_pubkey,
+                group_pks: vec![mgroup_pubkey],
                 client_ip,
                 publisher: false,
                 subscriber: true,
@@ -541,7 +716,7 @@ mod tests {
             .expect_update_multicastgroup_roles()
             .with(predicate::eq(UpdateMulticastGroupRolesCommand {
                 user_pk: user_pubkey,
-                group_pk: mgroup_pubkey,
+                group_pks: vec![mgroup_pubkey],
                 client_ip,
                 publisher: true,
                 subscriber: false,

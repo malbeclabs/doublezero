@@ -15,8 +15,10 @@
 use crate::doublezerocommand::CliCommand;
 use doublezero_sdk::{
     commands::{
-        accesspass::list::ListAccessPassCommand, device::list::ListDeviceCommand,
-        feed::list::ListFeedCommand, multicastgroup::subscribe::UpdateMulticastGroupRolesCommand,
+        accesspass::list::ListAccessPassCommand,
+        device::list::ListDeviceCommand,
+        feed::list::ListFeedCommand,
+        multicastgroup::subscribe::{UpdateMulticastGroupRolesCommand, MAX_GROUPS_PER_TRANSACTION},
         user::list::ListUserCommand,
     },
     Device, Feed, User,
@@ -136,32 +138,52 @@ pub fn unsubscribe_orphans<C: CliCommand, W: Write>(
             );
         }
 
+        // Every orphan reaching this point is removal-only (mixed roles bailed
+        // above), so a user's removals batch into one atomic role update, chunked
+        // to the transaction limit, instead of one transaction per group. The plan
+        // is sorted by (user, group), so one linear pass groups it.
+        let mut batches: Vec<(&Orphan, Vec<Pubkey>)> = Vec::new();
         for orphan in &orphans {
-            client
-                .update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
-                    user_pk: orphan.user_pk,
-                    group_pk: orphan.group_pk,
-                    client_ip: orphan.client_ip,
-                    publisher: false,
-                    subscriber: false,
-                    device_pk: None,
-                    feed_pk: None,
-                })
-                .wrap_err_with(|| {
-                    format!(
-                        "failed to unsubscribe user {} from group {}; the feed was left unchanged. \
-                         If this is an authorization failure, removing another owner's roles needs \
-                         USER_ADMIN (or foundation membership) on the payer in addition to \
-                         FEED_AUTHORITY: doublezero permission set --user-payer <payer> --add \
-                         user-admin",
-                        orphan.user_pk, orphan.group_pk
-                    )
-                })?;
-            writeln!(
-                out,
-                "  unsubscribed user {} from group {}",
-                orphan.user_pk, orphan.group_pk
-            )?;
+            match batches.last_mut() {
+                Some((first, group_pks)) if first.user_pk == orphan.user_pk => {
+                    group_pks.push(orphan.group_pk)
+                }
+                _ => batches.push((orphan, vec![orphan.group_pk])),
+            }
+        }
+        for (orphan, group_pks) in batches {
+            for chunk in group_pks.chunks(MAX_GROUPS_PER_TRANSACTION) {
+                let groups = chunk
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                client
+                    .update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
+                        user_pk: orphan.user_pk,
+                        group_pks: chunk.to_vec(),
+                        client_ip: orphan.client_ip,
+                        publisher: false,
+                        subscriber: false,
+                        device_pk: None,
+                        feed_pk: None,
+                    })
+                    .wrap_err_with(|| {
+                        format!(
+                            "failed to unsubscribe user {} from group(s) {groups}; the feed was \
+                             left unchanged. If this is an authorization failure, removing another \
+                             owner's roles needs USER_ADMIN (or foundation membership) on the payer \
+                             in addition to FEED_AUTHORITY: doublezero permission set --user-payer \
+                             <payer> --add user-admin",
+                            orphan.user_pk
+                        )
+                    })?;
+                writeln!(
+                    out,
+                    "  unsubscribed user {} from group(s) {groups}",
+                    orphan.user_pk
+                )?;
+            }
         }
         rounds_done += 1;
     }

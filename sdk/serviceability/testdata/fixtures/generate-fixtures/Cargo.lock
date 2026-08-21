@@ -323,16 +323,15 @@ dependencies = [
 
 [[package]]
 name = "doublezero-ip-proof"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "borsh",
  "solana-program",
- "thiserror",
 ]
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "borsh",
  "byteorder",
@@ -344,7 +343,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "bitflags",
  "borsh",
@@ -353,7 +352,6 @@ dependencies = [
  "doublezero-ip-proof",
  "doublezero-program-common",
  "ipnetwork",
- "solana-instructions-sysvar",
  "solana-program",
  "solana-system-interface 3.2.0",
  "thiserror",
@@ -361,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability-instruction"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "doublezero-serviceability",
  "solana-compute-budget-interface",

@@ -302,6 +302,7 @@ fn generate_ix_fixtures(dir: &Path) {
         &b,
         &c,
         1,
+        &[],
         Some(&d),
         UserCreateSubscribeArgs {
             user_type: UserType::IBRLWithAllocatedIP,
@@ -313,6 +314,7 @@ fn generate_ix_fixtures(dir: &Path) {
             dz_prefix_count: 0,
             owner: Pubkey::default(),
         ip_proof: None,
+            extra_group_count: 0,
         },
     );
     write_ix_fixture(dir, "create_subscribe_user", &create_subscribe_user);

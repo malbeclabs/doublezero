@@ -16,7 +16,10 @@ use std::{io::Write, net::Ipv4Addr};
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
-    commands::multicastgroup::subscribe::UpdateMulticastGroupRolesCommand, User, UserType,
+    commands::multicastgroup::subscribe::{
+        UpdateMulticastGroupRolesCommand, MAX_GROUPS_PER_TRANSACTION,
+    },
+    User, UserType,
 };
 use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
@@ -100,8 +103,82 @@ fn finish_update<W: Write>(spinner: &ProgressBar, out: &mut W) -> eyre::Result<(
     Ok(())
 }
 
-/// If any per-group calls failed, surface a non-zero exit by returning an error
-/// listing the affected codes. Per-group failures are already printed inline.
+/// A single batched role update: one atomic transaction applying the same
+/// (publisher, subscriber) pair to every group in `groups`.
+struct RoleUpdateBatch {
+    publisher: bool,
+    subscriber: bool,
+    groups: Vec<(String, Pubkey)>,
+}
+
+/// Partition `(code, pk, (publisher, subscriber))` triples into batches sharing a
+/// flag pair, preserving encounter order. The instruction applies one flag pair to
+/// every group it carries, so each distinct pair needs its own transaction (at most
+/// two per verb: the carried role is the only variable). Batches are capped at the
+/// transaction size limit — a full batch stops matching, so oversize pairs chunk
+/// naturally.
+fn batch_role_updates(groups: Vec<(String, Pubkey, (bool, bool))>) -> Vec<RoleUpdateBatch> {
+    let mut batches: Vec<RoleUpdateBatch> = Vec::new();
+    for (code, pk, (publisher, subscriber)) in groups {
+        match batches.iter_mut().find(|b| {
+            (b.publisher, b.subscriber) == (publisher, subscriber)
+                && b.groups.len() < MAX_GROUPS_PER_TRANSACTION
+        }) {
+            Some(batch) => batch.groups.push((code, pk)),
+            None => batches.push(RoleUpdateBatch {
+                publisher,
+                subscriber,
+                groups: vec![(code, pk)],
+            }),
+        }
+    }
+    batches
+}
+
+/// Send each batch as one atomic transaction, printing a per-group `ok_verb` line on
+/// success. A failed batch reports every code it carried (nothing in it was applied)
+/// and its codes are returned as failures.
+fn apply_role_update_batches<L: LedgerClient, W: Write>(
+    ledger: &L,
+    out: &mut W,
+    user_pk: Pubkey,
+    client_ip: Ipv4Addr,
+    batches: Vec<RoleUpdateBatch>,
+    ok_verb: &str,
+    fail_verb: &str,
+) -> eyre::Result<Vec<String>> {
+    let mut failures: Vec<String> = Vec::new();
+    for batch in batches {
+        match ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
+            user_pk,
+            group_pks: batch.groups.iter().map(|(_, pk)| *pk).collect(),
+            client_ip,
+            publisher: batch.publisher,
+            subscriber: batch.subscriber,
+            device_pk: None,
+            feed_pk: None,
+        }) {
+            Ok(()) => {
+                for (code, _) in &batch.groups {
+                    writeln!(out, "    {ok_verb} {code}")?;
+                }
+            }
+            Err(e) => {
+                let codes: Vec<&str> = batch.groups.iter().map(|(c, _)| c.as_str()).collect();
+                writeln!(
+                    out,
+                    "    ❌ failed to {fail_verb} {}: {e}",
+                    codes.join(", ")
+                )?;
+                failures.extend(batch.groups.iter().map(|(c, _)| c.clone()));
+            }
+        }
+    }
+    Ok(failures)
+}
+
+/// If any batched calls failed, surface a non-zero exit by returning an error
+/// listing the affected codes. Per-batch failures are already printed inline.
 fn report_failures(op: &str, failures: &[String]) -> eyre::Result<()> {
     if failures.is_empty() {
         return Ok(());
@@ -170,29 +247,24 @@ impl Subscribe {
         let groups = resolve_groups(ledger, &self.groups)?;
         spinner.inc(1);
 
-        let mut failures: Vec<String> = Vec::new();
+        let mut to_apply = Vec::new();
         for (code, group_pk) in groups {
             if user.subscribers.contains(&group_pk) {
                 writeln!(out, "    already subscribed to {code} — skipping")?;
                 continue;
             }
             let carry_pub = user.publishers.contains(&group_pk);
-            match ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
-                user_pk,
-                group_pk,
-                client_ip,
-                publisher: carry_pub,
-                subscriber: true,
-                device_pk: None,
-                feed_pk: None,
-            }) {
-                Ok(()) => writeln!(out, "    subscribed to {code}")?,
-                Err(e) => {
-                    writeln!(out, "    ❌ failed to subscribe to {code}: {e}")?;
-                    failures.push(code);
-                }
-            }
+            to_apply.push((code, group_pk, (carry_pub, true)));
         }
+        let failures = apply_role_update_batches(
+            ledger,
+            out,
+            user_pk,
+            client_ip,
+            batch_role_updates(to_apply),
+            "subscribed to",
+            "subscribe to",
+        )?;
 
         finish_update(&spinner, out)?;
         report_failures("subscribe", &failures)
@@ -225,29 +297,24 @@ impl Unsubscribe {
             writeln!(out, "{}", warn_idle_tunnel())?;
         }
 
-        let mut failures: Vec<String> = Vec::new();
+        let mut to_apply = Vec::new();
         for (code, group_pk) in groups {
             if !user.subscribers.contains(&group_pk) {
                 writeln!(out, "    not subscribed to {code} — skipping")?;
                 continue;
             }
             let carry_pub = user.publishers.contains(&group_pk);
-            match ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
-                user_pk,
-                group_pk,
-                client_ip,
-                publisher: carry_pub,
-                subscriber: false,
-                device_pk: None,
-                feed_pk: None,
-            }) {
-                Ok(()) => writeln!(out, "    unsubscribed from {code}")?,
-                Err(e) => {
-                    writeln!(out, "    ❌ failed to unsubscribe from {code}: {e}")?;
-                    failures.push(code);
-                }
-            }
+            to_apply.push((code, group_pk, (carry_pub, false)));
         }
+        let failures = apply_role_update_batches(
+            ledger,
+            out,
+            user_pk,
+            client_ip,
+            batch_role_updates(to_apply),
+            "unsubscribed from",
+            "unsubscribe from",
+        )?;
 
         finish_update(&spinner, out)?;
         report_failures("unsubscribe", &failures)
@@ -270,29 +337,24 @@ impl Publish {
         let groups = resolve_groups(ledger, &self.groups)?;
         spinner.inc(1);
 
-        let mut failures: Vec<String> = Vec::new();
+        let mut to_apply = Vec::new();
         for (code, group_pk) in groups {
             if user.publishers.contains(&group_pk) {
                 writeln!(out, "    already publishing to {code} — skipping")?;
                 continue;
             }
             let carry_sub = user.subscribers.contains(&group_pk);
-            match ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
-                user_pk,
-                group_pk,
-                client_ip,
-                publisher: true,
-                subscriber: carry_sub,
-                device_pk: None,
-                feed_pk: None,
-            }) {
-                Ok(()) => writeln!(out, "    publishing to {code}")?,
-                Err(e) => {
-                    writeln!(out, "    ❌ failed to publish to {code}: {e}")?;
-                    failures.push(code);
-                }
-            }
+            to_apply.push((code, group_pk, (true, carry_sub)));
         }
+        let failures = apply_role_update_batches(
+            ledger,
+            out,
+            user_pk,
+            client_ip,
+            batch_role_updates(to_apply),
+            "publishing to",
+            "publish to",
+        )?;
 
         finish_update(&spinner, out)?;
         report_failures("publish", &failures)
@@ -335,29 +397,24 @@ impl Unpublish {
             writeln!(out, "{}", warn_idle_tunnel())?;
         }
 
-        let mut failures: Vec<String> = Vec::new();
+        let mut to_apply = Vec::new();
         for (code, group_pk) in groups {
             if !user.publishers.contains(&group_pk) {
                 writeln!(out, "    not publishing to {code} — skipping")?;
                 continue;
             }
             let carry_sub = user.subscribers.contains(&group_pk);
-            match ledger.update_multicastgroup_roles(UpdateMulticastGroupRolesCommand {
-                user_pk,
-                group_pk,
-                client_ip,
-                publisher: false,
-                subscriber: carry_sub,
-                device_pk: None,
-                feed_pk: None,
-            }) {
-                Ok(()) => writeln!(out, "    unpublished from {code}")?,
-                Err(e) => {
-                    writeln!(out, "    ❌ failed to unpublish from {code}: {e}")?;
-                    failures.push(code);
-                }
-            }
+            to_apply.push((code, group_pk, (false, carry_sub)));
         }
+        let failures = apply_role_update_batches(
+            ledger,
+            out,
+            user_pk,
+            client_ip,
+            batch_role_updates(to_apply),
+            "unpublished from",
+            "unpublish from",
+        )?;
 
         finish_update(&spinner, out)?;
         report_failures("unpublish", &failures)
@@ -546,7 +603,7 @@ mod tests {
             .expect_update_multicastgroup_roles()
             .withf(move |cmd: &UpdateMulticastGroupRolesCommand| {
                 cmd.user_pk == user_pk
-                    && cmd.group_pk == g_pk
+                    && cmd.group_pks == vec![g_pk]
                     && cmd.client_ip == ip
                     && cmd.publisher
                     && !cmd.subscriber
@@ -645,15 +702,18 @@ mod tests {
 
     #[test]
     fn unsubscribe_continues_after_per_group_failure_and_aggregates_error() {
-        // g1's onchain call fails; g2's must still be attempted, and the
+        // g1 and g2 carry different publisher flags, so they land in separate
+        // batches: g1's batch fails, g2's must still be attempted, and the
         // command must return an aggregated error naming g1.
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let g1 = Pubkey::new_unique();
         let g2 = Pubkey::new_unique();
         let user_pk = Pubkey::new_unique();
 
+        // Subscriber of both, publisher of g1 only — unsubscribing g1 carries
+        // publisher=true and g2 carries publisher=false.
         let mut users = HashMap::new();
-        users.insert(user_pk, user_with_roles(ip, vec![], vec![g1, g2]));
+        users.insert(user_pk, user_with_roles(ip, vec![g1], vec![g1, g2]));
         let mut groups = HashMap::new();
         groups.insert(g1, make_group("g1"));
         groups.insert(g2, make_group("g2"));
@@ -661,12 +721,16 @@ mod tests {
 
         ledger
             .expect_update_multicastgroup_roles()
-            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| cmd.group_pk == g1)
+            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| {
+                cmd.group_pks == vec![g1] && cmd.publisher
+            })
             .once()
             .returning(|_| Err(eyre::eyre!("simulated chain failure")));
         ledger
             .expect_update_multicastgroup_roles()
-            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| cmd.group_pk == g2)
+            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| {
+                cmd.group_pks == vec![g2] && !cmd.publisher
+            })
             .once()
             .returning(|_| Ok(()));
 
@@ -703,7 +767,10 @@ mod tests {
         ledger
             .expect_update_multicastgroup_roles()
             .withf(move |cmd: &UpdateMulticastGroupRolesCommand| {
-                cmd.user_pk == user_pk && cmd.group_pk == g1 && !cmd.publisher && cmd.subscriber
+                cmd.user_pk == user_pk
+                    && cmd.group_pks == vec![g1]
+                    && !cmd.publisher
+                    && cmd.subscriber
             })
             .once()
             .returning(|_| Ok(()));
@@ -849,7 +916,10 @@ mod tests {
         ledger
             .expect_update_multicastgroup_roles()
             .withf(move |cmd: &UpdateMulticastGroupRolesCommand| {
-                cmd.user_pk == user_pk && cmd.group_pk == g_pk && cmd.publisher && cmd.subscriber
+                cmd.user_pk == user_pk
+                    && cmd.group_pks == vec![g_pk]
+                    && cmd.publisher
+                    && cmd.subscriber
             })
             .once()
             .returning(|_| Ok(()));
@@ -898,6 +968,133 @@ mod tests {
         );
     }
 
+    #[test]
+    fn subscribe_batches_same_flag_groups_into_one_call() {
+        // Neither group carries a publisher role, so both share the
+        // (publisher=false, subscriber=true) pair and ride in ONE transaction,
+        // in the order the codes were passed.
+        let ip = Ipv4Addr::new(10, 0, 0, 1);
+        let g1_pk = Pubkey::new_unique();
+        let g2_pk = Pubkey::new_unique();
+        let user_pk = Pubkey::new_unique();
+
+        let mut users = HashMap::new();
+        users.insert(user_pk, user_with_roles(ip, vec![], vec![]));
+        let mut groups = HashMap::new();
+        groups.insert(g1_pk, make_group("g1"));
+        groups.insert(g2_pk, make_group("g2"));
+        let mut ledger = ledger_with_users_and_groups(users, groups);
+
+        ledger
+            .expect_update_multicastgroup_roles()
+            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| {
+                cmd.user_pk == user_pk
+                    && cmd.group_pks == vec![g1_pk, g2_pk]
+                    && !cmd.publisher
+                    && cmd.subscriber
+            })
+            .once()
+            .returning(|_| Ok(()));
+
+        let daemon = daemon_with_client_ip("10.0.0.1");
+        let ctx = cli_context_default_for_tests();
+        let mut out = Vec::new();
+        let cmd = Subscribe {
+            groups: vec!["g1".into(), "g2".into()],
+        };
+        block_on(cmd.execute(&ctx, &daemon, &ledger, &mut out)).unwrap();
+
+        // One transaction, but still one result line per group.
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(rendered.contains("subscribed to g1"), "got: {rendered}");
+        assert!(rendered.contains("subscribed to g2"), "got: {rendered}");
+    }
+
+    #[test]
+    fn subscribe_failed_batch_reports_every_code_it_carried() {
+        // A batch is atomic: when its transaction fails nothing was applied, so
+        // every code it carried counts as a failure.
+        let ip = Ipv4Addr::new(10, 0, 0, 1);
+        let g1_pk = Pubkey::new_unique();
+        let g2_pk = Pubkey::new_unique();
+        let user_pk = Pubkey::new_unique();
+
+        let mut users = HashMap::new();
+        users.insert(user_pk, user_with_roles(ip, vec![], vec![]));
+        let mut groups = HashMap::new();
+        groups.insert(g1_pk, make_group("g1"));
+        groups.insert(g2_pk, make_group("g2"));
+        let mut ledger = ledger_with_users_and_groups(users, groups);
+
+        ledger
+            .expect_update_multicastgroup_roles()
+            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| {
+                cmd.group_pks == vec![g1_pk, g2_pk]
+            })
+            .once()
+            .returning(|_| Err(eyre::eyre!("simulated chain failure")));
+
+        let daemon = daemon_with_client_ip("10.0.0.1");
+        let ctx = cli_context_default_for_tests();
+        let mut out = Vec::new();
+        let cmd = Subscribe {
+            groups: vec!["g1".into(), "g2".into()],
+        };
+        let err = block_on(cmd.execute(&ctx, &daemon, &ledger, &mut out)).unwrap_err();
+
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(
+            rendered.contains("❌ failed to subscribe to g1, g2"),
+            "got: {rendered}"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("subscribe failed for 2 group(s)"),
+            "got: {msg}"
+        );
+        assert!(msg.contains("g1") && msg.contains("g2"), "got: {msg}");
+    }
+
+    #[test]
+    fn unsubscribe_batches_same_flag_groups_into_one_call() {
+        // Subscriber-only of both groups, so both carry
+        // (publisher=false, subscriber=false) and ride in ONE transaction.
+        let ip = Ipv4Addr::new(10, 0, 0, 1);
+        let g1_pk = Pubkey::new_unique();
+        let g2_pk = Pubkey::new_unique();
+        let user_pk = Pubkey::new_unique();
+
+        let mut users = HashMap::new();
+        users.insert(user_pk, user_with_roles(ip, vec![], vec![g1_pk, g2_pk]));
+        let mut groups = HashMap::new();
+        groups.insert(g1_pk, make_group("g1"));
+        groups.insert(g2_pk, make_group("g2"));
+        let mut ledger = ledger_with_users_and_groups(users, groups);
+
+        ledger
+            .expect_update_multicastgroup_roles()
+            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| {
+                cmd.user_pk == user_pk
+                    && cmd.group_pks == vec![g1_pk, g2_pk]
+                    && !cmd.publisher
+                    && !cmd.subscriber
+            })
+            .once()
+            .returning(|_| Ok(()));
+
+        let daemon = daemon_with_client_ip("10.0.0.1");
+        let ctx = cli_context_default_for_tests();
+        let mut out = Vec::new();
+        let cmd = Unsubscribe {
+            groups: vec!["g1".into(), "g2".into()],
+        };
+        block_on(cmd.execute(&ctx, &daemon, &ledger, &mut out)).unwrap();
+
+        let rendered = String::from_utf8(out).unwrap();
+        assert!(rendered.contains("unsubscribed from g1"), "got: {rendered}");
+        assert!(rendered.contains("unsubscribed from g2"), "got: {rendered}");
+    }
+
     // --- Publish tests ---
 
     #[test]
@@ -916,7 +1113,10 @@ mod tests {
         ledger
             .expect_update_multicastgroup_roles()
             .withf(move |cmd: &UpdateMulticastGroupRolesCommand| {
-                cmd.user_pk == user_pk && cmd.group_pk == g_pk && cmd.publisher && cmd.subscriber
+                cmd.user_pk == user_pk
+                    && cmd.group_pks == vec![g_pk]
+                    && cmd.publisher
+                    && cmd.subscriber
             })
             .once()
             .returning(|_| Ok(()));
@@ -935,15 +1135,18 @@ mod tests {
 
     #[test]
     fn publish_continues_after_per_group_failure_and_aggregates_error() {
-        // g1's onchain call fails; g2's must still be attempted, and the
+        // g1 and g2 carry different subscriber flags, so they land in separate
+        // batches: g1's batch fails, g2's must still be attempted, and the
         // command must return an aggregated error naming g1.
         let ip = Ipv4Addr::new(10, 0, 0, 1);
         let g1 = Pubkey::new_unique();
         let g2 = Pubkey::new_unique();
         let user_pk = Pubkey::new_unique();
 
+        // Subscriber of g1 only — publishing g1 carries subscriber=true and g2
+        // carries subscriber=false.
         let mut users = HashMap::new();
-        users.insert(user_pk, user_with_roles(ip, vec![], vec![]));
+        users.insert(user_pk, user_with_roles(ip, vec![], vec![g1]));
         let mut groups = HashMap::new();
         groups.insert(g1, make_group("g1"));
         groups.insert(g2, make_group("g2"));
@@ -951,12 +1154,16 @@ mod tests {
 
         ledger
             .expect_update_multicastgroup_roles()
-            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| cmd.group_pk == g1)
+            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| {
+                cmd.group_pks == vec![g1] && cmd.subscriber
+            })
             .once()
             .returning(|_| Err(eyre::eyre!("simulated chain failure")));
         ledger
             .expect_update_multicastgroup_roles()
-            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| cmd.group_pk == g2)
+            .withf(move |cmd: &UpdateMulticastGroupRolesCommand| {
+                cmd.group_pks == vec![g2] && !cmd.subscriber
+            })
             .once()
             .returning(|_| Ok(()));
 

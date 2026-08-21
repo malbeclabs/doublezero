@@ -1100,6 +1100,7 @@ mod tests {
                 publisher: false,
                 subscriber: true,
                 use_onchain_allocation: false,
+                extra_group_count: 0,
             }),
             "UpdateMulticastGroupRoles",
         );
@@ -1114,6 +1115,7 @@ mod tests {
                 dz_prefix_count: 0,
                 owner: Pubkey::default(),
                 ip_proof: None,
+                extra_group_count: 0,
             }),
             "CreateSubscribeUser",
         );

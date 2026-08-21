@@ -175,7 +175,7 @@ mod tests {
             .expect_update_multicastgroup_roles()
             .with(predicate::eq(UpdateMulticastGroupRolesCommand {
                 user_pk: f.user_pk,
-                group_pk: g2,
+                group_pks: vec![g2],
                 client_ip: f.client_ip,
                 publisher: false,
                 subscriber: false,
@@ -211,6 +211,65 @@ mod tests {
         assert!(String::from_utf8(output)
             .unwrap()
             .contains(&format!("Signature: {signature}")));
+    }
+
+    /// A user holding several dropped groups is stripped with one batched role update, not one
+    /// transaction per group.
+    #[test]
+    fn test_cli_feed_update_force_unsubscribes_a_user_in_one_batch() {
+        let mut client = create_test_client();
+        client.expect_check_requirements().returning(|_| Ok(()));
+
+        let f = GuardFixture::new(3);
+        let (g1, g2, g3) = (f.groups[0], f.groups[1], f.groups[2]);
+        let signature = Signature::new_unique();
+        f.expect_get_feed(&mut client, vec![g1, g2, g3]);
+        f.expect_get_groups(&mut client);
+        f.expect_scan(&mut client, vec![g2, g3]);
+        // The mock does not mutate state, so the post-unsubscribe re-scan needs its own snapshot
+        // with the memberships gone.
+        f.expect_scan(&mut client, vec![]);
+        // The plan sorts by (user, group), so the batch carries the dropped groups in pubkey
+        // order.
+        let mut dropped = vec![g2, g3];
+        dropped.sort();
+        client
+            .expect_update_multicastgroup_roles()
+            .with(predicate::eq(UpdateMulticastGroupRolesCommand {
+                user_pk: f.user_pk,
+                group_pks: dropped,
+                client_ip: f.client_ip,
+                publisher: false,
+                subscriber: false,
+                device_pk: None,
+                feed_pk: None,
+            }))
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+        client
+            .expect_update_feed()
+            .with(predicate::eq(UpdateFeedCommand {
+                pubkey: f.feed_pk,
+                name: None,
+                groups: Some(vec![g1]),
+            }))
+            .times(1)
+            .returning(move |_| Ok(signature));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            UpdateFeedCliCommand {
+                pubkey: Some(f.feed_pk.to_string()),
+                code: None,
+                exchange: None,
+                name: None,
+                groups: vec![g1.to_string()],
+                force_unsubscribe: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok(), "{res:?}");
     }
 
     /// An additive change scans (the guard re-derives the dropped set from its own snapshot) but

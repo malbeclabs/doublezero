@@ -1,6 +1,6 @@
 pub mod utils {
     use doublezero_serviceability::{
-        pda::get_globalstate_pda,
+        pda::{get_globalstate_pda, get_permission_pda},
         state::{accountdata::AccountData, accounttype::AccountType, globalstate::GlobalState},
     };
     use mockall::predicate;
@@ -10,7 +10,7 @@ pub mod utils {
 
     use crate::{
         config::{write_doublezero_config, ClientConfig},
-        create_new_pubkey_user, MockDoubleZeroClient,
+        create_new_pubkey_user, DoubleZeroClient, MockDoubleZeroClient,
     };
 
     pub fn create_test_client() -> MockDoubleZeroClient {
@@ -47,6 +47,14 @@ pub mod utils {
             .with(predicate::eq(globalstate_pubkey))
             .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
         client
+    }
+
+    pub fn expect_missing_permission_account(client: &mut MockDoubleZeroClient) {
+        let (permission_pda, _) = get_permission_pda(&client.get_program_id(), &client.get_payer());
+        client
+            .expect_get_account()
+            .with(predicate::eq(permission_pda))
+            .returning(|_| Err(eyre::eyre!("account not found")));
     }
 
     pub fn create_temp_config() -> eyre::Result<TempDir> {

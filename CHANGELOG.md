@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
   - `doublezero feed update|delete --force-unsubscribe` strips each user's orphaned groups with one batched role update per user (chunked to 16 groups per transaction) instead of one transaction per group. (malbeclabs/infra#2114)
 - Serviceability
   - `UpdateMulticastGroupRoles` (58) and `CreateSubscribeUser` (59) accept additional writable MulticastGroup accounts (counted by a new borsh-incremental `extra_group_count: u8` arg), so subscribing a user to N groups is one atomic transaction instead of N: one signature/fee, and a failure rolls back every group. Each batch member is authorized exactly like a single-group call (per-group allowlist checks; in `CreateSubscribeUser`, EdgeSeat extras are coverage-checked against the single passed feed and the seat still ticks once per user per feed, so a seat tick can no longer outlive a partial subscription). Duplicate group accounts in a batch are rejected. Old encodings without the count byte decode as 0, so existing clients are unaffected. Deploy ordering (RFC-1): the program must deploy to all clusters before any client that emits batches — an old program would misread the extra group accounts as the trailing optional accounts. (malbeclabs/infra#2114)
+- SDK
+  - Append the payer Permission account on `doublezero feed create`, `feed delete`, `feed update`, `user delete`, and `user update` when that account exists and the serviceability program owns it. (malbeclabs/infra#2343)
 
 ## [v0.37.0](https://github.com/malbeclabs/doublezero/compare/client/v0.36.0...client/v0.37.0) - 2026-08-21
 

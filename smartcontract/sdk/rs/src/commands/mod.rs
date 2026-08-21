@@ -1,3 +1,5 @@
+mod common;
+
 pub mod accesspass;
 pub mod allowlist;
 pub mod contributor;

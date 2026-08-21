@@ -95,6 +95,8 @@ jobs:
           NEXT=$(echo "$PREV" | awk -F. '{print $1"."$2+1".0"}')
           echo "Dry-running the release bump $PREV -> $NEXT; the result is discarded."
           if ! ./scripts/release/bump-version.sh "$NEXT"; then
-            echo "::error::Release version bump dry-run failed, so the next release would fail the same way. If the failure lists Cargo.lock lines, cargo update --workspace rebound a workspace dependency onto a different version: pin the offending requirement in [workspace.dependencies] to its locked minor (e.g. 0.13 rather than a bare 0). See scripts/release/bump-version.sh for the guard."
+            echo "Fix: if the failure lists Cargo.lock lines, cargo update --workspace rebound a workspace dependency onto a different version. Pin the offending requirement in [workspace.dependencies] to its locked minor (0.13, not a bare 0). The guard lives in scripts/release/bump-version.sh."
+            echo "If the rebind looks unrelated to your changes, check this job on main: re-resolution runs against the live crates.io index, so a rebind can pre-date your PR or arrive with an upstream publish."
+            echo "::error::The release version bump fails on this tree, so the next release would fail the same way. The cause and the fix are in this job's log."
             exit 1
           fi

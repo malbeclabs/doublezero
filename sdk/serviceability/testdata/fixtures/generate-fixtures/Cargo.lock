@@ -361,8 +361,10 @@ dependencies = [
 name = "doublezero-serviceability-instruction"
 version = "0.37.0"
 dependencies = [
+ "doublezero-ip-proof",
  "doublezero-serviceability",
  "solana-compute-budget-interface",
+ "solana-ed25519-program",
  "solana-program",
  "solana-system-interface 3.2.0",
 ]
@@ -1017,6 +1019,18 @@ name = "solana-define-syscall"
 version = "5.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "21e14a4f604117f379840956a8fc8695e4c84f5b0ebed192f31f60d9b85d581d"
+
+[[package]]
+name = "solana-ed25519-program"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1419197f1c06abf760043f6d64ba9d79a03ad5a43f18c7586471937122094da"
+dependencies = [
+ "bytemuck",
+ "bytemuck_derive",
+ "solana-instruction",
+ "solana-sdk-ids",
+]
 
 [[package]]
 name = "solana-epoch-rewards"

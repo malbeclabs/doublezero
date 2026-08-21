@@ -49,6 +49,7 @@ pub mod feed;
 pub mod globalconfig;
 pub mod globalstate;
 pub mod index;
+pub mod ip_proof;
 pub mod link;
 pub mod location;
 pub mod migrate;

@@ -25,6 +25,9 @@ dirs-next.workspace = true
 doublezero-cli-core = { workspace = true, optional = true }
 doublezero-config.workspace = true
 doublezero-geolocation = { workspace = true, features = ["no-entrypoint"] }
+# RFC-27 proof struct carried by the user-creation commands. Default features only —
+# the SDK never signs a proof, it only forwards one the verification service issued.
+doublezero-ip-proof.workspace = true
 doublezero-program-common.workspace = true
 doublezero-record.workspace = true
 doublezero-serviceability.workspace = true

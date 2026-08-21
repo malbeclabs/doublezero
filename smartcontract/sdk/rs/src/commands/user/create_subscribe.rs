@@ -1,3 +1,4 @@
+use doublezero_ip_proof::IpOwnershipProof;
 use doublezero_serviceability::{
     pda::get_user_pda,
     processors::user::create_subscribe::UserCreateSubscribeArgs,
@@ -14,7 +15,7 @@ use std::net::Ipv4Addr;
 use crate::{
     commands::{
         accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
-        multicastgroup::get::GetMulticastGroupCommand,
+        multicastgroup::get::GetMulticastGroupCommand, user::instructions_with_ip_proof,
     },
     DoubleZeroClient,
 };
@@ -48,6 +49,15 @@ pub struct CreateSubscribeUserCommand {
     /// by the pass) covering the device's exchange and listing the target multicast group.
     /// Appended to the account list only when provided.
     pub feed_pk: Option<Pubkey>,
+    /// RFC-27 proof that the user's owner originated a request from `client_ip`, obtained from the
+    /// DoubleZero IP verification service. Supplying it also pulls the Instructions sysvar into
+    /// the account list and a native `Ed25519SigVerify` instruction into the transaction; leaving
+    /// it `None` produces the pre-RFC-27 shape, which the program accepts until
+    /// `require-ip-ownership-proof` is set for the environment.
+    ///
+    /// On the `owner` override path the proof must name that owner, not the payer: the program
+    /// binds it to the user's effective owner.
+    pub ip_proof: Option<IpOwnershipProof>,
 }
 
 impl CreateSubscribeUserCommand {
@@ -138,10 +148,27 @@ impl CreateSubscribeUserCommand {
                 tunnel_endpoint: self.tunnel_endpoint,
                 dz_prefix_count: dz_prefix_count_u8,
                 owner: self.owner.unwrap_or_default(),
-                ip_proof: None,
+                ip_proof: self.ip_proof,
                 extra_group_count: 0, // derived by the builder from extra_mgroup_pks
             },
         );
+
+        // Pair the creation with the Ed25519 instruction that proves its proof before measuring:
+        // RFC-27 adds that instruction and two account keys to the same transaction, so the group
+        // cap below has to be judged against what actually goes on the wire.
+        let mut instructions = match &self.ip_proof {
+            // `accesspass_payer` is the user's effective owner — the same key the program binds
+            // the proof to.
+            Some(proof) => instructions_with_ip_proof(
+                client,
+                proof,
+                &accesspass_payer,
+                &self.client_ip,
+                self.user_type as u8,
+                ix,
+            )?,
+            None => vec![ix],
+        };
 
         // Unlike a role update, this transaction also carries the device, one account
         // per device dz_prefix, and an optional feed, so no fixed group cap can bound
@@ -150,10 +177,9 @@ impl CreateSubscribeUserCommand {
         // send_transaction builds, reserving room for the Permission PDA the builder
         // appends at the permission rollout.
         let [cu_limit, heap_frame] = compute_budget_prelude();
-        let message = Message::new(
-            &[cu_limit, heap_frame, ix.clone()],
-            Some(&client.get_payer()),
-        );
+        let mut all_instructions = vec![cu_limit, heap_frame];
+        all_instructions.extend(instructions.iter().cloned());
+        let message = Message::new(&all_instructions, Some(&client.get_payer()));
         let tx_size = 1
             + 64 * usize::from(message.header.num_required_signatures)
             + message.serialize().len();
@@ -175,7 +201,13 @@ impl CreateSubscribeUserCommand {
             );
         }
 
-        client.send_transaction(ix).map(|sig| (sig, pda_pubkey))
+        let signature = match instructions.len() {
+            // No proof: the pre-RFC-27 single-instruction send, byte for byte.
+            1 => client.send_transaction(instructions.pop().expect("length checked"))?,
+            _ => client.send_instructions(instructions)?,
+        };
+
+        Ok((signature, pda_pubkey))
     }
 }
 
@@ -183,8 +215,10 @@ impl CreateSubscribeUserCommand {
 mod tests {
     use crate::{
         commands::user::create_subscribe::CreateSubscribeUserCommand,
-        tests::utils::create_test_client, DoubleZeroClient,
+        tests::utils::{create_test_client, create_test_client_with_ip_verifier},
+        DoubleZeroClient,
     };
+    use doublezero_ip_proof::IpOwnershipProof;
     use doublezero_serviceability::{
         pda::get_accesspass_pda,
         processors::user::create_subscribe::UserCreateSubscribeArgs,
@@ -197,9 +231,15 @@ mod tests {
             user::{UserCYOA, UserType},
         },
     };
-    use doublezero_serviceability_instruction::user::create_subscribe_user;
+    use doublezero_serviceability_instruction::{
+        ip_proof::with_ed25519_verification, user::create_subscribe_user,
+    };
     use mockall::predicate;
-    use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{
+        pubkey::Pubkey,
+        signature::{Keypair, Signature},
+        signer::Signer,
+    };
     use std::net::Ipv4Addr;
 
     #[test]
@@ -303,6 +343,7 @@ mod tests {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             owner: None,
             feed_pk: None,
+            ip_proof: None,
         }
         .execute(&client);
 
@@ -311,15 +352,18 @@ mod tests {
 
     /// Mock the lookups a create with `mgroup_pks` needs: every group Activated, the
     /// access pass at the exact-IP PDA, and a device advertising `dz_prefixes`.
+    ///
+    /// `accesspass_owner` is the key the pass belongs to — the payer, or the `--owner`
+    /// override on the foundation-allowlist path.
     fn expect_create_lookups(
         client: &mut crate::MockDoubleZeroClient,
+        accesspass_owner: Pubkey,
         mgroup_pks: &[Pubkey],
         device_pk: Pubkey,
         client_ip: Ipv4Addr,
         dz_prefixes: &str,
     ) {
         let program_id = client.get_program_id();
-        let payer = client.get_payer();
 
         for mgroup_pk in mgroup_pks.iter().copied() {
             let mgroup = MulticastGroup {
@@ -332,17 +376,17 @@ mod tests {
                 .returning(move |_| Ok(AccountData::MulticastGroup(mgroup.clone())));
         }
 
-        let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+        let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &accesspass_owner);
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed: 0,
             accesspass_type: AccessPassType::Prepaid,
             client_ip,
-            user_payer: payer,
+            user_payer: accesspass_owner,
             last_access_epoch: 0,
             connection_count: 0,
             status: AccessPassStatus::Requested,
-            owner: payer,
+            owner: accesspass_owner,
             mgroup_pub_allowlist: vec![],
             mgroup_sub_allowlist: vec![],
             tenant_allowlist: vec![],
@@ -357,7 +401,7 @@ mod tests {
             .with(predicate::eq(accesspass_pubkey))
             .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
         let (dynamic_accesspass_pubkey, _) =
-            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &accesspass_owner);
         client
             .expect_get()
             .with(predicate::eq(dynamic_accesspass_pubkey))
@@ -385,8 +429,10 @@ mod tests {
         let device_pk = Pubkey::new_unique();
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
         let mgroup_pks: Vec<Pubkey> = (0..16).map(|_| Pubkey::new_unique()).collect();
+        let payer = client.get_payer();
         expect_create_lookups(
             &mut client,
+            payer,
             &mgroup_pks,
             device_pk,
             client_ip,
@@ -405,6 +451,7 @@ mod tests {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             owner: None,
             feed_pk: Some(Pubkey::new_unique()),
+            ip_proof: None,
         }
         .execute(&client)
         .unwrap_err();
@@ -422,8 +469,10 @@ mod tests {
         let device_pk = Pubkey::new_unique();
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
         let mgroup_pks: Vec<Pubkey> = (0..8).map(|_| Pubkey::new_unique()).collect();
+        let payer = client.get_payer();
         expect_create_lookups(
             &mut client,
+            payer,
             &mgroup_pks,
             device_pk,
             client_ip,
@@ -445,8 +494,134 @@ mod tests {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             owner: None,
             feed_pk: Some(Pubkey::new_unique()),
+            ip_proof: None,
         }
         .execute(&client);
         assert!(res.is_ok(), "{res:?}");
+    }
+
+    /// The RFC-27 path on the `--owner` override: the access pass, and therefore the proof, belong
+    /// to the owner, not the payer. The program binds the proof to the user's effective owner, so
+    /// a proof naming the payer here would be rejected onchain.
+    #[test]
+    fn test_commands_user_create_subscribe_with_ip_proof_for_the_owner() {
+        let verifier = Keypair::new();
+        let mut client = create_test_client_with_ip_verifier(verifier.pubkey());
+
+        let program_id = client.get_program_id();
+        let device_pk = Pubkey::new_unique();
+        let mgroup_pk = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        expect_create_lookups(
+            &mut client,
+            owner,
+            &[mgroup_pk],
+            device_pk,
+            client_ip,
+            "10.0.0.0/24",
+        );
+
+        let proof = proof_for(&verifier, owner, client_ip);
+        let expected_create = create_subscribe_user(
+            &program_id,
+            &client.get_payer(),
+            &device_pk,
+            &mgroup_pk,
+            &get_accesspass_pda(&program_id, &client_ip, &owner).0,
+            1,
+            &[],
+            None,
+            UserCreateSubscribeArgs {
+                user_type: UserType::IBRLWithAllocatedIP,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip,
+                publisher: true,
+                subscriber: false,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                dz_prefix_count: 1,
+                owner,
+                ip_proof: Some(proof),
+                extra_group_count: 0,
+            },
+        );
+        let expected =
+            with_ed25519_verification(&verifier.pubkey(), &proof, expected_create).to_vec();
+        client
+            .expect_send_instructions()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        let res =
+            command(client_ip, device_pk, mgroup_pk, Some(owner), Some(proof)).execute(&client);
+        assert!(res.is_ok(), "{res:?}");
+    }
+
+    /// On the override path a proof naming the payer instead of the owner is exactly the mistake
+    /// the local check exists to catch.
+    #[test]
+    fn test_commands_user_create_subscribe_with_ip_proof_rejects_payer_bound_proof() {
+        let verifier = Keypair::new();
+        let mut client = create_test_client_with_ip_verifier(verifier.pubkey());
+
+        let payer = client.get_payer();
+        let device_pk = Pubkey::new_unique();
+        let mgroup_pk = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        expect_create_lookups(
+            &mut client,
+            owner,
+            &[mgroup_pk],
+            device_pk,
+            client_ip,
+            "10.0.0.0/24",
+        );
+
+        let err = command(
+            client_ip,
+            device_pk,
+            mgroup_pk,
+            Some(owner),
+            Some(proof_for(&verifier, payer, client_ip)),
+        )
+        .execute(&client)
+        .expect_err("a proof bound to the payer must not be sent for an owner-override user");
+        assert!(err.to_string().contains("was issued for"), "{err}");
+    }
+
+    fn command(
+        client_ip: Ipv4Addr,
+        device_pk: Pubkey,
+        mgroup_pk: Pubkey,
+        owner: Option<Pubkey>,
+        ip_proof: Option<IpOwnershipProof>,
+    ) -> CreateSubscribeUserCommand {
+        CreateSubscribeUserCommand {
+            user_type: UserType::IBRLWithAllocatedIP,
+            device_pk,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip,
+            mgroup_pks: vec![mgroup_pk],
+            publisher: true,
+            subscriber: false,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            owner,
+            feed_pk: None,
+            ip_proof,
+        }
+    }
+
+    /// A proof the command will accept: signed by `verifier`, naming the user's effective owner.
+    fn proof_for(verifier: &Keypair, owner: Pubkey, client_ip: Ipv4Addr) -> IpOwnershipProof {
+        doublezero_ip_proof::sign(
+            verifier,
+            &owner,
+            &client_ip,
+            931,
+            UserType::IBRLWithAllocatedIP as u8,
+        )
     }
 }

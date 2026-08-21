@@ -132,6 +132,7 @@ impl CreateSubscribeUserCliCommand {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             owner: owner_pk,
             feed_pk,
+            ip_proof: None,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -264,6 +265,7 @@ mod tests {
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 owner: None,
                 feed_pk: None,
+                ip_proof: None,
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
@@ -387,6 +389,7 @@ mod tests {
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 owner: None,
                 feed_pk: Some(feed_pubkey),
+                ip_proof: None,
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
@@ -523,6 +526,7 @@ mod tests {
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 owner: None,
                 feed_pk: Some(resolved_feed_pubkey),
+                ip_proof: None,
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));

@@ -1084,6 +1084,7 @@ impl Connect {
                     client_ip,
                     tunnel_endpoint,
                     tenant_pk: None,
+                    ip_proof: None,
                 })?;
                 spinner.set_message("Multicast user created");
                 user_pk
@@ -1364,6 +1365,7 @@ impl Connect {
                     client_ip: *client_ip,
                     tunnel_endpoint,
                     tenant_pk,
+                    ip_proof: None,
                 });
 
                 match res {
@@ -1483,6 +1485,7 @@ impl Connect {
                     tunnel_endpoint,
                     owner: None,
                     feed_pk: None,
+                    ip_proof: None,
                 });
 
                 let user_pk = match res {
@@ -1621,6 +1624,7 @@ impl Connect {
                     tunnel_endpoint,
                     owner: None,
                     feed_pk: None,
+                    ip_proof: None,
                 });
 
                 let user_pk = match res {
@@ -2791,6 +2795,7 @@ mod tests {
                 client_ip: user.client_ip,
                 tunnel_endpoint: user.tunnel_endpoint,
                 tenant_pk,
+                ip_proof: None,
             };
 
             let users = self.users.clone();
@@ -2828,6 +2833,7 @@ mod tests {
                 tunnel_endpoint: user.tunnel_endpoint,
                 owner: None,
                 feed_pk: None,
+                ip_proof: None,
             };
 
             let users = self.users.clone();

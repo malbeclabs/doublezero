@@ -89,14 +89,13 @@ on nyc-tn-bm2"). Each gate is followed by a verification step, so approving the
 wrong thing or approving early fails fast rather than advancing the release.
 
 `open-prs` failing on the `Cargo.lock` guard in `bump-version.sh` should be rare:
-the `release-bump-dry-run` job in `.github/workflows/rust.yml` runs the same script
-against a throwaway next-minor version on every PR and every push to `main`, so a
-dependency rebind normally surfaces on the PR that introduces it. It is not
-airtight — the job is advisory until its context is added to the `main` ruleset, so
-a red X on it can be merged past, and because the bump re-resolves against the live
-crates.io index, two individually green PRs can combine into a rebind. If `open-prs`
-does fail, read the guard output rather than suspecting the release workflow, and
-check that job on the released sha.
+the `release-bump-dry-run` job in `.github/workflows/rust.yml` dry-runs the same
+script on every PR and every push to `main`. It is not airtight — the job is
+advisory until its context is added to the `main` ruleset, so a red X can be merged
+past, and the bump re-resolves against the live crates.io index, so two
+individually green PRs can still combine into a rebind. When it does fail here,
+read the guard output: the fix is to pin the rebound requirement to its locked
+minor.
 
 ## Dry-run mode
 

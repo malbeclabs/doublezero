@@ -74,3 +74,27 @@ jobs:
             echo "::error::doublezero CLI is not statically linked"
             exit 1
           fi
+  # Dry-runs the release version bump on every PR, then throws the result away.
+  # The bump runs `cargo update --workspace`, which re-resolves every member's
+  # dependency edges and can silently rebind them onto a different locked
+  # major/minor. bump-version.sh already fails on that, but it only ran at
+  # release time: the rebind that broke the v0.37.0 release (#4213, #4219) sat
+  # dormant for a week. Running the real script here surfaces it on the PR that
+  # causes it. The job gets its own checkout, so no other job sees the bumped
+  # tree, and it compiles nothing, so no rust-cache (whose key is the very
+  # Cargo.lock this job rewrites).
+  release-bump-dry-run:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - name: Dry-run the release version bump
+        run: |
+          set -euo pipefail
+          PREV=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          NEXT=$(echo "$PREV" | awk -F. '{print $1"."$2+1".0"}')
+          echo "Dry-running the release bump $PREV -> $NEXT; the result is discarded."
+          if ! ./scripts/release/bump-version.sh "$NEXT"; then
+            echo "::error::Release version bump dry-run failed, so the next release would fail the same way. If the failure lists Cargo.lock lines, cargo update --workspace rebound a workspace dependency onto a different version: pin the offending requirement in [workspace.dependencies] to its locked minor (e.g. 0.13 rather than a bare 0). See scripts/release/bump-version.sh for the guard."
+            exit 1
+          fi

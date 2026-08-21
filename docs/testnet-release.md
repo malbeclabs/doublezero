@@ -88,6 +88,12 @@ are merged — this pushes the tags" / "approve only after the programs are depl
 on nyc-tn-bm2"). Each gate is followed by a verification step, so approving the
 wrong thing or approving early fails fast rather than advancing the release.
 
+`open-prs` failing on the `Cargo.lock` guard in `bump-version.sh` should be a
+surprise: the `release-bump-dry-run` job in `.github/workflows/rust.yml` runs the
+same script against a throwaway next-minor version on every PR and every push to
+`main`, so a dependency rebind is caught on the PR that introduces it rather than
+here. If it does fail here, `main` is red on that job too.
+
 ## Dry-run mode
 
 `dry_run=true` exercises the plumbing without releasing anything:

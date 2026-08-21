@@ -23,6 +23,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Monitor
+  - The serviceability watcher's epoch estimates now use a per-chain slot time instead of 400ms everywhere: 350ms for Solana mainnet, 200ms for Solana testnet (which DoubleZero devnet also dials), and 400ms for the DoubleZero ledger. A 432,000-slot Solana epoch was over-estimated by ~6 hours on mainnet and ~24 hours on testnet in the `previous_epoch_start` / `next_epoch_start` log fields. The mainnet value must move to 200ms once Solana finishes its 200ms slot rollout. (malbeclabs/infra#2319)
 - RFCs
   - RFC-27: IP Ownership Verification Service for user connection
 - Serviceability

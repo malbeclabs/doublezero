@@ -132,12 +132,12 @@ func (w *ServiceabilityWatcher) Tick(ctx context.Context) error {
 	w.cacheUsers = data.Users
 
 	// detect current epoch info
-	w.detectEpochChange("doublezero", w.cfg.LedgerRPCClient, &w.currDZEpoch)
-	w.detectEpochChange("solana", w.cfg.SolanaRPCClient, &w.currSolanaEpoch)
+	w.detectEpochChange("doublezero", dzLedgerSlotTime, w.cfg.LedgerRPCClient, &w.currDZEpoch)
+	w.detectEpochChange("solana", solanaSlotTime(w.cfg.Env), w.cfg.SolanaRPCClient, &w.currSolanaEpoch)
 	return nil
 }
 
-func (w *ServiceabilityWatcher) detectEpochChange(chainName string, rpcClient LedgerRPCClient, lastEpoch *uint64) {
+func (w *ServiceabilityWatcher) detectEpochChange(chainName string, slotTime time.Duration, rpcClient LedgerRPCClient, lastEpoch *uint64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	epochInfo, err := rpcClient.GetEpochInfo(ctx, solanarpc.CommitmentFinalized)
@@ -147,7 +147,7 @@ func (w *ServiceabilityWatcher) detectEpochChange(chainName string, rpcClient Le
 	}
 
 	currEpoch := epochInfo.Epoch
-	prevEpochStart, nextEpochStart := CalculateEpochTimes(epochInfo.SlotIndex, epochInfo.SlotsInEpoch)
+	prevEpochStart, nextEpochStart := CalculateEpochTimes(epochInfo.SlotIndex, epochInfo.SlotsInEpoch, slotTime)
 	w.log.Debug("epoch status", "chain", chainName, "current_epoch", currEpoch, "previous_epoch_start", prevEpochStart, "next_epoch_start", nextEpochStart)
 
 	// if epoch is 0, we just restarted

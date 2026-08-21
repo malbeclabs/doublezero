@@ -313,10 +313,6 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 				t.Fatalf("timed out waiting for peer status of pending")
 			}
 			// ensure that 4.4.4.4,3.3.3.3 are added and tagged with bgp (unix.RTPROT_BGP)
-			got, err = nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
-			if err != nil {
-				t.Fatalf("error fetching routes: %v", err)
-			}
 			tun, err := nl.LinkByName("doublezero0")
 			if err != nil {
 				t.Fatalf("error fetching tunnel info: %v", err)
@@ -348,6 +344,14 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 					Family:   nl.FAMILY_V4,
 					Type:     syscall.RTN_UNICAST,
 				},
+			}
+			// The session status flips to up before the peer's UPDATE has been parsed
+			// and its prefixes written to the kernel, and the prefixes are installed
+			// one at a time, so poll until the route set converges instead of
+			// sampling it once.
+			got, err = waitForBgpRoutes(want, 10*time.Second)
+			if err != nil {
+				t.Fatalf("error fetching routes: %v", err)
 			}
 			if diff := cmp.Diff(want, got); diff != "" {
 				t.Fatalf("Route mismatch (-want +got): %s\n", diff)
@@ -1666,6 +1670,25 @@ func waitForPeerStatus(httpClient http.Client, userType api.UserType, status bgp
 		time.Sleep(200 * time.Millisecond)
 	}
 	return false, nil
+}
+
+// waitForBgpRoutes polls the kernel for routes tagged with the BGP protocol until they
+// match want, or until the timeout expires. Route installation is asynchronous with
+// respect to the reported BGP session status and happens one prefix at a time, so a
+// single sample can observe an empty or partial route set. The last observed set is
+// returned so the caller can diff it and report the mismatch.
+func waitForBgpRoutes(want []nl.Route, timeout time.Duration) ([]nl.Route, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)
+		if err != nil {
+			return nil, err
+		}
+		if cmp.Diff(want, got) == "" || !time.Now().Before(deadline) {
+			return got, nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 func sendClientRequest(httpClient http.Client, endpoint, body string) error {

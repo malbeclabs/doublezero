@@ -429,6 +429,7 @@ async fn main() -> eyre::Result<()> {
             | Command::Serviceability(
                 ServiceabilityCommand::Address(_)
                     | ServiceabilityCommand::Balance(_)
+                    | ServiceabilityCommand::Transfer(_)
                     | ServiceabilityCommand::Export(_)
                     | ServiceabilityCommand::Version(_),
             )

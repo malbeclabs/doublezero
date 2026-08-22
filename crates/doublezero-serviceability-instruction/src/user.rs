@@ -32,8 +32,17 @@ use solana_program::{
 /// multicast_publisher_block   (writable)  — ResourceType::MulticastPublisherBlock
 /// device_tunnel_ids           (writable)  — ResourceType::TunnelIds(device, 0)
 /// dz_prefix_block[i]          (writable)  — one per dz_prefix_count
+/// extra_mgroup[i]             (writable)  — one per extra_groups entry
 /// feed                        (readonly)  — OPTIONAL, appended only when Some
 /// ```
+///
+/// A further optional account, the **Instructions sysvar**, is appended *after*
+/// everything — after `[payer, system]` and after any Permission account — whenever the
+/// args carry an RFC-27 `ip_proof`. The processor peels it off the tail by its fixed
+/// key (`split_trailing_instructions_sysvar`) before any other parsing runs, so it
+/// cannot be confused with the Permission slot below. The builder appends it itself:
+/// the proof cannot be validated without it, so a caller supplying one must not be
+/// able to build a transaction that is certain to fail.
 ///
 /// `CreateSubscribeUser` is in the **`split_trailing_permission`** family (it
 /// routes through `authorize()` for the USER_ADMIN owner-override), NOT the
@@ -42,7 +51,8 @@ use solana_program::{
 /// `[payer, system]` and the processor peels it by PDA match — so the two never
 /// collide. This builder is therefore assigned to `common::build_with_permission`
 /// (permission deferred for now). `dz_prefix_count` is written back into the args
-/// so it always matches the number of `dz_prefix_block` accounts produced.
+/// so it always matches the number of `dz_prefix_block` accounts produced, and
+/// `extra_group_count` is likewise DERIVED from `extra_groups.len()`.
 #[allow(clippy::too_many_arguments)]
 pub fn create_subscribe_user(
     program_id: &Pubkey,
@@ -51,6 +61,7 @@ pub fn create_subscribe_user(
     mgroup: &Pubkey,
     accesspass: &Pubkey,
     dz_prefix_count: u8,
+    extra_groups: &[Pubkey],
     feed: Option<&Pubkey>,
     mut args: UserCreateSubscribeArgs,
 ) -> Instruction {
@@ -69,6 +80,8 @@ pub fn create_subscribe_user(
         args.dz_prefix_count
     );
     args.dz_prefix_count = dz_prefix_count;
+    args.extra_group_count = u8::try_from(extra_groups.len())
+        .expect("extra_groups cannot exceed the transaction account limit");
 
     let (user, _) = get_user_pda(program_id, &args.client_ip, args.user_type);
     let (globalstate, _) = get_globalstate_pda(program_id);
@@ -96,6 +109,10 @@ pub fn create_subscribe_user(
         accounts.push(AccountMeta::new(dz_prefix, false));
     }
 
+    // Extra multicast groups (batch subscription), after the dz_prefix blocks and
+    // before the optional feed — matching the processor's trailing-region layout.
+    accounts.extend(extra_groups.iter().map(|g| AccountMeta::new(*g, false)));
+
     // Optional trailing Feed account (EdgeSeat metro gate), appended BEFORE
     // payer/system. A Permission PDA, once activated, is appended AFTER payer/system
     // (not after the feed) and the processor peels it by PDA match, so the feed and
@@ -104,12 +121,21 @@ pub fn create_subscribe_user(
         accounts.push(AccountMeta::new_readonly(*feed, false));
     }
 
-    common::build_with_permission(
+    // The proof cannot be verified without the sysvar, so a caller that supplies one gets it
+    // appended here rather than a transaction that is certain to fail with
+    // `IpProofInstructionsSysvarMissing`.
+    let needs_instructions_sysvar = args.ip_proof.is_some();
+    let instruction = common::build_with_permission(
         program_id,
         DoubleZeroInstruction::CreateSubscribeUser(args),
         accounts,
         payer,
-    )
+    );
+    if needs_instructions_sysvar {
+        common::append_instructions_sysvar(instruction)
+    } else {
+        instruction
+    }
 }
 
 /// `CreateUser` (variant 36).
@@ -128,6 +154,13 @@ pub fn create_subscribe_user(
 /// dz_prefix_block[i]          (writable)  — one per dz_prefix_count
 /// tenant                      (writable)  — OPTIONAL, only when Some and non-default
 /// ```
+///
+/// A further optional account, the **Instructions sysvar**, is appended *after*
+/// `[payer, system]` whenever the args carry an RFC-27 `ip_proof`. It is the one account
+/// that may follow them, and it is safe there precisely because the processor peels it
+/// off the tail by its fixed key (`split_trailing_instructions_sysvar`) *before* the
+/// length arithmetic below runs — so the tenant detection still counts the same
+/// accounts it always did. The builder appends it itself; see `create_subscribe_user`.
 ///
 /// `CreateUser` is the genuine **length-detected** instruction: its processor
 /// identifies the optional trailing `tenant` account via `accounts.len()` and
@@ -180,12 +213,19 @@ pub fn create_user(
         }
     }
 
-    common::build(
+    // See `create_subscribe_user`: a supplied proof brings its own sysvar account.
+    let needs_instructions_sysvar = args.ip_proof.is_some();
+    let instruction = common::build(
         program_id,
         DoubleZeroInstruction::CreateUser(args),
         accounts,
         payer,
-    )
+    );
+    if needs_instructions_sysvar {
+        common::append_instructions_sysvar(instruction)
+    } else {
+        instruction
+    }
 }
 
 /// `UpdateUser` (variant 39).
@@ -481,9 +521,22 @@ pub fn set_user_bgp_status(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use doublezero_ip_proof::IpOwnershipProof;
     use doublezero_serviceability::state::user::{BGPStatus, UserCYOA, UserType};
     use solana_system_interface::program as system_program;
     use std::net::Ipv4Addr;
+
+    /// Contents are irrelevant here — only whether the field is `Some` drives the account list.
+    fn dummy_proof(client_ip: Ipv4Addr) -> IpOwnershipProof {
+        IpOwnershipProof {
+            version: 1,
+            payer: Pubkey::new_unique(),
+            client_ip,
+            epoch: 7,
+            user_type: UserType::IBRLWithAllocatedIP as u8,
+            signature: [0u8; 64],
+        }
+    }
 
     fn base_args(client_ip: Ipv4Addr) -> UserCreateSubscribeArgs {
         UserCreateSubscribeArgs {
@@ -495,6 +548,8 @@ mod tests {
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
             owner: Pubkey::default(),
+            ip_proof: None,
+            extra_group_count: 0,
         }
     }
 
@@ -515,6 +570,7 @@ mod tests {
             &mgroup,
             &accesspass,
             1,
+            &[],
             None,
             args.clone(),
         );
@@ -576,6 +632,7 @@ mod tests {
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
             1,
+            &[],
             Some(&feed),
             base_args(client_ip),
         );
@@ -592,6 +649,126 @@ mod tests {
         assert_eq!(ix.accounts.last().unwrap().pubkey, system_program::ID);
     }
 
+    #[test]
+    fn test_create_subscribe_user_appends_the_instructions_sysvar_for_a_proof() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        let device = Pubkey::new_unique();
+        let mgroup = Pubkey::new_unique();
+        let accesspass = Pubkey::new_unique();
+
+        let build = |ip_proof| {
+            create_subscribe_user(
+                &pid,
+                &payer,
+                &device,
+                &mgroup,
+                &accesspass,
+                1,
+                &[],
+                None,
+                UserCreateSubscribeArgs {
+                    ip_proof,
+                    ..base_args(client_ip)
+                },
+            )
+        };
+
+        // Without a proof the account list is untouched: 8 fixed + 1 dz_prefix + payer + system.
+        let without = build(None);
+        assert_eq!(without.accounts.len(), 11);
+        assert_eq!(without.accounts.last().unwrap().pubkey, system_program::ID);
+
+        // With one, the sysvar is appended last and read-only. The processor cannot verify the
+        // proof without it, so building a transaction that is certain to fail with
+        // `IpProofInstructionsSysvarMissing` must not be reachable through the builder.
+        let with = build(Some(dummy_proof(client_ip)));
+        assert_eq!(with.accounts.len(), 12);
+        let sysvar = with.accounts.last().unwrap();
+        assert_eq!(sysvar.pubkey, solana_program::sysvar::instructions::ID);
+        assert!(!sysvar.is_writable);
+        assert!(!sysvar.is_signer);
+        // Everything ahead of it is exactly the no-proof layout.
+        assert_eq!(with.accounts[..11], without.accounts[..]);
+    }
+
+    #[test]
+    fn test_create_user_appends_the_instructions_sysvar_after_payer_and_system() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let tenant = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        // With the optional tenant present too, so the ordering that the processor's length
+        // arithmetic depends on is pinned: [.., tenant, payer, system, sysvar].
+        let ix = create_user(
+            &pid,
+            &payer,
+            &device,
+            &Pubkey::new_unique(),
+            1,
+            Some(tenant),
+            UserCreateArgs {
+                ip_proof: Some(dummy_proof(client_ip)),
+                ..create_args(client_ip)
+            },
+        );
+
+        // 7 fixed + 1 dz_prefix + tenant + payer + system + sysvar = 12.
+        assert_eq!(ix.accounts.len(), 12);
+        assert_eq!(ix.accounts[8].pubkey, tenant);
+        assert_eq!(ix.accounts[9].pubkey, payer);
+        assert_eq!(ix.accounts[10].pubkey, system_program::ID);
+        assert_eq!(
+            ix.accounts[11].pubkey,
+            solana_program::sysvar::instructions::ID
+        );
+        assert!(!ix.accounts[11].is_writable);
+    }
+
+    /// Extra groups sit between the dz_prefix blocks and the optional feed, writable,
+    /// and `extra_group_count` is derived from the slice length.
+    #[test]
+    fn test_create_subscribe_user_extra_groups_between_dz_prefix_and_feed() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let feed = Pubkey::new_unique();
+        let extra1 = Pubkey::new_unique();
+        let extra2 = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        let ix = create_subscribe_user(
+            &pid,
+            &payer,
+            &device,
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            1,
+            &[extra1, extra2],
+            Some(&feed),
+            base_args(client_ip),
+        );
+
+        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
+            DoubleZeroInstruction::CreateSubscribeUser(a) => assert_eq!(a.extra_group_count, 2),
+            other => panic!("unexpected variant: {other:?}"),
+        }
+
+        // 8 fixed + 1 dz_prefix + 2 extras + feed + payer + system = 14.
+        assert_eq!(ix.accounts.len(), 14);
+        let (dz_prefix0, _, _) =
+            get_resource_extension_pda(&pid, ResourceType::DzPrefixBlock(device, 0));
+        assert_eq!(ix.accounts[8].pubkey, dz_prefix0);
+        assert_eq!(ix.accounts[9], AccountMeta::new(extra1, false));
+        assert_eq!(ix.accounts[10], AccountMeta::new(extra2, false));
+        assert_eq!(ix.accounts[11].pubkey, feed);
+        assert!(!ix.accounts[11].is_writable);
+    }
+
     fn create_args(client_ip: Ipv4Addr) -> UserCreateArgs {
         UserCreateArgs {
             user_type: UserType::IBRLWithAllocatedIP,
@@ -599,6 +776,7 @@ mod tests {
             client_ip,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 0,
+            ip_proof: None,
         }
     }
 

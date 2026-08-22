@@ -1,6 +1,7 @@
 use crate::{
     authorize::split_trailing_permission,
     error::DoubleZeroError,
+    ip_proof::split_trailing_instructions_sysvar,
     seeds::{SEED_PREFIX, SEED_USER},
     serializer::{try_acc_create, try_acc_write},
     state::user::*,
@@ -8,6 +9,7 @@ use crate::{
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
+use doublezero_ip_proof::IpOwnershipProof;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -23,8 +25,9 @@ use super::{
 };
 use crate::{
     processors::{
-        feed::enforce_feed_metro_gate,
+        feed::{check_feed_metro_coverage, enforce_feed_metro_gate},
         multicastgroup::subscribe::{check_mgroup_allowlists, update_user_multicastgroup_roles},
+        validation::validate_program_account,
     },
     state::accesspass::AccessPassType,
 };
@@ -47,19 +50,33 @@ pub struct UserCreateSubscribeArgs {
     /// The access pass is looked up using this owner instead of the payer.
     #[incremental(default = Pubkey::default())]
     pub owner: Pubkey,
+    /// RFC-27 proof that the caller can originate traffic from `client_ip`. Optional on the wire:
+    /// a client built before RFC-27 sends a payload that simply ends here, and
+    /// `BorshDeserializeIncremental` reads that clean EOF as `None`. Whether `None` is acceptable
+    /// is `FeatureFlag::RequireIpOwnershipProof`'s call, not the decoder's.
+    #[incremental(default = None)]
+    pub ip_proof: Option<IpOwnershipProof>,
+    /// Number of additional writable MulticastGroup accounts following the dz_prefix
+    /// blocks (before the optional EdgeSeat feed account). The user is subscribed to the
+    /// primary group plus every extra group atomically, before resource allocation and
+    /// activation. Old encodings without this byte decode as 0 (single-group behavior).
+    #[incremental(default = 0)]
+    pub extra_group_count: u8,
 }
 
 impl fmt::Debug for UserCreateSubscribeArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}, owner: {}",
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}, owner: {}, ip_proof: {}, extra_group_count: {}",
             self.user_type,
             self.cyoa_type,
             self.client_ip,
             self.tunnel_endpoint,
             self.dz_prefix_count,
             self.owner,
+            self.ip_proof.is_some(),
+            self.extra_group_count,
         )
     }
 }
@@ -74,6 +91,10 @@ pub fn process_create_subscribe_user(
         return Err(DoubleZeroError::InvalidArgument.into());
     }
 
+    // Peel the optional trailing Instructions sysvar first, so split_trailing_permission below
+    // still sees [.., payer, system, permission?] as the last thing in the list.
+    let (accounts, instructions_sysvar_account) = split_trailing_instructions_sysvar(accounts);
+
     let accounts_iter = &mut accounts.iter();
 
     let user_account = next_account_info(accounts_iter)?;
@@ -86,7 +107,8 @@ pub fn process_create_subscribe_user(
     // Account layout:
     //   [user, device, mgroup, accesspass, globalstate,
     //    user_tunnel_block, multicast_publisher_block, device_tunnel_ids, dz_prefix_0..N,
-    //    payer, system]
+    //    payer, system, optional_instructions_sysvar]
+    // The sysvar has already been split off above, so `accounts` here ends at the permission slot.
     let (
         user_tunnel_block_ext,
         multicast_publisher_block_ext,
@@ -98,17 +120,47 @@ pub fn process_create_subscribe_user(
     )?
     .expect("dz_prefix_count > 0 guarantees Some");
 
-    // Trailing layout after the resource-extension accounts: [feed?, payer, system, permission?].
-    // The optional Feed account (EdgeSeat metro gate — the feed covering the device's exchange and
-    // listing the target multicast group) precedes payer/system; the optional payer Permission PDA
-    // (appended by the SDK when it exists on-chain, authorizing a USER_ADMIN owner-override inside
-    // create_user_core) is last. split_trailing_permission identifies the Permission by PDA match
-    // rather than by position, so Feed and Permission coexist unambiguously — a single positional
-    // slot cannot, since either may be present or absent independently.
+    // Trailing layout after the resource-extension accounts:
+    // [mgroup₁..mgroupₙ, feed?, payer, system, permission?]. The extra multicast groups
+    // (batch subscription, counted by args.extra_group_count) come first; the optional Feed
+    // account (EdgeSeat metro gate — the feed covering the device's exchange and listing the
+    // target multicast groups) follows; the optional payer Permission PDA (appended by the SDK
+    // when it exists on-chain, authorizing a USER_ADMIN owner-override inside create_user_core)
+    // is last. split_trailing_permission identifies the Permission by PDA match rather than by
+    // position, so the variable-length regions never confuse it.
     let remaining: Vec<&AccountInfo> = accounts_iter.collect();
     let (payer_account, system_program, leading, permission_account) =
         split_trailing_permission(program_id, &remaining)?;
-    let feed_account = leading.first().copied();
+    let extra_group_count = value.extra_group_count as usize;
+    if extra_group_count > leading.len() {
+        msg!(
+            "extra_group_count {} exceeds {} supplied accounts",
+            extra_group_count,
+            leading.len()
+        );
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+    let (extra_group_accounts, rest) = leading.split_at(extra_group_count);
+    let feed_account = rest.first().copied();
+
+    validate_program_account!(
+        mgroup_account,
+        program_id,
+        writable = true,
+        "MulticastGroup"
+    );
+    // Reject duplicate group accounts. A duplicate aliases the same account data
+    // twice in the batch loop, making the final counter state depend on write
+    // ordering — an explicit error is a clearer contract than an accidental no-op.
+    for (i, group_key) in std::iter::once(mgroup_account.key)
+        .chain(extra_group_accounts.iter().map(|a| a.key))
+        .enumerate()
+    {
+        if extra_group_accounts[i..].iter().any(|a| a.key == group_key) {
+            msg!("duplicate multicast group {} in batch", group_key);
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+    }
 
     msg!("process_create_subscribe_user({:?})", value);
 
@@ -120,6 +172,7 @@ pub fn process_create_subscribe_user(
         tenant_account: None, // No tenant support for multicast group users
         payer_account,
         permission_account,
+        instructions_sysvar_account,
     };
 
     let owner_override = if value.owner != Pubkey::default() {
@@ -138,6 +191,7 @@ pub fn process_create_subscribe_user(
         value.tunnel_endpoint,
         value.publisher,
         owner_override,
+        value.ip_proof.as_ref(),
     )?
     else {
         // A duplicate is an error here, not a no-op: falling through would tick a second feed
@@ -170,13 +224,57 @@ pub fn process_create_subscribe_user(
         value.subscriber && !feed_gated,
     )?;
 
-    // Subscribe user to multicast group
+    // Subscribe user to the primary multicast group; the feed metro gate above already
+    // covered it (and ticked the seat) for EdgeSeat passes.
     let subscribe_result = update_user_multicastgroup_roles(
         mgroup_account,
         &mut result.user,
         value.publisher,
         value.subscriber,
     )?;
+
+    // Subscribe the extra groups, each authorized exactly like the primary: the
+    // publisher allowlist always applies, and the subscriber role comes from the
+    // allowlist unless the feed metro gate covers it — extra groups on EdgeSeat
+    // passes get a coverage-only check against the same feed (a feed carries a
+    // group set; the seat is per-user-per-feed and was ticked once by the gate
+    // above). Any failure aborts the whole instruction: no user account,
+    // counters, or seat tick survive a partial batch.
+    for extra_group_account in extra_group_accounts {
+        validate_program_account!(
+            *extra_group_account,
+            program_id,
+            writable = true,
+            "MulticastGroup"
+        );
+        if feed_gated {
+            check_feed_metro_coverage(
+                program_id,
+                &result.accesspass,
+                &result.device.exchange_pk,
+                Some(extra_group_account.key),
+                feed_account,
+            )?;
+        }
+        check_mgroup_allowlists(
+            &result.accesspass,
+            extra_group_account.key,
+            value.publisher,
+            value.subscriber && !feed_gated,
+        )?;
+        let extra_result = update_user_multicastgroup_roles(
+            extra_group_account,
+            &mut result.user,
+            value.publisher,
+            value.subscriber,
+        )?;
+        try_acc_write(
+            &extra_result.mgroup,
+            extra_group_account,
+            payer_account,
+            accounts,
+        )?;
+    }
 
     // Always allocate resources and activate atomically.
     resource_onchain_helpers::validate_and_allocate_user_resources(

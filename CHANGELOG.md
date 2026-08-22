@@ -6,15 +6,34 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- SDK
+  - `UpdateMulticastGroupRolesCommand.group_pk: Pubkey` becomes `group_pks: Vec<Pubkey>` and `CreateSubscribeUserCommand.mgroup_pk: Pubkey` becomes `mgroup_pks: Vec<Pubkey>` (non-empty; the first entry is the instruction's primary group). The RFC-26 builders `update_multicast_group_roles` and `create_subscribe_user` gain an `extra_groups: &[Pubkey]` parameter and derive the new `extra_group_count` arg from it. Single-group callers pass a one-element vec / empty slice. `CreateSubscribeUserCommand` measures the built transaction's wire size and rejects a group set that cannot fit under the 1232-byte limit, naming how many groups do fit: the create also carries the device's dz_prefix accounts and an optional feed, so the 16-group role-update chunk does not bound it. (malbeclabs/infra#2114)
+
 ### Changes
 
 - CLI
   - `doublezero balance` takes an optional address, so `doublezero balance <pubkey>` reports that account's balance while the bare form keeps reporting the configured keypair's. Querying another account needs no local keypair. An address that was never funded prints `0 Credits` instead of failing the account lookup.
   - New `doublezero transfer <RECIPIENT> <AMOUNT>` sends credits from the configured keypair to another account on the DoubleZero Ledger, mirroring `solana transfer`: `AMOUNT` is a credit amount, or `ALL` to send the whole balance minus the transaction fee. A recipient that does not exist yet is created by the transfer, with the amount raised to the rent-exempt minimum when it falls below it, so no opt-in flag is needed for an unfunded recipient. A transfer that would leave the sender holding a nonzero balance below that same minimum is refused up front, with the largest payable amount named, since the runtime would reject it.
+  - `doublezero connect Multicast` with N groups is one transaction in the common case (all groups sharing one publisher/subscriber flag pair fold into the create, skipping the activation wait); `doublezero multicast subscribe|unsubscribe|publish|unpublish`, `doublezero user subscribe`, and the role-strip cleanup in `user delete`/`request-ban` batch their role changes by flag pair, chunked to 16 groups per transaction. Failure reporting in the multicast verbs is per batch: a failed batch lists every group it carried, since none was applied. (malbeclabs/infra#2114)
+  - `doublezero feed update|delete --force-unsubscribe` strips each user's orphaned groups with one batched role update per user (chunked to 16 groups per transaction) instead of one transaction per group. (malbeclabs/infra#2114)
+- Serviceability
+  - `UpdateMulticastGroupRoles` (58) and `CreateSubscribeUser` (59) accept additional writable MulticastGroup accounts (counted by a new borsh-incremental `extra_group_count: u8` arg), so subscribing a user to N groups is one atomic transaction instead of N: one signature/fee, and a failure rolls back every group. Each batch member is authorized exactly like a single-group call (per-group allowlist checks; in `CreateSubscribeUser`, EdgeSeat extras are coverage-checked against the single passed feed and the seat still ticks once per user per feed, so a seat tick can no longer outlive a partial subscription). Duplicate group accounts in a batch are rejected. Old encodings without the count byte decode as 0, so existing clients are unaffected. Deploy ordering (RFC-1): the program must deploy to all clusters before any client that emits batches — an old program would misread the extra group accounts as the trailing optional accounts. (malbeclabs/infra#2114)
+
+## [v0.37.0](https://github.com/malbeclabs/doublezero/compare/client/v0.36.0...client/v0.37.0) - 2026-08-21
+
+### Breaking
+
+### Changes
+
+- Monitor
+  - The serviceability watcher's epoch estimates now use a per-chain slot time instead of 400ms everywhere: 350ms for Solana mainnet, 200ms for Solana testnet (which DoubleZero devnet also dials), and 400ms for the DoubleZero ledger. A 432,000-slot Solana epoch was over-estimated by ~6 hours on mainnet and ~24 hours on testnet in the `previous_epoch_start` / `next_epoch_start` log fields. The mainnet value must move to 200ms once Solana finishes its 200ms slot rollout. (malbeclabs/infra#2319)
 - RFCs
   - RFC-27: IP Ownership Verification Service for user connection
 - Serviceability
   - `GlobalState` carries `ip_verifier_authority_pk`, the RFC-27 trust root for IP ownership proof validation, which `SetAuthority` and `doublezero global-config authority set --ip-verifier-authority <pubkey|me>` rotate without a program upgrade. (#4196)
+  - `CreateUser` and `CreateSubscribeUser` validate an optional RFC-27 `IpOwnershipProof`, verified through the native Ed25519 precompile and signed by `globalstate.ip_verifier_authority_pk`, so a caller can no longer bind a `client_ip` it cannot originate traffic from. Enforcement is gated on the new `require-ip-ownership-proof` feature flag: while it is clear a missing proof is accepted, and a supplied proof is validated in full either way. The sentinel authority may omit the proof, because the shred-oracle provisions users owned by validators and has no proof it could obtain; a proof it does supply is still validated (#4215). (#4197)
+- IP verifier
+  - New `doublezero-ip-verifier` service signs the source address it observes as an RFC-27 `IpOwnershipProof`, over `POST /v1/proof`. Forwarded headers count only for connections from a `--trusted-proxy` CIDR, and only the `--forwarded-header` the proxy actually writes is read; the chain is walked from the right so a client-prepended hop is ignored. With no trusted proxies configured the connection peer address is the only address it will sign. Non-routable and IPv6 sources are refused, as is a request the cached ledger epoch is too old to answer. The verifier key is checked against `GlobalState.ip_verifier_authority_pk` at startup and periodically after, so a rotation this service was not redeployed for takes it out of rotation instead of silently failing every user creation onchain. Built on axum, the first HTTP server framework in the Rust workspace. (#4198)
 - Utility crates
   - New `doublezero-ip-proof` crate defines the RFC-27 `IpOwnershipProof` and the exact bytes the verifier signs, in one place the serviceability program, the CLI, and the verification service all share. Nothing consumes it yet. (#4195, #4206)
 

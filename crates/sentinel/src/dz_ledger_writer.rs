@@ -139,6 +139,8 @@ pub fn build_create_multicast_publisher_instructions(
             tunnel_endpoint,
             dz_prefix_count,
             owner: *owner,
+            ip_proof: None,
+            extra_group_count: 0,
         }),
         create_user_accounts,
     )?;

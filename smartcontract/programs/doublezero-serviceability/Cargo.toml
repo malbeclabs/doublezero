@@ -19,6 +19,7 @@ crate-type = ["cdylib", "lib"]
 borsh.workspace = true
 borsh-incremental.workspace = true
 bytemuck.workspace = true
+doublezero-ip-proof.workspace = true
 doublezero-program-common.workspace = true
 ipnetwork.workspace = true
 serde = { workspace = true, optional = true }
@@ -33,6 +34,17 @@ bitflags.workspace = true
 # against the real program to catch account-order drift. Dev-dep only — the cycle
 # (serviceability --[dev]--> instruction-builder --> serviceability) is allowed by cargo.
 doublezero-serviceability-instruction.workspace = true
+# `signer` builds the Ed25519 instruction's signature in tests. Dev-only — `cargo build-sbf`
+# builds no dev targets, so no userspace Ed25519 implementation reaches the cdylib.
+doublezero-ip-proof = { workspace = true, features = ["signer"] }
+# Builds Instructions-sysvar buffers with the runtime's own serializer, so the scan is tested
+# against the real encoding rather than a hand-rolled imitation of it. The program reads that
+# buffer directly (see `ip_proof::instruction_at`) and needs nothing from this crate at runtime.
+solana-instruction.workspace = true
+solana-instructions-sysvar.workspace = true
+solana-ed25519-program.workspace = true
+solana-keypair.workspace = true
+solana-compute-budget-interface.workspace = true
 solana-sdk.workspace = true
 solana-sdk-ids.workspace = true
 solana-system-interface.workspace = true

@@ -121,7 +121,8 @@ all fixtures generated in {}", fixtures_dir.display());
 
 /// Borsh-encoded `UserCreateArgs` (the body of instruction variant 36, without the
 /// 1-byte discriminant). Field order: user_type, cyoa_type, client_ip, tunnel_endpoint,
-/// dz_prefix_count. Non-default IP octets make endianness mistakes detectable.
+/// dz_prefix_count, ip_proof. Non-default IP octets make endianness mistakes detectable.
+/// The trailing byte is the RFC-27 `Option<IpOwnershipProof>` discriminant, `0` for absent.
 fn generate_user_create_args(dir: &Path) {
     let val = UserCreateArgs {
         user_type: UserType::IBRL,
@@ -129,6 +130,7 @@ fn generate_user_create_args(dir: &Path) {
         client_ip: Ipv4Addr::new(10, 11, 12, 13),
         tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
         dz_prefix_count: 2,
+    ip_proof: None,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -143,6 +145,7 @@ fn generate_user_create_args(dir: &Path) {
             FieldValue { name: "ClientIp".into(), value: "10.11.12.13".into(), typ: "ipv4".into() },
             FieldValue { name: "TunnelEndpoint".into(), value: "192.168.1.2".into(), typ: "ipv4".into() },
             FieldValue { name: "DzPrefixCount".into(), value: "2".into(), typ: "u8".into() },
+            FieldValue { name: "IpProof".into(), value: "none".into(), typ: "option".into() },
         ],
     };
 
@@ -299,6 +302,7 @@ fn generate_ix_fixtures(dir: &Path) {
         &b,
         &c,
         1,
+        &[],
         Some(&d),
         UserCreateSubscribeArgs {
             user_type: UserType::IBRLWithAllocatedIP,
@@ -309,6 +313,8 @@ fn generate_ix_fixtures(dir: &Path) {
             tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
             dz_prefix_count: 0,
             owner: Pubkey::default(),
+        ip_proof: None,
+            extra_group_count: 0,
         },
     );
     write_ix_fixture(dir, "create_subscribe_user", &create_subscribe_user);
@@ -327,6 +333,7 @@ fn generate_ix_fixtures(dir: &Path) {
             client_ip: Ipv4Addr::new(10, 11, 12, 13),
             tunnel_endpoint: Ipv4Addr::new(192, 168, 1, 2),
             dz_prefix_count: 0,
+        ip_proof: None,
         },
     );
     write_ix_fixture(dir, "create_user", &create_user);

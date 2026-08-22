@@ -1,5 +1,6 @@
 use crate::{
     error::DoubleZeroError,
+    ip_proof::split_trailing_instructions_sysvar,
     seeds::{SEED_PREFIX, SEED_USER},
     serializer::{try_acc_create, try_acc_write},
     state::user::*,
@@ -7,6 +8,7 @@ use crate::{
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
+use doublezero_ip_proof::IpOwnershipProof;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -32,18 +34,26 @@ pub struct UserCreateArgs {
     /// user creation always allocates resources and activates atomically.
     #[incremental(default = 0)]
     pub dz_prefix_count: u8,
+    /// RFC-27 proof that the caller can originate traffic from `client_ip`. Optional on the wire:
+    /// a client built before RFC-27 sends a payload that simply ends here, and
+    /// `BorshDeserializeIncremental` reads that clean EOF as `None`. Whether `None` is acceptable
+    /// is `FeatureFlag::RequireIpOwnershipProof`'s call, not the decoder's.
+    #[incremental(default = None)]
+    pub ip_proof: Option<IpOwnershipProof>,
 }
 
 impl fmt::Debug for UserCreateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The proof renders as a bool: it is 140 bytes, and msg! formatting is charged per byte.
         write!(
             f,
-            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}",
+            "user_type: {}, cyoa_type: {}, client_ip: {}, tunnel_endpoint: {}, dz_prefix_count: {}, ip_proof: {}",
             self.user_type,
             self.cyoa_type,
             self.client_ip,
             self.tunnel_endpoint,
             self.dz_prefix_count,
+            self.ip_proof.is_some(),
         )
     }
 }
@@ -58,6 +68,10 @@ pub fn process_create_user(
         return Err(DoubleZeroError::InvalidArgument.into());
     }
 
+    // Peel the optional trailing Instructions sysvar first, so the length arithmetic that detects
+    // the optional tenant below counts only the accounts it has always counted.
+    let (accounts, instructions_sysvar_account) = split_trailing_instructions_sysvar(accounts);
+
     let accounts_iter = &mut accounts.iter();
 
     let user_account = next_account_info(accounts_iter)?;
@@ -69,7 +83,8 @@ pub fn process_create_user(
     // Account layout:
     //   [user, device, accesspass, globalstate,
     //    user_tunnel_block, multicast_publisher_block, device_tunnel_ids, dz_prefix_0..N,
-    //    optional_tenant, payer, system]
+    //    optional_tenant, payer, system, optional_instructions_sysvar]
+    // The sysvar has already been split off above, so `accounts` here ends at `system`.
     let (
         user_tunnel_block_ext,
         multicast_publisher_block_ext,
@@ -104,6 +119,7 @@ pub fn process_create_user(
         // CreateUser never overrides the owner (owner_override is None below), so the
         // owner-override authorization that consumes this is never reached.
         permission_account: None,
+        instructions_sysvar_account,
     };
 
     let Some(mut result) = create_user_core(
@@ -116,6 +132,7 @@ pub fn process_create_user(
         value.tunnel_endpoint,
         false,
         None,
+        value.ip_proof.as_ref(),
     )?
     else {
         msg!("user already exists; nothing to do");

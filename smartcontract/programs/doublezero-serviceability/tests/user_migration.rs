@@ -324,6 +324,7 @@ async fn test_user_migration() {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_old_pubkey, false),

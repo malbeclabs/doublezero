@@ -913,6 +913,7 @@ mod tests {
                 client_ip: [1, 2, 3, 4].into(),
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 dz_prefix_count: 0,
+                ip_proof: None,
             }),
             "CreateUser",
         );
@@ -1099,6 +1100,7 @@ mod tests {
                 publisher: false,
                 subscriber: true,
                 use_onchain_allocation: false,
+                extra_group_count: 0,
             }),
             "UpdateMulticastGroupRoles",
         );
@@ -1112,6 +1114,8 @@ mod tests {
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
                 dz_prefix_count: 0,
                 owner: Pubkey::default(),
+                ip_proof: None,
+                extra_group_count: 0,
             }),
             "CreateSubscribeUser",
         );

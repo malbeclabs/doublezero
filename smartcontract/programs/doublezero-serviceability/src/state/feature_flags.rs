@@ -9,6 +9,11 @@ pub enum FeatureFlag {
     /// When set, all instructions require a Permission account for authorization.
     /// The legacy GlobalState allowlist/authority fallback is disabled.
     RequirePermissionAccounts = 1,
+    /// RFC-27. When set, user creation requires a valid `IpOwnershipProof` signed by
+    /// `globalstate.ip_verifier_authority_pk`, uniformly for wildcard and specific-IP access
+    /// passes alike. When clear, a proof that is supplied is still validated in full; only its
+    /// absence is tolerated.
+    RequireIpOwnershipProof = 2,
 }
 
 impl FeatureFlag {
@@ -16,6 +21,7 @@ impl FeatureFlag {
         &[
             FeatureFlag::OnChainAllocationDeprecated,
             FeatureFlag::RequirePermissionAccounts,
+            FeatureFlag::RequireIpOwnershipProof,
         ]
     }
 
@@ -29,6 +35,7 @@ impl fmt::Display for FeatureFlag {
         match self {
             FeatureFlag::OnChainAllocationDeprecated => write!(f, "onchain-allocation-deprecated"),
             FeatureFlag::RequirePermissionAccounts => write!(f, "require-permission-accounts"),
+            FeatureFlag::RequireIpOwnershipProof => write!(f, "require-ip-ownership-proof"),
         }
     }
 }
@@ -44,6 +51,7 @@ impl std::str::FromStr for FeatureFlag {
                 Ok(FeatureFlag::OnChainAllocationDeprecated)
             }
             "require-permission-accounts" => Ok(FeatureFlag::RequirePermissionAccounts),
+            "require-ip-ownership-proof" => Ok(FeatureFlag::RequireIpOwnershipProof),
             _ => Err(format!("unknown feature flag: {s}")),
         }
     }
@@ -98,5 +106,44 @@ mod tests {
             FeatureFlag::OnChainAllocationDeprecated
         );
         assert!("unknown-flag".parse::<FeatureFlag>().is_err());
+    }
+
+    #[test]
+    fn test_require_ip_ownership_proof_flag() {
+        // Bit 2. Pinned: a shifted discriminant silently re-points every mask an operator has
+        // already written on-chain.
+        assert_eq!(FeatureFlag::RequireIpOwnershipProof.to_mask(), 4u128);
+
+        assert_eq!(
+            FeatureFlag::RequireIpOwnershipProof.to_string(),
+            "require-ip-ownership-proof"
+        );
+        assert_eq!(
+            "require-ip-ownership-proof".parse::<FeatureFlag>().unwrap(),
+            FeatureFlag::RequireIpOwnershipProof
+        );
+
+        assert!(is_feature_enabled(
+            4u128,
+            FeatureFlag::RequireIpOwnershipProof
+        ));
+        assert!(!is_feature_enabled(
+            3u128,
+            FeatureFlag::RequireIpOwnershipProof
+        ));
+
+        // Independent of the other flags: setting it must not read as any of them.
+        assert_eq!(
+            enabled_flags(4u128),
+            vec![FeatureFlag::RequireIpOwnershipProof]
+        );
+        assert_eq!(
+            enabled_flags(7u128),
+            vec![
+                FeatureFlag::OnChainAllocationDeprecated,
+                FeatureFlag::RequirePermissionAccounts,
+                FeatureFlag::RequireIpOwnershipProof,
+            ]
+        );
     }
 }

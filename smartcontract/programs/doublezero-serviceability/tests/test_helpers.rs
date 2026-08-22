@@ -847,3 +847,143 @@ pub async fn create_unicast_default_topology(
 
     unicast_default_pda
 }
+
+// ============================================================================
+// RFC-27 IP ownership proof helpers
+// ============================================================================
+
+/// Assembles the Ed25519 precompile instruction the way a well-behaved client would: one
+/// signature, all three offsets naming the current instruction, key/signature/message laid out
+/// contiguously after the 16-byte header.
+///
+/// Written out rather than taken from `solana_ed25519_program::new_ed25519_instruction_with_signature`
+/// so the negative tests below can vary one field of the same layout at a time.
+#[allow(dead_code)]
+pub fn ed25519_instruction(
+    verifier_pubkey: &Pubkey,
+    signature: &[u8; 64],
+    message: &[u8],
+) -> Instruction {
+    ed25519_instruction_raw(
+        1,
+        verifier_pubkey.as_ref(),
+        signature,
+        message,
+        u16::MAX,
+        u16::MAX,
+        u16::MAX,
+    )
+}
+
+/// The same instruction with every field the program checks left under the caller's control, so a
+/// test can produce a precompile instruction the *runtime* still accepts while the program must
+/// not. `num_signatures` and the three instruction indices are written verbatim.
+///
+/// Layout: `[num_signatures, padding, 7 x u16 offsets, public_key, signature, message]`.
+#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
+pub fn ed25519_instruction_raw(
+    num_signatures: u8,
+    public_key: &[u8],
+    signature: &[u8],
+    message: &[u8],
+    signature_instruction_index: u16,
+    public_key_instruction_index: u16,
+    message_instruction_index: u16,
+) -> Instruction {
+    const HEADER: u16 = 16; // 1 num_signatures + 1 padding + 14 offsets
+
+    let public_key_offset = HEADER;
+    let signature_offset = public_key_offset + public_key.len() as u16;
+    let message_data_offset = signature_offset + signature.len() as u16;
+
+    let mut data =
+        Vec::with_capacity(HEADER as usize + public_key.len() + signature.len() + message.len());
+    data.push(num_signatures);
+    data.push(0); // padding
+    for field in [
+        signature_offset,
+        signature_instruction_index,
+        public_key_offset,
+        public_key_instruction_index,
+        message_data_offset,
+        message.len() as u16,
+        message_instruction_index,
+    ] {
+        data.extend_from_slice(&field.to_le_bytes());
+    }
+    data.extend_from_slice(public_key);
+    data.extend_from_slice(signature);
+    data.extend_from_slice(message);
+
+    Instruction {
+        program_id: solana_sdk_ids::ed25519_program::id(),
+        accounts: vec![],
+        data,
+    }
+}
+
+/// The Instructions sysvar account meta, appended last on user-creation instructions that carry a
+/// proof. Read-only: the program only introspects it.
+#[allow(dead_code)]
+pub fn instructions_sysvar_meta() -> AccountMeta {
+    AccountMeta::new_readonly(solana_sdk_ids::sysvar::instructions::id(), false)
+}
+
+/// Sends `[prelude.., serviceability_ix]` as one transaction, so the program instruction can see a
+/// preceding Ed25519 verification in the Instructions sysvar.
+///
+/// Unlike [`execute_transaction`], this does not re-run the instruction with a non-signing payer:
+/// the signer check is exercised elsewhere, and here the interesting variable is the transaction's
+/// instruction list.
+#[allow(dead_code)]
+pub async fn process_transaction_with_prelude(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    instruction: &DoubleZeroInstruction,
+    accounts: &[AccountMeta],
+    payer: &Keypair,
+    prelude: &[Instruction],
+) -> Result<(), BanksClientError> {
+    let mut instructions = prelude.to_vec();
+    instructions.push(Instruction::new_with_bytes(
+        program_id,
+        &to_vec(instruction).unwrap(),
+        accounts.to_vec(),
+    ));
+    process_instructions(banks_client, &instructions, payer).await
+}
+
+/// Sends an arbitrary instruction list, so a test can place the Ed25519 instruction *after* the
+/// program instruction as well as before it.
+#[allow(dead_code)]
+pub async fn process_instructions(
+    banks_client: &mut BanksClient,
+    instructions: &[Instruction],
+    payer: &Keypair,
+) -> Result<(), BanksClientError> {
+    let recent_blockhash = wait_for_new_blockhash(banks_client).await;
+    let mut transaction = Transaction::new_with_payer(instructions, Some(&payer.pubkey()));
+    transaction.try_sign(&[payer], recent_blockhash).unwrap();
+    banks_client.process_transaction(transaction).await
+}
+
+/// The `ProgramError::Custom` code a failed transaction carried, or `None` if it failed some other
+/// way. Lets a test name the exact rejection class rather than asserting on a debug string.
+#[allow(dead_code)]
+pub fn custom_error_code(err: &BanksClientError) -> Option<u32> {
+    // Both variants carry the same TransactionError; which one appears depends on whether the
+    // failure came back from processing or from simulation.
+    let transaction_error = match err {
+        BanksClientError::TransactionError(e) => e,
+        BanksClientError::SimulationError { err, .. } => err,
+        _ => return None,
+    };
+    match transaction_error {
+        solana_sdk::transaction::TransactionError::InstructionError(
+            _,
+            solana_sdk::instruction::InstructionError::Custom(code),
+        ) => Some(*code),
+        _ => None,
+    }
+}

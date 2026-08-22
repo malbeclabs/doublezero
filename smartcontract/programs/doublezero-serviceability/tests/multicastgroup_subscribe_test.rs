@@ -328,6 +328,7 @@ async fn setup_fixture() -> TestFixture {
             cyoa_type: UserCYOA::GREOverDIA,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
+            ip_proof: None,
         }),
         vec![
             AccountMeta::new(user_pubkey, false),
@@ -419,6 +420,7 @@ async fn test_subscribe_foundation_admin_payer_differs_from_user_owner() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -473,6 +475,7 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -533,6 +536,7 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
             publisher: false,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -586,6 +590,7 @@ async fn test_subscribe_unauthorized_payer_rejected() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -640,6 +645,7 @@ async fn test_unsubscribe_user_admin_permission_allowed() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -689,6 +695,7 @@ async fn test_unsubscribe_user_admin_permission_allowed() {
             publisher: false,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -763,6 +770,7 @@ async fn test_subscribe_user_admin_permission_rejected() {
             publisher: false,
             subscriber: true, // attempting to ADD a role
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -848,6 +856,7 @@ async fn test_subscribe_access_pass_admin_permission_allowed() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -913,6 +922,7 @@ async fn test_subscribe_onchain_first_publisher_allocates_dz_ip() {
             publisher: true,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -986,6 +996,7 @@ async fn test_subscribe_onchain_subscriber_no_allocation() {
             publisher: false,
             subscriber: true,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -1041,6 +1052,7 @@ async fn test_subscribe_onchain_second_publisher_no_reallocation() {
             publisher: true,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -1071,6 +1083,7 @@ async fn test_subscribe_onchain_second_publisher_no_reallocation() {
             publisher: true,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup2_pubkey, false),
@@ -1126,6 +1139,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
             publisher: true,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -1163,6 +1177,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
             publisher: true,
             subscriber: false,
             use_onchain_allocation: true,
+            extra_group_count: 0,
         }),
         vec![
             AccountMeta::new(mgroup1_pubkey, false),
@@ -1200,4 +1215,636 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
         mgroup.publisher_count, 1,
         "Should not double-count publisher"
     );
+}
+
+// ============================================================================
+// Batch (extra_group_count) tests
+// ============================================================================
+
+/// Batch subscribe to two groups in one transaction: both subscriptions land and
+/// each group's subscriber_count is incremented.
+#[tokio::test]
+async fn test_batch_subscribe_two_groups_one_transaction() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        mgroup2_pubkey,
+        ..
+    } = f;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+            extra_group_count: 1,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(mgroup2_pubkey, false),
+        ],
+        &payer,
+    )
+    .await
+    .expect("batch subscribe to two groups should succeed");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.subscribers, vec![mgroup1_pubkey, mgroup2_pubkey]);
+    assert_eq!(user.status, UserStatus::Activated);
+
+    for mgroup_pk in [mgroup1_pubkey, mgroup2_pubkey] {
+        let mgroup = get_account_data(&mut banks_client, mgroup_pk)
+            .await
+            .expect("Unable to get MulticastGroup")
+            .get_multicastgroup()
+            .unwrap();
+        assert_eq!(mgroup.subscriber_count, 1);
+    }
+}
+
+/// Batch publisher add from empty allocates dz_ip exactly once; a batch removal of
+/// all publisher roles deallocates it (dz_ip reverts to client_ip).
+#[tokio::test]
+async fn test_batch_publisher_add_and_remove_allocates_dz_ip_once() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        mgroup2_pubkey,
+        ..
+    } = f;
+
+    let accounts = vec![
+        AccountMeta::new(mgroup1_pubkey, false),
+        AccountMeta::new(accesspass_pubkey, false),
+        AccountMeta::new(user_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+        AccountMeta::new(
+            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+            false,
+        ),
+        AccountMeta::new(mgroup2_pubkey, false),
+    ];
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: true,
+            subscriber: false,
+            use_onchain_allocation: true,
+            extra_group_count: 1,
+        }),
+        accounts.clone(),
+        &payer,
+    )
+    .await
+    .expect("batch publisher add should succeed");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.publishers, vec![mgroup1_pubkey, mgroup2_pubkey]);
+    assert_ne!(
+        user.dz_ip,
+        Ipv4Addr::UNSPECIFIED,
+        "dz_ip should be allocated"
+    );
+    assert_ne!(
+        user.dz_ip, user.client_ip,
+        "dz_ip should come from MulticastPublisherBlock, not client_ip"
+    );
+    for mgroup_pk in [mgroup1_pubkey, mgroup2_pubkey] {
+        let mgroup = get_account_data(&mut banks_client, mgroup_pk)
+            .await
+            .expect("Unable to get MulticastGroup")
+            .get_multicastgroup()
+            .unwrap();
+        assert_eq!(mgroup.publisher_count, 1);
+    }
+
+    // Batch removal of both publisher roles: exactly one deallocation
+    // (dz_ip reverts to client_ip on the non-empty -> empty transition).
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: true,
+            extra_group_count: 1,
+        }),
+        accounts,
+        &payer,
+    )
+    .await
+    .expect("batch publisher removal should succeed");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert!(user.publishers.is_empty());
+    assert_eq!(
+        user.dz_ip, user.client_ip,
+        "dz_ip should be deallocated back to client_ip"
+    );
+    for mgroup_pk in [mgroup1_pubkey, mgroup2_pubkey] {
+        let mgroup = get_account_data(&mut banks_client, mgroup_pk)
+            .await
+            .expect("Unable to get MulticastGroup")
+            .get_multicastgroup()
+            .unwrap();
+        assert_eq!(mgroup.publisher_count, 0);
+    }
+}
+
+/// A batch is atomic: one group off the subscriber allowlist fails the whole
+/// transaction and no group or user state changes.
+#[tokio::test]
+async fn test_batch_atomicity_group_off_allowlist_rolls_back() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    // A third activated group, NOT in the pass's allowlists.
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (mgroup3_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "group3".to_string(),
+            max_bandwidth: 1000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup3_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+            extra_group_count: 1,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(mgroup3_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(8), // NotAllowed
+        ))) => {}
+        _ => panic!("Expected NotAllowed error (Custom(8)), got {:?}", result),
+    }
+
+    // Nothing applied: the allowlisted group's subscription rolled back with the batch.
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert!(
+        user.subscribers.is_empty(),
+        "batch must roll back atomically"
+    );
+    let mgroup1 = get_account_data(&mut banks_client, mgroup1_pubkey)
+        .await
+        .expect("Unable to get MulticastGroup")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup1.subscriber_count, 0);
+}
+
+/// An `extra_group_count` larger than the supplied accounts is rejected with
+/// InvalidArgument instead of misparsing the trailing region.
+#[tokio::test]
+async fn test_batch_extra_group_count_exceeding_accounts_rejected() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+            extra_group_count: 2, // no extra accounts supplied
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(65), // InvalidArgument
+        ))) => {}
+        _ => panic!(
+            "Expected InvalidArgument error (Custom(65)), got {:?}",
+            result
+        ),
+    }
+}
+
+/// The pre-batch encoding (no extra_group_count byte) still decodes and executes as
+/// a single-group role change — wire compatibility for old clients.
+#[tokio::test]
+async fn test_batch_old_encoding_without_count_byte_single_group() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    // Serialize the new args and strip the trailing extra_group_count byte to get
+    // the exact bytes an old client emits.
+    let mut data = borsh::to_vec(&DoubleZeroInstruction::UpdateMulticastGroupRoles(
+        UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+            extra_group_count: 0,
+        },
+    ))
+    .unwrap();
+    assert_eq!(data.pop(), Some(0), "last byte must be extra_group_count");
+
+    let accounts = vec![
+        AccountMeta::new(mgroup1_pubkey, false),
+        AccountMeta::new(accesspass_pubkey, false),
+        AccountMeta::new(user_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+        AccountMeta::new(
+            get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+            false,
+        ),
+        AccountMeta::new(payer.pubkey(), true),
+        AccountMeta::new(solana_system_interface::program::ID, false),
+    ];
+    let instruction =
+        solana_sdk::instruction::Instruction::new_with_bytes(program_id, &data, accounts);
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let mut tx =
+        solana_sdk::transaction::Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
+    tx.try_sign(&[&payer], recent_blockhash).unwrap();
+    banks_client
+        .process_transaction(tx)
+        .await
+        .expect("old encoding should execute single-group");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.subscribers, vec![mgroup1_pubkey]);
+}
+
+/// A duplicate group in a batch (primary repeated as an extra) is rejected with
+/// InvalidArgument: aliased accounts would make counter state depend on write order.
+#[tokio::test]
+async fn test_batch_duplicate_group_rejected() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        ..
+    } = f;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+            extra_group_count: 1,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(mgroup1_pubkey, false), // primary again as the extra
+        ],
+        &payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(65), // InvalidArgument
+        ))) => {}
+        _ => panic!(
+            "Expected InvalidArgument error (Custom(65)), got {:?}",
+            result
+        ),
+    }
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert!(user.subscribers.is_empty());
+}
+
+/// Two identical extra groups (extra-vs-extra duplicate) are rejected with
+/// InvalidArgument, exercising the pairwise branch of the duplicate scan.
+#[tokio::test]
+async fn test_batch_duplicate_extra_group_rejected() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        mgroup2_pubkey,
+        ..
+    } = f;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+            extra_group_count: 2,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(mgroup2_pubkey, false),
+            AccountMeta::new(mgroup2_pubkey, false), // same extra twice
+        ],
+        &payer,
+    )
+    .await;
+
+    match result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(65), // InvalidArgument
+        ))) => {}
+        _ => panic!(
+            "Expected InvalidArgument error (Custom(65)), got {:?}",
+            result
+        ),
+    }
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert!(user.subscribers.is_empty());
+}
+
+/// A USER_ADMIN Permission holder can strip roles across a batch: the trailing
+/// Permission PDA (after payer/system) coexists with the extra group accounts in
+/// the leading region — split_trailing_permission peels it by PDA match.
+#[tokio::test]
+async fn test_batch_removal_with_trailing_permission_pda() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer, // foundation + user.owner
+        program_id,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        mgroup2_pubkey,
+        ..
+    } = f;
+
+    // Subscribe the user to both groups (as owner, batched) so there are roles to strip.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+            extra_group_count: 1,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(mgroup2_pubkey, false),
+        ],
+        &payer,
+    )
+    .await
+    .expect("owner batch subscribe should succeed");
+
+    // user_admin: not the owner, not in the foundation allowlist, granted USER_ADMIN.
+    let user_admin = solana_sdk::signature::Keypair::new();
+    transfer(&mut banks_client, &payer, &user_admin.pubkey(), 10_000_000).await;
+
+    let (permission_pda, _) = get_permission_pda(&program_id, &user_admin.pubkey());
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: user_admin.pubkey(),
+            permissions: permission_flags::USER_ADMIN,
+        }),
+        vec![
+            AccountMeta::new(permission_pda, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Batch removal signed by user_admin, Permission PDA appended after payer/system.
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: [100, 0, 0, 1].into(),
+            publisher: false,
+            subscriber: false,
+            use_onchain_allocation: true,
+            extra_group_count: 1,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(mgroup2_pubkey, false),
+        ],
+        &user_admin,
+        &[AccountMeta::new_readonly(permission_pda, false)],
+    )
+    .await
+    .expect("USER_ADMIN batch removal with trailing Permission PDA should succeed");
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("Unable to get User")
+        .get_user()
+        .unwrap();
+    assert!(
+        user.subscribers.is_empty(),
+        "both roles stripped in one batch"
+    );
+    for mgroup_pk in [mgroup1_pubkey, mgroup2_pubkey] {
+        let mgroup = get_account_data(&mut banks_client, mgroup_pk)
+            .await
+            .expect("Unable to get MulticastGroup")
+            .get_multicastgroup()
+            .unwrap();
+        assert_eq!(mgroup.subscriber_count, 0);
+    }
 }

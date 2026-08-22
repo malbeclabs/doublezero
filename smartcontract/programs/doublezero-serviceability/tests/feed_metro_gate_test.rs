@@ -35,7 +35,12 @@ use doublezero_serviceability::{
     },
 };
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
+use solana_sdk::{
+    instruction::{AccountMeta, InstructionError},
+    pubkey::Pubkey,
+    signature::Signer,
+    transaction::TransactionError,
+};
 use std::net::Ipv4Addr;
 
 mod test_helpers;
@@ -364,6 +369,8 @@ async fn try_subscribe_with_feed(
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
+            ip_proof: None,
+            extra_group_count: 0,
         }),
         &accounts,
         &f.payer,
@@ -371,6 +378,18 @@ async fn try_subscribe_with_feed(
     );
     tx.try_sign(&[&f.payer], recent_blockhash).unwrap();
     f.banks_client.process_transaction(tx).await
+}
+
+/// Match the error structurally rather than on its debug text, so a test cannot pass because some
+/// other instruction in the transaction failed or because the formatting changed.
+fn assert_custom_error(err: &BanksClientError, code: u32) {
+    match err {
+        BanksClientError::TransactionError(TransactionError::InstructionError(
+            0,
+            InstructionError::Custom(actual),
+        )) if *actual == code => {}
+        other => panic!("expected Custom({code}), got {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -447,10 +466,7 @@ async fn test_wrong_metro_device_rejected() {
     let err = try_subscribe_with_feed(&mut f, feed)
         .await
         .expect_err("wrong-metro subscribe should be rejected");
-    assert!(
-        format!("{err:?}").contains("Custom(91)"),
-        "expected MetroMismatch (Custom(91)), got: {err:?}"
-    );
+    assert_custom_error(&err, 91); // MetroMismatch
 }
 
 #[tokio::test]
@@ -528,8 +544,175 @@ async fn test_group_not_in_feed_rejected() {
     let err = try_subscribe_with_feed(&mut f, feed)
         .await
         .expect_err("group outside the feed should be rejected");
+    assert_custom_error(&err, 94); // GroupNotInFeed
+}
+
+// ============================================================================
+// Batch (extra_group_count) tests
+// ============================================================================
+
+/// Create a second activated multicast group in the fixture's environment.
+async fn create_second_group(f: &mut FeedFixture) -> Pubkey {
+    let gs = get_globalstate(&mut f.banks_client, f.globalstate_pubkey).await;
+    let (mgroup2_pubkey, _) = get_multicastgroup_pda(&f.program_id, gs.account_index + 1);
+    let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut f.banks_client,
+        recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "group2".to_string(),
+            max_bandwidth: 1000,
+            owner: f.payer.pubkey(),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup2_pubkey, false),
+            AccountMeta::new(f.globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&f.program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
+        ],
+        &f.payer,
+    )
+    .await;
+    mgroup2_pubkey
+}
+
+/// Attempt a batch CreateSubscribeUser (subscriber) with one extra group; the extra
+/// group account sits between the dz_prefix block and the feed.
+async fn try_subscribe_batch_with_feed(
+    f: &mut FeedFixture,
+    feed: Pubkey,
+    extra_group: Pubkey,
+) -> Result<(), BanksClientError> {
+    let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
+    let (user_pubkey, _) = get_user_pda(&f.program_id, &f.user_ip, UserType::Multicast);
+    let accounts = vec![
+        AccountMeta::new(user_pubkey, false),
+        AccountMeta::new(f.device_pubkey, false),
+        AccountMeta::new(f.mgroup_pubkey, false),
+        AccountMeta::new(f.accesspass_pubkey, false),
+        AccountMeta::new(f.globalstate_pubkey, false),
+        AccountMeta::new(f.user_tunnel_block, false),
+        AccountMeta::new(f.multicast_publisher_block, false),
+        AccountMeta::new(f.tunnel_ids, false),
+        AccountMeta::new(f.dz_prefix_block, false),
+        AccountMeta::new(extra_group, false),
+        AccountMeta::new_readonly(feed, false),
+    ];
+    let mut tx = create_transaction_with_extra_accounts(
+        f.program_id,
+        &DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: f.user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+            ip_proof: None,
+            extra_group_count: 1,
+        }),
+        &accounts,
+        &f.payer,
+        &[],
+    );
+    tx.try_sign(&[&f.payer], recent_blockhash).unwrap();
+    f.banks_client.process_transaction(tx).await
+}
+
+/// A batch EdgeSeat create where every group is in the feed's set succeeds, with the
+/// seat ticked exactly once (per-user-per-feed, not per-group).
+#[tokio::test]
+async fn test_batch_within_feed_group_set_ticks_seat_once() {
+    let mut f = setup_feed_fixture([100, 0, 0, 24]).await;
+    let mgroup2 = create_second_group(&mut f).await;
+    let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
+    // Feed serves the device's exchange with BOTH groups.
+    let feed = create_feed(&mut f, "shreds", exchange, vec![mgroup, mgroup2]).await;
+    set_pass_feeds(
+        &mut f,
+        vec![FeedSeat {
+            feed_key: feed,
+            max_users: 2,
+            max_future_users: 2,
+            current_users: 0,
+            anniversary_day: 15,
+            window_end: TEST_WINDOW_END,
+            terminates_at: TEST_TERMINATES_AT,
+        }],
+    )
+    .await;
+
+    try_subscribe_batch_with_feed(&mut f, feed, mgroup2)
+        .await
+        .expect("batch subscribe within the feed's group set should succeed");
+
+    let (user_pubkey, _) = get_user_pda(&f.program_id, &f.user_ip, UserType::Multicast);
+    let user = get_account_data(&mut f.banks_client, user_pubkey)
+        .await
+        .expect("user exists")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+    assert_eq!(user.subscribers, vec![f.mgroup_pubkey, mgroup2]);
+
+    // One seat tick for the whole batch: the seat is per-user-per-feed.
+    let pass = get_account_data(&mut f.banks_client, f.accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(pass.feed_seats()[0].current_users, 1);
+}
+
+/// A batch EdgeSeat create with an extra group outside the feed's set is rejected
+/// with GroupNotInFeed and rolls back atomically — including the seat tick.
+#[tokio::test]
+async fn test_batch_extra_group_not_in_feed_rejected_and_seat_not_ticked() {
+    let mut f = setup_feed_fixture([100, 0, 0, 25]).await;
+    let mgroup2 = create_second_group(&mut f).await;
+    let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
+    // Feed serves the device's exchange with only the primary group.
+    let feed = create_feed(&mut f, "shreds", exchange, vec![mgroup]).await;
+    set_pass_feeds(
+        &mut f,
+        vec![FeedSeat {
+            feed_key: feed,
+            max_users: 2,
+            max_future_users: 2,
+            current_users: 0,
+            anniversary_day: 15,
+            window_end: TEST_WINDOW_END,
+            terminates_at: TEST_TERMINATES_AT,
+        }],
+    )
+    .await;
+
+    let err = try_subscribe_batch_with_feed(&mut f, feed, mgroup2)
+        .await
+        .expect_err("extra group outside the feed's set should be rejected");
+    assert_custom_error(&err, 94); // GroupNotInFeed
+
+    // The whole transaction rolled back: no user, no seat consumed.
+    let (user_pubkey, _) = get_user_pda(&f.program_id, &f.user_ip, UserType::Multicast);
     assert!(
-        format!("{err:?}").contains("Custom(94)"),
-        "expected GroupNotInFeed (Custom(94)), got: {err:?}"
+        get_account_data(&mut f.banks_client, user_pubkey)
+            .await
+            .is_none(),
+        "user account must not be created on a failed batch"
+    );
+    let pass = get_account_data(&mut f.banks_client, f.accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(
+        pass.feed_seats()[0].current_users,
+        0,
+        "seat tick must roll back with the failed batch"
     );
 }

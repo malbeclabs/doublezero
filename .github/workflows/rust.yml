@@ -74,3 +74,23 @@ jobs:
             echo "::error::doublezero CLI is not statically linked"
             exit 1
           fi
+  # The release bump runs `cargo update --workspace`, which can silently rebind
+  # members onto a different locked minor.
+  release-bump-dry-run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - name: Dry-run the release version bump
+        run: |
+          set -euo pipefail
+          PREV=$(grep -m1 '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          NEXT=$(echo "$PREV" | awk -F. '{print $1"."$2+1".0"}')
+          echo "Dry-running the release bump $PREV -> $NEXT; the result is discarded."
+          if ! ./scripts/release/bump-version.sh "$NEXT"; then
+            echo "Fix, if the failure lists Cargo.lock lines: either cargo update --workspace rebound a workspace dependency onto a different version, so pin the offending requirement in [workspace.dependencies] to its locked minor (0.13, not a bare 0); or a Cargo.toml dependency change landed without its regenerated lock, so run cargo update --workspace and commit the Cargo.lock. The guard lives in scripts/release/bump-version.sh."
+            echo "If neither looks related to your changes, check this job on main: a loose requirement plus a PR merged since your base can rebind the tree without either PR failing on its own."
+            echo "::error::The release version bump fails on this tree, so the next release would fail the same way. The cause and the fix are in this job's log."
+            exit 1
+          fi

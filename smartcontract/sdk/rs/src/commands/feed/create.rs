@@ -34,8 +34,7 @@ impl CreateFeedCommand {
             },
         );
 
-        append_payer_permission_account(client, &mut ix);
-
+        append_payer_permission_account(client, &mut ix)?;
         client.send_transaction(ix).map(|sig| (sig, pda_pubkey))
     }
 }
@@ -81,9 +80,9 @@ mod tests {
 
         let (permission_pda_pubkey, _) = get_permission_pda(&program_id, &payer);
         client
-            .expect_get_account()
-            .with(predicate::eq(permission_pda_pubkey))
-            .returning(|_| Err(eyre::eyre!("account not found")));
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![permission_pda_pubkey]))
+            .returning(|_| Ok(vec![None]));
 
         let create_command = CreateFeedCommand {
             code: "test_feed".to_string(),
@@ -134,9 +133,9 @@ mod tests {
             .returning(|_| Ok(Signature::new_unique()));
 
         client
-            .expect_get_account()
-            .with(predicate::eq(permission_pda_pubkey))
-            .returning(move |_| Ok(Account::new(0, 0, &program_id)));
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![permission_pda_pubkey]))
+            .returning(move |_| Ok(vec![Some(Account::new(0, 0, &program_id))]));
 
         let create_command = CreateFeedCommand {
             code: "test_feed".to_string(),

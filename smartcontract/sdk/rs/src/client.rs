@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use crate::config::default_program_id;
 use doublezero_serviceability::{
-    error::DoubleZeroError, instructions::*, state::accounttype::AccountType,
+    error::DoubleZeroError, instructions::*, pda::get_permission_pda,
+    state::accounttype::AccountType,
 };
 use doublezero_serviceability_instruction::compute_budget_prelude;
 use eyre::{bail, eyre, OptionExt};
@@ -41,7 +42,7 @@ use std::{
     str::FromStr,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
 };
 
@@ -50,12 +51,19 @@ use crate::{
     keypair::load_keypair, rpckeyedaccount_decode::rpckeyedaccount_decode, AccountData,
 };
 
+enum PermissionAccountCache {
+    Unresolved,
+    Absent,
+    Present(Account),
+}
+
 pub struct DZClient {
     rpc_url: String,
     client: RpcClient,
     rpc_ws_url: String,
     payer: Option<Keypair>,
     pub(crate) program_id: Pubkey,
+    permission_account_cache: Mutex<PermissionAccountCache>,
 }
 
 impl DZClient {
@@ -96,6 +104,7 @@ impl DZClient {
             rpc_ws_url,
             payer,
             program_id,
+            permission_account_cache: Mutex::new(PermissionAccountCache::Unresolved),
         })
     }
 
@@ -137,6 +146,7 @@ impl DZClient {
             rpc_ws_url,
             payer,
             program_id: ctx.serviceability_program_id,
+            permission_account_cache: Mutex::new(PermissionAccountCache::Unresolved),
         })
     }
 
@@ -171,6 +181,18 @@ impl DZClient {
             .with_max_delay(Duration::from_secs(5))
     }
 
+    fn maybe_invalidate_permission_cache(&self, ix: &Instruction) {
+        if let Ok(decoded) = DoubleZeroInstruction::unpack(&ix.data) {
+            if matches!(
+                decoded,
+                DoubleZeroInstruction::CreatePermission(_)
+                    | DoubleZeroInstruction::DeletePermission(_)
+            ) {
+                *self.permission_account_cache.lock().unwrap() = PermissionAccountCache::Unresolved;
+            }
+        }
+    }
+
     /// Send a pre-built serviceability [`Instruction`] (RFC-26): prepend the
     /// compute-budget prelude, sign with the payer, and send. The builder owns the
     /// account layout (including the trailing `[payer, system]`), so this path does
@@ -180,6 +202,8 @@ impl DZClient {
             .payer
             .as_ref()
             .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
+
+        self.maybe_invalidate_permission_cache(&ix);
 
         // Prepend the shared RFC-26 compute-budget prelude (protocol-max compute
         // and heap) over the built instruction — same helper the builders document.
@@ -326,6 +350,20 @@ impl DZClient {
     }
 
     pub fn get_multiple_accounts(&self, pubkeys: &[Pubkey]) -> eyre::Result<Vec<Option<Account>>> {
+        let (permission_pda, _) = get_permission_pda(&self.program_id, &self.get_payer());
+        let is_permission_lookup = pubkeys == [permission_pda];
+        if is_permission_lookup {
+            match *self.permission_account_cache.lock().unwrap() {
+                PermissionAccountCache::Present(ref account) => {
+                    return Ok(vec![Some(account.clone())]);
+                }
+                PermissionAccountCache::Absent => {
+                    return Ok(vec![None; pubkeys.len()]);
+                }
+                PermissionAccountCache::Unresolved => {}
+            }
+        }
+
         let mut results = Vec::with_capacity(pubkeys.len());
         for chunk in pubkeys.chunks(100) {
             let accounts = (|| self.client.get_multiple_accounts(chunk))
@@ -334,6 +372,15 @@ impl DZClient {
                 .call()
                 .map_err(|e| eyre!(e))?;
             results.extend(accounts);
+        }
+
+        if is_permission_lookup {
+            let mut cache = self.permission_account_cache.lock().unwrap();
+            *cache = match results.first() {
+                Some(Some(account)) => PermissionAccountCache::Present(account.clone()),
+                Some(None) => PermissionAccountCache::Absent,
+                None => PermissionAccountCache::Unresolved,
+            };
         }
         Ok(results)
     }

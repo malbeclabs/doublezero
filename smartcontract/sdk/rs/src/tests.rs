@@ -52,9 +52,10 @@ pub mod utils {
     pub fn expect_missing_permission_account(client: &mut MockDoubleZeroClient) {
         let (permission_pda, _) = get_permission_pda(&client.get_program_id(), &client.get_payer());
         client
-            .expect_get_account()
-            .with(predicate::eq(permission_pda))
-            .returning(|_| Err(eyre::eyre!("account not found")));
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![permission_pda]))
+            .times(1..)
+            .returning(|_| Ok(vec![None]));
     }
 
     pub fn create_temp_config() -> eyre::Result<TempDir> {

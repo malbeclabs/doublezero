@@ -2,8 +2,8 @@ use std::net::Ipv4Addr;
 
 use crate::{
     commands::{
-        accesspass::get::GetAccessPassCommand, multicastgroup::get::GetMulticastGroupCommand,
-        user::get::GetUserCommand,
+        accesspass::get::GetAccessPassCommand, common::append_payer_permission_account,
+        multicastgroup::get::GetMulticastGroupCommand, user::get::GetUserCommand,
     },
     DoubleZeroClient,
 };
@@ -101,7 +101,7 @@ impl UpdateMulticastGroupRolesCommand {
         // the `update_multicast_group_roles` layout has no slot for them via this path.
         // Post-activation re-gating is deferred to the oracle lifecycle
         // (see malbeclabs/infra#1700 / doublezero #1699).
-        client.send_transaction(update_multicast_group_roles(
+        let mut ix = update_multicast_group_roles(
             &client.get_program_id(),
             &client.get_payer(),
             first_group_pk,
@@ -115,7 +115,10 @@ impl UpdateMulticastGroupRolesCommand {
                 use_onchain_allocation: true,
                 extra_group_count: 0, // derived by the builder from extra_group_pks
             },
-        ))
+        );
+
+        append_payer_permission_account(client, &mut ix)?;
+        client.send_transaction(ix)
     }
 }
 
@@ -123,11 +126,12 @@ impl UpdateMulticastGroupRolesCommand {
 mod tests {
     use crate::{
         commands::multicastgroup::subscribe::UpdateMulticastGroupRolesCommand,
-        tests::utils::create_test_client, DoubleZeroClient,
+        tests::utils::{create_test_client, expect_missing_permission_account},
+        DoubleZeroClient,
     };
     use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
-        pda::{get_accesspass_pda, get_multicastgroup_pda},
+        pda::{get_accesspass_pda, get_multicastgroup_pda, get_permission_pda},
         processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
         state::{
             accountdata::AccountData,
@@ -138,7 +142,9 @@ mod tests {
     };
     use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles;
     use mockall::predicate;
-    use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{
+        account::Account, instruction::AccountMeta, pubkey::Pubkey, signature::Signature,
+    };
     use std::net::Ipv4Addr;
 
     #[test]
@@ -257,11 +263,157 @@ mod tests {
             .with(predicate::eq(expected))
             .returning(|_| Ok(Signature::new_unique()));
 
+        expect_missing_permission_account(&mut client);
+
         let res = UpdateMulticastGroupRolesCommand {
             group_pks: vec![mgroup_pubkey],
             user_pk: user_pubkey,
             client_ip,
             publisher: true,
+            subscriber: false,
+            device_pk: None,
+            feed_pk: None,
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_commands_multicastgroup_subscribe_extra_groups_with_permission_pda() {
+        let mut client = create_test_client();
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (mgroup1, _) = get_multicastgroup_pda(&program_id, 1);
+        let (mgroup2, _) = get_multicastgroup_pda(&program_id, 2);
+        let make_mgroup = |index, code: &str| MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            owner: payer,
+            bump_seed: 0,
+            index,
+            code: code.to_string(),
+            max_bandwidth: 1000,
+            status: MulticastGroupStatus::Activated,
+            tenant_pk: Pubkey::default(),
+            multicast_ip: "223.0.0.1".parse().unwrap(),
+            publisher_count: 0,
+            subscriber_count: 0,
+        };
+
+        let mgroup1_data = make_mgroup(1, "g1");
+        client
+            .expect_get()
+            .with(predicate::eq(mgroup1))
+            .returning(move |_| Ok(AccountData::MulticastGroup(mgroup1_data.clone())));
+        let mgroup2_data = make_mgroup(2, "g2");
+        client
+            .expect_get()
+            .with(predicate::eq(mgroup2))
+            .returning(move |_| Ok(AccountData::MulticastGroup(mgroup2_data.clone())));
+
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+        let user_pubkey = Pubkey::new_unique();
+        let user = User {
+            account_type: AccountType::User,
+            owner: payer,
+            bump_seed: 0,
+            index: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::Multicast,
+            device_pk: mgroup1,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip,
+            dz_ip: client_ip,
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
+            ..Default::default()
+        };
+
+        let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &user.client_ip, &payer);
+        let accesspass = doublezero_serviceability::state::accesspass::AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 0,
+            accesspass_type: doublezero_serviceability::state::accesspass::AccessPassType::Prepaid,
+            client_ip: user.client_ip,
+            user_payer: payer,
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: doublezero_serviceability::state::accesspass::AccessPassStatus::Requested,
+            owner: payer,
+            mgroup_pub_allowlist: vec![mgroup1, mgroup2],
+            mgroup_sub_allowlist: vec![mgroup1, mgroup2],
+            tenant_allowlist: vec![],
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        };
+
+        let (dynamic_accesspass_pubkey, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        let user_clone_for_dynamic = user.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_accesspass_pubkey))
+            .returning(move |_| Ok(AccountData::User(user_clone_for_dynamic.clone())));
+
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .returning(move |_| Ok(AccountData::User(user.clone())));
+
+        let mut expected = update_multicast_group_roles(
+            &program_id,
+            &payer,
+            &mgroup1,
+            &accesspass_pubkey,
+            &user_pubkey,
+            &[mgroup2],
+            UpdateMulticastGroupRolesArgs {
+                client_ip,
+                publisher: false,
+                subscriber: false,
+                use_onchain_allocation: true,
+                extra_group_count: 0,
+            },
+        );
+        let (permission_pda_pubkey, _) = get_permission_pda(&program_id, &payer);
+        expected
+            .accounts
+            .push(AccountMeta::new_readonly(permission_pda_pubkey, false));
+
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        client
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![permission_pda_pubkey]))
+            .returning(move |_| Ok(vec![Some(Account::new(0, 0, &program_id))]));
+
+        let res = UpdateMulticastGroupRolesCommand {
+            group_pks: vec![mgroup1, mgroup2],
+            user_pk: user_pubkey,
+            client_ip,
+            publisher: false,
             subscriber: false,
             device_pk: None,
             feed_pk: None,

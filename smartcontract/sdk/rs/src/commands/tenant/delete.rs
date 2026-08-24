@@ -393,11 +393,11 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
 
-        // 9. GetPermissionCommand: get(permission_pda)
+        // 9. GetPermissionCommand: get_multiple_accounts(&pubkeys)
         client
-            .expect_get_account()
-            .with(predicate::eq(permission_pda_pubkey))
-            .returning(move |_| Ok(Account::new(0, 0, &program_id)));
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![permission_pda_pubkey]))
+            .returning(move |_| Ok(vec![Some(Account::new(0, 0, &program_id))]));
 
         let res = DeleteTenantCommand {
             tenant_pubkey,

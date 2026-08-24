@@ -16,7 +16,8 @@ impl DeleteFeedCommand {
             &self.pubkey,
             FeedDeleteArgs {},
         );
-        append_payer_permission_account(client, &mut ix);
+
+        append_payer_permission_account(client, &mut ix)?;
         client.send_transaction(ix)
     }
 }
@@ -79,9 +80,9 @@ mod tests {
             .returning(|_| Ok(Signature::new_unique()));
 
         client
-            .expect_get_account()
-            .with(predicate::eq(permission_pda_pubkey))
-            .returning(move |_| Ok(Account::new(0, 0, &program_id)));
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![permission_pda_pubkey]))
+            .returning(move |_| Ok(vec![Some(Account::new(0, 0, &program_id))]));
 
         let res = DeleteFeedCommand { pubkey: pda_pubkey }.execute(&client);
 

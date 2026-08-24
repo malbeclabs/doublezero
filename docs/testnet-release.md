@@ -92,10 +92,9 @@ wrong thing or approving early fails fast rather than advancing the release.
 the `release-bump-dry-run` job in `.github/workflows/rust.yml` dry-runs the same
 script on every PR and every push to `main`. It is not airtight — the job is
 advisory until its context is added to the `main` ruleset, so a red X can be merged
-past, and the bump re-resolves against the live crates.io index, so two
-individually green PRs can still combine into a rebind. When it does fail here,
-read the guard output: the fix is to pin the rebound requirement to its locked
-minor.
+past, and a loose requirement plus a dependency added on another branch can combine
+into a rebind neither PR failed on. When it does fail here, read the guard output:
+the fix is to pin the rebound requirement to its locked minor.
 
 ## Dry-run mode
 

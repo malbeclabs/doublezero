@@ -121,7 +121,11 @@ mod tests {
         ip_proof::with_ed25519_verification, user::create_user,
     };
     use mockall::predicate;
-    use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{
+        pubkey::Pubkey,
+        signature::{Keypair, Signature},
+        signer::Signer,
+    };
     use std::net::Ipv4Addr;
 
     #[test]
@@ -217,8 +221,8 @@ mod tests {
     /// for, with the verifier key read from GlobalState rather than supplied by the caller.
     #[test]
     fn test_commands_user_create_with_ip_proof() {
-        let verifier = Pubkey::new_unique();
-        let mut client = create_test_client_with_ip_verifier(verifier);
+        let verifier = Keypair::new();
+        let mut client = create_test_client_with_ip_verifier(verifier.pubkey());
 
         let program_id = client.get_program_id();
         let payer = client.get_payer();
@@ -227,7 +231,7 @@ mod tests {
 
         seed_accesspass_and_device(&mut client, program_id, payer, device_pk, client_ip);
 
-        let proof = proof_for(payer, client_ip);
+        let proof = proof_for(&verifier, payer, client_ip);
         let expected_create = create_user(
             &program_id,
             &payer,
@@ -245,7 +249,7 @@ mod tests {
             },
         );
         let expected =
-            with_ed25519_verification(&verifier, &proof, expected_create.clone()).to_vec();
+            with_ed25519_verification(&verifier.pubkey(), &proof, expected_create.clone()).to_vec();
         client
             .expect_send_instructions()
             .with(predicate::eq(expected))
@@ -268,9 +272,13 @@ mod tests {
 
         seed_accesspass_and_device(&mut client, program_id, payer, device_pk, client_ip);
 
-        let err = command(client_ip, device_pk, Some(proof_for(payer, client_ip)))
-            .execute(&client)
-            .expect_err("an unset verifier key must not produce a transaction");
+        let err = command(
+            client_ip,
+            device_pk,
+            Some(proof_for(&Keypair::new(), payer, client_ip)),
+        )
+        .execute(&client)
+        .expect_err("an unset verifier key must not produce a transaction");
         assert!(
             err.to_string().contains("No IP verifier authority"),
             "{err}"
@@ -289,7 +297,7 @@ mod tests {
 
         seed_accesspass_and_device(&mut client, program_id, payer, device_pk, client_ip);
 
-        let foreign = proof_for(Pubkey::new_unique(), client_ip);
+        let foreign = proof_for(&Keypair::new(), Pubkey::new_unique(), client_ip);
         let err = command(client_ip, device_pk, Some(foreign))
             .execute(&client)
             .expect_err("a proof naming another payer must not produce a transaction");
@@ -319,7 +327,8 @@ mod tests {
     /// Builds an otherwise valid request whose proof has been bent by `mutate`, and asserts the
     /// command refuses it before any transaction is sent.
     fn assert_proof_rejected(client_ip: Ipv4Addr, mutate: impl FnOnce(&mut IpOwnershipProof)) {
-        let mut client = create_test_client_with_ip_verifier(Pubkey::new_unique());
+        let verifier = Keypair::new();
+        let mut client = create_test_client_with_ip_verifier(verifier.pubkey());
 
         let program_id = client.get_program_id();
         let payer = client.get_payer();
@@ -327,13 +336,59 @@ mod tests {
 
         seed_accesspass_and_device(&mut client, program_id, payer, device_pk, client_ip);
 
-        let mut proof = proof_for(payer, client_ip);
+        let mut proof = proof_for(&verifier, payer, client_ip);
         mutate(&mut proof);
 
         let err = command(client_ip, device_pk, Some(proof))
             .execute(&client)
             .expect_err("a mismatched proof must not produce a transaction");
         assert!(err.to_string().contains("was issued for"), "{err}");
+    }
+
+    /// A proof signed by a key that is no longer the onchain verifier can never validate. The
+    /// precompile would reject the transaction in the leader, and with `skip_preflight` that is
+    /// silent — no logs, no program error, just a confirmation timeout — so it has to fail here.
+    #[test]
+    fn test_commands_user_create_with_ip_proof_rejects_a_rotated_verifier_key() {
+        let mut client = create_test_client_with_ip_verifier(Keypair::new().pubkey());
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let device_pk = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        seed_accesspass_and_device(&mut client, program_id, payer, device_pk, client_ip);
+
+        // Signed by the key GlobalState held before the rotation.
+        let stale = proof_for(&Keypair::new(), payer, client_ip);
+        let err = command(client_ip, device_pk, Some(stale))
+            .execute(&client)
+            .expect_err("a proof signed by another key must not produce a transaction");
+        assert!(err.to_string().contains("does not verify"), "{err}");
+    }
+
+    /// A proof from a newer verification service than this client understands: `signed_message`
+    /// would build v1 bytes over a v2 proof, so the message the program reconstructs and the one
+    /// the precompile verifies are unrelated.
+    #[test]
+    fn test_commands_user_create_with_ip_proof_rejects_unsupported_version() {
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+        let verifier = Keypair::new();
+        let mut client = create_test_client_with_ip_verifier(verifier.pubkey());
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let device_pk = Pubkey::new_unique();
+
+        seed_accesspass_and_device(&mut client, program_id, payer, device_pk, client_ip);
+
+        let mut proof = proof_for(&verifier, payer, client_ip);
+        proof.version = 2;
+
+        let err = command(client_ip, device_pk, Some(proof))
+            .execute(&client)
+            .expect_err("an unsupported proof version must not produce a transaction");
+        assert!(err.to_string().contains("version 2"), "{err}");
     }
 
     fn command(
@@ -352,17 +407,15 @@ mod tests {
         }
     }
 
-    /// The signature is never checked client-side, so its contents are irrelevant here; what
-    /// matters is which key the proof names and that the bytes reach the Ed25519 instruction.
-    fn proof_for(payer: Pubkey, client_ip: Ipv4Addr) -> IpOwnershipProof {
-        IpOwnershipProof {
-            version: 1,
-            payer,
-            client_ip,
-            epoch: 931,
-            user_type: UserType::IBRLWithAllocatedIP as u8,
-            signature: [5u8; 64],
-        }
+    /// A proof the command will accept: signed by `verifier`, naming `payer` and `client_ip`.
+    fn proof_for(verifier: &Keypair, payer: Pubkey, client_ip: Ipv4Addr) -> IpOwnershipProof {
+        doublezero_ip_proof::sign(
+            verifier,
+            &payer,
+            &client_ip,
+            931,
+            UserType::IBRLWithAllocatedIP as u8,
+        )
     }
 
     /// The reads every path through `execute` performs: the exact-IP access pass (after the

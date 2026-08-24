@@ -914,6 +914,7 @@ async fn test_builder_user_creation_with_ip_proof() {
         &mgroup_pubkey,
         &multicast_accesspass,
         1,
+        &[],
         None,
         UserCreateSubscribeArgs {
             user_type: UserType::Multicast,
@@ -925,6 +926,7 @@ async fn test_builder_user_creation_with_ip_proof() {
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: Some(multicast_proof),
+            extra_group_count: 0,
         },
     );
     submit_all(

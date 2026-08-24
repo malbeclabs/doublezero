@@ -1,5 +1,5 @@
 use crate::{commands::globalstate::get::GetGlobalStateCommand, DoubleZeroClient};
-use doublezero_ip_proof::IpOwnershipProof;
+use doublezero_ip_proof::{is_supported_version, verify, IpOwnershipProof};
 use doublezero_serviceability_instruction::ip_proof::with_ed25519_verification;
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
 use std::net::Ipv4Addr;
@@ -23,11 +23,18 @@ pub mod update;
 /// owner* of the user being created, not the transaction payer, which differ on
 /// `CreateSubscribeUser`'s foundation-allowlist `--owner` path.
 ///
-/// The three field comparisons mirror the program's own, and are made here rather than left to it
-/// because onchain they surface as `IpProofPayerMismatch`, `IpProofClientIpMismatch` and
-/// `IpProofUserTypeMismatch` only after the transaction has been paid for. The epoch window is
-/// deliberately not checked: the ledger's current epoch is the program's to judge, and a proof
-/// this client thinks is stale may not be.
+/// The version and the three field comparisons mirror the program's own, and are made here rather
+/// than left to it because onchain they surface as `IpProofVersionUnsupported`,
+/// `IpProofPayerMismatch`, `IpProofClientIpMismatch` and `IpProofUserTypeMismatch` only after the
+/// transaction has been paid for. The epoch window is deliberately not checked: the ledger's
+/// current epoch is the program's to judge, and a proof this client thinks is stale may not be.
+///
+/// The signature check has no onchain counterpart to fall back on. The program compares the proof's
+/// signature against the Ed25519 instruction's, but a signature that does not verify never reaches
+/// the program: the precompile rejects the transaction in the leader, and with `skip_preflight`
+/// the caller sees a confirmation timeout with no logs and no error. That is the one failure in
+/// this path that is otherwise invisible, and it is reachable in normal operation — a client
+/// holding a proof signed by a verifier key that has since rotated.
 pub(crate) fn instructions_with_ip_proof(
     client: &dyn DoubleZeroClient,
     proof: &IpOwnershipProof,
@@ -36,6 +43,15 @@ pub(crate) fn instructions_with_ip_proof(
     user_type: u8,
     create_instruction: Instruction,
 ) -> eyre::Result<Vec<Instruction>> {
+    // The version travels in the proof so a v2 layout can roll out without an atomic cutover.
+    // Checked first, as the program does: every comparison below is about a message this client
+    // cannot even reconstruct for a version it does not know.
+    if !is_supported_version(proof.version) {
+        eyre::bail!(
+            "IP ownership proof version {} is not supported by this client",
+            proof.version
+        );
+    }
     if proof.payer != *proof_owner {
         eyre::bail!(
             "IP ownership proof was issued for {} but this user is created for {}",
@@ -65,6 +81,12 @@ pub(crate) fn instructions_with_ip_proof(
             "No IP verifier authority is configured onchain; cannot attach an IP ownership proof"
         );
     }
+
+    verify(proof, &verifier).map_err(|e| {
+        eyre::eyre!(
+            "IP ownership proof does not verify against the onchain verifier {verifier}: {e}"
+        )
+    })?;
 
     Ok(with_ed25519_verification(&verifier, proof, create_instruction).to_vec())
 }

@@ -267,8 +267,15 @@ impl DZClient {
             eprintln!("{log}");
         }
 
-        if let TransactionError::InstructionError(_index, InstructionError::Custom(number)) = err {
-            return Err(eyre!(DoubleZeroError::from(number)));
+        // `Custom` numbers are defined by whichever program raised them. An RFC-27 transaction
+        // also carries the native Ed25519 instruction, whose `PrecompileError` shares that space,
+        // so mapping every `Custom` through `DoubleZeroError` would print an unrelated
+        // serviceability error for a precompile failure. Only serviceability's own instructions
+        // are mapped; anything else is reported as the runtime described it.
+        if let TransactionError::InstructionError(index, InstructionError::Custom(number)) = err {
+            if transaction.message.program_id(index as usize) == Some(&self.program_id) {
+                return Err(eyre!(DoubleZeroError::from(number)));
+            }
         }
         Err(eyre!(err))
     }

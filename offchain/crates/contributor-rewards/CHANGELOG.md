@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(contributor-rewards): resolve the Solana epoch for a timestamp from real block times instead of dividing wall clock by a hardcoded 400ms slot duration. The old estimate drifted about 30k slots per day of lookback and picked the wrong epoch near a boundary, and no fixed constant survives the SIMD-0525 rollout. That epoch selects the leader schedule rewards are computed against, so the search now errors rather than returning a wrong answer: a backfill older than the endpoint's ledger retention fails on the `ingestor::demand` path instead of silently mis-estimating (malbeclabs/infra#2317)
+- fix(contributor-rewards): `snapshot` validates before writing. It warns and continues when the leader schedule cannot be fetched, but every consumer rejects a snapshot without one, so the command exited 0 having written an unusable file under the canonical name and a `snapshot` then `export-shapley` chain failed a step late. Pre-existing, but reachable now that resolving the Solana epoch depends on block-time reads (malbeclabs/infra#2317)
 - migrate to Solana 3.0: workspace `solana-*` crates and `solana-sdk` move to the 3.0 line, `solana-program-test` to 3.0.12, and the doublezero SDK git-deps repin from `client/v0.27.1` to the malbeclabs/doublezero#3830 merge revision (malbeclabs/infra#1853)
 - release artifact now builds as a static `x86_64-unknown-linux-musl` binary (malbeclabs/infra#1853)
 - TLS for HTTP clients moves from openssl to rustls; trust roots are the bundled webpki Mozilla set plus the host OS certificate store, so OS-installed private CAs remain trusted (malbeclabs/infra#1853)

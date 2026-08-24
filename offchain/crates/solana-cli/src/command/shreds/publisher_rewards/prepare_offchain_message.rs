@@ -12,7 +12,7 @@ use doublezero_solana_sdk::{
     },
 };
 
-use super::rewards_mint_arg::RewardsMintArg;
+use super::{super::NOMINAL_SLOT_DURATION, rewards_mint_arg::RewardsMintArg};
 
 /*
    doublezero-solana shreds publisher-rewards prepare-offchain-message \
@@ -21,7 +21,6 @@ use super::rewards_mint_arg::RewardsMintArg;
        [--deadline-slot <ABS> | --valid-for <DURATION>] [--json]
 */
 
-const SLOT_DURATION_MS: u64 = 400;
 const DEFAULT_VALID_FOR: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Debug, Args)]
@@ -42,7 +41,9 @@ pub struct PrepareOffchainMessageCommand {
     pub deadline_slot: Option<u64>,
 
     /// Duration the authorization remains valid (e.g. `1h`, `30m`, `7200s`).
-    /// Default: `1h`. Parsed via `humantime`.
+    /// Default: `1h`. Parsed via `humantime`. The program enforces an absolute
+    /// slot, so this is converted at a nominal 350ms per slot and the real
+    /// elapsed time varies with the cluster's slot rate.
     #[arg(long, value_parser = parse_valid_for)]
     pub valid_for: Option<Duration>,
 
@@ -137,9 +138,9 @@ impl PrepareOffchainMessageCommand {
 
 /// Pure helper: resolve the absolute deadline slot from CLI inputs.
 ///
-/// `--deadline-slot` always wins. If absent, `--valid-for` is divided by the
-/// nominal slot duration (400ms) and added to `current_slot`. If both are
-/// `None`, defaults to 1h. Both supplied is an error.
+/// `--deadline-slot` always wins. If absent, `--valid-for` is divided by
+/// `NOMINAL_SLOT_DURATION` and added to `current_slot`. If both are `None`,
+/// defaults to 1h. Both supplied is an error.
 pub(crate) fn resolve_deadline_slot(
     current_slot: u64,
     deadline_slot: Option<u64>,
@@ -155,7 +156,7 @@ pub(crate) fn resolve_deadline_slot(
     let duration = valid_for.unwrap_or(DEFAULT_VALID_FOR);
     let slots = duration
         .as_millis()
-        .checked_div(SLOT_DURATION_MS as u128)
+        .checked_div(NOMINAL_SLOT_DURATION.as_millis())
         .context("invalid slot duration")?;
     let slots: u64 = slots
         .try_into()
@@ -187,14 +188,18 @@ mod tests {
     #[test]
     fn valid_for_default_one_hour() {
         let resolved = resolve_deadline_slot(100, None, None).unwrap();
-        assert_eq!(resolved, 100 + 9_000);
+        // 3,600,000 ms / 350 ms = 10,285 slots (integer division truncates the
+        // remainder of 250 ms).
+        assert_eq!(resolved, 100 + 10_285);
     }
 
     #[test]
     fn valid_for_explicit_30m() {
         let resolved =
             resolve_deadline_slot(100, None, Some(Duration::from_secs(30 * 60))).unwrap();
-        assert_eq!(resolved, 100 + 4_500);
+        // 1,800,000 ms / 350 ms = 5,142 slots (integer division truncates the
+        // remainder of 300 ms).
+        assert_eq!(resolved, 100 + 5_142);
     }
 
     #[test]

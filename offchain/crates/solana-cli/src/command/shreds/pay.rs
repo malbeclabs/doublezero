@@ -33,7 +33,7 @@ use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_sdk::pubkey::Pubkey;
 use spl_associated_token_account_interface::address::get_associated_token_address;
 
-use super::{make_dz_connection, serviceability_program_id};
+use super::{NOMINAL_SLOT_DURATION, make_dz_connection, serviceability_program_id};
 
 /// Warn if less than 10% of the current Solana epoch remains.
 const EPOCH_REMAINING_WARNING_THRESHOLD: f64 = 0.10;
@@ -45,10 +45,6 @@ const DEPRECATION_NOTICE: &str = "The doublezero-solana client will soon be depr
      For existing users, we suggest making a new purchase on the front end when monthly payments \
      are available. You can then proceed to withdraw funds in the CLI and close out this account. \
      This command will fund your seat now";
-
-/// Solana's target slot duration in seconds. Actual varies with network
-/// conditions; used only for approximate display estimates (prefixed with `~`).
-const SLOT_DURATION_SECS: f64 = 0.4;
 
 /// Inputs for the epoch-remaining warning check, separated from I/O for testability.
 struct EpochWarningInput {
@@ -98,8 +94,12 @@ fn epoch_warning_prompt(input: &EpochWarningInput) -> Option<String> {
         return None;
     }
 
-    let remaining_secs = (input.slots_in_epoch - input.slot_index) as f64 * SLOT_DURATION_SECS;
-    let total_secs = input.slots_in_epoch as f64 * SLOT_DURATION_SECS;
+    // The nominal slot duration, not the observed one. Actual slot times vary
+    // with network conditions, so both numbers are approximate and are printed
+    // with a "~" prefix.
+    let remaining_secs =
+        (input.slots_in_epoch - input.slot_index) as f64 * NOMINAL_SLOT_DURATION.as_secs_f64();
+    let total_secs = input.slots_in_epoch as f64 * NOMINAL_SLOT_DURATION.as_secs_f64();
 
     Some(format!(
         "Only {:.1}% of the current Solana epoch remains ({} of {}).\n  \
@@ -861,10 +861,10 @@ mod tests {
     fn warning_message_contains_time_estimates() {
         let input = make_input(0.05);
         let prompt = epoch_warning_prompt(&input).expect("should warn");
-        // 5% of 432000 slots = 21600 slots * 0.4s = 8640s = 2.4 hours
-        assert!(prompt.contains("~2.4 hours"));
-        // Total epoch: 432000 * 0.4s = 172800s = 48.0 hours
-        assert!(prompt.contains("~48.0 hours"));
+        // 5% of 432,000 slots = 21,600 slots * 0.35 s = 7,560 s = 2.1 hours
+        assert!(prompt.contains("~2.1 hours"));
+        // Total epoch: 432,000 * 0.35 s = 151,200 s = 42.0 hours
+        assert!(prompt.contains("~42.0 hours"));
     }
 
     #[test]
@@ -898,8 +898,11 @@ mod tests {
     // rather than panicking.
     #[test]
     fn format_duration_exactly_zero_slots_remaining() {
-        // 0 slots * 0.4 s = 0.0 s
-        assert_eq!(format_duration(0.0 * SLOT_DURATION_SECS), "~0 minutes");
+        // 0 slots * 0.35 s = 0.0 s
+        assert_eq!(
+            format_duration(0.0 * NOMINAL_SLOT_DURATION.as_secs_f64()),
+            "~0 minutes"
+        );
     }
 
     // --- Additional coverage: epoch_warning_prompt edge cases ---
@@ -982,14 +985,14 @@ mod tests {
             dry_run: false,
             seat_active_this_epoch: false,
             prorated_service_enabled: false,
-            slot_index: slots_in_epoch - 1, // 1 slot = 0.4 s remaining
+            slot_index: slots_in_epoch - 1, // 1 slot = 0.35 s remaining
             slots_in_epoch,
         };
         let prompt = epoch_warning_prompt(&input).expect("should warn");
-        // 1 slot * 0.4 s = 0.4 s → rounds to "~0 minutes"
+        // 1 slot * 0.35 s = 0.35 s → rounds to "~0 minutes"
         assert!(prompt.contains("~0 minutes"));
         // Total epoch is hours, not minutes
-        assert!(prompt.contains("~48.0 hours"));
+        assert!(prompt.contains("~42.0 hours"));
     }
 
     // Spec row: "passed | any | any | any → Proceed silently, no warning".
@@ -1026,20 +1029,20 @@ mod tests {
     // Verify the warning content uses minutes (not hours) for the remaining-time
     // fields when less than an hour remains, even though the total epoch time is
     // still rendered in hours.
-    // 1% of a 432,000-slot epoch = 4,320 slots * 0.4 s = 1,728 s ≈ 28.8 minutes
+    // 1% of a 432,000-slot epoch = 4,320 slots * 0.35 s = 1,512 s = 25.2 minutes
     #[test]
     fn warning_near_epoch_end_shows_minutes_for_remaining_time() {
-        let input = make_input(0.01); // 1% remaining → ~29 minutes
+        let input = make_input(0.01); // 1% remaining → ~25 minutes
         let prompt = epoch_warning_prompt(&input).expect("should warn");
         // The remaining-time estimate must appear as minutes.
         assert!(
-            prompt.contains("~29 minutes"),
-            "expected '~29 minutes' for remaining time, got: {prompt}"
+            prompt.contains("~25 minutes"),
+            "expected '~25 minutes' for remaining time, got: {prompt}"
         );
         // The total epoch estimate is still rendered in hours.
         assert!(
-            prompt.contains("~48.0 hours"),
-            "expected '~48.0 hours' for total epoch, got: {prompt}"
+            prompt.contains("~42.0 hours"),
+            "expected '~42.0 hours' for total epoch, got: {prompt}"
         );
     }
 
@@ -1052,11 +1055,11 @@ mod tests {
         let prompt = epoch_warning_prompt(&input).unwrap();
         assert!(prompt.contains("5.0%"), "missing percentage");
         assert!(
-            prompt.contains("~2.4 hours"),
+            prompt.contains("~2.1 hours"),
             "missing remaining time estimate"
         );
         assert!(
-            prompt.contains("~48.0 hours"),
+            prompt.contains("~42.0 hours"),
             "missing total epoch time estimate"
         );
         assert!(

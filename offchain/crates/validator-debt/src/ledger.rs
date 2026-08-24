@@ -5,7 +5,6 @@ use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
 use solana_client::{nonblocking::rpc_client::RpcClient, rpc_config::RpcSendTransactionConfig};
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    clock::Epoch,
     hash::Hash,
     pubkey::Pubkey,
     signer::{Signer, keypair::Keypair},
@@ -13,35 +12,8 @@ use solana_sdk::{
 
 use crate::validator_debt::ComputedSolanaValidatorDebts;
 
-const SLOT_TIME_DURATION_SECONDS: f64 = 0.4;
-
 pub const DOUBLEZERO_LEDGER_MAINNET_BETA_GENESIS_HASH: Pubkey =
     solana_sdk::pubkey!("5wVUvkFcFGYiKRUZ8Jp8Wc5swjhDEqT7hTdyssxDpC7P");
-
-pub async fn get_solana_epoch_from_dz_epoch(
-    solana_client: &RpcClient,
-    ledger_client: &RpcClient,
-    dz_epoch: Epoch,
-) -> Result<(u64, u64)> {
-    let epoch_info = ledger_client.get_epoch_info().await?;
-
-    let first_slot_in_current_epoch = epoch_info.absolute_slot - epoch_info.slot_index;
-
-    let epoch_diff = epoch_info.epoch - dz_epoch;
-
-    let first_slot = first_slot_in_current_epoch - (epoch_info.slots_in_epoch * epoch_diff) - 1;
-    let last_slot = first_slot + (epoch_info.slots_in_epoch - 1);
-
-    let solana_epoch_from_first_dz_epoch_slot =
-        get_solana_epoch_from_dz_slot(solana_client, ledger_client, first_slot).await?;
-    let solana_epoch_from_last_dz_epoch_slot =
-        get_solana_epoch_from_dz_slot(solana_client, ledger_client, last_slot).await?;
-
-    Ok((
-        solana_epoch_from_first_dz_epoch_slot + 1,
-        solana_epoch_from_last_dz_epoch_slot,
-    ))
-}
 
 pub async fn create_record_on_ledger<T: borsh::BorshSerialize>(
     rpc_client: &RpcClient,
@@ -117,34 +89,6 @@ pub async fn try_fetch_debt_record(
         .await?;
 
     Ok((debt_record.header, debt_record.data))
-}
-
-async fn get_solana_epoch_from_dz_slot(
-    solana_client: &RpcClient,
-    ledger_client: &RpcClient,
-    slot: u64,
-) -> Result<u64> {
-    let block = ledger_client.get_block(slot).await?;
-
-    let dz_block_time = block.block_time.unwrap();
-    let dz_block_time: u64 = dz_block_time as u64;
-
-    let solana_epoch_info = solana_client.get_epoch_info().await?;
-
-    let first_slot_in_current_solana_epoch =
-        solana_epoch_info.absolute_slot - solana_epoch_info.slot_index;
-
-    let block_time = solana_client
-        .get_block_time(first_slot_in_current_solana_epoch)
-        .await?;
-    let block_time: u64 = block_time as u64;
-
-    let num_slots: u64 = ((block_time - dz_block_time) as f64 / SLOT_TIME_DURATION_SECONDS) as u64;
-
-    Ok(
-        (solana_epoch_info.epoch * solana_epoch_info.slots_in_epoch - num_slots)
-            / solana_epoch_info.slots_in_epoch,
-    )
 }
 
 pub async fn ensure_same_network_environment(

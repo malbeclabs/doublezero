@@ -51,8 +51,6 @@ pub trait ValidatorRewards {
         vote_keys: Vec<Pubkey>,
         epoch: u64,
     ) -> Result<Vec<Option<RpcInflationReward>>, ClientError>;
-    async fn get_slot(&self) -> Result<u64, ClientError>;
-    async fn get_block_time(&self, slot: u64) -> Result<i64, ClientError>;
 }
 
 pub struct SolanaDebtCalculator {
@@ -130,12 +128,5 @@ impl ValidatorRewards for SolanaDebtCalculator {
         self.solana_rpc_client
             .get_inflation_reward(&vote_keys, Some(epoch))
             .await
-    }
-    async fn get_slot(&self) -> Result<u64, ClientError> {
-        self.solana_rpc_client.get_slot().await
-    }
-
-    async fn get_block_time(&self, slot: u64) -> Result<i64, ClientError> {
-        self.solana_rpc_client.get_block_time(slot).await
     }
 }

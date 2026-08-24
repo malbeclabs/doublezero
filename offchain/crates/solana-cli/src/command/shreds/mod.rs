@@ -6,7 +6,7 @@ pub mod publisher_rewards;
 pub mod validator_client_rewards;
 pub mod withdraw;
 
-use std::io::Write;
+use std::{io::Write, time::Duration};
 
 use anyhow::{Result, bail};
 use clap::{Args, Subcommand};
@@ -22,6 +22,15 @@ use solana_client::{
     rpc_filter::{Memcmp, RpcFilterType},
 };
 use solana_sdk::pubkey::Pubkey;
+
+// Solana's nominal slot duration. Mainnet-beta moves 400ms to 350ms at the
+// start of epoch 1020 (2026-08-21) and SIMD-0525 continues stepping it down to
+// 200ms, so this needs one more update when that rollout completes. Testnet is
+// already at 200ms. This value deliberately does not vary by cluster, because
+// both users want a deterministic, reproducible number more than an accurate
+// one: one prints a "~" prefixed estimate and the other computes a deadline
+// slot that the CLI and the operator must agree on.
+pub(in crate::command::shreds) const NOMINAL_SLOT_DURATION: Duration = Duration::from_millis(350);
 
 #[derive(Debug, Args)]
 pub struct ShredsCommand {

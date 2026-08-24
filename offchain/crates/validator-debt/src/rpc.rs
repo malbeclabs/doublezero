@@ -193,6 +193,11 @@ impl JoinedSolanaEpochs {
         }
     }
 
+    // A second chain-verified epoch search lives in the contributor-rewards crate
+    // (`ingestor::epoch::EpochFinder::find_epoch_at_timestamp`). That one steps
+    // from an estimated seed slot and threads no rate limiter, so the two are not
+    // yet worth unifying. A fix to the skipped-slot or boundary handling here
+    // probably belongs there too.
     async fn find_solana_epoch_before_timestamp(
         solana_client: &RpcClient,
         rate_limiter: &RateLimiter,

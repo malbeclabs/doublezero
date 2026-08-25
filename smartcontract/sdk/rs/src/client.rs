@@ -193,22 +193,28 @@ impl DZClient {
         }
     }
 
-    /// Send a pre-built serviceability [`Instruction`] (RFC-26): prepend the
-    /// compute-budget prelude, sign with the payer, and send. The builder owns the
+    /// Send pre-built serviceability [`Instruction`]s (RFC-26): prepend the
+    /// compute-budget prelude, sign with the payer, and send. The builders own the
     /// account layout (including the trailing `[payer, system]`), so this path does
     /// no account assembly and no permission resolution. Single send attempt.
-    fn send_transaction_inner(&self, ix: Instruction) -> eyre::Result<Signature> {
+    ///
+    /// Almost every caller passes one instruction. RFC-27 user creation passes two:
+    /// the native `Ed25519SigVerify` instruction and the creation it authorizes,
+    /// which have to land together or not at all.
+    fn send_transaction_inner(&self, ixs: Vec<Instruction>) -> eyre::Result<Signature> {
         let payer = self
             .payer
             .as_ref()
             .ok_or_eyre("No default signer found, run \"doublezero keygen\" to create a new one")?;
 
-        self.maybe_invalidate_permission_cache(&ix);
+        for ix in &ixs {
+            self.maybe_invalidate_permission_cache(ix);
+        }
 
         // Prepend the shared RFC-26 compute-budget prelude (protocol-max compute
-        // and heap) over the built instruction — same helper the builders document.
+        // and heap) over the built instructions — same helper the builders document.
         let mut instructions = compute_budget_prelude().to_vec();
-        instructions.push(ix);
+        instructions.extend(ixs);
 
         let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
         let blockhash = self.client.get_latest_blockhash().map_err(|e| eyre!(e))?;
@@ -261,8 +267,15 @@ impl DZClient {
             eprintln!("{log}");
         }
 
-        if let TransactionError::InstructionError(_index, InstructionError::Custom(number)) = err {
-            return Err(eyre!(DoubleZeroError::from(number)));
+        // `Custom` numbers are defined by whichever program raised them. An RFC-27 transaction
+        // also carries the native Ed25519 instruction, whose `PrecompileError` shares that space,
+        // so mapping every `Custom` through `DoubleZeroError` would print an unrelated
+        // serviceability error for a precompile failure. Only serviceability's own instructions
+        // are mapped; anything else is reported as the runtime described it.
+        if let TransactionError::InstructionError(index, InstructionError::Custom(number)) = err {
+            if transaction.message.program_id(index as usize) == Some(&self.program_id) {
+                return Err(eyre!(DoubleZeroError::from(number)));
+            }
         }
         Err(eyre!(err))
     }
@@ -568,7 +581,11 @@ impl DoubleZeroClient for DZClient {
     }
 
     fn send_transaction(&self, instruction: Instruction) -> eyre::Result<Signature> {
-        self.send_transaction_inner(instruction)
+        self.send_transaction_inner(vec![instruction])
+    }
+
+    fn send_instructions(&self, instructions: Vec<Instruction>) -> eyre::Result<Signature> {
+        self.send_transaction_inner(instructions)
     }
 
     fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>> {

@@ -25,6 +25,11 @@ dirs-next.workspace = true
 doublezero-cli-core = { workspace = true, optional = true }
 doublezero-config.workspace = true
 doublezero-geolocation = { workspace = true, features = ["no-entrypoint"] }
+# RFC-27 proof struct carried by the user-creation commands. `signer` for the verification
+# half only: the SDK never issues a proof, but it checks the one it was handed against the
+# onchain verifier key before paying for a transaction the precompile would reject. Safe for
+# the BPF build — `cargo build-sbf` does not pull this crate into the program's graph.
+doublezero-ip-proof = { workspace = true, features = ["signer"] }
 doublezero-program-common.workspace = true
 doublezero-record.workspace = true
 doublezero-serviceability.workspace = true

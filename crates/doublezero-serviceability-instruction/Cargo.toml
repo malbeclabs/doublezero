@@ -18,12 +18,16 @@ name = "doublezero_serviceability_instruction"
 # RPC because it never depends on the RPC tree.
 [dependencies]
 doublezero-serviceability.workspace = true
+# The RFC-27 proof struct, read by the `ip_proof` builders. Default features only —
+# no `signer`, so no crypto crate enters the build; this crate only lays out bytes the
+# verification service already signed.
+doublezero-ip-proof.workspace = true
 solana-program.workspace = true
 solana-system-interface.workspace = true
 solana-compute-budget-interface.workspace = true
+# The upstream writer of the Ed25519 precompile offset layout. Default features are
+# bytemuck + solana-instruction + solana-sdk-ids; no userspace Ed25519 implementation.
+solana-ed25519-program.workspace = true
 
 [dev-dependencies]
-# The RFC-27 proof struct, to assert the Instructions sysvar append. Default features
-# only — no signer, so no crypto crate enters the build.
-doublezero-ip-proof.workspace = true
 solana-sdk.workspace = true

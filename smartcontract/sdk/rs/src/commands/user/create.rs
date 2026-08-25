@@ -1,7 +1,11 @@
 use crate::{
-    commands::{accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand},
+    commands::{
+        accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
+        user::instructions_with_ip_proof,
+    },
     DoubleZeroClient,
 };
+use doublezero_ip_proof::IpOwnershipProof;
 use doublezero_serviceability::{
     pda::get_user_pda,
     processors::user::create::UserCreateArgs,
@@ -19,6 +23,12 @@ pub struct CreateUserCommand {
     pub client_ip: Ipv4Addr,
     pub tunnel_endpoint: Ipv4Addr,
     pub tenant_pk: Option<Pubkey>,
+    /// RFC-27 proof that the payer originated a request from `client_ip`, obtained from the
+    /// DoubleZero IP verification service. Supplying it also pulls the Instructions sysvar into
+    /// the account list and a native `Ed25519SigVerify` instruction into the transaction; leaving
+    /// it `None` produces the pre-RFC-27 shape, which the program accepts until
+    /// `require-ip-ownership-proof` is set for the environment.
+    pub ip_proof: Option<IpOwnershipProof>,
 }
 
 impl CreateUserCommand {
@@ -68,20 +78,34 @@ impl CreateUserCommand {
                 client_ip: self.client_ip,
                 tunnel_endpoint: self.tunnel_endpoint,
                 dz_prefix_count: dz_prefix_count_u8,
-                ip_proof: None,
+                ip_proof: self.ip_proof,
             },
         );
 
-        client.send_transaction(ix).map(|sig| (sig, pda_pubkey))
+        let signature = match &self.ip_proof {
+            Some(proof) => client.send_instructions(instructions_with_ip_proof(
+                client,
+                proof,
+                &client.get_payer(),
+                &self.client_ip,
+                self.user_type as u8,
+                ix,
+            )?)?,
+            None => client.send_transaction(ix)?,
+        };
+
+        Ok((signature, pda_pubkey))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::user::create::CreateUserCommand, tests::utils::create_test_client,
+        commands::user::create::CreateUserCommand,
+        tests::utils::{create_test_client, create_test_client_with_ip_verifier},
         DoubleZeroClient,
     };
+    use doublezero_ip_proof::IpOwnershipProof;
     use doublezero_serviceability::{
         pda::get_accesspass_pda,
         processors::user::create::UserCreateArgs,
@@ -93,9 +117,15 @@ mod tests {
             user::{UserCYOA, UserType},
         },
     };
-    use doublezero_serviceability_instruction::user::create_user;
+    use doublezero_serviceability_instruction::{
+        ip_proof::with_ed25519_verification, user::create_user,
+    };
     use mockall::predicate;
-    use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{
+        pubkey::Pubkey,
+        signature::{Keypair, Signature},
+        signer::Signer,
+    };
     use std::net::Ipv4Addr;
 
     #[test]
@@ -179,9 +209,264 @@ mod tests {
             client_ip,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tenant_pk: None,
+            ip_proof: None,
         }
         .execute(&client);
 
         assert!(res.is_ok());
+    }
+
+    /// The RFC-27 path. The proof rides in the args (which is what makes the builder append the
+    /// Instructions sysvar) and the transaction gains the Ed25519 instruction the program looks
+    /// for, with the verifier key read from GlobalState rather than supplied by the caller.
+    #[test]
+    fn test_commands_user_create_with_ip_proof() {
+        let verifier = Keypair::new();
+        let mut client = create_test_client_with_ip_verifier(verifier.pubkey());
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let device_pk = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        seed_accesspass_and_device(&mut client, program_id, payer, device_pk, client_ip);
+
+        let proof = proof_for(&verifier, payer, client_ip);
+        let expected_create = create_user(
+            &program_id,
+            &payer,
+            &device_pk,
+            &get_accesspass_pda(&program_id, &client_ip, &payer).0,
+            1,
+            None,
+            UserCreateArgs {
+                user_type: UserType::IBRLWithAllocatedIP,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                dz_prefix_count: 1,
+                ip_proof: Some(proof),
+            },
+        );
+        let expected =
+            with_ed25519_verification(&verifier.pubkey(), &proof, expected_create.clone()).to_vec();
+        client
+            .expect_send_instructions()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        let res = command(client_ip, device_pk, Some(proof)).execute(&client);
+        assert!(res.is_ok(), "{res:?}");
+    }
+
+    /// An unconfigured verifier key is a local failure, not a paid-for transaction that the
+    /// program rejects with `IpVerifierNotConfigured`.
+    #[test]
+    fn test_commands_user_create_with_ip_proof_rejects_unset_verifier() {
+        let mut client = create_test_client();
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let device_pk = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        seed_accesspass_and_device(&mut client, program_id, payer, device_pk, client_ip);
+
+        let err = command(
+            client_ip,
+            device_pk,
+            Some(proof_for(&Keypair::new(), payer, client_ip)),
+        )
+        .execute(&client)
+        .expect_err("an unset verifier key must not produce a transaction");
+        assert!(
+            err.to_string().contains("No IP verifier authority"),
+            "{err}"
+        );
+    }
+
+    /// A proof issued for someone else can never validate, so it must not reach the chain.
+    #[test]
+    fn test_commands_user_create_with_ip_proof_rejects_foreign_payer() {
+        let mut client = create_test_client_with_ip_verifier(Pubkey::new_unique());
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let device_pk = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        seed_accesspass_and_device(&mut client, program_id, payer, device_pk, client_ip);
+
+        let foreign = proof_for(&Keypair::new(), Pubkey::new_unique(), client_ip);
+        let err = command(client_ip, device_pk, Some(foreign))
+            .execute(&client)
+            .expect_err("a proof naming another payer must not produce a transaction");
+        assert!(err.to_string().contains("was issued for"), "{err}");
+    }
+
+    /// A proof for a different address pins a different User PDA than the one being created, so
+    /// the program would reject it.
+    #[test]
+    fn test_commands_user_create_with_ip_proof_rejects_mismatched_client_ip() {
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+        assert_proof_rejected(client_ip, |proof| {
+            proof.client_ip = Ipv4Addr::new(198, 51, 100, 4)
+        });
+    }
+
+    /// Same for the connection type: the User PDA is `f(client_ip, user_type)`, so a proof issued
+    /// for one type does not authorize another on the same address.
+    #[test]
+    fn test_commands_user_create_with_ip_proof_rejects_mismatched_user_type() {
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+        assert_proof_rejected(client_ip, |proof| {
+            proof.user_type = UserType::Multicast as u8
+        });
+    }
+
+    /// Builds an otherwise valid request whose proof has been bent by `mutate`, and asserts the
+    /// command refuses it before any transaction is sent.
+    fn assert_proof_rejected(client_ip: Ipv4Addr, mutate: impl FnOnce(&mut IpOwnershipProof)) {
+        let verifier = Keypair::new();
+        let mut client = create_test_client_with_ip_verifier(verifier.pubkey());
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let device_pk = Pubkey::new_unique();
+
+        seed_accesspass_and_device(&mut client, program_id, payer, device_pk, client_ip);
+
+        let mut proof = proof_for(&verifier, payer, client_ip);
+        mutate(&mut proof);
+
+        let err = command(client_ip, device_pk, Some(proof))
+            .execute(&client)
+            .expect_err("a mismatched proof must not produce a transaction");
+        assert!(err.to_string().contains("was issued for"), "{err}");
+    }
+
+    /// A proof signed by a key that is no longer the onchain verifier can never validate. The
+    /// precompile would reject the transaction in the leader, and with `skip_preflight` that is
+    /// silent — no logs, no program error, just a confirmation timeout — so it has to fail here.
+    #[test]
+    fn test_commands_user_create_with_ip_proof_rejects_a_rotated_verifier_key() {
+        let mut client = create_test_client_with_ip_verifier(Keypair::new().pubkey());
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let device_pk = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        seed_accesspass_and_device(&mut client, program_id, payer, device_pk, client_ip);
+
+        // Signed by the key GlobalState held before the rotation.
+        let stale = proof_for(&Keypair::new(), payer, client_ip);
+        let err = command(client_ip, device_pk, Some(stale))
+            .execute(&client)
+            .expect_err("a proof signed by another key must not produce a transaction");
+        assert!(err.to_string().contains("does not verify"), "{err}");
+    }
+
+    /// A proof from a newer verification service than this client understands: `signed_message`
+    /// would build v1 bytes over a v2 proof, so the message the program reconstructs and the one
+    /// the precompile verifies are unrelated.
+    #[test]
+    fn test_commands_user_create_with_ip_proof_rejects_unsupported_version() {
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+        let verifier = Keypair::new();
+        let mut client = create_test_client_with_ip_verifier(verifier.pubkey());
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let device_pk = Pubkey::new_unique();
+
+        seed_accesspass_and_device(&mut client, program_id, payer, device_pk, client_ip);
+
+        let mut proof = proof_for(&verifier, payer, client_ip);
+        proof.version = 2;
+
+        let err = command(client_ip, device_pk, Some(proof))
+            .execute(&client)
+            .expect_err("an unsupported proof version must not produce a transaction");
+        assert!(err.to_string().contains("version 2"), "{err}");
+    }
+
+    fn command(
+        client_ip: Ipv4Addr,
+        device_pk: Pubkey,
+        ip_proof: Option<IpOwnershipProof>,
+    ) -> CreateUserCommand {
+        CreateUserCommand {
+            user_type: UserType::IBRLWithAllocatedIP,
+            device_pk,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tenant_pk: None,
+            ip_proof,
+        }
+    }
+
+    /// A proof the command will accept: signed by `verifier`, naming `payer` and `client_ip`.
+    fn proof_for(verifier: &Keypair, payer: Pubkey, client_ip: Ipv4Addr) -> IpOwnershipProof {
+        doublezero_ip_proof::sign(
+            verifier,
+            &payer,
+            &client_ip,
+            931,
+            UserType::IBRLWithAllocatedIP as u8,
+        )
+    }
+
+    /// The reads every path through `execute` performs: the exact-IP access pass (after the
+    /// dynamic PDA misses) and the device, for its `dz_prefixes`.
+    fn seed_accesspass_and_device(
+        client: &mut crate::MockDoubleZeroClient,
+        program_id: Pubkey,
+        payer: Pubkey,
+        device_pk: Pubkey,
+        client_ip: Ipv4Addr,
+    ) {
+        let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 0,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            user_payer: payer,
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: AccessPassStatus::Requested,
+            owner: payer,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+        let (dynamic_accesspass_pubkey, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_accesspass_pubkey))
+            .returning(|_| Err(eyre::eyre!("account not found")));
+
+        let device = Device {
+            account_type: AccountType::Device,
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(device_pk))
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
     }
 }

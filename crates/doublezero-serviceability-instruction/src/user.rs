@@ -769,6 +769,120 @@ mod tests {
         assert!(!ix.accounts[11].is_writable);
     }
 
+    /// Legacy-transaction packet limit. A serviceability transaction has no address lookup
+    /// tables, so this is the hard ceiling on `dz_prefix_count`.
+    const MAX_TRANSACTION_SIZE: usize = 1232;
+
+    /// Serialized size of the transaction the SDK actually sends: the compute-budget prelude,
+    /// then these instructions, signed by the payer alone.
+    fn transaction_size(payer: &Pubkey, instructions: &[Instruction]) -> usize {
+        let mut all = common::compute_budget_prelude().to_vec();
+        all.extend_from_slice(instructions);
+        let message = solana_sdk::message::Message::new(&all, Some(payer));
+        // One byte of signature count plus one 64-byte signature plus the message.
+        1 + 64 + message.serialize().len()
+    }
+
+    /// The largest `dz_prefix_count` for which `build` still fits one transaction.
+    fn max_dz_prefix_count(build: impl Fn(u8) -> (Pubkey, Vec<Instruction>)) -> u8 {
+        (1..=u8::MAX)
+            .take_while(|&count| {
+                let (payer, instructions) = build(count);
+                transaction_size(&payer, &instructions) <= MAX_TRANSACTION_SIZE
+            })
+            .last()
+            .expect("a single dz_prefix must always fit")
+    }
+
+    /// RFC-27 costs ~300 bytes of packet: the 111-byte `Option<IpOwnershipProof>` in the args, a
+    /// 169-byte Ed25519 instruction, and two more account keys (the Instructions sysvar and the
+    /// Ed25519 program). That is worth about eleven `dz_prefix_block` slots, and these numbers pin
+    /// the remaining headroom so a future field cannot quietly eat the rest of it. Real devices
+    /// carry one or two prefixes, so the margin is large either way.
+    #[test]
+    fn test_create_user_with_a_proof_leaves_dz_prefix_headroom() {
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+        let build = |ip_proof: Option<IpOwnershipProof>| {
+            move |dz_prefix_count: u8| {
+                let pid = Pubkey::new_unique();
+                let payer = Pubkey::new_unique();
+                let ix = create_user(
+                    &pid,
+                    &payer,
+                    &Pubkey::new_unique(),
+                    &Pubkey::new_unique(),
+                    dz_prefix_count,
+                    Some(Pubkey::new_unique()),
+                    UserCreateArgs {
+                        ip_proof,
+                        ..create_args(client_ip)
+                    },
+                );
+                let instructions = match ip_proof {
+                    Some(proof) => crate::ip_proof::with_ed25519_verification(
+                        &Pubkey::new_unique(),
+                        &proof,
+                        ix,
+                    )
+                    .to_vec(),
+                    None => vec![ix],
+                };
+                (payer, instructions)
+            }
+        };
+
+        assert_eq!(max_dz_prefix_count(build(None)), 21);
+        assert_eq!(
+            max_dz_prefix_count(build(Some(dummy_proof(client_ip)))),
+            10,
+            "RFC-27 must leave room for a realistic dz_prefix_count"
+        );
+    }
+
+    #[test]
+    fn test_create_subscribe_user_with_a_proof_leaves_dz_prefix_headroom() {
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+        let build = |ip_proof: Option<IpOwnershipProof>| {
+            move |dz_prefix_count: u8| {
+                let pid = Pubkey::new_unique();
+                let payer = Pubkey::new_unique();
+                let feed = Pubkey::new_unique();
+                let ix = create_subscribe_user(
+                    &pid,
+                    &payer,
+                    &Pubkey::new_unique(),
+                    &Pubkey::new_unique(),
+                    &Pubkey::new_unique(),
+                    dz_prefix_count,
+                    &[],
+                    Some(&feed),
+                    UserCreateSubscribeArgs {
+                        ip_proof,
+                        owner: Pubkey::new_unique(),
+                        ..base_args(client_ip)
+                    },
+                );
+                let instructions = match ip_proof {
+                    Some(proof) => crate::ip_proof::with_ed25519_verification(
+                        &Pubkey::new_unique(),
+                        &proof,
+                        ix,
+                    )
+                    .to_vec(),
+                    None => vec![ix],
+                };
+                (payer, instructions)
+            }
+        };
+
+        assert_eq!(max_dz_prefix_count(build(None)), 19);
+        assert_eq!(
+            max_dz_prefix_count(build(Some(dummy_proof(client_ip)))),
+            8,
+            "RFC-27 must leave room for a realistic dz_prefix_count"
+        );
+    }
+
     fn create_args(client_ip: Ipv4Addr) -> UserCreateArgs {
         UserCreateArgs {
             user_type: UserType::IBRLWithAllocatedIP,

@@ -11,8 +11,11 @@
 //! `DoubleZeroInstruction` path; only the builder under test goes through `dzi::`.
 //!
 //! The builders own the trailing `[payer, system]` accounts; this test only
-//! prepends the compute-budget prelude, signs with the payer, and submits.
+//! prepends the compute-budget prelude, signs with the payer, and submits — with
+//! one exception, the RFC-27 user creations, which also carry the Ed25519
+//! instruction their `ip_proof` needs (`dzi::ip_proof`).
 
+use doublezero_ip_proof::sign;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
@@ -25,6 +28,7 @@ use doublezero_serviceability::{
             create::DeviceCreateArgs, interface::create::DeviceInterfaceCreateArgs,
             update::DeviceUpdateArgs,
         },
+        globalstate::{setauthority::SetAuthorityArgs, setfeatureflags::SetFeatureFlagsArgs},
         link::create::LinkCreateArgs,
         location::{create::LocationCreateArgs, suspend::LocationSuspendArgs},
         multicastgroup::{
@@ -32,12 +36,13 @@ use doublezero_serviceability::{
             create::MulticastGroupCreateArgs,
         },
         topology::{clear::TopologyClearArgs, create::TopologyCreateArgs},
-        user::create_subscribe::UserCreateSubscribeArgs,
+        user::{create::UserCreateArgs, create_subscribe::UserCreateSubscribeArgs},
     },
     resource::ResourceType,
     state::{
         accesspass::AccessPassType,
         device::{DeviceDesiredStatus, DeviceStatus, DeviceType},
+        feature_flags::FeatureFlag,
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
         link::{LinkDesiredStatus, LinkLinkType, LinkStatus},
         topology::TopologyConstraint,
@@ -64,9 +69,20 @@ async fn submit(
     payer: &Keypair,
     ix: Instruction,
 ) -> Result<(), BanksClientError> {
-    let mut ixs = dzi::compute_budget_prelude().to_vec();
-    ixs.push(ix);
-    let mut tx = Transaction::new_with_payer(&ixs, Some(&payer.pubkey()));
+    submit_all(banks_client, payer, &[ix]).await
+}
+
+/// The same, for a builder whose instruction only means something alongside another one — RFC-27
+/// user creation, which rides with the native `Ed25519SigVerify` instruction the program
+/// introspects the Instructions sysvar to find.
+async fn submit_all(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    ixs: &[Instruction],
+) -> Result<(), BanksClientError> {
+    let mut all = dzi::compute_budget_prelude().to_vec();
+    all.extend_from_slice(ixs);
+    let mut tx = Transaction::new_with_payer(&all, Some(&payer.pubkey()));
     let blockhash = banks_client.get_latest_blockhash().await.unwrap();
     tx.sign(&[payer], blockhash);
     banks_client.process_transaction(tx).await
@@ -664,6 +680,275 @@ async fn test_builder_create_subscribe_user() {
         .unwrap();
     assert_eq!(user.status, UserStatus::Activated);
     assert_eq!(user.subscribers, vec![mgroup_pubkey]);
+}
+
+/// RFC-27 end to end through the builders (issue #4200): both user-creation builders carrying a
+/// real `IpOwnershipProof`, paired with the Ed25519 instruction by
+/// `dzi::ip_proof::with_ed25519_verification`, against a program with
+/// `require-ip-ownership-proof` set.
+///
+/// `user_ip_proof_test.rs` covers the validation rules with hand-assembled transactions. What is
+/// only testable here is that the *builders* produce a transaction the program accepts: the
+/// Instructions sysvar in the account slot the processor peels it from, and a precompile
+/// instruction whose offsets the program's scan approves. Both instructions run in one fixture
+/// because they share every prerequisite.
+#[tokio::test]
+async fn test_builder_user_creation_with_ip_proof() {
+    let (mut banks_client, payer, program_id, globalstate_pubkey, globalconfig_pubkey) =
+        setup_program_with_globalconfig().await;
+    let blockhash = banks_client.get_latest_blockhash().await.unwrap();
+
+    let (location_pubkey, exchange_pubkey, contributor_pubkey) = setup_device_prerequisites(
+        &mut banks_client,
+        blockhash,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        &payer,
+    )
+    .await;
+
+    let device_pubkey = create_activated_device(
+        &mut banks_client,
+        blockhash,
+        program_id,
+        globalstate_pubkey,
+        globalconfig_pubkey,
+        contributor_pubkey,
+        location_pubkey,
+        exchange_pubkey,
+        &payer,
+        "pdev",
+        [100, 0, 0, 1],
+        "110.2.0.0/24",
+    )
+    .await;
+
+    // Raise device max_users so both users can attach (UpdateDevice passes the current location
+    // as both old and new location).
+    execute_transaction(
+        &mut banks_client,
+        blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            max_users: Some(128),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Activated multicast group, for the CreateSubscribeUser half.
+    let mgroup_index = get_globalstate(&mut banks_client, globalstate_pubkey)
+        .await
+        .account_index
+        + 1;
+    let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, mgroup_index);
+    execute_transaction(
+        &mut banks_client,
+        blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "group27".to_string(),
+            max_bandwidth: 1000,
+            owner: payer.pubkey(),
+            use_onchain_allocation: true,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    // One AccessPass per address: the pass PDA is keyed on (client_ip, payer), and the two users
+    // deliberately sit on different addresses so neither creation can absorb the other.
+    let unicast_ip: Ipv4Addr = [100, 0, 0, 5].into();
+    let multicast_ip: Ipv4Addr = [100, 0, 0, 6].into();
+    let mut accesspasses = Vec::new();
+    for client_ip in [unicast_ip, multicast_ip] {
+        let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer.pubkey());
+        execute_transaction(
+            &mut banks_client,
+            blockhash,
+            program_id,
+            DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip,
+                last_access_epoch: 9999,
+                allow_multiple_ip: false,
+                max_unicast_users: 1,
+                max_multicast_users: 1,
+            }),
+            vec![
+                AccountMeta::new(accesspass_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(payer.pubkey(), false),
+            ],
+            &payer,
+        )
+        .await;
+        accesspasses.push(accesspass_pubkey);
+    }
+    let (unicast_accesspass, multicast_accesspass) = (accesspasses[0], accesspasses[1]);
+
+    execute_transaction(
+        &mut banks_client,
+        blockhash,
+        program_id,
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
+            client_ip: multicast_ip,
+            user_payer: payer.pubkey(),
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(multicast_accesspass, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(payer.pubkey(), false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Trust root, then enforcement. With the flag set a creation without a valid proof is
+    // rejected, so both submissions below only pass if the builders assembled a working pair.
+    let verifier = Keypair::new();
+    execute_transaction(
+        &mut banks_client,
+        blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAuthority(SetAuthorityArgs {
+            ip_verifier_authority_pk: Some(verifier.pubkey()),
+            ..Default::default()
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+    execute_transaction(
+        &mut banks_client,
+        blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::RequireIpOwnershipProof.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &payer,
+    )
+    .await;
+
+    let epoch = banks_client
+        .get_sysvar::<solana_sdk::clock::Clock>()
+        .await
+        .expect("clock sysvar")
+        .epoch;
+
+    // CreateUser via the builder, with a proof.
+    let unicast_proof = sign(
+        &verifier,
+        &payer.pubkey(),
+        &unicast_ip,
+        epoch,
+        UserType::IBRL as u8,
+    );
+    let create_user_ix = dzi::user::create_user(
+        &program_id,
+        &payer.pubkey(),
+        &device_pubkey,
+        &unicast_accesspass,
+        1,
+        None,
+        UserCreateArgs {
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: unicast_ip,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            ip_proof: Some(unicast_proof),
+        },
+    );
+    submit_all(
+        &mut banks_client,
+        &payer,
+        &dzi::ip_proof::with_ed25519_verification(
+            &verifier.pubkey(),
+            &unicast_proof,
+            create_user_ix,
+        ),
+    )
+    .await
+    .expect("create_user with a proof should be accepted by the program");
+
+    let (unicast_user_pubkey, _) = get_user_pda(&program_id, &unicast_ip, UserType::IBRL);
+    let unicast_user = get_account_data(&mut banks_client, unicast_user_pubkey)
+        .await
+        .expect("unicast user should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(unicast_user.status, UserStatus::Activated);
+
+    // CreateSubscribeUser via the builder, with a proof bound to its own user_type.
+    let multicast_proof = sign(
+        &verifier,
+        &payer.pubkey(),
+        &multicast_ip,
+        epoch,
+        UserType::Multicast as u8,
+    );
+    let create_subscribe_ix = dzi::user::create_subscribe_user(
+        &program_id,
+        &payer.pubkey(),
+        &device_pubkey,
+        &mgroup_pubkey,
+        &multicast_accesspass,
+        1,
+        &[],
+        None,
+        UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: multicast_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+            ip_proof: Some(multicast_proof),
+            extra_group_count: 0,
+        },
+    );
+    submit_all(
+        &mut banks_client,
+        &payer,
+        &dzi::ip_proof::with_ed25519_verification(
+            &verifier.pubkey(),
+            &multicast_proof,
+            create_subscribe_ix,
+        ),
+    )
+    .await
+    .expect("create_subscribe_user with a proof should be accepted by the program");
+
+    let (multicast_user_pubkey, _) = get_user_pda(&program_id, &multicast_ip, UserType::Multicast);
+    let multicast_user = get_account_data(&mut banks_client, multicast_user_pubkey)
+        .await
+        .expect("multicast user should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(multicast_user.status, UserStatus::Activated);
+    assert_eq!(multicast_user.subscribers, vec![mgroup_pubkey]);
 }
 
 /// Composed builder with variable onchain-read owners (`delete_device`, atomic

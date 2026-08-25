@@ -40,6 +40,16 @@ pub trait DoubleZeroClient {
     /// accounts (RFC-26); the send path no longer touches account layout.
     fn send_transaction(&self, instruction: Instruction) -> eyre::Result<Signature>;
 
+    /// The same path for a transaction that needs more than one instruction: the
+    /// compute-budget prelude, then `instructions` in the order given, signed and
+    /// sent as one atomic transaction.
+    ///
+    /// RFC-27 is why this exists — a user creation carrying an `IpOwnershipProof`
+    /// must ride alongside the native `Ed25519SigVerify` instruction that the
+    /// program introspects the Instructions sysvar to find, and the two only mean
+    /// anything together.
+    fn send_instructions(&self, instructions: Vec<Instruction>) -> eyre::Result<Signature>;
+
     fn get_transactions(&self, pubkey: Pubkey) -> eyre::Result<Vec<DZTransaction>>;
 }
 

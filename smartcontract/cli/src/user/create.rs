@@ -108,6 +108,7 @@ impl CreateUserCliCommand {
             client_ip: self.client_ip,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tenant_pk,
+            ip_proof: None,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -242,6 +243,7 @@ mod tests {
                 client_ip: [100, 0, 0, 1].into(),
                 tenant_pk: None,
                 tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                ip_proof: None,
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));

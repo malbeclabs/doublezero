@@ -14,6 +14,15 @@ pub mod utils {
     };
 
     pub fn create_test_client() -> MockDoubleZeroClient {
+        create_test_client_with_ip_verifier(Pubkey::default())
+    }
+
+    /// The same client with `globalstate.ip_verifier_authority_pk` set, for the RFC-27 paths that
+    /// read the verifier key to build the Ed25519 instruction. `Pubkey::default()` means "no
+    /// verifier configured", which those paths must refuse.
+    pub fn create_test_client_with_ip_verifier(
+        ip_verifier_authority_pk: Pubkey,
+    ) -> MockDoubleZeroClient {
         let mut client = MockDoubleZeroClient::new();
 
         // Payer
@@ -40,7 +49,7 @@ pub mod utils {
             qa_allowlist: vec![],
             feature_flags: 0,
             feed_authority_pk: Pubkey::default(),
-            ip_verifier_authority_pk: Pubkey::default(),
+            ip_verifier_authority_pk,
         };
         client
             .expect_get()

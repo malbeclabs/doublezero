@@ -756,4 +756,62 @@ mod tests {
             "an unparseable value must be a hard error, not a silent fallback",
         );
     }
+
+    /// The bare `doublezero connect` (no subcommand) must parse, and must not have
+    /// stolen the `ibrl` subcommand's own tenant/allocate-addr arguments.
+    #[test]
+    fn connect_bare_and_subcommand_forms_parse() {
+        use crate::cli::command::Command;
+        use doublezero_daemon_cli::{connect::DzMode, DaemonCommand};
+
+        let bare = parse_ok(&["doublezero", "connect"]);
+        let Some(Command::Daemon(DaemonCommand::Connect(c))) = bare.command else {
+            panic!("expected a connect command");
+        };
+        assert!(c.dz_mode.is_none());
+        assert!(c.tenant.is_none());
+        assert!(!c.allocate_addr);
+
+        let flagged = parse_ok(&[
+            "doublezero",
+            "connect",
+            "--tenant",
+            "foo",
+            "--allocate-addr",
+        ]);
+        let Some(Command::Daemon(DaemonCommand::Connect(c))) = flagged.command else {
+            panic!("expected a connect command");
+        };
+        assert!(c.dz_mode.is_none());
+        assert_eq!(c.tenant.as_deref(), Some("foo"));
+        assert!(c.allocate_addr);
+
+        // The subcommand keeps its own positional tenant and `-a`, and the parent's
+        // non-global flags stay unset rather than aliasing them.
+        let sub = parse_ok(&["doublezero", "connect", "ibrl", "foo", "-a"]);
+        let Some(Command::Daemon(DaemonCommand::Connect(c))) = sub.command else {
+            panic!("expected a connect command");
+        };
+        assert!(matches!(
+            c.dz_mode,
+            Some(DzMode::IBRL {
+                tenant: Some(ref t),
+                allocate_addr: true
+            }) if t == "foo"
+        ));
+        assert!(c.tenant.is_none());
+        assert!(!c.allocate_addr);
+
+        parse_ok(&["doublezero", "connect", "multicast"]);
+
+        // The parent's long flags are not global, so they do not leak into subcommands.
+        assert!(
+            App::try_parse_from(["doublezero", "connect", "ibrl", "--tenant", "foo"]).is_err(),
+            "--tenant must not be accepted by the ibrl subcommand"
+        );
+        assert!(
+            App::try_parse_from(["doublezero", "connect", "multicast", "--allocate-addr"]).is_err(),
+            "--allocate-addr must not leak into the multicast subcommand"
+        );
+    }
 }

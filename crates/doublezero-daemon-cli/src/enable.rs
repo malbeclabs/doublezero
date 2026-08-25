@@ -11,6 +11,22 @@ use crate::{client::DaemonClient, ledger::LedgerClient, requirements::check_daem
 #[derive(Args, Debug)]
 pub struct Enable {}
 
+/// Turn the reconciler on unless it already is, returning whether it was
+/// *already* enabled so the caller can decide what to report.
+///
+/// Assumes the caller has already run [`check_daemon`]; `Enable::execute` and
+/// the bare `doublezero connect` share this so the two cannot drift.
+pub(crate) async fn ensure_reconciler_enabled<D: DaemonClient>(daemon: &D) -> eyre::Result<bool> {
+    if let Ok(v2) = daemon.v2_status().await {
+        if v2.reconciler_enabled {
+            return Ok(true);
+        }
+    }
+
+    daemon.enable().await?;
+    Ok(false)
+}
+
 impl Enable {
     pub async fn execute<D: DaemonClient, L: LedgerClient, W: Write>(
         self,
@@ -21,15 +37,11 @@ impl Enable {
     ) -> eyre::Result<()> {
         check_daemon(daemon, ledger).await?;
 
-        if let Ok(v2) = daemon.v2_status().await {
-            if v2.reconciler_enabled {
-                writeln!(out, "Reconciler already enabled")?;
-                return Ok(());
-            }
+        if ensure_reconciler_enabled(daemon).await? {
+            writeln!(out, "Reconciler already enabled")?;
+        } else {
+            writeln!(out, "Reconciler enabled")?;
         }
-
-        daemon.enable().await?;
-        writeln!(out, "Reconciler enabled")?;
         Ok(())
     }
 }

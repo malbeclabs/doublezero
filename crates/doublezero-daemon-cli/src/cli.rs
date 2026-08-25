@@ -19,6 +19,11 @@ use crate::{
 #[derive(Subcommand, Debug)]
 pub enum DaemonCommand {
     /// Connect your server to a doublezero device
+    ///
+    /// With no subcommand, provisions every mode this server's AccessPass authorizes in
+    /// one run: an IBRL tunnel, plus a multicast tunnel joined to the groups (or
+    /// purchased feeds) the pass grants. Modes the pass does not cover are reported and
+    /// skipped.
     Connect(Connect),
     /// Enable the reconciler (start managing tunnels)
     Enable(Enable),

@@ -234,6 +234,13 @@ func (c *Client) Start(ctx context.Context) error {
 		"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
 		"DZ_CLIENT_EXTRA_ARGS":         strings.Join(extraArgs, " "),
 	}
+	// Point `connect` at the devnet verifier. Without this the `--env local` default
+	// (http://localhost:8080) is used, which resolves to nothing inside the client container.
+	// The URL is the verifier's CYOA address, so the source address it observes is the same one
+	// the client binds its tunnel to — `connect` hard-fails on a proof for any other address.
+	if c.dn.IPVerifier != nil && c.dn.IPVerifier.InternalURL != "" {
+		env["DZ_IP_VERIFIER_URL"] = c.dn.IPVerifier.InternalURL
+	}
 	if c.Spec.EnableQAAgent {
 		env["DZ_QAAGENT_ENABLE"] = "true"
 		env["DZ_QAAGENT_ADDR"] = fmt.Sprintf("0.0.0.0:%d", qaAgentPort)

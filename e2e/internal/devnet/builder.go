@@ -119,6 +119,12 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 			args:       append([]string{"--build-arg", baseImageArg}, extraArgs...),
 		},
 		{
+			name:       "ip-verifier",
+			image:      os.Getenv("DZ_IP_VERIFIER_IMAGE"),
+			dockerfile: filepath.Join(dockerfilesDir, "ip-verifier", "Dockerfile"),
+			args:       append([]string{"--build-arg", baseImageArg}, extraArgs...),
+		},
+		{
 			name:       "validator-metadata-service-mock",
 			image:      os.Getenv("DZ_VALIDATOR_METADATA_SERVICE_MOCK_IMAGE"),
 			dockerfile: filepath.Join(dockerfilesDir, "validator-metadata-service-mock", "Dockerfile"),

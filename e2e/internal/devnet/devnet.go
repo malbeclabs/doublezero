@@ -41,6 +41,7 @@ const (
 
 	containerDoublezeroKeypairPath = "/root/.config/doublezero/id.json"
 	containerSolanaKeypairPath     = "/root/.config/solana/id.json"
+	containerIPVerifierKeypairPath = "/etc/doublezero/ip-verifier.json"
 
 	// defaultNetworkBaseCIDR is the address range the devnet's default network is allocated from.
 	// It is kept separate from the CYOA network range (9.128.0.0/9) so tests that detect interfaces
@@ -94,6 +95,7 @@ type DevnetSpec struct {
 	InfluxDB                     InfluxDBSpec
 	Prometheus                   PrometheusSpec
 	Sentinel                     SentinelSpec
+	IPVerifier                   IPVerifierSpec
 	ValidatorMetadataServiceMock ValidatorMetadataServiceMockSpec
 	Devices                      map[string]DeviceSpec
 	Clients                      map[string]ClientSpec
@@ -129,6 +131,7 @@ type Devnet struct {
 	InfluxDB                     *InfluxDB
 	Prometheus                   *Prometheus
 	Sentinel                     *Sentinel
+	IPVerifier                   *IPVerifier
 	ValidatorMetadataServiceMock *ValidatorMetadataServiceMock
 	Devices                      map[string]*Device
 	Clients                      map[string]*Client
@@ -178,6 +181,10 @@ func (s *DevnetSpec) Validate() error {
 
 	if err := s.Prometheus.Validate(); err != nil {
 		return fmt.Errorf("prometheus: %w", err)
+	}
+
+	if err := s.IPVerifier.Validate(s.CYOANetwork); err != nil {
+		return fmt.Errorf("ip-verifier: %w", err)
 	}
 
 	if s.Devices == nil {
@@ -295,6 +302,24 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		}
 	}
 
+	// If the ip-verifier keypair path is not provided, generate a new keypair or use an existing
+	// one in the deploy directory if it exists. Devnet-only: it is written to the deploy
+	// directory rather than checked in, and its pubkey is what the local GlobalState names as the
+	// verifier authority.
+	if spec.IPVerifier.Enabled && spec.IPVerifier.KeypairPath == "" {
+		ipVerifierKeypairPath := filepath.Join(spec.DeployDir, "ip-verifier-keypair.json")
+		generated, err := generateKeypairIfNotExists(ipVerifierKeypairPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate ip-verifier keypair: %w", err)
+		}
+		spec.IPVerifier.KeypairPath = ipVerifierKeypairPath
+		if generated {
+			log.Debug("--> Generated ip-verifier keypair", "path", ipVerifierKeypairPath)
+		} else {
+			log.Debug("--> Using existing ip-verifier keypair", "path", ipVerifierKeypairPath)
+		}
+	}
+
 	// Validate the spec.
 	if err := spec.Validate(); err != nil {
 		return nil, fmt.Errorf("failed to validate spec: %w", err)
@@ -375,6 +400,12 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 	dn.Sentinel = &Sentinel{
 		dn:  dn,
 		log: log.With("component", "sentinel"),
+	}
+	if spec.IPVerifier.Enabled {
+		dn.IPVerifier = &IPVerifier{
+			dn:  dn,
+			log: log.With("component", "ip-verifier"),
+		}
 	}
 	dn.ValidatorMetadataServiceMock = &ValidatorMetadataServiceMock{
 		dn:  dn,
@@ -533,6 +564,27 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 	// Create the CYOA network if it doesn't exist.
 	if _, err := d.CYOANetwork.CreateIfNotExists(ctx); err != nil {
 		return fmt.Errorf("failed to create CYOA network: %w", err)
+	}
+
+	// Start the ip-verifier if it's not already running. It comes after the CYOA network, which
+	// it attaches to so that a client's proof request is observed arriving from the same address
+	// the client binds its tunnel to. Its authority has to be onchain before it starts: the
+	// service reads GlobalState at startup and exits if the authority is not its own key.
+	if d.IPVerifier != nil {
+		if err := d.IPVerifier.Prepare(); err != nil {
+			return fmt.Errorf("failed to prepare ip-verifier: %w", err)
+		}
+		// Skipped for a stack running cloned state: its GlobalState came from a remote cluster
+		// and the local manager is not its authority, so the write would fail. Such a stack has
+		// to name a verifier the cloned state already trusts.
+		if !d.Spec.SkipProgramDeploy {
+			if err := d.SetIPVerifierAuthority(ctx, d.IPVerifier.Pubkey); err != nil {
+				return fmt.Errorf("failed to set ip-verifier authority: %w", err)
+			}
+		}
+		if _, err := d.IPVerifier.StartIfNotRunning(ctx); err != nil {
+			return fmt.Errorf("failed to start ip-verifier: %w", err)
+		}
 	}
 
 	// We don't support starting with devices yet.

@@ -168,12 +168,16 @@ enum FeedJoinUser {
     },
 }
 
-/// AccessPass pre-flight: `Ok(false)` when no pass exists for
-/// `(client_ip, payer)` so the caller can render its own diagnostic before
-/// bailing. With `enforce_epoch`, the pass must also cover the current epoch.
+/// AccessPass pre-flight: `Ok(false)` when no pass exists for `(client_ip, payer)` so the caller
+/// can render its own diagnostic before bailing. With `enforce_epoch`, the pass must also cover
+/// the current epoch.
 ///
-/// Mirrors `check_accesspass` in `smartcontract/cli/src/requirements.rs` —
-/// keep the two in sync if AccessPass validity semantics change.
+/// [`LedgerClient::get_accesspass`] resolves through `GetAccessPassCommand`, which probes the
+/// dynamic (0.0.0.0) PDA before the exact-IP one, so a wildcard-seat holder — including the
+/// `EdgeSeat` passes the Feed Oracle issues — is found here without a second lookup. That is the
+/// same ordering `CreateUserCommand` uses to pick the PDA it sends, and the program accepts either
+/// (`smartcontract/programs/doublezero-serviceability/src/processors/user/create_core.rs`), so
+/// this pre-flight accepts exactly what the transaction will.
 fn check_accesspass<L: LedgerClient>(
     ledger: &L,
     client_ip: Ipv4Addr,

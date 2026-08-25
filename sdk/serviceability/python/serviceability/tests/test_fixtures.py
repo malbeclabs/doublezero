@@ -80,8 +80,20 @@ class TestFixtureGlobalState:
                 "SentinelAuthorityPk": gs.sentinel_authority_pk,
                 "HealthOraclePk": gs.health_oracle_pk,
                 "FeedAuthorityPk": gs.feed_authority_pk,
+                "IpVerifierAuthorityPk": gs.ip_verifier_authority_pk,
             },
         )
+
+    def test_pre_rfc27_account_decodes_verifier_authority_to_default(self):
+        """ip_verifier_authority_pk is appended, so account data written before RFC-27 simply
+        ends after feed_authority_pk. That must decode, not raise: the default pubkey is what
+        "no verifier configured" looks like everywhere else.
+        """
+        data, _ = _load_fixture("global_state")
+        gs = GlobalState.from_bytes(data[:-32])
+        assert gs.ip_verifier_authority_pk == Pubkey.default()
+        # The field before it still decodes, so the truncation landed where it was meant to.
+        assert gs.feed_authority_pk != Pubkey.default()
 
 
 class TestFixtureGlobalConfig:

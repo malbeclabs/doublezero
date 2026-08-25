@@ -7,10 +7,12 @@
 //! **Why `build_with_permission`.** The feed `create`/`update`/`delete`
 //! processors call `authorize(.., FEED_AUTHORITY | FOUNDATION)`, so feed is a
 //! permission-gated instruction like topology/tenant and belongs on the
-//! permission-appending path. This intentionally diverges from today's Rust SDK
-//! feed commands, which use the plain (no-permission) `execute_transaction`;
-//! among authorize()-gated instructions the SDK feed commands are the odd ones
-//! out, not these builders.
+//! permission-appending path. The Rust SDK feed commands now also append the
+//! Permission account after an RPC existence check
+//! (`append_payer_permission_account`). These builders stay on the deferred
+//! [`common::build_with_permission`] path: they do not append the account
+//! themselves. The SDK activates the append caller-side for feed
+//! create/update/delete, user delete/update, and multicast role updates.
 //!
 //! One pre-existing program-side gap, unrelated to these builders: `FEED_AUTHORITY`
 //! is absent from `authorize.rs::AUTHORIZE_GATED_FLAGS`. That list drives

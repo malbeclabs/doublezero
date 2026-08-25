@@ -1,5 +1,8 @@
 use crate::{
-    commands::{device::get::GetDeviceCommand, user::get::GetUserCommand},
+    commands::{
+        common::append_payer_permission_account, device::get::GetDeviceCommand,
+        user::get::GetUserCommand,
+    },
     DoubleZeroClient,
 };
 use doublezero_program_common::types::NetworkV4;
@@ -55,7 +58,7 @@ impl UpdateUserCommand {
         })?;
         let multicast_publisher_count = 1u8;
 
-        client.send_transaction(update_user(
+        let mut ix = update_user(
             &client.get_program_id(),
             &client.get_payer(),
             &self.pubkey,
@@ -74,17 +77,22 @@ impl UpdateUserCommand {
                 multicast_publisher_count,
                 tunnel_endpoint: self.tunnel_endpoint,
             },
-        ))
+        );
+
+        append_payer_permission_account(client, &mut ix)?;
+        client.send_transaction(ix)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::user::update::UpdateUserCommand, tests::utils::create_test_client,
+        commands::user::update::UpdateUserCommand,
+        tests::utils::{create_test_client, expect_missing_permission_account},
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
+        pda::get_permission_pda,
         processors::user::update::UserUpdateArgs,
         state::{
             accountdata::AccountData,
@@ -95,7 +103,9 @@ mod tests {
     };
     use doublezero_serviceability_instruction::user::update_user;
     use mockall::predicate;
-    use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{
+        account::Account, message::AccountMeta, pubkey::Pubkey, signature::Signature,
+    };
     use std::net::Ipv4Addr;
 
     #[test]
@@ -175,6 +185,111 @@ mod tests {
             .expect_send_transaction()
             .with(predicate::eq(expected))
             .returning(|_| Ok(Signature::new_unique()));
+
+        expect_missing_permission_account(&mut client);
+
+        let res = UpdateUserCommand {
+            pubkey: user_pubkey,
+            user_type: None,
+            cyoa_type: None,
+            dz_ip: None,
+            tunnel_id: Some(501),
+            tunnel_net: None,
+            validator_pubkey: None,
+            tenant_pk: None,
+            tunnel_endpoint: None,
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_commands_user_update_with_permission_pda() {
+        let mut client = create_test_client();
+
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+
+        let user_pubkey = Pubkey::new_unique();
+        let device_pk = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        let user = User {
+            account_type: AccountType::User,
+            owner: payer,
+            bump_seed: 0,
+            index: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRLWithAllocatedIP,
+            device_pk,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip,
+            dz_ip: Ipv4Addr::new(10, 0, 0, 1),
+            tunnel_id: 500,
+            tunnel_net: "169.254.0.0/31".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
+            ..Default::default()
+        };
+
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .returning(move |_| Ok(AccountData::User(user.clone())));
+
+        let device = Device {
+            account_type: AccountType::Device,
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(device_pk))
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
+
+        let mut expected = update_user(
+            &program_id,
+            &payer,
+            &user_pubkey,
+            &device_pk,
+            1,
+            &Pubkey::default(),
+            UserUpdateArgs {
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: Some(501),
+                tunnel_net: None,
+                validator_pubkey: None,
+                tenant_pk: None,
+                dz_prefix_count: 1,
+                multicast_publisher_count: 1,
+                tunnel_endpoint: None,
+            },
+        );
+        let (permission_pda_pubkey, _) = get_permission_pda(&program_id, &payer);
+        expected
+            .accounts
+            .push(AccountMeta::new_readonly(permission_pda_pubkey, false));
+
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        client
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![permission_pda_pubkey]))
+            .returning(move |_| Ok(vec![Some(Account::new(0, 0, &program_id))]));
 
         let res = UpdateUserCommand {
             pubkey: user_pubkey,

@@ -120,7 +120,7 @@ mod tests {
     };
     use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
-        pda::get_accesspass_pda,
+        pda::{get_accesspass_pda, get_permission_pda},
         processors::{
             accesspass::set::SetAccessPassArgs, tenant::delete::TenantDeleteArgs,
             user::delete::UserDeleteArgs,
@@ -138,7 +138,9 @@ mod tests {
         accesspass::set_access_pass, tenant::delete_tenant, user::delete_user,
     };
     use mockall::{predicate, Sequence};
-    use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{
+        account::Account, message::AccountMeta, pubkey::Pubkey, signature::Signature,
+    };
     use std::{collections::HashMap, net::Ipv4Addr};
 
     #[test]
@@ -302,24 +304,30 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::Device(device.clone())));
 
+        let (permission_pda_pubkey, _) = get_permission_pda(&program_id, &payer);
+
         // 5. DeleteUserCommand internally: send_transaction(DeleteUser). The user carries
         // this tenant, so the builder appends the optional tenant account.
+        let mut ix = delete_user(
+            &program_id,
+            &payer,
+            &user_pubkey,
+            &accesspass_pubkey,
+            &device_pk,
+            1,
+            Some(tenant_pubkey),
+            &payer,
+            UserDeleteArgs {
+                dz_prefix_count: 1,
+                multicast_publisher_count: 1,
+            },
+        );
+        ix.accounts
+            .push(AccountMeta::new_readonly(permission_pda_pubkey, false));
+
         client
             .expect_send_transaction()
-            .with(predicate::eq(delete_user(
-                &program_id,
-                &payer,
-                &user_pubkey,
-                &accesspass_pubkey,
-                &device_pk,
-                1,
-                Some(tenant_pubkey),
-                &payer,
-                UserDeleteArgs {
-                    dz_prefix_count: 1,
-                    multicast_publisher_count: 1,
-                },
-            )))
+            .with(predicate::eq(ix))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
@@ -384,6 +392,12 @@ mod tests {
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
+
+        // 9. GetPermissionCommand: get_multiple_accounts(&pubkeys)
+        client
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![permission_pda_pubkey]))
+            .returning(move |_| Ok(vec![Some(Account::new(0, 0, &program_id))]));
 
         let res = DeleteTenantCommand {
             tenant_pubkey,

@@ -53,11 +53,15 @@ pub(crate) fn build(
 /// never a caller-supplied argument) once the permission model is rolled out.
 ///
 /// Builders are **assigned** to this method per-instruction as they are
-/// implemented; the append itself is **deferred** (RFC-26 "Permission account").
-/// Today it simply delegates to [`build`], so assigning a builder here is
-/// behavior-preserving. At the permission rollout, enable the append **here, in
-/// this one place** — it then activates for every builder already assigned to
-/// this method at once, while builders on [`build`] stay untouched.
+/// implemented; the append itself is **deferred** here (RFC-26 "Permission
+/// account"). Today it simply delegates to [`build`], so assigning a builder
+/// here is behavior-preserving. The Rust SDK activates the append caller-side,
+/// after an RPC existence check (`append_payer_permission_account`), for a
+/// subset of gated commands: feed create/update/delete, user delete/update, and
+/// multicast role updates (`UpdateMulticastGroupRoles`). Other builders assigned
+/// here still emit `[payer, system]` only. Central activation here remains the
+/// rollout that turns the append on for every assigned builder at once; it still
+/// waits on the precondition below.
 ///
 /// The Permission account MUST be appended **last**: `authorize()` reads it as
 /// the final account and identifies it by PDA match (`get_permission_pda(payer)`)

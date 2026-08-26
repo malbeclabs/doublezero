@@ -32,7 +32,7 @@ const (
 	// a pre-existing validator-owned user the oracle adds the shred groups via its
 	// ~60s reconcile loop (not inline on the allocation ack), so subscribe latency
 	// is cadence-bound and has been observed up to ~3.5 min on devnet. This is NOT
-	// affected by the withdraw fix (doublezerofoundation/doublezero-offchain#395),
+	// affected by the withdraw fix (malbeclabs/doublezero-offchain#395),
 	// so keep a generous budget until the oracle subscribes on grant.
 	waitForMulticastStatusUpTimeout = 300 * time.Second
 	// Tunnel DOWN is prompt with #395: `shreds withdraw` issues a real withdrawal,

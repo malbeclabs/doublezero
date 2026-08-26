@@ -33,7 +33,7 @@ use crate::{
     client::{DaemonClient, LatencyRecord, StatusResponse},
     enable::ensure_reconciler_enabled,
     helpers::{init_spinner, resolve_client_ip},
-    latency::{best_latency, retrieve_latencies, select_tunnel_endpoint},
+    latency::{best_latency, retrieve_latencies, select_tunnel_endpoint, NoAvailableEndpoint},
     ledger::LedgerClient,
     requirements::check_daemon,
 };
@@ -223,9 +223,19 @@ fn report_both<W: Write>(ibrl: LegOutcome, multicast: LegOutcome, out: &mut W) -
         (LegOutcome::Failed(_), LegOutcome::Failed(_))
     );
 
-    for (label, outcome, rerun) in [
-        ("IBRL", &ibrl, "doublezero connect ibrl"),
-        ("Multicast", &multicast, "doublezero connect multicast"),
+    for (label, outcome, rerun, free_endpoint) in [
+        (
+            "IBRL",
+            &ibrl,
+            "doublezero connect ibrl",
+            "doublezero disconnect multicast",
+        ),
+        (
+            "Multicast",
+            &multicast,
+            "doublezero connect multicast",
+            "doublezero disconnect ibrl",
+        ),
     ] {
         match outcome {
             LegOutcome::Provisioned => writeln!(out, "    {label}: provisioned")?,
@@ -233,7 +243,18 @@ fn report_both<W: Write>(ibrl: LegOutcome, multicast: LegOutcome, out: &mut W) -
             LegOutcome::Skipped(reason) => writeln!(out, "⚠️  {label} skipped: {reason}")?,
             LegOutcome::Failed(e) => {
                 writeln!(out, "❌  {label} failed: {e:#}")?;
-                if !both_failed {
+                // A starved endpoint is not worth a rerun: the leg that succeeded is what
+                // took the last one, so the next run recomputes the same exclusion and fails
+                // identically. Name the way out instead — freeing an endpoint costs the other
+                // tunnel, so it is offered as a choice, not as "the command that finishes".
+                if e.chain().any(|cause| cause.is::<NoAvailableEndpoint>()) {
+                    writeln!(
+                        out,
+                        "    Rerunning '{rerun}' will fail the same way. Free an endpoint with \
+                         '{free_endpoint}', or connect from a machine that can reach another \
+                         device."
+                    )?;
+                } else if !both_failed {
                     writeln!(out, "    Rerun '{rerun}' to finish.")?;
                 }
             }
@@ -1486,6 +1507,17 @@ impl Connect {
                 (pk, endpoint)
             }
         };
+
+        // `select_tunnel_endpoint` reports "nothing left" as UNSPECIFIED, which is a legal
+        // tunnel_endpoint onchain (`User::validate` only constrains it when non-zero) that the
+        // controller reads as "use the device's public IP". Writing it would put this tunnel on
+        // the same underlay source address as the tunnel that just took the last free endpoint —
+        // exactly the GRE collision per-endpoint addressing exists to avoid. Auto-selection
+        // already fails here inside `best_latency`; the explicit-`--device` path reaches this
+        // line instead, because it skips `best_latency` entirely.
+        if tunnel_endpoint == Ipv4Addr::UNSPECIFIED {
+            return Err(NoAvailableEndpoint.into());
+        }
 
         let device = ledger
             .get_device(device_pk.to_string())
@@ -6177,7 +6209,8 @@ mod tests {
     }
 
     /// With only one eligible device the IBRL leg takes it and `exclude_ips` starves the
-    /// multicast leg. The IBRL tunnel still stands, but the command reports failure.
+    /// multicast leg. The IBRL tunnel still stands, but the command reports failure — and
+    /// must not advise a rerun, which would recompute the same exclusion and fail again.
     #[test]
     fn test_connect_bare_multicast_failure_after_ibrl_success() {
         block_on(async {
@@ -6194,9 +6227,53 @@ mod tests {
             assert!(output.contains("IBRL: provisioned"), "{output}");
             assert!(output.contains("❌  Multicast failed"), "{output}");
             assert!(
-                output.contains("Rerun 'doublezero connect multicast' to finish."),
+                output.contains("Rerunning 'doublezero connect multicast' will fail the same way"),
                 "{output}"
             );
+            assert!(
+                output.contains("Free an endpoint with 'doublezero disconnect ibrl'"),
+                "{output}"
+            );
+            assert!(
+                !output.contains("Rerun 'doublezero connect multicast' to finish."),
+                "a rerun cannot clear the exclusion that caused this: {output}"
+            );
+            assert!(!output.contains("✅  User Provisioned"), "{output}");
+        });
+    }
+
+    /// `--device` skips `best_latency`, so a starved device reaches `select_tunnel_endpoint`'s
+    /// UNSPECIFIED fallback. That value is legal onchain and the controller reads it as the
+    /// device public IP, so writing it would silently put the multicast tunnel on the same
+    /// underlay source address as the IBRL tunnel that took the last endpoint. It must fail
+    /// instead — the mock has no `create_user` expectation, so a create here panics the test.
+    #[test]
+    fn test_connect_bare_with_device_rejects_a_starved_endpoint_instead_of_writing_unspecified() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+            fixture.accesspass.lock().unwrap().mgroup_sub_allowlist = vec![group_pk];
+
+            // One device, and this machine's IBRL user already holds its only endpoint.
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let ibrl_user = fixture.create_user(UserType::IBRL, device_pk, "1.2.3.4");
+            assert_eq!(
+                ibrl_user.tunnel_endpoint, device.public_ip,
+                "the fixture must leave the device with no free endpoint"
+            );
+            fixture.add_user(&ibrl_user);
+
+            let command = Connect {
+                device: Some(device.code.clone()),
+                ..bare_connect("1.2.3.4")
+            };
+            let (result, output) = run(&fixture, command).await;
+
+            assert!(result.is_err(), "{output}");
+            // The IBRL leg is a no-op re-run: its user already exists.
+            assert!(output.contains("IBRL: provisioned"), "{output}");
+            assert!(output.contains("❌  Multicast failed"), "{output}");
+            assert!(output.contains("no tunnel endpoint is free"), "{output}");
             assert!(!output.contains("✅  User Provisioned"), "{output}");
         });
     }

@@ -80,7 +80,7 @@ changelog:
 
 release:
   github:
-    owner: doublezerofoundation
+    owner: malbeclabs
     name: doublezero-offchain
   draft: false
   replace_existing_artifacts: true

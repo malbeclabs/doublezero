@@ -2,10 +2,10 @@
 # Install doublezero-solana from GitHub Releases.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/doublezerofoundation/doublezero-offchain/main/scripts/install-doublezero-solana.sh | sudo bash
-#   curl -fsSL https://raw.githubusercontent.com/doublezerofoundation/doublezero-offchain/main/scripts/install-doublezero-solana.sh | bash -s -- --version 0.4.2-rc4
-#   curl -fsSL https://raw.githubusercontent.com/doublezerofoundation/doublezero-offchain/main/scripts/install-doublezero-solana.sh | bash -s -- --install-dir .
-#   curl -fsSL https://raw.githubusercontent.com/doublezerofoundation/doublezero-offchain/main/scripts/install-doublezero-solana.sh | bash -s -- --format tar.gz
+#   curl -fsSL https://raw.githubusercontent.com/malbeclabs/doublezero-offchain/main/scripts/install-doublezero-solana.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/malbeclabs/doublezero-offchain/main/scripts/install-doublezero-solana.sh | bash -s -- --version 0.4.2-rc4
+#   curl -fsSL https://raw.githubusercontent.com/malbeclabs/doublezero-offchain/main/scripts/install-doublezero-solana.sh | bash -s -- --install-dir .
+#   curl -fsSL https://raw.githubusercontent.com/malbeclabs/doublezero-offchain/main/scripts/install-doublezero-solana.sh | bash -s -- --format tar.gz
 #
 # By default, installs via .deb on Debian/Ubuntu, .rpm on RHEL/Fedora, or
 # .tar.gz otherwise. Use --install-dir to extract the binary to a custom
@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-REPO="doublezerofoundation/doublezero-offchain"
+REPO="malbeclabs/doublezero-offchain"
 TAG_PREFIX="doublezero-solana"
 
 # --- Formatting ---

@@ -31,8 +31,9 @@ use solana_sdk::pubkey::Pubkey;
 
 use crate::{
     client::{DaemonClient, LatencyRecord, StatusResponse},
+    enable::ensure_reconciler_enabled,
     helpers::{init_spinner, resolve_client_ip},
-    latency::{best_latency, retrieve_latencies, select_tunnel_endpoint},
+    latency::{best_latency, retrieve_latencies, select_tunnel_endpoint, NoAvailableEndpoint},
     ledger::LedgerClient,
     requirements::check_daemon,
 };
@@ -92,10 +93,21 @@ pub enum DzMode {
 }
 
 /// Connect your server to a doublezero device
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Default)]
 pub struct Connect {
+    /// Omit to provision every mode the AccessPass authorizes.
     #[clap(subcommand)]
-    pub dz_mode: DzMode,
+    pub dz_mode: Option<DzMode>,
+
+    /// Tenant code or pubkey for the IBRL user. Bare `doublezero connect` only —
+    /// `doublezero connect ibrl` takes the tenant positionally.
+    #[arg(long)]
+    pub tenant: Option<String>,
+
+    /// Allocate a new address for the IBRL user. Bare `doublezero connect` only —
+    /// `doublezero connect ibrl` has its own `-a`.
+    #[arg(long, default_value_t = false)]
+    pub allocate_addr: bool,
 
     /// [deprecated] Client IP address — ignored; set --client-ip on the daemon (doublezerod) instead
     #[arg(long, global = true)]
@@ -108,6 +120,18 @@ pub struct Connect {
     /// Verbose output
     #[arg(short, long, global = true, default_value_t = false)]
     pub verbose: bool,
+}
+
+/// The result of one leg of a bare `doublezero connect`.
+///
+/// `NoOp` is attempted-but-nothing-to-do (only `execute_multicast`'s empty-allowlist
+/// return reaches it); `Skipped` was never attempted and always carries the reason,
+/// because a leg that silently does nothing is indistinguishable from one that worked.
+enum LegOutcome {
+    Provisioned,
+    NoOp,
+    Skipped(String),
+    Failed(eyre::Report),
 }
 
 enum ParsedDzMode {
@@ -159,6 +183,108 @@ fn check_accesspass<L: LedgerClient>(
     Ok(accesspass.last_access_epoch >= epoch)
 }
 
+/// Fetch the caller's AccessPass, rendering the same diagnostic and error that
+/// [`Connect::execute`]'s single-mode path emits when none exists. The bare form
+/// needs the pass itself — not just the yes/no [`check_accesspass`] gives — so it
+/// can decide which legs the pass entitles.
+fn require_accesspass<L: LedgerClient, W: Write>(
+    ledger: &L,
+    client_ip: Ipv4Addr,
+    out: &mut W,
+) -> eyre::Result<AccessPass> {
+    match ledger.get_accesspass(client_ip, ledger.get_payer())? {
+        Some(accesspass) => Ok(accesspass),
+        None => {
+            writeln!(
+                out,
+                "❌  Unable to find a valid AccessPass for the IP: {client_ip} UserPayer: {}",
+                ledger.get_payer()
+            )?;
+            Err(eyre::eyre!(
+                "A valid AccessPass is required to connect. Please contact support to obtain one."
+            ))
+        }
+    }
+}
+
+/// Render the per-leg summary for a bare `doublezero connect` and decide its exit status.
+///
+/// A leg that failed names the command that re-runs just that leg, so a partial success
+/// is recoverable without redoing the half that landed; the failed leg's report is
+/// returned unchanged so `render_eyre` still shows the real cause. Mirrors the shape of
+/// the partial-failure block in `execute_multicast_feeds`.
+///
+/// Provisioning nothing is an error even though no leg failed. Exiting 0 with nothing
+/// connected is indistinguishable from success to an unattended installer — the same
+/// reasoning that makes `auto_join_purchased_feeds` fail rather than no-op.
+fn report_both<W: Write>(ibrl: LegOutcome, multicast: LegOutcome, out: &mut W) -> eyre::Result<()> {
+    let both_failed = matches!(
+        (&ibrl, &multicast),
+        (LegOutcome::Failed(_), LegOutcome::Failed(_))
+    );
+
+    for (label, outcome, rerun, free_endpoint) in [
+        (
+            "IBRL",
+            &ibrl,
+            "doublezero connect ibrl",
+            "doublezero disconnect multicast",
+        ),
+        (
+            "Multicast",
+            &multicast,
+            "doublezero connect multicast",
+            "doublezero disconnect ibrl",
+        ),
+    ] {
+        match outcome {
+            LegOutcome::Provisioned => writeln!(out, "    {label}: provisioned")?,
+            LegOutcome::NoOp => writeln!(out, "    {label}: nothing authorized")?,
+            LegOutcome::Skipped(reason) => writeln!(out, "⚠️  {label} skipped: {reason}")?,
+            LegOutcome::Failed(e) => {
+                writeln!(out, "❌  {label} failed: {e:#}")?;
+                // A starved endpoint is not worth a rerun: the leg that succeeded is what
+                // took the last one, so the next run recomputes the same exclusion and fails
+                // identically. Name the way out instead — freeing an endpoint costs the other
+                // tunnel, so it is offered as a choice, not as "the command that finishes".
+                if e.chain().any(|cause| cause.is::<NoAvailableEndpoint>()) {
+                    writeln!(
+                        out,
+                        "    Rerunning '{rerun}' will fail the same way. Free an endpoint with \
+                         '{free_endpoint}', or connect from a machine that can reach another \
+                         device."
+                    )?;
+                } else if !both_failed {
+                    writeln!(out, "    Rerun '{rerun}' to finish.")?;
+                }
+            }
+        }
+    }
+
+    let provisioned =
+        matches!(ibrl, LegOutcome::Provisioned) || matches!(multicast, LegOutcome::Provisioned);
+    let failed =
+        matches!(ibrl, LegOutcome::Failed(_)) || matches!(multicast, LegOutcome::Failed(_));
+    // Only when the command as a whole succeeded: this line is the terminal success
+    // banner single-mode connect prints, and it would contradict both the `❌` above it
+    // and the nonzero exit below if a leg failed. The per-leg lines already say what landed.
+    if provisioned && !failed {
+        writeln!(out, "✅  User Provisioned")?;
+    }
+
+    match (ibrl, multicast) {
+        (LegOutcome::Failed(_), LegOutcome::Failed(_)) => {
+            eyre::bail!("both legs failed; rerun the command")
+        }
+        (LegOutcome::Failed(e), _) | (_, LegOutcome::Failed(e)) => Err(e),
+        _ if provisioned => Ok(()),
+        _ => eyre::bail!(
+            "nothing to connect: the AccessPass authorizes no unicast connection and no \
+             multicast groups or feeds"
+        ),
+    }
+}
+
 impl Connect {
     pub async fn execute<D: DaemonClient, L: LedgerClient, W: Write>(
         self,
@@ -167,7 +293,8 @@ impl Connect {
         ledger: &L,
         out: &mut W,
     ) -> eyre::Result<()> {
-        let spinner = init_spinner(5);
+        // The bare form runs both legs, so it ticks through roughly twice the steps.
+        let spinner = init_spinner(if self.dz_mode.is_none() { 9 } else { 5 });
 
         // Check that we have a keypair + balance, and that the daemon is
         // reachable and on the same environment as the client.
@@ -188,6 +315,15 @@ impl Connect {
         // Get public IP from daemon
         let client_ip = resolve_client_ip(daemon).await?;
         let client_ip_str = client_ip.to_string();
+
+        // No subcommand: provision everything the AccessPass authorizes.
+        if self.dz_mode.is_none() {
+            let res = self
+                .execute_both(ledger, daemon, client_ip, &spinner, out)
+                .await;
+            spinner.finish_and_clear();
+            return res;
+        }
 
         let parsed_mode = self.parse_dz_mode()?;
         // Multicast users are not subject to epoch expiry — only verify the AccessPass exists.
@@ -255,6 +391,122 @@ impl Connect {
         spinner.finish_and_clear();
 
         Ok(())
+    }
+
+    /// Bare `doublezero connect`: provision every mode the caller's AccessPass authorizes.
+    ///
+    /// The provisioning itself is entirely the existing legs — `execute_ibrl`, and
+    /// `execute_multicast` with empty group slices, which already means "join every
+    /// group this pass allows" and covers the EdgeSeat purchased-feed path. What is new
+    /// here is the entitlement gating, enabling the reconciler, and per-leg reporting.
+    ///
+    /// IBRL runs first on purpose: the multicast leg re-reads `list_user()`, so it sees
+    /// the fresh unicast user and places the multicast user on a *different* device
+    /// (RFC-13 concurrent tunnels). Both legs are attempted even when one fails, so a
+    /// second-leg failure never discards the first leg's work.
+    async fn execute_both<D: DaemonClient, L: LedgerClient, W: Write>(
+        &self,
+        ledger: &L,
+        daemon: &D,
+        client_ip: Ipv4Addr,
+        spinner: &ProgressBar,
+        out: &mut W,
+    ) -> eyre::Result<()> {
+        let accesspass = require_accesspass(ledger, client_ip, out)?;
+
+        spinner.inc(1);
+        writeln!(out, "    DoubleZero ID: {}", ledger.get_payer())?;
+        writeln!(out, "⚡  Provisioning for IP: {client_ip}")?;
+
+        // Enable up front rather than leaving it to whichever leg reaches
+        // `user_activated` first: a run where every leg skips must still leave the
+        // daemon managing tunnels. Non-fatal, matching `user_activated` — the onchain
+        // users are still worth creating if only the local daemon is uncooperative.
+        match ensure_reconciler_enabled(daemon).await {
+            Ok(true) => {}
+            Ok(false) => writeln!(out, "    Reconciler enabled")?,
+            Err(e) => writeln!(
+                out,
+                "⚠️  Failed to enable the reconciler: {e}. Tunnels will not be provisioned \
+                 until you run 'doublezero enable'."
+            )?,
+        }
+
+        // Which users already exist decides whether a seat cap even applies: the program
+        // ticks a seat in `try_add_user` only on create, so a pass whose seats are full
+        // must still re-run cleanly for the user already holding one.
+        let users = ledger.list_user()?;
+        let ibrl_exists = users.values().any(|u| {
+            u.client_ip == client_ip
+                && matches!(u.user_type, UserType::IBRL | UserType::IBRLWithAllocatedIP)
+        });
+        let mcast_exists = users
+            .values()
+            .any(|u| u.client_ip == client_ip && u.user_type == UserType::Multicast);
+        // Seat caps are EdgeSeat-only; `try_add_user` returns Ok immediately otherwise.
+        let edge_seat = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_));
+
+        let epoch = ledger.get_epoch()?;
+        let ibrl = if accesspass.last_access_epoch < epoch {
+            LegOutcome::Skipped(format!(
+                "the AccessPass expired at epoch {} (current {epoch}); multicast is not \
+                 epoch-gated, so it was still attempted",
+                accesspass.last_access_epoch
+            ))
+        } else if edge_seat
+            && !ibrl_exists
+            && accesspass.unicast_user_count >= accesspass.max_unicast_users
+        {
+            LegOutcome::Skipped(format!(
+                "the EdgeSeat AccessPass has no free unicast seat ({} of {} in use)",
+                accesspass.unicast_user_count, accesspass.max_unicast_users
+            ))
+        } else {
+            let user_type = if self.allocate_addr {
+                UserType::IBRLWithAllocatedIP
+            } else {
+                UserType::IBRL
+            };
+            match self
+                .execute_ibrl(
+                    ledger,
+                    daemon,
+                    user_type,
+                    client_ip,
+                    self.tenant.clone(),
+                    spinner,
+                    out,
+                )
+                .await
+            {
+                Ok(()) => LegOutcome::Provisioned,
+                Err(e) => LegOutcome::Failed(e),
+            }
+        };
+
+        // No allowlist/feed pre-check: `execute_multicast` already reports an empty
+        // allowlist itself, and its EdgeSeat path diagnoses full seats and wrong metros
+        // far better than a gate here could.
+        let multicast = if edge_seat
+            && !mcast_exists
+            && accesspass.multicast_user_count >= accesspass.max_multicast_users
+        {
+            LegOutcome::Skipped(format!(
+                "the EdgeSeat AccessPass has no free multicast seat ({} of {} in use)",
+                accesspass.multicast_user_count, accesspass.max_multicast_users
+            ))
+        } else {
+            match self
+                .execute_multicast(ledger, daemon, &[], &[], client_ip, spinner, out)
+                .await
+            {
+                Ok(true) => LegOutcome::Provisioned,
+                Ok(false) => LegOutcome::NoOp,
+                Err(e) => LegOutcome::Failed(e),
+            }
+        };
+
+        report_both(ibrl, multicast, out)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1101,7 +1353,22 @@ impl Connect {
     }
 
     fn parse_dz_mode(&self) -> eyre::Result<ParsedDzMode> {
-        match &self.dz_mode {
+        // `--tenant`/`--allocate-addr` belong to the bare form; the subcommand has
+        // its own. Accepting them here would silently ignore what the caller typed.
+        if self.tenant.is_some() || self.allocate_addr {
+            eyre::bail!(
+                "--tenant/--allocate-addr apply to the bare 'doublezero connect'; \
+                 pass them to the subcommand instead, e.g. \
+                 'doublezero connect ibrl <TENANT> --allocate-addr'"
+            );
+        }
+
+        let Some(dz_mode) = &self.dz_mode else {
+            // The bare form is routed to `execute_both` before this is reached.
+            eyre::bail!("no connect mode given");
+        };
+
+        match dz_mode {
             DzMode::IBRL {
                 tenant,
                 allocate_addr,
@@ -1240,6 +1507,17 @@ impl Connect {
                 (pk, endpoint)
             }
         };
+
+        // `select_tunnel_endpoint` reports "nothing left" as UNSPECIFIED, which is a legal
+        // tunnel_endpoint onchain (`User::validate` only constrains it when non-zero) that the
+        // controller reads as "use the device's public IP". Writing it would put this tunnel on
+        // the same underlay source address as the tunnel that just took the last free endpoint —
+        // exactly the GRE collision per-endpoint addressing exists to avoid. Auto-selection
+        // already fails here inside `best_latency`; the explicit-`--device` path reaches this
+        // line instead, because it skips `best_latency` entirely.
+        if tunnel_endpoint == Ipv4Addr::UNSPECIFIED {
+            return Err(NoAvailableEndpoint.into());
+        }
 
         let device = ledger
             .get_device(device_pk.to_string())
@@ -2933,6 +3211,16 @@ mod tests {
             );
         }
 
+        /// Turn the fixture pass into an EdgeSeat pass carrying no feeds but explicit
+        /// per-category user seats, as `(live_count, max)`. These four counters are the
+        /// ones `try_add_user` enforces, and `seat_feeds*` cannot reach them.
+        pub fn edge_seat_user_caps(&mut self, unicast: (u16, u16), multicast: (u16, u16)) {
+            let mut ap = self.accesspass.lock().unwrap();
+            ap.accesspass_type = AccessPassType::EdgeSeat(vec![]);
+            (ap.unicast_user_count, ap.max_unicast_users) = unicast;
+            (ap.multicast_user_count, ap.max_multicast_users) = multicast;
+        }
+
         pub fn add_feed(&mut self, code: &str, exchange: Pubkey, groups: Vec<Pubkey>) -> Pubkey {
             let pk = Pubkey::new_unique();
             let feed = Feed {
@@ -3026,13 +3314,14 @@ mod tests {
             fixture.expect_create_user_with_tenant(user_pk, &user, Some(tenant_pk));
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some(tenant.code.clone()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -3057,17 +3346,18 @@ mod tests {
             );
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: Some(MulticastMode::Publisher),
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -3092,13 +3382,14 @@ mod tests {
             fixture.expect_create_user_with_tenant(user_pk, &user, Some(tenant_pk));
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some(tenant.code.clone()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3118,17 +3409,18 @@ mod tests {
             );
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: Some(MulticastMode::Publisher),
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3145,13 +3437,14 @@ mod tests {
             let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3173,13 +3466,14 @@ mod tests {
             fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &user, Some(tenant_pk));
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some(tenant.code.clone()),
                     allocate_addr: true,
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3200,13 +3494,14 @@ mod tests {
             fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &user, Some(tenant_pk));
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some(tenant.code.clone()),
                     allocate_addr: true,
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3223,13 +3518,14 @@ mod tests {
             let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: true,
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3249,13 +3545,14 @@ mod tests {
             fixture.add_user(&user);
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -3282,17 +3579,18 @@ mod tests {
             );
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: Some(MulticastMode::Publisher),
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -3334,17 +3632,18 @@ mod tests {
             );
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -3384,17 +3683,18 @@ mod tests {
             fixture.expect_create_subscribe_user(user_pk, &user, vec![g1_pk, g2_pk], false, true);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -3420,17 +3720,18 @@ mod tests {
             // call would panic the mock.
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -3469,17 +3770,18 @@ mod tests {
             fixture.expect_create_subscribe_user(user_pk, &user, vec![g1_pk], false, true);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3496,17 +3798,18 @@ mod tests {
     #[test]
     fn test_parse_dz_mode_multicast_no_args_yields_empty_groups() {
         let command = Connect {
-            dz_mode: DzMode::Multicast {
+            dz_mode: Some(DzMode::Multicast {
                 mode: None,
                 multicast_groups: vec![],
                 pub_groups: vec![],
                 sub_groups: vec![],
                 sub_feeds: vec![],
                 unsub_feeds: vec![],
-            },
+            }),
             client_ip: None,
             device: None,
             verbose: false,
+            ..Default::default()
         };
 
         match command.parse_dz_mode().unwrap() {
@@ -3544,17 +3847,18 @@ mod tests {
             );
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec!["test-group".to_string()],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3586,17 +3890,18 @@ mod tests {
             );
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec!["test-group".to_string()],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3637,17 +3942,18 @@ mod tests {
             );
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec!["test-group".to_string()],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(ibrl_user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3689,17 +3995,18 @@ mod tests {
             );
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec!["test-group".to_string()],
                     sub_groups: vec!["test-group".to_string()],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3738,17 +4045,18 @@ mod tests {
             );
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec!["test-group2".to_string()],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3770,13 +4078,14 @@ mod tests {
             let (_device1_pk, _device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some("1.2.3.4".to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -3826,17 +4135,18 @@ mod tests {
         );
 
         let command = Connect {
-            dz_mode: DzMode::Multicast {
+            dz_mode: Some(DzMode::Multicast {
                 mode: Some(multicast_mode),
                 multicast_groups: vec!["test-group2".to_string()],
                 pub_groups: vec![],
                 sub_groups: vec![],
                 sub_feeds: vec![],
                 unsub_feeds: vec![],
-            },
+            }),
             client_ip: Some(user.client_ip.to_string()),
             device: None,
             verbose: false,
+            ..Default::default()
         };
 
         let (result, _) = run(&fixture, command).await;
@@ -3853,7 +4163,7 @@ mod tests {
             let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: Some(MulticastMode::Publisher),
                     // Pass the same group twice — should error
                     multicast_groups: vec!["test-group".to_string(), "test-group".to_string()],
@@ -3861,10 +4171,11 @@ mod tests {
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3903,17 +4214,18 @@ mod tests {
 
             // Add subscriber group to existing publisher - should succeed
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: Some(MulticastMode::Subscriber),
                     multicast_groups: vec!["test-group2".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3948,17 +4260,18 @@ mod tests {
 
             // Add publisher group to existing subscriber - should succeed
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: Some(MulticastMode::Publisher),
                     multicast_groups: vec!["test-group2".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -3996,17 +4309,18 @@ mod tests {
         fixture.add_user(&user);
 
         let command = Connect {
-            dz_mode: DzMode::Multicast {
+            dz_mode: Some(DzMode::Multicast {
                 mode: Some(multicast_mode),
                 multicast_groups: vec!["test-group".to_string()],
                 pub_groups: vec![],
                 sub_groups: vec![],
                 sub_feeds: vec![],
                 unsub_feeds: vec![],
-            },
+            }),
             client_ip: Some(user.client_ip.to_string()),
             device: None,
             verbose: false,
+            ..Default::default()
         };
 
         let (result, _) = run(&fixture, command).await;
@@ -4048,17 +4362,18 @@ mod tests {
             );
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: Some(MulticastMode::Subscriber),
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4070,13 +4385,14 @@ mod tests {
             fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some(ibrl_user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4111,17 +4427,18 @@ mod tests {
             let latencies = Arc::clone(&fixture.latencies);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: Some(MulticastMode::Subscriber),
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             // Inject the latency results only after connect has started polling.
@@ -4143,13 +4460,14 @@ mod tests {
             fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some(ibrl_user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4175,13 +4493,14 @@ mod tests {
                 .insert(device_pk, device.clone());
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some("1.2.3.4".to_string()),
                 device: Some(device.code.clone()), // Explicitly specify the device
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4218,13 +4537,14 @@ mod tests {
                 .insert(device_pk, device.clone());
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some("1.2.3.4".to_string()),
                 device: Some(device.code.clone()), // Explicitly specify the device
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4256,13 +4576,14 @@ mod tests {
             fixture.expect_create_user(Pubkey::new_unique(), &user);
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some("1.2.3.4".to_string()),
                 device: None, // auto-select
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4300,17 +4621,18 @@ mod tests {
             );
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: Some(MulticastMode::Publisher),
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None, // auto-select
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4347,17 +4669,18 @@ mod tests {
             );
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: Some(MulticastMode::Subscriber),
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4383,17 +4706,18 @@ mod tests {
             fixture.devices.lock().unwrap().insert(device1_pk, device1);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: Some(MulticastMode::Publisher),
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some("1.2.3.4".to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4418,17 +4742,18 @@ mod tests {
             fixture.devices.lock().unwrap().insert(device1_pk, device1);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: Some(MulticastMode::Subscriber),
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some("1.2.3.4".to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4451,13 +4776,14 @@ mod tests {
             fixture.devices.lock().unwrap().insert(device1_pk, device1);
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some("1.2.3.4".to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4476,13 +4802,14 @@ mod tests {
             fixture.add_device(DeviceType::Hybrid, 100, true); // Add a device, but we'll try to connect to a different one
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some("1.2.3.4".to_string()),
                 device: Some("nonexistent-device".to_string()), // Device that doesn't exist
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4509,13 +4836,14 @@ mod tests {
             fixture.add_user(&user);
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: true,
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -4554,17 +4882,18 @@ mod tests {
             );
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: Some(MulticastMode::Subscriber),
                     multicast_groups: vec!["test-group".to_string()],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: Some(ibrl_user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4604,13 +4933,14 @@ mod tests {
             fixture.expect_create_user(Pubkey::new_unique(), &ibrl_user);
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some(ibrl_user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4651,13 +4981,14 @@ mod tests {
             fixture.expect_create_user_with_tenant(user_pk, &user, Some(tenant_pk));
 
             let command = Connect {
-                dz_mode: DzMode::IBRL {
+                dz_mode: Some(DzMode::IBRL {
                     tenant: Some(tenant.code.clone()),
                     allocate_addr: false,
-                },
+                }),
                 client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -4687,17 +5018,18 @@ mod tests {
             fixture.expect_subscribe_feed(user_pk, vec![feed_pk]);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec!["shreds".to_string()],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -4723,17 +5055,18 @@ mod tests {
             fixture.expect_subscribe_feed(user_pk, vec![feed_pk]);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec!["shreds".to_string()],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -4764,17 +5097,18 @@ mod tests {
             fixture.expect_unsubscribe_feed(user_pk, vec![feed_pk]);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![],
                     unsub_feeds: vec!["shreds".to_string()],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -4797,17 +5131,18 @@ mod tests {
             fixture.add_user(&user);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec!["away".to_string()],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4828,17 +5163,18 @@ mod tests {
             fixture.add_feed("away", Pubkey::new_unique(), vec![Pubkey::new_unique()]);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec!["away".to_string()],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -4867,17 +5203,18 @@ mod tests {
             fixture.expect_subscribe_feed(user_pk, vec![feed_pk]);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec!["shreds".to_string()],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -4890,17 +5227,23 @@ mod tests {
     /// A bare `connect multicast`: no mode, no groups, no feed flags.
     fn bare_multicast() -> Connect {
         Connect {
-            dz_mode: DzMode::Multicast {
+            dz_mode: Some(DzMode::Multicast {
                 mode: None,
                 multicast_groups: vec![],
                 pub_groups: vec![],
                 sub_groups: vec![],
                 sub_feeds: vec![],
                 unsub_feeds: vec![],
-            },
-            client_ip: None,
-            device: None,
-            verbose: false,
+            }),
+            ..Default::default()
+        }
+    }
+
+    /// A bare `doublezero connect`: no subcommand at all.
+    fn bare_connect(client_ip: &str) -> Connect {
+        Connect {
+            client_ip: Some(client_ip.to_string()),
+            ..Default::default()
         }
     }
 
@@ -5371,17 +5714,18 @@ mod tests {
             let fixture = TestFixture::new();
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec!["group".to_string()],
                     sub_feeds: vec!["feed".to_string()],
                     unsub_feeds: vec![],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -5399,17 +5743,18 @@ mod tests {
             let fixture = TestFixture::new();
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec!["shreds".to_string()],
                     unsub_feeds: vec!["shreds".to_string()],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -5437,17 +5782,18 @@ mod tests {
             fixture.add_user(&user);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec![feed_pk.to_string()],
                     unsub_feeds: vec!["shreds".to_string()],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, _) = run(&fixture, command).await;
@@ -5484,17 +5830,18 @@ mod tests {
             fixture.expect_subscribe_feed(user_pk, vec![new_pk]);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec!["new".to_string()],
                     unsub_feeds: vec!["old".to_string()],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -5529,17 +5876,18 @@ mod tests {
                 .returning_st(|_| Err(eyre::eyre!("feed seat is full")));
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec!["new".to_string()],
                     unsub_feeds: vec!["old".to_string()],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -5583,17 +5931,18 @@ mod tests {
             fixture.expect_subscribe_feed(user_pk, vec![new_pk]);
 
             let command = Connect {
-                dz_mode: DzMode::Multicast {
+                dz_mode: Some(DzMode::Multicast {
                     mode: None,
                     multicast_groups: vec![],
                     pub_groups: vec![],
                     sub_groups: vec![],
                     sub_feeds: vec!["new".to_string()],
                     unsub_feeds: vec!["old".to_string()],
-                },
+                }),
                 client_ip: None,
                 device: None,
                 verbose: false,
+                ..Default::default()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -5606,5 +5955,373 @@ mod tests {
                 "{output}"
             );
         });
+    }
+
+    // ---- Bare `doublezero connect`: everything the AccessPass authorizes ----
+
+    /// The headline case: one command, both tunnels. Also pins the leg ordering —
+    /// the multicast leg must see the fresh IBRL user and pick a different device.
+    #[test]
+    fn test_connect_bare_provisions_ibrl_and_multicast() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+            fixture.accesspass.lock().unwrap().mgroup_sub_allowlist = vec![group_pk];
+
+            let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let (device2_pk, _) = fixture.add_device(DeviceType::Hybrid, 110, true);
+
+            let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+            fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &ibrl_user, None);
+
+            let mcast_user = fixture.create_user(UserType::Multicast, device2_pk, "1.2.3.4");
+            fixture.expect_create_subscribe_user(
+                Pubkey::new_unique(),
+                &mcast_user,
+                vec![group_pk],
+                false, // publisher
+                true,  // subscriber
+            );
+
+            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            assert!(result.is_ok(), "{:?}", result.err());
+            assert!(output.contains("IBRL: provisioned"), "{output}");
+            assert!(output.contains("Multicast: provisioned"), "{output}");
+            assert!(output.contains("✅  User Provisioned"), "{output}");
+            assert!(
+                output.contains("Creating separate Multicast user for concurrent tunnels"),
+                "{output}"
+            );
+        });
+    }
+
+    /// A pass with no multicast grants connects IBRL and says so, rather than failing.
+    /// Any `create_subscribe_user` call would panic the mock.
+    #[test]
+    fn test_connect_bare_ibrl_only_when_accesspass_has_no_groups() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            fixture.add_device(DeviceType::Hybrid, 110, true);
+
+            let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+            fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &ibrl_user, None);
+
+            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            assert!(result.is_ok(), "{:?}", result.err());
+            assert!(output.contains("IBRL: provisioned"), "{output}");
+            assert!(
+                output.contains("The AccessPass has no authorized multicast groups"),
+                "{output}"
+            );
+            assert!(output.contains("Multicast: nothing authorized"), "{output}");
+            assert!(output.contains("✅  User Provisioned"), "{output}");
+        });
+    }
+
+    /// Epoch expiry gates unicast only, so the multicast leg still runs. Any
+    /// `create_user` call would panic the mock.
+    #[test]
+    fn test_connect_bare_expired_accesspass_skips_ibrl_runs_multicast() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            fixture.accesspass.lock().unwrap().last_access_epoch = 0;
+            let (group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+            fixture.accesspass.lock().unwrap().mgroup_sub_allowlist = vec![group_pk];
+
+            let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+            fixture.expect_create_subscribe_user(
+                Pubkey::new_unique(),
+                &mcast_user,
+                vec![group_pk],
+                false,
+                true,
+            );
+
+            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            assert!(result.is_ok(), "{:?}", result.err());
+            assert!(output.contains("IBRL skipped"), "{output}");
+            assert!(
+                output.contains("expired at epoch 0 (current 10)"),
+                "{output}"
+            );
+            assert!(output.contains("Multicast: provisioned"), "{output}");
+            assert!(output.contains("✅  User Provisioned"), "{output}");
+        });
+    }
+
+    /// Nothing was provisioned and nothing failed. Exiting 0 here would read as success
+    /// to an unattended installer, so this must be an error.
+    #[test]
+    fn test_connect_bare_expired_accesspass_and_no_groups_is_an_error() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            fixture.accesspass.lock().unwrap().last_access_epoch = 0;
+            fixture.add_device(DeviceType::Hybrid, 100, true);
+
+            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            let err = result.expect_err("nothing was provisioned; must not exit 0");
+            assert!(format!("{err:#}").contains("nothing to connect"), "{err:#}");
+            assert!(!output.contains("✅  User Provisioned"), "{output}");
+        });
+    }
+
+    /// The reconciler is turned on even on the run that provisions nothing — otherwise a
+    /// skipped run silently leaves the daemon unmanaged.
+    #[test]
+    fn test_connect_bare_enables_reconciler_even_when_nothing_to_connect() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            fixture.accesspass.lock().unwrap().last_access_epoch = 0;
+            fixture.add_device(DeviceType::Hybrid, 100, true);
+
+            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            assert!(result.is_err());
+            assert!(output.contains("Reconciler enabled"), "{output}");
+        });
+    }
+
+    /// A daemon that will not enable must not stop the onchain user being created —
+    /// the operator can run `doublezero enable` afterwards.
+    #[test]
+    fn test_connect_bare_continues_when_enable_fails() {
+        block_on(async {
+            let mut fixture = TestFixture::new_with_failing_enable();
+            let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+            fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &ibrl_user, None);
+
+            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            assert!(result.is_ok(), "{:?}", result.err());
+            assert!(
+                output.contains("Failed to enable the reconciler"),
+                "{output}"
+            );
+            assert!(output.contains("IBRL: provisioned"), "{output}");
+        });
+    }
+
+    /// An EdgeSeat pass with its unicast seats full skips the IBRL leg up front rather
+    /// than letting `try_add_user` reject the transaction onchain.
+    #[test]
+    fn test_connect_bare_edge_seat_unicast_cap_exhausted_skips_ibrl() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let (group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+            let feed_pk = fixture.add_feed("shreds", device1.exchange_pk, vec![group_pk]);
+
+            fixture.edge_seat_user_caps((1, 1), (0, 1));
+            fixture.seat_feeds(&[feed_pk]);
+
+            let mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+            let mcast_pk = Pubkey::new_unique();
+            fixture.expect_create_user_with_tenant(mcast_pk, &mcast_user, None);
+            fixture.expect_subscribe_feed(mcast_pk, vec![feed_pk]);
+
+            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            assert!(result.is_ok(), "{:?}", result.err());
+            assert!(output.contains("IBRL skipped"), "{output}");
+            assert!(
+                output.contains("no free unicast seat (1 of 1 in use)"),
+                "{output}"
+            );
+            assert!(output.contains("Multicast: provisioned"), "{output}");
+        });
+    }
+
+    /// The seat cap is only charged on create, so a machine already holding both users
+    /// must re-run cleanly even though its pass reports every seat in use. Any create
+    /// call would panic the mock.
+    #[test]
+    fn test_connect_bare_edge_seat_reruns_cleanly_when_users_exist() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device1_pk, device1) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let (group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+            let feed_pk = fixture.add_feed("shreds", device1.exchange_pk, vec![group_pk]);
+
+            fixture.edge_seat_user_caps((1, 1), (1, 1));
+            fixture.seat_feeds(&[feed_pk]);
+
+            let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+            fixture.add_user(&ibrl_user);
+            let mut mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+            mcast_user.feed_pks = vec![feed_pk];
+            mcast_user.subscribers = vec![group_pk];
+            fixture.add_user(&mcast_user);
+            fixture
+                .provisioned_services
+                .lock()
+                .unwrap()
+                .insert(UserType::IBRL.to_string());
+            fixture
+                .provisioned_services
+                .lock()
+                .unwrap()
+                .insert(UserType::Multicast.to_string());
+
+            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            assert!(result.is_ok(), "{:?}", result.err());
+            assert!(!output.contains("IBRL skipped"), "{output}");
+            assert!(output.contains("IBRL: provisioned"), "{output}");
+        });
+    }
+
+    /// A failing IBRL leg must not abort the multicast leg, and the summary must name
+    /// the command that finishes the half that did not land.
+    #[test]
+    fn test_connect_bare_ibrl_failure_still_attempts_multicast() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+            fixture.accesspass.lock().unwrap().mgroup_sub_allowlist = vec![group_pk];
+
+            let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            fixture.add_device(DeviceType::Hybrid, 110, true);
+
+            fixture
+                .ledger
+                .expect_create_user()
+                .returning(|_| Err(eyre::eyre!("simulated create_user failure")));
+
+            let mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+            fixture.expect_create_subscribe_user(
+                Pubkey::new_unique(),
+                &mcast_user,
+                vec![group_pk],
+                false,
+                true,
+            );
+
+            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            assert!(result.is_err());
+            assert!(output.contains("❌  IBRL failed"), "{output}");
+            assert!(
+                output.contains("Rerun 'doublezero connect ibrl' to finish."),
+                "{output}"
+            );
+            assert!(output.contains("Multicast: provisioned"), "{output}");
+            // The success banner must not contradict the failure or the nonzero exit.
+            assert!(!output.contains("✅  User Provisioned"), "{output}");
+        });
+    }
+
+    /// With only one eligible device the IBRL leg takes it and `exclude_ips` starves the
+    /// multicast leg. The IBRL tunnel still stands, but the command reports failure — and
+    /// must not advise a rerun, which would recompute the same exclusion and fail again.
+    #[test]
+    fn test_connect_bare_multicast_failure_after_ibrl_success() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+            fixture.accesspass.lock().unwrap().mgroup_sub_allowlist = vec![group_pk];
+
+            let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+            fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &ibrl_user, None);
+
+            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            assert!(result.is_err(), "{output}");
+            assert!(output.contains("IBRL: provisioned"), "{output}");
+            assert!(output.contains("❌  Multicast failed"), "{output}");
+            assert!(
+                output.contains("Rerunning 'doublezero connect multicast' will fail the same way"),
+                "{output}"
+            );
+            assert!(
+                output.contains("Free an endpoint with 'doublezero disconnect ibrl'"),
+                "{output}"
+            );
+            assert!(
+                !output.contains("Rerun 'doublezero connect multicast' to finish."),
+                "a rerun cannot clear the exclusion that caused this: {output}"
+            );
+            assert!(!output.contains("✅  User Provisioned"), "{output}");
+        });
+    }
+
+    /// `--device` skips `best_latency`, so a starved device reaches `select_tunnel_endpoint`'s
+    /// UNSPECIFIED fallback. That value is legal onchain and the controller reads it as the
+    /// device public IP, so writing it would silently put the multicast tunnel on the same
+    /// underlay source address as the IBRL tunnel that took the last endpoint. It must fail
+    /// instead — the mock has no `create_user` expectation, so a create here panics the test.
+    #[test]
+    fn test_connect_bare_with_device_rejects_a_starved_endpoint_instead_of_writing_unspecified() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+            fixture.accesspass.lock().unwrap().mgroup_sub_allowlist = vec![group_pk];
+
+            // One device, and this machine's IBRL user already holds its only endpoint.
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let ibrl_user = fixture.create_user(UserType::IBRL, device_pk, "1.2.3.4");
+            assert_eq!(
+                ibrl_user.tunnel_endpoint, device.public_ip,
+                "the fixture must leave the device with no free endpoint"
+            );
+            fixture.add_user(&ibrl_user);
+
+            let command = Connect {
+                device: Some(device.code.clone()),
+                ..bare_connect("1.2.3.4")
+            };
+            let (result, output) = run(&fixture, command).await;
+
+            assert!(result.is_err(), "{output}");
+            // The IBRL leg is a no-op re-run: its user already exists.
+            assert!(output.contains("IBRL: provisioned"), "{output}");
+            assert!(output.contains("❌  Multicast failed"), "{output}");
+            assert!(output.contains("no tunnel endpoint is free"), "{output}");
+            assert!(!output.contains("✅  User Provisioned"), "{output}");
+        });
+    }
+
+    /// `--allocate-addr` and `--tenant` on the bare form reach the IBRL leg.
+    #[test]
+    fn test_connect_bare_passes_tenant_and_allocate_addr_to_the_ibrl_leg() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (tenant_pk, tenant) = fixture.add_tenant("my-tenant");
+            let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+            let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
+            fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &user, Some(tenant_pk));
+
+            let command = Connect {
+                tenant: Some(tenant.code.clone()),
+                allocate_addr: true,
+                ..bare_connect("1.2.3.4")
+            };
+
+            let (result, output) = run(&fixture, command).await;
+            assert!(result.is_ok(), "{:?}", result.err());
+            assert!(
+                output.contains("Using tenant 'my-tenant' from CLI argument."),
+                "{output}"
+            );
+            assert!(output.contains("IBRL: provisioned"), "{output}");
+        });
+    }
+
+    /// The bare-only flags must not be silently ignored when a subcommand is given.
+    #[test]
+    fn test_connect_bare_flags_rejected_with_a_subcommand() {
+        let command = Connect {
+            dz_mode: Some(DzMode::IBRL {
+                tenant: None,
+                allocate_addr: false,
+            }),
+            tenant: Some("my-tenant".to_string()),
+            ..Default::default()
+        };
+        let Err(err) = command.parse_dz_mode() else {
+            panic!("--tenant belongs to the bare form and must be rejected here");
+        };
+        assert!(
+            format!("{err:#}").contains("apply to the bare 'doublezero connect'"),
+            "{err:#}"
+        );
     }
 }

@@ -395,8 +395,26 @@ Once the account is provisioned, the **daemon finalizes the connection**, establ
 ### **Usage**
 
 ```bash
-doublezero connect [OPTIONS] <COMMAND>
+doublezero connect [OPTIONS] [COMMAND]
 ```
+
+With no `<COMMAND>`, `connect` provisions **every mode the server's AccessPass authorizes** in a single run: an IBRL tunnel, plus a multicast tunnel joined to the groups (or purchased feeds) the pass grants. This is the usual way to connect — the AccessPass already records what the server is entitled to, so there is nothing to look up beforehand.
+
+Each mode is reported on its own line. A mode the pass does not cover is skipped with the reason rather than failing the run, and the two modes are attempted independently, so a failure in one does not discard the other's work. The command exits non-zero if a mode it attempted failed, or if the pass authorized nothing at all.
+
+```
+⚡  Connecting to testnet...
+    DoubleZero ID: 7dHbWXmci3dT9LSdSceVfC6QRP1s6UNhSmrfXTbnpZoV
+⚡  Provisioning for IP: 203.0.113.10
+    Reconciler enabled
+    Device selected: ny5-dz01
+    Subscribing to (from AccessPass): shreds-mainnet
+    IBRL: provisioned
+    Multicast: provisioned
+✅  User Provisioned
+```
+
+Name a mode explicitly to provision only that one.
 
 ### **Commands (Connection Modes)**
 
@@ -417,11 +435,19 @@ doublezero connect [OPTIONS] <COMMAND>
 
 ### **Options**
 
+- `--tenant <TENANT>`
+    
+    (Optional, bare `doublezero connect` only) The **tenant** to associate the IBRL user with, as a tenant code or Pubkey. `doublezero connect ibrl` takes the tenant positionally instead.
+    
+    If not given, the tenant is resolved from the configuration file, then from the AccessPass's tenant allowlist.
+    
+- `--allocate-addr`
+    
+    (Optional, bare `doublezero connect` only) Allocates a new address for the IBRL user. `doublezero connect ibrl` has its own `-a`/`--allocate-addr`.
+    
 - `--client-ip <CLIENT_IP>`
     
-    (Optional) Specifies the **IPv4 address** of the user's server.
-    
-    If not provided, the client attempts to detect the IP automatically. This IP is used for tunnel source validation and is recorded on-chain when the GRE configuration is assigned.
+    **Deprecated and ignored.** The client IP is taken from the daemon; set `--client-ip` on `doublezerod` instead. Passing it here prints a warning and has no effect.
     
 - `--device <DEVICE>`
     

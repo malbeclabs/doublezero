@@ -48,7 +48,25 @@ func TestE2E_MultiTunnel_FallbackToSecondDevice_AllocatedAddr(t *testing.T) {
 
 // setupMultiTunnelDevnet sets up a devnet with two devices and a single client.
 // This allows testing the fallback behavior when the first device's endpoint is used.
+//
+// The second device sits in a different metro from the first, which is the harder case for
+// device selection: latency, not metro, is what has to push the second tunnel off device 1.
 func setupMultiTunnelDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devnet.Device, *devnet.Client) {
+	return setupMultiTunnelDevnetWithSecondDevice(t, secondDeviceSpec{
+		Code: "pit-dz01", Location: "pit", Exchange: "xpit",
+	})
+}
+
+// secondDeviceSpec is the part of the two-device devnet that varies between callers: whether the
+// fallback device shares a metro with the first one. Same-metro is what a feed customer sees,
+// since a purchased feed only admits devices in its own metro.
+type secondDeviceSpec struct {
+	Code     string
+	Location string
+	Exchange string
+}
+
+func setupMultiTunnelDevnetWithSecondDevice(t *testing.T, second secondDeviceSpec) (*devnet.Devnet, *devnet.Device, *devnet.Device, *devnet.Client) {
 	deployID := "dz-e2e-" + t.Name() + "-" + random.ShortID()
 	log := logger.With("test", t.Name(), "deployID", deployID)
 
@@ -89,11 +107,11 @@ func setupMultiTunnelDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devn
 	log.Info("--> Device 1 added", "deviceID", device1.ID, "deviceIP", device1.CYOANetworkIP)
 
 	// Add second device for fallback
-	log.Info("==> Adding device pit-dz01")
+	log.Info("==> Adding second device", "code", second.Code, "exchange", second.Exchange)
 	device2, err := dn.AddDevice(t.Context(), devnet.DeviceSpec{
-		Code:                         "pit-dz01",
-		Location:                     "pit",
-		Exchange:                     "xpit",
+		Code:                         second.Code,
+		Location:                     second.Location,
+		Exchange:                     second.Exchange,
 		CYOANetworkIPHostID:          16,
 		CYOANetworkAllocatablePrefix: 29,
 	})
@@ -110,10 +128,10 @@ func setupMultiTunnelDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *devn
 		doublezero device interface create ny5-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
 		doublezero device interface create ny5-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
 
-		echo "==> Create device interfaces for pit-dz01"
-		doublezero device interface create pit-dz01 "Ethernet2" --bandwidth 10G -w
-		doublezero device interface create pit-dz01 "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
-		doublezero device interface create pit-dz01 "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
+		echo "==> Create device interfaces for ` + second.Code + `"
+		doublezero device interface create ` + second.Code + ` "Ethernet2" --bandwidth 10G -w
+		doublezero device interface create ` + second.Code + ` "Loopback255" --loopback-type vpnv4 --bandwidth 10G -w
+		doublezero device interface create ` + second.Code + ` "Loopback256" --loopback-type ipv4 --bandwidth 10G -w
 
 		echo "--> Device interfaces created"
 	`})

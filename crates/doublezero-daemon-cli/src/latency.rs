@@ -2,7 +2,7 @@
 //! and latency-polling utilities shared with `connect` (migrated in a later
 //! RFC-20 PR).
 
-use std::{collections::HashMap, io::Write, net::Ipv4Addr, str::FromStr, time::Duration};
+use std::{collections::HashMap, fmt, io::Write, net::Ipv4Addr, str::FromStr, time::Duration};
 
 use clap::Args;
 use doublezero_cli_core::CliContext;
@@ -20,6 +20,28 @@ use crate::{
 // ---------------------------------------------------------------------------
 // Latency utilities (device selection + polling)
 // ---------------------------------------------------------------------------
+
+/// Every tunnel endpoint that could carry this connection is already in use by another
+/// tunnel from the same machine.
+///
+/// Typed rather than a bare message so `connect` can tell it apart from a transient
+/// failure: rerunning the same leg cannot fix it, because the exclusion that caused it is
+/// recomputed identically on the next run. Freeing an endpoint (disconnecting one of this
+/// machine's other tunnels) or reaching a device with spare capacity is the only way out.
+#[derive(Debug)]
+pub struct NoAvailableEndpoint;
+
+impl fmt::Display for NoAvailableEndpoint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "no tunnel endpoint is free: every endpoint on the eligible device(s) is already \
+             carrying a tunnel from this machine"
+        )
+    }
+}
+
+impl std::error::Error for NoAvailableEndpoint {}
 
 /// Get all tunnel endpoints for a device.
 /// Returns the device's public_ip plus any UserTunnelEndpoint interface IPs.
@@ -212,7 +234,9 @@ pub async fn best_latency<D: DaemonClient>(
     }
 
     if latencies.is_empty() {
-        return Err(eyre::eyre!("No suitable device found after filtering"));
+        // Reachable only when `exclude_ips` emptied the list: `retrieve_latencies` already
+        // bails when it has nothing at all.
+        return Err(NoAvailableEndpoint.into());
     }
     let mut best: Option<&LatencyRecord> = None;
     let mut best_latency = i64::MAX;

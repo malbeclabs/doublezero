@@ -70,7 +70,7 @@ pub struct ProgramConfig {
     /// DoubleZero epoch when the debt write-off feature activates. For more
     /// information, please refer to [RFC-0002].
     ///
-    /// [RFC-0002]: https://github.com/doublezerofoundation/doublezero-solana/blob/main/docs/rfc/0002_IMPROVED_DEBT_WRITE_OFF_TRACKING.md
+    /// [RFC-0002]: https://github.com/malbeclabs/doublezero-solana/blob/main/docs/rfc/0002_IMPROVED_DEBT_WRITE_OFF_TRACKING.md
     pub debt_write_off_feature_activation_epoch: DoubleZeroEpoch,
 }
 

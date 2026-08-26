@@ -50,11 +50,11 @@ mod tests {
         commands::user::{
             delete::DeleteUserCommand, get::GetUserCommand, requestban::RequestBanUserCommand,
         },
-        AccountType, User, UserCYOA, UserStatus, UserType,
+        User,
     };
     use doublezero_serviceability::pda::get_user_old_pda;
     use mockall::predicate;
-    use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use solana_sdk::signature::Signature;
 
     #[test]
     fn test_cli_user_request_ban() {
@@ -69,31 +69,9 @@ mod tests {
             100, 221, 20, 137, 4, 5,
         ]);
 
-        let user = User {
-            account_type: AccountType::User,
-            index: 1,
-            bump_seed: 255,
-            user_type: UserType::IBRL,
-            tenant_pk: Pubkey::default(),
-            cyoa_type: UserCYOA::GREOverDIA,
-            device_pk: Pubkey::default(),
-            client_ip: [10, 0, 0, 1].into(),
-            dz_ip: [10, 0, 0, 2].into(),
-            tunnel_id: 0,
-            tunnel_net: "10.2.3.4/24".parse().unwrap(),
-            status: UserStatus::Activated,
-            owner: pda_pubkey,
-            publishers: vec![],
-            subscribers: vec![],
-            validator_pubkey: Pubkey::default(),
-            tunnel_endpoint: std::net::Ipv4Addr::UNSPECIFIED,
-            tunnel_flags: 0,
-            bgp_status: Default::default(),
-            last_bgp_up_at: 0,
-            last_bgp_reported_at: 0,
-            bgp_rtt_ns: 0,
-            ..Default::default()
-        };
+        // Returned by the mocked get_user; execute() never reads it, so no field is
+        // load-bearing for this test.
+        let user = User::default();
 
         client
             .expect_check_requirements()

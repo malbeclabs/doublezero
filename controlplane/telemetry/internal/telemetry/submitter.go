@@ -302,16 +302,30 @@ func (s *Submitter) Tick(ctx context.Context) {
 			// attempts, they are discarded; log and count the loss.
 			if !success {
 				unwritten := tmp[written:]
-				overCapacity := s.cfg.Buffer.Len(partitionKey)+len(unwritten) >= s.cfg.Buffer.Capacity(partitionKey)
-				if overCapacity {
+				capacity := s.cfg.Buffer.Capacity(partitionKey)
+				bufLen := s.cfg.Buffer.Len(partitionKey)
+
+				// room is how many of the unwritten samples still fit without exceeding capacity.
+				// Keep the newest `room` of them (the tail: batches are submitted oldest-first, so
+				// unwritten is already in chronological order) and drop only the rest, rather than
+				// discarding the whole slice the moment it stops fitting entirely.
+				room := max(capacity-bufLen, 0)
+				kept := unwritten
+				if len(unwritten) > room {
+					kept = unwritten[len(unwritten)-room:]
+				}
+
+				if dropped := len(unwritten) - len(kept); dropped > 0 {
 					metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterBufferFull).Inc()
-					metrics.SamplesDropped.WithLabelValues(metrics.DropReasonBufferFull).Add(float64(len(unwritten)))
-					log.Warn("Partition buffer at capacity after failed submission, dropping samples",
-						"droppedSamples", len(unwritten),
-						"bufferLen", s.cfg.Buffer.Len(partitionKey),
-						"capacity", s.cfg.Buffer.Capacity(partitionKey))
-				} else {
-					s.cfg.Buffer.PriorityPrepend(partitionKey, unwritten)
+					metrics.SamplesDropped.WithLabelValues(metrics.DropReasonBufferFull).Add(float64(dropped))
+					log.Warn("Partition buffer at capacity after failed submission, dropping oldest samples",
+						"droppedSamples", dropped,
+						"keptSamples", len(kept),
+						"bufferLen", bufLen,
+						"capacity", capacity)
+				}
+				if len(kept) > 0 {
+					s.cfg.Buffer.PriorityPrepend(partitionKey, kept)
 				}
 			}
 

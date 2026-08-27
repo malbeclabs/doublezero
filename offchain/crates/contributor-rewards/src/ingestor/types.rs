@@ -178,6 +178,15 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
             access_pass
                 .entry("max_multicast_users")
                 .or_insert_with(|| Value::Number(1.into()));
+
+            // Snapshots captured before doublezero-serviceability#3831 carry the
+            // pre-rename variant name.
+            if access_pass.get("status").and_then(Value::as_str) == Some("Expired") {
+                access_pass.insert(
+                    "status".to_string(),
+                    Value::String("ExpiredDeprecated".to_string()),
+                );
+            }
         }
     }
 

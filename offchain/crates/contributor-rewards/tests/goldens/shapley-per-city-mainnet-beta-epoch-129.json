@@ -1,0 +1,113 @@
+{
+  "city_count": 6,
+  "cities": {
+    "FRA": [
+      [
+        "5YbNrJHJJoiRwVEvgAWRGdFRG9gRdZ47hLCKSym8bqbp",
+        1.2126596023639042e-12
+      ],
+      [
+        "895D8oq5ceWQ7uzL6VDBu4YfAywuaThQp8qfcP7TWJjK",
+        0.0
+      ],
+      [
+        "FUYRNmVyxaP6jsm6KmRgkGYfRNoFC8yCaxytyhwy7Hwb",
+        2147.8283189999875
+      ],
+      [
+        "H647kAwTcWsGXZUK3BTr1JyTBZmbNcYyCmRFFCEnXUVp",
+        -3.637978807091713e-12
+      ]
+    ],
+    "NYC": [
+      [
+        "5YbNrJHJJoiRwVEvgAWRGdFRG9gRdZ47hLCKSym8bqbp",
+        101.78010810073222
+      ],
+      [
+        "895D8oq5ceWQ7uzL6VDBu4YfAywuaThQp8qfcP7TWJjK",
+        4.1395302194420465
+      ],
+      [
+        "FUYRNmVyxaP6jsm6KmRgkGYfRNoFC8yCaxytyhwy7Hwb",
+        90.13211893728294
+      ],
+      [
+        "H647kAwTcWsGXZUK3BTr1JyTBZmbNcYyCmRFFCEnXUVp",
+        123.59524825871995
+      ]
+    ],
+    "SEA": [
+      [
+        "5YbNrJHJJoiRwVEvgAWRGdFRG9gRdZ47hLCKSym8bqbp",
+        357.37630201728155
+      ],
+      [
+        "895D8oq5ceWQ7uzL6VDBu4YfAywuaThQp8qfcP7TWJjK",
+        1.8189894035458565e-12
+      ],
+      [
+        "FUYRNmVyxaP6jsm6KmRgkGYfRNoFC8yCaxytyhwy7Hwb",
+        414.99754547328183
+      ],
+      [
+        "H647kAwTcWsGXZUK3BTr1JyTBZmbNcYyCmRFFCEnXUVp",
+        372.29043868127764
+      ]
+    ],
+    "SIN": [
+      [
+        "5YbNrJHJJoiRwVEvgAWRGdFRG9gRdZ47hLCKSym8bqbp",
+        153.7957970640115
+      ],
+      [
+        "895D8oq5ceWQ7uzL6VDBu4YfAywuaThQp8qfcP7TWJjK",
+        -8.48861721654733e-12
+      ],
+      [
+        "FUYRNmVyxaP6jsm6KmRgkGYfRNoFC8yCaxytyhwy7Hwb",
+        1819.7826650639968
+      ],
+      [
+        "H647kAwTcWsGXZUK3BTr1JyTBZmbNcYyCmRFFCEnXUVp",
+        3.637978807091713e-12
+      ]
+    ],
+    "TYO": [
+      [
+        "5YbNrJHJJoiRwVEvgAWRGdFRG9gRdZ47hLCKSym8bqbp",
+        153.4317718500121
+      ],
+      [
+        "895D8oq5ceWQ7uzL6VDBu4YfAywuaThQp8qfcP7TWJjK",
+        -2.425319204727808e-12
+      ],
+      [
+        "FUYRNmVyxaP6jsm6KmRgkGYfRNoFC8yCaxytyhwy7Hwb",
+        2331.5170126499966
+      ],
+      [
+        "H647kAwTcWsGXZUK3BTr1JyTBZmbNcYyCmRFFCEnXUVp",
+        107.40397739402157
+      ]
+    ],
+    "WAS": [
+      [
+        "5YbNrJHJJoiRwVEvgAWRGdFRG9gRdZ47hLCKSym8bqbp",
+        188.22575114784496
+      ],
+      [
+        "895D8oq5ceWQ7uzL6VDBu4YfAywuaThQp8qfcP7TWJjK",
+        99.34872526655514
+      ],
+      [
+        "FUYRNmVyxaP6jsm6KmRgkGYfRNoFC8yCaxytyhwy7Hwb",
+        1708.2413809372867
+      ],
+      [
+        "H647kAwTcWsGXZUK3BTr1JyTBZmbNcYyCmRFFCEnXUVp",
+        199.5595005398409
+      ]
+    ]
+  }
+}

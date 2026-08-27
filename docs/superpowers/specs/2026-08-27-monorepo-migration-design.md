@@ -70,17 +70,17 @@ plans at once:
 
 | Issue | Fate |
 | --- | --- |
-| #1947 Phase 0, import under `offchain/` | Superseded by step 1, which also imports solana |
-| #1948 Phase 1, flip git deps to path deps | Folded into step 2 |
+| #1947 Phase 0, import under `offchain/` | Superseded by step 2, which also imports solana |
+| #1948 Phase 1, flip git deps to path deps | Becomes step 3 |
 | #1949 Phase 2a, toolchain 1.92 plus musl | **Obsolete.** Monorepo is on 1.97.1 and already builds musl |
-| #1950 Phase 2b, unify the workspace | Becomes step 2 |
-| #1951 Phase 3, distribute crates and mount verbs | **Still valid, out of scope here, unblocked by step 2** |
+| #1950 Phase 2b, unify the workspace | Becomes step 4 |
+| #1951 Phase 3, distribute crates and mount verbs | **Still valid, out of scope here, unblocked by step 4** |
 
 Close #1947 through #1950 against this spec if it is accepted. Keep #1951 and #1515 open.
 
 **Out of scope but unblocked:** #1515 wants a `doublezero solana <verb>` surface mounted in
 the main binary. It notes that a shared `CliContext` only unifies inside one workspace,
-which is why its plan needs reach-back and pin alignment. Step 2 of this spec removes that
+which is why its plan needs reach-back and pin alignment. Step 4 of this spec removes that
 constraint, so #1515's increments reduce to adding a path dependency and a subcommand. This
 spec does not do that work.
 
@@ -172,7 +172,7 @@ Add `solana/programs/rust-toolchain.toml` pinning 1.91, mirroring
 `smartcontract/programs/rust-toolchain.toml`.
 
 Offchain's repo-wide 1.92.0 pin goes away and its crates build on 1.97.1. Expect new
-clippy findings. That work belongs to step 2 and is not a surprise to discover later.
+clippy findings. That work belongs to step 4 and is not a surprise to discover later.
 
 borsh unifies on 1.7.0.
 
@@ -181,7 +181,7 @@ borsh unifies on 1.7.0.
 `edition.workspace = true`, so folding them into the root workspace silently moves every
 one of them from 2024 to 2021, and they fail to build.
 
-Fix: set `edition = "2024"` explicitly on all 14 crates in step 2. One line each. If this
+Fix: set `edition = "2024"` explicitly on all 14 crates in step 4. One line each. If this
 repo later moves its workspace to 2024, those lines drop out.
 
 Rejected: bumping this repo's workspace edition to 2024 as part of the merge. It would
@@ -240,12 +240,16 @@ comm -12 <(gh api 'repos/malbeclabs/doublezero-offchain/tags?per_page=100' --pag
             -q '.[].name' | sed -E 's|/v[0-9].*$||' | sort -u)
 ```
 
-Anything it prints needs a decision before step 1 runs.
+Anything it prints needs a decision before step 2 runs.
 
 ## Sequencing
 
-One throwaway measurement, then four pull requests in this repo, then one follow-on
-pull request in `doublezero-shreds`.
+One throwaway measurement, then six pull requests in this repo, then one follow-on pull
+request in `doublezero-shreds`.
+
+The riskiest work is split across steps 3 and 4 so that flipping the dependencies and
+merging the workspaces fail separately. Each step is revertable on its own except step 2,
+which is the one-way door.
 
 ### Step 0. Measure the program bytes. Throwaway.
 
@@ -257,14 +261,29 @@ make build-artifacts NETWORK=mainnet-beta
 shasum -a 256 -c programs/sha256sums_mainnet_beta.txt
 ```
 
-Repeat for `NETWORK=development`. Output is one fact that decides D2. Discard the work
-either way.
+Repeat for `NETWORK=development`. Output is one fact that decides D2. Measure the clippy
+volume from the toolchain bump at the same time, since the tree is already there. Discard
+the work either way.
 
-### Step 1. Import the code and the history.
+### Step 1. Golden tests for `contributor-rewards`.
 
-First delete the orphan `sentinel/v0.6.1` tag per D5, then re-run the collision check
-in D5 and resolve anything it prints. Then run `git filter-repo --path-rename` on each
-source repo to relocate its tree, keeping tags unprefixed. Add each as a remote and merge with
+Land on `main`, before anything moves. Fixed input, byte-identical reward output. This crate
+decides what contributors are paid and has no output test today, so step 4 currently has no
+way to prove it changed nothing.
+
+This step stands on its own merits and is worth landing whether or not the rest of this
+spec proceeds.
+
+`validator-debt` does not need the same gate. Debt is not being collected, so drift in its
+output changes no payment. It still has to compile and release, and it stays in the tree.
+
+Gate: the goldens pass on `main` and fail if a reward figure moves.
+
+### Step 2. Import the code and the history. One-way door.
+
+First delete the orphan `sentinel/v0.6.1` tag per D5, then re-run the collision check in D5
+and resolve anything it prints. Then run `git filter-repo --path-rename` on each source
+repo to relocate its tree, keeping tags unprefixed. Add each as a remote and merge with
 `--allow-unrelated-histories`. Fetch `main` only. Offchain alone has 599 refs and none of
 the others are wanted.
 
@@ -272,58 +291,81 @@ Add `offchain/` and `solana/` to the root `exclude` list wholesale. Both trees k
 own `Cargo.toml` and `Cargo.lock` and build as nested workspaces, exactly as they do
 today.
 
-Do not bring their `.github/workflows/` across yet. Eleven workflows firing on a repo
-that does not expect them is noise.
+Do not bring their `.github/workflows/` across yet. Eleven workflows firing on a repo that
+does not expect them is noise.
 
-Gate: every existing job green, with no existing job definition touched. `git diff`
-between each imported tree and its filtered source is empty. The diff is large and needs
-no judgement to review.
+Gate: every existing job green, with no existing job definition touched. `git diff` between
+each imported tree and its filtered source is empty. The diff is large and needs no
+judgement to review.
 
-### Step 2. Merge the workspaces.
+### Step 3. Flip the git dependencies to path dependencies.
 
-This is the step that can hurt, and it hurts alone.
+Both trees are still excluded nested workspaces. A path dependency may point outside its
+own workspace, so this works before the workspaces merge, and it delivers most of the value
+on its own.
+
+- Offchain's 7 `malbeclabs/doublezero` git deps become paths into `crates/`, `client/`,
+  `config/` and `smartcontract/`.
+- Offchain's 3 `doublezero-solana` git deps become paths into `solana/`.
+- **All ten pins stop existing.** The class of failure that produced 194 errors on
+  2026-08-26 is gone from this repo at the end of this step.
+
+Nothing else changes. Toolchains, editions, borsh and the sentinel binary name are all
+untouched, and both nested lockfiles stay in place.
+
+Gate: both nested workspaces build and test standalone. No `git+` source for
+`malbeclabs/doublezero` or `malbeclabs/doublezero-solana` remains in either nested
+lockfile.
+
+### Step 4. Merge the workspaces.
+
+Now a manifest consolidation plus the toolchain work, with the dependency flip already
+proven by step 3.
 
 - Root workspace absorbs the crates per D2.
-- Delete the four nested `Cargo.toml` and `Cargo.lock` files.
-- **Ten git dependencies become path dependencies.** Offchain's seven
-  `malbeclabs/doublezero` dependencies and its three `doublezero-solana` dependencies are
-  all same-repo now. The pinning that failed on 2026-08-26 stops existing.
-- Apply D3 (toolchain, borsh) and D4 (sentinel rename).
+- Delete the four nested `Cargo.toml` and `Cargo.lock` files, and `offchain/rust-toolchain.toml`.
+  A `rust-toolchain.toml` is directory-scoped, so leaving it would give a different compiler
+  depending on which directory cargo was invoked from.
+- Set `edition = "2024"` explicitly on all 14 offchain crates per D3.
+- Offchain's crates move to 1.97.1; borsh unifies on 1.7.0; rename the sentinel binary
+  per D4.
+- Pin the fixture generators and convert solana's `>=2,<=3` ranges to exact pins.
 
 Gate: `cargo check --workspace`, `cargo clippy --all-targets`, the full test suite, e2e,
-and the program checksum check. Also confirm the lockfile holds no crate twice:
-`grep '^name = ' Cargo.lock | sort | uniq -d` should print nothing that was not already
-duplicated before the merge.
+the program checksum check, and **the step 1 goldens still green**. Also confirm the
+lockfile holds no crate twice: `grep '^name = ' Cargo.lock | sort | uniq -d` should print
+nothing that was not already duplicated before the merge.
 
-### Step 3. Merge release and CI.
+### Step 5. Merge release and CI.
 
 Fold 11 workflows into this repo's 49. This repo already runs one release workflow per
 component, so offchain's five fit the existing shape.
 
 - Dedupe the overlaps: two `local-validator.yml`, three Rust CI configs (`rust.yml` twice
   plus offchain's `ci.yml`), two `changelog-reminder.yml`.
-- Add `erlef/setup-beam` for the Elixir scheduler.
+- Add `erlef/setup-beam` for the Elixir scheduler, with CI path-scoped to
+  `offchain/scheduler/**` so it does not run on unrelated changes.
 - Copy offchain's three release secrets onto this repo: `CLOUDSMITH_TOKEN`,
   `GORELEASER_KEY`, `SLACK_BOTS_WEBHOOK`.
 - **Change `release.github.name` in the five goreleaser configs from `doublezero-offchain`
   to `doublezero`.** The `owner` field was corrected during the org move. The `name` field
   becomes wrong the moment the code lives here.
 
-Gate: push a throwaway release candidate tag on the smallest component. Confirm the
-release lands under malbeclabs and the package reaches Cloudsmith. Config review proves
-the target is named correctly. It does not prove the token can write there.
+Gate: push a throwaway release candidate tag on the smallest component. Confirm the release
+lands under malbeclabs and the package reaches Cloudsmith. Config review proves the target
+is named correctly. It does not prove the token can write there.
 
-### Step 4. Decommission the source repos.
+### Step 6. Decommission the source repos.
 
 Archive both read-only with a README pointing here. Do not delete them. Their transfer
 redirects, 11 forks, and old release download URLs all still resolve through them.
 
 Archiving also keeps shreds building on its current pins. An archived repo still serves
 reads, so `malbeclabs/doublezero-solana` at tag `revenue-distribution/v0.3.7` keeps
-resolving, and the same tag imported here points at the same commit. That decouples step 5
-from step 4: shreds can be repointed when it suits, not the same day.
+resolving, and the same tag imported here points at the same commit. That decouples step 7
+from step 6: shreds can be repointed when it suits, not the same day.
 
-### Step 5. Repoint shreds. Separate repo, separate risk.
+### Step 7. Repoint shreds. Separate repo, separate risk.
 
 `doublezero-shreds` consumes both source repos over git. Once they are archived it must
 point at `malbeclabs/doublezero`. See below for why this needs care.
@@ -367,16 +409,19 @@ That is the price of the public and private split, and we are paying it on purpo
 
 ## Rollback
 
-Steps 2, 3 and 4 revert cleanly.
+Every step reverts cleanly except step 2.
 
-Step 2 reverts cleanly **because step 1 deliberately touches no build file.** Step 2 only
-edits and deletes manifests, so reverting it restores the four nested `Cargo.toml` and
-`Cargo.lock` files and leaves a repo that builds as it did after step 1. Step 3 is
-workflows. Unarchiving a repo is a click.
+Step 3 reverts to git dependencies. Step 4 reverts **because steps 2 and 3 leave the nested
+manifests in place**: step 4 only edits and deletes manifests, so reverting it restores the
+four nested `Cargo.toml` and `Cargo.lock` files and leaves a repo that builds as it did
+after step 3. Step 5 is workflows. Unarchiving a repo is a click.
 
-Step 1 is the one-way door. `git revert -m 1` removes the files, and the grafted history
-stays in the graph unless `main` is rewritten. Treat merging step 1 as the commitment
-point, not step 2.
+Splitting the old single workspace step into steps 3 and 4 is what buys this. A revert of
+step 4 no longer drags the dependency flip back with it.
+
+Step 2 is the one-way door. `git revert -m 1` removes the files, and the grafted history
+stays in the graph unless `main` is rewritten. Treat merging step 2 as the commitment
+point.
 
 ## Risks
 
@@ -384,46 +429,40 @@ point, not step 2.
 `programs/Cargo.toml` with old org URLs. They are not on `main`. Each one merged after
 the org move reintroduces an old URL. Harmless while the transfer redirects hold, and a
 build failure once they do not. Rebasing them is shreds work, not this migration's, but it
-interacts with step 5.
+interacts with step 7.
 
-**Clippy churn on the toolchain bump.** Offchain moves from 1.92.0 to 1.97.1 in step 2.
+**Clippy churn on the toolchain bump.** Offchain moves from 1.92.0 to 1.97.1 in step 4.
 Volume is unknown until tried. Step 0 can measure it at the same time as the program
 bytes, for free.
 
 **Contributor reward output can change silently. This is the risk to take seriously.**
-#1515 flags it for both `contributor-rewards` and `validator-debt`: relocating them
-re-resolves their maths in a different lockfile and feature context, and the output can
-change without anything failing. Both move into the root workspace in step 2.
+#1515 flags it: relocating `contributor-rewards` re-resolves its maths in a different
+lockfile and feature context, and the output can change without anything failing. It moves
+into the root workspace in step 4.
 
-Only `contributor-rewards` is load-bearing. Validator debt is no longer being collected, so
-drift in `validator-debt` output changes no payment. It still has to compile and it still
-releases, but it does not need a correctness gate.
+`contributor-rewards` decides what contributors are paid, and it has **no golden or
+snapshot tests** today. The failure mode is wrong reward figures that build clean and pass
+every test.
 
-`contributor-rewards` decides what contributors are paid. It has **no golden or snapshot
-tests** today, so nothing would catch a change. The failure mode is wrong reward figures
-that build clean and pass every test.
+This is why step 1 exists and why it comes first: write the goldens against today's
+behaviour on `main`, before anything moves. Step 4 then either keeps them green or names
+exactly what changed.
 
-Mitigation, and it should land before step 2 rather than inside it: add golden tests to
-`contributor-rewards` on `main` as it stands now. Fixed input, byte-identical output. Then
-step 2 either keeps them green or names exactly what moved. Writing goldens against today's
-behaviour is worth doing on its own merits, whatever happens to this migration.
-
-**Is `validator-debt` worth migrating at all?** If it is not collecting and is not expected
-to, moving it, releasing it and carrying it in the workspace is work spent on dormant code.
-Deleting it, or archiving it in place, may be cheaper than migrating it. Worth a decision
-before step 2 rather than after. Note it is still deployed: `malbeclabs/infra` runs it from
-the offchain scheduler with its own AWS credentials, and it ships a Cloudsmith package, so
-this is a real decision and not a formality.
+**`validator-debt` stays, without a correctness gate.** It is not collecting today, so
+drift in its output changes no payment. It is kept deliberately rather than dropped: it is
+still deployed, `malbeclabs/infra` runs it from the offchain scheduler with its own AWS
+credentials, and it ships a Cloudsmith package. It migrates and keeps releasing like
+everything else.
 
 **One lockfile, one resolution.** Today three lockfiles disagreeing is a visible signal.
-After step 2 one lockfile resolves silently. The Solana crates agree today only because
+After step 4 one lockfile resolves silently. The Solana crates agree today only because
 of an exact pin (`solana-sdk = "=3.0"` in all three). Keep that pin.
 
 **The fixture generators float.** `sdk/revdist/testdata/fixtures/generate-fixtures`
 declares its two `doublezero-solana` dependencies with no tag and no rev. Only the
 lockfile pins them, so the next `cargo update` there moves them to whatever `main` holds.
-Pin them during step 2.
+Pin them during step 4.
 
 **`doublezero-solana` uses version ranges** (`>=2,<=3`) on its program-side crates. That
 earns its keep for a library other repos consume. Inside one workspace it only produces
-resolution nobody asked for. Convert to exact pins during step 2.
+resolution nobody asked for. Convert to exact pins during step 4.

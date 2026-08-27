@@ -328,7 +328,7 @@ excluded.
 **Prerequisite this surfaced:** `git-filter-repo` is not installed. Step 2 needs it.
 Step 0 did not, because dependency resolution depends on manifests and paths, not history.
 
-### Step 1. Golden tests for `contributor-rewards`. DEFERRED to malbeclabs/infra#2392.
+### Step 1. Golden tests for `contributor-rewards`. IN PROGRESS, tracked by malbeclabs/infra#2392.
 
 **Attempted 2026-08-27. The committed fixture cannot support this test.**
 
@@ -359,11 +359,10 @@ be trimmed down to a committable size. They are `CompleteSnapshot` shaped, so a 
 fixture feeds `PreparedData::from_snapshot` directly, exercising the production entry point
 rather than reassembling inputs by hand.
 
-**What this costs step 4.** Step 4 was gated on these goldens. Deferring them means
-**nothing proves that a shared lockfile leaves reward figures unchanged**, which is the
-single risk this spec's Risks section calls out as the one to take seriously. Either
-infra#2392 lands before step 4, or step 4 proceeds knowing that reward drift would go
-undetected. That should be a decision on the record, not a silent omission.
+**Decision: build the fixture now, before step 2.** Step 4 is gated on these goldens, and
+without them nothing proves that a shared lockfile leaves reward figures unchanged, which
+is the one risk this spec's Risks section calls out as serious. So infra#2392 is being done
+now rather than deferred, and step 1 keeps its place at the front of the sequence.
 
 ### Step 2. Import the code and the history. One-way door.
 
@@ -542,9 +541,10 @@ into the root workspace in step 4.
 snapshot tests** today. The failure mode is wrong reward figures that build clean and pass
 every test.
 
-Step 1 was meant to answer this, and it is now deferred to malbeclabs/infra#2392 because no
-committed fixture produces nonzero rewards. Until that lands, this risk is unmitigated and
-step 4 has no way to prove it changed nothing.
+This is why step 1 exists and why it comes first. It turned out to need a fixture that does
+not exist yet (malbeclabs/infra#2392), so building that fixture is part of step 1 rather
+than a reason to skip it. Step 4 then either keeps the goldens green or names exactly what
+changed.
 
 Scope limit worth knowing: the goldens stop at `compute_shapley_values`. They do not cover
 `try_distribute_epoch_rewards`, the merkle root construction, or anything else past that

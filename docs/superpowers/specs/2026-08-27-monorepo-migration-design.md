@@ -330,9 +330,33 @@ Step 0 did not, because dependency resolution depends on manifests and paths, no
 
 ### Step 1. Golden tests for `contributor-rewards`.
 
-Land on `main`, before anything moves. Fixed input, byte-identical reward output. This crate
-decides what contributors are paid and has no output test today, so step 4 currently has no
-way to prove it changed nothing.
+Land on offchain's `main`, before anything moves. This crate decides what contributors are
+paid and has no output test today, so step 4 currently has no way to prove it changed
+nothing.
+
+Planned in detail at `docs/superpowers/plans/2026-08-27-contributor-rewards-goldens.md` in
+`malbeclabs/doublezero-offchain`.
+
+**Not byte-identical output.** An earlier draft of this spec said that, and it is the wrong
+gate for `f64`. The computation is deterministic on one machine (demands grouped in a
+`BTreeMap`, the `rayon` `par_iter().map()` collecting back into a `BTreeMap`, `BTreeMap`
+throughout the aggregator), but bit-identical floating point across architectures is not
+guaranteed. Goldens generated on arm64 could differ in the last bit from x86_64 CI, giving a
+permanently red test that everyone learns to ignore. That is worse than no test.
+
+The gate is instead:
+
+- **exact** on the operator set, the operator ordering, the city set, the per-city operator
+  ordering, and all counts, which carry no float risk
+- **`1e-12` relative tolerance** on every reward value and proportion
+
+A dependency change that alters reward maths moves values far more than `1e-12`. A
+last-bit difference across architectures does not.
+
+The seam is `compute_shapley_values`, the deepest point the pipeline reaches before it turns
+async and needs RPC. The crate already has the fixtures for it: a real 5.3 MB
+`testnet_snapshot.json`, its leader schedule, and a deterministic settings factory in
+`tests/common/mod.rs`.
 
 This step stands on its own merits and is worth landing whether or not the rest of this
 spec proceeds.
@@ -522,6 +546,11 @@ every test.
 This is why step 1 exists and why it comes first: write the goldens against today's
 behaviour on `main`, before anything moves. Step 4 then either keeps them green or names
 exactly what changed.
+
+Scope limit worth knowing: the goldens stop at `compute_shapley_values`. They do not cover
+`try_distribute_epoch_rewards`, the merkle root construction, or anything else past that
+point, because those are async and need RPC. If step 4 somehow affects those, the goldens
+will not catch it.
 
 **`validator-debt` stays, without a correctness gate.** It is not collecting today, so
 drift in its output changes no payment. It is kept deliberately rather than dropped: it is

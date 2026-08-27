@@ -40,6 +40,36 @@ Out of scope, decided deliberately:
   collision. Whether the two crates should become one is a later question.
 - **Any other malbeclabs repo.** The pattern here can be reused for a later wave.
 
+## Prior art
+
+An earlier attempt is tracked in malbeclabs/infra#1952 (offchain into the monorepo) and
+malbeclabs/infra#1515 (folding the `doublezero-solana` CLI into the main binary). Both are
+open and neither binds this spec, but they were read before writing it and they changed it.
+
+Where they agree with this spec, independently: offchain lands under a **top-level
+`offchain/`** rather than inside `crates/`, for the same reason (`crates/` is a flat bucket
+of single crates; offchain is a multi-crate tree plus an Elixir component). The staged,
+stop-anywhere shape is also the same.
+
+Where this spec differs:
+
+- **#1952 leaves `doublezero-solana` out of scope** as an external git dependency. This
+  spec brings it in. The objection at the time was partly a cross-org governance one, and
+  that is gone: both repos now sit in `malbeclabs`.
+- **#1952 Phase 2a wanted the monorepo bumped to 1.92 plus a musl target.** Both are
+  obsolete. The monorepo is now on 1.97.1, so the toolchain moves the other way (D3), and
+  it already builds `x86_64-unknown-linux-musl` in `rust.yml`, `release.client.yml`,
+  `release.daily.yml` and `release.pipeline.validation.yml`.
+
+Two warnings from #1515 are carried into this spec, in D3 and in Risks. They were the most
+valuable thing in either issue.
+
+**Out of scope but unblocked:** #1515 wants a `doublezero solana <verb>` surface mounted in
+the main binary. It notes that a shared `CliContext` only unifies inside one workspace,
+which is why its plan needs reach-back and pin alignment. Step 2 of this spec removes that
+constraint, so #1515's increments reduce to adding a path dependency and a subcommand. This
+spec does not do that work.
+
 ## The state we are starting from
 
 | | doublezero | offchain | solana |
@@ -131,6 +161,18 @@ Offchain's repo-wide 1.92.0 pin goes away and its crates build on 1.97.1. Expect
 clippy findings. That work belongs to step 2 and is not a surprise to discover later.
 
 borsh unifies on 1.7.0.
+
+**The edition trap, from #1515.** This repo's `[workspace.package]` sets
+`edition = "2021"`. Offchain's sets `"2024"`. All **14** offchain crates declare
+`edition.workspace = true`, so folding them into the root workspace silently moves every
+one of them from 2024 to 2021, and they fail to build.
+
+Fix: set `edition = "2024"` explicitly on all 14 crates in step 2. One line each. If this
+repo later moves its workspace to 2024, those lines drop out.
+
+Rejected: bumping this repo's workspace edition to 2024 as part of the merge. It would
+touch all 22 existing crates and put an unrelated migration inside the step that already
+carries the most risk.
 
 ### D4. Rename this repo's sentinel binary.
 
@@ -333,6 +375,19 @@ interacts with step 5.
 **Clippy churn on the toolchain bump.** Offchain moves from 1.92.0 to 1.97.1 in step 2.
 Volume is unknown until tried. Step 0 can measure it at the same time as the program
 bytes, for free.
+
+**Reward and debt output can change silently. This is the risk to take seriously.**
+#1515 flags it: relocating `contributor-rewards` and `validator-debt` re-resolves their
+maths in a different lockfile and feature context, and the output can change without
+anything failing. Both crates move into the root workspace in step 2 of this spec.
+
+There are **no golden or snapshot tests** in either crate today, so nothing would catch it.
+The failure mode is wrong reward or debt figures that build clean and pass every test.
+
+Mitigation, and it should land before step 2 rather than inside it: add golden tests to
+both crates on `main` as they stand now. Fixed input, byte-identical output. Then step 2
+either keeps them green or names exactly what moved. Writing goldens against today's
+behaviour is also useful on its own, whatever happens to this migration.
 
 **One lockfile, one resolution.** Today three lockfiles disagreeing is a visible signal.
 After step 2 one lockfile resolves silently. The Solana crates agree today only because

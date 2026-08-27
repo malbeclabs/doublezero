@@ -120,12 +120,15 @@ doublezero/
 ├── client/ sdk/ e2e/ ...       unchanged
 │
 ├── solana/                     from doublezero-solana
+│   │                           NESTED WORKSPACE, excluded from root (D2)
+│   │                           keeps its own Cargo.lock + rust-toolchain.toml
 │   ├── programs/passport
 │   ├── programs/revenue-distribution
 │   ├── crates/program-tools
 │   └── mock/{swap-sol-2z,rewards-integration}
 │
 └── offchain/                   from doublezero-offchain
+    │                           root workspace members after step 4
     ├── crates/                 14 crates
     └── scheduler/              Elixir app and its Rust NIF
 ```
@@ -149,30 +152,60 @@ Rejected: flattening offchain's crates into `crates/` and solana's programs into
 3. It forces the sentinel directory rename on day one. Keeping the trees separate makes
    that collision disappear (`offchain/crates/sentinel` next to `crates/sentinel`).
 
-### D2. One workspace, with the two Solana programs held back until measured.
+### D2. Offchain joins the root workspace. The `solana/` tree stays nested. Measured.
 
-After the workspace merge, the root workspace gains the 14 offchain crates,
-`scheduler/native/scheduler_doublezero`, and `solana/crates/program-tools`.
+**This was open pending step 0. Step 0 has run and the answer is no: the two Solana
+programs must not join the root workspace.**
 
-`passport` and `revenue-distribution` stay in `exclude` until we measure whether folding
-them in changes the bytes they compile to. `doublezero-solana` builds them in Docker with
-`cargo fetch --locked` and checks them against `programs/sha256sums_*.txt`. A shared
-lockfile may resolve some dependency differently, which would change the artifact.
+The programs' build closure is 96 crates. **62 of them resolve to a different version in
+this repo's lockfile.** A sample:
 
-Step 0 below settles this by measurement, not by argument. If the bytes do not change,
-they join the root workspace. If they change, they stay excluded with their own lockfile,
-and they keep needing a pin bump like today.
+| crate | in solana | in this repo |
+| --- | --- | --- |
+| `borsh` | 1.6.0 | 1.7.0 |
+| `bytemuck` | 1.24.0 | 1.25.0 |
+| `solana-instruction` | 3.1.0 | 3.4.0 |
+| `solana-clock` | 3.0.0 | 3.1.0 |
+| `solana-account-info` | 3.1.0 | 3.1.1 |
+| `solana-fee-calculator` | 3.0.0 | 3.2.1 |
 
-The two `mock/` programs stay excluded. Offchain already excludes its own mock program,
-so this follows the existing convention.
+`borsh` and `bytemuck` are the serialization and zero-copy layout crates the account
+structs are built on. A shared lockfile changes the compiled bytes, so
+`programs/sha256sums_*.txt` would no longer verify and the deployed artifacts would stop
+being reproducible from this repo.
 
-### D3. Toolchain: root stays 1.97.1, programs pin 1.91.
+So the end state is:
 
-Add `solana/programs/rust-toolchain.toml` pinning 1.91, mirroring
+- **`offchain/` joins the root workspace.** Its 14 crates plus
+  `scheduler/native/scheduler_doublezero` become members.
+- **`solana/` stays a nested excluded workspace**, keeping its own `Cargo.toml`,
+  `Cargo.lock` and `rust-toolchain.toml`. That covers `programs/passport`,
+  `programs/revenue-distribution`, `crates/program-tools` and both `mock/` programs.
+- **Offchain reaches `program-tools` by path** into that excluded tree, rather than by git
+  tag. `program-tools` compiles twice, once per lockfile, exactly as it does today.
+
+**This does not cost the atomic-change goal.** The pin disappears either way. A change
+touching `program-tools` and offchain together is still one commit in one repo, reviewed
+and merged atomically. Only dependency *resolution* stays separate, which is the whole
+point of holding the programs back.
+
+It also makes step 4 smaller than planned: it merges offchain only.
+
+Re-measure if this repo's lockfile ever converges on solana's versions, using the method in
+step 0. Nothing about this is permanent.
+
+### D3. Toolchain: root stays 1.97.1, the Solana programs keep 1.91.
+
+Nothing to add. `solana/` stays a nested workspace per D2, so its existing repo-wide
+`rust-toolchain.toml` (channel 1.91) carries over and keeps applying to that tree. That is
+the same directory-scoped pinning this repo already uses at
 `smartcontract/programs/rust-toolchain.toml`.
 
-Offchain's repo-wide 1.92.0 pin goes away and its crates build on 1.97.1. Expect new
-clippy findings. That work belongs to step 4 and is not a surprise to discover later.
+Offchain's repo-wide 1.92.0 pin goes away and its crates build on 1.97.1. **Measured in
+step 0: it compiles clean with 15 clippy warnings**, all trivial and mostly `--fix`-able
+(`useless_conversion`, `useless_borrows_in_formatting`, `unnecessary_sort_by`,
+`explicit_counter_loop`, `collapsible_match`). This was expected to be the painful part of
+step 4. It is not.
 
 borsh unifies on 1.7.0.
 
@@ -242,6 +275,22 @@ comm -12 <(gh api 'repos/malbeclabs/doublezero-offchain/tags?per_page=100' --pag
 
 Anything it prints needs a decision before step 2 runs.
 
+## Two cargo behaviours this plan depends on
+
+Both were tested with a minimal reproduction rather than reasoned about, because the design
+rests on them.
+
+1. **A root workspace can path-depend into an excluded nested workspace.** So offchain, as
+   a root member, can depend on `solana/crates/program-tools` by path while `solana/` keeps
+   its own workspace and lockfile. Verified: builds clean.
+2. **A git dependency can reach a package in the repo's `exclude` list.** Cargo scans the
+   repository for the named package; workspace membership does not gate git dependencies.
+   Verified: builds clean.
+
+The second one matters for shreds. Holding `revenue-distribution` out of the root workspace
+does **not** stop shreds pulling it from `malbeclabs/doublezero` by git, so the single-source
+story in "What this does to shreds" survives D2 intact.
+
 ## Sequencing
 
 One throwaway measurement, then six pull requests in this repo, then one follow-on pull
@@ -251,19 +300,33 @@ The riskiest work is split across steps 3 and 4 so that flipping the dependencie
 merging the workspaces fail separately. Each step is revertable on its own except step 2,
 which is the one-way door.
 
-### Step 0. Measure the program bytes. Throwaway.
+### Step 0. Measure whether a shared lockfile changes the program bytes. DONE.
 
-Do the whole merge locally. Add `passport` and `revenue-distribution` as root workspace
-members. Rebuild through the existing path:
+**Method.** Rebuilding the artifacts is the wrong test, and the obvious version of it gives
+a false negative: this repo has no `build-artifacts` target, and solana's Docker path runs
+`cargo fetch --locked` against solana's *own* lockfile, so it would report no change however
+the merged workspace resolved.
+
+The bytes can only change if the resolved dependency versions change, so compare resolution
+directly. Take the programs' normal-dependency closure, then compare each crate's resolved
+version against this repo's lockfile:
 
 ```sh
-make build-artifacts NETWORK=mainnet-beta
-shasum -a 256 -c programs/sha256sums_mainnet_beta.txt
+cargo tree --locked -p doublezero-passport -e normal --prefix none --features entrypoint \
+  | sed 's/ (\*)$//' | awk 'NF{print $1" "$2}' | sort -u
 ```
 
-Repeat for `NETWORK=development`. Output is one fact that decides D2. Measure the clippy
-volume from the toolchain bump at the same time, since the tree is already there. Discard
-the work either way.
+Cheaper than a build, exact, and it names *which* crates move rather than just saying the
+hash differs.
+
+**Result.** 96 crates in the closure, **62 resolve differently**. See D2. The programs stay
+excluded.
+
+**Also measured, since the tree was already built:** offchain on 1.97.1 compiles clean with
+15 trivial clippy warnings. See D3.
+
+**Prerequisite this surfaced:** `git-filter-repo` is not installed. Step 2 needs it.
+Step 0 did not, because dependency resolution depends on manifests and paths, not history.
 
 ### Step 1. Golden tests for `contributor-rewards`.
 
@@ -296,7 +359,7 @@ does not expect them is noise.
 
 Gate: every existing job green, with no existing job definition touched. `git diff` between
 each imported tree and its filtered source is empty. The diff is large and needs no
-judgement to review.
+judgment to review.
 
 ### Step 3. Flip the git dependencies to path dependencies.
 
@@ -322,19 +385,31 @@ lockfile.
 Now a manifest consolidation plus the toolchain work, with the dependency flip already
 proven by step 3.
 
-- Root workspace absorbs the crates per D2.
-- Delete the four nested `Cargo.toml` and `Cargo.lock` files, and `offchain/rust-toolchain.toml`.
+- Root workspace absorbs **offchain's** crates per D2.
+- Delete `offchain/Cargo.toml`, `offchain/Cargo.lock` and `offchain/rust-toolchain.toml`.
   A `rust-toolchain.toml` is directory-scoped, so leaving it would give a different compiler
   depending on which directory cargo was invoked from.
+- **Keep `solana/Cargo.toml`, `solana/Cargo.lock` and `solana/rust-toolchain.toml`.** The
+  programs stay excluded per D2 and need their own locked build for the checksum gate. Do
+  not delete them.
 - Set `edition = "2024"` explicitly on all 14 offchain crates per D3.
 - Offchain's crates move to 1.97.1; borsh unifies on 1.7.0; rename the sentinel binary
   per D4.
 - Pin the fixture generators and convert solana's `>=2,<=3` ranges to exact pins.
 
 Gate: `cargo check --workspace`, `cargo clippy --all-targets`, the full test suite, e2e,
-the program checksum check, and **the step 1 goldens still green**. Also confirm the
-lockfile holds no crate twice: `grep '^name = ' Cargo.lock | sort | uniq -d` should print
-nothing that was not already duplicated before the merge.
+the program checksum check from inside `solana/`, and **the step 1 goldens still green**.
+
+Two lockfile gates. A bare duplicate-name check is useless here: `cargo tree -d --workspace`
+already reports 140 duplicate groups on `main` today, which are normal.
+
+```sh
+# no internal git sources should remain; all are path deps after step 3
+grep -c 'source = "git+https://github.com/malbeclabs' Cargo.lock    # expect 0
+
+# duplicate groups must not increase against the pre-merge baseline
+cargo tree -d --workspace --locked | grep -cE '^[a-z0-9_-]+ v'      # baseline was 140
+```
 
 ### Step 5. Merge release and CI.
 
@@ -413,7 +488,7 @@ Every step reverts cleanly except step 2.
 
 Step 3 reverts to git dependencies. Step 4 reverts **because steps 2 and 3 leave the nested
 manifests in place**: step 4 only edits and deletes manifests, so reverting it restores the
-four nested `Cargo.toml` and `Cargo.lock` files and leaves a repo that builds as it did
+`offchain/Cargo.toml` and `offchain/Cargo.lock` and leaves a repo that builds as it did
 after step 3. Step 5 is workflows. Unarchiving a repo is a click.
 
 Splitting the old single workspace step into steps 3 and 4 is what buys this. A revert of
@@ -431,9 +506,9 @@ the org move reintroduces an old URL. Harmless while the transfer redirects hold
 build failure once they do not. Rebasing them is shreds work, not this migration's, but it
 interacts with step 7.
 
-**Clippy churn on the toolchain bump.** Offchain moves from 1.92.0 to 1.97.1 in step 4.
-Volume is unknown until tried. Step 0 can measure it at the same time as the program
-bytes, for free.
+**Clippy churn on the toolchain bump. Measured and small.** Offchain moves from 1.92.0 to
+1.97.1 in step 4. Step 0 ran it: clean compile, 15 trivial warnings, mostly `--fix`-able.
+This risk is closed.
 
 **Contributor reward output can change silently. This is the risk to take seriously.**
 #1515 flags it: relocating `contributor-rewards` re-resolves its maths in a different

@@ -62,7 +62,21 @@ Where this spec differs:
   `release.daily.yml` and `release.pipeline.validation.yml`.
 
 Two warnings from #1515 are carried into this spec, in D3 and in Risks. They were the most
-valuable thing in either issue.
+valuable thing in either issue. Neither issue stalled for a technical reason, so nothing in
+them was invalidated by discovery.
+
+#1952 has five open, unassigned sub-issues. This is how they map, so nobody works from two
+plans at once:
+
+| Issue | Fate |
+| --- | --- |
+| #1947 Phase 0, import under `offchain/` | Superseded by step 1, which also imports solana |
+| #1948 Phase 1, flip git deps to path deps | Folded into step 2 |
+| #1949 Phase 2a, toolchain 1.92 plus musl | **Obsolete.** Monorepo is on 1.97.1 and already builds musl |
+| #1950 Phase 2b, unify the workspace | Becomes step 2 |
+| #1951 Phase 3, distribute crates and mount verbs | **Still valid, out of scope here, unblocked by step 2** |
+
+Close #1947 through #1950 against this spec if it is accepted. Keep #1951 and #1515 open.
 
 **Out of scope but unblocked:** #1515 wants a `doublezero solana <verb>` surface mounted in
 the main binary. It notes that a shared `CliContext` only unifies inside one workspace,

@@ -153,22 +153,38 @@ its name because `doublezero-sentinel` is a deployed package name.
 The rename touches two files: `crates/sentinel/Cargo.toml` and
 `e2e/docker/sentinel/Dockerfile`.
 
-### D5. Keep the imported tags, with a provenance prefix.
+### D5. Keep the imported tags, unprefixed. Retire one orphan first.
 
-`git filter-repo` carries tags by default. Import them with `--tag-rename` so offchain's
-`contributor-rewards/v0.6.1` becomes `offchain/contributor-rewards/v0.6.1`, and solana's
-`revenue-distribution/v0.3.7` becomes `solana/revenue-distribution/v0.3.7`.
+`git filter-repo` carries tags by default. Keep them: they make release history reachable
+from this repo, and an unprefixed tag continues each component's version line, so a later
+release of `contributor-rewards` picks up from `v0.6.1` rather than restarting.
 
-This keeps release history reachable and says where each tag came from. It also leaves the
-unprefixed namespace free for releases built from this repo, so the existing workflow
-triggers (`contributor-rewards/v*.*.*`) need no change and cannot match history by
-accident. `git describe --tags` still finds the old tags.
+Unprefixed is safe because there is almost no overlap. Comparing every tag prefix across
+the three repos, 33 in this repo, 14 in offchain, 2 in solana, gives exactly one collision:
 
-**This makes retiring the orphan `sentinel/v0.6.1` tag a prerequisite, not a tidy-up.**
-That tag sits in this repo with no sentinel release behind it. Offchain's sentinel line
-reaches `v0.2.6`, so its next release is `sentinel/v0.2.7`, below the orphan. Leave the
-orphan in place and the sentinel version line reads backwards, and a later release at
-v0.6.1 fails on an existing tag.
+```
+sentinel
+```
+
+**That collision resolves by deleting the orphan, which we want to do anyway.** This repo
+holds a single `sentinel/v0.6.1` tag with no sentinel release behind it: no goreleaser
+config, no published artifact. Offchain's sentinel line is the live one and reaches
+`v0.2.6`, so its next release is `sentinel/v0.2.7`, below the orphan. Left in place the
+version line reads backwards, and a later release at v0.6.1 fails on an existing tag.
+
+So: **delete `sentinel/v0.6.1` before the import**, then import every tag unprefixed. No
+`--tag-rename`, no long names, and every component keeps one continuous version line.
+
+Check the collision set again immediately before importing, in case new tags have landed:
+
+```sh
+comm -12 <(gh api 'repos/malbeclabs/doublezero-offchain/tags?per_page=100' --paginate \
+            -q '.[].name' | sed -E 's|/v[0-9].*$||' | sort -u) \
+         <(gh api 'repos/malbeclabs/doublezero/tags?per_page=100' --paginate \
+            -q '.[].name' | sed -E 's|/v[0-9].*$||' | sort -u)
+```
+
+Anything it prints needs a decision before step 1 runs.
 
 ## Sequencing
 
@@ -190,8 +206,9 @@ either way.
 
 ### Step 1. Import the code and the history.
 
-Run `git filter-repo --path-rename` on each source repo to relocate its tree, with
-`--tag-rename` per D5. Add each as a remote and merge with
+First delete the orphan `sentinel/v0.6.1` tag per D5, then re-run the collision check
+in D5 and resolve anything it prints. Then run `git filter-repo --path-rename` on each
+source repo to relocate its tree, keeping tags unprefixed. Add each as a remote and merge with
 `--allow-unrelated-histories`. Fetch `main` only. Offchain alone has 599 refs and none of
 the others are wanted.
 
@@ -235,7 +252,6 @@ component, so offchain's five fit the existing shape.
 - **Change `release.github.name` in the five goreleaser configs from `doublezero-offchain`
   to `doublezero`.** The `owner` field was corrected during the org move. The `name` field
   becomes wrong the moment the code lives here.
-- Retire the orphan `sentinel/v0.6.1` tag per D5.
 
 Gate: push a throwaway release candidate tag on the smallest component. Confirm the
 release lands under malbeclabs and the package reaches Cloudsmith. Config review proves
@@ -248,9 +264,8 @@ redirects, 11 forks, and old release download URLs all still resolve through the
 
 Archiving also keeps shreds building on its current pins. An archived repo still serves
 reads, so `malbeclabs/doublezero-solana` at tag `revenue-distribution/v0.3.7` keeps
-resolving. The tag renaming in D5 applies to the copies imported here, not to the tags in
-the archived repos. That decouples step 5 from step 4: shreds can be repointed when it
-suits, not the same day.
+resolving, and the same tag imported here points at the same commit. That decouples step 5
+from step 4: shreds can be repointed when it suits, not the same day.
 
 ### Step 5. Repoint shreds. Separate repo, separate risk.
 

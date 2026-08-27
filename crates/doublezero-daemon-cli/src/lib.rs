@@ -11,6 +11,7 @@ pub mod disable;
 pub mod disconnect;
 pub mod enable;
 pub mod helpers;
+pub mod ip_proof;
 pub mod latency;
 pub mod ledger;
 pub mod multicast;

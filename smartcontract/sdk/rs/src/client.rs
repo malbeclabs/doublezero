@@ -202,6 +202,12 @@ impl DZClient {
     /// the native `Ed25519SigVerify` instruction and the creation it authorizes,
     /// which have to land together or not at all.
     fn send_transaction_inner(&self, ixs: Vec<Instruction>) -> eyre::Result<Signature> {
+        // Without this, an empty list would submit the compute-budget prelude on its own and
+        // pay a fee for a transaction that does nothing.
+        if ixs.is_empty() {
+            bail!("No instructions to send");
+        }
+
         let payer = self
             .payer
             .as_ref()

@@ -24,6 +24,12 @@ hyper-util.workspace = true
 hyperlocal.workspace = true
 indicatif.workspace = true
 mockall.workspace = true
+# The RFC-27 proof retrieved from the verification service and forwarded to the SDK.
+doublezero-ip-proof.workspace = true
+# One short blocking HTTP request per `connect`, to the IP verification service. `local_address`
+# is what lets a multi-homed host prove the address its tunnel will actually use.
+reqwest = { workspace = true, features = ["json", "blocking"] }
+thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 solana-sdk.workspace = true

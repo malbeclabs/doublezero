@@ -67,6 +67,7 @@ impl Environment {
                 telemetry_program_id: ENV_MAINNET_BETA_TELEMETRY_PUBKEY,
                 internet_latency_collector_pk: ENV_MAINNET_BETA_INTERNET_LATENCY_COLLECTOR_PUBKEY,
                 geolocation_program_id: ENV_MAINNET_BETA_GEOLOCATION_PUBKEY,
+                ip_verifier_url: None,
             },
             Environment::Testnet => NetworkConfig {
                 ledger_public_rpc_url: ENV_TESTNET_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
@@ -76,6 +77,7 @@ impl Environment {
                 telemetry_program_id: ENV_TESTNET_TELEMETRY_PUBKEY,
                 internet_latency_collector_pk: ENV_TESTNET_INTERNET_LATENCY_COLLECTOR_PUBKEY,
                 geolocation_program_id: ENV_TESTNET_GEOLOCATION_PUBKEY,
+                ip_verifier_url: None,
             },
             Environment::Devnet => NetworkConfig {
                 ledger_public_rpc_url: ENV_DEVNET_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
@@ -85,6 +87,7 @@ impl Environment {
                 telemetry_program_id: ENV_DEVNET_TELEMETRY_PUBKEY,
                 internet_latency_collector_pk: ENV_DEVNET_INTERNET_LATENCY_COLLECTOR_PUBKEY,
                 geolocation_program_id: ENV_DEVNET_GEOLOCATION_PUBKEY,
+                ip_verifier_url: None,
             },
             Environment::Local => NetworkConfig {
                 ledger_public_rpc_url: ENV_LOCAL_DOUBLEZERO_LEDGER_RPC_URL.to_string(),
@@ -94,6 +97,7 @@ impl Environment {
                 telemetry_program_id: ENV_LOCAL_TELEMETRY_PUBKEY,
                 internet_latency_collector_pk: ENV_LOCAL_INTERNET_LATENCY_COLLECTOR_PUBKEY,
                 geolocation_program_id: ENV_LOCAL_GEOLOCATION_PUBKEY,
+                ip_verifier_url: None,
             },
         };
 
@@ -106,6 +110,12 @@ impl Environment {
         if std::env::var("DZ_SOLANA_RPC_URL").is_ok() {
             config.solana_l1_rpc_url = std::env::var("DZ_SOLANA_RPC_URL").unwrap();
         }
+        // Set this to point at a verifier in an environment that has no deployed one yet, or at
+        // a local one while developing. `--ip-verifier-url` on `connect` overrides it in turn.
+        // Note `eyre::Ok` is in scope here, so `if let Ok(..)` will not parse.
+        config.ip_verifier_url = std::env::var("DZ_IP_VERIFIER_URL")
+            .ok()
+            .or(config.ip_verifier_url);
 
         Ok(config)
     }
@@ -163,6 +173,18 @@ pub struct NetworkConfig {
     pub telemetry_program_id: Pubkey,
     pub internet_latency_collector_pk: Pubkey,
     pub geolocation_program_id: Pubkey,
+    /// Base URL of the RFC-27 IP ownership verification service (`doublezero-ip-verifier`), or
+    /// `None` where none is deployed yet. `None` is not an error: user creation without a proof
+    /// is accepted until `require-ip-ownership-proof` is set for the environment.
+    ///
+    /// Every environment is `None` today. Mainnet-beta, testnet, and devnet get their deployed
+    /// URLs with the deployment work (#4199); localnet gets its verifier from `dev/dzctl`
+    /// (#4204), which is what will know whether the CLI reaches it as a container name or on
+    /// the host. A default guessed here would be wrong for one of those two, and the service
+    /// signs the address it observes the request arrive from, so pointing at the wrong host is
+    /// worse than pointing at nothing. `DZ_IP_VERIFIER_URL` and `--ip-verifier-url` cover the
+    /// gap in the meantime.
+    pub ip_verifier_url: Option<String>,
 }
 
 #[cfg(test)]

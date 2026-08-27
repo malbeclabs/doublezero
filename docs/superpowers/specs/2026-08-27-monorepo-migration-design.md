@@ -328,43 +328,42 @@ excluded.
 **Prerequisite this surfaced:** `git-filter-repo` is not installed. Step 2 needs it.
 Step 0 did not, because dependency resolution depends on manifests and paths, not history.
 
-### Step 1. Golden tests for `contributor-rewards`.
+### Step 1. Golden tests for `contributor-rewards`. DEFERRED to malbeclabs/infra#2392.
 
-Land on offchain's `main`, before anything moves. This crate decides what contributors are
-paid and has no output test today, so step 4 currently has no way to prove it changed
-nothing.
+**Attempted 2026-08-27. The committed fixture cannot support this test.**
 
-Planned in detail at `docs/superpowers/plans/2026-08-27-contributor-rewards-goldens.md` in
-`malbeclabs/doublezero-offchain`.
+A golden test was written and it works, but driven from
+`crates/contributor-rewards/tests/testnet_snapshot.json` it produces **0.0 for every
+operator in every one of 8 cities**. Diagnosed rather than assumed:
 
-**Not byte-identical output.** An earlier draft of this spec said that, and it is the wrong
-gate for `f64`. The computation is deterministic on one machine (demands grouped in a
-`BTreeMap`, the `rayon` `par_iter().map()` collecting back into a `BTreeMap`, `BTreeMap`
-throughout the aggregator), but bit-identical floating point across architectures is not
-guaranteed. Goldens generated on arm64 could differ in the last bit from x86_64 CI, giving a
-permanently red test that everyone learns to ignore. That is worse than no test.
+- The Shapley machinery is fine. `evaluator.rs`'s own
+  `test_aggregated_proportions_sum_to_one` asserts nonzero proportions against synthetic
+  inputs.
+- The input assembly was correct, matching `PreparedData::from_snapshot` builder for
+  builder.
+- The links carry real data. `test_pvt_links.rs` pins real latencies from the same
+  snapshot (154.520, 5.804, 67.249, 68.448, 98.787 ms).
 
-The gate is instead:
+The zero is genuine output. At 67 to 154 ms those private links are no better than public
+internet on those routes, so the private network adds no value and every operator's
+marginal contribution is legitimately zero. The fixture is simply too thin: 4 contributors,
+9 devices, 9 links, 2 operators reaching the output.
 
-- **exact** on the operator set, the operator ordering, the city set, the per-city operator
-  ordering, and all counts, which carry no float risk
-- **`1e-12` relative tolerance** on every reward value and proportion
+Pinning those zeros would give a test that passes forever, detects nothing, and reads as
+coverage. Worse than no test.
 
-A dependency change that alters reward maths moves values far more than `1e-12`. A
-last-bit difference across architectures does not.
+Building a fixture that produces nonzero rewards is tracked in **malbeclabs/infra#2392**.
+The raw material exists (`dry-run-output/mn-beta-epoch-12{7,8,9}-snapshot.json`, 14
+contributors, 96 devices, 166 links) but the files are 100 MB and gitignored, so one has to
+be trimmed down to a committable size. They are `CompleteSnapshot` shaped, so a trimmed
+fixture feeds `PreparedData::from_snapshot` directly, exercising the production entry point
+rather than reassembling inputs by hand.
 
-The seam is `compute_shapley_values`, the deepest point the pipeline reaches before it turns
-async and needs RPC. The crate already has the fixtures for it: a real 5.3 MB
-`testnet_snapshot.json`, its leader schedule, and a deterministic settings factory in
-`tests/common/mod.rs`.
-
-This step stands on its own merits and is worth landing whether or not the rest of this
-spec proceeds.
-
-`validator-debt` does not need the same gate. Debt is not being collected, so drift in its
-output changes no payment. It still has to compile and release, and it stays in the tree.
-
-Gate: the goldens pass on `main` and fail if a reward figure moves.
+**What this costs step 4.** Step 4 was gated on these goldens. Deferring them means
+**nothing proves that a shared lockfile leaves reward figures unchanged**, which is the
+single risk this spec's Risks section calls out as the one to take seriously. Either
+infra#2392 lands before step 4, or step 4 proceeds knowing that reward drift would go
+undetected. That should be a decision on the record, not a silent omission.
 
 ### Step 2. Import the code and the history. One-way door.
 
@@ -543,9 +542,9 @@ into the root workspace in step 4.
 snapshot tests** today. The failure mode is wrong reward figures that build clean and pass
 every test.
 
-This is why step 1 exists and why it comes first: write the goldens against today's
-behaviour on `main`, before anything moves. Step 4 then either keeps them green or names
-exactly what changed.
+Step 1 was meant to answer this, and it is now deferred to malbeclabs/infra#2392 because no
+committed fixture produces nonzero rewards. Until that lands, this risk is unmitigated and
+step 4 has no way to prove it changed nothing.
 
 Scope limit worth knowing: the goldens stop at `compute_shapley_values`. They do not cover
 `try_distribute_epoch_rewards`, the merkle root construction, or anything else past that

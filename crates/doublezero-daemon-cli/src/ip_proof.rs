@@ -17,7 +17,12 @@
 //! failure is a proof for an address that is not the one being provisioned, because attaching it
 //! would guarantee an onchain rejection and ignoring it would bind an address nobody proved.
 
-use std::{net::Ipv4Addr, str::FromStr, thread, time::Duration};
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    str::FromStr,
+    thread,
+    time::Duration,
+};
 
 use doublezero_ip_proof::IpOwnershipProof;
 use doublezero_sdk::UserType;
@@ -44,6 +49,14 @@ const REQUEST_TIMEOUT: Duration = Duration::from_millis(2500);
 /// behind this name should raise it, or sit behind a single load-balancer or anycast VIP so it
 /// stays one address, belongs with the deployment work in #4199.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// How long the binding probe will wait for the verifier's name to resolve. It needs a budget of
+/// its own because it is the one piece of network work that happens *outside* the request: the
+/// binding has to be decided before the client is built, so the probe's `getaddrinfo` runs ahead
+/// of [`REQUEST_TIMEOUT`] rather than inside it. Unbounded, a host with a stuck resolver would sit
+/// here for the `resolv.conf` budget — commonly 5s per attempt, more than the whole invocation is
+/// supposed to take — before any of the other timeouts had a chance to apply.
+const RESOLVE_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Attempts before giving up. `POST /v1/proof` is idempotent — it signs the address it observes
 /// and holds no per-request state — so a retry cannot double anything. Only a transport error or
@@ -201,9 +214,12 @@ fn probe_source_binding(source_addr: Ipv4Addr, url: &str) -> SourceBinding {
     let Ok(socket) = std::net::UdpSocket::bind((source_addr, 0)) else {
         return SourceBinding::NotLocal;
     };
-    let Some(addrs) = reqwest::Url::parse(url)
-        .ok()
-        .and_then(|u| u.socket_addrs(|| None).ok())
+    // Parsing is done here rather than on the worker: it touches no network, and a URL that is
+    // not a URL should fail instantly instead of costing a thread.
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return SourceBinding::Unresolved;
+    };
+    let Some(addrs) = resolve_within(RESOLVE_TIMEOUT, move || parsed.socket_addrs(|| None).ok())
     else {
         return SourceBinding::Unresolved;
     };
@@ -212,6 +228,30 @@ fn probe_source_binding(source_addr: Ipv4Addr, url: &str) -> SourceBinding {
     } else {
         SourceBinding::Unroutable
     }
+}
+
+/// Runs `resolve` with a deadline, giving up rather than blocking past it.
+///
+/// `getaddrinfo` is blocking and uncancellable, and `std` has no async resolver — one short
+/// lookup per invocation does not justify pulling one in — so the only way to bound it is to run
+/// it somewhere abandonable. Giving up returns `None`, which the caller reads as "do not bind":
+/// the request then proceeds unbound and resolves the name itself, where [`REQUEST_TIMEOUT`]
+/// covers it and the failure carries a better message than the probe could produce.
+///
+/// The abandoned thread is not a leak. It ends when the lookup returns, and its `send` into a
+/// dropped receiver simply fails.
+///
+/// Split out from [`probe_source_binding`] so the deadline can be tested with a slow closure
+/// rather than a resolver that has to be made to hang.
+fn resolve_within<F>(deadline: Duration, resolve: F) -> Option<Vec<SocketAddr>>
+where
+    F: FnOnce() -> Option<Vec<SocketAddr>> + Send + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let _ = tx.send(resolve());
+    });
+    rx.recv_timeout(deadline).ok().flatten()
 }
 
 impl IpProofClient for HttpIpProofClient {
@@ -416,6 +456,38 @@ mod tests {
         assert_eq!(
             probe_source_binding(Ipv4Addr::LOCALHOST, "http://8.8.8.8:80"),
             SourceBinding::Unroutable
+        );
+    }
+
+    /// The deadline is the whole point of the split: a resolver that hangs must not hold up an
+    /// interactive `connect`, and giving up has to be prompt rather than eventual.
+    #[test]
+    fn resolve_within_gives_up_on_a_lookup_that_outruns_its_deadline() {
+        let started = std::time::Instant::now();
+        let resolved = resolve_within(Duration::from_millis(50), || {
+            thread::sleep(Duration::from_secs(30));
+            Some(vec![SocketAddr::from(([127, 0, 0, 1], 8080))])
+        });
+
+        assert!(
+            resolved.is_none(),
+            "a lookup past the deadline must be abandoned"
+        );
+        // The call returns on the deadline, not when the lookup eventually finishes. A generous
+        // bound: the point is that it is nowhere near the 30s the closure sleeps for.
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "gave up only after {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn resolve_within_returns_a_lookup_that_beats_its_deadline() {
+        let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+        assert_eq!(
+            resolve_within(Duration::from_secs(30), move || Some(vec![addr])),
+            Some(vec![addr])
         );
     }
 

@@ -142,6 +142,30 @@ fn is_settled_block_error(err: &SolanaClientError) -> bool {
     is_block_unavailable(err) || is_block_cleaned_up(err)
 }
 
+// `reqwest::Error`, which `ClientErrorKind::Reqwest` is transparent over, prints the
+// request URL from both `Debug` and `Display`. On mainnet-beta that URL carries the
+// read endpoint's API key, and journald ships to Loki, so logging the error verbatim
+// publishes the key on every timeout and every 429.
+fn redacted(err: &SolanaClientError) -> String {
+    let text = format!("{err:?}");
+
+    match err.kind() {
+        ClientErrorKind::Reqwest(inner) => match inner.url() {
+            Some(url) => text.replace(url.as_str(), "<redacted>"),
+            None => text,
+        },
+        _ => text,
+    }
+}
+
+// Redacting only the retry logs is not enough: when the retry gives up, the client
+// error itself travels up the chain, and whoever prints that chain prints the URL.
+// Every RPC call in this module converts its error through here so the key cannot
+// leave, which means dropping the original as a source rather than wrapping it.
+fn redacted_error(err: SolanaClientError) -> anyhow::Error {
+    anyhow::Error::msg(redacted(&err))
+}
+
 /// Report whether a block at `first_block_slot` is close enough to `first_slot`,
 /// the first slot of an epoch, to date when that epoch began.
 ///
@@ -264,11 +288,13 @@ impl EpochFinder {
                 .retry(&ExponentialBuilder::default().with_jitter())
                 .notify(|err: &SolanaClientError, dur: Duration| {
                     info!(
-                        "retrying get_epoch_schedule error: {:?} with sleeping {:?}",
-                        err, dur
+                        "retrying get_epoch_schedule error: {} with sleeping {:?}",
+                        redacted(err),
+                        dur
                     )
                 })
-                .await?;
+                .await
+                .map_err(redacted_error)?;
             self.dz_schedule = Some(schedule);
         }
 
@@ -285,11 +311,13 @@ impl EpochFinder {
                 .retry(&ExponentialBuilder::default().with_jitter())
                 .notify(|err: &SolanaClientError, dur: Duration| {
                     info!(
-                        "retrying get_epoch_schedule error: {:?} with sleeping {:?}",
-                        err, dur
+                        "retrying get_epoch_schedule error: {} with sleeping {:?}",
+                        redacted(err),
+                        dur
                     )
                 })
-                .await?;
+                .await
+                .map_err(redacted_error)?;
             self.solana_schedule = Some(schedule);
         }
 
@@ -311,8 +339,9 @@ impl EpochFinder {
             .when(|err: &SolanaClientError| !is_settled_block_error(err))
             .notify(|err: &SolanaClientError, dur: Duration| {
                 info!(
-                    "retrying get_block_time error: {:?} with sleeping {:?}",
-                    err, dur
+                    "retrying get_block_time error: {} with sleeping {:?}",
+                    redacted(err),
+                    dur
                 )
             })
             .await;
@@ -320,9 +349,8 @@ impl EpochFinder {
         match block_time {
             Ok(block_time) => Ok(Some(block_time)),
             Err(err) if is_block_unavailable(&err) => Ok(None),
-            Err(err) => {
-                Err(err).with_context(|| format!("Failed to get block time for Solana slot {slot}"))
-            }
+            Err(err) => Err(redacted_error(err))
+                .with_context(|| format!("Failed to get block time for Solana slot {slot}")),
         }
     }
 
@@ -368,11 +396,13 @@ impl EpochFinder {
         .when(|err: &SolanaClientError| !is_settled_block_error(err))
         .notify(|err: &SolanaClientError, dur: Duration| {
             info!(
-                "retrying get_blocks_with_limit error: {:?} with sleeping {:?}",
-                err, dur
+                "retrying get_blocks_with_limit error: {} with sleeping {:?}",
+                redacted(err),
+                dur
             )
         })
         .await
+        .map_err(redacted_error)
         .with_context(|| format!("Failed to find the first block of Solana epoch {epoch}"))?
         .first()
         .copied()
@@ -458,9 +488,14 @@ impl EpochFinder {
         let current_slot = (|| async { self.solana_read_client.get_slot().await })
             .retry(&ExponentialBuilder::default().with_jitter())
             .notify(|err: &SolanaClientError, dur: Duration| {
-                info!("retrying get_slot error: {:?} with sleeping {:?}", err, dur)
+                info!(
+                    "retrying get_slot error: {} with sleeping {:?}",
+                    redacted(err),
+                    dur
+                )
             })
-            .await?;
+            .await
+            .map_err(redacted_error)?;
 
         let current_time_us = Utc::now().timestamp_micros() as u64;
 
@@ -576,11 +611,13 @@ impl EpochFinder {
         .retry(&ExponentialBuilder::default().with_jitter())
         .notify(|err: &SolanaClientError, dur: Duration| {
             info!(
-                "retrying get_leader_schedule error: {:?} with sleeping {:?}",
-                err, dur
+                "retrying get_leader_schedule error: {} with sleeping {:?}",
+                redacted(err),
+                dur
             )
         })
-        .await?
+        .await
+        .map_err(redacted_error)?
         .ok_or_else(|| anyhow!("No leader schedule found for Solana epoch {solana_epoch}"))?;
 
         // Convert leader schedule to map of validator -> slot count
@@ -606,6 +643,32 @@ mod tests {
     use solana_client::rpc_request::RpcResponseErrorData;
 
     use super::*;
+
+    // Points a client at a closed local port so the call fails inside reqwest with the
+    // URL attached, which is the shape that leaks the API key.
+    #[tokio::test]
+    async fn test_redaction_keeps_the_url_out_of_a_propagated_error() {
+        let err = RpcClient::new("http://127.0.0.1:1/?api-key=SUPERSECRET".to_string())
+            .get_slot()
+            .await
+            .expect_err("a closed port cannot answer get_slot");
+
+        // The redaction depends on both of these, so check them rather than letting a
+        // reqwest change turn the assertions below into a vacuous pass.
+        assert!(matches!(err.kind(), ClientErrorKind::Reqwest(_)), "{err:?}");
+        let ClientErrorKind::Reqwest(inner) = err.kind() else {
+            unreachable!()
+        };
+        assert!(inner.url().is_some(), "{err:?}");
+
+        assert!(format!("{err:?}").contains("SUPERSECRET"));
+        assert!(!redacted(&err).contains("SUPERSECRET"));
+
+        // What the scheduler prints on failure, via `error!("...: {e:#}")`.
+        let propagated = redacted_error(err);
+        assert!(!format!("{propagated:#}").contains("SUPERSECRET"));
+        assert!(!format!("{propagated:?}").contains("SUPERSECRET"));
+    }
 
     #[test]
     fn test_estimate_slot_from_timestamp() {

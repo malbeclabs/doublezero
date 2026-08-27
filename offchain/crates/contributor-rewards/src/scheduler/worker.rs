@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{Result, anyhow, bail, ensure};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 use backon::{ExponentialBuilder, Retryable};
 use chrono::Utc;
 use doublezero_program_tools::zero_copy;
@@ -147,7 +147,7 @@ impl ScheduleWorker {
                     state.save(&self.state_file)?;
                 }
                 Err(e) => {
-                    error!("Failed to process rewards: {}", e);
+                    error!("Failed to process rewards: {e:#}");
                     state.mark_failure();
                     state.save(&self.state_file)?;
 
@@ -418,10 +418,9 @@ impl ScheduleWorker {
                     (location, path, temp_guard)
                 }
                 Err(e) => {
-                    error!(
-                        "Failed to create snapshot for epoch {}: {}",
-                        target_epoch, e
-                    );
+                    // `{:#}` prints the cause chain; plain `{}` prints only the outermost
+                    // context, dropping the reason the fetch failed.
+                    error!("Failed to create snapshot for epoch {target_epoch}: {e:#}");
                     metrics::counter!(
                         "doublezero_contributor_rewards_snapshot_failed",
                         "reason" => "creation_error"
@@ -769,28 +768,19 @@ impl ScheduleWorker {
             );
         }
 
-        // Try to fetch leader schedule (optional - warn on failure)
+        // Required: every consumer rejects a snapshot without a leader schedule.
         info!("Fetching leader schedule for epoch {}", epoch);
-        let (solana_epoch, leader_schedule) = match EpochFinder::new(
+        let leader_schedule = EpochFinder::new(
             fetcher.dz_rpc_client.clone(),
             fetcher.solana_read_client.clone(),
         )
         .fetch_leader_schedule(epoch, fetch_data.start_us)
         .await
-        {
-            Ok(schedule) => {
-                info!(
-                    "Leader schedule fetched successfully for Solana epoch {}",
-                    schedule.solana_epoch
-                );
-                (Some(schedule.solana_epoch), Some(schedule))
-            }
-            Err(e) => {
-                warn!("Failed to fetch leader schedule for epoch {}: {}", epoch, e);
-                warn!("Snapshot will be created without leader schedule");
-                (None, None)
-            }
-        };
+        .with_context(|| format!("Failed to fetch leader schedule for DZ epoch {epoch}"))?;
+        info!(
+            "Leader schedule fetched successfully for Solana epoch {}",
+            leader_schedule.solana_epoch
+        );
 
         // Create metadata
         let metadata = SnapshotMetadata {
@@ -806,11 +796,16 @@ impl ScheduleWorker {
         // Create complete snapshot
         let snapshot = CompleteSnapshot {
             dz_epoch: epoch,
-            solana_epoch,
+            solana_epoch: Some(leader_schedule.solana_epoch),
             fetch_data,
-            leader_schedule,
+            leader_schedule: Some(leader_schedule),
             metadata,
         };
+
+        // Validate before saving: storage.save writes the canonical per-epoch key, so
+        // an incomplete snapshot overwrites a good one, and a dry run never reads it
+        // back to find out.
+        snapshot.validate()?;
 
         // Save snapshot using storage abstraction (S3 or local file)
         info!(

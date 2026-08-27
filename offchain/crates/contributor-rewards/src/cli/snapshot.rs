@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -247,27 +247,18 @@ pub async fn create_snapshot(
         fetch_data.dz_internet = internet_data;
     }
 
-    // Try to get Solana epoch and leader schedule
     let mut epoch_finder = EpochFinder::new(
         fetcher.dz_rpc_client.clone(),
         fetcher.solana_read_client.clone(),
     );
-    // fetch_leader_schedule resolves the Solana epoch itself and reports which
-    // one it used, so taking the epoch from its result avoids running the
-    // chain-verified epoch search twice over the same timestamp.
-    let leader_schedule = match epoch_finder
+    // Required: validate() below rejects a snapshot without a leader schedule.
+    // fetch_leader_schedule resolves the Solana epoch itself and reports which one it
+    // used, so taking the epoch from its result avoids running the chain-verified
+    // epoch search twice over the same timestamp.
+    let leader_schedule = epoch_finder
         .fetch_leader_schedule(fetch_epoch, fetch_data.start_us)
         .await
-    {
-        Ok(schedule) => Some(schedule),
-        Err(e) => {
-            warn!("Failed to get leader schedule: {}", e);
-            None
-        }
-    };
-    let solana_epoch = leader_schedule
-        .as_ref()
-        .map(|schedule| schedule.solana_epoch);
+        .with_context(|| format!("Failed to fetch leader schedule for DZ epoch {fetch_epoch}"))?;
 
     // Create metadata
     let metadata = SnapshotMetadata {
@@ -283,9 +274,9 @@ pub async fn create_snapshot(
     // Create complete snapshot
     let snapshot = CompleteSnapshot {
         dz_epoch: fetch_epoch,
-        solana_epoch,
+        solana_epoch: Some(leader_schedule.solana_epoch),
         fetch_data,
-        leader_schedule,
+        leader_schedule: Some(leader_schedule),
         metadata,
     };
 

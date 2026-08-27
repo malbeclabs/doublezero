@@ -390,18 +390,30 @@ interacts with step 5.
 Volume is unknown until tried. Step 0 can measure it at the same time as the program
 bytes, for free.
 
-**Reward and debt output can change silently. This is the risk to take seriously.**
-#1515 flags it: relocating `contributor-rewards` and `validator-debt` re-resolves their
-maths in a different lockfile and feature context, and the output can change without
-anything failing. Both crates move into the root workspace in step 2 of this spec.
+**Contributor reward output can change silently. This is the risk to take seriously.**
+#1515 flags it for both `contributor-rewards` and `validator-debt`: relocating them
+re-resolves their maths in a different lockfile and feature context, and the output can
+change without anything failing. Both move into the root workspace in step 2.
 
-There are **no golden or snapshot tests** in either crate today, so nothing would catch it.
-The failure mode is wrong reward or debt figures that build clean and pass every test.
+Only `contributor-rewards` is load-bearing. Validator debt is no longer being collected, so
+drift in `validator-debt` output changes no payment. It still has to compile and it still
+releases, but it does not need a correctness gate.
+
+`contributor-rewards` decides what contributors are paid. It has **no golden or snapshot
+tests** today, so nothing would catch a change. The failure mode is wrong reward figures
+that build clean and pass every test.
 
 Mitigation, and it should land before step 2 rather than inside it: add golden tests to
-both crates on `main` as they stand now. Fixed input, byte-identical output. Then step 2
-either keeps them green or names exactly what moved. Writing goldens against today's
-behaviour is also useful on its own, whatever happens to this migration.
+`contributor-rewards` on `main` as it stands now. Fixed input, byte-identical output. Then
+step 2 either keeps them green or names exactly what moved. Writing goldens against today's
+behaviour is worth doing on its own merits, whatever happens to this migration.
+
+**Is `validator-debt` worth migrating at all?** If it is not collecting and is not expected
+to, moving it, releasing it and carrying it in the workspace is work spent on dormant code.
+Deleting it, or archiving it in place, may be cheaper than migrating it. Worth a decision
+before step 2 rather than after. Note it is still deployed: `malbeclabs/infra` runs it from
+the offchain scheduler with its own AWS credentials, and it ships a Cloudsmith package, so
+this is a real decision and not a formality.
 
 **One lockfile, one resolution.** Today three lockfiles disagreeing is a visible signal.
 After step 2 one lockfile resolves silently. The Solana crates agree today only because

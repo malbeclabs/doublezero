@@ -306,7 +306,7 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 	// one in the deploy directory if it exists. Devnet-only: it is written to the deploy
 	// directory rather than checked in, and its pubkey is what the local GlobalState names as the
 	// verifier authority.
-	if spec.IPVerifier.Enabled && spec.IPVerifier.KeypairPath == "" {
+	if !spec.IPVerifier.Disabled && spec.IPVerifier.KeypairPath == "" {
 		ipVerifierKeypairPath := filepath.Join(spec.DeployDir, "ip-verifier-keypair.json")
 		generated, err := generateKeypairIfNotExists(ipVerifierKeypairPath)
 		if err != nil {
@@ -401,7 +401,7 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		dn:  dn,
 		log: log.With("component", "sentinel"),
 	}
-	if spec.IPVerifier.Enabled {
+	if !spec.IPVerifier.Disabled {
 		dn.IPVerifier = &IPVerifier{
 			dn:  dn,
 			log: log.With("component", "ip-verifier"),

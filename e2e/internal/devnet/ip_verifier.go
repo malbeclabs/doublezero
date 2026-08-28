@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	dockercontainer "github.com/docker/docker/api/types/container"
@@ -36,7 +37,11 @@ const (
 // default network the observed address would be the client's default-network address instead, and
 // every connect would fail on the mismatch.
 type IPVerifierSpec struct {
-	Enabled        bool
+	// Disabled leaves the verifier out of the deploy. The zero value runs it, so every devnet
+	// exercises the same `connect` path production does: a proof is obtained and attached, and
+	// the program validates it. Enforcement is separate — the require-ip-ownership-proof feature
+	// flag stays clear, so a create with no proof is still accepted.
+	Disabled       bool
 	ContainerImage string
 	// KeypairPath is the host path to the verifier keypair JSON. Generated into the deploy
 	// directory when unset. Its pubkey is written to GlobalState.ip_verifier_authority_pk before
@@ -45,10 +50,15 @@ type IPVerifierSpec struct {
 	KeypairPath string
 	// CYOANetworkIPHostID is the offset into the host portion of the CYOA subnet.
 	CYOANetworkIPHostID uint32
+	// AuthorityRefreshSecs is how often the service re-reads
+	// GlobalState.ip_verifier_authority_pk. Zero leaves the service default. Set it long to hold
+	// the service on a stale authority across a rotation, which is how a test produces a proof
+	// signed by a key the program no longer trusts.
+	AuthorityRefreshSecs int
 }
 
 func (s *IPVerifierSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
-	if !s.Enabled {
+	if s.Disabled {
 		return nil
 	}
 	if s.ContainerImage == "" {
@@ -163,6 +173,29 @@ func (v *IPVerifier) Start(ctx context.Context) error {
 		return err
 	}
 
+	env := map[string]string{
+		"DZ_IP_VERIFIER_ENV":         "local",
+		"DZ_IP_VERIFIER_LEDGER_RPC":  v.dn.Ledger.InternalRPCURL,
+		"DZ_IP_VERIFIER_KEYPAIR":     containerIPVerifierKeypairPath,
+		"DZ_IP_VERIFIER_LISTEN_ADDR": fmt.Sprintf("0.0.0.0:%d", ipVerifierInternalPort),
+		"DZ_IP_VERIFIER_LOG":         "doublezero_ip_verifier=debug",
+		// No trusted proxies: clients reach the service directly, so the connection peer
+		// address is signed and forwarded headers are ignored outright.
+		//
+		// The rate limit is raised well above the production default because a devnet has one
+		// source address per client and a test can reconnect in a tight loop; the production
+		// value would turn that into `rate_limited` refusals that have nothing to do with what
+		// is being tested.
+		"DZ_IP_VERIFIER_RATE_LIMIT_BURST":      "1000",
+		"DZ_IP_VERIFIER_RATE_LIMIT_PER_MINUTE": "6000",
+	}
+	// A long refresh holds the service on the authority it read at startup, so a rotation after
+	// it is up does not stop it signing. That is what lets a test hand the program a proof signed
+	// by a key it no longer trusts.
+	if v.dn.Spec.IPVerifier.AuthorityRefreshSecs > 0 {
+		env["DZ_IP_VERIFIER_AUTHORITY_REFRESH_SECS"] = strconv.Itoa(v.dn.Spec.IPVerifier.AuthorityRefreshSecs)
+	}
+
 	req := testcontainers.ContainerRequest{
 		Image: v.dn.Spec.IPVerifier.ContainerImage,
 		Name:  v.dockerContainerName(),
@@ -170,22 +203,7 @@ func (v *IPVerifier) Start(ctx context.Context) error {
 			cfg.Hostname = v.dockerContainerHostname()
 		},
 		ExposedPorts: []string{fmt.Sprintf("%d/tcp", ipVerifierInternalPort)},
-		Env: map[string]string{
-			"DZ_IP_VERIFIER_ENV":         "local",
-			"DZ_IP_VERIFIER_LEDGER_RPC":  v.dn.Ledger.InternalRPCURL,
-			"DZ_IP_VERIFIER_KEYPAIR":     containerIPVerifierKeypairPath,
-			"DZ_IP_VERIFIER_LISTEN_ADDR": fmt.Sprintf("0.0.0.0:%d", ipVerifierInternalPort),
-			"DZ_IP_VERIFIER_LOG":         "doublezero_ip_verifier=debug",
-			// No trusted proxies: clients reach the service directly, so the connection peer
-			// address is signed and forwarded headers are ignored outright.
-			//
-			// The rate limit is raised well above the production default because a devnet has one
-			// source address per client and a test can reconnect in a tight loop; the production
-			// value would turn that into `rate_limited` refusals that have nothing to do with what
-			// is being tested.
-			"DZ_IP_VERIFIER_RATE_LIMIT_BURST":      "1000",
-			"DZ_IP_VERIFIER_RATE_LIMIT_PER_MINUTE": "6000",
-		},
+		Env:          env,
 		Files: []testcontainers.ContainerFile{
 			{
 				HostFilePath:      v.dn.Spec.IPVerifier.KeypairPath,

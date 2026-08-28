@@ -2,13 +2,15 @@
 
 RFC-27 ([`rfcs/rfc27-ip-verification.md`](../../rfcs/rfc27-ip-verification.md)) has `connect`
 attach a proof, signed by a DoubleZero-operated verifier, that the caller can originate traffic
-from the `client_ip` it is binding. `dev/dzctl` runs that verifier so the local flow matches
-production.
+from the `client_ip` it is binding. Every devnet runs that verifier — `dev/dzctl` and the Go e2e
+suite alike — so the local flow matches production.
 
 ## What comes up
 
-`dzctl start` brings up a `dz-local-ip-verifier` container (image `dz-local/ip-verifier:dev`)
-alongside the rest of the stack:
+The verifier is on by default: `IPVerifierSpec.Disabled` is the opt-out, so a devnet that says
+nothing about it gets one. `dzctl start` brings up a `dz-local-ip-verifier` container (image
+`dz-local/ip-verifier:dev`) alongside the rest of the stack; an e2e test gets the same container
+named for its own deploy ID:
 
 - **Keypair**: generated per deploy into `dev/.deploy/dz-local/ip-verifier-keypair.json`. Devnet
   only — nothing is checked in.
@@ -53,6 +55,20 @@ docker exec dz-local-manager \
 ```
 
 From a Go e2e test, `devnet.SetIPOwnershipProofFeatureFlag(ctx, true)` does the same thing.
+
+## From a Go e2e test
+
+Because the verifier is on by default, an ordinary `connect` in any e2e test already obtains and
+attaches a real proof. Two knobs cover the cases that need something else:
+
+- `ClientSpec.NoIPVerifier` leaves `DZ_IP_VERIFIER_URL` unset for one client, so its `connect`
+  obtains no proof at all — the path an environment takes before its verifier exists.
+- `IPVerifierSpec.AuthorityRefreshSecs` pins how often the service re-reads the onchain authority.
+  Set it long and rotate the authority with `devnet.SetIPVerifierAuthority` and the service keeps
+  signing with a key `GlobalState` no longer names, which is how a test produces a proof that gets
+  refused.
+
+`e2e/ip_ownership_proof_test.go` uses all three paths.
 
 ## Poking at it
 

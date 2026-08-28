@@ -61,6 +61,10 @@ type ClientSpec struct {
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
 
+	// NoIPVerifier leaves DZ_IP_VERIFIER_URL unset for this client, so its `connect` obtains no
+	// RFC-27 proof even in a devnet running a verifier.
+	NoIPVerifier bool
+
 	// EnableQAAgent starts the QA agent inside the client container for local QA testing.
 	EnableQAAgent bool
 	// QAAgentPort is the port the QA agent listens on inside the container (default: 7009).
@@ -234,11 +238,15 @@ func (c *Client) Start(ctx context.Context) error {
 		"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
 		"DZ_CLIENT_EXTRA_ARGS":         strings.Join(extraArgs, " "),
 	}
-	// Point `connect` at the devnet verifier. Without this the `--env local` default
-	// (http://localhost:8080) is used, which resolves to nothing inside the client container.
-	// The URL is the verifier's CYOA address, so the source address it observes is the same one
-	// the client binds its tunnel to — `connect` hard-fails on a proof for any other address.
-	if c.dn.IPVerifier != nil && c.dn.IPVerifier.InternalURL != "" {
+	// Point `connect` at the devnet verifier. The `--env local` config carries no verifier URL,
+	// so without this a client obtains no proof at all. The URL is the verifier's CYOA address,
+	// so the source address it observes is the same one the client binds its tunnel to —
+	// `connect` hard-fails on a proof for any other address.
+	//
+	// NoIPVerifier leaves it unset, which is how a test covers the no-proof path: the CLI reports
+	// nothing to reach and creates the user without a proof, which the program accepts while
+	// require-ip-ownership-proof is clear.
+	if c.dn.IPVerifier != nil && c.dn.IPVerifier.InternalURL != "" && !c.Spec.NoIPVerifier {
 		env["DZ_IP_VERIFIER_URL"] = c.dn.IPVerifier.InternalURL
 	}
 	if c.Spec.EnableQAAgent {

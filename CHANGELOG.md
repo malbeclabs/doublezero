@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.38.0](https://github.com/malbeclabs/doublezero/compare/client/v0.37.0...client/v0.38.0) - 2026-08-28
+
+### Breaking
+
 - SDK
   - `UpdateMulticastGroupRolesCommand.group_pk: Pubkey` becomes `group_pks: Vec<Pubkey>` and `CreateSubscribeUserCommand.mgroup_pk: Pubkey` becomes `mgroup_pks: Vec<Pubkey>` (non-empty; the first entry is the instruction's primary group). The RFC-26 builders `update_multicast_group_roles` and `create_subscribe_user` gain an `extra_groups: &[Pubkey]` parameter and derive the new `extra_group_count` arg from it. Single-group callers pass a one-element vec / empty slice. `CreateSubscribeUserCommand` measures the built transaction's wire size and rejects a group set that cannot fit under the 1232-byte limit, naming how many groups do fit: the create also carries the device's dz_prefix accounts and an optional feed, so the 16-group role-update chunk does not bound it. (malbeclabs/infra#2114)
 

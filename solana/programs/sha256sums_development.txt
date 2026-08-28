@@ -1,0 +1,2 @@
+ebfa651fc897ab8b5f9d4aa135fdd9e88db94dea08803e233ddb367e9314307c  artifacts-development/doublezero_passport.so
+ec0407be6c5fa00ced5963d7d03a7a8e0f4e75fed6330261b318997112e8cb8c  artifacts-development/doublezero_revenue_distribution.so

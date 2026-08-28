@@ -1,0 +1,267 @@
+use std::{
+    cell::{Ref, RefMut},
+    iter::Enumerate,
+    ops::{Deref, DerefMut},
+    slice::Iter,
+};
+
+use bytemuck::Pod;
+use solana_account_info::AccountInfo;
+use solana_msg::msg;
+use solana_program_error::ProgramError;
+use solana_pubkey::Pubkey;
+
+use crate::{
+    account_info::{
+        try_borrow_data, try_borrow_mut_data, try_next_enumerated_account, TryNextAccounts,
+    },
+    Discriminator, PrecomputedDiscriminator, DISCRIMINATOR_LEN,
+};
+
+use super::data_range;
+
+#[derive(Debug)]
+pub struct ZeroCopyAccount<'a, 'b, T: Pod + PrecomputedDiscriminator> {
+    pub index: usize,
+    pub info: &'a AccountInfo<'b>,
+    pub data: Ref<'a, T>,
+    pub remaining_data: Ref<'a, [u8]>,
+}
+
+impl<T: Pod + PrecomputedDiscriminator> Deref for ZeroCopyAccount<'_, '_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl<'a, 'b, T: Pod + PrecomputedDiscriminator> ZeroCopyAccount<'a, 'b, T> {
+    /// Build a read-only zero-copy view from an already-held `&AccountInfo`.
+    /// Callers that peel accounts via a shared helper (e.g. interface
+    /// structs) can use this to typed-deserialize a specific slot after the
+    /// fact. Enforces optional owner check + discriminator.
+    #[inline]
+    pub fn try_from_account_info(
+        index: usize,
+        account_info: &'a AccountInfo<'b>,
+        program_id: Option<&Pubkey>,
+    ) -> Result<Self, ProgramError> {
+        if let Some(expected_owner) = program_id {
+            if account_info.owner != expected_owner {
+                return Err(ProgramError::InvalidAccountOwner);
+            }
+        }
+
+        let data = try_borrow_data(account_info)?;
+        let RefSplit {
+            discriminator,
+            mucked_data,
+            remaining_data,
+        } = RefSplit::try_new(data)?;
+
+        if !T::has_discriminator(&discriminator) {
+            msg!(
+                "Expected discriminator {} for account {}",
+                T::DISCRIMINATOR,
+                index
+            );
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(Self {
+            index,
+            info: account_info,
+            data: mucked_data,
+            remaining_data,
+        })
+    }
+}
+
+impl<'a, 'b, T: Pod + PrecomputedDiscriminator> TryNextAccounts<'a, 'b, Option<&'a Pubkey>>
+    for ZeroCopyAccount<'a, 'b, T>
+{
+    #[inline]
+    fn try_next_accounts(
+        accounts_iter: &mut Enumerate<Iter<'a, AccountInfo<'b>>>,
+        program_id: Option<&'a Pubkey>,
+    ) -> Result<Self, ProgramError> {
+        let (index, account_info) = try_next_enumerated_account(accounts_iter, Default::default())?;
+
+        Self::try_from_account_info(index, account_info, program_id)
+    }
+}
+
+#[derive(Debug)]
+pub struct ZeroCopyMutAccount<'a, 'b, T: Pod + PrecomputedDiscriminator> {
+    pub index: usize,
+    pub info: &'a AccountInfo<'b>,
+    pub data: RefMut<'a, T>,
+    pub remaining_data: RefMut<'a, [u8]>,
+}
+
+impl<T: Pod + PrecomputedDiscriminator> Deref for ZeroCopyMutAccount<'_, '_, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl<T: Pod + PrecomputedDiscriminator> DerefMut for ZeroCopyMutAccount<'_, '_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
+}
+
+impl<'a, 'b, T: Pod + PrecomputedDiscriminator> ZeroCopyMutAccount<'a, 'b, T> {
+    /// Build a mutable zero-copy view from an already-held `&AccountInfo`.
+    /// Callers that peel accounts via a shared helper can use this to
+    /// typed-deserialize a specific slot afterwards. Enforces writable,
+    /// optional owner check, and discriminator.
+    #[inline]
+    pub fn try_from_account_info(
+        index: usize,
+        account_info: &'a AccountInfo<'b>,
+        program_id: Option<&Pubkey>,
+    ) -> Result<Self, ProgramError> {
+        if !account_info.is_writable {
+            msg!("Account {} must be writable", index);
+            return Err(ProgramError::InvalidAccountData);
+        }
+        if let Some(expected_owner) = program_id {
+            if account_info.owner != expected_owner {
+                return Err(ProgramError::InvalidAccountOwner);
+            }
+        }
+
+        let data = try_borrow_mut_data(account_info)?;
+        let RefMutSplit {
+            discriminator,
+            mucked_data,
+            remaining_data,
+        } = RefMutSplit::try_new(data)?;
+
+        if !T::has_discriminator(&discriminator) {
+            msg!(
+                "Expected discriminator {} for account {}",
+                T::DISCRIMINATOR,
+                index
+            );
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(Self {
+            index,
+            info: account_info,
+            data: mucked_data,
+            remaining_data,
+        })
+    }
+}
+
+impl<'a, 'b, T: Pod + PrecomputedDiscriminator> TryNextAccounts<'a, 'b, Option<&'a Pubkey>>
+    for ZeroCopyMutAccount<'a, 'b, T>
+{
+    #[inline]
+    fn try_next_accounts(
+        accounts_iter: &mut Enumerate<Iter<'a, AccountInfo<'b>>>,
+        program_id: Option<&'a Pubkey>,
+    ) -> Result<Self, ProgramError> {
+        let (index, account_info) = try_next_enumerated_account(accounts_iter, Default::default())?;
+
+        Self::try_from_account_info(index, account_info, program_id)
+    }
+}
+
+pub fn try_initialize<'a, T: Default + Pod + PrecomputedDiscriminator>(
+    account_info: &'a AccountInfo<'_>,
+) -> Result<(RefMut<'a, T>, RefMut<'a, [u8]>), ProgramError> {
+    let data = try_borrow_mut_data(account_info)?;
+
+    let RefMutSplit {
+        mut discriminator,
+        mucked_data,
+        remaining_data,
+    } = RefMutSplit::try_new(data)?;
+
+    // If this account already has a discriminator, it means it has already been
+    // initialized.
+    if discriminator.as_ref() != [0, 0, 0, 0, 0, 0, 0, 0] {
+        let mut buf = [0; DISCRIMINATOR_LEN];
+        buf.copy_from_slice(&discriminator);
+
+        msg!(
+            "Account {} already initialized with discriminator {}",
+            account_info.key,
+            Discriminator::new(buf),
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // First, serialize the discriminator.
+    discriminator.copy_from_slice(T::discriminator_slice());
+
+    Ok((mucked_data, remaining_data))
+}
+
+//
+// Helpers.
+//
+
+struct RefSplit<'a, T: Pod + PrecomputedDiscriminator> {
+    discriminator: Ref<'a, [u8]>,
+    mucked_data: Ref<'a, T>,
+    remaining_data: Ref<'a, [u8]>,
+}
+
+impl<'a, T: Pod + PrecomputedDiscriminator> RefSplit<'a, T> {
+    #[inline(always)]
+    fn try_new(data: Ref<'a, [u8]>) -> Result<RefSplit<'a, T>, ProgramError> {
+        // Would love to use const here.
+        let range = data_range::<T>();
+
+        if data.len() < range.end {
+            return Err(ProgramError::AccountDataTooSmall);
+        }
+
+        let (left_data, remaining_data) = Ref::map_split(data, |data| data.split_at(range.end));
+        let (discriminator, account_data) =
+            Ref::map_split(left_data, |data| data.split_at(DISCRIMINATOR_LEN));
+
+        Ok(Self {
+            discriminator,
+            mucked_data: Ref::map(account_data, bytemuck::from_bytes),
+            remaining_data,
+        })
+    }
+}
+
+struct RefMutSplit<'a, T: Pod + PrecomputedDiscriminator> {
+    discriminator: RefMut<'a, [u8]>,
+    mucked_data: RefMut<'a, T>,
+    remaining_data: RefMut<'a, [u8]>,
+}
+
+impl<'a, T: Pod + PrecomputedDiscriminator> RefMutSplit<'a, T> {
+    #[inline(always)]
+    fn try_new(data: RefMut<'a, [u8]>) -> Result<RefMutSplit<'a, T>, ProgramError> {
+        // Would love to use const here.
+        let range = data_range::<T>();
+
+        if data.len() < range.end {
+            return Err(ProgramError::AccountDataTooSmall);
+        }
+
+        let (left_data, remaining_data) =
+            RefMut::map_split(data, |data| data.split_at_mut(range.end));
+        let (discriminator, account_data) =
+            RefMut::map_split(left_data, |data| data.split_at_mut(DISCRIMINATOR_LEN));
+
+        Ok(Self {
+            discriminator,
+            mucked_data: RefMut::map(account_data, bytemuck::from_bytes_mut),
+            remaining_data,
+        })
+    }
+}

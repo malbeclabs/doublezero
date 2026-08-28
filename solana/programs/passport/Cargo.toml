@@ -1,0 +1,46 @@
+[package]
+name = "doublezero-passport"
+version = "0.2.0"
+
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+borsh = { workspace = true, features = ["derive"] }
+bytemuck = { workspace = true, features = ["derive", "min_const_generics"] }
+doublezero-program-tools = { workspace = true, features = ["entrypoint"] }
+itertools.workspace = true
+solana-account-info.workspace = true
+solana-instruction = { workspace = true, features = ["syscalls"] }
+solana-msg.workspace = true
+solana-program-entrypoint.workspace = true
+solana-program-error.workspace = true
+solana-pubkey = { workspace = true, features = ["borsh", "bytemuck"] }
+solana-system-interface.workspace = true
+solana-sysvar.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+bincode.workspace = true
+ctor.workspace = true
+env_logger.workspace = true
+log.workspace = true
+solana-loader-v3-interface.workspace = true
+solana-program-test.workspace = true
+solana-sdk.workspace = true
+
+[features]
+default = []
+### Build with this feature for Solana devnet and localnet.
+development = []
+entrypoint = []
+offchain = []
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(custom_heap)'] }

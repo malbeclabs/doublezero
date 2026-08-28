@@ -70,6 +70,30 @@ attaches a real proof. Two knobs cover the cases that need something else:
 
 `e2e/ip_ownership_proof_test.go` uses all three paths.
 
+### Testing enforcement
+
+`devnet.SetIPOwnershipProofFeatureFlag(ctx, true)` sets `require-ip-ownership-proof`, which changes
+exactly one thing in the program: whether a *missing* proof is an error. A supplied proof is
+validated in full either way, so most proof failures are testable with the flag clear.
+
+Two things to know before writing a "flag on rejects everything" test:
+
+- **The manager is the sentinel authority** in a local devnet (`smartcontract_init.go` runs
+  `authority set --sentinel-authority me`), and the sentinel may create a user without a proof. So
+  `doublezero user create` from the manager still succeeds under enforcement — the rejection only
+  shows up on a create paid for by someone else, which is what `doublezero connect` on a client
+  does. `is_sentinel` compares the transaction payer.
+- **Most bad-proof cases never reach the chain.** The Rust SDK pre-flights version, payer,
+  `client_ip`, `user_type` and the signature before building the transaction, and `connect` refuses
+  an address disagreement before that. Of the program's proof errors only
+  `IpOwnershipProofRequired` (105) and `IpProofEpochOutOfWindow` (110) are reachable end to end,
+  and 110 needs a ledger epoch the devnet never advances past 0. The rest have program-level
+  coverage in `user_ip_proof_test.rs`.
+
+`e2e/ip_ownership_proof_enforcement_test.go` covers the flag-set cases, including a wildcard access
+pass — a pass created with no `--client-ip`, landing at the `0.0.0.0` PDA — which is the case
+RFC-27 exists for.
+
 ## Poking at it
 
 ```bash

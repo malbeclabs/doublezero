@@ -65,6 +65,12 @@ type ClientSpec struct {
 	// RFC-27 proof even in a devnet running a verifier.
 	NoIPVerifier bool
 
+	// DaemonClientIP overrides the address the daemon provisions, which is otherwise this client's
+	// CYOA address. Set it to an address the container does not own and the verifier observes the
+	// real CYOA source while `connect` binds the override, which is the disagreement `connect`
+	// refuses to provision through.
+	DaemonClientIP string
+
 	// EnableQAAgent starts the QA agent inside the client container for local QA testing.
 	EnableQAAgent bool
 	// QAAgentPort is the port the QA agent listens on inside the container (default: 7009).
@@ -223,7 +229,11 @@ func (c *Client) Start(ctx context.Context) error {
 	if c.Spec.LatencyProbeTunnelEndpoints {
 		extraArgs = append(extraArgs, "-latency-probe-tunnel-endpoints")
 	}
-	extraArgs = append(extraArgs, "-client-ip", clientCYOAIP)
+	daemonClientIP := clientCYOAIP
+	if c.Spec.DaemonClientIP != "" {
+		daemonClientIP = c.Spec.DaemonClientIP
+	}
+	extraArgs = append(extraArgs, "-client-ip", daemonClientIP)
 
 	// Determine QA agent port if enabled.
 	qaAgentPort := c.Spec.QAAgentPort
